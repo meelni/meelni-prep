@@ -45,8 +45,47 @@ type SerializedTranscriptQueueFailure = Omit<
 
 interface SerializedTranscriptQueueState {
   items: SerializedQueuedTranscriptSave[];
-  overflowedSessions: string[];
+  overflowedSessions?: string[];
+  overflowMarkers?: SerializedTranscriptQueueMarker[];
   failures?: SerializedTranscriptQueueFailure[];
+  queueTombstones?: SerializedTranscriptQueueTombstone[];
+  failureTombstones?: SerializedTranscriptQueueTombstone[];
+  overflowTombstones?: SerializedTranscriptQueueTombstone[];
+  generation?: number;
+  ownerId?: string;
+  revision?: number;
+}
+
+interface TranscriptQueueMarker {
+  id: string;
+  recordedAt: Date;
+}
+
+type SerializedTranscriptQueueMarker = Omit<
+  TranscriptQueueMarker,
+  "recordedAt"
+> & { recordedAt: string };
+
+interface TranscriptQueueTombstone {
+  id: string;
+  removedAt: Date;
+}
+
+type SerializedTranscriptQueueTombstone = Omit<
+  TranscriptQueueTombstone,
+  "removedAt"
+> & { removedAt: string };
+
+interface RestoredTranscriptQueueState {
+  items: QueuedTranscriptSave[];
+  overflowMarkers: TranscriptQueueMarker[];
+  failures: TranscriptQueueFailure[];
+  queueTombstones: TranscriptQueueTombstone[];
+  failureTombstones: TranscriptQueueTombstone[];
+  overflowTombstones: TranscriptQueueTombstone[];
+  generation: number;
+  ownerId: string | null;
+  revision: number;
 }
 
 interface InFlightTranscriptSave {
@@ -56,17 +95,27 @@ interface InFlightTranscriptSave {
 
 interface TranscriptQueueProcessing {
   generation: number;
-  sessionKey: string | null;
   promise: Promise<void>;
 }
 
 const QUEUE_CONFIG = {
   retryDelayMs: 2_000,
   requestTimeoutMs: 10_000,
+  maxConcurrentSessions: 4,
   maxQueueSize: 1_000,
+  maxStorageShards: 64,
   retentionMs: 24 * 60 * 60 * 1_000,
   storageKey: "transcript_queue_v2",
+  storageFenceKey: "transcript_queue_v2:generation",
+  storageShardPrefix: "transcript_queue_v2:writer:",
 } as const;
+
+let storageWriterSequence = 0;
+
+interface TranscriptQueueStorageFence {
+  generation: number;
+  ownerId: string | null;
+}
 
 class TranscriptHttpError extends Error {
   constructor(
@@ -88,15 +137,22 @@ class TranscriptHttpError extends Error {
 }
 
 export class TranscriptQueue {
+  private readonly storageShardKey = `${QUEUE_CONFIG.storageShardPrefix}${createStorageWriterId()}`;
   private queue: QueuedTranscriptSave[] = [];
-  private processing: TranscriptQueueProcessing | null = null;
+  private processing = new Map<string, TranscriptQueueProcessing>();
   private processTimer: ReturnType<typeof setInterval> | null = null;
   private inFlight = new Map<string, InFlightTranscriptSave>();
-  private overflowedSessions = new Set<string>();
+  private overflowedSessions = new Map<string, Date>();
   private failures: TranscriptQueueFailure[] = [];
+  private queueTombstones = new Map<string, Date>();
+  private failureTombstones = new Map<string, Date>();
+  private overflowTombstones = new Map<string, Date>();
   private closedSessions = new Set<string>();
   private boundOwnerId: string | null = null;
   private ownerGeneration = 0;
+  private storageGeneration = 0;
+  private storageRevision = 0;
+  private storageOwnerId: string | null = null;
   private ownerAbortController = new AbortController();
   private sessionAbortControllers = new Map<string, AbortController>();
 
@@ -105,14 +161,20 @@ export class TranscriptQueue {
   }
 
   add(request: TranscriptPersistenceRequest): boolean {
-    if (this.boundOwnerId !== request.ownerId) return false;
+    if (
+      this.boundOwnerId !== request.ownerId ||
+      !this.hasStorageLease(request.ownerId)
+    )
+      return false;
     return this.enqueueForRetry(request);
   }
 
   private enqueueForRetry(request: TranscriptPersistenceRequest): boolean {
     if (this.closedSessions.has(ownerSessionIdentity(request))) return false;
     this.pruneExpired();
+    this.reconcileFromStorage();
     const id = queueIdentity(request);
+    if (this.queueTombstones.has(id)) return true;
     const existing = this.queue.find((item) => item.id === id);
     if (existing) {
       existing.status = "retrying";
@@ -121,7 +183,7 @@ export class TranscriptQueue {
     }
 
     if (this.queue.length >= QUEUE_CONFIG.maxQueueSize) {
-      this.overflowedSessions.add(ownerSessionIdentity(request));
+      this.markOverflow(ownerSessionIdentity(request));
       this.saveToStorage();
       console.error("[TranscriptQueue] Retry queue capacity exceeded", {
         sessionId: request.sessionId,
@@ -147,6 +209,7 @@ export class TranscriptQueue {
   ): Promise<TranscriptSaveResult> {
     if (
       this.boundOwnerId !== request.ownerId ||
+      !this.hasStorageLease(request.ownerId) ||
       this.closedSessions.has(ownerSessionIdentity(request))
     ) {
       return { success: false, error: "transcript_owner_changed" };
@@ -188,7 +251,7 @@ export class TranscriptQueue {
       }
       if (isRetryable(error)) {
         if (!this.enqueueForRetry(request)) {
-          this.overflowedSessions.add(ownerSessionIdentity(request));
+          this.markOverflow(ownerSessionIdentity(request));
           this.saveToStorage();
         }
       } else if (isClosedSessionError(error)) {
@@ -204,26 +267,44 @@ export class TranscriptQueue {
     }
   }
 
-  private async processQueue(): Promise<void> {
+  private async processQueue(sessionKey?: string): Promise<void> {
     if (this.queue.length === 0) return;
-    const generation = this.ownerGeneration;
-    if (this.processing?.generation === generation) {
-      return this.processing.promise;
+    this.pruneExpired();
+    this.reconcileFromStorage();
+    if (sessionKey) {
+      await this.processSessionQueue(sessionKey);
+      return;
     }
+    const availableSlots = Math.max(
+      0,
+      QUEUE_CONFIG.maxConcurrentSessions - this.processing.size
+    );
+    const sessionKeys = [
+      ...new Set(this.queue.map((item) => ownerSessionIdentity(item.request))),
+    ]
+      .filter((key) => !this.processing.has(key))
+      .slice(0, availableSlots);
+    await Promise.all(sessionKeys.map((key) => this.processSessionQueue(key)));
+  }
+
+  private processSessionQueue(sessionKey: string): Promise<void> {
+    const generation = this.ownerGeneration;
+    const active = this.processing.get(sessionKey);
+    if (active?.generation === generation) return active.promise;
+
     const ownerId = this.boundOwnerId;
     const processing: TranscriptQueueProcessing = {
       generation,
-      sessionKey: null,
       promise: Promise.resolve(),
     };
-    this.processing = processing;
-
+    this.processing.set(sessionKey, processing);
     processing.promise = (async () => {
-      this.pruneExpired();
-      while (this.queue.length > 0) {
+      while (true) {
         if (!ownerId || !this.isCurrentOwner(ownerId, generation)) break;
-        const item = this.queue[0];
-        processing.sessionKey = ownerSessionIdentity(item.request);
+        const item = this.queue.find(
+          (candidate) => ownerSessionIdentity(candidate.request) === sessionKey
+        );
+        if (!item) break;
         item.attemptCount += 1;
         item.lastAttempt = new Date();
         try {
@@ -233,16 +314,15 @@ export class TranscriptQueue {
           );
           if (
             !this.isCurrentOwner(ownerId, generation) ||
-            this.closedSessions.has(ownerSessionIdentity(item.request))
+            this.closedSessions.has(sessionKey)
           )
             break;
           this.removeQueuedItem(item.id);
           this.removeFailure(item.id);
-          this.saveToStorage();
         } catch (error) {
           if (
             !this.isCurrentOwner(ownerId, generation) ||
-            this.closedSessions.has(ownerSessionIdentity(item.request))
+            this.closedSessions.has(sessionKey)
           )
             break;
           if (!isRetryable(error)) {
@@ -258,7 +338,9 @@ export class TranscriptQueue {
         }
       }
     })().finally(() => {
-      if (this.processing === processing) this.processing = null;
+      if (this.processing.get(sessionKey) === processing) {
+        this.processing.delete(sessionKey);
+      }
     });
     return processing.promise;
   }
@@ -274,7 +356,10 @@ export class TranscriptQueue {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const remainingMs = deadline - Date.now();
-      await waitForPromiseWithin(this.processQueue(), remainingMs);
+      await waitForPromiseWithin(
+        this.processQueue(`${ownerId}:${sessionId}`),
+        remainingMs
+      );
       const pending = this.pendingCount(ownerId, sessionId);
       const failed = this.failureCount(ownerId, sessionId);
       if (pending === 0 && failed === 0) {
@@ -330,7 +415,7 @@ export class TranscriptQueue {
   } {
     return {
       queueLength: this.queue.length,
-      isProcessing: this.processing !== null,
+      isProcessing: this.processing.size > 0,
       failed: this.failures.length + this.overflowedSessions.size,
     };
   }
@@ -338,33 +423,48 @@ export class TranscriptQueue {
   clear(): void {
     this.stop();
     this.boundOwnerId = null;
+    this.storageOwnerId = null;
     this.advanceGeneration();
     this.queue = [];
     this.overflowedSessions.clear();
     this.failures = [];
+    this.queueTombstones.clear();
+    this.failureTombstones.clear();
+    this.overflowTombstones.clear();
     this.closedSessions.clear();
     this.inFlight.clear();
-    this.saveToStorage();
+    this.storageGeneration += 1;
+    this.storageRevision += 1;
+    this.writeStorageState();
   }
 
   clearSession(ownerId: string, sessionId: string): void {
     const sessionKey = `${ownerId}:${sessionId}`;
+    this.reconcileFromStorage();
     this.closedSessions.add(sessionKey);
+    for (const item of this.queue) {
+      if (ownerSessionIdentity(item.request) === sessionKey) {
+        this.queueTombstones.set(item.id, new Date());
+      }
+    }
     this.queue = this.queue.filter(
-      (item) =>
-        item.request.ownerId !== ownerId || item.request.sessionId !== sessionId
+      (item) => ownerSessionIdentity(item.request) !== sessionKey
     );
+    for (const failure of this.failures) {
+      if (`${failure.ownerId}:${failure.sessionId}` === sessionKey) {
+        this.failureTombstones.set(failure.id, new Date());
+      }
+    }
     this.failures = this.failures.filter(
-      (failure) =>
-        failure.ownerId !== ownerId || failure.sessionId !== sessionId
+      (failure) => `${failure.ownerId}:${failure.sessionId}` !== sessionKey
     );
-    this.overflowedSessions.delete(sessionKey);
+    this.clearOverflow(sessionKey);
     this.sessionAbortControllers.get(sessionKey)?.abort();
     this.sessionAbortControllers.delete(sessionKey);
     for (const [id, inFlight] of this.inFlight) {
       if (inFlight.sessionKey === sessionKey) this.inFlight.delete(id);
     }
-    if (this.processing?.sessionKey === sessionKey) this.processing = null;
+    this.processing.delete(sessionKey);
     this.saveToStorage();
     if (this.boundOwnerId) {
       this.startBackgroundProcessing();
@@ -375,19 +475,24 @@ export class TranscriptQueue {
   private saveToStorage(): void {
     if (typeof localStorage === "undefined") return;
     try {
-      const state: SerializedTranscriptQueueState = {
-        items: this.queue.map((item) => ({
-          ...item,
-          enqueuedAt: item.enqueuedAt.toISOString(),
-          lastAttempt: item.lastAttempt.toISOString(),
-        })),
-        overflowedSessions: [...this.overflowedSessions],
-        failures: this.failures.map((failure) => ({
-          ...failure,
-          recordedAt: failure.recordedAt.toISOString(),
-        })),
-      };
-      localStorage.setItem(QUEUE_CONFIG.storageKey, JSON.stringify(state));
+      if (this.boundOwnerId && !this.hasStorageLease(this.boundOwnerId)) return;
+      const stored = this.readStorageState();
+      if (
+        stored &&
+        this.boundOwnerId &&
+        ((stored.ownerId !== null && stored.ownerId !== this.boundOwnerId) ||
+          stored.generation !== this.storageGeneration)
+      ) {
+        return;
+      }
+      if (stored) this.mergeRestoredState(stored);
+      this.pruneExpired(false);
+      this.storageRevision = Math.max(
+        this.storageRevision,
+        stored?.revision ?? 0
+      );
+      this.storageRevision += 1;
+      this.writeStorageState();
     } catch (error) {
       console.error("[TranscriptQueue] Failed to save retry queue", error);
     }
@@ -397,53 +502,12 @@ export class TranscriptQueue {
     if (typeof localStorage === "undefined") return;
     try {
       localStorage.removeItem("transcript_queue");
-      const stored = localStorage.getItem(QUEUE_CONFIG.storageKey);
+      const stored = this.readStorageState();
       if (!stored) return;
-      const parsed = JSON.parse(stored) as SerializedTranscriptQueueState;
-      const now = Date.now();
-      const migratedFailures: TranscriptQueueFailure[] = [];
-      this.queue = (parsed.items ?? []).flatMap((item) => {
-        if (!isTranscriptPersistenceRequest(item.request)) return [];
-        const enqueuedAt = new Date(item.enqueuedAt ?? item.lastAttempt);
-        const lastAttempt = new Date(item.lastAttempt);
-        if (
-          !Number.isFinite(enqueuedAt.getTime()) ||
-          !Number.isFinite(lastAttempt.getTime()) ||
-          now - enqueuedAt.getTime() > QUEUE_CONFIG.retentionMs
-        ) {
-          return [];
-        }
-        if ((item as { permanent?: boolean }).permanent) {
-          migratedFailures.push({
-            id: item.id,
-            ownerId: item.request.ownerId,
-            sessionId: item.request.sessionId,
-            reason:
-              (item as { error?: string }).error ===
-              "transcript_event_identity_conflict"
-                ? "identity_conflict"
-                : "non_retryable",
-            recordedAt: lastAttempt,
-          });
-          return [];
-        }
-        return [
-          { ...item, enqueuedAt, lastAttempt, status: "retrying" as const },
-        ];
-      });
-      this.overflowedSessions = new Set(parsed.overflowedSessions ?? []);
-      this.failures = [
-        ...migratedFailures,
-        ...(parsed.failures ?? []).flatMap((failure) => {
-          const recordedAt = new Date(failure.recordedAt);
-          return isSafeFailure(failure) &&
-            Number.isFinite(recordedAt.getTime()) &&
-            now - recordedAt.getTime() <= QUEUE_CONFIG.retentionMs
-            ? [{ ...failure, recordedAt }]
-            : [];
-        }),
-      ];
-      this.saveToStorage();
+      this.replaceWithRestoredState(stored);
+      this.pruneExpired(false);
+      this.storageRevision += 1;
+      this.writeStorageState();
     } catch (error) {
       console.error("[TranscriptQueue] Failed to load retry queue", error);
       this.queue = [];
@@ -454,17 +518,237 @@ export class TranscriptQueue {
     }
   }
 
+  private readStorageState(): RestoredTranscriptQueueState | null {
+    if (typeof localStorage === "undefined") return null;
+    const keys = [QUEUE_CONFIG.storageKey, ...transcriptQueueShardKeys()];
+    const states: Array<{
+      key: string;
+      state: RestoredTranscriptQueueState;
+      canonical: boolean;
+    }> = [];
+    for (const key of keys) {
+      const stored = localStorage.getItem(key);
+      if (!stored) continue;
+      try {
+        states.push({
+          key,
+          state: restoreTranscriptQueueState(JSON.parse(stored)),
+          canonical: key === QUEUE_CONFIG.storageKey,
+        });
+      } catch {
+        localStorage.removeItem(key);
+      }
+    }
+    const shardStates = states.filter((entry) => !entry.canonical);
+    for (const entry of shardStates) {
+      if (isEmptyRestoredState(entry.state)) localStorage.removeItem(entry.key);
+    }
+    const retainedShards = shardStates.filter(
+      (entry) => !isEmptyRestoredState(entry.state)
+    );
+    if (retainedShards.length > QUEUE_CONFIG.maxStorageShards) {
+      for (const entry of retainedShards
+        .sort(
+          (left, right) =>
+            right.state.generation - left.state.generation ||
+            right.state.revision - left.state.revision ||
+            right.key.localeCompare(left.key)
+        )
+        .slice(QUEUE_CONFIG.maxStorageShards)) {
+        localStorage.removeItem(entry.key);
+      }
+    }
+    return mergeStorageShards(states);
+  }
+
+  private writeStorageState(): void {
+    if (typeof localStorage === "undefined") return;
+    const state: SerializedTranscriptQueueState = {
+      items: this.queue.map((item) => ({
+        ...item,
+        enqueuedAt: item.enqueuedAt.toISOString(),
+        lastAttempt: item.lastAttempt.toISOString(),
+      })),
+      overflowMarkers: [...this.overflowedSessions].map(([id, recordedAt]) => ({
+        id,
+        recordedAt: recordedAt.toISOString(),
+      })),
+      failures: this.failures.map((failure) => ({
+        ...failure,
+        recordedAt: failure.recordedAt.toISOString(),
+      })),
+      queueTombstones: serializeTombstones(this.queueTombstones),
+      failureTombstones: serializeTombstones(this.failureTombstones),
+      overflowTombstones: serializeTombstones(this.overflowTombstones),
+      generation: this.storageGeneration,
+      ownerId: this.boundOwnerId ?? this.storageOwnerId ?? undefined,
+      revision: this.storageRevision,
+    };
+    const serialized = JSON.stringify(state);
+    const storageOwnerId = this.boundOwnerId ?? this.storageOwnerId;
+    if (storageOwnerId !== null || this.storageGeneration > 0) {
+      this.writeStorageFence({
+        generation: this.storageGeneration,
+        ownerId: storageOwnerId,
+      });
+    }
+    // Each live queue owns a durable shard. The canonical key is only a
+    // compatibility/read-optimization view, so concurrent canonical writes
+    // cannot discard another tab's retained events.
+    localStorage.setItem(this.storageShardKey, serialized);
+    localStorage.setItem(QUEUE_CONFIG.storageKey, serialized);
+  }
+
+  private reconcileFromStorage(): void {
+    if (!this.boundOwnerId || typeof localStorage === "undefined") return;
+    try {
+      if (!this.hasStorageLease(this.boundOwnerId)) return;
+      const stored = this.readStorageState();
+      if (
+        !stored ||
+        (stored.ownerId !== null && stored.ownerId !== this.boundOwnerId) ||
+        stored.generation !== this.storageGeneration
+      ) {
+        return;
+      }
+      this.mergeRestoredState(stored);
+      this.storageRevision = Math.max(this.storageRevision, stored.revision);
+      this.pruneExpired(false);
+    } catch (error) {
+      console.error("[TranscriptQueue] Failed to reconcile retry queue", error);
+    }
+  }
+
+  private replaceWithRestoredState(state: RestoredTranscriptQueueState): void {
+    this.queue = state.items;
+    this.overflowedSessions = new Map(
+      state.overflowMarkers.map((marker) => [marker.id, marker.recordedAt])
+    );
+    this.failures = state.failures;
+    this.queueTombstones = new Map(
+      state.queueTombstones.map((marker) => [marker.id, marker.removedAt])
+    );
+    this.failureTombstones = new Map(
+      state.failureTombstones.map((marker) => [marker.id, marker.removedAt])
+    );
+    this.overflowTombstones = new Map(
+      state.overflowTombstones.map((marker) => [marker.id, marker.removedAt])
+    );
+    this.storageGeneration = state.generation;
+    this.storageRevision = state.revision;
+    this.storageOwnerId = state.ownerId;
+  }
+
+  private mergeRestoredState(state: RestoredTranscriptQueueState): void {
+    const ownerId = this.boundOwnerId;
+    mergeDateMap(this.queueTombstones, state.queueTombstones, "removedAt");
+    mergeDateMap(this.failureTombstones, state.failureTombstones, "removedAt");
+    mergeDateMap(
+      this.overflowTombstones,
+      state.overflowTombstones,
+      "removedAt"
+    );
+
+    const queueById = new Map(this.queue.map((item) => [item.id, item]));
+    for (const candidate of state.items) {
+      if (ownerId && candidate.request.ownerId !== ownerId) continue;
+      const current = queueById.get(candidate.id);
+      if (!current || isNewerQueueItem(candidate, current)) {
+        queueById.set(candidate.id, candidate);
+      }
+    }
+    this.queue = [...queueById.values()].filter(
+      (item) => !this.queueTombstones.has(item.id)
+    );
+    this.queue.sort(compareQueuedItems);
+    if (this.queue.length > QUEUE_CONFIG.maxQueueSize) {
+      const rejected = this.queue.splice(QUEUE_CONFIG.maxQueueSize);
+      for (const item of rejected) {
+        this.markOverflow(ownerSessionIdentity(item.request));
+      }
+    }
+
+    const failuresById = new Map(
+      this.failures.map((failure) => [failure.id, failure])
+    );
+    for (const candidate of state.failures) {
+      if (ownerId && candidate.ownerId !== ownerId) continue;
+      const current = failuresById.get(candidate.id);
+      if (!current || candidate.recordedAt > current.recordedAt) {
+        failuresById.set(candidate.id, candidate);
+      }
+    }
+    this.failures = [...failuresById.values()]
+      .filter((failure) => !this.failureTombstones.has(failure.id))
+      .sort((left, right) =>
+        left.recordedAt.getTime() === right.recordedAt.getTime()
+          ? left.id.localeCompare(right.id)
+          : right.recordedAt.getTime() - left.recordedAt.getTime()
+      )
+      .slice(0, QUEUE_CONFIG.maxQueueSize);
+
+    for (const marker of state.overflowMarkers) {
+      if (ownerId && !marker.id.startsWith(`${ownerId}:`)) continue;
+      const current = this.overflowedSessions.get(marker.id);
+      if (!current || marker.recordedAt > current) {
+        this.overflowedSessions.set(marker.id, marker.recordedAt);
+      }
+    }
+    for (const id of this.overflowTombstones.keys()) {
+      this.overflowedSessions.delete(id);
+    }
+    this.boundMarkers();
+  }
+
   bindOwner(ownerId: string): void {
     if (this.boundOwnerId === ownerId) {
+      this.reconcileFromStorage();
       this.startBackgroundProcessing();
       return;
+    }
+    const stored = this.readStorageState();
+    const fence = this.readStorageFence();
+    const authorityGeneration = Math.max(
+      stored?.generation ?? 0,
+      fence?.generation ?? 0
+    );
+    const authorityOwner =
+      fence && fence.generation >= (stored?.generation ?? 0)
+        ? fence.ownerId
+        : (stored?.ownerId ?? null);
+    const ownerChangedAcrossTabs = Boolean(
+      authorityOwner && authorityOwner !== ownerId
+    );
+    const storageWasCleared = Boolean(
+      fence &&
+        fence.ownerId === null &&
+        fence.generation >= (stored?.generation ?? 0)
+    );
+    const resetsAuthority = ownerChangedAcrossTabs || storageWasCleared;
+    if (resetsAuthority) {
+      removeTranscriptQueueShards();
+      this.storageGeneration = ownerChangedAcrossTabs
+        ? authorityGeneration + 1
+        : authorityGeneration;
+      this.storageRevision = (stored?.revision ?? 0) + 1;
+      this.storageOwnerId = ownerId;
+      this.queue = [];
+      this.overflowedSessions.clear();
+      this.failures = [];
+      this.queueTombstones.clear();
+      this.failureTombstones.clear();
+      this.overflowTombstones.clear();
+    } else if (stored) {
+      this.storageGeneration = stored.generation;
+      this.storageRevision = stored.revision;
+      this.mergeRestoredState(stored);
     }
     const retained = this.queue.filter(
       (item) => item.request.ownerId === ownerId
     );
     this.queue = retained;
-    this.overflowedSessions = new Set(
-      [...this.overflowedSessions].filter((key) =>
+    this.overflowedSessions = new Map(
+      [...this.overflowedSessions].filter(([key]) =>
         key.startsWith(`${ownerId}:`)
       )
     );
@@ -472,11 +756,13 @@ export class TranscriptQueue {
       (failure) => failure.ownerId === ownerId
     );
     this.boundOwnerId = ownerId;
+    this.storageOwnerId = ownerId;
     this.advanceGeneration();
     this.closedSessions = new Set(
       [...this.closedSessions].filter((key) => key.startsWith(`${ownerId}:`))
     );
-    this.saveToStorage();
+    if (resetsAuthority) this.writeStorageState();
+    else this.saveToStorage();
     this.startBackgroundProcessing();
     void this.processQueue();
   }
@@ -489,7 +775,7 @@ export class TranscriptQueue {
     }
     this.sessionAbortControllers.clear();
     this.ownerGeneration += 1;
-    this.processing = null;
+    this.processing.clear();
     this.inFlight.clear();
   }
 
@@ -509,6 +795,7 @@ export class TranscriptQueue {
   ): void {
     const id = queueIdentity(request);
     this.removeQueuedItem(id);
+    this.failureTombstones.delete(id);
     const existing = this.failures.find((failure) => failure.id === id);
     if (existing) {
       existing.reason = reason;
@@ -529,6 +816,7 @@ export class TranscriptQueue {
     const next = this.queue.filter((item) => item.id !== id);
     if (next.length !== this.queue.length) {
       this.queue = next;
+      this.queueTombstones.set(id, new Date());
       this.saveToStorage();
     }
   }
@@ -537,12 +825,71 @@ export class TranscriptQueue {
     const next = this.failures.filter((failure) => failure.id !== id);
     if (next.length !== this.failures.length) {
       this.failures = next;
+      this.failureTombstones.set(id, new Date());
       this.saveToStorage();
     }
   }
 
+  private markOverflow(sessionKey: string): void {
+    this.overflowTombstones.delete(sessionKey);
+    this.overflowedSessions.set(sessionKey, new Date());
+    this.boundMarkers();
+  }
+
+  private clearOverflow(sessionKey: string): void {
+    if (this.overflowedSessions.delete(sessionKey)) {
+      this.overflowTombstones.set(sessionKey, new Date());
+    }
+  }
+
+  private boundMarkers(): void {
+    this.overflowedSessions = new Map(
+      [...this.overflowedSessions]
+        .sort(([leftId, left], [rightId, right]) =>
+          left.getTime() === right.getTime()
+            ? leftId.localeCompare(rightId)
+            : right.getTime() - left.getTime()
+        )
+        .slice(0, QUEUE_CONFIG.maxQueueSize)
+    );
+  }
+
   private isCurrentOwner(ownerId: string, generation: number): boolean {
-    return this.boundOwnerId === ownerId && this.ownerGeneration === generation;
+    return (
+      this.boundOwnerId === ownerId &&
+      this.ownerGeneration === generation &&
+      this.hasStorageLease(ownerId)
+    );
+  }
+
+  private hasStorageLease(ownerId: string): boolean {
+    if (typeof localStorage === "undefined") return true;
+    try {
+      const fence = this.readStorageFence();
+      if (fence) {
+        return (
+          fence.ownerId === ownerId &&
+          fence.generation === this.storageGeneration
+        );
+      }
+      const stored = this.readStorageState();
+      return (
+        !stored?.ownerId ||
+        (stored.ownerId === ownerId &&
+          stored.generation === this.storageGeneration)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private readStorageFence(): TranscriptQueueStorageFence | null {
+    return readTranscriptQueueStorageFence();
+  }
+
+  private writeStorageFence(fence: TranscriptQueueStorageFence): void {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(QUEUE_CONFIG.storageFenceKey, JSON.stringify(fence));
   }
 
   private isCurrentRequest(
@@ -555,7 +902,7 @@ export class TranscriptQueue {
     );
   }
 
-  private pruneExpired(): void {
+  private pruneExpired(persist = true): void {
     const cutoff = Date.now() - QUEUE_CONFIG.retentionMs;
     const queue = this.queue.filter(
       (item) => item.enqueuedAt.getTime() >= cutoff
@@ -563,15 +910,377 @@ export class TranscriptQueue {
     const failures = this.failures.filter(
       (failure) => failure.recordedAt.getTime() >= cutoff
     );
+    const overflowedSessions = new Map(
+      [...this.overflowedSessions].filter(
+        ([, recordedAt]) => recordedAt.getTime() >= cutoff
+      )
+    );
+    pruneDateMap(this.queueTombstones, cutoff);
+    pruneDateMap(this.failureTombstones, cutoff);
+    pruneDateMap(this.overflowTombstones, cutoff);
     if (
       queue.length !== this.queue.length ||
-      failures.length !== this.failures.length
+      failures.length !== this.failures.length ||
+      overflowedSessions.size !== this.overflowedSessions.size
     ) {
       this.queue = queue;
       this.failures = failures;
-      this.saveToStorage();
+      this.overflowedSessions = overflowedSessions;
+      if (persist) this.saveToStorage();
     }
   }
+}
+
+function restoreTranscriptQueueState(
+  value: unknown
+): RestoredTranscriptQueueState {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid transcript queue state");
+  }
+  const parsed = value as SerializedTranscriptQueueState;
+  const now = Date.now();
+  const cutoff = now - QUEUE_CONFIG.retentionMs;
+  const migratedFailures: TranscriptQueueFailure[] = [];
+  const items = (Array.isArray(parsed.items) ? parsed.items : []).flatMap(
+    (item) => {
+      if (!isTranscriptPersistenceRequest(item?.request)) return [];
+      if (item.id !== queueIdentity(item.request)) return [];
+      const enqueuedAt = new Date(item.enqueuedAt ?? item.lastAttempt);
+      const lastAttempt = new Date(item.lastAttempt);
+      if (
+        !Number.isFinite(enqueuedAt.getTime()) ||
+        !Number.isFinite(lastAttempt.getTime()) ||
+        enqueuedAt.getTime() < cutoff
+      ) {
+        return [];
+      }
+      if ((item as { permanent?: boolean }).permanent) {
+        migratedFailures.push({
+          id: item.id,
+          ownerId: item.request.ownerId,
+          sessionId: item.request.sessionId,
+          reason:
+            (item as { error?: string }).error ===
+            "transcript_event_identity_conflict"
+              ? "identity_conflict"
+              : "non_retryable",
+          recordedAt: lastAttempt,
+        });
+        return [];
+      }
+      return [
+        {
+          ...item,
+          attemptCount: Number.isSafeInteger(item.attemptCount)
+            ? Math.max(0, item.attemptCount)
+            : 0,
+          enqueuedAt,
+          lastAttempt,
+          status: "retrying" as const,
+        },
+      ];
+    }
+  );
+  const failures = [
+    ...migratedFailures,
+    ...(Array.isArray(parsed.failures) ? parsed.failures : []).flatMap(
+      (failure) => {
+        const recordedAt = new Date(failure?.recordedAt);
+        return isSafeFailure(failure) &&
+          Number.isFinite(recordedAt.getTime()) &&
+          recordedAt.getTime() >= cutoff
+          ? [{ ...failure, recordedAt }]
+          : [];
+      }
+    ),
+  ];
+  const overflowMarkers = [
+    ...(Array.isArray(parsed.overflowMarkers)
+      ? parsed.overflowMarkers.flatMap((marker) => {
+          const recordedAt = new Date(marker?.recordedAt);
+          return isSafeSessionKey(marker?.id) &&
+            Number.isFinite(recordedAt.getTime()) &&
+            recordedAt.getTime() >= cutoff
+            ? [{ id: marker.id, recordedAt }]
+            : [];
+        })
+      : []),
+    ...(Array.isArray(parsed.overflowedSessions)
+      ? parsed.overflowedSessions.flatMap((id) =>
+          isSafeSessionKey(id) ? [{ id, recordedAt: new Date(now) }] : []
+        )
+      : []),
+  ];
+  return {
+    items: dedupeQueueItems(items).slice(0, QUEUE_CONFIG.maxQueueSize),
+    overflowMarkers: dedupeMarkers(overflowMarkers).slice(
+      0,
+      QUEUE_CONFIG.maxQueueSize
+    ),
+    failures: dedupeFailures(failures).slice(0, QUEUE_CONFIG.maxQueueSize),
+    queueTombstones: restoreTombstones(parsed.queueTombstones, cutoff),
+    failureTombstones: restoreTombstones(parsed.failureTombstones, cutoff),
+    overflowTombstones: restoreTombstones(parsed.overflowTombstones, cutoff),
+    generation:
+      Number.isSafeInteger(parsed.generation) && (parsed.generation ?? -1) >= 0
+        ? parsed.generation!
+        : 0,
+    ownerId:
+      typeof parsed.ownerId === "string" && parsed.ownerId.length > 0
+        ? parsed.ownerId
+        : null,
+    revision:
+      Number.isSafeInteger(parsed.revision) && (parsed.revision ?? -1) >= 0
+        ? parsed.revision!
+        : 0,
+  };
+}
+
+function transcriptQueueShardKeys(): string[] {
+  if (typeof localStorage === "undefined") return [];
+  const keys: string[] = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(QUEUE_CONFIG.storageShardPrefix)) keys.push(key);
+  }
+  return keys.sort();
+}
+
+function createStorageWriterId(): string {
+  storageWriterSequence += 1;
+  return typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}:${storageWriterSequence}:${Math.random().toString(36).slice(2)}`;
+}
+
+function removeTranscriptQueueShards(): void {
+  if (typeof localStorage === "undefined") return;
+  for (const key of transcriptQueueShardKeys()) localStorage.removeItem(key);
+}
+
+function readTranscriptQueueStorageFence(): TranscriptQueueStorageFence | null {
+  if (typeof localStorage === "undefined") return null;
+  const value = localStorage.getItem(QUEUE_CONFIG.storageFenceKey);
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<TranscriptQueueStorageFence>;
+    return Number.isSafeInteger(parsed.generation) &&
+      (parsed.generation ?? -1) >= 0 &&
+      (parsed.ownerId === null ||
+        (typeof parsed.ownerId === "string" && parsed.ownerId.length > 0))
+      ? { generation: parsed.generation!, ownerId: parsed.ownerId! }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeStorageShards(
+  entries: Array<{
+    state: RestoredTranscriptQueueState;
+    canonical: boolean;
+  }>
+): RestoredTranscriptQueueState | null {
+  if (entries.length === 0) return null;
+  const base = [...entries].sort(
+    (left, right) =>
+      right.state.generation - left.state.generation ||
+      right.state.revision - left.state.revision ||
+      Number(right.canonical) - Number(left.canonical) ||
+      (right.state.ownerId ?? "").localeCompare(left.state.ownerId ?? "")
+  )[0].state;
+  const compatible = entries
+    .map((entry) => entry.state)
+    .filter(
+      (state) =>
+        state.generation === base.generation &&
+        (!base.ownerId || !state.ownerId || state.ownerId === base.ownerId)
+    );
+  const queueTombstones = dedupeTombstones(
+    compatible.flatMap((state) => state.queueTombstones)
+  );
+  const failureTombstones = dedupeTombstones(
+    compatible.flatMap((state) => state.failureTombstones)
+  );
+  const overflowTombstones = dedupeTombstones(
+    compatible.flatMap((state) => state.overflowTombstones)
+  );
+  const queueRemoved = new Set(queueTombstones.map((marker) => marker.id));
+  const failuresRemoved = new Set(failureTombstones.map((marker) => marker.id));
+  const overflowRemoved = new Set(
+    overflowTombstones.map((marker) => marker.id)
+  );
+  return {
+    items: dedupeQueueItems(compatible.flatMap((state) => state.items))
+      .filter((item) => !queueRemoved.has(item.id))
+      .slice(0, QUEUE_CONFIG.maxQueueSize),
+    overflowMarkers: dedupeMarkers(
+      compatible.flatMap((state) => state.overflowMarkers)
+    )
+      .filter((marker) => !overflowRemoved.has(marker.id))
+      .slice(0, QUEUE_CONFIG.maxQueueSize),
+    failures: dedupeFailures(compatible.flatMap((state) => state.failures))
+      .filter((failure) => !failuresRemoved.has(failure.id))
+      .slice(0, QUEUE_CONFIG.maxQueueSize),
+    queueTombstones,
+    failureTombstones,
+    overflowTombstones,
+    generation: base.generation,
+    ownerId: base.ownerId,
+    revision: Math.max(...compatible.map((state) => state.revision)),
+  };
+}
+
+function isEmptyRestoredState(state: RestoredTranscriptQueueState): boolean {
+  return (
+    state.items.length === 0 &&
+    state.overflowMarkers.length === 0 &&
+    state.failures.length === 0 &&
+    state.queueTombstones.length === 0 &&
+    state.failureTombstones.length === 0 &&
+    state.overflowTombstones.length === 0
+  );
+}
+
+function dedupeTombstones(
+  tombstones: TranscriptQueueTombstone[]
+): TranscriptQueueTombstone[] {
+  const byId = new Map<string, TranscriptQueueTombstone>();
+  for (const marker of tombstones) {
+    const current = byId.get(marker.id);
+    if (!current || marker.removedAt > current.removedAt) {
+      byId.set(marker.id, marker);
+    }
+  }
+  return [...byId.values()]
+    .sort((left, right) => right.removedAt.getTime() - left.removedAt.getTime())
+    .slice(0, QUEUE_CONFIG.maxQueueSize);
+}
+
+function restoreTombstones(
+  values: SerializedTranscriptQueueTombstone[] | undefined,
+  cutoff: number
+): TranscriptQueueTombstone[] {
+  if (!Array.isArray(values)) return [];
+  const byId = new Map<string, TranscriptQueueTombstone>();
+  for (const value of values) {
+    const removedAt = new Date(value?.removedAt);
+    if (
+      typeof value?.id !== "string" ||
+      value.id.length === 0 ||
+      !Number.isFinite(removedAt.getTime()) ||
+      removedAt.getTime() < cutoff
+    )
+      continue;
+    const current = byId.get(value.id);
+    if (!current || removedAt > current.removedAt) {
+      byId.set(value.id, { id: value.id, removedAt });
+    }
+  }
+  return [...byId.values()]
+    .sort((left, right) => right.removedAt.getTime() - left.removedAt.getTime())
+    .slice(0, QUEUE_CONFIG.maxQueueSize);
+}
+
+function serializeTombstones(
+  values: Map<string, Date>
+): SerializedTranscriptQueueTombstone[] {
+  return [...values]
+    .sort(([leftId, left], [rightId, right]) =>
+      left.getTime() === right.getTime()
+        ? leftId.localeCompare(rightId)
+        : right.getTime() - left.getTime()
+    )
+    .slice(0, QUEUE_CONFIG.maxQueueSize)
+    .map(([id, removedAt]) => ({ id, removedAt: removedAt.toISOString() }));
+}
+
+function mergeDateMap(
+  target: Map<string, Date>,
+  incoming: TranscriptQueueTombstone[],
+  field: "removedAt"
+): void {
+  for (const marker of incoming) {
+    const date = marker[field];
+    const current = target.get(marker.id);
+    if (!current || date > current) target.set(marker.id, date);
+  }
+}
+
+function pruneDateMap(values: Map<string, Date>, cutoff: number): void {
+  for (const [id, recordedAt] of values) {
+    if (recordedAt.getTime() < cutoff) values.delete(id);
+  }
+  if (values.size <= QUEUE_CONFIG.maxQueueSize) return;
+  const retained = [...values]
+    .sort(([, left], [, right]) => right.getTime() - left.getTime())
+    .slice(0, QUEUE_CONFIG.maxQueueSize);
+  values.clear();
+  for (const [id, recordedAt] of retained) values.set(id, recordedAt);
+}
+
+function dedupeQueueItems(
+  items: QueuedTranscriptSave[]
+): QueuedTranscriptSave[] {
+  const byId = new Map<string, QueuedTranscriptSave>();
+  for (const item of items) {
+    const current = byId.get(item.id);
+    if (!current || isNewerQueueItem(item, current)) byId.set(item.id, item);
+  }
+  return [...byId.values()].sort(compareQueuedItems);
+}
+
+function dedupeFailures(
+  failures: TranscriptQueueFailure[]
+): TranscriptQueueFailure[] {
+  const byId = new Map<string, TranscriptQueueFailure>();
+  for (const failure of failures) {
+    const current = byId.get(failure.id);
+    if (!current || failure.recordedAt > current.recordedAt) {
+      byId.set(failure.id, failure);
+    }
+  }
+  return [...byId.values()].sort(
+    (left, right) => right.recordedAt.getTime() - left.recordedAt.getTime()
+  );
+}
+
+function dedupeMarkers(markers: TranscriptQueueMarker[]) {
+  const byId = new Map<string, TranscriptQueueMarker>();
+  for (const marker of markers) {
+    const current = byId.get(marker.id);
+    if (!current || marker.recordedAt > current.recordedAt) {
+      byId.set(marker.id, marker);
+    }
+  }
+  return [...byId.values()].sort(
+    (left, right) => right.recordedAt.getTime() - left.recordedAt.getTime()
+  );
+}
+
+function compareQueuedItems(
+  left: QueuedTranscriptSave,
+  right: QueuedTranscriptSave
+) {
+  return left.enqueuedAt.getTime() === right.enqueuedAt.getTime()
+    ? left.id.localeCompare(right.id)
+    : left.enqueuedAt.getTime() - right.enqueuedAt.getTime();
+}
+
+function isNewerQueueItem(
+  candidate: QueuedTranscriptSave,
+  current: QueuedTranscriptSave
+) {
+  if (candidate.lastAttempt.getTime() !== current.lastAttempt.getTime()) {
+    return candidate.lastAttempt > current.lastAttempt;
+  }
+  return candidate.attemptCount > current.attemptCount;
+}
+
+function isSafeSessionKey(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  const separator = value.indexOf(":");
+  return separator > 0 && separator < value.length - 1;
 }
 
 async function postTranscriptEvent(
@@ -727,9 +1436,21 @@ export function getTranscriptQueue(): TranscriptQueue {
 }
 
 export function clearTranscriptQueueStorage(): void {
-  transcriptQueue?.clear();
+  const existingFence = readTranscriptQueueStorageFence();
+  if (transcriptQueue) transcriptQueue.clear();
   if (typeof localStorage !== "undefined") {
+    const clearedFence = readTranscriptQueueStorageFence();
+    removeTranscriptQueueShards();
     localStorage.removeItem(QUEUE_CONFIG.storageKey);
     localStorage.removeItem("transcript_queue");
+    localStorage.setItem(
+      QUEUE_CONFIG.storageFenceKey,
+      JSON.stringify(
+        clearedFence ?? {
+          generation: (existingFence?.generation ?? 0) + 1,
+          ownerId: null,
+        }
+      )
+    );
   }
 }
