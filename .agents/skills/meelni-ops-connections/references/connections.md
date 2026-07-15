@@ -28,7 +28,7 @@ Skip capture only when the work used an already-documented path and nothing new 
 
 Canonical target:
 
-- Team scope: `meelni`
+- Team scope: `meelni` (Pro)
 - Account login: `contact@meelni.com`
 - Project: `meelni/meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`)
 - Dashboard: `https://vercel.com/meelni/meelni`
@@ -65,13 +65,12 @@ to the former owner or a `sourceless` link must be reconnected from the verified
 `meelni` team session; do not create a duplicate Vercel project.
 
 Private repositories owned by a GitHub organization require a Vercel Pro team.
-On the `Meelni` Hobby team, Vercel can install its GitHub App for only
-`meelni/meelni-prep` and can list the repository, but the import/reconnect flow
-blocks before project creation with a Pro-plan requirement. Do not work around
-this by creating a duplicate project, moving the repository back to a personal
-account, making it public, or upgrading the Vercel team without explicit spend
-authorization. Keep the existing project and domains unchanged until the team
-is upgraded or Vercel confirms another supported reconnect path.
+After the `Meelni` team was upgraded to Pro on 2026-07-15, the existing
+`meelni` project's Git settings again identified `meelni/meelni-prep` as its
+connected repository. Preserve that project and its domains; do not work around
+connection problems by creating a duplicate project, moving the repository
+back to a personal account, or making it public. Prove the connection with a
+fresh non-Production pull-request event before relying on Preview checks.
 
 Fresh worktree setup should run `npm run setup:local`; when Vercel CLI auth is available, that setup path links the worktree and runs `npm run env:pull` if required env values are missing or still placeholders.
 
@@ -233,6 +232,8 @@ Canonical target:
 - Preview project ref: `kxpvidtxznllfosfemdl`
 - Preview GitHub integration: `meelni/meelni-prep`, working directory `.`,
   production branch `main`
+- Organization plan: Pro, with Spend Cap enabled
+- Preview branching: automatic, maximum 1 branch, `Supabase changes only`
 - Region: `East US (Ohio)`
 - Local browser auth redirects through Supabase OAuth and returns to `http://localhost:3000/auth/callback`.
 
@@ -283,10 +284,12 @@ Operational notes:
   Preview-only connection work. Supabase labels the preview project's own
   `main` database as "Production" inside that project; verify the project ref
   `kxpvidtxznllfosfemdl` before accepting that label.
-- On Supabase Free, automatic per-PR database branching is unavailable. The
-  repository integration can still sync `main` migrations to the Preview
-  database, but do not claim isolated PR databases or a Supabase PR check until
-  a fresh event proves those behaviors.
+- Automatic branching is limited to one branch and only runs when Supabase
+  files change. Branch compute is not covered by the organization's Spend Cap,
+  so keep the limit at one unless the owner explicitly approves broader
+  concurrency. A docs-only PR should produce an intentional skipped Supabase
+  check; use a safe Supabase-scoped change when an actual preview database must
+  be rehearsed.
 - Check provider restore coverage without exposing credentials:
 
   ```bash
@@ -439,6 +442,10 @@ Guidelines:
   is complete merely because either app is installed: verify `meelni` appears
   under Settings -> Integrations -> GitHub -> Connected organizations, then
   prove a fresh `SAV-*` pull request links back to its Linear issue.
+- As of 2026-07-15, the `saviiii` workspace lists both `meelni` and
+  `nomu-labs` as connected organizations. Meelni verification must use a
+  `meelni/meelni-prep` PR and a `SAV-*` issue; the unrelated `nomu-labs`
+  connection is not evidence for this repository.
 
 ## GitGuardian
 
