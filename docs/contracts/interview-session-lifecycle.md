@@ -202,11 +202,17 @@ wins. The grace event carries the version and exact stored cutoff. At expiry the
 worker first checks authoritative candidate presence. Only provider state
 `JOINED` or `ACTIVE` with a finite provider `joinedAt` strictly before the
 stored cutoff may repair a missed join through the same
-lifecycle-version, deadline, and timestamp compare-and-set;
-the database clock must also still be strictly before the cutoff. Equality is
-expired. Fresh token issuance, signed join recovery, presence repair, and the
-timeout claim all use PostgreSQL time as the authorization clock, so an
-application host's slow, fast, or rolled-back clock cannot extend access.
+lifecycle-version, deadline, and timestamp compare-and-set. Ordinary signed
+join and periodic presence repair require PostgreSQL time to remain strictly
+before the cutoff. Once a grace-owned cutoff is due, the enforcement worker may
+instead repair provider-confirmed pre-cutoff presence through a disjoint CAS
+that requires PostgreSQL time at or after the cutoff and the same grace owner,
+state, version, and deadline. This adjudicates a missed join without extending
+access; it cannot recover a hard-deadline-owned generation. A provider
+`joinedAt` equal to the cutoff is expired. Fresh token issuance, both recovery
+CAS paths, and the timeout claim use PostgreSQL time as the authorization
+clock, so an application host's slow, fast, or rolled-back clock cannot extend
+access.
 provider read failure leaves the session reconnecting for retry. Confirmed
 absence allows the worker to atomically claim provisional
 `ending (disconnect_timeout)` only while all three facts still match. The claim
