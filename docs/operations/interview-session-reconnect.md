@@ -39,7 +39,9 @@ Never place an intermediary in front of the route that rewrites the body.
   recovery scan retries each row independently until LiveKit acknowledges
   deletion or absence. Never-attempted and least-recently-attempted rooms run
   first; the same cursor advances before cleanup, provisioning, and credit-only
-  recovery attempts.
+  recovery attempts. Revocation omits a client-provided cutoff so LiveKit Cloud
+  records provider current time; a slow or rolled-back app clock cannot leave
+  an older token valid, and a missing participant response still revokes it.
 - Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
   checks authoritative participant presence for connecting, active, and
   reconnecting rooms. Connecting activation requires the exact standard
@@ -120,7 +122,9 @@ ready:
     accepted only for the matching lifecycle version and stored deadline.
 18. Simulate application clocks that are slow, fast, and roll backward. Confirm
     token issuance, presence repair, stale provisioning, and timeout claims
-    still follow PostgreSQL time and never extend the stored cutoff.
+    still follow PostgreSQL time and never extend the stored cutoff. Confirm
+    teardown sends no client revocation timestamp and therefore uses LiveKit
+    Cloud provider time before room deletion.
 19. Create more than 250 retryable poison rows ahead of one healthy cleanup,
     including credit-only rows. Confirm every attempted row advances the shared
     cursor, the healthy row reaches the next scan, and a failed credit settlement
