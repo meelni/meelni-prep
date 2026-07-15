@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { createClient } from "@/lib/supabase/server";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
+import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;
@@ -51,6 +53,29 @@ export async function POST(req: NextRequest) {
         { error: "session_not_found", message: "Session not found." },
         { status: 404 }
       );
+    }
+
+    const livekitEnv = getLiveKitEnvironment(process.env);
+    if (result.completion.roomName) {
+      if (livekitEnv.ok) {
+        try {
+          await cleanupInterviewRoomWorkflow({
+            sessionId,
+            env: livekitEnv.data,
+          });
+        } catch (cleanupError) {
+          // Terminal truth is already committed. The durable cleanup marker and
+          // recovery worker own provider retries; do not ask the user to end twice.
+          console.error(
+            "Terminal interview room cleanup deferred",
+            cleanupError
+          );
+        }
+      } else {
+        console.error("Terminal interview room cleanup deferred", {
+          code: livekitEnv.error.code,
+        });
+      }
     }
 
     const dispatchStatus =

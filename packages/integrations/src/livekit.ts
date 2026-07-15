@@ -21,6 +21,7 @@ export interface LiveKitEnvironment {
 export type LiveKitAgentKind = "interview" | "demo";
 
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -42,6 +43,8 @@ export interface IssueInterviewParticipantTokenInput {
   participantName: string;
   roomName: string;
   ttlSeconds: number;
+  observedAt: Date;
+  expiresAt: Date;
   env: LiveKitEnvironment;
 }
 
@@ -49,16 +52,25 @@ export interface IssuedInterviewParticipantToken {
   roomName: string;
   token: string;
   url: string;
+  expiresAt: Date;
 }
 
 export interface TerminateInterviewRoomInput {
   roomName: string;
+  participantIdentity: string;
   env: LiveKitEnvironment;
 }
 
 export interface TerminatedInterviewRoom {
   roomName: string;
   disposition: "deleted" | "already_absent";
+}
+
+export interface InterviewParticipantPresence {
+  present: boolean;
+  joined: boolean;
+  joinedAt: Date | null;
+  agent: { identity: string; joinedAt: Date | null } | null;
 }
 
 export interface LiveKitInterviewProvider {
@@ -71,6 +83,7 @@ export interface LiveKitProviderDependencies {
   accessTokenFactory?: AccessTokenFactory;
   agentDispatchClientFactory?: AgentDispatchClientFactory;
   roomServiceClientFactory?: RoomServiceClientFactory;
+  now?: () => Date;
 }
 
 interface AccessTokenLike {
@@ -107,8 +120,22 @@ interface RoomServiceClientLike {
     metadata: string;
     emptyTimeout: number;
     maxParticipants: number;
+    departureTimeout: number;
   }): Promise<unknown>;
   deleteRoom?(roomName: string): Promise<void>;
+  removeParticipant?(
+    roomName: string,
+    identity: string,
+    options?: { revokeTokenTs?: bigint }
+  ): Promise<void>;
+  listParticipants?(roomName: string): Promise<
+    Array<{
+      identity: string;
+      state: number;
+      joinedAtMs: bigint;
+      kind: number;
+    }>
+  >;
 }
 
 type RoomServiceClientFactory = (
@@ -180,6 +207,36 @@ export function createLiveKitInterviewProvider({
 }: LiveKitProviderDependencies = {}): LiveKitInterviewProvider {
   return {
     async startInterviewRoom(input) {
+      let signedToken: string;
+      try {
+        const token = new accessTokenFactory(
+          input.env.apiKey,
+          input.env.apiSecret,
+          {
+            identity: input.identity,
+            name: input.participantName,
+            ttl: INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS,
+          }
+        );
+
+        token.addGrant({
+          room: input.roomName,
+          roomJoin: true,
+          canPublish: true,
+          canPublishData: false,
+          canPublishSources: [TrackSource.MICROPHONE],
+          canSubscribe: true,
+        });
+        signedToken = await token.toJwt();
+      } catch (error) {
+        return providerFailure("livekit", {
+          code: "livekit_token_issue_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+
       const roomClient = roomServiceClientFactory(
         input.env.url,
         input.env.apiKey,
@@ -197,6 +254,7 @@ export function createLiveKitInterviewProvider({
           metadata: JSON.stringify(input.metadata),
           emptyTimeout: 3600,
           maxParticipants: 2,
+          departureTimeout: INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS,
         });
       } catch (error) {
         const message = getErrorMessage(error);
@@ -221,28 +279,9 @@ export function createLiveKitInterviewProvider({
         });
       }
 
-      const token = new accessTokenFactory(
-        input.env.apiKey,
-        input.env.apiSecret,
-        {
-          identity: input.identity,
-          name: input.participantName,
-          ttl: INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS,
-        }
-      );
-
-      token.addGrant({
-        room: input.roomName,
-        roomJoin: true,
-        canPublish: true,
-        canPublishData: false,
-        canPublishSources: [TrackSource.MICROPHONE],
-        canSubscribe: true,
-      });
-
       return providerSuccess("livekit", {
         roomName: input.roomName,
-        token: await token.toJwt(),
+        token: signedToken,
         url: input.env.url,
       });
     },
@@ -251,16 +290,38 @@ export function createLiveKitInterviewProvider({
 
 export async function issueInterviewParticipantToken(
   input: IssueInterviewParticipantTokenInput,
-  { accessTokenFactory = AccessToken }: LiveKitProviderDependencies = {}
+  {
+    accessTokenFactory = AccessToken,
+    now = () => new Date(),
+  }: LiveKitProviderDependencies = {}
 ): Promise<ProviderResult<IssuedInterviewParticipantToken>> {
   try {
+    const signingAtSeconds = Math.floor(now().getTime() / 1_000);
+    const observedAtMilliseconds = input.observedAt.getTime();
+    const observedAtSeconds = Math.floor(observedAtMilliseconds / 1_000);
+    const deadlineSeconds = Math.floor(input.expiresAt.getTime() / 1_000);
+    const expirationSeconds = Math.min(
+      deadlineSeconds,
+      observedAtSeconds + input.ttlSeconds
+    );
+    if (
+      !Number.isFinite(observedAtMilliseconds) ||
+      !Number.isSafeInteger(signingAtSeconds) ||
+      !Number.isSafeInteger(observedAtSeconds) ||
+      !Number.isSafeInteger(deadlineSeconds) ||
+      !Number.isSafeInteger(expirationSeconds) ||
+      expirationSeconds <= observedAtSeconds ||
+      expirationSeconds <= signingAtSeconds
+    ) {
+      return invalidTokenExpiration();
+    }
     const token = new accessTokenFactory(
       input.env.apiKey,
       input.env.apiSecret,
       {
         identity: input.identity,
         name: input.participantName,
-        ttl: input.ttlSeconds,
+        ttl: expirationSeconds - signingAtSeconds,
       }
     );
 
@@ -273,10 +334,21 @@ export async function issueInterviewParticipantToken(
       canSubscribe: true,
     });
 
+    const signedToken = await token.toJwt();
+    const actualExpiration = readJwtExpiration(signedToken);
+    if (
+      actualExpiration === null ||
+      actualExpiration > expirationSeconds ||
+      actualExpiration * 1_000 <= observedAtMilliseconds
+    ) {
+      return invalidTokenExpiration();
+    }
+
     return providerSuccess("livekit", {
       roomName: input.roomName,
-      token: await token.toJwt(),
+      token: signedToken,
       url: input.env.url,
+      expiresAt: new Date(actualExpiration * 1_000),
     });
   } catch (error) {
     return providerFailure("livekit", {
@@ -286,6 +358,27 @@ export async function issueInterviewParticipantToken(
       cause: error,
     });
   }
+}
+
+function readJwtExpiration(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8")
+    ) as { exp?: unknown };
+    return Number.isSafeInteger(parsed.exp) ? (parsed.exp as number) : null;
+  } catch {
+    return null;
+  }
+}
+
+function invalidTokenExpiration(): ProviderResult<IssuedInterviewParticipantToken> {
+  return providerFailure("livekit", {
+    code: "livekit_token_expiry_invalid",
+    message: "The signed LiveKit token exceeded its authorization window.",
+    retryable: true,
+  });
 }
 
 export async function terminateInterviewRoom(
@@ -301,12 +394,38 @@ export async function terminateInterviewRoom(
     input.env.apiSecret
   );
 
-  if (!roomClient.deleteRoom) {
+  if (!roomClient.deleteRoom || !roomClient.removeParticipant) {
     return providerFailure("livekit", {
-      code: "livekit_room_delete_unsupported",
-      message: "The LiveKit room adapter cannot delete rooms.",
+      code: "livekit_room_termination_unsupported",
+      message: "The LiveKit room adapter cannot revoke and delete rooms.",
       retryable: false,
     });
+  }
+
+  if (!input.participantIdentity.trim()) {
+    return providerFailure("livekit", {
+      code: "livekit_participant_revoke_invalid",
+      message: "The LiveKit participant revocation input is invalid.",
+      retryable: false,
+    });
+  }
+
+  try {
+    // Omitting revokeTokenTs makes LiveKit Cloud own the cutoff. A missing
+    // participant still has its cached tokens revoked before the 404 response.
+    await roomClient.removeParticipant(
+      input.roomName,
+      input.participantIdentity
+    );
+  } catch (error) {
+    if (!isLiveKitNotFoundError(error)) {
+      return providerFailure("livekit", {
+        code: "livekit_participant_revoke_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
   }
 
   try {
@@ -325,6 +444,86 @@ export async function terminateInterviewRoom(
 
     return providerFailure("livekit", {
       code: "livekit_room_delete_failed",
+      message: getErrorMessage(error),
+      retryable: true,
+      cause: error,
+    });
+  }
+}
+
+export async function inspectInterviewParticipantPresence(
+  input: {
+    roomName: string;
+    participantIdentity: string;
+    env: LiveKitEnvironment;
+  },
+  {
+    roomServiceClientFactory = (url, apiKey, apiSecret) =>
+      new RoomServiceClient(url, apiKey, apiSecret),
+  }: LiveKitProviderDependencies = {}
+): Promise<ProviderResult<InterviewParticipantPresence>> {
+  const roomClient = roomServiceClientFactory(
+    input.env.url,
+    input.env.apiKey,
+    input.env.apiSecret
+  );
+  if (!roomClient.listParticipants) {
+    return providerFailure("livekit", {
+      code: "livekit_participant_presence_unsupported",
+      message: "The LiveKit room adapter cannot inspect participant presence.",
+      retryable: false,
+    });
+  }
+
+  try {
+    const participants = await roomClient.listParticipants(input.roomName);
+    const participant = participants.find(
+      (candidate) =>
+        candidate.identity === input.participantIdentity && candidate.kind === 0
+    );
+    const present = Boolean(participant && participant.state !== 3);
+    const joined = Boolean(
+      participant && (participant.state === 1 || participant.state === 2)
+    );
+    const joinedAtMs = participant ? Number(participant.joinedAtMs) : 0;
+    const agentParticipant = participants.find(
+      (candidate) =>
+        candidate.kind === 4 &&
+        (candidate.state === 1 || candidate.state === 2) &&
+        candidate.identity !== input.participantIdentity &&
+        candidate.identity.trim().length > 0
+    );
+    const agentJoinedAtMs = agentParticipant
+      ? Number(agentParticipant.joinedAtMs)
+      : 0;
+    return providerSuccess("livekit", {
+      present,
+      joined,
+      joinedAt:
+        present && Number.isSafeInteger(joinedAtMs) && joinedAtMs > 0
+          ? new Date(joinedAtMs)
+          : null,
+      agent: agentParticipant
+        ? {
+            identity: agentParticipant.identity,
+            joinedAt:
+              Number.isSafeInteger(agentJoinedAtMs) && agentJoinedAtMs > 0
+                ? new Date(agentJoinedAtMs)
+                : null,
+          }
+        : null,
+    });
+  } catch (error) {
+    if (isLiveKitNotFoundError(error)) {
+      return providerSuccess("livekit", {
+        present: false,
+        joined: false,
+        joinedAt: null,
+        agent: null,
+      });
+    }
+    return providerFailure("livekit", {
+      code: "livekit_participant_presence_failed",
       message: getErrorMessage(error),
       retryable: true,
       cause: error,

@@ -38,6 +38,8 @@ test("compareAndSet guards the write with session, state, and version", async ()
   assert.equal(fake.capturedSet.status, "in_progress");
   assert.equal(fake.capturedSet.lastTransitionAt, TRANSITIONED_AT);
   assert.ok(fake.capturedSet.endingAt);
+  assert.ok(fake.capturedSet.roomCleanupPending);
+  assert.equal(fake.capturedSet.roomCleanupAttemptedAt, null);
 
   const query = new PgDialect().sqlToQuery(requirePredicate(fake));
   assert.match(query.sql, /"interview_session"\."id" = \$1/);
@@ -98,6 +100,8 @@ test("an atomic provider-start failure records both ending and terminal timestam
   assert.equal(result.applied, true);
   assert.ok(fake.capturedSet.endingAt);
   assert.ok(fake.capturedSet.endedAt);
+  assert.ok(fake.capturedSet.roomCleanupPending);
+  assert.equal(fake.capturedSet.roomCleanupAttemptedAt, null);
 });
 
 test("a lost compareAndSet returns the stored winner", async () => {
@@ -152,6 +156,32 @@ test("a compareAndSet for a missing session reports not_found", async () => {
     reason: "not_found",
     current: null,
   });
+});
+
+test("connecting writes the provisioning lease from PostgreSQL time", async () => {
+  const updated = lifecycleRow({
+    lifecycleState: "connecting",
+    lifecycleVersion: 2,
+  });
+  const fake = createFakeDatabase({ updateRows: [updated] });
+  const store = createDrizzleInterviewSessionLifecycleStore(fake.database);
+
+  await store.compareAndSet({
+    sessionId: updated.id,
+    expectedState: "created",
+    expectedVersion: 1,
+    nextState: "connecting",
+    transitionedAt: new Date("1999-01-01T00:00:00.000Z"),
+  });
+
+  const leaseSql = new PgDialect().sqlToQuery(
+    fake.capturedSet.roomProvisioningStartedAt as SQL
+  );
+  assert.match(
+    leaseSql.sql,
+    /date_trunc\('milliseconds', clock_timestamp\(\)\)/
+  );
+  assert.doesNotMatch(leaseSql.sql, /1999-01-01/);
 });
 
 function createFakeDatabase({

@@ -9,12 +9,6 @@
       "parentRef": "codex/bound-public-demo"
     },
     {
-      "pr": 259,
-      "parentPr": 258,
-      "headRef": "codex/sav-194-transcript-ingest",
-      "parentRef": "codex/sav-190-reconnect-recovery"
-    },
-    {
       "pr": 260,
       "parentPr": 259,
       "headRef": "codex/sav-193-transcript-privacy",

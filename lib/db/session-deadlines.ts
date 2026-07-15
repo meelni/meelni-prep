@@ -1,4 +1,8 @@
-import { and, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  projectLegacyInterviewSessionStatus,
+  type InterviewLifecycleState,
+} from "@meelni/core";
 
 import {
   deriveInterviewDeadlineAt,
@@ -11,11 +15,23 @@ import { FEEDBACK_DISPATCH_LEASE_MS } from "./feedback-dispatch";
 
 export interface InterviewDeadlineSession {
   id: string;
+  userId: string;
   startedAt: Date | null;
   config: unknown;
   roomName: string | null;
+  state: InterviewLifecycleState;
+  version: number;
   terminalReason: string | null;
   deadlineRoomCleanupStatus: DeadlineRoomCleanupStatus;
+  databaseNow: Date;
+}
+
+export interface ClaimInterviewDeadlineInput {
+  sessionId: string;
+  expectedState: "created" | "connecting" | "active" | "reconnecting";
+  expectedVersion: number;
+  deadlineAt: Date;
+  terminalReason: "time_limit" | "insufficient_signal";
 }
 
 export type DeadlineRoomCleanupStatus =
@@ -49,28 +65,73 @@ export type InterviewDeadlineRecoveryItem =
     };
 
 export async function getInterviewDeadlineSession(
-  sessionId: string
+  sessionId: string,
+  database: InterviewDeadlineDatabase = db
 ): Promise<InterviewDeadlineSession | undefined> {
-  const session = await db.query.interviewSession.findFirst({
-    columns: {
-      id: true,
-      startedAt: true,
-      config: true,
-      livekitRoomName: true,
-      terminalReason: true,
-      deadlineRoomCleanupStatus: true,
-    },
-    where: (session, { eq }) => eq(session.id, sessionId),
-  });
+  const [session] = await database
+    .select({
+      id: interviewSession.id,
+      userId: interviewSession.userId,
+      startedAt: interviewSession.startedAt,
+      config: interviewSession.config,
+      livekitRoomName: interviewSession.livekitRoomName,
+      lifecycleState: interviewSession.lifecycleState,
+      lifecycleVersion: interviewSession.lifecycleVersion,
+      terminalReason: interviewSession.terminalReason,
+      deadlineRoomCleanupStatus: interviewSession.deadlineRoomCleanupStatus,
+      databaseNow: sql<Date>`clock_timestamp()`,
+    })
+    .from(interviewSession)
+    .where(eq(interviewSession.id, sessionId))
+    .limit(1);
   if (!session) return undefined;
   return {
     id: session.id,
+    userId: session.userId,
     startedAt: session.startedAt,
     config: session.config,
     roomName: session.livekitRoomName,
+    state: session.lifecycleState,
+    version: session.lifecycleVersion,
     terminalReason: session.terminalReason,
     deadlineRoomCleanupStatus: session.deadlineRoomCleanupStatus,
+    databaseNow: parseDatabaseTimestamp(session.databaseNow),
   };
+}
+
+export async function claimInterviewDeadline(
+  input: ClaimInterviewDeadlineInput,
+  database: InterviewDeadlineDatabase = db
+): Promise<boolean> {
+  const rows = await database
+    .update(interviewSession)
+    .set({
+      lifecycleState: "ending",
+      lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
+      terminalReason: input.terminalReason,
+      status: projectLegacyInterviewSessionStatus({
+        state: "ending",
+        terminalReason: input.terminalReason,
+      }),
+      lastTransitionAt: sql`clock_timestamp()`,
+      endingAt: sql`COALESCE(${interviewSession.endingAt}, clock_timestamp())`,
+      roomCleanupPending: sql`${interviewSession.livekitRoomName} IS NOT NULL`,
+      deadlineRoomCleanupStatus: "pending",
+      deadlineRoomCleanupAcknowledgedAt: null,
+    })
+    .where(
+      and(
+        eq(interviewSession.id, input.sessionId),
+        eq(interviewSession.lifecycleState, input.expectedState),
+        eq(interviewSession.lifecycleVersion, input.expectedVersion),
+        isNotNull(interviewSession.startedAt),
+        sql`${canonicalDeadlineSql} = ${input.deadlineAt.toISOString()}::timestamptz`,
+        sql`${canonicalDeadlineSql} <= clock_timestamp()`
+      )
+    )
+    .returning({ id: interviewSession.id });
+
+  return Boolean(rows[0]);
 }
 
 export function isInterviewDeadlineRoomCleanupAcknowledged(input: {
@@ -130,23 +191,15 @@ export async function acknowledgeInterviewDeadlineRoomCleanup(
 }
 
 export async function listInterviewDeadlineSchedules(
-  limit = 250
+  limit = 250,
+  database: InterviewDeadlineDatabase = db
 ): Promise<InterviewDeadlineRecoveryItem[]> {
-  const now = new Date();
-  const staleDispatchBefore = new Date(
-    now.getTime() - FEEDBACK_DISPATCH_LEASE_MS
-  );
-  const sessions = await db
+  const normalizedLimit = Math.max(0, limit);
+  const sessions = await database
     .select({
       id: interviewSession.id,
       startedAt: interviewSession.startedAt,
-      config: interviewSession.config,
-      lifecycleState: interviewSession.lifecycleState,
-      terminalReason: interviewSession.terminalReason,
-      deadlineRoomCleanupStatus: interviewSession.deadlineRoomCleanupStatus,
-      feedbackStatus: feedback.status,
-      feedbackDispatchStatus: feedback.dispatchStatus,
-      feedbackDispatchClaimedAt: feedback.dispatchClaimedAt,
+      deadlineAt: canonicalDeadlineSql,
     })
     .from(interviewSession)
     .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
@@ -162,7 +215,14 @@ export async function listInterviewDeadlineSchedules(
               "active",
               "reconnecting",
               "ending",
-            ])
+            ]),
+            or(
+              isNull(interviewSession.startedAt),
+              and(
+                isNotNull(interviewSession.startedAt),
+                sql`${canonicalDeadlineSql} <= clock_timestamp()`
+              )
+            )
           ),
           eq(interviewSession.deadlineRoomCleanupStatus, "pending"),
           and(
@@ -179,15 +239,35 @@ export async function listInterviewDeadlineSchedules(
               ),
               and(
                 eq(feedback.dispatchStatus, "sending"),
-                lt(feedback.dispatchClaimedAt, staleDispatchBefore)
+                sql`${feedback.dispatchClaimedAt} < clock_timestamp() - (${FEEDBACK_DISPATCH_LEASE_MS} * interval '1 millisecond')`
               )
             )
           )
         )
       )
-    );
+    )
+    .orderBy(
+      sql`CASE WHEN ${interviewSession.startedAt} IS NULL THEN 0 ELSE 1 END`,
+      asc(canonicalDeadlineSql),
+      asc(interviewSession.id)
+    )
+    .limit(normalizedLimit);
 
-  return buildInterviewDeadlineSchedules(sessions, limit, now);
+  return sessions.map((session) =>
+    session.startedAt
+      ? {
+          kind: "deadline" as const,
+          sessionId: session.id,
+          deadlineAt: serializeInterviewDeadlineAt(
+            parseDatabaseTimestamp(session.deadlineAt)
+          ),
+        }
+      : {
+          kind: "invalid_session" as const,
+          sessionId: session.id,
+          reason: "missing_started_at" as const,
+        }
+  );
 }
 
 export function buildInterviewDeadlineSchedules(
@@ -284,4 +364,28 @@ function isDeadlineFeedbackDispatchRecoverable(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export type InterviewDeadlineDatabase = Pick<typeof db, "select" | "update">;
+
+const durationMinutesSql = sql<number>`CASE
+  WHEN jsonb_typeof(${interviewSession.config}->'duration') = 'number'
+    THEN CASE
+      WHEN (${interviewSession.config}->>'duration')::numeric IN (15, 30, 45)
+        THEN (${interviewSession.config}->>'duration')::integer
+      ELSE 30
+    END
+  ELSE 30
+END`;
+
+const canonicalDeadlineSql = sql<Date>`${interviewSession.startedAt} + (${durationMinutesSql} * interval '1 minute')`;
+
+function parseDatabaseTimestamp(value: Date | string): Date {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    throw new Error(
+      "Database returned an invalid interview deadline timestamp"
+    );
+  }
+  return parsed;
 }

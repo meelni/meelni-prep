@@ -84,6 +84,33 @@ export const interviewSession = pgTable(
     terminalReason: text("terminal_reason").$type<InterviewTerminalReason>(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     endingAt: timestamp("ending_at", { withTimezone: true }),
+    reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
+      withTimezone: true,
+    }),
+    reconnectDeadlineOwner: text("reconnect_deadline_owner").$type<
+      "reconnect_grace" | "hard_deadline"
+    >(),
+    roomCleanupPending: boolean("room_cleanup_pending")
+      .default(false)
+      .notNull(),
+    roomCleanupAttemptedAt: timestamp("room_cleanup_attempted_at", {
+      withTimezone: true,
+    }),
+    roomProvisioningPending: boolean("room_provisioning_pending")
+      .default(false)
+      .notNull(),
+    roomProvisioningStartedAt: timestamp("room_provisioning_started_at", {
+      withTimezone: true,
+    }),
+    presenceReconciledAt: timestamp("presence_reconciled_at", {
+      withTimezone: true,
+    }),
+    runtimeReadyAt: timestamp("runtime_ready_at", { withTimezone: true }),
+    lastTransportEventAt: timestamp("last_transport_event_at", {
+      withTimezone: true,
+    }),
+    lastTransportEventId: text("last_transport_event_id"),
+    lastTransportEventName: text("last_transport_event_name"),
     lastTransitionAt: timestamp("last_transition_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -137,6 +164,14 @@ export const interviewSession = pgTable(
       "interview_session_ending_at_state_check",
       sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
     ),
+    roomProvisioningClaimCheck: check(
+      "interview_session_room_provisioning_claim_check",
+      sql`(${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NOT NULL) OR (NOT ${table.roomProvisioningPending} AND ${table.roomProvisioningStartedAt} IS NULL)`
+    ),
+    reconnectDeadlineOwnerCheck: check(
+      "interview_session_reconnect_deadline_owner_check",
+      sql`(${table.reconnectDeadlineAt} IS NULL AND ${table.reconnectDeadlineOwner} IS NULL) OR (${table.reconnectDeadlineAt} IS NOT NULL AND ${table.reconnectDeadlineOwner} IN ('reconnect_grace', 'hard_deadline'))`
+    ),
     deadlineRoomCleanupStatusCheck: check(
       "interview_session_deadline_room_cleanup_status_check",
       sql`${table.deadlineRoomCleanupStatus} IS NULL OR ${table.deadlineRoomCleanupStatus} IN ('pending', 'deleted', 'already_absent')`
@@ -154,6 +189,19 @@ export const interviewSession = pgTable(
     lifecycleStateTransitionIdx: index(
       "interview_session_lifecycle_state_transition_idx"
     ).on(table.lifecycleState, table.lastTransitionAt),
+    reconnectDeadlineIdx: index("interview_session_reconnect_deadline_idx").on(
+      table.lifecycleState,
+      table.reconnectDeadlineAt
+    ),
+    presenceReconciliationIdx: index(
+      "interview_session_presence_reconciliation_idx"
+    ).on(table.lifecycleState, table.presenceReconciledAt),
+    roomCleanupRecoveryIdx: index(
+      "interview_session_room_cleanup_recovery_idx"
+    ).on(table.roomCleanupPending, table.roomCleanupAttemptedAt),
+    roomProvisioningRecoveryIdx: index(
+      "interview_session_room_provisioning_recovery_idx"
+    ).on(table.roomProvisioningPending, table.roomProvisioningStartedAt),
     userLifecycleStateIdx: index(
       "interview_session_user_lifecycle_state_idx"
     ).on(table.userId, table.lifecycleState),

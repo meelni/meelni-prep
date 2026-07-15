@@ -4,11 +4,19 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/workflows/end-interview-session", () => ({
   endInterviewSessionWorkflow: vi.fn(),
 }));
+vi.mock("@/lib/workflows/cleanup-interview-room", () => ({
+  cleanupInterviewRoomWorkflow: vi.fn(),
+}));
+vi.mock("@/lib/internal/integrations", () => ({
+  getLiveKitEnvironment: vi.fn(),
+}));
 
 import { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
+import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { POST } from "../route";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -16,6 +24,23 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 describe("POST /api/interview/end", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getLiveKitEnvironment).mockReturnValue({
+      ok: true,
+      provider: "livekit",
+      data: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    });
+    vi.mocked(cleanupInterviewRoomWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "cleaned",
+      room: {
+        roomName: "interview-room",
+        disposition: "deleted",
+      },
+    });
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -94,6 +119,29 @@ describe("POST /api/interview/end", () => {
       actor: { type: "user", userId: "user-motivation" },
       requestedTerminalReason: "user_end",
     });
+    expect(cleanupInterviewRoomWorkflow).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    });
+  });
+
+  it("returns committed terminal truth when room cleanup is deferred", async () => {
+    mockAuth({ id: "user-cleanup-retry" });
+    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(
+      completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
+    );
+    vi.mocked(cleanupInterviewRoomWorkflow).mockRejectedValue(
+      new Error("provider unavailable")
+    );
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(200);
+    expect(cleanupInterviewRoomWorkflow).toHaveBeenCalledOnce();
   });
 });
 
@@ -130,6 +178,7 @@ function completionResult(input: {
     completion: {
       ok: true,
       disposition: "applied",
+      roomName: "interview-room",
       lifecycle: {
         state: "completed",
         version: 3,

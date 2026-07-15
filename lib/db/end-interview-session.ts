@@ -26,6 +26,10 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
       actor: { type: "system"; source: "invalid_session_recovery" };
       requestedTerminalReason: "provider_failure";
     }
+  | {
+      actor: { type: "system"; source: "reconnect_timeout" };
+      requestedTerminalReason: "disconnect_timeout";
+    }
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
@@ -143,10 +147,28 @@ export async function finalizeInterviewSession(
             terminalReason: reason,
           }),
           lastTransitionAt: now,
+          ...(nextState === "active"
+            ? { reconnectDeadlineAt: null, reconnectDeadlineOwner: null }
+            : {}),
           ...(nextState === "active" ? { activatedAt: nextActivatedAt } : {}),
-          ...(nextState === "ending" ? { endingAt: nextEndingAt } : {}),
+          ...(nextState === "ending"
+            ? {
+                endingAt: nextEndingAt,
+                roomCleanupPending: stored.livekitRoomName !== null,
+              }
+            : {}),
           ...(isInterviewTerminalState(nextState)
-            ? { endedAt: nextEndedAt }
+            ? {
+                endedAt: nextEndedAt,
+                ...(stored.reconnectDeadlineAt &&
+                (reason === "disconnect_timeout" ||
+                  reason === "insufficient_signal")
+                  ? {}
+                  : {
+                      reconnectDeadlineAt: null,
+                      reconnectDeadlineOwner: null,
+                    }),
+              }
             : {}),
         })
         .where(
@@ -290,7 +312,11 @@ export async function finalizeInterviewSession(
 
 export function resolveInterviewTerminalReason(
   validation: Pick<SessionValidation, "isValid">,
-  requestedTerminalReason: "user_end" | "time_limit" | "provider_failure"
+  requestedTerminalReason:
+    | "user_end"
+    | "time_limit"
+    | "provider_failure"
+    | "disconnect_timeout"
 ): InterviewTerminalReason {
   if (requestedTerminalReason === "provider_failure") {
     return "provider_failure";
