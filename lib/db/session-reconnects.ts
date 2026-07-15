@@ -57,6 +57,14 @@ export interface ApplyInterviewTransportTransitionInput {
   transitionedAt: Date;
 }
 
+export interface RecoverInterviewPresenceInput {
+  sessionId: string;
+  expectedVersion: number;
+  deadlineAt: Date;
+  joinedAt: Date;
+  transitionedAt: Date;
+}
+
 export type ApplyInterviewTransportTransitionResult =
   | { applied: true; current: InterviewReconnectSession }
   | {
@@ -107,13 +115,12 @@ export interface InterviewReconnectStore {
     expectedVersion: number;
     checkedAt: Date;
   }): Promise<ApplyInterviewTransportTransitionResult>;
-  recoverFromPresence(input: {
-    sessionId: string;
-    expectedVersion: number;
-    deadlineAt: Date;
-    joinedAt: Date;
-    transitionedAt: Date;
-  }): Promise<ApplyInterviewTransportTransitionResult>;
+  recoverFromPresence(
+    input: RecoverInterviewPresenceInput
+  ): Promise<ApplyInterviewTransportTransitionResult>;
+  recoverFromDuePresence(
+    input: RecoverInterviewPresenceInput
+  ): Promise<ApplyInterviewTransportTransitionResult>;
   claimTimeout(input: {
     sessionId: string;
     expectedVersion: number;
@@ -149,6 +156,68 @@ export function createDrizzleInterviewReconnectStore(
       .where(condition)
       .limit(1);
     return rows[0] ? mapReconnectSession(rows[0]) : null;
+  };
+
+  const recoverFromPresence = async (
+    input: RecoverInterviewPresenceInput,
+    timing: "before_cutoff" | "grace_due"
+  ): Promise<ApplyInterviewTransportTransitionResult> => {
+    if (
+      !Number.isFinite(input.joinedAt.getTime()) ||
+      input.joinedAt.getTime() >= input.deadlineAt.getTime()
+    ) {
+      const current = await getByCondition(
+        eq(interviewSession.id, input.sessionId)
+      );
+      return {
+        applied: false,
+        reason: current ? "conflict" : "not_found",
+        current,
+      };
+    }
+
+    const rows = await database
+      .update(interviewSession)
+      .set({
+        lifecycleState: "active",
+        lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
+        terminalReason: null,
+        status: projectLegacyInterviewSessionStatus({ state: "active" }),
+        lastTransitionAt: input.transitionedAt,
+        reconnectDeadlineAt: null,
+        reconnectDeadlineOwner: null,
+        presenceReconciledAt: input.transitionedAt,
+      })
+      .where(
+        and(
+          eq(interviewSession.id, input.sessionId),
+          eq(interviewSession.lifecycleState, "reconnecting"),
+          eq(interviewSession.lifecycleVersion, input.expectedVersion),
+          eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
+          sql`${input.joinedAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`,
+          ...(timing === "grace_due"
+            ? [
+                eq(interviewSession.reconnectDeadlineOwner, "reconnect_grace"),
+                sql`${interviewSession.reconnectDeadlineAt} <= clock_timestamp()`,
+              ]
+            : [
+                sql`clock_timestamp() < ${interviewSession.reconnectDeadlineAt}`,
+              ])
+        )
+      )
+      .returning();
+
+    if (rows[0]) {
+      return { applied: true, current: mapReconnectSession(rows[0]) };
+    }
+    const current = await getByCondition(
+      eq(interviewSession.id, input.sessionId)
+    );
+    return {
+      applied: false,
+      reason: current ? "conflict" : "not_found",
+      current,
+    };
   };
 
   const store: InterviewReconnectStore = {
@@ -427,50 +496,10 @@ export function createDrizzleInterviewReconnectStore(
       };
     },
     async recoverFromPresence(input) {
-      if (
-        !Number.isFinite(input.joinedAt.getTime()) ||
-        input.joinedAt.getTime() >= input.deadlineAt.getTime()
-      ) {
-        const current = await store.getById(input.sessionId);
-        return {
-          applied: false,
-          reason: current ? "conflict" : "not_found",
-          current,
-        };
-      }
-      const rows = await database
-        .update(interviewSession)
-        .set({
-          lifecycleState: "active",
-          lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
-          terminalReason: null,
-          status: projectLegacyInterviewSessionStatus({ state: "active" }),
-          lastTransitionAt: input.transitionedAt,
-          reconnectDeadlineAt: null,
-          reconnectDeadlineOwner: null,
-          presenceReconciledAt: input.transitionedAt,
-        })
-        .where(
-          and(
-            eq(interviewSession.id, input.sessionId),
-            eq(interviewSession.lifecycleState, "reconnecting"),
-            eq(interviewSession.lifecycleVersion, input.expectedVersion),
-            eq(interviewSession.reconnectDeadlineAt, input.deadlineAt),
-            sql`${input.joinedAt.toISOString()}::timestamptz < ${interviewSession.reconnectDeadlineAt}`,
-            sql`clock_timestamp() < ${interviewSession.reconnectDeadlineAt}`
-          )
-        )
-        .returning();
-
-      if (rows[0]) {
-        return { applied: true, current: mapReconnectSession(rows[0]) };
-      }
-      const current = await store.getById(input.sessionId);
-      return {
-        applied: false,
-        reason: current ? "conflict" : "not_found",
-        current,
-      };
+      return recoverFromPresence(input, "before_cutoff");
+    },
+    async recoverFromDuePresence(input) {
+      return recoverFromPresence(input, "grace_due");
     },
     async claimTimeout(input) {
       const rows = await database

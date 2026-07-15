@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  githubApi,
   runStackCiAndPublish,
   STACK_TOPOLOGY_CHECK_NAME,
 } from "./check-stacked-pr-ci.mjs";
@@ -60,7 +61,7 @@ function fixture() {
     `${JSON.stringify(
       {
         version: 2,
-        repository: "saviii/meelni-prep",
+        repository: "meelni/meelni-prep",
         stacks: [
           {
             pr: 999,
@@ -94,7 +95,7 @@ function githubApiFor(state, overrides = {}) {
         head: {
           ref: "child",
           sha: head,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "parent" },
         ...overrides.child,
@@ -113,7 +114,7 @@ function githubApiFor(state, overrides = {}) {
         head: {
           ref: "parent",
           sha: parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "main" },
         ...overrides.parent,
@@ -140,7 +141,7 @@ function event(state, overrides = {}) {
     head: {
       ref: "child",
       sha: state.head,
-      repo: { full_name: "saviii/meelni-prep" },
+      repo: { full_name: "meelni/meelni-prep" },
     },
     base: { ref: "parent" },
     ...overrides.pull_request,
@@ -148,7 +149,7 @@ function event(state, overrides = {}) {
   return {
     number: pullRequest.number,
     repository: {
-      full_name: "saviii/meelni-prep",
+      full_name: "meelni/meelni-prep",
       default_branch: "main",
     },
     pull_request: pullRequest,
@@ -192,6 +193,146 @@ function checkApi(calls, responses = [{ id: 101 }, {}]) {
     };
   };
 }
+
+function githubResponse(status, payload = {}, headers = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(headers),
+    async json() {
+      return payload;
+    },
+  };
+}
+
+test("GitHub GET retries a transient response and honors Retry-After", async () => {
+  const responses = [
+    githubResponse(500, {}, { "retry-after": "2" }),
+    githubResponse(200, { number: 257 }),
+  ];
+  const calls = [];
+  const delays = [];
+
+  const result = await githubApi({
+    token: "token",
+    repository: "meelni/meelni-prep",
+    path: "/pulls/257?access_token=redacted",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return responses.shift();
+    },
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+  });
+
+  assert.deepEqual(result, { number: 257 });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(delays, [2_000]);
+});
+
+test("GitHub GET caps an oversized Retry-After delay", async () => {
+  const responses = [
+    githubResponse(503, {}, { "retry-after": "3600" }),
+    githubResponse(200, { number: 257 }),
+  ];
+  const delays = [];
+
+  const result = await githubApi({
+    token: "token",
+    repository: "meelni/meelni-prep",
+    path: "/pulls/257",
+    fetchImpl: async () => responses.shift(),
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+  });
+
+  assert.deepEqual(result, { number: 257 });
+  assert.deepEqual(delays, [5_000]);
+});
+
+test("GitHub GET exhausts three transient attempts and reports sanitized diagnostics", async () => {
+  const calls = [];
+  const delays = [];
+
+  await assert.rejects(
+    githubApi({
+      token: "token",
+      repository: "meelni/meelni-prep",
+      path: "/pulls/257/files?access_token=secret",
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return githubResponse(
+          500,
+          {},
+          {
+            "x-github-request-id": "ABCD:1234:EF56",
+          }
+        );
+      },
+      sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    }),
+    (error) => {
+      assert.equal(error.status, 500);
+      assert.equal(error.method, "GET");
+      assert.equal(error.path, "/pulls/257/files");
+      assert.equal(error.attempt, 3);
+      assert.equal(error.requestId, "ABCD:1234:EF56");
+      assert.match(
+        error.message,
+        /method=GET;path=\/pulls\/257\/files;attempt=3\/3;request_id=ABCD:1234:EF56/
+      );
+      assert.doesNotMatch(error.message, /secret/);
+      return true;
+    }
+  );
+
+  assert.equal(calls.length, 3);
+  assert.deepEqual(delays, [250, 500]);
+});
+
+test("GitHub GET does not retry a non-retryable 4xx response", async () => {
+  const calls = [];
+  const delays = [];
+
+  await assert.rejects(
+    githubApi({
+      token: "token",
+      repository: "meelni/meelni-prep",
+      path: "/pulls/257",
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return githubResponse(404);
+      },
+      sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    }),
+    /stack_gate_github_api_failed:404;method=GET;path=\/pulls\/257;attempt=1\/3/
+  );
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(delays, []);
+});
+
+test("GitHub POST does not retry a transient response", async () => {
+  const calls = [];
+  const delays = [];
+
+  await assert.rejects(
+    githubApi({
+      token: "token",
+      repository: "meelni/meelni-prep",
+      path: "/check-runs",
+      method: "POST",
+      body: { name: "Stack Topology / Verify" },
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return githubResponse(503);
+      },
+      sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    }),
+    /stack_gate_github_api_failed:503;method=POST;path=\/check-runs;attempt=1\/1/
+  );
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(delays, []);
+});
 
 test("the trusted adapter fetches the exact PR and parent refs from a bare origin", (t) => {
   const state = fixture();
@@ -418,7 +559,7 @@ test("an undeclared non-default PR fails the triggering stable context", async (
         head: {
           ref: "undeclared-child",
           sha: state.head,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "parent" },
       }),
@@ -430,7 +571,7 @@ test("an undeclared non-default PR fails the triggering stable context", async (
     classifyRevalidationOutcome({
       results: [result],
       triggerPr: 123,
-      manifest: { version: 2, repository: "saviii/meelni-prep", stacks: [] },
+      manifest: { version: 2, repository: "meelni/meelni-prep", stacks: [] },
     }),
     "fail"
   );
@@ -562,7 +703,7 @@ test("closed, wrong-repository, and wrong-ref parents fail through the real publ
         head: {
           ref: "different-parent",
           sha: state.parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
       },
       "parent_head_differs_from_manifest_entry",
@@ -627,7 +768,7 @@ test("git transport failure remains infrastructure error and fails every mode", 
 test("stable outcome fails only for the triggering child or infrastructure errors", () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [{ pr: 10, parentPr: 9, headRef: "child", parentRef: "parent" }],
   };
   assert.equal(
@@ -670,7 +811,7 @@ test("scheduled revalidation is not capped at one GitHub page", async () => {
     headRef: `child-${index}`,
     parentRef: "parent",
   }));
-  const manifest = { version: 2, repository: "saviii/meelni-prep", stacks };
+  const manifest = { version: 2, repository: "meelni/meelni-prep", stacks };
   const results = await revalidateRegisteredStacks({
     manifest,
     api: async ({ path }) => {
@@ -700,7 +841,7 @@ test("scheduled revalidation is not capped at one GitHub page", async () => {
 test("scheduled revalidation fans out from the trusted current manifest", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 10,
@@ -750,7 +891,7 @@ test("scheduled revalidation fans out from the trusted current manifest", async 
 test("a same-repository parent event revalidates itself and every open registered child", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -827,7 +968,7 @@ test("a same-repository parent event revalidates itself and every open registere
 test("a closed parent event still refreshes every open registered child", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -889,7 +1030,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
     eventContent: JSON.stringify({
       action: "closed",
       repository: {
-        full_name: "saviii/meelni-prep",
+        full_name: "meelni/meelni-prep",
         default_branch: "main",
       },
       pull_request: {
@@ -897,7 +1038,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
         head: {
           ref: "parent",
           sha: state.parent,
-          repo: { full_name: "saviii/meelni-prep" },
+          repo: { full_name: "meelni/meelni-prep" },
         },
         base: { ref: "main" },
       },
@@ -917,7 +1058,7 @@ test("a closed event fails an open child when the parent branch was deleted", as
           head: {
             ref: "parent",
             sha: state.parent,
-            repo: { full_name: "saviii/meelni-prep" },
+            repo: { full_name: "meelni/meelni-prep" },
           },
           base: { ref: "main" },
         };
@@ -966,7 +1107,7 @@ test("scheduled revalidation replaces stale success after parent movement", asyn
 test("scheduled revalidation records API failure and continues to later PRs", async () => {
   const manifest = {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 20,
@@ -1090,11 +1231,38 @@ test("the authoritative workflow checks out default-branch code and never PR cod
     workflow,
     /verify-migrations:[^]*?permissions:\n      contents: read\n      checks: write\n      pull-requests: read/
   );
-  assert.match(workflow, /cron: "\*\/5 \* \* \* \*"/);
+  assert.doesNotMatch(workflow, /\bschedule:/);
+  assert.doesNotMatch(workflow, /\bcron:/);
   assert.match(workflow, /group: stack-topology-publisher/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /queue: max/);
   assert.match(workflow, /pull_request_target:[^]*types:[^]*closed/);
+  assert.match(workflow, /push:[^]*branches: \[main\][^]*stacked-prs\.json/);
+  assert.match(
+    workflow,
+    /verify-stack:[^]*?github\.event\.pull_request\.draft == false[^]*?github\.event\.changes\.body != null[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /verify-migrations:[^]*?github\.event\.pull_request\.draft == false[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /audit-draft-impact:[^]*?github\.event\.pull_request\.draft == true[^]*?github\.event\.action == 'synchronize'[^]*?github\.event\.changes\.base != null/
+  );
+  assert.match(
+    workflow,
+    /revalidate-all:[^]*?github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
+  );
+  assert.equal(workflow.match(/continue-on-error: true/g)?.length, 4);
+  assert.match(
+    workflow,
+    /audit-draft-impact:[^]*?steps\.stack_audit\.outcome != 'success'[^]*?steps\.migration_audit\.outcome != 'success'/
+  );
+  assert.match(
+    workflow,
+    /revalidate-all:[^]*?steps\.stack_audit\.outcome != 'success'[^]*?steps\.migration_audit\.outcome != 'success'/
+  );
   assert.match(workflow, /persist-credentials: true/);
   assert.match(
     workflow,

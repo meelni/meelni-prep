@@ -4,7 +4,9 @@ The product contract is [Interview Session Lifecycle](../contracts/interview-ses
 
 ## Required Configuration
 
-- LiveKit server URL, API key, and API secret.
+- A LiveKit Cloud project, server URL, API key, and API secret. This teardown
+  contract relies on Cloud token revocation; a self-hosted deployment requires
+  a separately reviewed equivalent before use.
 - A LiveKit webhook targeting `POST /api/webhooks/livekit`, with
   `participant_joined`, `participant_left`, and
   `participant_connection_aborted` delivery enabled.
@@ -39,7 +41,9 @@ Never place an intermediary in front of the route that rewrites the body.
   recovery scan retries each row independently until LiveKit acknowledges
   deletion or absence. Never-attempted and least-recently-attempted rooms run
   first; the same cursor advances before cleanup, provisioning, and credit-only
-  recovery attempts.
+  recovery attempts. Revocation omits a client-provided cutoff so LiveKit Cloud
+  records provider current time; a slow or rolled-back app clock cannot leave
+  an older token valid, and a missing participant response still revokes it.
 - Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
   checks authoritative participant presence for connecting, active, and
   reconnecting rooms. Connecting activation requires the exact standard
@@ -57,9 +61,11 @@ Never place an intermediary in front of the route that rewrites the body.
   strictly before the stored reconnect deadline,
   revokes candidate tokens before room deletion, waits a bounded two seconds
   for durable transcript delivery, and finalizes from one validation snapshot.
-  Token authorization, signed rejoin, presence repair, stale-provisioning
-  claims, and timeout claims use PostgreSQL time. The cutoff is exclusive:
-  database time or participant `joinedAt` equal to the cutoff is denied.
+  Token authorization, signed rejoin, ordinary presence repair,
+  stale-provisioning claims, and timeout claims use PostgreSQL time. At or after
+  a grace-owned cutoff, only the due-presence CAS may recover the session, and
+  only from exact-generation provider evidence whose `joinedAt` is strictly
+  before the stored cutoff. Equality or later evidence is denied.
 
 ## Preview Rehearsal
 
@@ -120,7 +126,9 @@ ready:
     accepted only for the matching lifecycle version and stored deadline.
 18. Simulate application clocks that are slow, fast, and roll backward. Confirm
     token issuance, presence repair, stale provisioning, and timeout claims
-    still follow PostgreSQL time and never extend the stored cutoff.
+    still follow PostgreSQL time and never extend the stored cutoff. Confirm
+    teardown sends no client revocation timestamp and therefore uses LiveKit
+    Cloud provider time before room deletion.
 19. Create more than 250 retryable poison rows ahead of one healthy cleanup,
     including credit-only rows. Confirm every attempted row advances the shared
     cursor, the healthy row reaches the next scan, and a failed credit settlement
