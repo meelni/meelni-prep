@@ -133,24 +133,25 @@ stale success. Classic protection requires the stable
 topology fails that stable context. When a parent event discovers an invalid
 dependent child, the child's custom check fails while the parent's stable
 context succeeds. API or publication failures always fail the stable job.
-Scheduled/manual topology failures are recorded on child checks without making
-the sweep itself fail; API or publication failures fail the sweep.
+Manual topology failures are recorded on child checks without making the sweep
+itself fail; API or publication failures fail the sweep.
 Push events fail closed in this adapter; local branch work uses the command
 above.
 
-All event, scheduled, and manual publishers share one non-cancelling workflow
+All event, filtered default-branch, and manual publishers share one
+non-cancelling workflow
 concurrency group with GitHub's maximum pending queue. Parent events are not
 replaced by a newer pending run, so each queued movement subsequently
 republishes every dependent child's exact current generation. The workflow also
 subscribes to `closed`: closing or deleting a parent PR revalidates its open
 registered children, and a deleted parent ref fails their checks closed.
 
-A trusted default-branch schedule re-reads every open manifest entry every five
-minutes. It loads current PR metadata through the read-only API, fetches the
-current parent, and publishes a new head-bound result. Parent movement or a
-default-branch manifest change therefore replaces stale success without
-executing code from either branch. `workflow_dispatch` provides the same fan-out
-for an immediate operator refresh.
+Draft branch movement and base changes run one combined dependency audit so a
+ready peer cannot retain stale migration or topology evidence. Draft body and
+title edits allocate no hosted runner; the latest body is evaluated when the PR
+becomes ready for review. Trusted checker or manifest changes on `main` and
+`workflow_dispatch` each provide one combined full fan-out without executing
+code from a proposed branch.
 
 Because the repository is private, the trusted checkout retains the job token
 long enough to fetch those two refs. Both jobs grant only `contents: read`,
@@ -194,13 +195,14 @@ does not guess that changing committed history is safe. Snapshot JSON and
 - an incomplete API inventory fails closed rather than publishing speculative
   success.
 
-The check runs on open, reopen, synchronize, edit, close, draft-conversion, and
-ready-for-review events, plus the same five-minute/manual trusted revalidation.
-Scheduled runs target only migration or immutable-history owners; the triggering
-non-migration PR receives a neutral result. An identical completed result on the
-same exact head is reused, bounding Check Run churn. The workflow still checks
-out only default-branch code; it reads PR metadata and file names but never
-fetches or executes PR files for collision detection.
+The check runs on non-draft open, reopen, synchronize, edit, and ready-for-review
+events, plus close events and operator-controlled or filtered default-branch
+revalidation. Draft branch movement and base edits use one combined dependency
+audit; draft body and title edits allocate no runner. Manual and default-branch
+runs target only migration or immutable-history owners; an identical completed
+result on the same exact head is reused, bounding Check Run churn. The workflow
+still checks out only default-branch code; it reads PR metadata and file names
+but never fetches or executes PR files for collision detection.
 
 Classic protection requires the stable `Migration Collision Publisher` Actions
 job, not the REST-created custom Check Run. The event job still inventories all
@@ -212,13 +214,16 @@ collisions, and a closed trigger does not inherit peer collisions. Fork events
 cannot prove ownership with the same-repository inventory and fail the required
 job closed; private-repository changes must use a maintainer-owned branch.
 
-Topology event, scheduled, and manual runs inherit the workflow's one global,
+Topology event, filtered default-branch, and manual runs inherit the workflow's
+one global,
 non-canceling `queue: max` boundary. Each parent event fans out to the triggering
 PR and its open registered dependents, so topology publication is not scoped to
 per-PR concurrency. Migration jobs run inside that globally queued workflow and
 also share the `migration-collision-audit` serialization boundary across event
-and scheduled publishers. This prevents an older migration audit from landing
-green after a newer run has detected a collision. The publisher also rechecks
+event publishers. Draft-impact and full revalidation each run both audits in a
+single globally serialized job and continue to the second audit if the first
+fails. This prevents an older migration audit from landing green after a newer
+run has detected a collision. The publisher also rechecks
 the full inventory and exact PR head before lookup, after lookup, and after
 Check Run creation immediately before completion. Check output records a
 deterministic SHA-256 inventory generation, and reuse requires that same
@@ -255,11 +260,12 @@ old green `Validate` runs topology evidence. Before any stacked PR merges:
    general `Validate` result is not an exception.
 5. Reconverge root-to-leaf. Land each expected-parent update on `main`, replace
    the affected PR's evidence, and require a new trusted pass after every parent
-   or child movement. The scheduled fan-out fails old evidence automatically;
-   use the manual dispatch when waiting five minutes is unsafe. Keep the child
-   blocked while its default-branch manifest update is under review.
+   or child movement. Use the manual dispatch when no qualifying PR event will
+   publish the updated evidence. Keep the child blocked while its default-branch
+   manifest update is under review.
 
-Keep the relaunch and stack merge queue frozen until every open stacked PR has a
-successful `Trusted Publisher` job and fresh `Stack Topology / Verify` audit
-result. If repository rules cannot require the job on a non-default target
-branch, treat its absence as a manual merge block.
+Keep the relaunch and stack merge queue frozen until every open stacked PR has
+successful `Trusted Publisher` and `Migration Collision Publisher` jobs plus
+fresh `Stack Topology / Verify` and `Migration Collision / Verify` audit
+results. If repository rules cannot require the jobs on a non-default target
+branch, treat their absence as a manual merge block.

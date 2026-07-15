@@ -10,7 +10,7 @@ import {
   publishMigrationResult,
 } from "./check-migration-collisions-ci.mjs";
 
-const repository = "saviii/meelni-prep";
+const repository = "meelni/meelni-prep";
 
 function pullRequest(number, headRepository = repository) {
   return {

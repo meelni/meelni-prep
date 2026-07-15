@@ -61,3 +61,41 @@ The migration adds database checks for tier values, dispatch identity,
 nonnegative attempts, active claims, and sent acknowledgements. See the
 [session completion runbook](./interview-session-completion.md) for Preview
 rehearsal and recovery.
+
+## Deadline room cleanup acknowledgement
+
+`0008_deadline_room_cleanup_ack` adds durable room-cleanup ownership and
+acknowledgement state for server-enforced interview deadlines. It records the
+cleanup status and acknowledgement time independently from terminal reason,
+backfills existing explicit `time_limit` outcomes to `pending`, and indexes the
+recovery selector used to find cleanup work after exact-event retries are
+exhausted.
+
+Database constraints keep pending and acknowledged states consistent: pending
+cleanup has no acknowledgement timestamp, while `deleted` and
+`already_absent` require one. Application code must not expose or dispatch
+feedback until a deadline-owned cleanup claim is acknowledged. See the
+[deadline operations runbook](./interview-session-deadline.md) for failure,
+recovery, and rollback behavior.
+
+## Interview session reconnect recovery
+
+`0009_interview_session_reconnect` adds the durable reconnect deadline,
+provider-cleanup and provisioning recovery claims, readiness and presence
+reconciliation timestamps, and last accepted transport-event identity. Its
+indexes support reconnect expiry, presence repair, room cleanup, and stale
+provisioning recovery without scanning unrelated sessions. The provisioning
+constraint requires the pending claim and its lease timestamp to move together.
+
+## Reconnect cutoff ownership
+
+`0010_reconnect_cutoff_owner` records whether each persisted reconnect cutoff
+is owned by reconnect grace or by the immutable hard interview deadline. The
+backfill derives ownership from the stored start time and canonical configured
+duration, using the 30-minute default for missing or legacy duration shapes.
+The database constraint requires every cutoff to have one valid owner and
+forbids an owner when no cutoff exists. Application authorization and recovery
+use PostgreSQL time and treat equality with the stored cutoff as expired.
+
+See the [reconnect operations runbook](./interview-session-reconnect.md) for
+provider recovery, exact-boundary verification, and rollback behavior.
