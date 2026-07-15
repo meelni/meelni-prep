@@ -251,8 +251,10 @@ with deterministic idempotency keys.
 User end attempts cleanup immediately but still returns committed terminal
 truth if the provider is unavailable. Hard-deadline and reconnect workers clear
 the same marker after acknowledged deletion. Cleanup removes the candidate with
-an explicit token-revocation timestamp before deleting the room; room absence
-is idempotent success. A five-minute terminal-room recovery scan fans each
+LiveKit Cloud's provider-owned current-time revocation before deleting the
+room; the app deliberately omits a client timestamp so process-clock skew
+cannot preserve an older token. A missing participant response still revokes
+cached tokens, and room absence is idempotent success. A five-minute terminal-room recovery scan fans each
 pending row into an independently retryable event and prioritizes never-tried,
 then least-recently-tried cleanup, provisioning, and credit-only work,
 preventing one poison row from starving peers
