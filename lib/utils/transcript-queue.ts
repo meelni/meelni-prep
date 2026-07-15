@@ -147,6 +147,12 @@ export class TranscriptQueue {
   private queueTombstones = new Map<string, Date>();
   private failureTombstones = new Map<string, Date>();
   private overflowTombstones = new Map<string, Date>();
+  private writerItems = new Map<string, QueuedTranscriptSave>();
+  private writerOverflowMarkers = new Map<string, Date>();
+  private writerFailures = new Map<string, TranscriptQueueFailure>();
+  private writerQueueTombstones = new Map<string, Date>();
+  private writerFailureTombstones = new Map<string, Date>();
+  private writerOverflowTombstones = new Map<string, Date>();
   private closedSessions = new Set<string>();
   private boundOwnerId: string | null = null;
   private ownerGeneration = 0;
@@ -178,6 +184,7 @@ export class TranscriptQueue {
     const existing = this.queue.find((item) => item.id === id);
     if (existing) {
       existing.status = "retrying";
+      if (this.writerItems.has(id)) this.writerItems.set(id, existing);
       this.saveToStorage();
       return true;
     }
@@ -191,15 +198,23 @@ export class TranscriptQueue {
       return false;
     }
 
-    this.queue.push({
+    const queued: QueuedTranscriptSave = {
       id,
       request,
       attemptCount: 0,
       enqueuedAt: new Date(),
       lastAttempt: new Date(),
       status: "retrying",
-    });
-    this.saveToStorage();
+    };
+    this.queue.push(queued);
+    this.writerQueueTombstones.delete(id);
+    this.writerItems.set(id, queued);
+    if (!this.saveToStorage()) {
+      this.queue = this.queue.filter((item) => item !== queued);
+      this.writerItems.delete(id);
+      this.markOverflow(ownerSessionIdentity(request));
+      return false;
+    }
     void this.processQueue();
     return true;
   }
@@ -253,6 +268,10 @@ export class TranscriptQueue {
         if (!this.enqueueForRetry(request)) {
           this.markOverflow(ownerSessionIdentity(request));
           this.saveToStorage();
+          return {
+            success: false,
+            error: "transcript_retry_queue_unavailable",
+          };
         }
       } else if (isClosedSessionError(error)) {
         this.removeQueuedItem(id);
@@ -260,10 +279,7 @@ export class TranscriptQueue {
       } else {
         this.recordFailure(request, permanentFailureReason(error));
       }
-      return {
-        success: false,
-        error: safeFailureStatus(error),
-      };
+      return { success: false, error: safeFailureStatus(error) };
     }
   }
 
@@ -307,6 +323,9 @@ export class TranscriptQueue {
         if (!item) break;
         item.attemptCount += 1;
         item.lastAttempt = new Date();
+        if (this.writerItems.has(item.id)) {
+          this.writerItems.set(item.id, item);
+        }
         try {
           await postTranscriptEvent(
             item.request,
@@ -431,6 +450,7 @@ export class TranscriptQueue {
     this.queueTombstones.clear();
     this.failureTombstones.clear();
     this.overflowTombstones.clear();
+    this.clearWriterDelta();
     this.closedSessions.clear();
     this.inFlight.clear();
     this.storageGeneration += 1;
@@ -445,6 +465,8 @@ export class TranscriptQueue {
     for (const item of this.queue) {
       if (ownerSessionIdentity(item.request) === sessionKey) {
         this.queueTombstones.set(item.id, new Date());
+        this.writerItems.delete(item.id);
+        this.writerQueueTombstones.set(item.id, new Date());
       }
     }
     this.queue = this.queue.filter(
@@ -453,6 +475,8 @@ export class TranscriptQueue {
     for (const failure of this.failures) {
       if (`${failure.ownerId}:${failure.sessionId}` === sessionKey) {
         this.failureTombstones.set(failure.id, new Date());
+        this.writerFailures.delete(failure.id);
+        this.writerFailureTombstones.set(failure.id, new Date());
       }
     }
     this.failures = this.failures.filter(
@@ -472,10 +496,12 @@ export class TranscriptQueue {
     }
   }
 
-  private saveToStorage(): void {
-    if (typeof localStorage === "undefined") return;
+  private saveToStorage(): boolean {
+    if (typeof localStorage === "undefined") return true;
     try {
-      if (this.boundOwnerId && !this.hasStorageLease(this.boundOwnerId)) return;
+      if (this.boundOwnerId && !this.hasStorageLease(this.boundOwnerId)) {
+        return false;
+      }
       const stored = this.readStorageState();
       if (
         stored &&
@@ -483,7 +509,7 @@ export class TranscriptQueue {
         ((stored.ownerId !== null && stored.ownerId !== this.boundOwnerId) ||
           stored.generation !== this.storageGeneration)
       ) {
-        return;
+        return false;
       }
       if (stored) this.mergeRestoredState(stored);
       this.pruneExpired(false);
@@ -492,9 +518,10 @@ export class TranscriptQueue {
         stored?.revision ?? 0
       );
       this.storageRevision += 1;
-      this.writeStorageState();
+      return this.writeStorageState();
     } catch (error) {
       console.error("[TranscriptQueue] Failed to save retry queue", error);
+      return false;
     }
   }
 
@@ -561,42 +588,63 @@ export class TranscriptQueue {
     return mergeStorageShards(states);
   }
 
-  private writeStorageState(): void {
-    if (typeof localStorage === "undefined") return;
-    const state: SerializedTranscriptQueueState = {
-      items: this.queue.map((item) => ({
-        ...item,
-        enqueuedAt: item.enqueuedAt.toISOString(),
-        lastAttempt: item.lastAttempt.toISOString(),
-      })),
-      overflowMarkers: [...this.overflowedSessions].map(([id, recordedAt]) => ({
-        id,
-        recordedAt: recordedAt.toISOString(),
-      })),
-      failures: this.failures.map((failure) => ({
-        ...failure,
-        recordedAt: failure.recordedAt.toISOString(),
-      })),
-      queueTombstones: serializeTombstones(this.queueTombstones),
-      failureTombstones: serializeTombstones(this.failureTombstones),
-      overflowTombstones: serializeTombstones(this.overflowTombstones),
-      generation: this.storageGeneration,
-      ownerId: this.boundOwnerId ?? this.storageOwnerId ?? undefined,
-      revision: this.storageRevision,
-    };
-    const serialized = JSON.stringify(state);
+  private writeStorageState(): boolean {
+    if (typeof localStorage === "undefined") return true;
     const storageOwnerId = this.boundOwnerId ?? this.storageOwnerId;
-    if (storageOwnerId !== null || this.storageGeneration > 0) {
-      this.writeStorageFence({
-        generation: this.storageGeneration,
-        ownerId: storageOwnerId,
-      });
+    const aggregate = serializeTranscriptQueueState({
+      items: this.queue,
+      overflowMarkers: this.overflowedSessions,
+      failures: this.failures,
+      queueTombstones: this.queueTombstones,
+      failureTombstones: this.failureTombstones,
+      overflowTombstones: this.overflowTombstones,
+      generation: this.storageGeneration,
+      ownerId: storageOwnerId,
+      revision: this.storageRevision,
+    });
+    const writerDelta = serializeTranscriptQueueState({
+      items: [...this.writerItems.values()],
+      overflowMarkers: this.writerOverflowMarkers,
+      failures: [...this.writerFailures.values()],
+      queueTombstones: this.writerQueueTombstones,
+      failureTombstones: this.writerFailureTombstones,
+      overflowTombstones: this.writerOverflowTombstones,
+      generation: this.storageGeneration,
+      ownerId: storageOwnerId,
+      revision: this.storageRevision,
+    });
+    const fence = {
+      generation: this.storageGeneration,
+      ownerId: storageOwnerId,
+    };
+    if (
+      (storageOwnerId !== null || this.storageGeneration > 0) &&
+      !sameStorageFence(this.readStorageFence(), fence)
+    ) {
+      this.writeStorageFence(fence);
     }
-    // Each live queue owns a durable shard. The canonical key is only a
-    // compatibility/read-optimization view, so concurrent canonical writes
-    // cannot discard another tab's retained events.
-    localStorage.setItem(this.storageShardKey, serialized);
-    localStorage.setItem(QUEUE_CONFIG.storageKey, serialized);
+    const writerHasState = hasSerializedQueueContent(writerDelta);
+    if (writerHasState) {
+      // The writer shard is the durability authority for this instance's
+      // mutations. It contains only locally-authored deltas, never the merged
+      // aggregate from other tabs.
+      localStorage.setItem(this.storageShardKey, JSON.stringify(writerDelta));
+    } else {
+      localStorage.removeItem(this.storageShardKey);
+    }
+    try {
+      // Canonical is an aggregate compatibility/read-optimization view. A
+      // quota failure here is safe after the writer delta is durable.
+      localStorage.setItem(QUEUE_CONFIG.storageKey, JSON.stringify(aggregate));
+    } catch (error) {
+      console.error(
+        "[TranscriptQueue] Failed to update canonical retry queue view",
+        error
+      );
+    }
+    return writerHasState
+      ? localStorage.getItem(this.storageShardKey) !== null
+      : localStorage.getItem(QUEUE_CONFIG.storageKey) !== null;
   }
 
   private reconcileFromStorage(): void {
@@ -697,6 +745,15 @@ export class TranscriptQueue {
     for (const id of this.overflowTombstones.keys()) {
       this.overflowedSessions.delete(id);
     }
+    for (const id of this.queueTombstones.keys()) {
+      this.writerItems.delete(id);
+    }
+    for (const id of this.failureTombstones.keys()) {
+      this.writerFailures.delete(id);
+    }
+    for (const id of this.overflowTombstones.keys()) {
+      this.writerOverflowMarkers.delete(id);
+    }
     this.boundMarkers();
   }
 
@@ -738,6 +795,7 @@ export class TranscriptQueue {
       this.queueTombstones.clear();
       this.failureTombstones.clear();
       this.overflowTombstones.clear();
+      this.clearWriterDelta();
     } else if (stored) {
       this.storageGeneration = stored.generation;
       this.storageRevision = stored.revision;
@@ -794,30 +852,37 @@ export class TranscriptQueue {
     reason: TranscriptQueueFailure["reason"]
   ): void {
     const id = queueIdentity(request);
-    this.removeQueuedItem(id);
+    this.removeQueuedItem(id, false);
     this.failureTombstones.delete(id);
     const existing = this.failures.find((failure) => failure.id === id);
     if (existing) {
       existing.reason = reason;
       existing.recordedAt = new Date();
+      this.writerFailures.set(id, existing);
     } else {
-      this.failures.push({
+      const failure: TranscriptQueueFailure = {
         id,
         ownerId: request.ownerId,
         sessionId: request.sessionId,
         reason,
         recordedAt: new Date(),
-      });
+      };
+      this.failures.push(failure);
+      this.writerFailures.set(id, failure);
     }
+    this.writerFailureTombstones.delete(id);
     this.saveToStorage();
   }
 
-  private removeQueuedItem(id: string): void {
+  private removeQueuedItem(id: string, persist = true): void {
     const next = this.queue.filter((item) => item.id !== id);
     if (next.length !== this.queue.length) {
       this.queue = next;
-      this.queueTombstones.set(id, new Date());
-      this.saveToStorage();
+      const removedAt = new Date();
+      this.queueTombstones.set(id, removedAt);
+      this.writerItems.delete(id);
+      this.writerQueueTombstones.set(id, removedAt);
+      if (persist) this.saveToStorage();
     }
   }
 
@@ -825,20 +890,29 @@ export class TranscriptQueue {
     const next = this.failures.filter((failure) => failure.id !== id);
     if (next.length !== this.failures.length) {
       this.failures = next;
-      this.failureTombstones.set(id, new Date());
+      const removedAt = new Date();
+      this.failureTombstones.set(id, removedAt);
+      this.writerFailures.delete(id);
+      this.writerFailureTombstones.set(id, removedAt);
       this.saveToStorage();
     }
   }
 
   private markOverflow(sessionKey: string): void {
     this.overflowTombstones.delete(sessionKey);
-    this.overflowedSessions.set(sessionKey, new Date());
+    this.writerOverflowTombstones.delete(sessionKey);
+    const recordedAt = new Date();
+    this.overflowedSessions.set(sessionKey, recordedAt);
+    this.writerOverflowMarkers.set(sessionKey, recordedAt);
     this.boundMarkers();
   }
 
   private clearOverflow(sessionKey: string): void {
     if (this.overflowedSessions.delete(sessionKey)) {
-      this.overflowTombstones.set(sessionKey, new Date());
+      const removedAt = new Date();
+      this.overflowTombstones.set(sessionKey, removedAt);
+      this.writerOverflowMarkers.delete(sessionKey);
+      this.writerOverflowTombstones.set(sessionKey, removedAt);
     }
   }
 
@@ -852,6 +926,16 @@ export class TranscriptQueue {
         )
         .slice(0, QUEUE_CONFIG.maxQueueSize)
     );
+    boundDateMap(this.writerOverflowMarkers);
+  }
+
+  private clearWriterDelta(): void {
+    this.writerItems.clear();
+    this.writerOverflowMarkers.clear();
+    this.writerFailures.clear();
+    this.writerQueueTombstones.clear();
+    this.writerFailureTombstones.clear();
+    this.writerOverflowTombstones.clear();
   }
 
   private isCurrentOwner(ownerId: string, generation: number): boolean {
@@ -918,6 +1002,16 @@ export class TranscriptQueue {
     pruneDateMap(this.queueTombstones, cutoff);
     pruneDateMap(this.failureTombstones, cutoff);
     pruneDateMap(this.overflowTombstones, cutoff);
+    for (const [id, item] of this.writerItems) {
+      if (item.enqueuedAt.getTime() < cutoff) this.writerItems.delete(id);
+    }
+    for (const [id, failure] of this.writerFailures) {
+      if (failure.recordedAt.getTime() < cutoff) this.writerFailures.delete(id);
+    }
+    pruneDateMap(this.writerOverflowMarkers, cutoff);
+    pruneDateMap(this.writerQueueTombstones, cutoff);
+    pruneDateMap(this.writerFailureTombstones, cutoff);
+    pruneDateMap(this.writerOverflowTombstones, cutoff);
     if (
       queue.length !== this.queue.length ||
       failures.length !== this.failures.length ||
@@ -1034,6 +1128,62 @@ function restoreTranscriptQueueState(
         ? parsed.revision!
         : 0,
   };
+}
+
+function serializeTranscriptQueueState(input: {
+  items: QueuedTranscriptSave[];
+  overflowMarkers: Map<string, Date>;
+  failures: TranscriptQueueFailure[];
+  queueTombstones: Map<string, Date>;
+  failureTombstones: Map<string, Date>;
+  overflowTombstones: Map<string, Date>;
+  generation: number;
+  ownerId: string | null;
+  revision: number;
+}): SerializedTranscriptQueueState {
+  return {
+    items: input.items.map((item) => ({
+      ...item,
+      enqueuedAt: item.enqueuedAt.toISOString(),
+      lastAttempt: item.lastAttempt.toISOString(),
+    })),
+    overflowMarkers: [...input.overflowMarkers].map(([id, recordedAt]) => ({
+      id,
+      recordedAt: recordedAt.toISOString(),
+    })),
+    failures: input.failures.map((failure) => ({
+      ...failure,
+      recordedAt: failure.recordedAt.toISOString(),
+    })),
+    queueTombstones: serializeTombstones(input.queueTombstones),
+    failureTombstones: serializeTombstones(input.failureTombstones),
+    overflowTombstones: serializeTombstones(input.overflowTombstones),
+    generation: input.generation,
+    ownerId: input.ownerId ?? undefined,
+    revision: input.revision,
+  };
+}
+
+function hasSerializedQueueContent(
+  state: SerializedTranscriptQueueState
+): boolean {
+  return Boolean(
+    state.items.length ||
+      state.overflowMarkers?.length ||
+      state.failures?.length ||
+      state.queueTombstones?.length ||
+      state.failureTombstones?.length ||
+      state.overflowTombstones?.length
+  );
+}
+
+function sameStorageFence(
+  left: TranscriptQueueStorageFence | null,
+  right: TranscriptQueueStorageFence
+): boolean {
+  return (
+    left?.generation === right.generation && left.ownerId === right.ownerId
+  );
 }
 
 function transcriptQueueShardKeys(): string[] {
@@ -1211,6 +1361,15 @@ function pruneDateMap(values: Map<string, Date>, cutoff: number): void {
   for (const [id, recordedAt] of values) {
     if (recordedAt.getTime() < cutoff) values.delete(id);
   }
+  if (values.size <= QUEUE_CONFIG.maxQueueSize) return;
+  const retained = [...values]
+    .sort(([, left], [, right]) => right.getTime() - left.getTime())
+    .slice(0, QUEUE_CONFIG.maxQueueSize);
+  values.clear();
+  for (const [id, recordedAt] of retained) values.set(id, recordedAt);
+}
+
+function boundDateMap(values: Map<string, Date>): void {
   if (values.size <= QUEUE_CONFIG.maxQueueSize) return;
   const retained = [...values]
     .sort(([, left], [, right]) => right.getTime() - left.getTime())
