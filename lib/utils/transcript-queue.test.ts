@@ -661,6 +661,79 @@ test("quota during a permanent-failure transition preserves the prior durable re
   }
 });
 
+test("background permanent-failure quota loss reloads the prior durable retry", async () => {
+  const storage = new QuotaStorage();
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+  const durableRequest = request({
+    eventId: "writer-1:background-durable-before-quota",
+  });
+  const durableState = JSON.stringify({
+    items: [serializedQueueItem(durableRequest)],
+    generation: 0,
+    ownerId: "user-1",
+    revision: 1,
+  });
+  storage.setItem("transcript_queue_v2", durableState);
+  storage.setItem("transcript_queue_v2:writer:seed", durableState);
+  storage.setItem(
+    "transcript_queue_v2:generation",
+    JSON.stringify({ generation: 0, ownerId: "user-1" })
+  );
+  let resolveBackground!: (response: Response) => void;
+  const backgroundStarted = new Promise<void>((resolveStarted) => {
+    globalThis.fetch = async () => {
+      resolveStarted();
+      return new Promise<Response>((resolve) => {
+        resolveBackground = resolve;
+      });
+    };
+  });
+  console.error = () => undefined;
+
+  const queue = boundQueue();
+  queue.stop();
+  try {
+    await backgroundStarted;
+    storage.rejectWrites = true;
+    resolveBackground(
+      Response.json(
+        { error: "transcript_event_identity_conflict" },
+        { status: 409 }
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(queue.getStatus(), {
+      queueLength: 0,
+      isProcessing: false,
+      failed: 1,
+    });
+
+    storage.rejectWrites = false;
+    const restored = new TranscriptQueue();
+    restored.stop();
+    assert.deepEqual(restored.getStatus(), {
+      queueLength: 1,
+      isProcessing: false,
+      failed: 0,
+    });
+  } finally {
+    storage.rejectWrites = false;
+    queue.stop();
+    console.error = originalConsoleError;
+    globalThis.fetch = originalFetch;
+    restoreGlobal("localStorage", originalStorage);
+  }
+});
+
 test("a never-resolving old-owner retry cannot block a new owner's flush", async () => {
   const storage = new MemoryStorage();
   const originalStorage = Object.getOwnPropertyDescriptor(

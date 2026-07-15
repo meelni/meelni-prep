@@ -345,8 +345,8 @@ export class TranscriptQueue {
           )
             break;
           if (!isRetryable(error)) {
-            this.removeQueuedItem(item.id);
-            if (!isClosedSessionError(error)) {
+            if (isClosedSessionError(error)) this.removeQueuedItem(item.id);
+            else {
               this.recordFailure(item.request, permanentFailureReason(error));
             }
             continue;
