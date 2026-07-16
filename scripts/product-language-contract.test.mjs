@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import ts from "typescript";
@@ -51,6 +51,44 @@ const LEGACY_ANALYTICS_IDENTIFIERS = [
   "new_rep_start_succeeded",
   "new_rep_start_failed",
 ];
+const RETIRED_REWARD_FILES = [
+  "app/api/achievements/route.ts",
+  "app/api/stats/user-summary/route.ts",
+  "lib/achievements.ts",
+  "lib/streaks.ts",
+  "lib/db/queries/user-stats.ts",
+  "lib/db/stats.ts",
+  "components/dashboard/badge-display.tsx",
+  "components/dashboard/next-goal-card.tsx",
+  "components/dashboard/stats/milestone-badge.tsx",
+  "components/dashboard/charts/score-by-difficulty.tsx",
+  "components/interview/celebration-modal.tsx",
+  "components/interview/badges-earned.tsx",
+  "components/interview/session-stats-card.tsx",
+  "components/ui/confetti.tsx",
+  "components/feedback/drill-list.tsx",
+  "scripts/ralph/prd.engagement-retention.json",
+];
+const ACTIVE_PROGRESS_FILES = [
+  "lib/workflows/end-interview-session.ts",
+  "lib/evaluation/insights-aggregator.ts",
+  "app/api/insights/route.ts",
+  "components/dashboard/sections/overview.tsx",
+  "components/dashboard/sections/analytics.tsx",
+  "app/setup/components/difficulty-selector.tsx",
+  "components/feedback/attempt-comparison.tsx",
+];
+const ACTIVE_RUNTIME_ROOTS = ["app", "components", "lib", "packages"];
+const LEGACY_REWARD_COMPATIBILITY_FILES = new Set([
+  "lib/db/account-export.ts",
+  "lib/db/schema-core.ts",
+  "lib/db/schema.ts",
+  "lib/workflows/export-account-data.ts",
+]);
+const RETIRED_REWARD_MECHANIC =
+  /updateStreak|checkAndAwardAchievements|currentStreak|longestStreak|Week Warrior|Badges Earned|\bTrophy\b|\bDumbbell\b|\bFlame\b|\bConfetti\b/i;
+const LEGACY_REWARD_PERSISTENCE =
+  /\b(?:streakCurrent|streakLongest|lastPracticeDate|userAchievement)\b|\b(?:streak_current|streak_longest|last_practice_date|user_achievement)\b/;
 const PROHIBITION_CUE = /\b(?:do not|don't|avoid|must not|never|cannot)\b/gi;
 const PROHIBITION_BREAK = /[,.;]|\b(?:but|however|yet)\b/i;
 const FITNESS_LANGUAGE = /\b(?:gym|rep|reps|workout|workouts|drill|drills)\b/i;
@@ -58,8 +96,7 @@ const UNSUPPORTED_FEEDBACK_TIMING =
   /\b(?:real[- ]time|instant|immediate)\b.{0,30}\bfeedback\b|\bfeedback\b.{0,30}\b(?:real[- ]time|instant|immediate)\b/i;
 const UNSUPPORTED_QUANTIFIED_LATENCY =
   /\b(?:takes?|ready|arrives?|complete[sd]?|done)\b.{0,24}\b(?:in|within|under|less than|about|around)?\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\bexpect\b.{0,30}\b(?:feedback|review|analysis)\b.{0,20}\b(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\b|\b(?:usually|typically)?\s*(?:in|within|under|less than|about|around)\s*(?:a|an|\d+)\s*(?:seconds?|minutes?|secs?|mins?)\s*(?:for|until)\s*(?:feedback|review|analysis)\b/i;
-const QUANTIFIED_TIME_UNIT =
-  /\b(?:seconds?|minutes?|secs?|mins?)\b/i;
+const QUANTIFIED_TIME_UNIT = /\b(?:seconds?|minutes?|secs?|mins?)\b/i;
 const FEEDBACK_LATENCY_CONTEXT =
   /\b(?:feedback|review|analysis|analyzing|ready|wait|available|arrives?|takes?|done|complete[sd]?|expect|have your)\b/i;
 const UNSUPPORTED_ESTIMATE_CONTEXT = /\bestimated time remaining\b/i;
@@ -328,6 +365,40 @@ test("active product surfaces use interview-practice language", async () => {
     for (const [label, pattern] of forbiddenLanguage) {
       if (pattern.test(customerCopy)) violations.push(`${file}: ${label}`);
     }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test("retired reward mechanics cannot return to active product paths", async () => {
+  for (const file of RETIRED_REWARD_FILES) {
+    await assert.rejects(access(path.join(ROOT, file)));
+  }
+
+  const violations = [];
+  for (const file of ACTIVE_PROGRESS_FILES) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    if (RETIRED_REWARD_MECHANIC.test(source)) violations.push(file);
+  }
+
+  for (const root of ACTIVE_RUNTIME_ROOTS) {
+    for (const file of await sourceFiles(root)) {
+      if (LEGACY_REWARD_COMPATIBILITY_FILES.has(file)) continue;
+      const source = await readFile(path.join(ROOT, file), "utf8");
+      if (LEGACY_REWARD_PERSISTENCE.test(source)) violations.push(file);
+    }
+  }
+
+  const activeBacklog = await readFile(
+    path.join(ROOT, "scripts/ralph/prd.json"),
+    "utf8"
+  );
+  if (
+    /gamification|practice streak|streak reminder|streaks and achievements|achievement badge|earned badge|high score|dopamine hit/i.test(
+      activeBacklog
+    )
+  ) {
+    violations.push("scripts/ralph/prd.json");
   }
 
   assert.deepEqual(violations, []);
