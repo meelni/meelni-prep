@@ -331,6 +331,69 @@ test("a token is withheld when database time advances through its exp during sig
   );
 });
 
+test("version-one sessions require durable ready provisioning evidence", async () => {
+  const cases: Array<Partial<JoinableInterviewSession>> = [
+    { startContractVersion: 1, provisioningState: "pending" },
+    { startContractVersion: 1, provisioningState: "provisioning" },
+    { startContractVersion: 1, provisioningState: "failed" },
+    {
+      startContractVersion: 1,
+      provisioningState: "ready",
+      provisionedAt: null,
+    },
+    { startContractVersion: 2 },
+  ];
+
+  for (const fields of cases) {
+    const result = await joinInterviewSessionWorkflow(
+      { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+      createDeps({ getSession: async () => createSession(fields) })
+    );
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.body.error, "session_not_joinable");
+  }
+
+  const ready = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () =>
+        createSession({
+          startContractVersion: 1,
+          provisioningState: "ready",
+          provisionedAt: new Date("2026-07-09T12:00:01.000Z"),
+        }),
+    })
+  );
+  assert.equal(ready.ok, true);
+});
+
+test("version-zero sessions remain joinable without provisioning evidence", async () => {
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () =>
+        createSession({
+          startContractVersion: 0,
+          provisioningState: "legacy",
+          provisionedAt: null,
+        }),
+    })
+  );
+  assert.equal(result.ok, true);
+});
+
+test("join workflow fails closed on an invalid authorization clock", async () => {
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () =>
+        createSession({ databaseNow: new Date(Number.NaN) }),
+    })
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.body.error, "session_not_joinable");
+});
+
 test("join workflow rejects sessions without voice-room entitlement", async () => {
   for (const session of [
     createSession({ mode: "text" }),

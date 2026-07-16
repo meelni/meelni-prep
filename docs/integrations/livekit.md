@@ -14,6 +14,10 @@ configuration, not source-owned constants.
 - `POST /api/livekit/token` is an authenticated reconnect-token endpoint. It
   accepts only a session ID and derives the LiveKit room, participant identity,
   and participant name from the authenticated user and stored session. Token
+  issuance is protected by the same default-off relaunch access gate as start.
+  The interview transcript callback uses the configured application origin or
+  the trusted Vercel deployment origin and fails closed outside development if
+  neither exists. Token
   requests use an exact, database-backed limit of ten accepted attempts in the
   trailing 60 seconds per authenticated user and return `429` with
   `Retry-After` when exceeded. Shared-store failures fail closed with `503`.
@@ -70,11 +74,23 @@ npm run typecheck
   strategy accepts it.
 - Preserve correlation across session ID, room name, selected question,
   transcript turns, and feedback.
-- Treat room creation, dispatch, and token minting as one start operation for
-  full interviews; failed dispatch should not consume a usable session.
+- Version-1 full-interview starts use the client attempt UUID as the session ID,
+  derive a deterministic room name, validate exact room metadata, and reconcile
+  exactly one matching dispatch. Ready replays mint a fresh short-lived token
+  without creating another room, dispatch, deadline, reservation, or session.
+  Every mint requires a fresh locked database authorization. Transient database
+  authorization failures withhold credentials but do not delete a healthy
+  ready room; destructive reconciliation requires durable terminal or expired
+  state.
+- The interview worker waits for the authenticated `candidate_identity` before
+  greeting. Legacy metadata waits for the first non-agent participant; neither
+  path may greet an empty room.
+- Start leaves the credit reserved. Consume only after canonical activation and
+  the first persisted, non-blank, fully delivered version-2 interviewer turn.
+  Pre-usable terminal outcomes release the reservation.
 - Treat an authenticated, owned, active `voice_video` session created through
   the credit-gated start workflow as the reconnect entitlement. Do not recheck
-  remaining credit balance after the start credit was consumed. Reject absent,
+  remaining credit balance after its credit was durably reserved. Reject absent,
   cross-user, completed, failed, ended, expired, text-only, and roomless
   sessions before issuing a short-lived reconnect token.
 - Consume the shared reconnect budget before reading the session or signing a

@@ -30,8 +30,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
-  useSearchParams: () =>
-    new URLSearchParams("roundType=product_sense&mode=voice_video"),
+  useSearchParams: () => new URLSearchParams(`sessionId=${SESSION_ID}`),
 }));
 
 vi.mock("@/app/providers/auth-provider", () => ({
@@ -143,7 +142,7 @@ describe("active interview page lifecycle", () => {
     mocks.flush.mockResolvedValue({ settled: true, pending: 0, failed: 0 });
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
-    vi.stubGlobal("fetch", vi.fn(createSessionResponse));
+    vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
   });
 
   afterEach(() => {
@@ -186,7 +185,6 @@ describe("active interview page lifecycle", () => {
     const request = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url === "/api/session/start") return createSessionResponse();
         if (url === `/api/session/${SESSION_ID}/transcript`) {
           return Response.json({
             turns: [
@@ -209,7 +207,7 @@ describe("active interview page lifecycle", () => {
             ],
           });
         }
-        throw new Error(`Unexpected request: ${url} ${init?.method ?? "GET"}`);
+        return activeInterviewResponse(input, init);
       }
     );
     vi.stubGlobal("fetch", request);
@@ -277,19 +275,13 @@ describe("active interview page lifecycle", () => {
   it("disconnects and freezes the room after an ambiguous end transport failure", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/session/start") return createSessionResponse();
       if (url === `/api/session/${SESSION_ID}/transcript`) {
         return Response.json({ turns: [] });
       }
       if (url === "/api/interview/end") {
         throw new TypeError("connection reset after request write");
       }
-      if (url === `/api/session/${SESSION_ID}`) {
-        return Response.json({
-          session: { lifecycleState: "active", feedbackReady: false },
-        });
-      }
-      throw new Error(`Unexpected request: ${url}`);
+      return activeInterviewResponse(input);
     });
     vi.stubGlobal("fetch", request);
 
@@ -349,14 +341,37 @@ describe("active interview page lifecycle", () => {
   });
 });
 
-function createSessionResponse() {
-  return Response.json({
-    sessionId: SESSION_ID,
-    token: "short-lived-token",
-    url: "wss://preview.livekit.cloud",
-    roomName: "interview-room",
-    deadlineAt: "2099-07-15T22:00:00.000Z",
-    config: { difficulty: "intermediate" },
-    question: null,
-  });
+function activeInterviewResponse(input: RequestInfo | URL, _init?: RequestInit) {
+  const url = String(input);
+  if (url === `/api/session/${SESSION_ID}`) {
+    return Response.json({
+      session: {
+        id: SESSION_ID,
+        livekitRoomName: "interview-room",
+        startedAt: "2099-07-15T21:00:00.000Z",
+        deadlineAt: "2099-07-15T22:00:00.000Z",
+        lifecycleState: "active",
+        lifecycleVersion: 3,
+        endedAt: null,
+        reconnectDeadlineAt: null,
+        feedbackReady: false,
+        roundType: "product_sense",
+        mode: "voice_video",
+        config: { difficulty: "intermediate" },
+      },
+    });
+  }
+  if (url === "/api/livekit/token") {
+    return Response.json({
+      token: "short-lived-token",
+      url: "wss://preview.livekit.cloud",
+      roomName: "interview-room",
+      authorizationVersion: 3,
+      expiresAt: "2099-07-15T21:05:00.000Z",
+    });
+  }
+  if (url === `/api/session/${SESSION_ID}/transcript`) {
+    return Response.json({ turns: [] });
+  }
+  throw new Error(`Unexpected request: ${url}`);
 }

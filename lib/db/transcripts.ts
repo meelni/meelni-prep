@@ -26,6 +26,7 @@ import {
 } from "@/lib/workflows/ingest-transcript-event";
 import type { TranscriptInterruptionMarkerStore } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import type { TranscriptRuntimeSettlementStore } from "@/lib/workflows/ingest-transcript-runtime-settlement";
+import { convergeDrizzleInterviewCreditSettlement } from "./interview-credit-settlement";
 import type { TranscriptRuntimeWriterStore } from "@/lib/workflows/ingest-transcript-runtime-writer";
 
 export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
@@ -471,6 +472,8 @@ export function createDrizzleTranscriptIngestStore(
   database: TranscriptPersistenceDatabase = db
 ): TranscriptIngestStore<PersistedTranscriptTurn> {
   return {
+    convergeCredit: (sessionId) =>
+      convergeDrizzleInterviewCreditSettlement(sessionId),
     async persist({ principal, event }) {
       return database.transaction(async (tx) => {
         const ownershipPredicate =

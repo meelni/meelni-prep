@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 
 import {
   buildStripeDeletionSubjects,
@@ -12,6 +12,7 @@ import { db } from "./index";
 import {
   accountDeletionRequest,
   appUser,
+  creditReservation,
   feedback,
   interviewSession,
   livekitReconnectRateLimit,
@@ -398,10 +399,32 @@ export async function listRecoverableAccountDeletions(
 
 export async function deleteUserApplicationData(userId: string) {
   await db.transaction(async (tx) => {
+    // Match the billing settlement lock order: user -> sessions ->
+    // reservations. Account deletion is allowed to erase the audit rows, but
+    // it must not deadlock a concurrent settlement while doing so.
+    const users = await tx
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("update");
+    if (!users[0]) return;
+
     const sessions = await tx
       .select({ id: interviewSession.id })
       .from(interviewSession)
-      .where(eq(interviewSession.userId, userId));
+      .where(eq(interviewSession.userId, userId))
+      .orderBy(asc(interviewSession.id))
+      .for("update");
+
+    // Version-1 reservations reference their interview session with NO ACTION
+    // so audit evidence cannot disappear through ordinary session deletion.
+    // Account erasure is the authorized exception and removes the user's
+    // reservations after acquiring the same parent locks as settlement and
+    // before deleting the referenced sessions.
+    await tx
+      .delete(creditReservation)
+      .where(eq(creditReservation.userId, userId));
 
     for (const { id: sessionId } of sessions) {
       await tx.delete(feedback).where(eq(feedback.sessionId, sessionId));
