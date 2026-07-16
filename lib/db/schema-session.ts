@@ -13,6 +13,9 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type {
+  InterviewBillingFault,
+  InterviewCreditSettlementAction,
+  InterviewCreditSettlementReason,
   InterviewLifecycleState,
   InterviewTerminalReason,
   LegacyInterviewSessionStatus,
@@ -53,6 +56,25 @@ export const interviewSession = pgTable(
     provisionedAt: timestamp("provisioned_at", { withTimezone: true }),
     usableAt: timestamp("usable_at", { withTimezone: true }),
     usableTranscriptEventId: text("usable_transcript_event_id"),
+
+    // Machine-readable delivery fault and exactly-once credit policy evidence.
+    // User-safe feedback text remains separate from these support fields.
+    billingFault: text("billing_fault").$type<InterviewBillingFault>(),
+    billingFaultCode: text("billing_fault_code"),
+    runtimeFailureEventId: text("runtime_failure_event_id"),
+    runtimeFailureCode: text("runtime_failure_code"),
+    runtimeFailureRetryable: boolean("runtime_failure_retryable"),
+    runtimeFailedAt: timestamp("runtime_failed_at", { withTimezone: true }),
+    creditPolicyVersion: text("credit_policy_version"),
+    creditSettlementAction: text(
+      "credit_settlement_action"
+    ).$type<InterviewCreditSettlementAction>(),
+    creditSettlementReason: text(
+      "credit_settlement_reason"
+    ).$type<InterviewCreditSettlementReason>(),
+    creditSettlementIdempotencyKey: text("credit_settlement_idempotency_key"),
+    creditSettledAt: timestamp("credit_settled_at", { withTimezone: true }),
+    creditMakeGoodGrantId: uuid("credit_make_good_grant_id"),
 
     // Canonical lifecycle state. The legacy status column remains during the
     // staged workflow migration so existing readers and writers keep working.
@@ -188,6 +210,87 @@ export const interviewSession = pgTable(
         length(${table.usableTranscriptEventId}) > 0
       )`
     ),
+    billingFaultShapeCheck: check(
+      "interview_session_billing_fault_shape_check",
+      sql`(
+        ${table.startContractVersion} = 0 AND
+        ${table.billingFault} IS NULL AND
+        ${table.billingFaultCode} IS NULL
+      ) OR (
+        ${table.lifecycleState} IN ('completed', 'abandoned', 'failed') AND
+        ${table.billingFault} IN ('user', 'provider', 'integrity') AND
+        ${table.billingFaultCode} ~ '^[a-z0-9][a-z0-9_.-]{0,63}$'
+      ) OR (
+        ${table.lifecycleState} = 'ending' AND (
+          (${table.billingFault} IS NULL AND ${table.billingFaultCode} IS NULL) OR
+          (${table.billingFault} IN ('user', 'provider', 'integrity') AND
+            ${table.billingFaultCode} ~ '^[a-z0-9][a-z0-9_.-]{0,63}$')
+        )
+      ) OR (
+        ${table.lifecycleState} NOT IN ('ending', 'completed', 'abandoned', 'failed') AND
+        ${table.billingFault} IS NULL AND
+        ${table.billingFaultCode} IS NULL
+      )`
+    ),
+    runtimeFailureShapeCheck: check(
+      "interview_session_runtime_failure_shape_check",
+      sql`(
+        ${table.runtimeFailureEventId} IS NULL AND
+        ${table.runtimeFailureCode} IS NULL AND
+        ${table.runtimeFailureRetryable} IS NULL AND
+        ${table.runtimeFailedAt} IS NULL
+      ) OR (
+        ${table.startContractVersion} = 1 AND
+        ${table.billingFault} = 'provider' AND
+        length(${table.runtimeFailureEventId}) > 0 AND
+        ${table.runtimeFailureCode} = ${table.billingFaultCode} AND
+        ${table.runtimeFailureCode} ~ '^[a-z0-9][a-z0-9_.-]{0,63}$' AND
+        ${table.runtimeFailureRetryable} IS NOT NULL AND
+        ${table.runtimeFailedAt} IS NOT NULL
+      )`
+    ),
+    creditSettlementShapeCheck: check(
+      "interview_session_credit_settlement_shape_check",
+      sql`(
+        ${table.creditPolicyVersion} IS NULL AND
+        ${table.creditSettlementAction} IS NULL AND
+        ${table.creditSettlementReason} IS NULL AND
+        ${table.creditSettlementIdempotencyKey} IS NULL AND
+        ${table.creditSettledAt} IS NULL AND
+        ${table.creditMakeGoodGrantId} IS NULL
+      ) OR (
+        ${table.startContractVersion} = 1 AND
+        ${table.lifecycleState} IN ('completed', 'abandoned', 'failed') AND
+        ${table.billingFault} IS NOT NULL AND
+        ${table.creditPolicyVersion} = 'interview-credit-recovery.v1' AND
+        ${table.creditSettlementAction} IN ('release', 'refund', 'retain') AND
+        ${table.creditSettlementReason} IN (
+          'terminal_before_usable',
+          'provider_failure_after_usable',
+          'integrity_failure_after_usable',
+          'user_outcome_after_usable'
+        ) AND
+        length(${table.creditSettlementIdempotencyKey}) > 0 AND
+        ${table.creditSettledAt} IS NOT NULL AND
+        (${table.creditMakeGoodGrantId} IS NULL OR
+          ${table.creditSettlementAction} = 'refund')
+      )`
+    ),
+    creditSettlementPolicyCheck: check(
+      "interview_session_credit_settlement_policy_check",
+      sql`${table.creditSettlementAction} IS NULL OR
+        (${table.creditSettlementAction} = 'release' AND
+          ${table.creditSettlementReason} = 'terminal_before_usable') OR
+        (${table.creditSettlementAction} = 'refund' AND
+          ${table.billingFault} = 'provider' AND
+          ${table.creditSettlementReason} = 'provider_failure_after_usable') OR
+        (${table.creditSettlementAction} = 'refund' AND
+          ${table.billingFault} = 'integrity' AND
+          ${table.creditSettlementReason} = 'integrity_failure_after_usable') OR
+        (${table.creditSettlementAction} = 'retain' AND
+          ${table.billingFault} = 'user' AND
+          ${table.creditSettlementReason} = 'user_outcome_after_usable')`
+    ),
     lifecycleStateCheck: check(
       "interview_session_lifecycle_state_check",
       sql`${table.lifecycleState} IN ('created', 'connecting', 'active', 'reconnecting', 'ending', 'completed', 'abandoned', 'failed')`
@@ -267,5 +370,18 @@ export const interviewSession = pgTable(
     deadlineRoomCleanupIdx: index(
       "interview_session_deadline_room_cleanup_idx"
     ).on(table.deadlineRoomCleanupStatus, table.terminalReason),
+    runtimeFailureEventUnique: uniqueIndex(
+      "interview_session_runtime_failure_event_idx"
+    )
+      .on(table.runtimeFailureEventId)
+      .where(sql`${table.runtimeFailureEventId} IS NOT NULL`),
+    creditSettlementRecoveryIdx: index(
+      "interview_session_credit_settlement_recovery_idx"
+    ).on(
+      table.startContractVersion,
+      table.lifecycleState,
+      table.creditSettledAt,
+      table.lastTransitionAt
+    ),
   })
 );

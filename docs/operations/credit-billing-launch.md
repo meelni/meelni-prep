@@ -33,6 +33,17 @@ isolated Preview database. The report must not contain user IDs, Stripe IDs,
 balances, or other customer data. Preview currently shares Production data, so
 do not run the rehearsal until SAV-226 establishes an isolated environment.
 
+Migration `0013` adds `creditRecoveryIntegrity` and
+`creditRecoveryLaunchReady`. Strict launch preflight fails when a version-1
+terminal session lacks policy evidence or when release/refund/retain disagrees
+with its reservation state. The five-minute `interview-credit-recovery` worker
+examines at most 250 rows in stable order and rechecks every candidate under the
+canonical locks before repairing it.
+
+Expired nonterminal active reservations release, while expired nonterminal
+consumed reservations refund; this also closes the fallback path when a fatal
+runtime report could not settle before the runtime exited.
+
 ## Migration And Backfill Plan
 
 Do not run production data changes until the preview checks below pass and an owner has reviewed current paid-user state.
@@ -142,7 +153,41 @@ Credit enforcement checks:
 - User with 1 available credit can start any PM round type.
 - User with 0 credits receives `no_credits_remaining`.
 - LiveKit dispatch failure releases the reserved credit.
-- Successful start consumes exactly 1 credit.
+- Successful usable delivery consumes exactly 1 credit.
+- Provider failure before usable delivery releases exactly once.
+- Provider or transcript-integrity failure after usable delivery refunds once.
+- User end, time limit, and post-usable abandonment retain the consumed credit.
+- Feedback dispatch/generation failure does not refund.
+- A refund allocated from an expired source produces one non-expiring make-good
+  grant and never revives the expired source grant.
+
+## Support Inspection
+
+Use aggregate counts for routine monitoring. For an individual billing support
+case, access the authorized support console or run the minimum scoped query in a
+protected session; do not copy customer identifiers into tickets or chat.
+
+```sql
+SELECT
+  id AS session_id,
+  lifecycle_state,
+  terminal_reason,
+  billing_fault,
+  billing_fault_code,
+  credit_policy_version,
+  credit_settlement_action,
+  credit_settlement_reason,
+  credit_settled_at,
+  credit_make_good_grant_id
+FROM interview_session
+WHERE id = $1;
+```
+
+The policy evidence is immutable. Support may explain the stored action but
+must not edit it directly. Escalate any missing or contradictory tuple as a
+ledger-integrity incident and run recovery; never issue an ad hoc table update.
+Raw runtime exceptions, room tokens, recordings, transcripts, and provider
+secrets are not support-visible billing evidence.
 
 ## Analytics Events
 

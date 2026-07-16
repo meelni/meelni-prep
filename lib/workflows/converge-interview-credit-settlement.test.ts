@@ -67,13 +67,19 @@ test("partial, user, legacy, and blank turns never cross the usable barrier", as
 test("a terminal session without usable evidence releases once and replays", async () => {
   const fixture = createFixture({ lifecycleState: "abandoned" });
 
-  assert.deepEqual(await fixture.converge(), { disposition: "released" });
-  assert.deepEqual(await fixture.converge(), { disposition: "released" });
+  const expected = {
+    disposition: "released",
+    policyVersion: "interview-credit-recovery.v1",
+    reason: "terminal_before_usable",
+    makeGoodGrantId: null,
+  } as const;
+  assert.deepEqual(await fixture.converge(), expected);
+  assert.deepEqual(await fixture.converge(), expected);
   assert.equal(fixture.reservationStatus, "released");
   assert.equal(fixture.terminalWrites, 1);
 });
 
-test("concurrent terminal convergence consumes when durable usable evidence exists", async () => {
+test("concurrent terminal convergence consumes then records one retained policy", async () => {
   const fixture = createFixture({
     lifecycleState: "completed",
     activatedAt: new Date("2026-07-10T08:00:00.000Z"),
@@ -88,11 +94,49 @@ test("concurrent terminal convergence consumes when durable usable evidence exis
 
   assert.deepEqual(
     results.map((result) => result.disposition),
-    ["consumed", "consumed", "consumed"]
+    ["retained", "retained", "retained"]
   );
   assert.equal(fixture.reservationStatus, "consumed");
   assert.equal(fixture.terminalWrites, 1);
   assert.equal(fixture.session.usableTranscriptEventId, DELIVERED_EVENT_ID);
+});
+
+test("provider failure after usable evidence refunds exactly once", async () => {
+  const fixture = createFixture({
+    lifecycleState: "failed",
+    activatedAt: new Date("2026-07-10T08:00:00.000Z"),
+    usableAt: new Date("2026-07-10T08:00:01.000Z"),
+    usableTranscriptEventId: DELIVERED_EVENT_ID,
+    billingFault: "provider",
+    billingFaultCode: "voice_runtime_provider_failed",
+  });
+  fixture.turns.push(qualifyingTurn());
+  fixture.seedConsumed();
+
+  const results = await Promise.all(
+    Array.from({ length: 10 }, () => fixture.converge())
+  );
+
+  assert.equal(results.every((result) => result.disposition === "refunded"), true);
+  assert.equal(fixture.reservationStatus, "refunded");
+  assert.equal(fixture.terminalWrites, 2);
+});
+
+test("user outcome after usable evidence retains without refund", async () => {
+  const fixture = createFixture({
+    lifecycleState: "completed",
+    activatedAt: new Date("2026-07-10T08:00:00.000Z"),
+    usableAt: new Date("2026-07-10T08:00:01.000Z"),
+    usableTranscriptEventId: DELIVERED_EVENT_ID,
+    billingFault: "user",
+    billingFaultCode: "time_limit",
+  });
+  fixture.turns.push(qualifyingTurn());
+  fixture.seedConsumed();
+
+  assert.equal((await fixture.converge()).disposition, "retained");
+  assert.equal(fixture.reservationStatus, "consumed");
+  assert.equal(fixture.terminalWrites, 1);
 });
 
 test("stored usable evidence must still identify a qualifying canonical turn", async () => {
@@ -175,13 +219,29 @@ function createFixture(
     activatedAt: null,
     usableAt: null,
     usableTranscriptEventId: null,
+    billingFault: null,
+    billingFaultCode: null,
+    creditPolicyVersion: null,
+    creditSettlementAction: null,
+    creditSettlementReason: null,
+    creditSettlementIdempotencyKey: null,
+    creditSettledAt: null,
+    creditMakeGoodGrantId: null,
     ...overrides,
   };
+  if (
+    ["completed", "abandoned", "failed"].includes(session.lifecycleState) &&
+    session.billingFault === null
+  ) {
+    session.billingFault = "user";
+    session.billingFaultCode = "user_end";
+  }
   const turns: TestTurn[] = [];
   const lockOrder: string[] = [];
-  const transactions = new Map<string, "consume" | "release">();
+  const transactions = new Map<string, "consume" | "release" | "refund">();
   const tracked: InterviewCreditSettlementEvidence[] = [];
-  let reservationStatus: "active" | "consumed" | "released" = "active";
+  let reservationStatus: "active" | "consumed" | "released" | "refunded" =
+    "active";
   let terminalWrites = 0;
   let failUsableWrite = false;
   let transactionTail = Promise.resolve();
@@ -218,6 +278,10 @@ function createFixture(
             );
             return turn ? { eventId: turn.eventId } : null;
           },
+          async getReservation() {
+            lockOrder.push("reservation");
+            return { status: reservationStatus };
+          },
           async settle(input) {
             lockOrder.push("reservation", "grants");
             const existing = transactions.get(input.idempotencyKey);
@@ -225,9 +289,17 @@ function createFixture(
               throw new Error("credit_transaction_idempotency_conflict");
             }
             const nextStatus =
-              input.action === "consume" ? "consumed" : "released";
+              input.action === "consume"
+                ? "consumed"
+                : input.action === "refund"
+                  ? "refunded"
+                  : "released";
             if (!existing) {
-              if (reservationStatus !== "active") {
+              const valid =
+                (reservationStatus === "active" &&
+                  (nextStatus === "consumed" || nextStatus === "released")) ||
+                (reservationStatus === "consumed" && nextStatus === "refunded");
+              if (!valid) {
                 throw new Error("credit_reservation_terminal_conflict");
               }
               reservationStatus = nextStatus;
@@ -247,6 +319,17 @@ function createFixture(
             }
             session.usableAt = usableAt;
             session.usableTranscriptEventId = eventId;
+          },
+          async recordPolicySettlement(input) {
+            if (session.creditSettledAt) {
+              throw new Error("interview_credit_settlement_evidence_write_failed");
+            }
+            session.creditPolicyVersion = input.policyVersion;
+            session.creditSettlementAction = input.action;
+            session.creditSettlementReason = input.reason;
+            session.creditSettlementIdempotencyKey = input.idempotencyKey;
+            session.creditSettledAt = input.settledAt;
+            session.creditMakeGoodGrantId = input.makeGoodGrantId;
           },
         });
       } catch (error) {
@@ -284,6 +367,14 @@ function createFixture(
     get terminalWrites() {
       return terminalWrites;
     },
+    seedConsumed() {
+      reservationStatus = "consumed";
+      transactions.set(
+        `consume:interview-start:${USER_ID}:${SESSION_ID}`,
+        "consume"
+      );
+      terminalWrites = 1;
+    },
     get failUsableWrite() {
       return failUsableWrite;
     },
@@ -294,7 +385,7 @@ function createFixture(
 }
 
 function settlementEvidence(
-  transactionType: "consume" | "release",
+  transactionType: "consume" | "release" | "refund",
   idempotencyKey: string
 ): InterviewCreditSettlementEvidence {
   return {

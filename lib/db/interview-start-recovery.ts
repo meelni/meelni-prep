@@ -142,6 +142,8 @@ export function createDrizzleInterviewStartRecoveryStore(
             lifecycleState: "failed",
             lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
             terminalReason: "provider_failure",
+            billingFault: "provider",
+            billingFaultCode: "start_recovery_timeout",
             status: projectLegacyInterviewSessionStatus({
               state: "failed",
               terminalReason: "provider_failure",

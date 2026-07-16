@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
 import {
@@ -34,7 +35,7 @@ import {
   getStableStartDatabaseSchemaContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
-  STABLE_START_SCHEMA_FINGERPRINT,
+  CREDIT_RECOVERY_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -162,6 +163,7 @@ async function run() {
     );
     await verifyStableStartContract(clean);
     await verifyStableStartConcurrency(clean, cleanUrl);
+    await verifyProviderCreditRecovery(clean, cleanUrl);
     await verifyStableStartNegativePreflight(clean, cleanUrl);
     assertZeroStableStartV1Integrity(
       runPreflight(cleanUrl, true, "reconciled")!
@@ -170,7 +172,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, STABLE_START_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, CREDIT_RECOVERY_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -419,6 +421,7 @@ interface MigrationPreflightCount {
 }
 
 interface MigrationPreflightResult {
+  startingContract: string;
   lifecycleBackfill: {
     phase: "not_ready" | "preview" | "applied";
     counts: MigrationPreflightCount[];
@@ -426,6 +429,11 @@ interface MigrationPreflightResult {
   creditLedgerIntegrity: CreditLedgerIntegrity;
   stableStartIntegrity: StableStartIntegrity;
   stableStartLaunchReady: boolean;
+  creditRecoveryIntegrity: {
+    terminal_missing_policy: number;
+    settled_policy_mismatches: number;
+  };
+  creditRecoveryLaunchReady: boolean;
 }
 
 interface StableStartIntegrity {
@@ -3940,7 +3948,7 @@ async function verifyStableStartNegativePreflight(
     assert.equal(strict.status, 1);
     assert.match(
       `${strict.stdout}\n${strict.stderr}`,
-      /Stable-start launch readiness checks are not clean/
+      /Interview credit launch readiness checks are not clean/
     );
   } finally {
     await sql`
@@ -4470,8 +4478,497 @@ async function verifyStableStartConcurrency(
   }
 }
 
+async function verifyProviderCreditRecovery(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    { createCreditLedgerService },
+    { createDrizzleCreditLedgerStore, withDrizzleCreditLedgerUserTransaction },
+    {
+      createDrizzleInterviewCreditSettlementStore,
+      withDeferredInterviewCreditSettlementTracking,
+    },
+    { createDrizzleInterviewRuntimeFailureStore },
+    { createDrizzleInterviewCreditRecoveryStore },
+    { convergeInterviewCreditSettlement },
+    { ingestInterviewRuntimeEvent },
+    schema,
+  ] = await Promise.all([
+    import("../lib/billing/credits"),
+    import("../lib/billing/credit-ledger-store"),
+    import("../lib/db/interview-credit-settlement"),
+    import("../lib/db/interview-runtime-events"),
+    import("../lib/db/interview-credit-recovery"),
+    import("../lib/workflows/converge-interview-credit-settlement"),
+    import("../lib/workflows/ingest-interview-runtime-event"),
+    import("../lib/db/schema"),
+  ]);
+  const userId = "53000000-0000-4000-8000-000000000001";
+  const providerAttempt = "54000000-0000-4000-8000-000000000001";
+  const retainAttempt = "54000000-0000-4000-8000-000000000002";
+  const recoveryUser = "53000000-0000-4000-8000-000000000002";
+  const recoveryAttempt = "54000000-0000-4000-8000-000000000003";
+  const recoveryConsumedAttempt = "54000000-0000-4000-8000-000000000004";
+  const atomicFailureAttempt = "54000000-0000-4000-8000-000000000005";
+  const analyticsRollbackAttempt = "54000000-0000-4000-8000-000000000006";
+  const now = new Date("2026-07-10T14:00:00.000Z");
+  const clients = Array.from({ length: 10 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const databases = clients.map((client) => drizzle(client, { schema }));
+  const ledgers = databases.map((database) =>
+    createCreditLedgerService({
+      store: createDrizzleCreditLedgerStore(database),
+      now: () => now,
+    })
+  );
+  const settlementStores = databases.map((database) =>
+    createDrizzleInterviewCreditSettlementStore(database)
+  );
+
+  const insertSession = async (sessionId: string, owner: string) => {
+    await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, livekit_room_name, config, started_at,
+        start_contract_version, start_attempt_id, start_request_fingerprint,
+        provisioning_state, provisioned_at, lifecycle_state, lifecycle_version,
+        activated_at, runtime_ready_at, status, last_transition_at
+      ) VALUES (
+        ${sessionId}::uuid, ${owner}::uuid, 'product_sense', 'voice_video',
+        ${`interview-${sessionId}`}, '{"duration":30}'::jsonb,
+        ${now.toISOString()}::timestamptz, 1, ${sessionId}::uuid,
+        ${"d".repeat(64)}, 'ready', ${now.toISOString()}::timestamptz,
+        'active', 2, ${now.toISOString()}::timestamptz,
+        ${now.toISOString()}::timestamptz, 'in_progress',
+        ${now.toISOString()}::timestamptz
+      )
+    `;
+  };
+  const reserve = async (sessionId: string, owner: string, index = 0) =>
+    ledgers[index]!.reserveCredit({
+      userId: owner,
+      reservationKey: `interview-start:${owner}:${sessionId}`,
+      sessionId,
+      startContractVersion: 1,
+      startAttemptId: sessionId,
+      expiresAt: new Date(now.getTime() + 40 * 60_000),
+    });
+  const insertTurn = async (sessionId: string, sequence: number) => {
+    await sql`
+      INSERT INTO transcript_runtime_writer (
+        session_id, generation, contract_version, room_name, writer_id,
+        registered_at
+      ) VALUES (
+        ${sessionId}::uuid, 1, 1, ${`interview-${sessionId}`},
+        'credit-recovery-pg', ${now.toISOString()}::timestamptz
+      )
+      ON CONFLICT DO NOTHING
+    `;
+    await sql`
+      INSERT INTO transcript_turn (
+        session_id, contract_version, event_id, writer_id,
+        writer_generation, sequence, room_name, speaker, started_at,
+        ended_at, text, audio_ms, section, delivery_state
+      ) VALUES (
+        ${sessionId}::uuid, 2, ${`credit-recovery:${sessionId}:turn`},
+        'credit-recovery-pg', 1, ${sequence}, ${`interview-${sessionId}`},
+        'interviewer', ${now.toISOString()}::timestamptz,
+        ${new Date(now.getTime() + 1000).toISOString()}::timestamptz,
+        'Welcome to your interview.', 1000, 'opening', 'delivered'
+      )
+    `;
+  };
+  const converge = (sessionId: string, index: number, at = now) =>
+    convergeInterviewCreditSettlement({
+      sessionId,
+      store: settlementStores[index]!,
+      now: at,
+    });
+
+  try {
+    await Promise.all(clients.map((client) => client`SELECT 1`));
+    await seedCreditTestUser(sql, userId, "provider-credit-recovery");
+    await seedCreditTestUser(sql, recoveryUser, "expired-credit-recovery");
+    await ledgers[0]!.grantCredits({
+      userId,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:credit-recovery:provider-grant",
+      includedCredits: 1,
+      expiresAt: new Date(now.getTime() + 30 * 86_400_000),
+    });
+    await insertSession(providerAttempt, userId);
+    await reserve(providerAttempt, userId);
+    await insertTurn(providerAttempt, 1);
+    assert.equal((await converge(providerAttempt, 0)).disposition, "consumed");
+    await sql`
+      UPDATE credit_grant
+      SET expires_at = ${new Date(now.getTime() - 1).toISOString()}::timestamptz
+      WHERE user_id = ${userId}::uuid AND source = 'admin'
+    `;
+
+    const failure = {
+      contract_version: 1 as const,
+      event_id: "provider-failure:pg:voice_runtime_provider_failed",
+      session_id: providerAttempt,
+      type: "provider_failed" as const,
+      occurred_at: new Date(now.getTime() + 2_000).toISOString(),
+      runtime_ref: { provider: "livekit", id: `interview-${providerAttempt}` },
+      failure: {
+        reason: "provider_failure" as const,
+        code: "voice_runtime_provider_failed",
+        retryable: true,
+      },
+    };
+    const providerResults = await runConcurrently(
+      databases.map(
+        (database) => () =>
+          ingestInterviewRuntimeEvent({
+            requestSessionId: providerAttempt,
+            event: failure,
+            store: createDrizzleInterviewRuntimeFailureStore(database),
+          })
+      )
+    );
+    assert.equal(
+      rejected(providerResults).length,
+      0,
+      rejected(providerResults)
+        .map(({ reason }) => errorMessage(reason))
+        .join(" | ")
+    );
+    assert.ok(
+      fulfilled(providerResults).every(
+        ({ value }) => value.ok && value.creditDisposition === "refunded"
+      )
+    );
+    const [providerState] = await sql<
+      {
+        status: string;
+        refunds: number;
+        make_goods: number;
+        action: string;
+        fault: string;
+        skipped_feedback: number;
+      }[]
+    >`
+      SELECT reservation.status,
+        (SELECT count(*)::int FROM credit_transaction transaction
+          WHERE transaction.reservation_id = reservation.id
+            AND transaction.type = 'refund') AS refunds,
+        (SELECT count(*)::int FROM credit_grant grant_row
+          WHERE grant_row.user_id = session.user_id
+            AND grant_row.source = 'refund') AS make_goods,
+        session.credit_settlement_action AS action,
+        session.billing_fault AS fault,
+        (SELECT count(*)::int FROM feedback feedback_row
+          WHERE feedback_row.session_id = session.id
+            AND feedback_row.status = 'skipped'
+            AND feedback_row.dispatch_status = 'not_required') AS skipped_feedback
+      FROM interview_session session
+      JOIN credit_reservation reservation ON reservation.session_id = session.id
+      WHERE session.id = ${providerAttempt}::uuid
+    `;
+    assert.deepEqual(providerState, {
+      status: "refunded",
+      refunds: 1,
+      make_goods: 1,
+      action: "refund",
+      fault: "provider",
+      skipped_feedback: 1,
+    });
+    const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
+    assert.equal(refundedPreflight.startingContract, "credit_recovery");
+    assert.equal(
+      refundedPreflight.stableStartIntegrity.usable_without_consume,
+      0
+    );
+    assert.equal(refundedPreflight.creditRecoveryLaunchReady, true);
+    await assert.rejects(
+      () => sql`
+        UPDATE interview_session SET credit_settlement_action = 'retain'
+        WHERE id = ${providerAttempt}::uuid
+      `,
+      /immutable/
+    );
+
+    await insertSession(retainAttempt, userId);
+    await reserve(retainAttempt, userId);
+    await insertTurn(retainAttempt, 2);
+    assert.equal((await converge(retainAttempt, 0)).disposition, "consumed");
+    await sql`
+      UPDATE interview_session
+      SET lifecycle_state = 'completed', lifecycle_version = lifecycle_version + 2,
+        terminal_reason = 'time_limit', status = 'completed',
+        billing_fault = 'user', billing_fault_code = 'time_limit',
+        ending_at = ${now.toISOString()}::timestamptz,
+        ended_at = ${now.toISOString()}::timestamptz,
+        last_transition_at = ${now.toISOString()}::timestamptz
+      WHERE id = ${retainAttempt}::uuid
+    `;
+    const retainResults = await runConcurrently(
+      databases.map((_, index) => () => converge(retainAttempt, index))
+    );
+    assert.equal(rejected(retainResults).length, 0);
+    assert.ok(
+      fulfilled(retainResults).every(
+        ({ value }) => value.disposition === "retained"
+      )
+    );
+    const [retainState] = await sql<
+      { status: string; refunds: number; action: string }[]
+    >`
+      SELECT reservation.status,
+        (SELECT count(*)::int FROM credit_transaction transaction
+          WHERE transaction.reservation_id = reservation.id
+            AND transaction.type = 'refund') AS refunds,
+        session.credit_settlement_action AS action
+      FROM interview_session session
+      JOIN credit_reservation reservation ON reservation.session_id = session.id
+      WHERE session.id = ${retainAttempt}::uuid
+    `;
+    assert.deepEqual(retainState, {
+      status: "consumed",
+      refunds: 0,
+      action: "retain",
+    });
+
+    await ledgers[0]!.grantCredits({
+      userId: recoveryUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:credit-recovery:expired-grant",
+      includedCredits: 3,
+      expiresAt: null,
+    });
+    await insertSession(recoveryAttempt, recoveryUser);
+    await reserve(recoveryAttempt, recoveryUser);
+    const recoveryAt = new Date(now.getTime() + 60 * 60_000);
+    const recoveryStore = createDrizzleInterviewCreditRecoveryStore(
+      databases[0]!
+    );
+    assert.ok(
+      (
+        await recoveryStore.listCandidates({ now: recoveryAt, limit: 250 })
+      ).some(({ sessionId }) => sessionId === recoveryAttempt)
+    );
+    assert.deepEqual(
+      await recoveryStore.prepare({
+        sessionId: recoveryAttempt,
+        now: recoveryAt,
+      }),
+      { disposition: "recovered", creditDisposition: "released" }
+    );
+
+    await insertSession(recoveryConsumedAttempt, recoveryUser);
+    await reserve(recoveryConsumedAttempt, recoveryUser);
+    await insertTurn(recoveryConsumedAttempt, 3);
+    assert.equal(
+      (await converge(recoveryConsumedAttempt, 0)).disposition,
+      "consumed"
+    );
+    assert.ok(
+      (
+        await recoveryStore.listCandidates({ now: recoveryAt, limit: 250 })
+      ).some(({ sessionId }) => sessionId === recoveryConsumedAttempt)
+    );
+    assert.deepEqual(
+      await recoveryStore.prepare({
+        sessionId: recoveryConsumedAttempt,
+        now: recoveryAt,
+      }),
+      { disposition: "recovered", creditDisposition: "refunded" }
+    );
+    const [recoveryFeedback] = await sql<
+      { status: string; dispatch_status: string }[]
+    >`
+      SELECT status, dispatch_status
+      FROM feedback
+      WHERE session_id = ${recoveryConsumedAttempt}::uuid
+    `;
+    assert.deepEqual(recoveryFeedback, {
+      status: "skipped",
+      dispatch_status: "not_required",
+    });
+
+    await insertSession(analyticsRollbackAttempt, recoveryUser);
+    await reserve(analyticsRollbackAttempt, recoveryUser);
+    const trackedAfterRollback: unknown[] = [];
+    await assert.rejects(
+      withDeferredInterviewCreditSettlementTracking(
+        (defer) =>
+          withDrizzleCreditLedgerUserTransaction(
+            recoveryUser,
+            async ({ database: transaction }) => {
+              await transaction
+                .update(schema.interviewSession)
+                .set({
+                  lifecycleState: "failed",
+                  lifecycleVersion: 4,
+                  terminalReason: "provider_failure",
+                  status: "error",
+                  billingFault: "provider",
+                  billingFaultCode: "forced_outer_rollback",
+                  endingAt: now,
+                  endedAt: now,
+                  lastTransitionAt: now,
+                })
+                .where(
+                  eq(schema.interviewSession.id, analyticsRollbackAttempt)
+                );
+              const credit = await convergeInterviewCreditSettlement({
+                sessionId: analyticsRollbackAttempt,
+                store: createDrizzleInterviewCreditSettlementStore(
+                  transaction as unknown as (typeof databases)[number],
+                  defer
+                ),
+                now,
+              });
+              assert.equal(credit.disposition, "released");
+              throw new Error("forced_outer_commit_rollback");
+            },
+            databases[0]!
+          ),
+        (evidence) => trackedAfterRollback.push(evidence)
+      ),
+      /forced_outer_commit_rollback/
+    );
+    assert.deepEqual(trackedAfterRollback, []);
+    const [analyticsRollbackState] = await sql<
+      { lifecycle_state: string; reservation_status: string }[]
+    >`
+      SELECT session.lifecycle_state,
+        reservation.status AS reservation_status
+      FROM interview_session session
+      JOIN credit_reservation reservation ON reservation.session_id = session.id
+      WHERE session.id = ${analyticsRollbackAttempt}::uuid
+    `;
+    assert.deepEqual(analyticsRollbackState, {
+      lifecycle_state: "active",
+      reservation_status: "active",
+    });
+
+    await insertSession(atomicFailureAttempt, recoveryUser);
+    await reserve(atomicFailureAttempt, recoveryUser);
+    await sql`
+      DELETE FROM credit_reservation_grant allocation
+      USING credit_reservation reservation
+      WHERE allocation.reservation_id = reservation.id
+        AND reservation.session_id = ${atomicFailureAttempt}::uuid
+    `;
+    await assert.rejects(
+      ingestInterviewRuntimeEvent({
+        requestSessionId: atomicFailureAttempt,
+        event: {
+          ...failure,
+          event_id: "provider-failure:pg:atomic-rollback",
+          session_id: atomicFailureAttempt,
+          runtime_ref: {
+            provider: "livekit",
+            id: `interview-${atomicFailureAttempt}`,
+          },
+        },
+        store: createDrizzleInterviewRuntimeFailureStore(databases[0]!),
+      }),
+      /credit_/
+    );
+    const [rolledBackFailure] = await sql<
+      {
+        lifecycle_state: string;
+        billing_fault: string | null;
+        feedback_rows: number;
+      }[]
+    >`
+      SELECT lifecycle_state, billing_fault,
+        (SELECT count(*)::int FROM feedback
+          WHERE session_id = session.id) AS feedback_rows
+      FROM interview_session session
+      WHERE id = ${atomicFailureAttempt}::uuid
+    `;
+    assert.deepEqual(rolledBackFailure, {
+      lifecycle_state: "active",
+      billing_fault: null,
+      feedback_rows: 0,
+    });
+  } finally {
+    await sql`
+      DELETE FROM credit_transaction
+      WHERE user_id IN (${userId}::uuid, ${recoveryUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM credit_reservation_grant allocation
+      USING credit_reservation reservation
+      WHERE allocation.reservation_id = reservation.id
+        AND reservation.user_id IN (${userId}::uuid, ${recoveryUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM credit_reservation
+      WHERE user_id IN (${userId}::uuid, ${recoveryUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM transcript_runtime_settlement
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM transcript_interruption_marker
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM transcript_turn
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM transcript_runtime_writer
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM feedback
+      WHERE session_id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE id IN (
+        ${providerAttempt}::uuid, ${retainAttempt}::uuid,
+        ${recoveryAttempt}::uuid, ${recoveryConsumedAttempt}::uuid,
+        ${atomicFailureAttempt}::uuid, ${analyticsRollbackAttempt}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM credit_grant
+      WHERE user_id IN (${userId}::uuid, ${recoveryUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM app_user
+      WHERE id IN (${userId}::uuid, ${recoveryUser}::uuid)
+    `;
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 15);
+  assert.equal(await migrationCount(sql), 16);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -5594,7 +6091,11 @@ function rejected<T>(results: PromiseSettledResult<T>[]) {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause;
+  return cause instanceof Error
+    ? `${error.message}: ${cause.message}`
+    : error.message;
 }
 
 async function verifyDeletionTombstone(sql: postgres.Sql) {

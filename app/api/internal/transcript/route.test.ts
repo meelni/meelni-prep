@@ -13,6 +13,14 @@ vi.mock("@/lib/db/transcripts", () => ({
     register: vi.fn(),
   })),
 }));
+vi.mock("@/lib/db/interview-runtime-events", () => ({
+  createDrizzleInterviewRuntimeFailureStore: vi.fn(() => ({
+    persistProviderFailure: vi.fn(),
+  })),
+}));
+vi.mock("@/lib/db/interview-credit-settlement", () => ({
+  convergeDrizzleInterviewCreditSettlement: vi.fn(),
+}));
 vi.mock("@/lib/workflows/ingest-transcript-event", () => ({
   ingestTranscriptEvent: vi.fn(),
 }));
@@ -22,6 +30,9 @@ vi.mock("@/lib/workflows/ingest-transcript-interruption-marker", () => ({
 vi.mock("@/lib/workflows/ingest-transcript-runtime-settlement", () => ({
   ingestTranscriptRuntimeSettlement: vi.fn(),
 }));
+vi.mock("@/lib/workflows/ingest-interview-runtime-event", () => ({
+  ingestInterviewRuntimeEvent: vi.fn(),
+}));
 vi.mock("@/lib/workflows/ingest-transcript-runtime-writer", () => ({
   ingestTranscriptRuntimeWriter: vi.fn(),
 }));
@@ -30,6 +41,7 @@ import { signRuntimeTranscriptBody } from "@/lib/security/transcript-ingest-auth
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
+import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
 import { POST } from "./route";
 
@@ -179,6 +191,33 @@ describe("POST /api/internal/transcript", () => {
     }
   });
 
+  it("cancels a chunked body as soon as it crosses 64 KiB", async () => {
+    let canceled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(33 * 1024));
+      },
+      cancel() {
+        canceled = true;
+      },
+    });
+    const oversized = new NextRequest(
+      "http://localhost/api/internal/transcript",
+      {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+        headers: { "content-type": "application/json" },
+      }
+    );
+
+    const response = await POST(oversized);
+
+    expect(response.status).toBe(413);
+    expect(canceled).toBe(true);
+    expect(ingestTranscriptEvent).not.toHaveBeenCalled();
+  });
+
   it("uses the voice-runtime principal and returns only acknowledgement metadata", async () => {
     vi.mocked(ingestTranscriptEvent).mockResolvedValue({
       ok: true,
@@ -246,6 +285,33 @@ describe("POST /api/internal/transcript", () => {
       disposition: "created",
       kind: "settlement",
     });
+  });
+
+  it("routes provider-neutral runtime failure evidence", async () => {
+    vi.mocked(ingestInterviewRuntimeEvent).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      sessionId: SESSION_ID,
+      creditDisposition: "released",
+    });
+    const response = await POST(
+      request({
+        sessionId: SESSION_ID,
+        runtimeEvent: { type: "provider_failed" },
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      disposition: "created",
+      kind: "runtime_event",
+    });
+    expect(ingestInterviewRuntimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestSessionId: SESSION_ID,
+        event: { type: "provider_failed" },
+      })
+    );
   });
 
   it("returns the durable server-assigned writer generation before output", async () => {

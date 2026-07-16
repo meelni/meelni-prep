@@ -1853,6 +1853,7 @@ export interface ReservationSettlementTransactionOutcome {
   reservation: LedgerCreditReservation;
   firstGrant: LedgerCreditGrant | null;
   duplicate: boolean;
+  makeGoodGrant: LedgerCreditGrant | null;
 }
 
 /**
@@ -1866,23 +1867,37 @@ export async function settleReservationInTransaction({
   reservationKey,
   idempotencyKey,
   action,
-  nextStatus = action === "consume" ? "consumed" : "released",
+  currentTime = new Date(),
+  nextStatus = action === "consume"
+    ? "consumed"
+    : action === "refund"
+      ? "refunded"
+      : "released",
   transactionType = action ?? "release",
   applyAllocation = action === "consume"
     ? ({ grant, credits }) => ({
         remainingCredits: grant.remainingCredits,
         reservedCredits: grant.reservedCredits - credits,
       })
-    : ({ grant, credits }) => ({
-        remainingCredits: grant.remainingCredits + credits,
-        reservedCredits: grant.reservedCredits - credits,
-      }),
+    : action === "refund"
+      ? ({ grant, credits }) => ({
+          remainingCredits:
+            grant.expiresAt !== null && grant.expiresAt <= currentTime
+              ? grant.remainingCredits
+              : grant.remainingCredits + credits,
+          reservedCredits: grant.reservedCredits,
+        })
+      : ({ grant, credits }) => ({
+          remainingCredits: grant.remainingCredits + credits,
+          reservedCredits: grant.reservedCredits - credits,
+        }),
 }: {
   store: CreditLedgerTransaction;
   expectedUserId: string;
   reservationKey: string;
   idempotencyKey: string;
-  action?: "consume" | "release";
+  action?: "consume" | "release" | "refund";
+  currentTime?: Date;
   nextStatus?: CreditReservationStatus;
   transactionType?: CreditTransactionType;
   applyAllocation?: (input: {
@@ -1946,6 +1961,16 @@ export async function settleReservationInTransaction({
       firstGrant: allocations[0]
         ? (grantsById.get(allocations[0].grantId) ?? null)
         : null,
+      makeGoodGrant:
+        transactionType === "refund"
+          ? await findRefundMakeGoodGrant({
+              store,
+              reservation,
+              allocations,
+              grantsById,
+              idempotencyKey,
+            })
+          : null,
     };
   }
 
@@ -1969,6 +1994,18 @@ export async function settleReservationInTransaction({
     await store.updateGrantBalances(allocation.grantId, balances);
   }
 
+  const makeGoodGrant =
+    transactionType === "refund"
+      ? await createRefundMakeGoodGrant({
+          store,
+          reservation,
+          allocations,
+          grantsById,
+          idempotencyKey,
+          currentTime,
+        })
+      : null;
+
   const updatedReservation = await store.updateReservationStatus(
     reservation.id,
     nextStatus
@@ -1987,7 +2024,148 @@ export async function settleReservationInTransaction({
     firstGrant: allocations[0]
       ? (grantsById.get(allocations[0].grantId) ?? null)
       : null,
+    makeGoodGrant,
   };
+}
+
+async function createRefundMakeGoodGrant(input: {
+  store: CreditLedgerTransaction;
+  reservation: LedgerCreditReservation;
+  allocations: LedgerReservationAllocation[];
+  grantsById: Map<string, LedgerCreditGrant>;
+  idempotencyKey: string;
+  currentTime: Date;
+}): Promise<LedgerCreditGrant | null> {
+  const expiredAllocations = input.allocations.filter((allocation) => {
+    const grant = input.grantsById.get(allocation.grantId);
+    return (
+      grant?.expiresAt !== null &&
+      grant?.expiresAt !== undefined &&
+      grant.expiresAt <= input.currentTime
+    );
+  });
+  if (expiredAllocations.length === 0) return null;
+  if (expiredAllocations.length !== 1) {
+    throw new Error("credit_refund_make_good_ambiguous");
+  }
+
+  const allocation = expiredAllocations[0]!;
+  const sourceGrant = input.grantsById.get(allocation.grantId);
+  if (!sourceGrant) throw new Error("credit_ledger_reconciliation_required");
+  const grantKey = `make-good:${input.idempotencyKey}:${sourceGrant.id}`;
+  const metadata = {
+    policyVersion: "interview-credit-recovery.v1",
+    reservationId: input.reservation.id,
+    sourceGrantId: sourceGrant.id,
+  };
+  const grantInput = {
+    userId: input.reservation.userId,
+    catalogId: sourceGrant.catalogId,
+    source: "refund" as const,
+    sourceId: input.reservation.sessionId,
+    idempotencyKey: grantKey,
+    originalCredits: allocation.credits,
+    remainingCredits: allocation.credits,
+    reservedCredits: 0,
+    expiresAt: null,
+    rolloverEligible: false,
+    rolloverSourceGrantId: null,
+    metadata,
+  };
+  const grant = await input.store.createGrant(grantInput);
+  assertMakeGoodGrantMatches(grant, grantInput);
+  await createAndValidateTransaction(input.store, {
+    userId: grant.userId,
+    grantId: grant.id,
+    reservationId: null,
+    type: "grant",
+    credits: grant.originalCredits,
+    idempotencyKey: `${grantKey}:grant`,
+    sourceId: input.reservation.sessionId,
+    balanceAfter: grant.remainingCredits,
+    metadata,
+  });
+  return grant;
+}
+
+async function findRefundMakeGoodGrant(input: {
+  store: CreditLedgerTransaction;
+  reservation: LedgerCreditReservation;
+  allocations: LedgerReservationAllocation[];
+  grantsById: Map<string, LedgerCreditGrant>;
+  idempotencyKey: string;
+}): Promise<LedgerCreditGrant | null> {
+  const matches: LedgerCreditGrant[] = [];
+  for (const allocation of input.allocations) {
+    const source = input.grantsById.get(allocation.grantId);
+    if (!source) throw new Error("credit_ledger_reconciliation_required");
+    const key = `make-good:${input.idempotencyKey}:${source.id}`;
+    const grant = await input.store.findGrantByIdempotencyKeyForUpdate(key);
+    if (grant) {
+      const metadata = {
+        policyVersion: "interview-credit-recovery.v1",
+        reservationId: input.reservation.id,
+        sourceGrantId: source.id,
+      };
+      assertMakeGoodGrantMatches(grant, {
+        userId: input.reservation.userId,
+        catalogId: source.catalogId,
+        source: "refund",
+        sourceId: input.reservation.sessionId,
+        idempotencyKey: key,
+        originalCredits: allocation.credits,
+        remainingCredits: allocation.credits,
+        reservedCredits: 0,
+        expiresAt: null,
+        rolloverEligible: false,
+        rolloverSourceGrantId: null,
+        metadata,
+      });
+      const transaction =
+        await input.store.findTransactionByIdempotencyKeyForUpdate(
+          `${key}:grant`
+        );
+      if (!transaction) {
+        throw new Error("credit_ledger_reconciliation_required");
+      }
+      assertTransactionMatchesRequest(transaction, {
+        userId: grant.userId,
+        grantId: grant.id,
+        reservationId: null,
+        type: "grant",
+        credits: grant.originalCredits,
+        idempotencyKey: `${key}:grant`,
+        sourceId: input.reservation.sessionId,
+        balanceAfter: grant.remainingCredits,
+        metadata,
+      });
+      matches.push(grant);
+    }
+  }
+  if (matches.length > 1) throw new Error("credit_refund_make_good_ambiguous");
+  return matches[0] ?? null;
+}
+
+function assertMakeGoodGrantMatches(
+  grant: LedgerCreditGrant,
+  expected: Omit<LedgerCreditGrant, "id" | "createdAt" | "updatedAt">
+): void {
+  if (
+    grant.userId !== expected.userId ||
+    grant.catalogId !== expected.catalogId ||
+    grant.source !== expected.source ||
+    grant.sourceId !== expected.sourceId ||
+    grant.idempotencyKey !== expected.idempotencyKey ||
+    grant.originalCredits !== expected.originalCredits ||
+    grant.remainingCredits !== expected.remainingCredits ||
+    grant.reservedCredits !== expected.reservedCredits ||
+    grant.expiresAt !== null ||
+    grant.rolloverEligible !== false ||
+    grant.rolloverSourceGrantId !== null ||
+    !metadataEquals(grant.metadata, expected.metadata)
+  ) {
+    throw new Error("credit_grant_idempotency_conflict");
+  }
 }
 
 export function trackCompletedReservationEvent({

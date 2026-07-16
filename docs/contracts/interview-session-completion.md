@@ -56,8 +56,10 @@ non-blank version-2 interviewer turn whose delivery state is `delivered`.
 Partial, interrupted, user, legacy, textless, and integrity-marker records do
 not qualify. The usable marker and credit consumption commit atomically behind
 the owning user lock. A terminal session without usable evidence releases its
-reservation; a usable session retains the charge regardless of user end,
-deadline, abandonment, or feedback-generation outcome.
+reservation. A usable session retains the charge for user end, deadline, or
+post-usable abandonment, but a machine-classified provider or transcript
+integrity failure refunds it under `interview-credit-recovery.v1`. Feedback
+dispatch or generation outcome never changes billing.
 
 - Valid completion signal plus `user_end` derives `completed` only when the
   lifecycle was canonically activated.
@@ -85,6 +87,9 @@ System deadlines settle the durable evidence available when they acquire the
 row. After terminal truth commits, the end workflow converges the version-1
 credit reservation before dispatching feedback; settlement failure stays
 retryable and does not change feedback eligibility.
+The terminal policy action and support evidence commit with the ledger action
+under the owner/session/reservation/grant lock order. See
+[Interview Credit Recovery](./interview-credit-recovery.md).
 
 ## Feedback Result
 
