@@ -379,6 +379,36 @@ test("ordinary non-allowlisted domain answers qualify end to end", () => {
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
+test("ordinary single-sentence PM answers qualify end to end", () => {
+  const validation = calculateValidatedSessionFromTurns([
+    turn(1, "interviewer", "Who is the target user?", 0),
+    turn(
+      2,
+      "user",
+      "Users struggle to keep track of shifting schedules, so I would centralize changes and notify the relevant caregiver before pickup.",
+      60
+    ),
+    turn(3, "interviewer", "Why that segment?", 150),
+    turn(
+      4,
+      "user",
+      "My target user would be working parents with young children because they face frequent coordination problems across multiple caregivers.",
+      240
+    ),
+    turn(5, "interviewer", "How would you measure success?", 320),
+    turn(
+      6,
+      "user",
+      "For success, the primary metric would be weekly retained households, while guardrails would include notification opt-outs and missed handoffs.",
+      380
+    ),
+  ]);
+
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 3);
+});
+
 test("ordinary multi-sentence declarative PM answers qualify end to end", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "Who is the target audience?", 0),
