@@ -204,9 +204,8 @@ test("runtime settlement and textless interruption own final feedback eligibilit
 
 test("durable turns do not synthesize canonical activation during terminalization", async () => {
   const transitions: string[] = [];
-  const answer = Array.from({ length: 40 }, (_, index) => `word${index}`).join(
-    " "
-  );
+  const answer =
+    "I would prioritize enterprise users, validate their security problem, and measure retention before expanding the product workflow.";
   const validTurns = Array.from({ length: 20 }, (_, index) => ({
     speaker: index % 2 === 0 ? "user" : "interviewer",
     text: answer,
@@ -267,6 +266,13 @@ test("durable turns do not synthesize canonical activation during terminalizatio
                   return chain;
                 },
                 where() {
+                  if (selectCall === 2) {
+                    return {
+                      orderBy() {
+                        return Promise.resolve(rows);
+                      },
+                    };
+                  }
                   return Promise.resolve(rows);
                 },
               };

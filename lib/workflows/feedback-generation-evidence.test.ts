@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { SessionTier } from "@/lib/evaluation/session-validator";
-import { resolveFeedbackGenerationEligibility } from "./feedback-generation-evidence";
+import {
+  resolveFeedbackGenerationEligibility,
+  resolveFeedbackLateValidationSkip,
+} from "./feedback-generation-evidence";
 
 for (const tier of [SessionTier.FULL, SessionTier.PARTIAL]) {
   test(`committed ${tier} eligibility is consumed without revalidation`, () => {
@@ -28,3 +31,28 @@ test("only pre-0007 feedback falls back to legacy validation", () => {
     tier: null,
   });
 });
+
+for (const completionTier of [SessionTier.FULL, SessionTier.PARTIAL]) {
+  test(`late transcript rejection preserves committed ${completionTier} eligibility`, () => {
+    const record: {
+      status: string;
+      statusReason: string | null;
+      completionTier: SessionTier;
+    } = {
+      status: "processing",
+      statusReason: null,
+      completionTier,
+    };
+
+    Object.assign(
+      record,
+      resolveFeedbackLateValidationSkip("Transcript cannot be evaluated safely")
+    );
+
+    assert.deepEqual(record, {
+      status: "skipped",
+      statusReason: "Transcript cannot be evaluated safely",
+      completionTier,
+    });
+  });
+}

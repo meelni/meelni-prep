@@ -10,10 +10,10 @@ import {
 } from "@meelni/core";
 
 import {
-  calculateSessionStatsFromTurns,
-  validateSessionStats,
+  calculateValidatedSessionFromTurns,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
+import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
 import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
 import {
@@ -120,13 +120,16 @@ export async function finalizeInterviewSession(
     const [turns, interruptionCounts, writerEvidence] = await Promise.all([
       tx
         .select({
+          contractVersion: transcriptTurn.contractVersion,
+          eventId: transcriptTurn.eventId,
           speaker: transcriptTurn.speaker,
           text: transcriptTurn.text,
           startedAt: transcriptTurn.startedAt,
           endedAt: transcriptTurn.endedAt,
         })
         .from(transcriptTurn)
-        .where(eq(transcriptTurn.sessionId, input.sessionId)),
+        .where(eq(transcriptTurn.sessionId, input.sessionId))
+        .orderBy(...transcriptChronologicalOrder()),
       tx
         .select({ value: sql<number>`count(*)::int` })
         .from(transcriptInterruptionMarker)
@@ -156,9 +159,7 @@ export async function finalizeInterviewSession(
         )
         .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
     ]);
-    const baseValidation = validateSessionStats(
-      calculateSessionStatsFromTurns(turns)
-    );
+    const baseValidation = calculateValidatedSessionFromTurns(turns);
     const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
     const runtimeWriterStates = writerEvidence.map((writer) => ({
       generation: writer.generation,
