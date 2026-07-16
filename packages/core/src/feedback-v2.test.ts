@@ -4380,6 +4380,87 @@ test("binds count assertion mode and bounded unit modifiers", () => {
   }
 });
 
+test("binds assertion mode for open-vocabulary count actions", () => {
+  for (const { source, observation } of [
+    {
+      source: "I will hit 40 customer targets before launch.",
+      observation: "The answer hit 40 customer targets before launch.",
+    },
+    {
+      source: "I would cut 40 support tickets before launch.",
+      observation: "The answer cut 40 support tickets before launch.",
+    },
+    {
+      source: "I plan to put 40 customers into the pilot.",
+      observation: "The answer put 40 customers into the pilot.",
+    },
+    {
+      source: "I hope to set 40 customer goals before launch.",
+      observation: "The answer set 40 customer goals before launch.",
+    },
+    {
+      source: "I will read 40 customer notes before prioritizing.",
+      observation: "The answer read 40 customer notes before prioritizing.",
+    },
+    {
+      source: "I will lead 40 customer sessions before launch.",
+      observation: "The answer led 40 customer sessions before launch.",
+    },
+    {
+      source: "I did not hit 40 customer targets before launch.",
+      observation: "The answer hit 40 customer targets before launch.",
+    },
+    {
+      source: "I failed to put 40 customers into the pilot.",
+      observation: "The answer put 40 customers into the pilot.",
+    },
+  ]) {
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = observation;
+    response.strengths[0].evidence[0].quote = source;
+    assert.throws(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      /quantitative claim absent/,
+      source
+    );
+  }
+
+  for (const { source, observation } of [
+    {
+      source: "I hit 40 customer targets before launch.",
+      observation: "The answer hit 40 customer targets before launch.",
+    },
+    {
+      source: "I will hit 40 customer targets before launch.",
+      observation: "The answer will hit 40 customer targets before launch.",
+    },
+    {
+      source: "I led 40 customer sessions before launch.",
+      observation: "The answer led 40 customer sessions before launch.",
+    },
+  ]) {
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = observation;
+    response.strengths[0].evidence[0].quote = source;
+    assert.doesNotThrow(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      source
+    );
+  }
+});
+
 test("binds irregular finite count actions instead of substituting an interviewed claim", () => {
   for (const source of [
     "I met 40 customers for product feedback before prioritizing the roadmap.",
@@ -4815,6 +4896,132 @@ test("keeps negated privacy and security protection actions negative", () => {
   );
 });
 
+test("binds assertion mode for material security and privacy actions", () => {
+  for (const { source, observation } of [
+    {
+      source: "The launch never encrypted customer records before migration.",
+      observation: "The launch encrypted customer records before migration.",
+    },
+    {
+      source: "The launch failed to encrypt customer records before migration.",
+      observation: "The launch encrypted customer records before migration.",
+    },
+    {
+      source: "The launch will encrypt customer records before migration.",
+      observation: "The launch encrypted customer records before migration.",
+    },
+    {
+      source: "The team plans to encrypt customer records before migration.",
+      observation: "The team encrypted customer records before migration.",
+    },
+    {
+      source: "The launch will secure customer records against abuse.",
+      observation: "The launch secured customer records against abuse.",
+    },
+    {
+      source: "The launch plans to secure customer records against abuse.",
+      observation: "The launch secured customer records against abuse.",
+    },
+    {
+      source: "The launch will preserve customer privacy during migration.",
+      observation: "The launch preserved customer privacy during migration.",
+    },
+    {
+      source: "The team plans to preserve customer privacy during migration.",
+      observation: "The team preserved customer privacy during migration.",
+    },
+    {
+      source: "The launch could comply with privacy law after remediation.",
+      observation: "The launch complied with privacy law after remediation.",
+    },
+  ]) {
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = observation;
+    response.strengths[0].evidence[0].quote = source;
+    assert.throws(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      /material claim absent/,
+      source
+    );
+  }
+
+  for (const source of [
+    "The launch encrypted customer records before migration.",
+    "The launch will encrypt customer records before migration.",
+    "The launch never encrypted customer records before migration.",
+    "The launch secured customer records against abuse.",
+    "The launch preserved customer privacy during migration.",
+    "The launch could comply with privacy law after remediation.",
+  ]) {
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = source;
+    response.strengths[0].evidence[0].quote = source;
+    assert.doesNotThrow(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      source
+    );
+  }
+});
+
+test("keeps common adverse security nouns negative in double negations", () => {
+  for (const adverseNoun of [
+    "concerns",
+    "threats",
+    "holes",
+    "deficiencies",
+    "exposures",
+    "hazards",
+  ]) {
+    const source = `The system isn't without security ${adverseNoun} in the launch design.`;
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = `The system is secure despite the launch design ${adverseNoun}.`;
+    response.strengths[0].evidence[0].quote = source;
+    assert.throws(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      /material claim absent/,
+      adverseNoun
+    );
+  }
+
+  const positiveControl = validResponse();
+  positiveControl.scores.insight = 8;
+  positiveControl.strengths[0].observation =
+    "The answer presents a detailed security plan addressing risks before launch.";
+  positiveControl.strengths[0].evidence[0].quote =
+    "The answer is not without a detailed security plan addressing risks before launch.";
+  assert.doesNotThrow(() =>
+    parseFeedbackV2(positiveControl, {
+      transcript: [
+        {
+          ...transcript[0],
+          text: "The answer is not without a detailed security plan addressing risks before launch.",
+        },
+        transcript[1],
+      ],
+      evaluationState: "full",
+      modelVersion: "gpt-test-1",
+    })
+  );
+});
+
 test("rejects got, picked, and ended-up-with candidate outcomes", () => {
   const source =
     "In my prior interview, the product manager job ended up with me after the panel picked finalists.";
@@ -4928,6 +5135,79 @@ test("rejects got, picked, and ended-up-with candidate outcomes", () => {
       source:
         "The candidate accepted the discounted pricing offer for the experiment.",
       summary: "The candidate accepted the discounted pricing offer.",
+    },
+  ]) {
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = summary;
+    response.strengths[0].evidence[0].quote = source;
+    response.summary = summary;
+    assert.doesNotThrow(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      summary
+    );
+  }
+});
+
+test("rejects common employment and advancement outcome paraphrases", () => {
+  for (const summary of [
+    "The candidate got hired.",
+    "The candidate was offered the product manager role.",
+    "The candidate won the product manager role.",
+    "The candidate clinched the product manager role.",
+    "The candidate took the PM offer.",
+    "The candidate signed the PM offer.",
+    "The candidate joined the company as product manager.",
+    "The candidate starts next month as product manager.",
+    "The candidate made it to the next round.",
+    "The candidate has advanced to the next round.",
+    "The candidate was advanced to the next round.",
+    "The candidate is moving to the next interview stage.",
+    "The candidate is through to the next round.",
+  ]) {
+    const source = `In the prior interview debrief, ${summary
+      .replace(/^The /u, "the ")
+      .replace(
+        /\.$/u,
+        ""
+      )} after the panel reviewed customer insight and product judgment.`;
+    const response = validResponse();
+    response.scores.insight = 8;
+    response.strengths[0].observation = summary;
+    response.strengths[0].evidence[0].quote = source;
+    response.summary = summary;
+    assert.throws(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      /hiring, readiness, pass\/fail, or hiring-bar claims/,
+      summary
+    );
+  }
+
+  for (const { source, summary } of [
+    {
+      source:
+        "The candidate signed the discounted pricing offer after comparing annual plan tradeoffs.",
+      summary: "The candidate signed the discounted pricing offer.",
+    },
+    {
+      source:
+        "The candidate took the pricing offer structure into the product experiment.",
+      summary: "The candidate took the pricing offer structure.",
+    },
+    {
+      source:
+        "The candidate joined the cross-functional team for the product launch.",
+      summary: "The candidate joined the cross-functional team.",
     },
   ]) {
     const response = validResponse();
