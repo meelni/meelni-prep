@@ -34,7 +34,7 @@ isolated Preview database. The report must not contain user IDs, Stripe IDs,
 balances, or other customer data. Preview currently shares Production data, so
 do not run the rehearsal until SAV-226 establishes an isolated environment.
 
-Migration `0013` adds `creditRecoveryIntegrity` and
+Migration `0015` adds `creditRecoveryIntegrity` and
 `creditRecoveryLaunchReady`. Strict launch preflight fails when a version-1
 terminal session lacks policy evidence or when release/refund/retain disagrees
 with its reservation state. The five-minute `interview-credit-recovery` worker
@@ -45,14 +45,14 @@ Expired nonterminal active reservations release, while expired nonterminal
 consumed reservations refund; this also closes the fallback path when a fatal
 runtime report could not settle before the runtime exited.
 
-Migration `0015` adds a nullable, unique logical transition key to the Stripe
+Migration `0017` adds a nullable, unique logical transition key to the Stripe
 event log. Exact Event ID retries are acknowledged without replay. Distinct
 Stripe Event objects for the same immutable object/type transition replay the
 idempotent handler and must match persisted payment truth before they are
 acknowledged. Mutable `customer.subscription.updated` events are intentionally
 excluded from logical deduplication.
 
-Migration `0016` makes `(stripe_invoice_id, status)` unique for non-null
+Migration `0018` makes `(stripe_invoice_id, status)` unique for non-null
 invoice IDs. This keeps distinct Stripe Event objects for one failed or
 successful invoice transition from creating duplicate payment-history rows.
 Before the index is created, legacy duplicates are deterministically ranked by
@@ -65,7 +65,7 @@ subscription resource: an allowed `customer.subscription.created` replacement
 seeds the replacement cursor atomically, and later events from the superseded
 resource cannot mutate it.
 
-Migration `0017` makes cross-resource replacement durable rather than relying
+Migration `0019` makes cross-resource replacement durable rather than relying
 on delivery order. Each row stores the Stripe resource creation time and its
 created-event cursor, plus every retired subscription identity. A replacement
 must be a `customer.subscription.created` event for a provably newer resource;
@@ -81,7 +81,7 @@ which write won first.
 Account-deletion tombstones include hashed customer, subscription,
 payment-intent, and charge identifiers. Stored and late refund/dispute payloads
 for a deleted subject must be replaced with `{}` and acknowledged without
-running billing reconciliation. Migration `0016` stores every event subject
+running billing reconciliation. Migration `0018` stores every event subject
 fingerprint and uses transaction-scoped advisory locks plus database triggers
 to serialize tombstone and webhook writes; raw payload persistence therefore
 cannot race tombstone creation. Every identifier present on a webhook is
