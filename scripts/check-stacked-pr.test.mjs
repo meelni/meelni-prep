@@ -40,7 +40,7 @@ function fixture() {
 function manifest() {
   return {
     version: 2,
-    repository: "saviii/meelni-prep",
+    repository: "meelni/meelni-prep",
     stacks: [
       {
         pr: 999,
@@ -137,12 +137,12 @@ test("a non-main PR cannot omit its stack declaration", () => {
   const result = validatePullRequestDeclaration({
     manifest: {
       version: 2,
-      repository: "saviii/meelni-prep",
+      repository: "meelni/meelni-prep",
       stacks: [],
     },
     prNumber: 998,
     headRef: "undeclared-child",
-    headRepository: "saviii/meelni-prep",
+    headRepository: "meelni/meelni-prep",
     baseRef: "parent",
   });
   assert.deepEqual(result.errors, ["stack_relationship_missing_from_manifest"]);
@@ -153,7 +153,7 @@ test("the GitHub base must match the declared parent ref", () => {
     manifest: manifest(),
     prNumber: 999,
     headRef: "child",
-    headRepository: "saviii/meelni-prep",
+    headRepository: "meelni/meelni-prep",
     baseRef: "different-parent",
   });
   assert.deepEqual(result.errors, ["github_base_differs_from_declared_parent"]);
@@ -164,7 +164,7 @@ test("the manifest PR number is part of the declaration identity", () => {
     manifest: manifest(),
     prNumber: 998,
     headRef: "child",
-    headRepository: "saviii/meelni-prep",
+    headRepository: "meelni/meelni-prep",
     baseRef: "parent",
   });
   assert.deepEqual(result.errors, ["github_pr_differs_from_manifest_entry"]);
@@ -188,6 +188,19 @@ test("a fork cannot declare a stack against a non-main branch", () => {
     prNumber: 999,
     headRef: "child",
     headRepository: "contributor/meelni-prep",
+    baseRef: "parent",
+  });
+  assert.deepEqual(result.errors, [
+    "stacked_pr_must_originate_from_manifest_repository",
+  ]);
+});
+
+test("the former personal repository cannot consume the enterprise stack manifest", () => {
+  const result = validatePullRequestDeclaration({
+    manifest: manifest(),
+    prNumber: 999,
+    headRef: "child",
+    headRepository: "saviii/meelni-prep",
     baseRef: "parent",
   });
   assert.deepEqual(result.errors, [

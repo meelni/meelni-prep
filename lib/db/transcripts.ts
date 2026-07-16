@@ -3,13 +3,16 @@ import {
   interviewSession,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
+  transcriptRuntimeWriter,
   transcriptTurn,
 } from "./schema";
-import { and, asc, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { transcriptChronologicalOrder } from "./transcript-ordering";
+import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import type {
   TranscriptEvent,
   TranscriptInterruptionMarker,
   TranscriptRuntimeSettlement,
+  TranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
 import {
   deriveInterviewDeadlineAt,
@@ -24,25 +27,7 @@ import {
 import type { TranscriptInterruptionMarkerStore } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import type { TranscriptRuntimeSettlementStore } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { convergeDrizzleInterviewCreditSettlement } from "./interview-credit-settlement";
-
-export interface CreateTranscriptTurnInput {
-  sessionId: string;
-  speaker: "user" | "interviewer";
-  startedAt?: Date;
-  endedAt?: Date;
-  text?: string;
-  audioMs?: number;
-  latencyMs?: number;
-  section?: string;
-}
-
-export interface UpdateTranscriptTurnInput {
-  endedAt?: Date;
-  text?: string;
-  audioMs?: number;
-  latencyMs?: number;
-  section?: string;
-}
+import type { TranscriptRuntimeWriterStore } from "@/lib/workflows/ingest-transcript-runtime-writer";
 
 export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
 export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
@@ -53,6 +38,180 @@ export type PersistedTranscriptInterruptionMarker =
   typeof transcriptInterruptionMarker.$inferSelect;
 export type PersistedTranscriptRuntimeSettlement =
   typeof transcriptRuntimeSettlement.$inferSelect;
+export type PersistedTranscriptRuntimeWriter =
+  typeof transcriptRuntimeWriter.$inferSelect;
+
+export interface TranscriptRuntimeSettlementReadiness {
+  writerCount: number;
+  settledCount: number;
+  degradedCount: number;
+  missingCount: number;
+  currentWriterGeneration: number | null;
+  currentWriterState: "settled" | "degraded" | null;
+  ready: boolean;
+}
+
+export async function getTranscriptRuntimeSettlementReadiness(
+  sessionId: string,
+  database: TranscriptPersistenceDatabase = db
+): Promise<TranscriptRuntimeSettlementReadiness> {
+  return database.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        generation: transcriptRuntimeWriter.generation,
+        settlementState: transcriptRuntimeSettlement.state,
+      })
+      .from(transcriptRuntimeWriter)
+      .leftJoin(
+        transcriptRuntimeSettlement,
+        and(
+          eq(
+            transcriptRuntimeSettlement.sessionId,
+            transcriptRuntimeWriter.sessionId
+          ),
+          eq(
+            transcriptRuntimeSettlement.writerGeneration,
+            transcriptRuntimeWriter.generation
+          ),
+          eq(
+            transcriptRuntimeSettlement.writerId,
+            transcriptRuntimeWriter.writerId
+          )
+        )
+      )
+      .where(eq(transcriptRuntimeWriter.sessionId, sessionId))
+      .orderBy(asc(transcriptRuntimeWriter.generation));
+
+    const settledCount = rows.filter(
+      (row) => row.settlementState === "settled"
+    ).length;
+    const degradedCount = rows.filter(
+      (row) => row.settlementState === "degraded"
+    ).length;
+    const missingCount = rows.filter(
+      (row) => row.settlementState === null
+    ).length;
+    return {
+      writerCount: rows.length,
+      settledCount,
+      degradedCount,
+      missingCount,
+      currentWriterGeneration: rows.at(-1)?.generation ?? null,
+      currentWriterState:
+        (rows.at(-1)?.settlementState as "settled" | "degraded" | null) ?? null,
+      ready:
+        rows.length > 0 &&
+        settledCount === rows.length &&
+        degradedCount === 0 &&
+        missingCount === 0,
+    };
+  });
+}
+
+export function createDrizzleTranscriptRuntimeWriterStore(
+  database: TranscriptPersistenceDatabase = db
+): TranscriptRuntimeWriterStore<PersistedTranscriptRuntimeWriter> {
+  return {
+    async register(registration) {
+      return database.transaction(async (tx) => {
+        const sessions = await tx
+          .select({
+            roomName: interviewSession.livekitRoomName,
+            lifecycleState: interviewSession.lifecycleState,
+            terminalReason: interviewSession.terminalReason,
+            reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
+            startedAt: interviewSession.startedAt,
+            config: interviewSession.config,
+          })
+          .from(interviewSession)
+          .where(eq(interviewSession.id, registration.session_id))
+          .limit(1)
+          .for("update");
+        const session = sessions[0];
+        if (!session) return { ok: false, reason: "not_found" } as const;
+        if (session.roomName !== registration.room_name) {
+          return { ok: false, reason: "room_mismatch" } as const;
+        }
+
+        const [existingRows, currentRows] = await Promise.all([
+          tx
+            .select()
+            .from(transcriptRuntimeWriter)
+            .where(
+              and(
+                eq(transcriptRuntimeWriter.sessionId, registration.session_id),
+                eq(transcriptRuntimeWriter.writerId, registration.writer_id)
+              )
+            )
+            .limit(1),
+          tx
+            .select({ generation: transcriptRuntimeWriter.generation })
+            .from(transcriptRuntimeWriter)
+            .where(
+              eq(transcriptRuntimeWriter.sessionId, registration.session_id)
+            )
+            .orderBy(desc(transcriptRuntimeWriter.generation))
+            .limit(1),
+        ]);
+        const existing = existingRows[0];
+        const currentGeneration = currentRows[0]?.generation ?? 0;
+        if (existing) {
+          if (!storedWriterMatchesRegistration(existing, registration)) {
+            return { ok: false, reason: "registration_conflict" } as const;
+          }
+          if (existing.generation !== currentGeneration) {
+            return { ok: false, reason: "writer_fenced" } as const;
+          }
+          return {
+            ok: true,
+            disposition: "existing",
+            writer: existing,
+            writerGeneration: existing.generation,
+          } as const;
+        }
+
+        if (
+          session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState)
+        ) {
+          return { ok: false, reason: "session_closed" } as const;
+        }
+        const sessionWindow = transcriptSessionWindow(session);
+        if (
+          !sessionWindow ||
+          !isTimestampWithinSessionWindow(
+            registration.registered_at,
+            sessionWindow
+          )
+        ) {
+          return { ok: false, reason: "event_time_out_of_bounds" } as const;
+        }
+
+        const generation = currentGeneration + 1;
+        const inserted = await tx
+          .insert(transcriptRuntimeWriter)
+          .values({
+            sessionId: registration.session_id,
+            generation,
+            contractVersion: registration.contract_version,
+            roomName: registration.room_name,
+            writerId: registration.writer_id,
+            registeredAt: new Date(registration.registered_at),
+          })
+          .returning();
+        if (!inserted[0]) {
+          throw new Error("Runtime writer registration was not persisted");
+        }
+        return {
+          ok: true,
+          disposition: "created",
+          writer: inserted[0],
+          writerGeneration: generation,
+        } as const;
+      });
+    },
+  };
+}
 
 export function createDrizzleTranscriptRuntimeSettlementStore(
   database: TranscriptPersistenceDatabase = db
@@ -64,6 +223,8 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
           .select({
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
+            terminalReason: interviewSession.terminalReason,
+            reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
           })
@@ -81,7 +242,13 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
           .select()
           .from(transcriptRuntimeSettlement)
           .where(
-            eq(transcriptRuntimeSettlement.sessionId, settlement.session_id)
+            and(
+              eq(transcriptRuntimeSettlement.sessionId, settlement.session_id),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                settlement.writer_generation
+              )
+            )
           )
           .limit(1);
         if (existingRows[0]) {
@@ -96,10 +263,24 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
         if (isInterviewTerminalState(session.lifecycleState)) {
           return { ok: false, reason: "session_closed" } as const;
         }
+        const registered = await getRegisteredWriter(tx, {
+          sessionId: settlement.session_id,
+          writerId: settlement.writer_id,
+          writerGeneration: settlement.writer_generation,
+        });
+        if (!registered) {
+          return { ok: false, reason: "writer_not_registered" } as const;
+        }
         const sessionWindow = transcriptSessionWindow(session);
         if (
           !sessionWindow ||
           !isTimestampWithinSessionWindow(settlement.settled_at, sessionWindow)
+        ) {
+          return { ok: false, reason: "event_time_out_of_bounds" } as const;
+        }
+        if (
+          session.lifecycleState === "ending" &&
+          !isEndingSettlementAtCutoff(session, settlement.settled_at)
         ) {
           return { ok: false, reason: "event_time_out_of_bounds" } as const;
         }
@@ -108,6 +289,7 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
           .insert(transcriptRuntimeSettlement)
           .values({
             sessionId: settlement.session_id,
+            writerGeneration: settlement.writer_generation,
             contractVersion: settlement.contract_version,
             roomName: settlement.room_name,
             writerId: settlement.writer_id,
@@ -139,6 +321,8 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
           .select({
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
+            terminalReason: interviewSession.terminalReason,
+            reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
           })
@@ -167,10 +351,30 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
             : { ok: false, reason: "event_conflict" };
         }
 
+        const writerStatus = await getCurrentWriterStatus(tx, {
+          sessionId: marker.session_id,
+          writerId: marker.writer_id,
+          writerGeneration: marker.writer_generation,
+        });
+        if (writerStatus === "missing") {
+          return { ok: false, reason: "writer_not_registered" } as const;
+        }
+        if (writerStatus === "fenced") {
+          return { ok: false, reason: "writer_fenced" } as const;
+        }
+
         const settlementRows = await tx
           .select({ sessionId: transcriptRuntimeSettlement.sessionId })
           .from(transcriptRuntimeSettlement)
-          .where(eq(transcriptRuntimeSettlement.sessionId, marker.session_id))
+          .where(
+            and(
+              eq(transcriptRuntimeSettlement.sessionId, marker.session_id),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                marker.writer_generation
+              )
+            )
+          )
           .limit(1);
         if (settlementRows[0]) {
           return { ok: false, reason: "runtime_settled" } as const;
@@ -184,9 +388,12 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
           return { ok: false, reason: "event_time_out_of_bounds" } as const;
         }
 
+        if (isInterviewTerminalState(session.lifecycleState)) {
+          return { ok: false, reason: "session_closed" } as const;
+        }
         if (
-          session.lifecycleState === "ending" ||
-          isInterviewTerminalState(session.lifecycleState)
+          session.lifecycleState === "ending" &&
+          !isEndingEvidenceWithinCutoff(session, marker.occurred_at)
         ) {
           return { ok: false, reason: "session_closed" } as const;
         }
@@ -206,6 +413,7 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
             contractVersion: marker.contract_version,
             eventId: marker.event_id,
             writerId: marker.writer_id,
+            writerGeneration: marker.writer_generation,
             sequence: marker.sequence,
             roomName: marker.room_name,
             speaker: marker.speaker,
@@ -279,6 +487,8 @@ export function createDrizzleTranscriptIngestStore(
           .select({
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
+            terminalReason: interviewSession.terminalReason,
+            reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
           })
@@ -308,10 +518,30 @@ export function createDrizzleTranscriptIngestStore(
           } as const;
         }
 
+        const writerStatus = await getCurrentWriterStatus(tx, {
+          sessionId: event.session_id,
+          writerId: event.writer_id,
+          writerGeneration: event.writer_generation,
+        });
+        if (writerStatus === "missing") {
+          return { ok: false, reason: "writer_not_registered" } as const;
+        }
+        if (writerStatus === "fenced") {
+          return { ok: false, reason: "writer_fenced" } as const;
+        }
+
         const settlementRows = await tx
           .select({ sessionId: transcriptRuntimeSettlement.sessionId })
           .from(transcriptRuntimeSettlement)
-          .where(eq(transcriptRuntimeSettlement.sessionId, event.session_id))
+          .where(
+            and(
+              eq(transcriptRuntimeSettlement.sessionId, event.session_id),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                event.writer_generation
+              )
+            )
+          )
           .limit(1);
         if (settlementRows[0]) {
           return { ok: false, reason: "runtime_settled" } as const;
@@ -332,9 +562,12 @@ export function createDrizzleTranscriptIngestStore(
           return { ok: false, reason: "event_time_out_of_bounds" } as const;
         }
 
+        if (isInterviewTerminalState(session.lifecycleState)) {
+          return { ok: false, reason: "session_closed" } as const;
+        }
         if (
-          session.lifecycleState === "ending" ||
-          isInterviewTerminalState(session.lifecycleState)
+          session.lifecycleState === "ending" &&
+          !isEndingEvidenceWithinCutoff(session, event.ended_at)
         ) {
           return { ok: false, reason: "session_closed" } as const;
         }
@@ -456,12 +689,118 @@ function transcriptSessionWindow(session: {
   };
 }
 
+type TranscriptQueryDatabase = Pick<typeof db, "select">;
+
+async function getRegisteredWriter(
+  database: TranscriptQueryDatabase,
+  input: {
+    sessionId: string;
+    writerId: string;
+    writerGeneration: number;
+  }
+): Promise<PersistedTranscriptRuntimeWriter | null> {
+  const rows = await database
+    .select()
+    .from(transcriptRuntimeWriter)
+    .where(
+      and(
+        eq(transcriptRuntimeWriter.sessionId, input.sessionId),
+        eq(transcriptRuntimeWriter.generation, input.writerGeneration),
+        eq(transcriptRuntimeWriter.writerId, input.writerId)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function getCurrentWriterStatus(
+  database: TranscriptQueryDatabase,
+  input: {
+    sessionId: string;
+    writerId: string;
+    writerGeneration: number;
+  }
+): Promise<"current" | "fenced" | "missing"> {
+  const [registered, currentRows] = await Promise.all([
+    getRegisteredWriter(database, input),
+    database
+      .select({ generation: transcriptRuntimeWriter.generation })
+      .from(transcriptRuntimeWriter)
+      .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId))
+      .orderBy(desc(transcriptRuntimeWriter.generation))
+      .limit(1),
+  ]);
+  if (!registered) return "missing";
+  return currentRows[0]?.generation === input.writerGeneration
+    ? "current"
+    : "fenced";
+}
+
+function isEndingEvidenceWithinCutoff(
+  session: {
+    lifecycleState: string;
+    terminalReason: string | null;
+    reconnectDeadlineAt: Date | null;
+    startedAt: Date | null;
+    config: unknown;
+  },
+  evidenceTimestamp: string
+): boolean {
+  const cutoff = endingTranscriptCutoff(session);
+  const measuredAt = Date.parse(evidenceTimestamp);
+  return (
+    cutoff !== null &&
+    Number.isFinite(measuredAt) &&
+    measuredAt <= cutoff.getTime()
+  );
+}
+
+function isEndingSettlementAtCutoff(
+  session: {
+    lifecycleState: string;
+    terminalReason: string | null;
+    reconnectDeadlineAt: Date | null;
+    startedAt: Date | null;
+    config: unknown;
+  },
+  settlementTimestamp: string
+): boolean {
+  const cutoff = endingTranscriptCutoff(session);
+  return (
+    cutoff !== null && Date.parse(settlementTimestamp) === cutoff.getTime()
+  );
+}
+
+function endingTranscriptCutoff(session: {
+  terminalReason: string | null;
+  reconnectDeadlineAt: Date | null;
+  startedAt: Date | null;
+  config: unknown;
+}): Date | null {
+  if (
+    session.terminalReason === "disconnect_timeout" &&
+    session.reconnectDeadlineAt
+  ) {
+    return session.reconnectDeadlineAt;
+  }
+  if (session.terminalReason === "time_limit" && session.startedAt) {
+    return deriveInterviewDeadlineAt({
+      startedAt: session.startedAt,
+      durationMinutes: normalizeInterviewDurationMinutes(
+        isRecord(session.config) ? session.config.duration : undefined
+      ),
+    });
+  }
+  return null;
+}
+
 function transcriptEventValues(event: TranscriptEvent) {
   return {
     sessionId: event.session_id,
     contractVersion: event.contract_version,
     eventId: event.event_id,
     writerId: event.writer_id,
+    writerGeneration: event.writer_generation,
     sequence: event.sequence,
     roomName: event.room_name,
     speaker: event.speaker,
@@ -474,6 +813,19 @@ function transcriptEventValues(event: TranscriptEvent) {
   };
 }
 
+function storedWriterMatchesRegistration(
+  stored: PersistedTranscriptRuntimeWriter,
+  registration: TranscriptRuntimeWriterRegistration
+): boolean {
+  return (
+    stored.contractVersion === registration.contract_version &&
+    stored.sessionId === registration.session_id &&
+    stored.roomName === registration.room_name &&
+    stored.writerId === registration.writer_id &&
+    stored.registeredAt.getTime() === Date.parse(registration.registered_at)
+  );
+}
+
 function storedTurnMatchesEvent(
   turn: PersistedTranscriptTurn,
   event: TranscriptEvent
@@ -482,6 +834,7 @@ function storedTurnMatchesEvent(
     turn.contractVersion === event.contract_version &&
     turn.eventId === event.event_id &&
     turn.writerId === event.writer_id &&
+    turn.writerGeneration === event.writer_generation &&
     turn.sequence === event.sequence &&
     turn.sessionId === event.session_id &&
     turn.roomName === event.room_name &&
@@ -503,6 +856,7 @@ function storedMarkerMatchesEvent(
     stored.contractVersion === marker.contract_version &&
     stored.eventId === marker.event_id &&
     stored.writerId === marker.writer_id &&
+    stored.writerGeneration === marker.writer_generation &&
     stored.sequence === marker.sequence &&
     stored.sessionId === marker.session_id &&
     stored.roomName === marker.room_name &&
@@ -521,46 +875,10 @@ function storedSettlementMatches(
     stored.sessionId === settlement.session_id &&
     stored.roomName === settlement.room_name &&
     stored.writerId === settlement.writer_id &&
+    stored.writerGeneration === settlement.writer_generation &&
     stored.state === settlement.state &&
     stored.settledAt.getTime() === Date.parse(settlement.settled_at)
   );
-}
-
-/**
- * Create a new transcript turn
- */
-export async function createTranscriptTurn(input: CreateTranscriptTurnInput) {
-  const [turn] = await db
-    .insert(transcriptTurn)
-    .values({
-      sessionId: input.sessionId,
-      speaker: input.speaker,
-      startedAt: input.startedAt || new Date(),
-      endedAt: input.endedAt,
-      text: input.text,
-      audioMs: input.audioMs,
-      latencyMs: input.latencyMs,
-      section: input.section,
-    })
-    .returning();
-
-  return turn;
-}
-
-/**
- * Update a transcript turn
- */
-export async function updateTranscriptTurn(
-  turnId: string,
-  input: UpdateTranscriptTurnInput
-) {
-  const [turn] = await db
-    .update(transcriptTurn)
-    .set(input)
-    .where(and(eq(transcriptTurn.id, turnId), isNull(transcriptTurn.eventId)))
-    .returning();
-
-  return turn;
 }
 
 /**
@@ -571,13 +889,7 @@ export async function getSessionTranscript(sessionId: string) {
     .select()
     .from(transcriptTurn)
     .where(eq(transcriptTurn.sessionId, sessionId))
-    .orderBy(
-      asc(transcriptTurn.startedAt),
-      asc(transcriptTurn.writerId),
-      asc(transcriptTurn.sequence),
-      asc(transcriptTurn.eventId),
-      asc(transcriptTurn.id)
-    );
+    .orderBy(...transcriptChronologicalOrder());
 
   return turns;
 }
@@ -593,15 +905,6 @@ export async function getTranscriptTurnById(turnId: string) {
     .limit(1);
 
   return turn;
-}
-
-/**
- * Delete a transcript turn (for cleanup/corrections)
- */
-export async function deleteTranscriptTurn(turnId: string) {
-  await db
-    .delete(transcriptTurn)
-    .where(and(eq(transcriptTurn.id, turnId), isNull(transcriptTurn.eventId)));
 }
 
 /**
@@ -630,31 +933,4 @@ export async function getSessionTranscriptStats(sessionId: string) {
   };
 
   return stats;
-}
-
-/**
- * Batch create transcript turns (for efficient bulk inserts)
- */
-export async function batchCreateTranscriptTurns(
-  inputs: CreateTranscriptTurnInput[]
-) {
-  if (inputs.length === 0) return [];
-
-  const turns = await db
-    .insert(transcriptTurn)
-    .values(
-      inputs.map((input) => ({
-        sessionId: input.sessionId,
-        speaker: input.speaker,
-        startedAt: input.startedAt || new Date(),
-        endedAt: input.endedAt,
-        text: input.text,
-        audioMs: input.audioMs,
-        latencyMs: input.latencyMs,
-        section: input.section,
-      }))
-    )
-    .returning();
-
-  return turns;
 }

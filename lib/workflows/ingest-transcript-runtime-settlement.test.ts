@@ -75,6 +75,7 @@ function runtimeSettlement(): TranscriptRuntimeSettlement {
     session_id: SESSION_ID,
     room_name: "interview-room",
     writer_id: "writer-1",
+    writer_generation: 1,
     state: "settled",
     settled_at: "2026-07-10T08:30:00.000Z",
   };

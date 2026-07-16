@@ -8,6 +8,13 @@ const EXTENSIONS = new Set([".css", ".ts", ".tsx"]);
 const INVALID_TOKEN_WRAPPER =
   /(?:hsl|rgb|rgba)\(\s*var\(--[a-z0-9-]+\)\s*(?:(?:\/|,)[^)]*)?\)/g;
 
+function isTestSourceFile(file) {
+  return (
+    /(?:^|[\\/])__tests__[\\/]/.test(file) ||
+    /\.(?:test|spec)\.(?:js|jsx|ts|tsx)$/.test(file)
+  );
+}
+
 async function* walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
 
@@ -237,7 +244,11 @@ test("raw native buttons stay inside approved primitives or control groups", asy
 
   for (const root of ["app", "components"]) {
     for await (const file of walk(root)) {
-      if (!file.endsWith(".tsx") || file.startsWith("app/test-")) {
+      if (
+        !file.endsWith(".tsx") ||
+        file.startsWith("app/test-") ||
+        isTestSourceFile(file)
+      ) {
         continue;
       }
 
@@ -252,6 +263,15 @@ test("raw native buttons stay inside approved primitives or control groups", asy
   }
 
   assert.deepEqual(violations, []);
+});
+
+test("production control guardrails classify test sources consistently", () => {
+  assert.equal(isTestSourceFile("app/interview/page-lifecycle.test.tsx"), true);
+  assert.equal(isTestSourceFile("components/card.spec.tsx"), true);
+  assert.equal(isTestSourceFile("app/interview/__tests__/page.tsx"), true);
+  assert.equal(isTestSourceFile("app\\interview\\__tests__\\page.tsx"), true);
+  assert.equal(isTestSourceFile("app/interview/page.tsx"), false);
+  assert.equal(isTestSourceFile("components/testimonials.tsx"), false);
 });
 
 test("production app page routes are classified in the product container audit", async () => {

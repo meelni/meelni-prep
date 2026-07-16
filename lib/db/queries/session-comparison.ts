@@ -4,7 +4,8 @@
 
 import { db } from "@/lib/db";
 import { interviewSession, feedback, transcriptTurn } from "@/lib/db/schema";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
+import { eq, and, desc } from "drizzle-orm";
 import {
   SessionAttempt,
   SessionComparisonDetail,
@@ -180,13 +181,7 @@ async function fetchSessionDetail(
         eq(transcriptTurn.speaker, "user")
       )
     )
-    .orderBy(
-      asc(transcriptTurn.startedAt),
-      asc(transcriptTurn.writerId),
-      asc(transcriptTurn.sequence),
-      asc(transcriptTurn.eventId),
-      asc(transcriptTurn.id)
-    )
+    .orderBy(...transcriptChronologicalOrder())
     .limit(20); // Limit to 20 turns
 
   // Extract key quotes (take first 3-4 meaningful user responses)

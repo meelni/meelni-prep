@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionComparison } from "@/lib/db/queries/session-comparison";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,7 +49,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ comparison: comparisonData });
   } catch (error) {
-    console.error("Error fetching session comparison:", error);
+    console.error("[Feedback Comparison API] fetch_failed", {
+      code: "feedback_comparison_fetch_failed",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       { error: "Failed to fetch comparison" },
       { status: 500 }

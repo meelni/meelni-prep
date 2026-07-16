@@ -12,6 +12,7 @@ import {
   FeedbackSectionCard,
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 interface Stage {
   label: string;
@@ -95,10 +96,9 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       }
 
       if (data.status === "failed") {
-        console.error(
-          "[FeedbackLoading] Feedback generation failed:",
-          data.error
-        );
+        console.error("[Feedback Loading] generation_failed", {
+          code: "feedback_generation_failed",
+        });
         setStatus("failed");
         setRetryMode(data.retryable ? "dispatch" : null);
         setError(data.error || "Feedback generation failed.");
@@ -122,8 +122,6 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         console.log(
           `[FeedbackLoading] Polling feedback status (attempt ${newCount}/${MAX_POLLS})`
         );
-        console.log("[FeedbackLoading] Poll response:", data);
-
         // Check for timeout
         if (newCount >= MAX_POLLS) {
           console.error("[FeedbackLoading] Timeout reached after 90 seconds");
@@ -146,7 +144,10 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
         return newCount;
       });
     } catch (err) {
-      console.error("[FeedbackLoading] Error polling feedback:", err);
+      console.error("[Feedback Loading] poll_failed", {
+        code: "feedback_poll_failed",
+        ...toSafeErrorLog(err),
+      });
       setStatus("failed");
       setRetryMode("poll");
       setError(
@@ -247,7 +248,10 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
       setCurrentStage(0);
       setMessageIndex(0);
     } catch (err) {
-      console.error("[FeedbackLoading] Error retrying feedback:", err);
+      console.error("[Feedback Loading] retry_failed", {
+        code: "feedback_retry_failed",
+        ...toSafeErrorLog(err),
+      });
       setError(
         err instanceof Error ? err.message : "Failed to regenerate feedback"
       );

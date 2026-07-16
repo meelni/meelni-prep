@@ -5,6 +5,7 @@ import {
   createDrizzleTranscriptIngestStore,
   createDrizzleTranscriptInterruptionMarkerStore,
   createDrizzleTranscriptRuntimeSettlementStore,
+  createDrizzleTranscriptRuntimeWriterStore,
 } from "@/lib/db/transcripts";
 import { createDrizzleInterviewRuntimeFailureStore } from "@/lib/db/interview-runtime-events";
 import { authorizeRuntimeTranscriptRequest } from "@/lib/security/transcript-ingest-authorization";
@@ -12,6 +13,8 @@ import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
 import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-transcript-interruption-marker";
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
+import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const RuntimeTranscriptRequestSchema = z
   .object({
@@ -20,6 +23,7 @@ const RuntimeTranscriptRequestSchema = z
     interruptionMarker: z.unknown().optional(),
     settlement: z.unknown().optional(),
     runtimeEvent: z.unknown().optional(),
+    writerRegistration: z.unknown().optional(),
   })
   .refine(
     (body) =>
@@ -28,6 +32,7 @@ const RuntimeTranscriptRequestSchema = z
         body.interruptionMarker,
         body.settlement,
         body.runtimeEvent,
+        body.writerRegistration,
       ].filter((value) => value !== undefined).length === 1,
     "exactly one runtime transcript payload is required"
   );
@@ -89,6 +94,26 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (parsed.data.writerRegistration !== undefined) {
+      const result = await ingestTranscriptRuntimeWriter({
+        requestSessionId: parsed.data.sessionId,
+        registration: parsed.data.writerRegistration,
+        store: createDrizzleTranscriptRuntimeWriterStore(),
+      });
+      if (result.ok) {
+        return response(
+          {
+            success: true,
+            disposition: result.disposition,
+            kind: "writer_registration",
+            writer_generation: result.writerGeneration,
+          },
+          200
+        );
+      }
+      return mapIngestResult(result, "writer_registration");
+    }
+
     if (parsed.data.event !== undefined) {
       const result = await ingestTranscriptEvent({
         requestSessionId: parsed.data.sessionId,
@@ -125,7 +150,7 @@ export async function POST(req: NextRequest) {
     return mapIngestResult(result, "settlement");
   } catch (error) {
     console.error("Runtime transcript ingest failed", {
-      errorType: error instanceof Error ? error.name : "unknown_error",
+      ...toSafeErrorLog(error),
     });
     return response({ error: "runtime_transcript_ingest_failed" }, 500);
   }
@@ -136,12 +161,27 @@ function mapIngestResult(
     | Awaited<ReturnType<typeof ingestTranscriptEvent>>
     | Awaited<ReturnType<typeof ingestTranscriptInterruptionMarker>>
     | Awaited<ReturnType<typeof ingestTranscriptRuntimeSettlement>>
-    | Awaited<ReturnType<typeof ingestInterviewRuntimeEvent>>,
-  kind: "turn" | "marker" | "settlement" | "runtime_event"
+    | Awaited<ReturnType<typeof ingestInterviewRuntimeEvent>>
+    | Awaited<ReturnType<typeof ingestTranscriptRuntimeWriter>>,
+  kind:
+    | "turn"
+    | "marker"
+    | "settlement"
+    | "runtime_event"
+    | "writer_registration"
 ) {
   if (result.ok) {
+    const rowId =
+      kind === "turn" && "turn" in result && isPersistedRow(result.turn)
+        ? result.turn.id
+        : undefined;
     return response(
-      { success: true, disposition: result.disposition, kind },
+      {
+        success: true,
+        disposition: result.disposition,
+        kind,
+        ...(rowId ? { row_id: rowId } : {}),
+      },
       200
     );
   }
@@ -154,8 +194,11 @@ function mapIngestResult(
   if (
     result.reason === "event_conflict" ||
     result.reason === "settlement_conflict" ||
+    result.reason === "registration_conflict" ||
     result.reason === "writer_sequence_conflict" ||
     result.reason === "writer_order_conflict" ||
+    result.reason === "writer_not_registered" ||
+    result.reason === "writer_fenced" ||
     result.reason === "runtime_settled" ||
     result.reason === "session_closed" ||
     result.reason === "room_mismatch"
@@ -163,6 +206,16 @@ function mapIngestResult(
     return response({ error: "runtime_transcript_identity_conflict" }, 409);
   }
   return response({ error: "invalid_runtime_transcript_payload" }, 400);
+}
+
+function isPersistedRow(value: unknown): value is { id: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    value.id.length > 0
+  );
 }
 
 function response(body: Record<string, unknown>, status: number) {

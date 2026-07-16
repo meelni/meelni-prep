@@ -110,15 +110,39 @@ This first-valid-claim rule makes concurrent end, deadline, disconnect, and prov
 
 - Only normalized final transcript events are eligible for durable persistence.
 - Realtime data delivery is not durable storage. A transcript turn counts only after authenticated persistence acknowledges it.
-- `ending` is the bounded settlement boundary for transcript writes and
-  statistics. Canonical ingest and terminalization serialize on the session
-  row; the terminal transaction calculates eligibility from the durable turns
-  visible after acquiring that lock.
+- `ending` normally closes distinct transcript writes and is the bounded
+  settlement boundary for statistics. The only narrow exception is a trusted
+  reconnect/deadline settlement drain for the current registered writer
+  generation and evidence at or before semantic cutoff `D`. Canonical ingest
+  and terminalization serialize on the session row; the terminal transaction
+  requires every registered generation settled and no integrity marker.
 - Feedback status (`pending`, `processing`, `completed`, `failed`, `skipped`) is a separate workflow. It never substitutes for session lifecycle state.
 - A completed session can have pending or failed feedback. An abandoned session can have skipped feedback. Those combinations are not lifecycle contradictions.
 - Transcript ordering and idempotency are governed by the implemented SAV-194
   transcript-ingest contract; lifecycle code must not invent a second
   transcript identity rule.
+
+## Browser Ownership And Explicit End
+
+The authenticated browser owner is part of the mounted room boundary. A sign
+out or direct account A-to-B replacement immediately makes the existing room
+render-ineligible, unmounts its LiveKit connection, aborts and removes the
+prior owner's display-only transcript state, clears all
+session credentials and local transcript/end state, and fences late async
+callbacks. The replacement account is sent to the dashboard instead of
+requesting credentials for the prior account's session URL.
+
+The browser has no transcript persistence or retry queue. An explicit end first
+closes display acceptance and requests trusted runtime settlement. A definitive
+non-success HTTP response proves that the browser received a rejection, so it
+reopens display acceptance and keeps
+the connected retry experience. A transport exception after the request was
+written is ambiguous: the command may already have committed. In that case the
+browser unmounts the room and presents a non-dismissible frozen state. It polls
+owned durable lifecycle and feedback truth and, only while the stored session
+is still joinable, retries the same idempotent `user_end` command at a bounded
+cadence. It does not resume packet acceptance until terminal handoff is
+confirmed.
 
 ## Room Metadata And Correlation
 
@@ -134,10 +158,13 @@ uses 30 minutes as the one compatibility default, derives an absolute deadline
 from the server-owned start instant, and treats the exact deadline as expired.
 Serialized timestamps use canonical millisecond UTC ISO form.
 
-The voice runtime consumes `deadline_at` as a defensive stop boundary. It
-rejects already-expired jobs before starting an agent session, closes audio I/O
-immediately without draining queued agent speech, and terminates the room once
-through the acknowledged room-service API even if duplicate watchdog tasks
+The voice runtime consumes `deadline_at` as semantic cutoff `D`. It rejects
+already-expired jobs before starting an agent session, closes audio input and
+output at `D`, records only evidence measured at or before `D`, drains each
+registered writer generation, and persists `settled_at = D` before room
+cleanup. Operational acknowledgement may arrive during cleanup grace but does
+not extend audio or the evidence window. It terminates the room once through
+the acknowledged room-service API even if duplicate watchdog tasks
 fire. A normal early close cancels the pending watchdog. That provider action
 prevents listening or speaking past the deadline but does not select or persist
 a terminal reason.
@@ -210,16 +237,26 @@ wins. The grace event carries the version and exact stored cutoff. At expiry the
 worker first checks authoritative candidate presence. Only provider state
 `JOINED` or `ACTIVE` with a finite provider `joinedAt` strictly before the
 stored cutoff may repair a missed join through the same
-lifecycle-version, deadline, and timestamp compare-and-set;
-the database clock must also still be strictly before the cutoff. Equality is
-expired. Fresh token issuance, signed join recovery, presence repair, and the
-timeout claim all use PostgreSQL time as the authorization clock, so an
-application host's slow, fast, or rolled-back clock cannot extend access.
+lifecycle-version, deadline, and timestamp compare-and-set. Ordinary signed
+join and periodic presence repair require PostgreSQL time to remain strictly
+before the cutoff. Once a grace-owned cutoff is due, the enforcement worker may
+instead repair provider-confirmed pre-cutoff presence through a disjoint CAS
+that requires PostgreSQL time at or after the cutoff and the same grace owner,
+state, version, and deadline. This adjudicates a missed join without extending
+access; it cannot recover a hard-deadline-owned generation. A provider
+`joinedAt` equal to the cutoff is expired. Fresh token issuance, both recovery
+CAS paths, and the timeout claim use PostgreSQL time as the authorization
+clock, so an application host's slow, fast, or rolled-back clock cannot extend
+access.
 provider read failure leaves the session reconnecting for retry. Confirmed
 absence allows the worker to atomically claim provisional
 `ending (disconnect_timeout)` only while all three facts still match. The claim
-is followed by candidate-token revocation, room deletion, and a bounded
-two-second transcript drain. One durable validation snapshot both selects any
+fences candidate access but keeps the room and agent alive while the server
+sends a reliable trusted metadata-only settlement request targeted to the
+current registered writer generation, room, request ID, and semantic cutoff.
+The worker awaits durable per-generation settlement acknowledgement or a
+bounded degraded/missing result before room deletion; a passive two-second
+delay is not evidence. One durable validation snapshot then selects any
 reason refinement and drives finalization; completion does not revalidate that
 snapshot. Before terminalization, insufficient durable
 signal may refine that provisional reason exactly once through a compare-and-set
@@ -259,8 +296,10 @@ with deterministic idempotency keys.
 User end attempts cleanup immediately but still returns committed terminal
 truth if the provider is unavailable. Hard-deadline and reconnect workers clear
 the same marker after acknowledged deletion. Cleanup removes the candidate with
-an explicit token-revocation timestamp before deleting the room; room absence
-is idempotent success. A five-minute terminal-room recovery scan fans each
+LiveKit Cloud's provider-owned current-time revocation before deleting the
+room; the app deliberately omits a client timestamp so process-clock skew
+cannot preserve an older token. A missing participant response still revokes
+cached tokens, and room absence is idempotent success. A five-minute terminal-room recovery scan fans each
 pending row into an independently retryable event and prioritizes never-tried,
 then least-recently-tried cleanup, provisioning, and credit-only work,
 preventing one poison row from starving peers
