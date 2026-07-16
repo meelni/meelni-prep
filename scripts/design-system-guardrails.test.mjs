@@ -2637,3 +2637,46 @@ test("feedback result indicators use semantic status tokens", async () => {
 
   assert.deepEqual(violations, []);
 });
+
+test("feedback eligibility UI and validator consume one canonical policy", async () => {
+  const policy = await readFile(
+    "packages/core/src/feedback-eligibility.ts",
+    "utf8"
+  );
+  const validator = await readFile(
+    "lib/evaluation/session-validator.ts",
+    "utf8"
+  );
+  const insufficient = await readFile(
+    "components/feedback/feedback-insufficient.tsx",
+    "utf8"
+  );
+  const violations = [];
+
+  for (const threshold of [
+    "minTurns: 5",
+    "minDurationMinutes: 5",
+    "minSubstantiveResponses: 3",
+  ]) {
+    if (!policy.includes(threshold)) {
+      violations.push(`feedback-eligibility:${threshold}`);
+    }
+  }
+
+  for (const [file, source] of [
+    ["lib/evaluation/session-validator.ts", validator],
+    ["components/feedback/feedback-insufficient.tsx", insufficient],
+  ]) {
+    if (!source.includes("FEEDBACK_ELIGIBILITY_POLICY")) {
+      violations.push(`${file}:FEEDBACK_ELIGIBILITY_POLICY`);
+    }
+  }
+
+  for (const staleClaim of ["need 10+ min", "need 10+ turns"]) {
+    if (insufficient.includes(staleClaim)) {
+      violations.push(`feedback-insufficient:${staleClaim}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});

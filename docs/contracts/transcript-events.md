@@ -40,7 +40,7 @@ Canonical writers publish this shape:
 | Field                      | Rule                                                                                                                                          |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `contract_version`         | Exactly `2` for canonical writers.                                                                                                            |
-| `event_id`                 | Non-empty identity generated once for the event. Replays retain it.                                                                           |
+| `event_id`                 | Non-empty opaque identity generated once for the event. Replays retain the exact value; consumers do not normalize or parse it.               |
 | `writer_id`                | Non-empty identity for one agent job/writer instance. A replacement writer in the same room receives a new ID.                                |
 | `writer_generation`        | Positive generation assigned by durable writer registration before the runtime can produce audible output.                                    |
 | `sequence`                 | Positive safe integer, monotonically assigned within one `writer_id`. Gaps are allowed.                                                       |
@@ -203,3 +203,32 @@ acknowledgement. Browser reload/reconnect hydrates owned durable turns and
 merges by event identity. Retired browser keys `transcript_queue` and
 `transcript_queue_v2` are deleted without reading their contents at bootstrap,
 sign-out, and account deletion.
+
+Before feedback eligibility is calculated, canonical events pass through the
+feedback transcript preparation boundary. Malformed events fail closed,
+semantic replays are counted once, and sessions without usable user speech or
+with high-confidence instruction-injection content become insufficient. The
+same prepared event set feeds evaluation so counting and evidence cannot drift.
+Any bounded one-to-three-token structural prefix before a supported delimiter
+shares the exact normalized answer-suffix family without interpreting the
+prefix vocabulary. A prefix-only family contributes at most two turns—even for
+short answers—while accepted events retain their original text and material
+answer-body changes remain distinct.
+Short evaluator-result commands split across consecutive candidate events are
+tracked with bounded typed state rather than unrestricted text concatenation;
+the state can follow intent, evaluator/reviewer participant, optional
+infinitive, action, candidate or quantified dimension/category target, result,
+connector, and controlled-outcome fragments across at most six candidate
+events. Candidate targets include bounded article, demonstrative, possessive,
+and pronoun forms such as `the answer`, `this response`, `their performance`,
+and `it`; splitting a target prefix from its noun does not evade the state. A
+bare zero-through-ten value becomes a controlled outcome only after typed
+result-setting context has already been established; unrelated numeric PM
+evidence remains eligible. Continued control grammar at the cap fails closed.
+Interviewer, malformed, unrelated, and detected-injection events are barriers.
+For feedback, an event identity must be non-whitespace and at most 512
+JavaScript string code units. Its exact canonical value remains the persistence
+and evidence identity, but it is replaced with a deterministic local
+`turn_0001`-style alias before model prompt construction. Model references are
+validated against those aliases and restored to exact canonical identities
+before feedback persistence; canonical IDs are never embedded in model input.

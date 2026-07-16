@@ -41,7 +41,7 @@ describe("Session Validator", () => {
         },
         {
           speaker: "user",
-          text: "Sure, I'm ready to begin. I have experience in product management and I'm excited to discuss my approach to product sense questions.",
+          text: "I would prioritize daily listeners because discovery quality determines whether new music becomes a lasting weekly habit.",
           startedAt: new Date("2024-01-01T10:00:10Z"),
           endedAt: new Date("2024-01-01T10:00:25Z"),
         },
@@ -84,7 +84,7 @@ describe("Session Validator", () => {
       expect(stats.substantiveResponses).toBe(0);
     });
 
-    it("should count only substantive responses (>10 words)", async () => {
+    it("should count only coherent responses with substantive PM signal", async () => {
       const mockTurns = [
         {
           speaker: "user",
@@ -94,7 +94,7 @@ describe("Session Validator", () => {
         },
         {
           speaker: "user",
-          text: "I think the key challenge here is understanding user needs and translating them into product features.", // 16 words - substantive
+          text: "I would prioritize new users because setup completion reveals whether the onboarding workflow solves their initial product problem.",
           startedAt: new Date("2024-01-01T10:00:05Z"),
           endedAt: new Date("2024-01-01T10:00:10Z"),
         },
@@ -106,7 +106,7 @@ describe("Session Validator", () => {
 
       const stats = await calculateSessionStats("test-session");
 
-      expect(stats.substantiveResponses).toBe(1); // Only the second response
+      expect(stats.substantiveResponses).toBe(1);
     });
   });
 
@@ -159,8 +159,8 @@ describe("Session Validator", () => {
           i % 2 === 0
             ? "Question here?"
             : "This is my answer with enough words to be substantive and detailed.",
-        startedAt: new Date(`2024-01-01T10:00:${i * 10}Z`),
-        endedAt: new Date(`2024-01-01T10:00:${i * 10 + 5}Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10 + 5)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -180,8 +180,8 @@ describe("Session Validator", () => {
       const mockTurns = Array.from({ length: 10 }, (_, i) => ({
         speaker: "interviewer",
         text: "Question " + i,
-        startedAt: new Date(`2024-01-01T10:${i}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${i}:30Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 0)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -207,7 +207,7 @@ describe("Session Validator", () => {
         },
         {
           speaker: "user",
-          text: "Sure, I'm ready. I have experience in product management and I'm looking forward to this interview.",
+          text: "I would prioritize daily listeners because repeated discovery helps establish a durable weekly music habit.",
           startedAt: new Date("2024-01-01T10:01:00Z"),
           endedAt: new Date("2024-01-01T10:02:00Z"),
         },
@@ -219,7 +219,7 @@ describe("Session Validator", () => {
         },
         {
           speaker: "user",
-          text: "I use Spotify daily. It's great for music discovery and creating playlists. The algorithm understands my taste well.",
+          text: "I would measure weekly playlist creation because retained discovery shows whether listeners receive lasting value.",
           startedAt: new Date("2024-01-01T10:04:00Z"),
           endedAt: new Date("2024-01-01T10:05:00Z"),
         },
@@ -231,7 +231,7 @@ describe("Session Validator", () => {
         },
         {
           speaker: "user",
-          text: "I would improve the social features. Currently it's hard to discover what friends are listening to and collaborate on playlists.",
+          text: "I would prioritize collaborative playlists because shared discovery helps friends coordinate music choices.",
           startedAt: new Date("2024-01-01T10:07:00Z"),
           endedAt: new Date("2024-01-01T10:08:00Z"),
         },
@@ -262,6 +262,69 @@ describe("Session Validator", () => {
       expect(validation.recommendations[0]).toContain("comprehensive feedback");
     });
 
+    it("qualifies three ordinary PM answers in a five-turn canonical session", async () => {
+      const mockTurns = [
+        {
+          contractVersion: 2,
+          eventId: "writer:ordinary-partial:question:1",
+          speaker: "interviewer",
+          text: "What should the first release solve?",
+          startedAt: new Date("2024-01-01T10:00:00Z"),
+          endedAt: new Date("2024-01-01T10:00:15Z"),
+        },
+        {
+          contractVersion: 2,
+          eventId: "writer:ordinary-partial:answer:1",
+          speaker: "user",
+          text: "The first release solves missed appointment coordination for working parents while preserving manual confirmation for clinics.",
+          startedAt: new Date("2024-01-01T10:00:30Z"),
+          endedAt: new Date("2024-01-01T10:01:30Z"),
+        },
+        {
+          contractVersion: 2,
+          eventId: "writer:ordinary-partial:question:2",
+          speaker: "interviewer",
+          text: "How would you measure success and decide whether to expand?",
+          startedAt: new Date("2024-01-01T10:02:00Z"),
+          endedAt: new Date("2024-01-01T10:02:15Z"),
+        },
+        {
+          contractVersion: 2,
+          eventId: "writer:ordinary-partial:answer:2",
+          speaker: "user",
+          text: "Success means fewer missed appointments and faster scheduling for patients across the local pilot.",
+          startedAt: new Date("2024-01-01T10:03:00Z"),
+          endedAt: new Date("2024-01-01T10:04:00Z"),
+        },
+        {
+          contractVersion: 2,
+          eventId: "writer:ordinary-partial:answer:3",
+          speaker: "user",
+          text: "We should not launch nationally until the local pilot shows reliable completion and demonstrates acceptable support demand.",
+          startedAt: new Date("2024-01-01T10:05:30Z"),
+          endedAt: new Date("2024-01-01T10:06:30Z"),
+        },
+      ];
+
+      vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
+        mockTurns as any
+      );
+
+      const validation = await validateSessionCompleteness(
+        "ordinary-five-turn-partial"
+      );
+
+      expect(validation.tier).toBe(SessionTier.PARTIAL);
+      expect(validation.isValid).toBe(true);
+      expect(validation.stats).toMatchObject({
+        totalTurns: 5,
+        userTurns: 3,
+        durationSeconds: 390,
+        substantiveResponses: 3,
+      });
+      expect(validation.reasons).toHaveLength(0);
+    });
+
     it("should mark session as FULL with excellent engagement", async () => {
       // 25 turns, 30 minutes, 10 substantive responses
       const mockTurns = Array.from({ length: 25 }, (_, i) => ({
@@ -270,8 +333,8 @@ describe("Session Validator", () => {
           i % 2 === 0
             ? `Question ${i}: Tell me more about your experience`
             : `Response ${i}: I have extensive experience in product management, working on features that impact millions of users. I focus on user research, data analysis, and cross-functional collaboration.`,
-        startedAt: new Date(`2024-01-01T10:${Math.floor(i * 1.2)}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${Math.floor(i * 1.2)}:30Z`),
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 75)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 75 + 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
@@ -358,9 +421,9 @@ describe("Session Validator", () => {
         text:
           i % 2 === 0
             ? "Question"
-            : "Detailed response with many words explaining my thoughts",
-        startedAt: new Date(`2024-01-01T10:${i}:00Z`),
-        endedAt: new Date(`2024-01-01T10:${i}:30Z`),
+            : "I would prioritize new users because setup completion reveals whether onboarding solves their initial product problem.",
+        startedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 0)),
+        endedAt: new Date(Date.UTC(2024, 0, 1, 10, i, 30)),
       }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
