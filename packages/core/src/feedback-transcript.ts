@@ -510,10 +510,7 @@ function advancePartialFeedbackResultControl(
     hasResult: prior.hasResult || result,
   } satisfies PartialFeedbackResultControlState;
   const detected =
-    outcome &&
-    next.action !== null &&
-    ((next.action === "candidate" && next.hasTarget) ||
-      (next.action === "result" && next.hasResult));
+    outcome && next.action !== null && (next.hasTarget || next.hasResult);
   return { detected, next: detected ? null : next };
 }
 
