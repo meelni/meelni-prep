@@ -20,6 +20,7 @@ Successfully built the real-time nudges analysis API endpoint that analyzes tran
 **Purpose**: Main API endpoint for real-time nudge analysis
 
 **Key Features**:
+
 - ✅ POST handler for nudge analysis
 - ✅ GET handler for health check
 - ✅ Supabase Auth integration (JWT verification)
@@ -31,20 +32,28 @@ Successfully built the real-time nudges analysis API endpoint that analyzes tran
 - ✅ Type-safe interview type validation
 
 **Authentication Pattern**:
+
 ```typescript
 const supabase = await createClient();
-const { data: { user }, error: authError } = await supabase.auth.getUser();
+const {
+  data: { user },
+  error: authError,
+} = await supabase.auth.getUser();
 if (authError || !user) {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 ```
 
 **Rate Limiting Pattern**:
+
 ```typescript
 const sessionRateLimits = new Map<string, number>();
 const RATE_LIMIT_MS = 1000; // 1 request per second
 
-function isRateLimited(sessionId: string): { limited: boolean; retryAfter: number } {
+function isRateLimited(sessionId: string): {
+  limited: boolean;
+  retryAfter: number;
+} {
   // Check last request time
   // Auto-cleanup old entries
   // Return rate limit status
@@ -52,6 +61,7 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 ```
 
 **Error Handling Strategy**:
+
 - **Critical Errors** (401, 403, 429, 400): Return appropriate HTTP status
 - **Analysis Errors** (500): Return HTTP 200 with `shouldNudge: false` (graceful degradation)
 - **Rationale**: Nudges are enhancement, not critical - don't break interview flow
@@ -63,6 +73,7 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 **Purpose**: Comprehensive API documentation
 
 **Sections**:
+
 - ✅ API endpoint specification
 - ✅ Request/response formats with examples
 - ✅ Nudge types and triggers
@@ -76,6 +87,7 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 - ✅ Future enhancements roadmap
 
 **Key ADRs**:
+
 1. **In-Memory Rate Limiting**: Use Map instead of Redis for MVP simplicity
 2. **Graceful Error Handling**: Return 200 with no-nudge on errors
 3. **1-Second Rate Limit**: Balance between API protection and real-time UX
@@ -93,24 +105,29 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 ### Endpoint: POST /api/nudges/analyze
 
 **Request**:
+
 ```typescript
 {
-  sessionId: string;           // UUID
+  sessionId: string; // UUID
   interviewType: "product_sense" | "analytical" | "leadership" | "strategy";
   currentTurn: {
     speaker: "user" | "interviewer";
     text: string;
-    timestamp: number;         // milliseconds
-  };
-  timeElapsed: number;         // seconds since interview started
+    timestamp: number; // milliseconds
+  }
+  timeElapsed: number; // seconds since interview started
 }
 ```
 
 **Response (Nudge Triggered)**:
+
 ```typescript
 {
   shouldNudge: true;
-  nudgeType: "metric_missing" | "move_on" | "clarify_first" | "framework_element";
+  nudgeType: "metric_missing" |
+    "move_on" |
+    "clarify_first" |
+    "framework_element";
   message: string;
   frameworkCoverage: Array<{
     element: string;
@@ -120,6 +137,7 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 ```
 
 **Response (No Nudge)**:
+
 ```typescript
 {
   shouldNudge: false;
@@ -134,7 +152,7 @@ function isRateLimited(sessionId: string): { limited: boolean; retryAfter: numbe
 
 ## Authentication Approach
 
-Uses existing Supabase Auth pattern from `/app/api/session/transcript/route.ts`:
+Uses the existing Supabase Auth pattern shared by authenticated session routes:
 
 1. **Extract JWT** from Authorization header
 2. **Verify user** with `supabase.auth.getUser()`
@@ -142,6 +160,7 @@ Uses existing Supabase Auth pattern from `/app/api/session/transcript/route.ts`:
 4. **Return 401/403** if auth fails
 
 **Consistent with Codebase**:
+
 - ✅ Uses `@/lib/supabase/server` (same as other API routes)
 - ✅ Uses `@/lib/db/sessions` helper functions
 - ✅ Follows same error response format
@@ -151,14 +170,18 @@ Uses existing Supabase Auth pattern from `/app/api/session/transcript/route.ts`:
 ## Error Handling Strategy
 
 ### 1. **Client Errors (4xx)**
+
 Return appropriate HTTP status and error message:
+
 - **401 Unauthorized**: Missing/invalid JWT
 - **403 Forbidden**: User doesn't own session
 - **429 Too Many Requests**: Rate limit exceeded
 - **400 Bad Request**: Invalid input
 
 ### 2. **Server Errors (5xx)**
+
 Return **200 OK** with `shouldNudge: false`:
+
 ```typescript
 {
   shouldNudge: false,
@@ -168,6 +191,7 @@ Return **200 OK** with `shouldNudge: false`:
 ```
 
 **Rationale**:
+
 - Interview flow must not be interrupted by nudge errors
 - Nudges are enhancement, not critical feature
 - Graceful degradation maintains user experience
@@ -178,19 +202,23 @@ Return **200 OK** with `shouldNudge: false`:
 ## Performance Optimizations
 
 ### 1. **In-Memory Rate Limiting**
+
 - **Approach**: Map<sessionId, timestamp>
 - **Cleanup**: Automatic removal of entries > 5 minutes old
 - **Performance**: O(1) lookups, no database queries
 - **Trade-off**: Single-instance only (future: migrate to Redis)
 
 ### 2. **Target Response Time: < 200ms**
+
 Critical for real-time UX during interviews:
+
 - Minimal validation overhead
 - No database queries per request (only auth check)
 - Framework analysis delegated to `FrameworkTracker` (optimized)
 - Fast-fail on rate limit (early return)
 
 ### 3. **Automatic Memory Management**
+
 ```typescript
 // Cleanup entries older than 5 minutes
 sessionRateLimits.forEach((timestamp, sid) => {
@@ -201,6 +229,7 @@ sessionRateLimits.forEach((timestamp, sid) => {
 ```
 
 **Benefits**:
+
 - Prevents memory leaks
 - No manual cleanup needed
 - Scales to thousands of concurrent sessions
@@ -210,21 +239,31 @@ sessionRateLimits.forEach((timestamp, sid) => {
 ## Dependencies
 
 ### External Dependencies (Already Exist)
+
 - ✅ `@/lib/supabase/server` - Supabase client creation
 - ✅ `@/lib/db/sessions` - `isSessionOwnedByUser()` function
 - ✅ `next` - NextRequest/NextResponse types
 
 ### Required Dependency (To Be Built)
+
 - ⏳ `/lib/nudges/framework-tracker.ts` - Framework coverage tracking
 
 **Expected Interface**:
+
 ```typescript
 export class FrameworkTracker {
-  static getInstance(sessionId: string, interviewType: string): FrameworkTracker;
+  static getInstance(
+    sessionId: string,
+    interviewType: string
+  ): FrameworkTracker;
   processTurn(turn: { speaker: string; text: string; timestamp: number }): void;
   analyze(timeElapsed: number): {
     shouldNudge: boolean;
-    nudgeType?: "metric_missing" | "move_on" | "clarify_first" | "framework_element";
+    nudgeType?:
+      | "metric_missing"
+      | "move_on"
+      | "clarify_first"
+      | "framework_element";
     message?: string;
     frameworkCoverage: Array<{ element: string; covered: boolean }>;
   };
@@ -232,6 +271,7 @@ export class FrameworkTracker {
 ```
 
 **Rationale for Singleton**:
+
 - Framework state must persist across multiple API calls in same session
 - Avoid re-analyzing entire transcript on every turn
 - Memory-efficient (one tracker per active session)
@@ -243,43 +283,46 @@ export class FrameworkTracker {
 From `/app/interview/page.tsx` (future implementation):
 
 ```typescript
-const analyzeForNudge = useCallback(async (
-  speaker: "user" | "interviewer",
-  text: string,
-  timestamp: number,
-  timeElapsed: number
-) => {
-  // Throttle to 1 req/sec (match rate limit)
-  if (Date.now() - lastNudgeTime.current < 1000) return;
-  lastNudgeTime.current = Date.now();
+const analyzeForNudge = useCallback(
+  async (
+    speaker: "user" | "interviewer",
+    text: string,
+    timestamp: number,
+    timeElapsed: number
+  ) => {
+    // Throttle to 1 req/sec (match rate limit)
+    if (Date.now() - lastNudgeTime.current < 1000) return;
+    lastNudgeTime.current = Date.now();
 
-  try {
-    const response = await fetch("/api/nudges/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token}`,
-      },
-      body: JSON.stringify({
-        sessionId,
-        interviewType,
-        currentTurn: { speaker, text, timestamp },
-        timeElapsed,
-      }),
-    });
+    try {
+      const response = await fetch("/api/nudges/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          sessionId,
+          interviewType,
+          currentTurn: { speaker, text, timestamp },
+          timeElapsed,
+        }),
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (result.shouldNudge) {
-      showNudgeOverlay(result.message, result.nudgeType);
+      if (result.shouldNudge) {
+        showNudgeOverlay(result.message, result.nudgeType);
+      }
+
+      updateFrameworkCoverage(result.frameworkCoverage);
+    } catch (error) {
+      console.error("Nudge analysis error:", error);
+      // Graceful failure - continue interview
     }
-
-    updateFrameworkCoverage(result.frameworkCoverage);
-  } catch (error) {
-    console.error("Nudge analysis error:", error);
-    // Graceful failure - continue interview
-  }
-}, [sessionId, interviewType, session]);
+  },
+  [sessionId, interviewType, session]
+);
 ```
 
 ---
@@ -357,6 +400,7 @@ expect(result.nudgeType).toBe("metric_missing");
 The `framework-tracker.ts` should implement:
 
 1. **Singleton Pattern**:
+
    ```typescript
    private static instances = new Map<string, FrameworkTracker>();
 
@@ -370,12 +414,13 @@ The `framework-tracker.ts` should implement:
    ```
 
 2. **Framework Definitions**:
+
    ```typescript
    const FRAMEWORKS = {
      product_sense: ["Clarify", "Context", "Users", "Problem", "Solution"],
      analytical: ["Goal", "Metric", "Tradeoffs", "Recommendation"],
      leadership: ["Situation", "Task", "Action", "Result"],
-     strategy: ["Market", "Competition", "Value Prop", "Growth"]
+     strategy: ["Market", "Competition", "Value Prop", "Growth"],
    };
    ```
 
@@ -394,15 +439,16 @@ The `framework-tracker.ts` should implement:
 
 ## File Ownership
 
-| File | Owner | Status |
-|------|-------|--------|
-| `/app/api/nudges/analyze/route.ts` | WS #7 | ✅ Complete |
-| `/app/api/nudges/README.md` | WS #7 | ✅ Complete |
-| `/lib/nudges/framework-tracker.ts` | WS #7 | ⏳ Pending |
-| `/lib/nudges/prompt-builder.ts` | WS #7 | 🔲 Future |
-| `/components/interview/nudge-overlay.tsx` | WS #7 | 🔲 Future |
+| File                                      | Owner | Status      |
+| ----------------------------------------- | ----- | ----------- |
+| `/app/api/nudges/analyze/route.ts`        | WS #7 | ✅ Complete |
+| `/app/api/nudges/README.md`               | WS #7 | ✅ Complete |
+| `/lib/nudges/framework-tracker.ts`        | WS #7 | ⏳ Pending  |
+| `/lib/nudges/prompt-builder.ts`           | WS #7 | 🔲 Future   |
+| `/components/interview/nudge-overlay.tsx` | WS #7 | 🔲 Future   |
 
 **Conflict Prevention**:
+
 - WS #7 owns entire `/app/api/nudges/` directory
 - No conflicts with other workstreams (isolated directory)
 
@@ -425,6 +471,7 @@ The `framework-tracker.ts` should implement:
 ## Architecture Highlights
 
 ### 1. **Graceful Degradation Design**
+
 ```typescript
 catch (error) {
   console.error("Error analyzing nudges:", error);
@@ -444,6 +491,7 @@ catch (error) {
 ---
 
 ### 2. **Rate Limiting with Automatic Cleanup**
+
 ```typescript
 sessionRateLimits.forEach((timestamp, sid) => {
   if (now - timestamp > CLEANUP_THRESHOLD) {
@@ -457,9 +505,14 @@ sessionRateLimits.forEach((timestamp, sid) => {
 ---
 
 ### 3. **Type-Safe Interview Type Validation**
+
 ```typescript
-function isValidInterviewType(type: string): type is "product_sense" | "analytical" | "leadership" | "strategy" {
-  return ["product_sense", "analytical", "leadership", "strategy"].includes(type);
+function isValidInterviewType(
+  type: string
+): type is "product_sense" | "analytical" | "leadership" | "strategy" {
+  return ["product_sense", "analytical", "leadership", "strategy"].includes(
+    type
+  );
 }
 ```
 

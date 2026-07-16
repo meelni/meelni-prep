@@ -95,49 +95,10 @@ curl -X GET "${BASE_URL}/api/sessions?roundType=product_sense&limit=20" \
 
 ### Transcript Management
 
-#### Save Single Transcript Turn
-
-```bash
-curl -X POST ${BASE_URL}/api/session/transcript \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "speaker": "user",
-    "text": "I worked on a mobile checkout feature that increased conversion by 15%",
-    "startedAt": "2025-11-05T10:30:15Z",
-    "endedAt": "2025-11-05T10:31:20Z",
-    "audioMs": 65000,
-    "section": "response"
-  }'
-```
-
-#### Save Batch Transcript Turns
-
-```bash
-curl -X POST ${BASE_URL}/api/session/transcript \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "turns": [
-      {
-        "speaker": "interviewer",
-        "text": "Tell me about a product you launched.",
-        "startedAt": "2025-11-05T10:30:00Z",
-        "endedAt": "2025-11-05T10:30:08Z",
-        "audioMs": 8000
-      },
-      {
-        "speaker": "user",
-        "text": "I launched a mobile checkout feature...",
-        "startedAt": "2025-11-05T10:30:10Z",
-        "endedAt": "2025-11-05T10:31:15Z",
-        "audioMs": 65000
-      }
-    ]
-  }'
-```
+Transcript writes are runtime-only and HMAC-signed. Do not simulate them with
+an end-user JWT or place raw transcript text in browser storage. Exercise the
+Python outbox and internal route through the contract and migration suites in
+[Runtime Transcript Ingest](../operations/runtime-transcript-ingest.md).
 
 #### Get Session Transcript
 
@@ -148,16 +109,8 @@ curl -X GET ${BASE_URL}/api/session/550e8400-e29b-41d4-a716-446655440000/transcr
 
 ### Feedback & Evaluation
 
-#### Generate AI Feedback
-
-```bash
-curl -X POST ${BASE_URL}/api/feedback/generate \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000"
-  }'
-```
+Feedback is scheduled by terminal interview completion after durable
+eligibility is committed. Tests must not invoke a client generation route.
 
 #### Get Session Feedback
 
@@ -256,35 +209,8 @@ async function testFullInterviewFlow() {
 
     const { sessionId } = sessionData;
 
-    // 2. Save transcript turns
-    console.log("Saving transcript...");
-    await fetch(`${BASE_URL}/api/session/transcript`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sessionId,
-        turns: [
-          {
-            speaker: "interviewer",
-            text: "Tell me about a product you launched.",
-            startedAt: new Date().toISOString(),
-            endedAt: new Date(Date.now() + 8000).toISOString(),
-            audioMs: 8000,
-          },
-          {
-            speaker: "user",
-            text: "I launched a mobile checkout feature...",
-            startedAt: new Date(Date.now() + 10000).toISOString(),
-            endedAt: new Date(Date.now() + 75000).toISOString(),
-            audioMs: 65000,
-          },
-        ],
-      }),
-    });
-    console.log("Transcript saved");
+    // 2. Run the LiveKit runtime contract fixture. The runtime owns signed
+    // persistence; browser-authored transcript writes are intentionally unavailable.
 
     // 3. End session
     console.log("Ending session...");
@@ -298,21 +224,7 @@ async function testFullInterviewFlow() {
     });
     console.log("Session ended");
 
-    // 4. Generate feedback
-    console.log("Generating feedback...");
-    const feedbackResponse = await fetch(`${BASE_URL}/api/feedback/generate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ sessionId }),
-    });
-
-    const feedbackData = await feedbackResponse.json();
-    console.log("Feedback generated:", feedbackData.feedback.overallScore);
-
-    // 5. Retrieve feedback
+    // 4. Poll the feedback state scheduled by terminal completion
     console.log("Retrieving feedback...");
     const getFeedbackResponse = await fetch(
       `${BASE_URL}/api/feedback/${sessionId}`,
@@ -420,36 +332,14 @@ def start_interview_session(round_type: str) -> Dict[str, Any]:
     return response.json()
 ```
 
-### Save Transcript Batch
+### Runtime Transcript Persistence
+
+Use `agent/test_runtime_contracts.py` and the signed internal-route tests.
+Application clients cannot submit transcript turns.
+
+### Retrieve Terminally Scheduled Feedback
 
 ```python
-def save_transcript_batch(session_id: str, turns: list) -> Dict[str, Any]:
-    """Save multiple transcript turns"""
-    url = f'{BASE_URL}/api/session/transcript'
-    payload = {
-        'sessionId': session_id,
-        'turns': turns
-    }
-
-    response = requests.post(url, json=payload, headers=get_headers())
-    response.raise_for_status()
-
-    return response.json()
-```
-
-### Generate and Retrieve Feedback
-
-```python
-def generate_feedback(session_id: str) -> Dict[str, Any]:
-    """Generate AI feedback for a session"""
-    url = f'{BASE_URL}/api/feedback/generate'
-    payload = {'sessionId': session_id}
-
-    response = requests.post(url, json=payload, headers=get_headers())
-    response.raise_for_status()
-
-    return response.json()
-
 def get_feedback(session_id: str) -> Dict[str, Any]:
     """Retrieve feedback for a session"""
     url = f'{BASE_URL}/api/feedback/{session_id}'
@@ -670,27 +560,6 @@ if __name__ == '__main__':
     {
       "name": "Feedback",
       "item": [
-        {
-          "name": "Generate Feedback",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sessionId\": \"{{SESSION_ID}}\"\n}"
-            },
-            "url": {
-              "raw": "{{BASE_URL}}/api/feedback/generate",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "feedback", "generate"]
-            }
-          }
-        },
         {
           "name": "Get Feedback",
           "request": {

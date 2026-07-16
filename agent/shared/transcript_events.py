@@ -63,6 +63,7 @@ def is_transcript_event(value: object) -> bool:
         and bool(value["event_id"].strip())
         and isinstance(value.get("writer_id"), str)
         and bool(value["writer_id"].strip())
+        and _is_safe_positive_integer(value.get("writer_generation"))
         and _is_safe_positive_integer(value.get("sequence"))
         and isinstance(value.get("session_id"), str)
         and bool(value["session_id"].strip())
@@ -83,6 +84,7 @@ def create_transcript_event(
     *,
     event_id: str,
     writer_id: str,
+    writer_generation: int,
     sequence: int,
     session_id: str,
     room_name: str,
@@ -99,6 +101,7 @@ def create_transcript_event(
         "contract_version": TRANSCRIPT_CONTRACT_VERSION,
         "event_id": event_id,
         "writer_id": writer_id,
+        "writer_generation": writer_generation,
         "sequence": sequence,
         "session_id": session_id,
         "room_name": room_name,
@@ -120,6 +123,7 @@ def create_transcript_event_from_message(
     *,
     message: object,
     writer_id: str,
+    writer_generation: int,
     sequence: int,
     session_id: str,
     room_name: str,
@@ -129,8 +133,7 @@ def create_transcript_event_from_message(
     role = getattr(message, "role", None)
     if role not in ("user", "assistant"):
         return None
-    if role == "assistant" and getattr(message, "interrupted", False):
-        return None
+    interrupted = role == "assistant" and getattr(message, "interrupted", False) is True
 
     metrics = getattr(message, "metrics", None)
     if not isinstance(metrics, dict):
@@ -155,6 +158,7 @@ def create_transcript_event_from_message(
     return create_transcript_event(
         event_id=f"{writer_id}:{message_id}",
         writer_id=writer_id,
+        writer_generation=writer_generation,
         sequence=sequence,
         session_id=session_id,
         room_name=room_name,
@@ -164,6 +168,7 @@ def create_transcript_event_from_message(
         ended_at=ended_at,
         audio_duration_ms=round((ended_at - started_at) * 1000),
         section=section,
+        delivery_state="partially_delivered" if interrupted else "delivered",
     )
 
 

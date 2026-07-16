@@ -15,6 +15,8 @@ import {
   createTranscriptEvent,
   getTranscriptEventTiming,
   isTranscriptEvent,
+  isTranscriptInterruptionMarker,
+  isTranscriptRuntimeSettlement,
   normalizeInterviewRuntimeConfig,
   normalizeInterviewClientPreferences,
   interviewRuntimeSettingsFromEnv,
@@ -23,6 +25,8 @@ import {
   parseInterviewRoomMetadata,
   parseTranscriptEvent,
 } from "./index";
+
+const TRANSCRIPT_INGEST_URL = "http://localhost:3000/api/internal/transcript";
 
 test("buildInterviewRoomMetadata serializes the production room metadata shape", () => {
   const fixture = createProductSenseInterviewFixture();
@@ -53,6 +57,7 @@ test("parseInterviewRoomMetadata keeps question and config defaults", () => {
     JSON.stringify({
       contract_version: 1,
       session_id: "session-1",
+      transcript_ingest_url: TRANSCRIPT_INGEST_URL,
       round_type: "strategy",
       question: {
         id: "question-1",
@@ -77,6 +82,7 @@ test("parseInterviewRoomMetadata keeps question and config defaults", () => {
 test("room metadata normalizes the absolute deadline to canonical UTC", () => {
   const fromDate = buildInterviewRoomMetadata({
     session_id: "session-deadline-date",
+    transcript_ingest_url: TRANSCRIPT_INGEST_URL,
     deadline_at: new Date("2026-07-09T12:30:00.123Z"),
     round_type: "product_sense",
     config: normalizeInterviewRuntimeConfig({ duration: 30 }),
@@ -86,6 +92,7 @@ test("room metadata normalizes the absolute deadline to canonical UTC", () => {
     JSON.stringify({
       contract_version: 1,
       session_id: "session-deadline-json",
+      transcript_ingest_url: TRANSCRIPT_INGEST_URL,
       deadline_at: "2026-07-09T12:30:00.123Z",
       round_type: "product_sense",
       config: { duration: 30 },
@@ -110,6 +117,7 @@ test("room metadata fails closed for an explicitly malformed deadline", () => {
           JSON.stringify({
             contract_version: 1,
             session_id: "session-invalid-deadline",
+            transcript_ingest_url: TRANSCRIPT_INGEST_URL,
             deadline_at,
             round_type: "product_sense",
             config: {},
@@ -121,11 +129,36 @@ test("room metadata fails closed for an explicitly malformed deadline", () => {
   }
 });
 
+test("room metadata requires an exact secure runtime transcript URL", () => {
+  for (const transcript_ingest_url of [
+    "",
+    "http://meelni.com/api/internal/transcript",
+    "https://meelni.com/api/internal/transcript?session=1",
+    "https://meelni.com/other",
+    "https://user:secret@meelni.com/api/internal/transcript",
+  ]) {
+    assert.throws(
+      () =>
+        parseInterviewRoomMetadata(
+          JSON.stringify({
+            contract_version: 1,
+            session_id: "session-invalid-ingest-url",
+            transcript_ingest_url,
+            round_type: "product_sense",
+            config: {},
+          })
+        ),
+      /invalid_transcript_ingest_url/
+    );
+  }
+});
+
 test("room parsing preserves the web server's resolved runtime snapshot", () => {
   const metadata = parseInterviewRoomMetadata(
     JSON.stringify({
       contract_version: 1,
       session_id: "session-1",
+      transcript_ingest_url: TRANSCRIPT_INGEST_URL,
       round_type: "product_sense",
       config: {
         stt_model: "unknown/stt",
@@ -264,6 +297,7 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
     JSON.stringify({
       contract_version: 1,
       session_id: "session-invalid-config",
+      transcript_ingest_url: TRANSCRIPT_INGEST_URL,
       round_type: "product_sense",
       mode: "video_only",
       question: {
@@ -289,6 +323,7 @@ test("runtime config normalizes invalid cross-runtime values consistently", () =
     JSON.stringify({
       contract_version: 1,
       session_id: "session-malformed-containers",
+      transcript_ingest_url: TRANSCRIPT_INGEST_URL,
       round_type: "product_sense",
       config: ["not", "an", "object"],
       question: { id: 42, text: 99, type: true, company: null },
@@ -387,12 +422,69 @@ test("TypeScript accepts and rejects the shared transcript golden cases", () => 
 test("transcript contract distinguishes partially delivered interviewer speech", () => {
   const fixture = createLiveKitStartFixture().transcriptEvent;
   const parsed = parseTranscriptEvent(
-    JSON.stringify({ ...fixture, delivery_state: "partially_delivered" })
+    JSON.stringify({
+      ...fixture,
+      row_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      delivery_state: "partially_delivered",
+    })
   );
 
   assert.equal(
     parsed && "delivery_state" in parsed ? parsed.delivery_state : null,
     "partially_delivered"
+  );
+  assert.equal(
+    parsed && "row_id" in parsed ? parsed.row_id : null,
+    "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  );
+});
+
+test("integrity markers contain no transcript text and stay outside transcript parsing", () => {
+  const marker = {
+    contract_version: 1,
+    event_type: "integrity_unavailable",
+    event_id: "writer-1:speech-1:unavailable",
+    writer_id: "writer-1",
+    writer_generation: 1,
+    sequence: 1,
+    session_id: "session-1",
+    room_name: "interview-room",
+    speaker: "interviewer",
+    occurred_at: "2026-07-10T08:30:00.000Z",
+    reason: "no_provider_confirmed_prefix",
+  };
+
+  assert.equal(isTranscriptInterruptionMarker(marker), true);
+  assert.equal("text" in marker, false);
+  assert.equal(parseTranscriptEvent(JSON.stringify(marker)), null);
+
+  assert.equal(
+    isTranscriptInterruptionMarker({
+      ...marker,
+      event_id: "writer-1:user-message-2:unavailable",
+      speaker: "user",
+      reason: "canonicalization_failed",
+    }),
+    true
+  );
+});
+
+test("runtime settlement is strict metadata-only evidence", () => {
+  const settlement = {
+    contract_version: 1,
+    event_type: "runtime_settlement",
+    session_id: "session-1",
+    room_name: "interview-room",
+    writer_id: "writer-1",
+    writer_generation: 1,
+    state: "settled",
+    settled_at: "2026-07-10T08:30:00.000Z",
+  };
+
+  assert.equal(isTranscriptRuntimeSettlement(settlement), true);
+  assert.equal(
+    isTranscriptRuntimeSettlement({ ...settlement, text: "must be rejected" }),
+    false
   );
 });
 

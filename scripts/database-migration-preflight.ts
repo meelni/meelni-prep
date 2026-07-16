@@ -18,6 +18,8 @@ import {
   RELAUNCH_SCHEMA_FINGERPRINT,
   SESSION_LIFECYCLE_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
+  TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
+  RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 import {
   canonicalEnvironmentForEnvFile,
@@ -100,9 +102,9 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8, 9, 10, 11, 12].includes(migrations.length)) {
+      if (![2, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(migrations.length)) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, or 12 transcript-ingest migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, or 14 runtime-settlement migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -252,7 +254,10 @@ async function run(url: string, environmentIdentity: string) {
         | "atomic_session_completion"
         | "deadline_room_cleanup"
         | "interview_reconnect"
-        | "interview_reconnect_db_time";
+        | "interview_reconnect_db_time"
+        | "transcript_ingest"
+        | "transcript_privacy"
+        | "runtime_settlement";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -278,13 +283,21 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "deadline_room_cleanup";
       } else if (migrations.length === 10) {
         startingContract = "interview_reconnect";
-      } else {
+      } else if (migrations.length === 11) {
         startingContract = "interview_reconnect_db_time";
+      } else if (migrations.length === 12) {
+        startingContract = "transcript_ingest";
+      } else if (migrations.length === 13) {
+        startingContract = "transcript_privacy";
+      } else {
+        startingContract = "runtime_settlement";
       }
       if (migrations.length >= 6) {
+        const expectedTableCount =
+          migrations.length === 14 ? 26 : migrations.length === 13 ? 24 : 23;
         if (
-          summary.tables !== 23 ||
-          summary.rls_tables !== 23 ||
+          summary.tables !== expectedTableCount ||
+          summary.rls_tables !== expectedTableCount ||
           summary.unsafe_policies !== 0 ||
           summary.unique_contracts !== 3
         ) {
@@ -308,7 +321,11 @@ async function run(url: string, environmentIdentity: string) {
                     ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
                     : migrations.length === 11
                       ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                      : TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT;
+                      : migrations.length === 12
+                        ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                        : migrations.length === 13
+                          ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                          : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -386,21 +403,25 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 12
-            ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-            : migrations.length === 11
-              ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-              : migrations.length === 10
-                ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                : migrations.length === 9
-                  ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                  : migrations.length === 8
-                    ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                    : migrations.length === 7
-                      ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                      : migrations.length === 6
-                        ? RELAUNCH_SCHEMA_FINGERPRINT
-                        : "pending",
+          migrations.length === 14
+            ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+            : migrations.length === 13
+              ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+              : migrations.length === 12
+                ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                : migrations.length === 11
+                  ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                  : migrations.length === 10
+                    ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                    : migrations.length === 9
+                      ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                      : migrations.length === 8
+                        ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                        : migrations.length === 7
+                          ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                          : migrations.length === 6
+                            ? RELAUNCH_SCHEMA_FINGERPRINT
+                            : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

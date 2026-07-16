@@ -8,7 +8,8 @@
 
 import { db } from "@/lib/db";
 import { transcriptTurn } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
+import { eq } from "drizzle-orm";
 
 /**
  * Session validation tiers based on completeness
@@ -94,13 +95,7 @@ export async function calculateSessionStats(
   // Fetch all transcript turns for this session
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
-    orderBy: [
-      desc(transcriptTurn.startedAt),
-      desc(transcriptTurn.writerId),
-      desc(transcriptTurn.sequence),
-      desc(transcriptTurn.eventId),
-      desc(transcriptTurn.id),
-    ],
+    orderBy: transcriptChronologicalOrder(),
   });
 
   return calculateSessionStatsFromTurns(turns);

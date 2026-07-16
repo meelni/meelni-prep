@@ -5,6 +5,7 @@ import {
   useConnectionState,
   useVoiceAssistant,
   useDataChannel,
+  useRoomContext,
 } from "@livekit/components-react";
 import { useCallback, useEffect, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
@@ -20,12 +21,15 @@ import {
   parseTranscriptEvent,
   type TranscriptEvent,
 } from "@meelni/agent";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export interface TranscriptTurn {
   persistable?: boolean;
   event?: TranscriptEvent;
   eventId?: string;
+  rowId?: string;
   writerId?: string;
+  writerGeneration?: number;
   sequence?: number;
   sessionId?: string;
   roomName?: string;
@@ -40,6 +44,18 @@ export interface TranscriptTurn {
   deliveryState?: "delivered" | "partially_delivered";
 }
 
+export interface TranscriptRuntimeSettlement {
+  settled: boolean;
+  pending: number;
+  failed: number;
+  overflowed?: boolean;
+  integrityUnavailable?: boolean;
+}
+
+export type FlushRuntimeTranscript = (
+  timeoutMs?: number
+) => Promise<TranscriptRuntimeSettlement>;
+
 interface LiveKitRoomWrapperProps {
   token: string;
   url: string;
@@ -49,6 +65,10 @@ interface LiveKitRoomWrapperProps {
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   onConnectionStateChange: (state: InterviewConnectionStatus) => void;
+  onTranscriptFlushAvailable: (flush: FlushRuntimeTranscript | null) => void;
+  onTranscriptIntegrityChange: (
+    state: "healthy" | "retrying" | "degraded"
+  ) => void;
   children: React.ReactNode;
 }
 
@@ -61,6 +81,8 @@ export function LiveKitRoomWrapper({
   onTranscriptUpdate,
   onAgentStateChange,
   onConnectionStateChange,
+  onTranscriptFlushAvailable,
+  onTranscriptIntegrityChange,
   children,
 }: LiveKitRoomWrapperProps) {
   const connectionStartTime = useRef<number>(Date.now());
@@ -109,7 +131,10 @@ export function LiveKitRoomWrapper({
         console.log("Disconnected from LiveKit room");
       }}
       onError={(error) => {
-        console.error("LiveKit error:", error);
+        console.error("[Interview Runtime] livekit_error", {
+          code: "livekit_runtime_error",
+          ...toSafeErrorLog(error),
+        });
       }}
     >
       <RoomContent
@@ -120,6 +145,8 @@ export function LiveKitRoomWrapper({
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
         onConnectionStateChange={onConnectionStateChange}
+        onTranscriptFlushAvailable={onTranscriptFlushAvailable}
+        onTranscriptIntegrityChange={onTranscriptIntegrityChange}
       >
         {children}
       </RoomContent>
@@ -135,6 +162,10 @@ interface RoomContentProps {
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   onConnectionStateChange: (state: InterviewConnectionStatus) => void;
+  onTranscriptFlushAvailable: (flush: FlushRuntimeTranscript | null) => void;
+  onTranscriptIntegrityChange: (
+    state: "healthy" | "retrying" | "degraded"
+  ) => void;
   children: React.ReactNode;
 }
 
@@ -146,14 +177,51 @@ function RoomContent({
   onTranscriptUpdate,
   onAgentStateChange,
   onConnectionStateChange,
+  onTranscriptFlushAvailable,
+  onTranscriptIntegrityChange,
   children,
 }: RoomContentProps) {
-  const { state } = useVoiceAssistant();
+  const { state, agent } = useVoiceAssistant();
+  const room = useRoomContext();
   const connectionState = useConnectionState();
   const transcriptUpdateRef = useRef(onTranscriptUpdate);
   const connectionStateChangeRef = useRef(onConnectionStateChange);
   transcriptUpdateRef.current = onTranscriptUpdate;
   connectionStateChangeRef.current = onConnectionStateChange;
+
+  useEffect(() => {
+    if (!agent) {
+      onTranscriptFlushAvailable(null);
+      return;
+    }
+
+    const flush: FlushRuntimeTranscript = async (timeoutMs = 10_000) => {
+      const raw = await room.localParticipant.performRpc({
+        destinationIdentity: agent.identity,
+        method: "meelni.transcript.flush",
+        payload: JSON.stringify({ sessionId }),
+        responseTimeout: timeoutMs,
+      });
+      const result = JSON.parse(raw) as Partial<TranscriptRuntimeSettlement>;
+      if (
+        typeof result.settled !== "boolean" ||
+        !Number.isSafeInteger(result.pending) ||
+        !Number.isSafeInteger(result.failed)
+      ) {
+        throw new Error("invalid_runtime_transcript_settlement");
+      }
+      return {
+        settled: result.settled,
+        pending: result.pending!,
+        failed: result.failed!,
+        overflowed: result.overflowed === true,
+        integrityUnavailable: result.integrityUnavailable === true,
+      };
+    };
+
+    onTranscriptFlushAvailable(flush);
+    return () => onTranscriptFlushAvailable(null);
+  }, [agent, onTranscriptFlushAvailable, room, sessionId]);
 
   // Subscribe to agent state changes
   useEffect(() => {
@@ -220,7 +288,9 @@ function RoomContent({
               persistable: true,
               event: transcriptData,
               eventId: transcriptData.event_id,
+              rowId: transcriptData.row_id ?? transcriptData.event_id,
               writerId: transcriptData.writer_id,
+              writerGeneration: transcriptData.writer_generation,
               sequence: transcriptData.sequence,
               sessionId: transcriptData.session_id,
               roomName: transcriptData.room_name,
@@ -236,13 +306,42 @@ function RoomContent({
 
         transcriptUpdateRef.current(turn);
       } catch (error) {
-        console.error("[Transcript] Failed to parse transcript data:", error);
+        console.error("[Transcript] parse_failed", {
+          code: "transcript_packet_parse_failed",
+          ...toSafeErrorLog(error),
+        });
       }
     },
     [acceptedTranscriptEvents, roomName, sessionId]
   );
 
   useDataChannel("transcript", handleTranscriptMessage);
+
+  const handleTranscriptStatus = useCallback(
+    (message: { payload: Uint8Array }) => {
+      try {
+        const status = JSON.parse(
+          new TextDecoder().decode(message.payload)
+        ) as Record<string, unknown>;
+        if (
+          status.contract_version !== 1 ||
+          status.session_id !== sessionId ||
+          status.room_name !== roomName ||
+          (status.state !== "healthy" &&
+            status.state !== "retrying" &&
+            status.state !== "degraded")
+        ) {
+          return;
+        }
+        onTranscriptIntegrityChange(status.state);
+      } catch {
+        console.warn("[Transcript] Ignoring invalid runtime status");
+      }
+    },
+    [onTranscriptIntegrityChange, roomName, sessionId]
+  );
+
+  useDataChannel("transcript_status", handleTranscriptStatus);
 
   return <>{children}</>;
 }

@@ -20,6 +20,10 @@ export const enforceInterviewDeadline = inngest.createFunction(
   },
   { event: INTERVIEW_DEADLINE_EVENT_NAME },
   async ({ event, step }) => {
+    // The runtime stops speech at the exact deadline. This durable grace lets
+    // it persist the heard prefix and a trusted settlement watermark before
+    // server terminalization freezes feedback evidence.
+    await step.sleep("allow-runtime-transcript-settlement", "20s");
     const env = getLiveKitEnvironment();
     if (!env.ok) throw new Error(env.error.code);
 

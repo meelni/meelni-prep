@@ -518,103 +518,13 @@ Retrieves a list of the authenticated user's interview sessions, with optional f
 
 ## Transcript Management
 
-### POST /api/session/transcript
+### Runtime transcript writes
 
-Saves conversation transcript turns to the database. Supports both single turn and batch insertion for efficient storage during and after interview sessions. User must own the session to save transcripts.
-
-**Authentication**: Required (Supabase Auth JWT)
-
-**Request Body (Single Turn)**:
-
-```json
-{
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-  "speaker": "user",
-  "startedAt": "2025-11-05T10:30:15Z",
-  "endedAt": "2025-11-05T10:31:20Z",
-  "text": "I worked on a mobile checkout feature that increased conversion by 15%...",
-  "audioMs": 65000,
-  "latencyMs": null,
-  "section": "response"
-}
-```
-
-**Request Body (Batch Mode)**:
-
-```json
-{
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-  "turns": [
-    {
-      "speaker": "interviewer",
-      "text": "Tell me about a product you launched.",
-      "startedAt": "2025-11-05T10:30:00Z",
-      "endedAt": "2025-11-05T10:30:08Z",
-      "audioMs": 8000,
-      "latencyMs": 850
-    },
-    {
-      "speaker": "user",
-      "text": "I launched a mobile checkout feature...",
-      "startedAt": "2025-11-05T10:30:10Z",
-      "endedAt": "2025-11-05T10:31:15Z",
-      "audioMs": 65000
-    }
-  ]
-}
-```
-
-**Request Parameters**:
-
-| Field       | Type   | Required     | Description                                                         |
-| ----------- | ------ | ------------ | ------------------------------------------------------------------- |
-| `sessionId` | string | ✅ Yes       | UUID of the session                                                 |
-| `speaker`   | string | Yes (single) | Speaker identifier: `user` or `interviewer`                         |
-| `turns`     | array  | Yes (batch)  | Array of turn objects                                               |
-| `startedAt` | string | No           | ISO 8601 timestamp when turn started                                |
-| `endedAt`   | string | No           | ISO 8601 timestamp when turn ended                                  |
-| `text`      | string | No           | Transcribed or generated text                                       |
-| `audioMs`   | number | No           | Duration of audio in milliseconds                                   |
-| `latencyMs` | number | No           | Turn-around latency in milliseconds                                 |
-| `section`   | string | No           | Section/phase of interview (e.g., `opening`, `response`, `closing`) |
-
-**Response** (200 OK - Single Turn):
-
-```json
-{
-  "success": true,
-  "turn": {
-    "id": "turn-abc123",
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "speaker": "user",
-    "text": "I worked on a mobile checkout feature...",
-    "startedAt": "2025-11-05T10:30:15Z",
-    "endedAt": "2025-11-05T10:31:20Z",
-    "audioMs": 65000,
-    "latencyMs": null,
-    "section": "response"
-  }
-}
-```
-
-**Response** (200 OK - Batch Mode):
-
-```json
-{
-  "success": true,
-  "turns": [
-    { "id": "turn-1", ... },
-    { "id": "turn-2", ... }
-  ]
-}
-```
-
-**Errors**:
-
-- `401 Unauthorized` - Missing or invalid authentication token
-- `400 Bad Request` - Missing `sessionId` or invalid `speaker` value
-- `403 Forbidden` - User does not own this session
-- `500 Internal Server Error` - Database error
+Transcript writes are not a public client API. The voice runtime uses the
+signed, timestamped `POST /api/internal/transcript` service endpoint and
+publishes an event to the browser only after persistence succeeds. Candidate
+clients can read only their owned transcript through the endpoint below. See
+[Runtime Transcript Ingest](../operations/runtime-transcript-ingest.md).
 
 ---
 
@@ -671,89 +581,9 @@ Retrieves the complete conversation transcript for an interview session, includi
 
 ## Feedback & Evaluation
 
-### POST /api/feedback/generate
-
-Analyzes an interview session transcript and generates comprehensive feedback. Includes dimension scores, strengths, improvements, and suggested focused practice. This endpoint is idempotent - if feedback already exists for the session, it returns success without regenerating.
-
-**Authentication**: Required (Supabase Auth JWT)
-
-**Request Body**:
-
-```json
-{
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Request Parameters**:
-
-| Field       | Type   | Required | Description                     |
-| ----------- | ------ | -------- | ------------------------------- |
-| `sessionId` | string | ✅ Yes   | UUID of the session to evaluate |
-
-**Response** (200 OK - New Feedback):
-
-```json
-{
-  "success": true,
-  "feedback": {
-    "id": "feedback-abc123",
-    "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-    "structureScore": 8,
-    "clarityScore": 7,
-    "insightScore": 9,
-    "communicationScore": 8,
-    "leadershipScore": 7,
-    "overallScore": 7.8,
-    "strengths": [
-      "Strong use of STAR framework in behavioral responses",
-      "Clear articulation of product metrics and success criteria",
-      "Well-structured answer with clear problem definition"
-    ],
-    "improvements": [
-      "Could dig deeper into trade-offs when discussing prioritization",
-      "Add more quantitative data to support claims",
-      "Explore alternative solutions before settling on final approach"
-    ],
-    "drills": [
-      "Practice 5-10 product sense questions with timer",
-      "Record yourself and review for filler words",
-      "Mock interview with peer focusing on metrics discussion"
-    ],
-    "summary": "Solid product sense interview with clear structure and good use of frameworks. Strong analytical thinking evident in discussion of metrics. Could improve by exploring trade-offs more deeply and using more quantitative data.",
-    "createdAt": "2025-11-05T11:20:00Z"
-  }
-}
-```
-
-**Response** (200 OK - Already Exists):
-
-```json
-{
-  "success": true,
-  "message": "Feedback already exists for this session",
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Scoring Dimensions** (all on 0-10 scale):
-
-| Dimension            | Description                                                            |
-| -------------------- | ---------------------------------------------------------------------- |
-| `structureScore`     | Use of frameworks (STAR, product sense, etc.) and logical organization |
-| `clarityScore`       | Clarity of communication and articulation                              |
-| `insightScore`       | Depth of analysis and unique insights                                  |
-| `communicationScore` | Overall communication effectiveness                                    |
-| `leadershipScore`    | Leadership principles and influence (for behavioral/leadership rounds) |
-| `overallScore`       | Weighted average of all dimensions                                     |
-
-**Errors**:
-
-- `401 Unauthorized` - Missing or invalid authentication token
-- `400 Bad Request` - Missing `sessionId` or empty transcript
-- `403 Forbidden` - User does not own this session
-- `404 Not Found` - Session does not exist
-- `500 Internal Server Error` - GPT-4 API error or database error
+Feedback generation has no client write endpoint. Terminal interview
+completion atomically commits transcript eligibility and schedules evaluation
+only when the evidence is valid.
 
 ---
 
@@ -762,7 +592,8 @@ Analyzes an interview session transcript and generates comprehensive feedback. I
 Retrieves the feedback state or completed feedback for an owned terminal
 interview session. A hard-deadline session returns `settling` until room
 cleanup is acknowledged. After acknowledgement it returns the durable feedback
-and dispatch state, including retryable pending or failed dispatch.
+and dispatch state, including retryable pending or failed dispatch. The user
+must own the session to access feedback.
 
 **Authentication**: Required (Supabase Auth JWT)
 
@@ -1036,83 +867,18 @@ async function startInterview() {
 }
 ```
 
-### Saving Transcript Turns (Batch Mode)
+### Transcript persistence
 
-```typescript
-async function saveTranscript(sessionId: string, turns: any[]) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
+Interview transcripts are persisted by the trusted voice runtime before they
+are published to the room for display. Browser clients cannot create or update
+transcript turns. An authenticated owner can read the durable transcript with
+`GET /api/session/:sessionId/transcript`.
 
-  const response = await fetch("/api/session/transcript", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      sessionId,
-      turns: turns.map((turn) => ({
-        speaker: turn.speaker,
-        text: turn.text,
-        startedAt: turn.startedAt,
-        endedAt: turn.endedAt,
-        audioMs: turn.audioMs,
-        latencyMs: turn.latencyMs,
-        section: turn.section,
-      })),
-    }),
-  });
+### Feedback generation
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error);
-  }
-
-  const data = await response.json();
-  console.log(`Saved ${data.turns.length} transcript turns`);
-
-  return data;
-}
-```
-
-### Generating Feedback
-
-```typescript
-async function generateFeedback(sessionId: string) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
-  const response = await fetch("/api/feedback/generate", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ sessionId }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error);
-  }
-
-  const data = await response.json();
-
-  if (data.message) {
-    console.log(data.message); // "Feedback already exists"
-  } else {
-    console.log("Overall score:", data.feedback.overallScore);
-    console.log("Strengths:", data.feedback.strengths);
-    console.log("Improvements:", data.feedback.improvements);
-  }
-
-  return data.feedback;
-}
-```
+Clients end the interview and poll the owner-only feedback read endpoint.
+Generation is scheduled by committed terminal eligibility, never by a browser
+request.
 
 ### Listing Sessions with Filtering
 
@@ -1190,7 +956,7 @@ async function runFullInterviewFlow() {
   console.log("Interview complete! Your score:", feedback.overallScore);
   console.log("Strengths:", feedback.strengths);
   console.log("Areas to improve:", feedback.improvements);
-  console.log("Suggested exercises:", feedback.drills);
+  console.log("Practice drills:", feedback.drills);
 }
 ```
 
@@ -1217,8 +983,8 @@ Planned webhook events:
 
 - Initial API release
 - Session management endpoints (`POST /api/session/start`, `POST /api/interview/end`, `GET /api/session/:sessionId`, `GET /api/sessions`)
-- Transcript storage endpoints (`POST /api/session/transcript`, `GET /api/session/:sessionId/transcript`)
-- Feedback generation endpoints (`POST /api/feedback/generate`, `GET /api/feedback/:sessionId`)
+- Runtime-owned transcript persistence and owner-only transcript reads (`GET /api/session/:sessionId/transcript`)
+- Terminally scheduled feedback and owner-only reads (`GET /api/feedback/:sessionId`)
 - LiveKit token generation (`POST /api/livekit/token`, `POST /api/livekit/demo-token`)
 - Legacy informational Cartesia voice catalog (`GET /api/cartesia/voices`)
 - Supabase Auth integration (Google OAuth)

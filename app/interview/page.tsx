@@ -8,6 +8,7 @@ import { sessionKeys } from "@/lib/api/queries";
 import {
   LiveKitRoomWrapper,
   TranscriptTurn,
+  type FlushRuntimeTranscript,
 } from "@/components/interview/livekit-room";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { AudioVisualizer } from "./components/audio-visualizer";
@@ -28,7 +29,6 @@ import {
   AppSurfaceTitle,
   StatusPill,
 } from "@/components/ui/app-surface";
-import { getTranscriptQueue } from "@/lib/utils/transcript-queue";
 import { requireInterviewResumeTiming } from "@/lib/interview/resume-session";
 import { compareTranscriptOrdering } from "@/lib/workflows/ingest-transcript-event";
 import { canNavigateToInterviewFeedback } from "@/lib/interview/deadline-view";
@@ -45,6 +45,7 @@ import {
 } from "@/components/interview/session-recovery";
 import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 
@@ -134,8 +135,10 @@ export function InterviewPageContent() {
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [transcriptSaveErrors, setTranscriptSaveErrors] = useState(0);
-  const [transcriptQueue] = useState(() => getTranscriptQueue());
+  const [transcriptIntegrity, setTranscriptIntegrity] = useState<
+    "healthy" | "retrying" | "degraded"
+  >("healthy");
+  const transcriptFlushRef = useRef<FlushRuntimeTranscript | null>(null);
   const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
   const [hintMode, setHintMode] = useState<HintMode>("off");
   const [agentState, setAgentState] = useState<
@@ -166,6 +169,8 @@ export function InterviewPageContent() {
   const nextEndRetryAtRef = useRef(0);
   ownerIdRef.current = user?.id ?? null;
   const activeSessionId = session?.id ?? sessionId ?? "";
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
   const hasCurrentConnectionOwner =
     connectionOwnerId !== null && connectionOwnerId === ownerIdRef.current;
 
@@ -174,10 +179,7 @@ export function InterviewPageContent() {
     const previousOwnerId = observedOwnerIdRef.current;
     observedOwnerIdRef.current = nextOwnerId;
 
-    if (previousOwnerId === undefined) {
-      if (nextOwnerId) transcriptQueue.bindOwner(nextOwnerId);
-      return;
-    }
+    if (previousOwnerId === undefined) return;
     if (previousOwnerId === nextOwnerId) return;
 
     if (recoveredStatusTimerRef.current !== undefined) {
@@ -195,11 +197,7 @@ export function InterviewPageContent() {
     deadlineReachedRef.current = false;
     endIntentRef.current = false;
     nextEndRetryAtRef.current = 0;
-
-    // Binding the next owner aborts and removes every prior-owner queue item.
-    // A signed-out page has no owner to bind, so close the singleton entirely.
-    if (nextOwnerId) transcriptQueue.bindOwner(nextOwnerId);
-    else transcriptQueue.clear();
+    transcriptFlushRef.current = null;
 
     setConnectionOwnerId(null);
     setSession(null);
@@ -207,7 +205,7 @@ export function InterviewPageContent() {
     setUrl("");
     setTranscript([]);
     setIsMuted(false);
-    setTranscriptSaveErrors(0);
+    setTranscriptIntegrity("healthy");
     setCurrentNudge(null);
     setHintMode("off");
     setAgentState("idle");
@@ -227,7 +225,14 @@ export function InterviewPageContent() {
     router.replace(
       nextOwnerId ? "/dashboard" : "/auth/signin?redirectTo=/interview"
     );
-  }, [router, transcriptQueue, user?.id]);
+  }, [router, user?.id]);
+
+  const handleTranscriptFlushAvailable = useCallback(
+    (flush: FlushRuntimeTranscript | null) => {
+      transcriptFlushRef.current = flush;
+    },
+    []
+  );
 
   useEffect(() => {
     const configuredHintMode = session?.config?.hintMode;
@@ -311,7 +316,10 @@ export function InterviewPageContent() {
       });
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Error creating session:", err);
+      console.error("[Interview] session_create_failed", {
+        code: "interview_session_create_failed",
+        ...toSafeErrorLog(err),
+      });
       setError(
         err instanceof Error
           ? err.message
@@ -401,7 +409,10 @@ export function InterviewPageContent() {
       setLoading(false);
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Error fetching session:", err);
+      console.error("[Interview] session_fetch_failed", {
+        code: "interview_session_fetch_failed",
+        ...toSafeErrorLog(err),
+      });
       setError(err instanceof Error ? err.message : "Failed to load interview");
       setLoading(false);
     }
@@ -473,61 +484,26 @@ export function InterviewPageContent() {
       return;
     }
 
-    // The LiveKit adapter rejects replayed packet identities before this
-    // callback, so UI and persistence observe the same accepted turn exactly once.
-    setTranscript((prev) => [...prev, turn].sort(compareTranscriptOrdering));
-
     if (turn.persistable === false) {
       console.warn(
         "[Interview] Displaying legacy transcript packet without invented persistence timing"
       );
-      return;
-    }
-
-    if (!turn.event) {
+    } else if (!turn.event) {
       console.warn(
         "[Interview] Ignoring transcript turn without a canonical event"
       );
       return;
+    } else if (turn.event.session_id !== callbackSessionId) {
+      console.warn(
+        "[Interview] Ignoring transcript turn for a stale or mismatched session"
+      );
+      return;
     }
 
-    // Save to database with automatic retry queue
-    try {
-      const result = await transcriptQueue.save({
-        ownerId: callbackOwnerId,
-        sessionId: callbackSessionId,
-        event: turn.event,
-      });
-
-      if (
-        ownerIdRef.current !== callbackOwnerId ||
-        connectionOwnerId !== callbackOwnerId
-      ) {
-        return;
-      }
-
-      if (!result.success) {
-        // Failed, but queued for retry
-        setTranscriptSaveErrors((prev) => prev + 1);
-        console.warn(
-          "[Interview] Transcript save failed, queued for retry:",
-          result.error
-        );
-      } else if (transcriptSaveErrors > 0) {
-        // Success after previous errors - reset error count
-        setTranscriptSaveErrors(0);
-      }
-    } catch (error) {
-      if (
-        ownerIdRef.current !== callbackOwnerId ||
-        connectionOwnerId !== callbackOwnerId
-      ) {
-        return;
-      }
-      // Unexpected error
-      console.error("[Interview] Unexpected error saving transcript:", error);
-      setTranscriptSaveErrors((prev) => prev + 1);
-    }
+    // Runtime packets are post-persistence display notifications. The LiveKit
+    // adapter rejects replayed identities before this callback, so the browser
+    // renders each accepted turn once without owning a second write path.
+    setTranscript((prev) => mergeTranscriptTurns(prev, [turn]));
 
     // Analyze for nudges (only when user finishes speaking)
     if (
@@ -539,6 +515,98 @@ export function InterviewPageContent() {
       void analyzeForNudges(turn, callbackOwnerId, callbackSessionId);
     }
   };
+
+  useEffect(() => {
+    if (
+      !activeSessionId ||
+      !connectionOwnerId ||
+      connectionOwnerId !== ownerIdRef.current
+    ) {
+      return;
+    }
+    const requestOwnerId = connectionOwnerId;
+    const requestSessionId = activeSessionId;
+    let cancelled = false;
+
+    const hydrateDurableTranscript = async () => {
+      try {
+        const response = await fetch(
+          `/api/session/${requestSessionId}/transcript`,
+          { cache: "no-store" }
+        );
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          turns?: Array<{
+            id: string;
+            eventId?: string | null;
+            writerId?: string | null;
+            writerGeneration?: number | null;
+            sequence?: number | null;
+            sessionId: string;
+            roomName?: string | null;
+            speaker: "user" | "interviewer";
+            text?: string | null;
+            startedAt?: string | null;
+            endedAt?: string | null;
+            audioMs?: number | null;
+            section?: string | null;
+            deliveryState?: "delivered" | "partially_delivered" | null;
+          }>;
+        };
+        if (
+          cancelled ||
+          ownerIdRef.current !== requestOwnerId ||
+          activeSessionIdRef.current !== requestSessionId
+        ) {
+          return;
+        }
+        const hydrated = (payload.turns ?? []).flatMap((turn) => {
+          if (!turn.text || !turn.startedAt) return [];
+          return [
+            {
+              persistable: Boolean(turn.eventId),
+              eventId: turn.eventId ?? turn.id,
+              rowId: turn.id,
+              writerId: turn.writerId ?? undefined,
+              writerGeneration: turn.writerGeneration ?? undefined,
+              sequence: turn.sequence ?? undefined,
+              sessionId: turn.sessionId,
+              roomName: turn.roomName ?? undefined,
+              speaker: turn.speaker,
+              text: turn.text,
+              timestamp: new Date(turn.startedAt),
+              startedAt: new Date(turn.startedAt),
+              endedAt: turn.endedAt ? new Date(turn.endedAt) : undefined,
+              audioMs: turn.audioMs ?? undefined,
+              section: turn.section ?? undefined,
+              deliveryState: turn.deliveryState ?? undefined,
+            } satisfies TranscriptTurn,
+          ];
+        });
+        setTranscript((current) => mergeTranscriptTurns(current, hydrated));
+      } catch (hydrateError) {
+        if (
+          cancelled ||
+          ownerIdRef.current !== requestOwnerId ||
+          activeSessionIdRef.current !== requestSessionId
+        ) {
+          return;
+        }
+        console.warn("[Interview] Durable transcript hydration failed", {
+          sessionId: requestSessionId,
+          error:
+            hydrateError instanceof Error
+              ? hydrateError.name
+              : "unknown_hydration_error",
+        });
+      }
+    };
+
+    void hydrateDurableTranscript();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId, connectionOwnerId, connectionStatus]);
 
   const analyzeForNudges = async (
     turn: TranscriptTurn,
@@ -572,7 +640,10 @@ export function InterviewPageContent() {
       if (ownerIdRef.current !== requestOwnerId) return;
 
       if (!response.ok) {
-        console.warn("[Interview] Nudge analysis failed:", response.statusText);
+        console.warn("[Interview] nudge_analysis_failed", {
+          code: "nudge_analysis_failed",
+          status: response.status,
+        });
         return;
       }
 
@@ -587,7 +658,10 @@ export function InterviewPageContent() {
         });
       }
     } catch (error) {
-      console.error("[Interview] Error analyzing for nudges:", error);
+      console.error("[Interview] nudge_analysis_failed", {
+        code: "nudge_analysis_failed",
+        ...toSafeErrorLog(error),
+      });
       // Don't show error to user - nudges are optional enhancement
     }
   };
@@ -768,21 +842,16 @@ export function InterviewPageContent() {
             };
           };
           if (cancelled) return;
-          if (
-            payload.session?.lifecycleState &&
-            TERMINAL_SESSION_STATES.has(payload.session.lifecycleState)
-          ) {
-            if (user?.id) {
-              transcriptQueue.clearSession(user.id, activeSessionId);
-            }
-          }
           if (canNavigateToInterviewFeedback(payload.session ?? {})) {
             router.replace(`/feedback/${activeSessionId}/loading`);
             return;
           }
         }
       } catch (pollError) {
-        console.warn("[Interview] Waiting for deadline completion:", pollError);
+        console.warn("[Interview] deadline_poll_failed", {
+          code: "deadline_poll_failed",
+          ...toSafeErrorLog(pollError),
+        });
       } finally {
         pollInFlight = false;
       }
@@ -807,14 +876,7 @@ export function InterviewPageContent() {
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [
-    activeSessionId,
-    deadlineReached,
-    disconnectTimedOut,
-    router,
-    transcriptQueue,
-    user?.id,
-  ]);
+  }, [activeSessionId, deadlineReached, disconnectTimedOut, router]);
 
   // A transport failure after transcript cutoff cannot prove whether the
   // idempotent end command committed. Freeze and disconnect the browser room,
@@ -843,10 +905,6 @@ export function InterviewPageContent() {
         nextEndRetryAtRef.current = Date.now() + 10_000;
       }
       if (result.status === "resolved") {
-        transcriptQueue.clearSession(
-          endReconciliation.ownerId,
-          endReconciliation.sessionId
-        );
         analytics.track("interview_ended", {
           session_id: endReconciliation.sessionId,
           duration_seconds: endReconciliation.durationSeconds,
@@ -875,7 +933,7 @@ export function InterviewPageContent() {
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [endReconciliation, router, session?.config?.roundType, transcriptQueue]);
+  }, [endReconciliation, router, session?.config?.roundType]);
 
   const handleEndSession = async () => {
     if (
@@ -894,21 +952,39 @@ export function InterviewPageContent() {
     setIsEndingSession(true);
     setEndSessionError(null);
     try {
-      const transcriptSettlement = await establishTranscriptEndCutoff({
-        setEndIntent: (value) => {
-          endIntentRef.current = value;
-        },
-        flush: () =>
-          transcriptQueue.flush(requestOwnerId, requestSessionId, 5_000),
-      });
-      if (ownerIdRef.current !== requestOwnerId) return;
-      if (!transcriptSettlement.settled) {
+      const flushRuntimeTranscript = transcriptFlushRef.current;
+      if (!flushRuntimeTranscript) {
         throw new Error(
-          transcriptSettlement.failed > 0
-            ? "We couldn't verify the complete transcript. You're still connected; please retry in a moment."
-            : "We're still saving your latest response. You're still connected; please retry in a moment."
+          "The interview runtime is still reconnecting. Please wait a moment and try again."
         );
       }
+      setTranscriptIntegrity("retrying");
+      let transcriptSettlement: Awaited<ReturnType<FlushRuntimeTranscript>>;
+      try {
+        transcriptSettlement = await establishTranscriptEndCutoff({
+          setEndIntent: (value) => {
+            endIntentRef.current = value;
+          },
+          flush: () => flushRuntimeTranscript(25_000),
+        });
+      } catch (settlementError) {
+        // A rejected settlement request is terminal for this attempt. Do not
+        // leave the interface claiming an active verification is still running.
+        setTranscriptIntegrity("degraded");
+        throw settlementError;
+      }
+      if (ownerIdRef.current !== requestOwnerId) return;
+      if (!transcriptSettlement.settled) {
+        setTranscriptIntegrity("degraded");
+        throw new Error(
+          transcriptSettlement.failed > 0
+            ? "We couldn't verify the complete transcript. Your interview is paused; please retry in a moment."
+            : "We're still saving your latest response. Your interview is paused; please retry in a moment."
+        );
+      }
+      setTranscriptIntegrity(
+        transcriptSettlement.integrityUnavailable ? "degraded" : "healthy"
+      );
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
@@ -922,10 +998,10 @@ export function InterviewPageContent() {
         });
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
-        console.warn(
-          "[Interview] End transport result is ambiguous; reconciling stored truth",
-          transportError
-        );
+        console.warn("[Interview] end_transport_ambiguous", {
+          code: "interview_end_transport_ambiguous",
+          ...toSafeErrorLog(transportError),
+        });
         nextEndRetryAtRef.current = Date.now() + 1_000;
         setShowEndModal(false);
         setIsEndingSession(false);
@@ -955,8 +1031,6 @@ export function InterviewPageContent() {
         );
       }
 
-      transcriptQueue.clearSession(requestOwnerId, requestSessionId);
-
       analytics.track("interview_ended", {
         session_id: requestSessionId,
         duration_seconds: duration,
@@ -975,7 +1049,10 @@ export function InterviewPageContent() {
       router.push(nextHref);
     } catch (error) {
       if (ownerIdRef.current !== requestOwnerId) return;
-      console.error("Failed to end session:", error);
+      console.error("[Interview] session_end_failed", {
+        code: "session_end_failed",
+        ...toSafeErrorLog(error),
+      });
       setEndSessionError(
         error instanceof Error
           ? error.message
@@ -1057,6 +1134,8 @@ export function InterviewPageContent() {
       onTranscriptUpdate={handleTranscriptUpdate}
       onAgentStateChange={handleAgentStateChange}
       onConnectionStateChange={handleConnectionStateChange}
+      onTranscriptFlushAvailable={handleTranscriptFlushAvailable}
+      onTranscriptIntegrityChange={setTranscriptIntegrity}
     >
       <RoomAudioRenderer />
       <InterviewRoomContent
@@ -1065,7 +1144,7 @@ export function InterviewPageContent() {
         agentState={agentState}
         isMuted={isMuted}
         hintMode={hintMode}
-        transcriptSaveErrors={transcriptSaveErrors}
+        transcriptIntegrity={transcriptIntegrity}
         deadlineReached={deadlineReached}
         connectionStatus={connectionStatus}
         recoveringConnection={recoveringConnection}
@@ -1131,7 +1210,7 @@ interface InterviewRoomContentProps {
   agentState: "idle" | "listening" | "thinking" | "speaking";
   isMuted: boolean;
   hintMode: HintMode;
-  transcriptSaveErrors: number;
+  transcriptIntegrity: "healthy" | "retrying" | "degraded";
   deadlineReached: boolean;
   connectionStatus: InterviewConnectionStatus;
   recoveringConnection: boolean;
@@ -1147,7 +1226,7 @@ function InterviewRoomContent({
   agentState,
   isMuted,
   hintMode,
-  transcriptSaveErrors,
+  transcriptIntegrity,
   deadlineReached,
   connectionStatus,
   recoveringConnection,
@@ -1239,13 +1318,32 @@ function InterviewRoomContent({
             <div>
               <AppSurfaceTitle>Transcript</AppSurfaceTitle>
               <AppSurfaceDescription>
-                Conversation turns are saved as the room runs.
+                {transcriptIntegrity === "healthy"
+                  ? "Conversation turns are saved as the room runs."
+                  : transcriptIntegrity === "retrying"
+                    ? "Checking that the latest turns are stored before the interview closes."
+                    : "Some recent turns could not be verified. Keep the room open and retry ending the interview in a moment."}
               </AppSurfaceDescription>
             </div>
-            {transcriptSaveErrors > 0 && (
-              <StatusPill tone="warning" className="shrink-0">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Saving
+            {transcriptIntegrity !== "healthy" && (
+              <StatusPill
+                tone="warning"
+                className="shrink-0"
+                role={transcriptIntegrity === "retrying" ? "status" : "alert"}
+                aria-live={
+                  transcriptIntegrity === "retrying" ? "polite" : "assertive"
+                }
+                aria-atomic="true"
+              >
+                <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                {transcriptIntegrity === "retrying"
+                  ? "Verifying"
+                  : "Needs recovery"}
+                <span className="sr-only">
+                  {transcriptIntegrity === "retrying"
+                    ? ". Checking that the latest transcript turns are stored."
+                    : ". Some recent transcript turns could not be verified. Keep the room open and retry ending the interview in a moment."}
+                </span>
               </StatusPill>
             )}
           </AppSurfaceHeader>
@@ -1434,10 +1532,10 @@ async function requestInterviewRoomCredentialsWithRetry(
         retryAfterMs,
       };
     } catch (credentialError) {
-      console.warn(
-        "[Interview] Failed to request reconnect credentials",
-        credentialError
-      );
+      console.warn("[Interview] reconnect_credentials_failed", {
+        code: "reconnect_credentials_failed",
+        ...toSafeErrorLog(credentialError),
+      });
       lastFailure = {
         ok: false,
         status: 503,
@@ -1491,6 +1589,22 @@ function isHintMode(value: unknown): value is HintMode {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeTranscriptTurns(
+  current: TranscriptTurn[],
+  incoming: TranscriptTurn[]
+): TranscriptTurn[] {
+  const turns = new Map<string, TranscriptTurn>();
+  for (const turn of [...current, ...incoming]) {
+    const key = turn.eventId
+      ? `event:${turn.eventId}`
+      : turn.rowId
+        ? `row:${turn.rowId}`
+      : `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${turn.text}`;
+    turns.set(key, turn);
+  }
+  return [...turns.values()].sort(compareTranscriptOrdering);
 }
 
 export default function InterviewPage() {

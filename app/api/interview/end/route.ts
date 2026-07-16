@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;
@@ -66,10 +67,10 @@ export async function POST(req: NextRequest) {
         } catch (cleanupError) {
           // Terminal truth is already committed. The durable cleanup marker and
           // recovery worker own provider retries; do not ask the user to end twice.
-          console.error(
-            "Terminal interview room cleanup deferred",
-            cleanupError
-          );
+          console.error("[Interview End] room_cleanup_deferred", {
+            code: "interview_room_cleanup_deferred",
+            ...toSafeErrorLog(cleanupError),
+          });
         }
       } else {
         console.error("Terminal interview room cleanup deferred", {
@@ -120,7 +121,10 @@ export async function POST(req: NextRequest) {
       nextHref: `/feedback/${sessionId}/loading`,
     });
   } catch (error) {
-    console.error("Error ending session:", error);
+    console.error("[Interview End] session_end_failed", {
+      code: "session_end_failed",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       {
         error: "session_end_failed",

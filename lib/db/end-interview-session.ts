@@ -15,7 +15,14 @@ import {
 } from "@/lib/evaluation/session-validator";
 import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
-import { feedback, interviewSession, transcriptTurn } from "./schema";
+import {
+  feedback,
+  interviewSession,
+  transcriptInterruptionMarker,
+  transcriptRuntimeSettlement,
+  transcriptRuntimeWriter,
+  transcriptTurn,
+} from "./schema";
 
 export type EndInterviewSessionCommand = { sessionId: string } & (
   | {
@@ -37,7 +44,6 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
-  validationOverride?: SessionValidation;
   now?: Date;
 };
 
@@ -110,21 +116,56 @@ export async function finalizeInterviewSession(
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
-    const validation =
-      input.validationOverride ??
-      validateSessionStats(
-        calculateSessionStatsFromTurns(
-          await tx
-            .select({
-              speaker: transcriptTurn.speaker,
-              text: transcriptTurn.text,
-              startedAt: transcriptTurn.startedAt,
-              endedAt: transcriptTurn.endedAt,
-            })
-            .from(transcriptTurn)
-            .where(eq(transcriptTurn.sessionId, input.sessionId))
-        )
-      );
+    const [turns, interruptionCounts, writerEvidence] = await Promise.all([
+        tx
+          .select({
+            speaker: transcriptTurn.speaker,
+            text: transcriptTurn.text,
+            startedAt: transcriptTurn.startedAt,
+            endedAt: transcriptTurn.endedAt,
+          })
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, input.sessionId)),
+        tx
+          .select({ value: sql<number>`count(*)::int` })
+          .from(transcriptInterruptionMarker)
+          .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
+        tx
+          .select({
+            generation: transcriptRuntimeWriter.generation,
+            state: transcriptRuntimeSettlement.state,
+          })
+          .from(transcriptRuntimeWriter)
+          .leftJoin(
+            transcriptRuntimeSettlement,
+            and(
+              eq(
+                transcriptRuntimeSettlement.sessionId,
+                transcriptRuntimeWriter.sessionId
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                transcriptRuntimeWriter.generation
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerId,
+                transcriptRuntimeWriter.writerId
+              )
+            )
+          )
+          .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
+    ]);
+    const baseValidation = validateSessionStats(
+      calculateSessionStatsFromTurns(turns)
+    );
+    const validation = applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptionCount: interruptionCounts[0]?.value ?? 0,
+      runtimeWriterStates: writerEvidence.map((writer) => ({
+        generation: writer.generation,
+        state: writer.state as "settled" | "degraded" | null,
+      })),
+    });
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;
@@ -140,12 +181,14 @@ export async function finalizeInterviewSession(
       stored.terminalReason === null;
 
     if (
-      shouldRefineProvisionalHardDeadlineReason({
+      shouldRefineProvisionalTerminalReason({
         state,
         terminalReason,
         isValid: validation.isValid,
+        source: input.actor.type === "system" ? input.actor.source : "user_end",
       })
     ) {
+      const expectedTerminalReason = terminalReason!;
       const refined = await tx
         .update(interviewSession)
         .set({
@@ -162,7 +205,7 @@ export async function finalizeInterviewSession(
             eq(interviewSession.id, input.sessionId),
             eq(interviewSession.lifecycleState, "ending"),
             eq(interviewSession.lifecycleVersion, version),
-            eq(interviewSession.terminalReason, "time_limit")
+            eq(interviewSession.terminalReason, expectedTerminalReason)
           )
         )
         .returning({
@@ -368,16 +411,69 @@ export async function finalizeInterviewSession(
   });
 }
 
-export function shouldRefineProvisionalHardDeadlineReason(input: {
+export function shouldRefineProvisionalTerminalReason(input: {
   state: InterviewLifecycleState;
   terminalReason: InterviewTerminalReason | null;
   isValid: boolean;
+  source:
+    | "hard_deadline"
+    | "reconnect_timeout"
+    | "invalid_session_recovery"
+    | "user_end";
 }): boolean {
   return (
     input.state === "ending" &&
-    input.terminalReason === "time_limit" &&
+    ((input.source === "hard_deadline" &&
+      input.terminalReason === "time_limit") ||
+      (input.source === "reconnect_timeout" &&
+        input.terminalReason === "disconnect_timeout")) &&
     !input.isValid
   );
+}
+
+export function applyTranscriptIntegrityValidation(input: {
+  baseValidation: SessionValidation;
+  interruptionCount: number;
+  runtimeWriterStates: Array<{
+    generation: number;
+    state: "settled" | "degraded" | null;
+  }>;
+}): SessionValidation {
+  const writerStates = input.runtimeWriterStates;
+  const degradedWriters = writerStates.filter(
+    (writer) => writer.state === "degraded"
+  );
+  const missingWriters = writerStates.filter((writer) => writer.state === null);
+  const integrityReasons = [
+    ...(writerStates.length === 0
+      ? ["Voice runtime writer registration was not confirmed"]
+      : []),
+    ...(degradedWriters.length > 0
+      ? [
+          `Voice runtime reported degraded transcript integrity for ${degradedWriters.length} writer generation(s)`,
+        ]
+      : []),
+    ...(missingWriters.length > 0
+      ? [
+          `Voice runtime transcript settlement was not confirmed for ${missingWriters.length} writer generation(s)`,
+        ]
+      : []),
+    ...(input.interruptionCount > 0
+      ? [
+          `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,
+        ]
+      : []),
+  ];
+  if (integrityReasons.length === 0) return input.baseValidation;
+  return {
+    ...input.baseValidation,
+    isValid: false,
+    reasons: [...integrityReasons, ...input.baseValidation.reasons],
+    recommendations: [
+      "Retry the interview so every heard turn can be verified",
+      ...input.baseValidation.recommendations,
+    ],
+  };
 }
 
 export function resolveInterviewTerminalReason(

@@ -1,7 +1,18 @@
 import OpenAI from "openai";
-import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import {
+  EVALUATION_SYSTEM_PROMPT,
+  getEvaluationPrompt,
+  type EvaluationTranscriptTurn,
+} from "./prompts";
 import { getFeedbackEvaluationModel } from "./model-config";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+
+export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
+  "feedback_configuration_missing_openai_key";
+export const FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY =
+  "feedback_configuration_invalid_openai_key";
+export const FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
 
 export interface EvaluationResult {
   scores: {
@@ -23,7 +34,7 @@ export interface EvaluationResult {
  */
 export async function generateFeedback(
   roundType: string,
-  transcript: { speaker: string; text: string }[]
+  transcript: EvaluationTranscriptTurn[]
 ): Promise<EvaluationResult> {
   if (transcript.length === 0) {
     throw new Error("Cannot generate feedback for empty transcript");
@@ -75,9 +86,42 @@ export async function generateFeedback(
       summary: result.summary || "No summary provided",
     };
   } catch (error) {
-    console.error("Error generating feedback:", error);
-    throw new Error("Failed to generate feedback", { cause: error });
+    const code = getEvaluationFailureCode(error);
+    console.error("[Feedback Evaluation] generation_failed", {
+      code,
+      ...toSafeErrorLog(error),
+    });
+    throw new Error(code);
   }
+}
+
+export function getEvaluationFailureCode(error: unknown): string {
+  if (
+    error instanceof Error &&
+    error.message === "OPENAI_API_KEY environment variable is required"
+  ) {
+    return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+  }
+
+  if (isInvalidOpenAIKeyError(error)) {
+    return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
+  }
+
+  return FEEDBACK_GENERATION_FAILED;
+}
+
+function isInvalidOpenAIKeyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const safeFields = error as {
+    status?: unknown;
+    code?: unknown;
+    name?: unknown;
+  };
+  return (
+    safeFields.status === 401 ||
+    safeFields.code === "invalid_api_key" ||
+    safeFields.name === "AuthenticationError"
+  );
 }
 
 /**

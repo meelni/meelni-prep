@@ -210,9 +210,10 @@ await session.start(agent=InterviewAgent(instructions=prompt), room=room)
 
 - The web session workflow owns the provider-neutral interview lifecycle; a
   LiveKit job or participant disconnect does not decide the terminal outcome.
-- The interview agent publishes normalized final transcript events to the room.
-- The authenticated browser persists those events through
-  `/api/session/transcript` with a local retry queue.
+- The interview agent durably persists normalized transcript events through the
+  signed runtime endpoint, then publishes acknowledged events to the room for display.
+- The browser keeps no raw transcript retry storage; reload and reconnect hydrate
+  owned durable turns from the server.
 - Explicit end currently calls `/api/interview/end`, which calculates durable
   signal and triggers the Inngest feedback workflow.
 - The canonical lifecycle and remaining rollout gaps are documented in

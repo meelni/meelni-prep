@@ -13,6 +13,13 @@ The export includes:
 - bookmarks, practice sets, achievements, and saved progress insights;
 - subscription, usage, payment summaries, and credit-ledger summaries.
 
+The exported settings object contains only current, operative account and
+notification preferences. Deprecated compatibility columns such as
+`save_transcripts`, `auto_save_transcripts`, and `share_anonymous_data` are not
+exported as active preferences: they do not control transcript persistence and
+must never be interpreted as analytics consent. The columns remain in the
+database only for a separately rehearsed compatibility cleanup.
+
 The export excludes:
 
 - passwords, tokens, API keys, Supabase service-role credentials, and auth

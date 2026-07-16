@@ -12,7 +12,7 @@ This is the main interview agent that powers full mock interview sessions. It su
 - **3 Difficulty Levels**: Junior, Mid, Senior
 - **3 Coaching Modes**: Mock Interview, Practice, Learning
 - **Dynamic Prompts**: Question bank integration with 2,879+ real PM questions
-- **Real-time Transcripts**: Publishes final conversation turns for authenticated browser persistence
+- **Durable Transcripts**: Persists signed runtime-owned turns before publishing them to the browser
 - **Configurable Duration**: 15, 30, or 45-minute sessions
 - **Advanced VAD**: Silero VAD with tuned thresholds for natural conversation
 
@@ -26,6 +26,7 @@ This is the main interview agent that powers full mock interview sessions. It su
   - `min_silence_duration`: 0.6s
   - `activation_threshold`: 0.5
 - **Turn Detection**: English model (context-aware)
+- **Provider Recording**: Disabled explicitly; Meelni stores only its own durable transcript records
 
 ## Files
 
@@ -87,7 +88,7 @@ Uses shared modules from `../shared/`:
    - Question from bank (or generates own questions)
 6. Agent starts AgentSession with configured models
 7. Agent greets user and conducts interview
-8. Final transcript events are published to the room; the authenticated browser persists them through the transcript API and retry queue
+8. Final transcript events are signed and persisted by the runtime, then published to the room for browser display
 9. The web session workflow owns the terminal outcome; provider disconnect and runtime shutdown are normalized inputs, not terminal truth
 
 The runtime uses `deadline_at` to close `AgentSession` immediately without
@@ -159,18 +160,20 @@ both web and voice-agent deployments. See
 
 ## Event Handlers
 
-The agent publishes committed user and interviewer `ConversationItemAddedEvent`
-messages to the transcript data topic. Runtime speaking metrics supply measured
-start/end timing. Interrupted interviewer playout remains excluded until the
-partial-delivery policy and heard-text handling land in SAV-193.
+The agent normalizes committed user and interviewer
+`ConversationItemAddedEvent` messages with runtime-measured timing. Completed
+speech is `delivered`; LiveKit's TTS-synchronized heard prefix for interrupted
+interviewer speech is `partially_delivered`. An interruption with no confirmed
+prefix becomes a separate textless integrity marker.
 
 The runtime dependencies in `agent/requirements.txt` are pinned as one tested
 LiveKit Agents 1.6.5 family so message metrics and handler APIs cannot drift
 independently during deployment.
 
-These handlers do not write Supabase directly. `components/interview/livekit-room.tsx`
-normalizes their data packets and the browser persists them through the
-authenticated transcript endpoint. See
+These handlers do not write Supabase directly. A bounded in-memory runtime
+outbox signs the exact event for `/api/internal/transcript`; only a durable 2xx
+acknowledgement allows the event to be published to the browser for display.
+See
 `docs/contracts/livekit-room-metadata.md` and
 `docs/contracts/interview-session-lifecycle.md`.
 
@@ -190,10 +193,10 @@ authenticated transcript endpoint. See
 
 **Transcript not saving**:
 
-- Verify `contract_version: 1` and `session_id` are present in room metadata
-- Check that the browser receives valid final events on the transcript topic
-- Check the authenticated transcript endpoint, client retry queue, ownership,
-  database permissions, and schema
+- Verify `contract_version`, `session_id`, and `transcript_ingest_url` in room metadata
+- Check signed runtime-ingest status and safe event-ID logs
+- Check that the browser receives valid post-persistence events on the transcript topic
+- Check runtime outbox status, room correlation, database permissions, and schema
 
 **Voice cuts off user**:
 

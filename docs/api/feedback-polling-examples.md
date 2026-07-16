@@ -22,6 +22,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Cache-Control**: `no-cache` (status may change)
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "pending",
@@ -40,6 +41,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Cache-Control**: `no-cache` (status may change)
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "processing",
@@ -48,6 +50,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Notes**:
+
 - `estimatedTimeRemaining` calculated as: `max(0, 45 - elapsed_seconds)`
 - Returns `0` if processing takes longer than estimated
 - Processing typically takes 30-45 seconds
@@ -63,6 +66,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Cache-Control**: `public, max-age=3600` (cache for 1 hour)
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "completed",
@@ -98,10 +102,12 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Score Ranges**:
+
 - All dimension scores: 0-10 (integer)
 - Overall score: 0-10 (float, weighted average)
 
 **Rubric Versions**:
+
 - `1.0.0`: Initial PM interview rubric (Product Sense, Analytical, Leadership, Strategy)
 
 **Polling Strategy**: Stop polling. Cache response.
@@ -115,6 +121,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Cache-Control**: `public, max-age=300` (cache for 5 minutes)
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "skipped",
@@ -123,6 +130,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Common Skip Reasons**:
+
 - `"Session too short: X minutes < 5 minutes minimum"` - Session didn't meet minimum duration
 - `"Empty transcript"` - No conversation turns recorded
 - `"Insufficient user turns: X < 3 minimum"` - User didn't speak enough
@@ -138,6 +146,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Cache-Control**: `public, max-age=300` (cache for 5 minutes)
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "failed",
@@ -146,6 +155,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Common Error Messages**:
+
 - `"GPT-4 API timeout after 3 retries"` - OpenAI API timeout
 - `"GPT-4 API rate limit exceeded"` - OpenAI rate limiting
 - `"Invalid response format from GPT-4"` - Unexpected API response
@@ -162,6 +172,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Reason**: Missing or invalid authentication token
 
 **Response**:
+
 ```json
 {
   "error": "Unauthorized"
@@ -177,6 +188,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Reason**: Session not found or user doesn't own the session
 
 **Response**:
+
 ```json
 {
   "error": "Session not found or access denied"
@@ -184,6 +196,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Notes**:
+
 - Returns 404 (not 403) to avoid leaking session existence
 - Could mean:
   - Session ID doesn't exist
@@ -199,6 +212,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 **Reason**: Database query failed or unexpected error
 
 **Response**:
+
 ```json
 {
   "error": "Failed to fetch feedback"
@@ -304,15 +318,16 @@ async function pollWithBackoff(sessionId: string) {
 
 ## Cache Behavior
 
-| Status      | Cache-Control          | Duration | Rationale                          |
-|-------------|------------------------|----------|------------------------------------|
-| pending     | `no-cache`             | None     | Status changes frequently          |
-| processing  | `no-cache`             | None     | Status changes frequently          |
-| completed   | `public, max-age=3600` | 1 hour   | Immutable, safe to cache           |
-| skipped     | `public, max-age=300`  | 5 min    | User may retry after fixing issues |
-| failed      | `public, max-age=300`  | 5 min    | User may retry after transient errors |
+| Status     | Cache-Control          | Duration | Rationale                             |
+| ---------- | ---------------------- | -------- | ------------------------------------- |
+| pending    | `no-cache`             | None     | Status changes frequently             |
+| processing | `no-cache`             | None     | Status changes frequently             |
+| completed  | `public, max-age=3600` | 1 hour   | Immutable, safe to cache              |
+| skipped    | `public, max-age=300`  | 5 min    | User may retry after fixing issues    |
+| failed     | `public, max-age=300`  | 5 min    | User may retry after transient errors |
 
 **Notes**:
+
 - Completed feedback is immutable (never changes)
 - Failed/skipped feedback may succeed on retry
 - Browser/CDN should respect cache headers
@@ -322,16 +337,19 @@ async function pollWithBackoff(sessionId: string) {
 ## Performance Metrics
 
 **Typical Response Times**:
+
 - Pending/Processing status check: ~50-100ms
 - Completed feedback retrieval: ~100-150ms (first time), ~10-20ms (cached)
 
 **Feedback Generation Times**:
+
 - Average: 35 seconds
 - P50: 30 seconds
 - P95: 45 seconds
 - P99: 60 seconds
 
 **Database Queries**:
+
 - Session ownership check: 1 query (indexed)
 - Feedback retrieval: 1 query (indexed)
 - Total: 2 queries per poll
@@ -371,9 +389,9 @@ This tests all status transitions and edge cases.
 
 ## Related Endpoints
 
-- **Generate Feedback**: `POST /api/feedback/generate` - Triggers feedback generation
+- **Feedback**: `GET /api/feedback/[sessionId]` - Polls the terminally scheduled feedback state
 - **Session Status**: `GET /api/session/[id]` - Check if session is ready for feedback
-- **Transcript**: `GET /api/transcript/[sessionId]` - View raw transcript before feedback
+- **Transcript**: `GET /api/session/[sessionId]/transcript` - Read the owner-authorized transcript with private, no-store caching
 
 ---
 
@@ -382,6 +400,7 @@ This tests all status transitions and edge cases.
 ### Feedback status stuck on "pending"
 
 **Possible causes**:
+
 - Background worker not running
 - Queue backlog
 - Session validation failed silently
@@ -393,6 +412,7 @@ This tests all status transitions and edge cases.
 ### Feedback status stuck on "processing"
 
 **Possible causes**:
+
 - GPT-4 API timeout (rare)
 - Background worker crashed mid-processing
 
@@ -403,6 +423,7 @@ This tests all status transitions and edge cases.
 ### "Session not found" but session exists
 
 **Possible causes**:
+
 - User doesn't own the session (403 disguised as 404 for security)
 - Feedback record hasn't been created yet
 - Session deleted after completion
@@ -414,6 +435,7 @@ This tests all status transitions and edge cases.
 ## Changelog
 
 ### v1.0.0 (2025-11-08)
+
 - Initial implementation with 5 status states
 - Added estimated time remaining for pending/processing
 - Implemented cache headers based on status

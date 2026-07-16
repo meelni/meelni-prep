@@ -1,3 +1,4 @@
+import { scrubRetiredTranscriptBrowserStorage } from "@/lib/privacy/transcript-browser-storage";
 import { getSafeInternalRedirect } from "@/lib/auth/safe-redirect";
 
 export type SettingsLoadState = "idle" | "loading" | "ready" | "error";
@@ -59,6 +60,7 @@ export async function requestAccountDeletion(
     }
 
     if (response.status === 401 && body.error === "account_deletion_pending") {
+      scrubRetiredTranscriptBrowserStorage();
       return {
         state: "requested",
         message:
@@ -76,6 +78,7 @@ export async function requestAccountDeletion(
     }
 
     if (response.status === 202 && body.status === "deletion_requested") {
+      scrubRetiredTranscriptBrowserStorage();
       return {
         state: "requested",
         message:
@@ -85,6 +88,7 @@ export async function requestAccountDeletion(
     }
 
     if (response.status === 202 && body.status === "deletion_retry_scheduled") {
+      scrubRetiredTranscriptBrowserStorage();
       return {
         state: "retry_scheduled",
         message:
