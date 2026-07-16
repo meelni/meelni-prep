@@ -9,12 +9,6 @@
       "parentRef": "codex/bound-public-demo"
     },
     {
-      "pr": 265,
-      "parentPr": 263,
-      "headRef": "codex/sav-230-provider-credit-recovery",
-      "parentRef": "codex/sav-229-stable-start-attempt"
-    },
-    {
       "pr": 266,
       "parentPr": 298,
       "headRef": "codex/sav-195-feedback-v2",
