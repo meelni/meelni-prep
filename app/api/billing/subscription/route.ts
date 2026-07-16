@@ -20,19 +20,20 @@ import { eq } from "drizzle-orm";
  * - priceInCents: number
  * - currency: string
  *
- * Creates a default free subscription if none exists.
+ * This read is side-effect free. Accounts without a paid subscription receive
+ * a synthetic free state without creating a billing row.
  */
 export async function GET() {
   try {
     // Check authentication
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Query subscription by user ID
@@ -42,39 +43,21 @@ export async function GET() {
       .where(eq(subscription.userId, user.id))
       .limit(1);
 
-    // If no subscription exists, create a default free subscription
+    // Preserve GET as a read: a billing page visit must not create entitlement
+    // or start a synthetic billing period.
     if (userSubs.length === 0) {
-      const now = new Date();
-      const periodEnd = new Date();
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      const [newSub] = await db
-        .insert(subscription)
-        .values({
-          userId: user.id,
-          tier: "free",
-          status: "active",
-          billingCycle: null,
-          currentPeriodStart: now,
-          currentPeriodEnd: periodEnd,
-          planName: "Free Plan",
-          priceInCents: 0,
-          currency: "usd",
-        })
-        .returning();
-
       return NextResponse.json({
-        tier: newSub.tier,
-        status: newSub.status,
-        billingCycle: newSub.billingCycle,
-        currentPeriodStart: newSub.currentPeriodStart?.toISOString(),
-        currentPeriodEnd: newSub.currentPeriodEnd?.toISOString(),
-        cancelAtPeriodEnd: newSub.cancelAtPeriodEnd,
-        planName: newSub.planName,
-        priceInCents: newSub.priceInCents,
-        currency: newSub.currency,
-        trialEnd: newSub.trialEnd?.toISOString() || null,
-        proTrialUsed: newSub.proTrialUsed,
+        tier: "free",
+        status: "active",
+        billingCycle: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        planName: null,
+        priceInCents: 0,
+        currency: "usd",
+        trialEnd: null,
+        proTrialUsed: false,
       });
     }
 

@@ -30,7 +30,11 @@ import {
   creditGrant,
   creditReservation,
   creditReservationGrant,
+  creditRolloverLot,
+  creditRolloverLotAllocation,
   creditTransaction,
+  billingAdjustment,
+  billingPaymentState,
   subscriptionRelations as pricingSubscriptionRelations,
   usageRecordRelations as pricingUsageRecordRelations,
   paymentHistoryRelations as pricingPaymentHistoryRelations,
@@ -38,7 +42,11 @@ import {
   creditGrantRelations as pricingCreditGrantRelations,
   creditReservationRelations as pricingCreditReservationRelations,
   creditReservationGrantRelations as pricingCreditReservationGrantRelations,
+  creditRolloverLotRelations as pricingCreditRolloverLotRelations,
+  creditRolloverLotAllocationRelations as pricingCreditRolloverLotAllocationRelations,
   creditTransactionRelations as pricingCreditTransactionRelations,
+  billingAdjustmentRelations as pricingBillingAdjustmentRelations,
+  billingPaymentStateRelations as pricingBillingPaymentStateRelations,
 } from "./schema-pricing";
 
 // Re-export pricing tables
@@ -52,8 +60,12 @@ export {
   creditGrant,
   creditReservation,
   creditReservationGrant,
+  creditRolloverLot,
+  creditRolloverLotAllocation,
   creditTransaction,
   interviewSession,
+  billingAdjustment,
+  billingPaymentState,
 };
 
 // Shared, database-backed budget for LiveKit reconnect token attempts.
@@ -931,6 +943,9 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
   creditGrants: many(creditGrant),
   creditReservations: many(creditReservation),
   creditTransactions: many(creditTransaction),
+  billingAdjustments: many(billingAdjustment),
+  billingPaymentStates: many(billingPaymentState),
+  creditRolloverLots: many(creditRolloverLot),
   // MOTI-002: Achievements
   achievements: many(userAchievement),
 }));
@@ -998,5 +1013,9 @@ export {
   pricingCreditGrantRelations as creditGrantRelations,
   pricingCreditReservationRelations as creditReservationRelations,
   pricingCreditReservationGrantRelations as creditReservationGrantRelations,
+  pricingCreditRolloverLotRelations as creditRolloverLotRelations,
+  pricingCreditRolloverLotAllocationRelations as creditRolloverLotAllocationRelations,
   pricingCreditTransactionRelations as creditTransactionRelations,
+  pricingBillingAdjustmentRelations as billingAdjustmentRelations,
+  pricingBillingPaymentStateRelations as billingPaymentStateRelations,
 };

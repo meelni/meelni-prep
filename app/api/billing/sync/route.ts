@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription, stripeCustomerMapping } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
 } from "@/lib/billing/stripe-catalog";
+import { mayApplyStripeSubscriptionResource } from "@/lib/billing/stripe-subscription-event-order";
+import { cancelObservedMissingStripeSubscription } from "@/lib/db/stripe-subscription-sync";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -22,7 +24,6 @@ const stripe = process.env.STRIPE_SECRET_KEY
  * This ensures the local database reflects the current Stripe state.
  *
  * Use cases:
- * - Called on user login to ensure subscription state is current
  * - Called after checkout completion
  * - Called when user reports discrepancy
  *
@@ -60,7 +61,8 @@ export async function POST() {
       .where(eq(subscription.userId, userId))
       .limit(1);
 
-    // If no subscription exists, create a free tier record
+    // If no local subscription exists, recover only a real paid-provider
+    // subscription. A sync request must never fabricate free entitlement.
     if (existingSubscription.length === 0) {
       // Check if user has a Stripe customer mapping
       const mapping = await db
@@ -69,11 +71,9 @@ export async function POST() {
         .where(eq(stripeCustomerMapping.userId, userId))
         .limit(1);
 
-      let stripeCustomerId: string | null = null;
-
       // If we have a mapping, try to get subscription from Stripe
       if (mapping.length > 0) {
-        stripeCustomerId = mapping[0].stripeCustomerId;
+        const stripeCustomerId = mapping[0].stripeCustomerId;
 
         try {
           // List subscriptions for this customer
@@ -98,30 +98,18 @@ export async function POST() {
               message: "Subscription synced from Stripe",
             });
           }
-        } catch (stripeError) {
-          console.error("Error fetching Stripe subscription:", stripeError);
-          // Continue to create free tier
+        } catch {
+          console.error("Subscription sync provider lookup failed", {
+            code: "stripe_subscription_lookup_failed",
+          });
+          throw new Error("stripe_subscription_lookup_failed");
         }
       }
 
-      // Create free tier subscription
-      const now = new Date();
-      const periodEnd = new Date(now);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      await db.insert(subscription).values({
-        userId,
-        tier: "free",
-        status: "active",
-        stripeCustomerId,
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-      });
-
       return NextResponse.json({
-        synced: true,
-        subscription: { tier: "free", status: "active" },
-        message: "No paid subscription initialized",
+        synced: false,
+        subscription: null,
+        message: "No paid Stripe subscription found",
       });
     }
 
@@ -146,18 +134,27 @@ export async function POST() {
       } catch (stripeError) {
         // Subscription may have been deleted
         if (isStripeResourceMissing(stripeError)) {
-          // Mark as canceled in our database
-          await db
-            .update(subscription)
-            .set({
-              status: "canceled",
-              updatedAt: new Date(),
-            })
-            .where(eq(subscription.userId, userId));
+          const cancellation = await cancelObservedMissingStripeSubscription({
+            userId,
+            observedStripeSubscriptionId: sub.stripeSubscriptionId,
+            observedVersion: sub.version,
+          });
+          if (cancellation.status === "conflict") {
+            return NextResponse.json(
+              {
+                synced: false,
+                message: "Subscription changed while syncing; retry required",
+              },
+              { status: 409 }
+            );
+          }
 
           return NextResponse.json({
             synced: true,
-            subscription: { tier: sub.tier, status: "canceled" },
+            subscription: {
+              tier: cancellation.tier,
+              status: "canceled",
+            },
             message: "Subscription marked as canceled (not found in Stripe)",
           });
         }
@@ -185,12 +182,23 @@ export async function POST() {
             message: "Found and synced subscription from Stripe",
           });
         }
-      } catch (stripeError) {
-        console.error("Error checking Stripe subscriptions:", stripeError);
+      } catch {
+        console.error("Subscription sync provider lookup failed", {
+          code: "stripe_subscription_lookup_failed",
+        });
       }
     }
 
-    // No Stripe subscription - return current database state
+    if (sub.tier === "free") {
+      return NextResponse.json({
+        synced: false,
+        subscription: null,
+        message: "No paid Stripe subscription found",
+      });
+    }
+
+    // Preserve an existing paid/canceled local state when there is no provider
+    // object to recover. This read does not create or upgrade entitlement.
     return NextResponse.json({
       synced: true,
       subscription: {
@@ -199,8 +207,10 @@ export async function POST() {
       },
       message: "No changes needed",
     });
-  } catch (error) {
-    console.error("Subscription sync error:", error);
+  } catch {
+    console.error("Subscription sync failed", {
+      code: "subscription_sync_failed",
+    });
     return NextResponse.json(
       { error: "Failed to sync subscription" },
       { status: 500 }
@@ -237,19 +247,53 @@ async function syncSubscriptionFromStripe(
   let tier: string | null = null;
   try {
     tier = getStripeCatalogIdForPrice(priceId);
-  } catch (error) {
-    console.warn("Skipping Stripe tier sync for unknown price", {
-      userId,
-      stripeSubscriptionId: stripeSubscription.id,
-      priceId,
-      error: getErrorMessage(error),
+  } catch {
+    console.warn("Subscription sync skipped", {
+      code: "stripe_subscription_price_unknown",
     });
   }
 
   if (!tier && existing.length === 0) {
-    throw new Error(
-      `Cannot sync subscription ${stripeSubscription.id} without a known catalog price`
-    );
+    throw new Error("stripe_subscription_price_unknown");
+  }
+
+  const resourceCreatedAt = new Date(stripeSubscription.created * 1000);
+  if (!Number.isFinite(resourceCreatedAt.getTime())) {
+    throw new Error("stripe_subscription_created_at_invalid");
+  }
+  const current = existing[0];
+  const currentResourceId = current?.stripeSubscriptionId ?? null;
+  const replacingResource = Boolean(
+    currentResourceId && currentResourceId !== stripeSubscription.id
+  );
+  if (
+    !mayApplyStripeSubscriptionResource({
+      currentResourceId,
+      currentStatus: current?.status ?? null,
+      currentResourceProof: current?.stripeResourceCreatedAt
+        ? {
+            resourceCreatedAt: current.stripeResourceCreatedAt,
+            createdEventCursor:
+              current.stripeResourceCreatedEventTimestamp &&
+              current.stripeResourceCreatedEventId
+                ? {
+                    createdAt: current.stripeResourceCreatedEventTimestamp,
+                    priority: 30,
+                    eventId: current.stripeResourceCreatedEventId,
+                  }
+                : null,
+          }
+        : null,
+      retiredResourceIds: current?.retiredStripeSubscriptionIds ?? [],
+      candidateResourceId: stripeSubscription.id,
+      candidateResourceProof: {
+        resourceCreatedAt,
+        createdEventCursor: null,
+      },
+      eventType: "customer.subscription.created",
+    })
+  ) {
+    throw new Error("stripe_subscription_resource_conflict");
   }
 
   const updateData = {
@@ -258,6 +302,14 @@ async function syncSubscriptionFromStripe(
     stripeSubscriptionId: stripeSubscription.id,
     stripeCustomerId: stripeSubscription.customer as string,
     stripePriceId: priceId,
+    stripeResourceCreatedAt: resourceCreatedAt,
+    stripeResourceCreatedEventTimestamp:
+      current?.stripeResourceCreatedEventTimestamp ?? null,
+    stripeResourceCreatedEventId: current?.stripeResourceCreatedEventId ?? null,
+    retiredStripeSubscriptionIds:
+      replacingResource && currentResourceId
+        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+        : (current?.retiredStripeSubscriptionIds ?? []),
     billingCycle:
       firstItem?.price?.recurring?.interval === "year"
         ? ("annual" as const)
@@ -279,10 +331,22 @@ async function syncSubscriptionFromStripe(
   };
 
   if (existing.length > 0) {
-    await db
+    const result = await db
       .update(subscription)
-      .set(updateData)
-      .where(eq(subscription.userId, userId));
+      .set({ ...updateData, version: current.version + 1 })
+      .where(
+        and(
+          eq(subscription.userId, userId),
+          eq(subscription.version, current.version),
+          currentResourceId
+            ? eq(subscription.stripeSubscriptionId, currentResourceId)
+            : isNull(subscription.stripeSubscriptionId)
+        )
+      )
+      .returning({ id: subscription.id });
+    if (result.length === 0) {
+      throw new Error("stripe_subscription_version_conflict");
+    }
   } else {
     await db.insert(subscription).values({
       userId,
@@ -314,8 +378,4 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
     default:
       return "active";
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

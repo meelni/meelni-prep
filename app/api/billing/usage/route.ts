@@ -1,56 +1,48 @@
 import { NextResponse } from "next/server";
+
+import { getCreditBalanceReadModel } from "@/lib/billing/credit-balance-read-model";
+import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { createClient } from "@/lib/supabase/server";
-import { getUsageSummary } from "@/lib/services/usage-service";
 
 /**
- * GET /api/billing/usage
+ * Deprecated compatibility read for pre-credit clients.
  *
- * Fetch user's usage quota for current billing period
- *
- * Returns:
- * - tier: 'free' | 'pro' | 'premium'
- * - interviewsUsed: number
- * - interviewsLimit: number (-1 for unlimited)
- * - percentUsed: number (0-100)
- * - isUnlimited: boolean
- * - periodStart: ISO timestamp
- * - periodEnd: ISO timestamp
+ * Monthly quota and `-1` unlimited semantics are retired. New clients should
+ * use `/api/billing/credits`; this endpoint intentionally returns the same
+ * authoritative credit read model during the compatibility window.
  */
 export async function GET() {
   try {
-    // Check authentication
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Call usage service to get summary
-    const usageSummary = await getUsageSummary(user.id);
-
-    // Calculate percentage used
-    const isUnlimited = usageSummary.interviewsLimit === -1;
-    const percentUsed = isUnlimited
-      ? 0
-      : Math.round((usageSummary.interviewsUsed / usageSummary.interviewsLimit) * 100);
-
-    return NextResponse.json({
-      tier: usageSummary.tier,
-      interviewsUsed: usageSummary.interviewsUsed,
-      interviewsLimit: usageSummary.interviewsLimit,
-      percentUsed,
-      isUnlimited,
-      periodStart: usageSummary.periodStart?.toISOString(),
-      periodEnd: usageSummary.periodEnd?.toISOString(),
+    const credits = await getCreditBalanceReadModel({
+      store: createDrizzleCreditLedgerStore(),
+      userId: user.id,
     });
-  } catch (error) {
-    console.error("Error fetching usage:", error);
     return NextResponse.json(
-      { error: "Failed to fetch usage" },
+      {
+        deprecated: true,
+        replacement: "/api/billing/credits",
+        ...credits,
+      },
+      {
+        headers: {
+          Deprecation: "true",
+          Link: '</api/billing/credits>; rel="successor-version"',
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Error fetching credit compatibility view:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch credits" },
       { status: 500 }
     );
   }

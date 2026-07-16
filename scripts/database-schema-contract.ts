@@ -29,6 +29,14 @@ export const STABLE_START_SCHEMA_FINGERPRINT =
   "0fcd5e505fdf94c8b40bb55a02bd04877874a18fa23d9e6b78b077b61174acbd";
 export const CREDIT_RECOVERY_SCHEMA_FINGERPRINT =
   "7aa1f13cf16f918674d1d0c23e088b460fea851bd5fade8e3d44cbc2880bb3e1";
+export const BILLING_TRUTH_SCHEMA_FINGERPRINT =
+  "3db3ac26353810f292a77f98613498fec9bbeef760c9a63f71080302e141e802";
+export const WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT =
+  "1baa26752813afbad3d6a2b9757c114eb261fac42eb6714f08b0d6d2501c5f80";
+export const INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT =
+  "9cecd66aad91bea95bf3ce3c284e2759aad6219cc4ee3f6c853e35ca584a5680";
+export const SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT =
+  "fb62af10dec1fb181c42b7e9d9e9e0066a1f69dcfb7818190ea4882c80e1c470";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -149,7 +157,8 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
         WHERE n.nspname = 'public'
           AND p.proname IN (
             'protect_interview_session_stable_evidence',
-            'enforce_interview_credit_evidence_immutable'
+            'enforce_interview_credit_evidence_immutable',
+            'enforce_billing_adjustment_immutable'
           )
         ORDER BY p.proname, arguments
       `,
@@ -161,7 +170,8 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
         WHERE trigger_schema = 'public'
           AND trigger_name IN (
             'protect_interview_session_stable_evidence',
-            'interview_credit_evidence_immutable'
+            'interview_credit_evidence_immutable',
+            'billing_adjustment_immutable'
           )
         ORDER BY event_object_table, trigger_name, event_manipulation
       `,

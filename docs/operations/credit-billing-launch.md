@@ -28,12 +28,13 @@ MIGRATION_TEST_DATABASE_URL=postgresql://... npm run test:database-migrations
 ```
 
 `npm run db:preflight` reports aggregate-only ledger integrity counts under
-`creditLedgerIntegrity`. Before relaunch, all counts must be zero on the
+`creditLedgerIntegrity` and payment-reversal correlation counts under
+`billingAdjustmentIntegrity`. Before relaunch, all counts must be zero on the
 isolated Preview database. The report must not contain user IDs, Stripe IDs,
 balances, or other customer data. Preview currently shares Production data, so
 do not run the rehearsal until SAV-226 establishes an isolated environment.
 
-Migration `0013` adds `creditRecoveryIntegrity` and
+Migration `0015` adds `creditRecoveryIntegrity` and
 `creditRecoveryLaunchReady`. Strict launch preflight fails when a version-1
 terminal session lacks policy evidence or when release/refund/retain disagrees
 with its reservation state. The five-minute `interview-credit-recovery` worker
@@ -43,6 +44,53 @@ canonical locks before repairing it.
 Expired nonterminal active reservations release, while expired nonterminal
 consumed reservations refund; this also closes the fallback path when a fatal
 runtime report could not settle before the runtime exited.
+
+Migration `0017` adds a nullable, unique logical transition key to the Stripe
+event log. Exact Event ID retries are acknowledged without replay. Distinct
+Stripe Event objects for the same immutable object/type transition replay the
+idempotent handler and must match persisted payment truth before they are
+acknowledged. Mutable `customer.subscription.updated` events are intentionally
+excluded from logical deduplication.
+
+Migration `0018` makes `(stripe_invoice_id, status)` unique for non-null
+invoice IDs. This keeps distinct Stripe Event objects for one failed or
+successful invoice transition from creating duplicate payment-history rows.
+Before the index is created, legacy duplicates are deterministically ranked by
+`created_at, id`; non-canonical rows are quarantined without exposing invoice
+IDs in preflight output. A successful attempt supersedes failed attempts for
+customer payment-history display. Subscription status and grace converge by
+provider event time, so success wins a same-second conflict and later delivery
+cannot reintroduce stale dunning state. Cursor ordering is scoped to one Stripe
+subscription resource: an allowed `customer.subscription.created` replacement
+seeds the replacement cursor atomically, and later events from the superseded
+resource cannot mutate it.
+
+Migration `0019` makes cross-resource replacement durable rather than relying
+on delivery order. Each row stores the Stripe resource creation time and its
+created-event cursor, plus every retired subscription identity. A replacement
+must be a `customer.subscription.created` event for a provably newer resource;
+same-second resources use the stored created-event cursor as the deterministic
+tie-breaker. Rows without durable creation proof fail closed on replacement
+until provider reconciliation supplies that proof. Retired identities can
+never be resurrected by a delayed created event. If replacements race, the
+first compare-and-swap winner is provisional: a losing event retry compares
+against that active winner and a provably newer generation supersedes it. The
+result therefore converges to maximal durable creation proof, independent of
+which write won first.
+
+Account-deletion tombstones include hashed customer, subscription,
+payment-intent, and charge identifiers. Stored and late refund/dispute payloads
+for a deleted subject must be replaced with `{}` and acknowledged without
+running billing reconciliation. Migration `0018` stores every event subject
+fingerprint and uses transaction-scoped advisory locks plus database triggers
+to serialize tombstone and webhook writes; raw payload persistence therefore
+cannot race tombstone creation. Every identifier present on a webhook is
+checked, while payment-intent and charge subjects remain correlation-only and
+are never passed to customer deletion. Customer mappings take precedence over
+webhook metadata and disagreement fails closed. Stripe webhook bodies are
+limited to 64 KiB before signature verification. Settlement analytics use a
+stable one-way user pseudonym and aggregate quantities only; provider
+adjustment IDs, grant IDs, and raw user UUIDs are prohibited.
 
 ## Migration And Backfill Plan
 
@@ -137,8 +185,35 @@ Stripe manual checks:
 - Starter Checkout creates subscription state and one 4-credit renewal grant.
 - Pro Checkout creates subscription state and one 12-credit renewal grant.
 - Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate grants.
+- `refund.created`, `refund.updated`, and legacy `charge.refunded` converge on one provider-object withdrawal; `refund.failed` or canceled status reinstates eligible value once.
+- `charge.dispute.created` and `charge.dispute.funds_withdrawn` converge on one withdrawal; `charge.dispute.funds_reinstated` and `charge.dispute.closed` with `won` or `warning_closed` converge on one reinstatement.
+- Reversed event order does not leave a stale freeze, and a second same-direction event ID does not produce an idempotency conflict.
+- Multiple partial refunds use cumulative floor rounding and never revoke more than the payment-funded source credits.
+- Reinstating one adjustment preserves `partially_refunded` or `disputed` payment status while another withdrawal remains active.
+- Reinstating one of multiple withdrawals recomputes the aggregate payment target and does not restore more value than all still-active withdrawals permit.
+- A credit consumed while frozen remains unrecoverable after a later session refund; overlapping withdrawal/reinstatement order cannot recreate it.
 - `invoice.payment_failed` creates failed payment history and no credit grant.
+- Distinct `invoice.payment_failed` Event IDs produce one failed payment row
+  and preserve the original grace deadline.
+- Failure-then-success and success-then-failure delivery both leave the
+  subscription active, clear grace, and show only the settled invoice attempt.
+- Customer metadata disagreement with a durable mapping fails closed.
+- A deleted payment-intent or charge is redacted and acknowledged even when
+  another identifier appears first in the Stripe object.
 - `/api/billing/sync` never maps unknown Stripe prices to Pro.
+
+Cancellation launch remains blocked on an explicit product-policy decision:
+whether cancellation is immediate or remains active through the paid period.
+Do not change provider behavior or customer-facing promises until one policy is
+accepted and implemented end to end.
+
+Cancellation requests do not collect or log free-form reasons, feedback, or
+raw user identifiers. Add cancellation analytics only after defining a bounded
+event contract with pseudonymous or aggregate fields.
+
+Until SAV-237 is decided, the immediate-cancellation response must describe any
+billing adjustment as a separately processed outcome. It must not promise that
+the customer will receive a prorated card refund.
 
 Credit enforcement checks:
 
@@ -189,6 +264,71 @@ ledger-integrity incident and run recovery; never issue an ad hoc table update.
 Raw runtime exceptions, room tokens, recordings, transcripts, and provider
 secrets are not support-visible billing evidence.
 
+For a payment-reversal case, inspect the versioned aggregate state separately
+from immutable provider events:
+
+```sql
+SELECT
+  state.source_credits,
+  state.target_credits,
+  state.revoked_credits,
+  state.unrecoverable_credits,
+  state.consumed_credits,
+  state.version,
+  state.updated_at
+FROM billing_payment_state state
+WHERE state.payment_history_id = $1;
+
+SELECT
+  adjustment.adjustment_type,
+  adjustment.direction,
+  adjustment.amount_in_cents,
+  adjustment.revoked_credits,
+  adjustment.unrecoverable_credits,
+  adjustment.created_at
+FROM billing_adjustment adjustment
+WHERE adjustment.payment_history_id = $1
+ORDER BY adjustment.created_at, adjustment.id;
+```
+
+The state is current reconciliation truth; adjustment rows are historical
+event evidence and must never be reassigned or rewritten to represent current
+freeze ownership.
+
+For rollover provenance, inspect the source lots and reservation splits rather
+than attributing pooled consumption from the destination grant total:
+
+```sql
+SELECT
+  lot.source_grant_id,
+  lot.rollover_grant_id,
+  lot.original_credits,
+  lot.remaining_credits,
+  lot.reserved_credits,
+  lot.consumed_credits,
+  lot.revoked_credits
+FROM credit_rollover_lot lot
+WHERE lot.source_grant_id = $1
+ORDER BY lot.created_at, lot.id;
+
+SELECT
+  lot_allocation.reservation_grant_id,
+  lot_allocation.rollover_lot_id,
+  lot_allocation.credits,
+  lot_allocation.revoked_credits
+FROM credit_rollover_lot_allocation lot_allocation
+JOIN credit_rollover_lot lot ON lot.id = lot_allocation.rollover_lot_id
+WHERE lot.source_grant_id = $1
+ORDER BY lot_allocation.created_at, lot_allocation.id;
+```
+
+Every rollover grant must have source lots whose original, remaining, and
+reserved sums equal the destination grant. Every rollover reservation grant
+must have lot allocations whose credit and revoked sums equal the aggregate
+allocation. Strict preflight reports any mismatch. Do not manufacture lots for
+legacy pooled grants: stop launch, isolate the affected accounts, and resolve
+them through an explicit support decision with preserved evidence.
+
 ## Analytics Events
 
 PostHog server events emitted by the credit ledger:
@@ -203,6 +343,7 @@ PostHog server events emitted by the credit ledger:
 | `billing_credit_expired`          | `catalog_id`, `credit_source`, `credits`, `grant_id`                                                   |
 | `billing_credit_rollover_created` | `catalog_id`, `credits`, `source_id`, `grant_id`, `duplicate`                                          |
 | `billing_no_credits`              | `credits`, `balance_after`, `session_id`, `reason`                                                     |
+| `billing_credit_payment_adjusted` | `credits`, `reason`, `reserved_credits`, `consumed_credits`, `unrecoverable_credits`, `duplicate`      |
 
 Minimum launch dashboard questions:
 

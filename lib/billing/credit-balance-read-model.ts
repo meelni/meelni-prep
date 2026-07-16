@@ -49,7 +49,7 @@ export async function getCreditBalanceReadModel({
       const hasCredits =
         grant.remainingCredits > 0 || grant.reservedCredits > 0;
       const isActive = !grant.expiresAt || grant.expiresAt > currentTime;
-      return hasCredits && isActive;
+      return hasCredits && isActive && grant.revokedAt === null;
     })
     .map((grant) => ({
       id: grant.id,

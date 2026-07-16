@@ -40,6 +40,16 @@ const REQUEST: AccountDeletionRecord = {
       providerId: "cus_second",
       fingerprint: "second-customer-fingerprint",
     },
+    {
+      kind: "payment_intent",
+      providerId: "pi_tombstone_only",
+      fingerprint: "payment-intent-fingerprint",
+    },
+    {
+      kind: "charge",
+      providerId: "ch_tombstone_only",
+      fingerprint: "charge-fingerprint",
+    },
   ],
   attempts: 1,
 };
@@ -53,12 +63,21 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
     `auth:${REQUEST.userId}`,
     "subscription:sub_test",
     "payment:payment_intent:pi_test",
+    "payment:payment_intent:pi_tombstone_only",
+    "payment:charge:ch_tombstone_only",
     "invoice:in_test",
     "customer:cus_test",
     "customer:cus_second",
     `completed:${REQUEST.userId}`,
   ]);
   assert.deepEqual(result, { alreadyCompleted: false });
+});
+
+test("payment and charge subjects remain correlation tombstones only", async () => {
+  const calls: string[] = [];
+  await deleteAccountWorkflow(REQUEST, createDeps(calls));
+  assert.equal(calls.includes("customer:pi_tombstone_only"), false);
+  assert.equal(calls.includes("customer:ch_tombstone_only"), false);
 });
 
 test("auth failure preserves the tombstone and never reports completion", async () => {
