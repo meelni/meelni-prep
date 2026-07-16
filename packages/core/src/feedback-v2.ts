@@ -1609,7 +1609,7 @@ function hasBoundedMaterialActionSubject(
   assertionStart: number
 ): boolean {
   const clausePrefix = text
-    .slice(Math.max(0, assertionStart - 96), assertionStart)
+    .slice(0, assertionStart)
     .split(/[.!?;,:()\n\u2026\u2013\u2014]+/u)
     .at(-1)
     ?.trim();

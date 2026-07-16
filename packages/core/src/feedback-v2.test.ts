@@ -5104,6 +5104,24 @@ test("binds material action assertion mode for descriptive and coordinated noun 
       asserted:
         "Acme security team encrypted customer records before migration.",
     },
+    {
+      hypothetical:
+        "The financial services customer identity data governance privacy compliance architecture organization will encrypt customer records before migration.",
+      asserted:
+        "The financial services customer identity data governance privacy compliance architecture organization encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "The cross functional customer data governance privacy security compliance architecture platform engineering team will preserve customer privacy during migration.",
+      asserted:
+        "The cross functional customer data governance privacy security compliance architecture platform engineering team preserved customer privacy during migration.",
+    },
+    {
+      hypothetical:
+        "The enterprise customer identity data governance privacy security compliance architecture platform engineering organization plans to secure customer records against abuse.",
+      asserted:
+        "The enterprise customer identity data governance privacy security compliance architecture platform engineering organization secured customer records against abuse.",
+    },
   ] as const;
 
   for (const { hypothetical, asserted } of cases) {
@@ -5157,6 +5175,43 @@ test("binds material action assertion mode for descriptive and coordinated noun 
       evaluationState: "full",
       modelVersion: "gpt-test-1",
     })
+  );
+
+  const longBoundedParaphrase = validResponse();
+  longBoundedParaphrase.scores.insight = 8;
+  longBoundedParaphrase.strengths[0].observation =
+    "The team encrypted customer records before migration.";
+  longBoundedParaphrase.strengths[0].evidence[0].quote =
+    "The cross functional customer data governance privacy security compliance architecture platform engineering team encrypted customer records before migration.";
+  assert.doesNotThrow(() =>
+    parseFeedbackV2(longBoundedParaphrase, {
+      transcript: [
+        {
+          ...transcript[0],
+          text: "The cross functional customer data governance privacy security compliance architecture platform engineering team encrypted customer records before migration.",
+        },
+        transcript[1],
+      ],
+      evaluationState: "full",
+      modelVersion: "gpt-test-1",
+    })
+  );
+
+  const longNarrative =
+    "The answer discussed the enterprise customer identity data governance privacy security compliance architecture plan while mentioning encrypted customer records.";
+  const longNarrativeMismatch = validResponse();
+  longNarrativeMismatch.scores.insight = 8;
+  longNarrativeMismatch.strengths[0].observation =
+    "The organization encrypted customer records before migration.";
+  longNarrativeMismatch.strengths[0].evidence[0].quote = longNarrative;
+  assert.throws(
+    () =>
+      parseFeedbackV2(longNarrativeMismatch, {
+        transcript: [{ ...transcript[0], text: longNarrative }, transcript[1]],
+        evaluationState: "full",
+        modelVersion: "gpt-test-1",
+      }),
+    /material claim absent/
   );
 
   for (const source of [
