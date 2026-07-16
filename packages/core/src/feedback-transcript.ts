@@ -39,6 +39,9 @@ export interface PrepareFeedbackTranscriptOptions {
   requireContractV2?: boolean;
 }
 
+const FEEDBACK_RESULT_TARGET_COMMAND_PATTERN =
+  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:choose|pick|provide|record|return|select)\s+(?:(?:(?:a|an|my|the)\s+)?(?:(?:final|evaluation)\s+)?(?:outcome|rating|result|score)\s+(?:as|at|of|to|with)\s+(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)|(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s+(?:as|at|for|of|to|with)\s+(?:(?:a|an|my|the)\s+)?(?:(?:final|evaluation)\s+)?(?:outcome|rating|result|score))\s*[.!?,;:]?$/iu;
+
 const INJECTION_CLAUSE_PATTERNS = [
   /^(?:please\s+|you\s+(?:must|should|need\s+to|have\s+to)\s+|i\s+(?:(?:need|want)\s+you\s+to|(?:am\s+asking|ask)\s+you\s+to)\s+)?(?:ignore|disregard|override|forget)\b[\s\S]{0,100}\b(?:previous|prior|system|developer|instructions?|prompt|scoring\s+evidence|rubric|evaluation)\b/i,
   /\b(?:ignore|disregard|override|forget)\b[\s\S]{0,100}\b(?:previous|prior|system|developer|instructions?|prompt|scoring\s+evidence|rubric|evaluation)\b(?=[\s\S]{0,120}\b(?:award|developer|give|output|print|rate|return|reveal|score|system)\b)/i,
@@ -50,6 +53,7 @@ const INJECTION_CLAUSE_PATTERNS = [
   /^(?:(?:and|but)(?:\s+then)?|instead|now|then)?\s*(?:please\s+)?(?:rate|score)\s+(?:me|my\s+(?:answer|performance|response)(?!\s+(?:quality|rate|rates|metric|metrics)\b)|this\s+(?:answer|response)(?!\s+(?:quality|rate|rates|metric|metrics)\b)|the\s+answer(?!\s+(?:quality|rate|rates|metric|metrics)\b))\b[\s\S]{0,80}\b(?:ten|10|high|maximum|perfect)\b/i,
   /^(?:(?:and|but)(?:\s+then)?|instead|now|then)?\s*(?:please\s+|kindly\s+)?(?:appraise|apply|bestow|echo|furnish|make|pencil(?:\s+in)?|record|repeat|reproduce|use)\b(?=[\s\S]{0,100}\b(?:me|my\s+(?:answer|performance|response)|the\s+(?:answer|response)|this\s+(?:answer|response))\b)(?=[\s\S]{0,100}(?:\b(?:score|rating)\b[\s\S]{0,24}\b(?:ten|10)\b|\b(?:ten|10)\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10))\b))/i,
   /^(?:(?:and|but)(?:\s+then)?|instead|now|then)?\s*(?:please\s+)?(?:return|output|list|mention)\s+only\s+strengths?\b/i,
+  FEEDBACK_RESULT_TARGET_COMMAND_PATTERN,
 ] as const;
 
 const TRANSCRIPT_DELIMITER_PATTERN = /<\s*\/?\s*transcript_data\b[^>]*>/i;
@@ -105,6 +109,7 @@ interface PartialFeedbackResultControlState {
   hasTarget: boolean;
   hasTargetPrefix: boolean;
   hasResult: boolean;
+  hasOutcome: boolean;
 }
 
 /**
@@ -379,7 +384,7 @@ const PARTIAL_FEEDBACK_CONTROL_PARTICIPANT =
 const PARTIAL_FEEDBACK_CANDIDATE_ACTION =
   /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:appraise|assign|award|bestow|furnish|give|grade|pencil(?:\s+in)?|rate|score)\b/iu;
 const PARTIAL_FEEDBACK_RESULT_ACTION =
-  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:output|provide|record|return|set)\b/iu;
+  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:choose|output|pick|provide|record|return|select|set)\b/iu;
 const PARTIAL_FEEDBACK_IMPLICIT_RESULT_ACTION =
   /\b(?:appraise|grade|rate|score)\b/iu;
 const PARTIAL_FEEDBACK_CANDIDATE_TARGET =
@@ -392,9 +397,9 @@ const PARTIAL_FEEDBACK_CANDIDATE_TARGET_HEAD =
 const PARTIAL_FEEDBACK_CANDIDATE_TARGET_FRAGMENT =
   /^(?:(?:answer|candidate|me|mine|my|myself|performance|response|the|this)\s*){1,4}[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_RESULT_NOUN =
-  /\b(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|rating|ratings|score|scores)\b/iu;
+  /\b(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|outcome|outcomes|rating|ratings|result|results|score|scores)\b/iu;
 const PARTIAL_FEEDBACK_RESULT_FRAGMENT =
-  /^(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|rating|ratings|score|scores)\s*[.!?,;:]?$/iu;
+  /^(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|outcome|outcomes|rating|ratings|result|results|score|scores)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_RESULT_SELECTOR = /^(?:all|each|every)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_CONTROL_OUTCOME =
   /^(?:(?:as|at|of|to|with)\s+)?(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s*[.!?,;:]?$/iu;
@@ -424,7 +429,10 @@ function advancePartialFeedbackResultControl(
   ) {
     return { detected: false, next: null };
   }
-  if (PARTIAL_FEEDBACK_DIRECT_BARE_OUTCOME_CONTROL.test(fragment)) {
+  if (
+    PARTIAL_FEEDBACK_DIRECT_BARE_OUTCOME_CONTROL.test(fragment) ||
+    FEEDBACK_RESULT_TARGET_COMMAND_PATTERN.test(fragment)
+  ) {
     return { detected: true, next: null };
   }
 
@@ -461,6 +469,7 @@ function advancePartialFeedbackResultControl(
       hasTarget: target,
       hasTargetPrefix: Boolean(action && !target && targetPrefix),
       hasResult: result,
+      hasOutcome: outcome,
     };
   };
   if (!prior) {
@@ -476,7 +485,8 @@ function advancePartialFeedbackResultControl(
       resultSelectorOnly;
     const detected =
       prior.action !== null &&
-      (prior.hasTarget || prior.hasResult) &&
+      (prior.hasTarget || prior.hasResult || target || result) &&
+      (prior.hasOutcome || outcome) &&
       continuesControlGrammar;
     return { detected, next: detected ? null : start() };
   }
@@ -517,9 +527,12 @@ function advancePartialFeedbackResultControl(
       !target &&
       (prior.hasTargetPrefix || advancesTargetPrefix),
     hasResult: prior.hasResult || result,
+    hasOutcome: prior.hasOutcome || outcome,
   } satisfies PartialFeedbackResultControlState;
   const detected =
-    outcome && next.action !== null && (next.hasTarget || next.hasResult);
+    next.hasOutcome &&
+    next.action !== null &&
+    (next.hasTarget || next.hasResult);
   return { detected, next: detected ? null : next };
 }
 

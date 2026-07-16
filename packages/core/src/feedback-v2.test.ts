@@ -4262,6 +4262,13 @@ test("binds count assertion mode and bounded unit modifiers", () => {
     "I intended researchers to interview 40 customers for product feedback before prioritizing the roadmap.",
     "I decided not to interview 40 customers for product feedback before prioritizing the roadmap.",
     "I did not manage to interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I can interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I must interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I am scheduled to interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I am supposed to interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I was unable to interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I did not get to interview 40 customers for product feedback before prioritizing the roadmap.",
+    "I refused to interview 40 customers for product feedback before prioritizing the roadmap.",
   ]) {
     const response = validResponse();
     response.scores.insight = 8;
@@ -4336,6 +4343,18 @@ test("binds count assertion mode and bounded unit modifiers", () => {
         "I did not manage to interview 40 customers for product feedback before launch.",
       observation:
         "The answer did not manage to interview 40 customers for product feedback.",
+    },
+    {
+      source:
+        "I can interview 40 customers for product feedback before launch.",
+      observation:
+        "The answer can interview 40 customers for product feedback before launch.",
+    },
+    {
+      source:
+        "I was unable to interview 40 customers for product feedback before launch.",
+      observation:
+        "The answer was unable to interview 40 customers for product feedback before launch.",
     },
     {
       source:
@@ -4560,6 +4579,13 @@ test("binds defined and undefined polarity to the local metric", () => {
     "I decided not to define the retention metric before choosing the launch plan.",
     "I decided the team not to define the retention metric before choosing the launch plan.",
     "I did not manage to define the retention metric before choosing the launch plan.",
+    "I can define the retention metric before choosing the launch plan.",
+    "I must define the retention metric before choosing the launch plan.",
+    "I am scheduled to define the retention metric before choosing the launch plan.",
+    "I am supposed to define the retention metric before choosing the launch plan.",
+    "I was unable to define the retention metric before choosing the launch plan.",
+    "I did not get to define the retention metric before choosing the launch plan.",
+    "I refused to define the retention metric before choosing the launch plan.",
   ]) {
     const response = validResponse();
     response.scores.insight = 8;
@@ -4606,6 +4632,18 @@ test("binds defined and undefined polarity to the local metric", () => {
         "I will have defined the retention metric before choosing the launch plan.",
       observation:
         "The answer will have defined the retention metric before choosing the launch plan.",
+    },
+    {
+      source:
+        "I am scheduled to define the retention metric before choosing the launch plan.",
+      observation:
+        "The answer is scheduled to define the retention metric before choosing the launch plan.",
+    },
+    {
+      source:
+        "I refused to define the retention metric before choosing the launch plan.",
+      observation:
+        "The answer refused to define the retention metric before choosing the launch plan.",
     },
   ]) {
     const response = validResponse();
@@ -4663,6 +4701,13 @@ test("binds general directional assertion polarity without penalizing positive c
     "I decided not to increase retention after the launch for working parents.",
     "I decided the team not to increase retention after the launch for working parents.",
     "I did not manage to increase retention after the launch for working parents.",
+    "I can increase retention after the launch for working parents.",
+    "I must increase retention after the launch for working parents.",
+    "I am scheduled to increase retention after the launch for working parents.",
+    "I am supposed to increase retention after the launch for working parents.",
+    "I was unable to increase retention after the launch for working parents.",
+    "I did not get to increase retention after the launch for working parents.",
+    "I refused to increase retention after the launch for working parents.",
   ]) {
     const response = validResponse();
     response.scores.insight = 8;
@@ -4707,6 +4752,9 @@ test("binds general directional assertion polarity without penalizing positive c
     "The answer will increase retention after the launch for working parents.",
     "The answer will have increased retention after the launch for working parents.",
     "The answer expects to increase retention after the launch for working parents.",
+    "The answer must increase retention after the launch for working parents.",
+    "The answer is supposed to increase retention after the launch for working parents.",
+    "The answer was unable to increase retention after the launch for working parents.",
   ]) {
     const response = validResponse();
     response.scores.insight = 8;
@@ -4975,7 +5023,7 @@ test("binds assertion mode for material security and privacy actions", () => {
   }
 });
 
-test("binds material action assertion mode for bounded noun subjects", () => {
+test("binds material action assertion mode for descriptive and coordinated noun subjects", () => {
   const cases = [
     {
       hypothetical:
@@ -5001,6 +5049,60 @@ test("binds material action assertion mode for bounded noun subjects", () => {
     {
       hypothetical: "Engineers will encrypt customer records before migration.",
       asserted: "Engineers encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "Our cross functional security team will encrypt customer records before migration.",
+      asserted:
+        "Our cross functional security team encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "The customer data governance and platform security team will encrypt customer records before migration.",
+      asserted:
+        "The customer data governance and platform security team encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "Platform engineers and privacy specialists will preserve customer privacy during migration.",
+      asserted:
+        "Platform engineers and privacy specialists preserved customer privacy during migration.",
+    },
+    {
+      hypothetical:
+        "Acme cross functional security team will secure customer records against abuse.",
+      asserted:
+        "Acme cross functional security team secured customer records against abuse.",
+    },
+    {
+      hypothetical:
+        "Our customer data governance working group plans to secure customer records against abuse.",
+      asserted:
+        "Our customer data governance working group secured customer records against abuse.",
+    },
+    {
+      hypothetical:
+        "Platform security engineers can encrypt customer records before migration.",
+      asserted:
+        "Platform security engineers encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "The enterprise data security team must encrypt customer records before migration.",
+      asserted:
+        "The enterprise data security team encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "Acme security team considered encrypting customer records before migration.",
+      asserted:
+        "Acme security team encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "Acme security team avoided encrypting customer records before migration.",
+      asserted:
+        "Acme security team encrypted customer records before migration.",
     },
   ] as const;
 
@@ -5037,9 +5139,31 @@ test("binds material action assertion mode for bounded noun subjects", () => {
     }
   }
 
+  const boundedParaphrase = validResponse();
+  boundedParaphrase.scores.insight = 8;
+  boundedParaphrase.strengths[0].observation =
+    "The team encrypted customer records before migration.";
+  boundedParaphrase.strengths[0].evidence[0].quote =
+    "The enterprise data security team encrypted customer records before migration.";
+  assert.doesNotThrow(() =>
+    parseFeedbackV2(boundedParaphrase, {
+      transcript: [
+        {
+          ...transcript[0],
+          text: "The enterprise data security team encrypted customer records before migration.",
+        },
+        transcript[1],
+      ],
+      evaluationState: "full",
+      modelVersion: "gpt-test-1",
+    })
+  );
+
   for (const source of [
     "I establish encrypted records as the source of truth and measure weekly retention.",
     "I select secure customer records for migration and measure weekly retention.",
+    "The answer mentioned encrypted customer records while comparing migration options.",
+    "Encrypting the archive helps secure customer records before migration.",
   ]) {
     const control = validResponse();
     control.scores.insight = 8;
@@ -5260,6 +5384,14 @@ test("rejects common employment and advancement outcome paraphrases", () => {
     "The candidate moved on to the final round.",
     "The candidate progressed to the next round.",
     "The candidate cleared the final interview.",
+    "The candidate received the PM position at Acme.",
+    "The candidate received an employment offer from Acme.",
+    "The candidate joined Acme as PM.",
+    "The candidate will start as PM at Acme.",
+    "The candidate advanced to the final round at Acme.",
+    "The candidate progressed to the final interview round at Acme.",
+    "The candidate reached the final round at Acme.",
+    "The candidate qualified for the final round at Acme.",
   ]) {
     const source = `In the prior interview debrief, ${summary
       .replace(/^The /u, "the ")
@@ -5323,6 +5455,24 @@ test("rejects common employment and advancement outcome paraphrases", () => {
         "The candidate cleared the final product review blocker before launch.",
       summary:
         "The candidate cleared the final product review blocker before launch.",
+    },
+    {
+      source:
+        "The candidate reached the final product milestone before launch.",
+      summary:
+        "The candidate reached the final product milestone before launch.",
+    },
+    {
+      source:
+        "The candidate qualified the final research cohort before recruitment.",
+      summary:
+        "The candidate qualified the final research cohort before recruitment.",
+    },
+    {
+      source:
+        "The candidate will start the product manager onboarding experiment at Acme.",
+      summary:
+        "The candidate will start the product manager onboarding experiment at Acme.",
     },
   ]) {
     const response = validResponse();

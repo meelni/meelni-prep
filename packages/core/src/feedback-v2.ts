@@ -1597,7 +1597,12 @@ const MATERIAL_ACTION_ASSERTION_FAMILIES = [
 ] as const;
 
 const MATERIAL_ACTION_NON_SUBJECT_HEAD_PATTERN =
-  /^(?:address(?:ed|es|ing)?|articulat(?:ed|es|ing)?|cho(?:ose|oses|osing|se)|compar(?:ed|es|ing)?|defin(?:e|ed|es|ing)?|discuss(?:ed|es|ing)?|establish(?:ed|es|ing)?|explain(?:ed|s|ing)?|identif(?:ied|ies|y|ying)|implement(?:ed|s|ing)?|includ(?:e|ed|es|ing)?|measur(?:e|ed|es|ing)?|mention(?:ed|s|ing)?|nam(?:e|ed|es|ing)?|outlin(?:e|ed|es|ing)?|present(?:ed|s|ing)?|prioriti[sz](?:e|ed|es|ing)?|provid(?:e|ed|es|ing)?|recommend(?:ed|s|ing)?|select(?:ed|s|ing)?|set(?:s|ting)?|specif(?:ied|ies|y|ying)|stat(?:e|ed|es|ing)?|test(?:ed|s|ing)?|track(?:ed|s|ing)?|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)?)$/iu;
+  /^(?:address(?:ed|es|ing)?|allow(?:ed|s|ing)?|am|are|articulat(?:ed|es|ing)?|ask(?:ed|s|ing)?|be|been|being|can|caus(?:e|ed|es|ing)?|cho(?:ose|oses|osing|se)|compar(?:ed|es|ing)?|could|defin(?:e|ed|es|ing)?|did|discuss(?:ed|es|ing)?|do|does|enabl(?:e|ed|es|ing)?|establish(?:ed|es|ing)?|explain(?:ed|s|ing)?|had|has|have|help(?:ed|s|ing)?|identif(?:ied|ies|y|ying)|implement(?:ed|s|ing)?|includ(?:e|ed|es|ing)?|is|let(?:s|ting)?|mak(?:e|es|ing)|may|measur(?:e|ed|es|ing)?|mention(?:ed|s|ing)?|might|must|nam(?:e|ed|es|ing)?|outlin(?:e|ed|es|ing)?|present(?:ed|s|ing)?|prioriti[sz](?:e|ed|es|ing)?|prompt(?:ed|s|ing)?|provid(?:e|ed|es|ing)?|recommend(?:ed|s|ing)?|requir(?:e|ed|es|ing)?|select(?:ed|s|ing)?|set(?:s|ting)?|should|specif(?:ied|ies|y|ying)|stat(?:e|ed|es|ing)?|tell(?:ing|s|told)|test(?:ed|s|ing)?|track(?:ed|s|ing)?|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)?|was|were|will|would)$/iu;
+const MATERIAL_ACTION_NON_SUBJECT_BOUNDARY_PATTERN =
+  /^(?:a|an|and|as|at|by|for|from|he|her|hers|him|his|i|in|into|it|its|me|mine|my|of|on|or|our|ours|she|that|the|their|theirs|them|they|this|to|us|we|which|who|whose|with|you|your|yours)$/iu;
+const MATERIAL_ACTION_COMMON_SUBJECT_HEAD_PATTERN =
+  /^(?:app|application|business|candidate|company|engineering|group|launch|model|organization|organisation|pipeline|platform|product|program|service|system|team|workflow)$/iu;
+const MAX_MATERIAL_ACTION_SUBJECT_TOKENS = 16;
 
 function hasBoundedMaterialActionSubject(
   text: string,
@@ -1634,18 +1639,32 @@ function hasBoundedMaterialActionSubject(
   const subjectHead = subjectTokens.at(-1);
   if (
     !subjectHead ||
-    MATERIAL_ACTION_NON_SUBJECT_HEAD_PATTERN.test(subjectHead.normalized)
+    MATERIAL_ACTION_NON_SUBJECT_HEAD_PATTERN.test(subjectHead.normalized) ||
+    MATERIAL_ACTION_NON_SUBJECT_BOUNDARY_PATTERN.test(subjectHead.normalized)
   ) {
     return false;
   }
 
+  const hasNounLikeHead =
+    /^\p{Lu}/u.test(subjectHead.raw) ||
+    /s$/u.test(subjectHead.normalized) ||
+    MATERIAL_ACTION_COMMON_SUBJECT_HEAD_PATTERN.test(subjectHead.normalized);
   if (startsWithDeterminer) {
-    return subjectTokens.length >= 2 && subjectTokens.length <= 4;
+    return (
+      subjectTokens.length >= 2 &&
+      subjectTokens.length <= MAX_MATERIAL_ACTION_SUBJECT_TOKENS &&
+      hasNounLikeHead
+    );
   }
 
+  const hasCoordinator = subjectTokens.some((token) =>
+    /^(?:and|or)$/u.test(token.normalized)
+  );
+  const startsWithProperNoun = /^\p{Lu}/u.test(subjectTokens[0].raw);
   return (
-    subjectTokens.length === 1 &&
-    (/^\p{Lu}/u.test(subjectHead.raw) || /s$/u.test(subjectHead.normalized))
+    subjectTokens.length <= MAX_MATERIAL_ACTION_SUBJECT_TOKENS &&
+    hasNounLikeHead &&
+    (subjectTokens.length === 1 || hasCoordinator || startsWithProperNoun)
   );
 }
 
@@ -1693,14 +1712,14 @@ function getLocalAssertionMode(
   ).toLocaleLowerCase("en-US");
   const modePrefix = prefix.replace(/\bnot\s+only\s*$/u, "");
   if (
-    /\b(?:(?:decid(?:e|ed|es|ing)|intend(?:ed|s|ing)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+not\s+to|(?:do|does|did)\s+not\s+(?:manage\s+to|cause(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)|never|fail(?:ed|s)?\s+to|(?:(?:do|does|did|is|are|was|were|has|have|had|can|could|would|should|will)\s+)?not(?:\s+(?:be|have(?:\s+been)?))?)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
+    /\b(?:(?:decid(?:e|ed|es|ing)|intend(?:ed|s|ing)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+not\s+to|(?:am|are|is|was|were)\s+unable\s+to|(?:do|does|did)\s+not\s+(?:get\s+to|manage\s+to|cause(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)|never|fail(?:ed|s)?\s+to|refus(?:e|ed|es|ing)\s+to|avoid(?:ed|s|ing)?|(?:(?:do|does|did|is|are|was|were|has|have|had|can|could|would|should|will)\s+)?not(?:\s+(?:be|have(?:\s+been)?))?)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
       modePrefix
     )
   ) {
     return "negated";
   }
   if (
-    /\b(?:(?:will|would|could|should|might|may)(?:\s+(?:be|have(?:\s+been)?))?|(?:am|are|is|was|were)\s+going\s+to|(?:aim(?:ed|s|ing)?|attempt(?:ed|s|ing)?|decid(?:e|ed|es|ing)|expect(?:ed|s|ing)?|hop(?:e|ed|es|ing)|intend(?:ed|s|ing)?|plan(?:ned|s|ning)?|propos(?:e|ed|es|ing)|seek(?:ing|s)?|sought|tr(?:ied|ies|y|ying)|want(?:ed|s|ing)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
+    /\b(?:(?:can|will|would|could|should|might|may|must)(?:\s+(?:be|have(?:\s+been)?))?|(?:am|are|is|was|were)\s+(?:going|scheduled|supposed)\s+to|consider(?:ed|s|ing)?|(?:aim(?:ed|s|ing)?|attempt(?:ed|s|ing)?|decid(?:e|ed|es|ing)|expect(?:ed|s|ing)?|hop(?:e|ed|es|ing)|intend(?:ed|s|ing)?|plan(?:ned|s|ning)?|propos(?:e|ed|es|ing)|seek(?:ing|s)?|sought|tr(?:ied|ies|y|ying)|want(?:ed|s|ing)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
       modePrefix
     )
   ) {
@@ -1827,11 +1846,14 @@ const SUMMARY_OUTCOME_PATTERNS = [
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had)\s+|(?:is|was|were)\s+)?(?:made|make|makes|making)\s+it\s+(?:in|into|through|to)\s+(?:the\s+)?(?:another\s+round|interview\s+process|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:is|was|were)\s+)?through\s+to\s+(?:the\s+)?(?:another\s+round|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:became|(?:is|was)\s+now)\s+(?:(?:a|an|the)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm)\s+(?:at|with)\s+(?:(?:a|an|the)\s+)?[\p{L}\p{N}&.'-]+\b/iu,
-  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)(?=\s*(?:[.!?;]|$))/iu,
-  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:(?:employment|job|pm|product\s+manager)\s+)?offer(?=\s*(?:[.!?;]|$))/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)(?:\s+(?:at|from|with)\s+(?:[\p{L}\p{N}&.'-]+\s*){1,4})?(?=\s*(?:[.!?;]|$))/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:(?:employment|job|pm|product\s+manager)\s+)?offer(?:\s+(?:at|from|with)\s+(?:[\p{L}\p{N}&.'-]+\s*){1,4})?(?=\s*(?:[.!?;]|$))/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:will|would|should|must|may|might|can|could)\s+|(?:is|are|was|were)\s+)?join(?:ed|ing|s)?\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,2}(?:company|employer|organization|organisation)\s+as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had|is|was|were)\s+)?(?:mov(?:e|ed|es|ing)\s+on|progress(?:ed|es|ing)?)\s+to\s+(?:the\s+)?(?:final|next)\s+(?:interview\s+)?(?:round|stage)\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?clear(?:ed|ing|s)?\s+(?:the\s+)?final\s+interview\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:will|would|should|must|may|might|can|could)\s+|(?:is|are|was|were)\s+)?join(?:ed|ing|s)?\s+(?:[\p{L}\p{N}&.'-]+\s+){1,4}as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:will|would|should|must|may|might|can|could)\s+)?start(?:ed|ing|s)?\s+(?:(?:(?:next|this)\s+(?:month|quarter|week|year)|on\s+\p{L}+)\s+)?as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had|is|was|were)\s+)?(?:advanc(?:e|ed|es|ing)|progress(?:ed|es|ing)?|reach(?:ed|es|ing)?|qualif(?:ied|ies|ying)|mov(?:e|ed|es|ing)\s+on)\s+(?:(?:in|into|through|to|for)\s+)?(?:the\s+)?(?:final|next)\s+(?:interview\s+)?(?:round|stage)\b/iu,
 ] as const;
 
 const SUMMARY_UNSUPPORTED_ABSOLUTE_PATTERNS = [
