@@ -68,6 +68,8 @@ https://www.meelni.com/api/webhooks/stripe
 Subscribe the endpoint to:
 
 - `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
@@ -119,10 +121,11 @@ docs/integrations/stripe/test-plan.md
 
 Manual Stripe checks:
 
-- Interview Pass Checkout grants exactly one credit.
+- Paid Interview Pass Checkout grants exactly one credit after authoritative session and line-item validation.
+- Completed-but-unpaid Checkout grants nothing; delayed success grants once; delayed failure grants nothing.
 - Starter Checkout creates an active subscription and grants 4 credits.
 - Pro Checkout creates an active subscription and grants 12 credits.
-- Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate credits.
+- Replayed or reordered `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `invoice.payment_succeeded` events do not duplicate credits.
 - Failed invoice payment marks the subscription `past_due` and does not grant credits.
 - Customer Portal opens for paid subscribers.
 - Customer Portal cancellation schedules period-end cancellation for Starter
