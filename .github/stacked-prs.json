@@ -3,12 +3,6 @@
   "repository": "meelni/meelni-prep",
   "stacks": [
     {
-      "pr": 253,
-      "parentPr": 249,
-      "headRef": "codex/explicit-analytics-consent",
-      "parentRef": "codex/bound-public-demo"
-    },
-    {
       "pr": 266,
       "parentPr": 298,
       "headRef": "codex/sav-195-feedback-v2",
@@ -21,12 +15,6 @@
       "parentRef": "codex/sav-195-feedback-v2"
     },
     {
-      "pr": 270,
-      "parentPr": 265,
-      "headRef": "codex/sav-231-billing-truth",
-      "parentRef": "codex/sav-230-provider-credit-recovery"
-    },
-    {
       "pr": 298,
       "parentPr": 270,
       "headRef": "codex/sav-237-period-end-cancellation",
@@ -36,12 +24,6 @@
       "pr": 272,
       "parentPr": 268,
       "headRef": "codex/sav-197-feedback-workflow",
-      "parentRef": "codex/sav-196-evaluation-validation"
-    },
-    {
-      "pr": 273,
-      "parentPr": 268,
-      "headRef": "codex/sav-211-feedback-accessibility",
       "parentRef": "codex/sav-196-evaluation-validation"
     },
     {
