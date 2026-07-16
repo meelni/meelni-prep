@@ -51,6 +51,34 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
   assert.equal(fixture.metadata?.candidate_identity, USER_ID);
 });
 
+test("post-provider deletion fence withholds credentials and schedules room cleanup", async () => {
+  const fixture = createFixture({ deletionPendingAfterProvider: true });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 401,
+    body: { error: "account_deletion_pending" },
+  });
+  assert.equal(fixture.tokenTtls.length, 0);
+  assert.equal(fixture.store.current?.provisioningState, "failed");
+  assert.deepEqual(fixture.releases, [
+    buildInterviewReservationKey(USER_ID, START_ATTEMPT_ID),
+  ]);
+  assert.deepEqual(
+    fixture.calls.filter((call) =>
+      [
+        "provider",
+        "deletion-fence",
+        "terminate-room",
+        "clear-deletion-room",
+      ].includes(call)
+    ),
+    ["provider", "deletion-fence", "terminate-room", "clear-deletion-room"]
+  );
+});
+
 test("stable start logs exclude question, company, and unrestricted error content", async () => {
   const questionSentinel = "QUESTION-CONTENT-SENTINEL";
   const companySentinel = "COMPANY-CONTENT-SENTINEL";
@@ -390,6 +418,7 @@ function createFixture({
   expireDuringToken = false,
   authorizationFailures = 0,
   tokenExpiresBeforeFinalAuthorization = false,
+  deletionPendingAfterProvider = false,
 } = {}) {
   const calls: string[] = [];
   const reservations: ReserveCreditInput[] = [];
@@ -453,6 +482,27 @@ function createFixture({
     markRoomProvisioningSettled: async () => undefined,
     settleCredit: async () => {
       calls.push("settle-credit");
+    },
+    fenceCreatedRoomAgainstDeletion: async (_userId, roomName) => {
+      calls.push("deletion-fence");
+      return deletionPendingAfterProvider
+        ? {
+            deletionPending: true as const,
+            room: {
+              roomName,
+              fingerprint: "a".repeat(64),
+              generation: 2,
+              provisioning: false,
+              provisioningExpiresAt: null,
+            },
+          }
+        : { deletionPending: false as const };
+    },
+    clearDeletionRoom: async () => {
+      calls.push("clear-deletion-room");
+    },
+    markDeletionCleanupFailed: async () => {
+      calls.push("mark-deletion-failed");
     },
     livekitProvider: {
       startInterviewRoom: async (providerInput) => {

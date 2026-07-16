@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains twenty entries, from
-`0000_many_nocturne` through `0019_subscription_resource_convergence`. The migration-history
+The current committed journal contains twenty-one entries, from
+`0000_many_nocturne` through `0020_durable_livekit_deletion`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -70,18 +70,19 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with twenty
+six ledger entries. Expected post-migration status is `reconciled` with twenty-one
 ledger entries, 30 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect, and
 transcript-privacy, runtime-settlement, stable-start, and
 provider-credit-recovery, billing-truth, webhook-convergence,
-invoice-convergence, and subscription-resource-convergence contract
-fingerprints.
+invoice-convergence, subscription-resource-convergence, and durable LiveKit
+deletion contract fingerprints.
 Preflight keeps distinct accepted fingerprints for the 13-migration privacy
 state, the 14-migration runtime-settlement state, the 15-migration stable-start
 state, the 16-migration provider-credit-recovery state, and each billing
-convergence state through 20 migrations so a rolling deployment is diagnosable
+convergence state through 20 migrations, plus the 21-migration durable deletion
+state, so a rolling deployment is diagnosable
 without weakening any contract.
 
 ## Rehearsal

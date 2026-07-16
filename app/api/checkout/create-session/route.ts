@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { subscription } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { stripeCustomerMapping, subscription } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { z } from "zod";
 import {
@@ -12,6 +12,19 @@ import {
 } from "@/lib/billing/stripe-catalog";
 import { obtainCheckoutSessionUnlessDeleting } from "@/lib/billing/account-deletion-guard";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
+import {
+  obtainSerializedSubscriptionCheckout,
+  subscriptionCustomerIdempotencyKey,
+  subscriptionCheckoutExpiryIdempotencyKey,
+  type SubscriptionCheckoutState,
+} from "@/lib/billing/subscription-checkout";
+import {
+  BillingAccountBusyError,
+  tryLockBillingUserUnlessDeleting,
+} from "@/lib/billing/subscription-state";
+
+const SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS = 90_000;
+const SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS = 10_000;
 
 // Request validation schema
 const checkoutSchema = z.object({
@@ -48,7 +61,166 @@ export async function POST(req: NextRequest) {
 
     const stripe = getStripe();
 
-    // 3. CRITICAL: Check for existing active subscription (prevent double-charge)
+    const priceId = getStripePriceIdForCatalogId(catalogId);
+    const mode = getCheckoutModeForCatalogId(catalogId);
+    const metadata = { userId, catalogId };
+
+    if (mode === "subscription") {
+      if (catalogId !== "starter" && catalogId !== "pro") {
+        throw new Error("billing_subscription_catalog_invalid");
+      }
+      const providerDeadline = createProviderDeadline(
+        SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS
+      );
+      const checkout = await obtainSerializedSubscriptionCheckout({
+        userId,
+        catalogId,
+        priceId,
+        withUserLock: (work) =>
+          db.transaction(async (tx) => {
+            await tryLockBillingUserUnlessDeleting(tx, userId);
+            const readState = async (): Promise<SubscriptionCheckoutState> => {
+              const [row] = await tx
+                .select()
+                .from(subscription)
+                .where(eq(subscription.userId, userId))
+                .limit(1)
+                .for("update");
+              const [mapping] = await tx
+                .select({
+                  stripeCustomerId: stripeCustomerMapping.stripeCustomerId,
+                })
+                .from(stripeCustomerMapping)
+                .where(eq(stripeCustomerMapping.userId, userId))
+                .orderBy(desc(stripeCustomerMapping.updatedAt))
+                .limit(1)
+                .for("update");
+              return row
+                ? {
+                    version: row.version,
+                    tier: row.tier,
+                    status: row.status,
+                    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+                    stripeCustomerId:
+                      row.stripeCustomerId ?? mapping?.stripeCustomerId ?? null,
+                    stripeSubscriptionId: row.stripeSubscriptionId,
+                  }
+                : {
+                    ...emptySubscriptionCheckoutState(),
+                    stripeCustomerId: mapping?.stripeCustomerId ?? null,
+                  };
+            };
+            const recordCustomerId = async (customerId: string) => {
+              const [existing] = await tx
+                .select({ userId: stripeCustomerMapping.userId })
+                .from(stripeCustomerMapping)
+                .where(eq(stripeCustomerMapping.stripeCustomerId, customerId))
+                .limit(1)
+                .for("update");
+              if (existing && existing.userId !== userId) {
+                throw new Error("billing_subscription_customer_owner_mismatch");
+              }
+              if (!existing) {
+                await tx.insert(stripeCustomerMapping).values({
+                  stripeCustomerId: customerId,
+                  stripeSubscriptionId: null,
+                  userId,
+                });
+              }
+            };
+            return work({ readState, recordCustomerId });
+          }),
+        createCustomer: async () => {
+          const customer = await stripe.customers.create(
+            {
+              ...(userEmail ? { email: userEmail } : {}),
+              metadata: { userId },
+            },
+            {
+              idempotencyKey: subscriptionCustomerIdempotencyKey(userId),
+              timeout: providerDeadline.timeout(),
+            }
+          );
+          return customer.id;
+        },
+        hasProviderActiveSubscription: async (customerId) => {
+          const [active, trialing] = await Promise.all([
+            stripe.subscriptions.list(
+              { customer: customerId, status: "active", limit: 1 },
+              { timeout: providerDeadline.timeout() }
+            ),
+            stripe.subscriptions.list(
+              { customer: customerId, status: "trialing", limit: 1 },
+              { timeout: providerDeadline.timeout() }
+            ),
+          ]);
+          return active.data.length > 0 || trialing.data.length > 0;
+        },
+        listOpenSessions: async (customerId) => {
+          const sessions = await stripe.checkout.sessions.list(
+            { customer: customerId, status: "open", limit: 100 },
+            { timeout: providerDeadline.timeout() }
+          );
+          if (sessions.has_more) {
+            throw new Error("billing_checkout_open_sessions_incomplete");
+          }
+          return sessions.data
+            .filter((session) => session.mode === "subscription")
+            .map((session) => ({
+              id: session.id,
+              url: session.url,
+              catalogId: session.metadata?.catalogId ?? null,
+              userId:
+                session.metadata?.userId ?? session.client_reference_id ?? null,
+              customerId: getStripeCustomerId(session.customer) ?? customerId,
+            }));
+        },
+        createSession: async (idempotencyKey, customerId) => {
+          const session = await stripe.checkout.sessions.create(
+            checkoutSessionParams({
+              req,
+              userId,
+              userEmail,
+              priceId,
+              mode,
+              metadata,
+              existingStripeCustomerId: customerId,
+            }),
+            { idempotencyKey, timeout: providerDeadline.timeout() }
+          );
+          return {
+            id: session.id,
+            url: session.url,
+            catalogId,
+            userId,
+            customerId: getStripeCustomerId(session.customer) ?? customerId,
+          };
+        },
+        expireSession: (sessionId) =>
+          stripe.checkout.sessions
+            .expire(
+              sessionId,
+              {},
+              {
+                idempotencyKey:
+                  subscriptionCheckoutExpiryIdempotencyKey(sessionId),
+                timeout: providerDeadline.timeout(),
+              }
+            )
+            .then(() => undefined),
+      });
+      if (!checkout.allowed) {
+        return subscriptionCheckoutBlockedResponse(checkout.reason);
+      }
+      return NextResponse.json({
+        url: checkout.session.url,
+        sessionId: checkout.session.id,
+        ...(checkout.reused ? { reused: true } : {}),
+      });
+    }
+
+    // One-time passes may reuse the current Stripe customer but do not conflict
+    // with an active subscription.
     const existingSubscription = await db
       .select()
       .from(subscription)
@@ -56,34 +228,6 @@ export async function POST(req: NextRequest) {
       .limit(1);
 
     const existingStripeCustomerId = existingSubscription[0]?.stripeCustomerId;
-
-    if (existingSubscription.length > 0) {
-      const sub = existingSubscription[0];
-
-      // Block duplicate subscription checkout, but allow one-time pass purchases.
-      if (
-        catalogId !== "interview_pass" &&
-        (sub.tier === "starter" || sub.tier === "pro") &&
-        (sub.status === "active" || sub.status === "trialing") &&
-        !sub.cancelAtPeriodEnd
-      ) {
-        return NextResponse.json(
-          {
-            error: "You already have an active subscription",
-            existingTier: sub.tier,
-            status: sub.status,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    const priceId = getStripePriceIdForCatalogId(catalogId);
-    const mode = getCheckoutModeForCatalogId(catalogId);
-    const metadata = {
-      userId,
-      catalogId,
-    };
 
     const checkout = await obtainCheckoutSessionUnlessDeleting({
       hasDeletionTombstone: () => hasAccountDeletionTombstone(userId),
@@ -113,37 +257,17 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const created = await stripe.checkout.sessions.create({
-          ...(existingStripeCustomerId
-            ? { customer: existingStripeCustomerId }
-            : userEmail
-              ? { customer_email: userEmail }
-              : {}),
-          client_reference_id: userId,
-          line_items: [
-            {
-              price: priceId,
-              quantity: 1,
-            },
-          ],
-          mode,
-          ...(mode === "subscription"
-            ? {
-                subscription_data: {
-                  metadata,
-                },
-              }
-            : {}),
-          metadata,
-          success_url: `${req.nextUrl.origin}/pricing/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${req.nextUrl.origin}/pricing/canceled`,
-          allow_promotion_codes: true,
-          // One minute above Stripe's minimum explicit Checkout lifetime so
-          // request latency cannot make the timestamp invalid. Expiry narrows the
-          // window; the post-create and webhook tombstone checks remain the
-          // correctness boundary because expiry cannot prevent every race.
-          expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
-        });
+        const created = await stripe.checkout.sessions.create(
+          checkoutSessionParams({
+            req,
+            userId,
+            userEmail,
+            priceId,
+            mode,
+            metadata,
+            existingStripeCustomerId,
+          })
+        );
         return { id: created.id, url: created.url, reused: false };
       },
       expireSession: async (sessionId, idempotencyKey) => {
@@ -173,12 +297,111 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (error instanceof BillingAccountBusyError) {
+      return billingBusyResponse();
+    }
+
     console.error("[Checkout] Checkout session request failed");
     return NextResponse.json(
       { error: "Failed to create checkout session" },
       { status: 500 }
     );
   }
+}
+
+function createProviderDeadline(totalMs: number) {
+  const expiresAt = Date.now() + totalMs;
+  return {
+    timeout() {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        throw new Error("billing_subscription_provider_deadline_exceeded");
+      }
+      return Math.max(
+        1,
+        Math.min(SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS, remaining)
+      );
+    },
+  };
+}
+
+function getStripeCustomerId(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null
+) {
+  return customer
+    ? typeof customer === "string"
+      ? customer
+      : customer.id
+    : null;
+}
+
+function checkoutSessionParams({
+  req,
+  userId,
+  userEmail,
+  priceId,
+  mode,
+  metadata,
+  existingStripeCustomerId,
+}: {
+  req: NextRequest;
+  userId: string;
+  userEmail?: string;
+  priceId: string;
+  mode: "payment" | "subscription";
+  metadata: { userId: string; catalogId: string };
+  existingStripeCustomerId?: string | null;
+}): Stripe.Checkout.SessionCreateParams {
+  return {
+    ...(existingStripeCustomerId
+      ? { customer: existingStripeCustomerId }
+      : userEmail
+        ? { customer_email: userEmail }
+        : {}),
+    client_reference_id: userId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    mode,
+    ...(mode === "subscription" ? { subscription_data: { metadata } } : {}),
+    metadata,
+    success_url: `${req.nextUrl.origin}/pricing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${req.nextUrl.origin}/pricing/canceled`,
+    allow_promotion_codes: true,
+    expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
+  };
+}
+
+function emptySubscriptionCheckoutState(): SubscriptionCheckoutState {
+  return {
+    version: 0,
+    tier: null,
+    status: null,
+    cancelAtPeriodEnd: false,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+  };
+}
+
+function subscriptionCheckoutBlockedResponse(
+  reason:
+    | "active_subscription"
+    | "scheduled_subscription"
+    | "open_checkout_for_other_plan"
+    | "state_changed"
+) {
+  return NextResponse.json(
+    {
+      error:
+        reason === "scheduled_subscription"
+          ? "Reactivate your current subscription before changing plans"
+          : reason === "active_subscription"
+            ? "You already have an active subscription"
+            : reason === "open_checkout_for_other_plan"
+              ? "Finish or expire your existing subscription Checkout before choosing another plan"
+              : "Your billing state changed. Please try again.",
+      reactivationRequired: reason === "scheduled_subscription",
+    },
+    { status: reason === "state_changed" ? 409 : 400 }
+  );
 }
 
 function accountDeletionPendingResponse() {
@@ -189,6 +412,17 @@ function accountDeletionPendingResponse() {
         "Checkout is unavailable because account deletion is already in progress.",
     },
     { status: 409 }
+  );
+}
+
+function billingBusyResponse() {
+  return NextResponse.json(
+    {
+      error: "billing_account_busy",
+      message: "Another billing request is already in progress. Please retry.",
+      retryable: true,
+    },
+    { status: 409, headers: { "Retry-After": "1" } }
   );
 }
 

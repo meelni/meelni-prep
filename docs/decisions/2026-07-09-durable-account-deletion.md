@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-07-09
-- Amended: 2026-07-10
+- Amended: 2026-07-12
 
 ## Context
 
@@ -22,11 +22,12 @@ report success while the authentication account remained active.
 - Redact local provider logs and delete application data before calling Supabase
   Auth or Stripe. Provider outages must not extend retention of local product
   data; the tombstone keeps only the typed provider references needed for retry.
-- Delete Supabase Auth after local cleanup and before Stripe reconciliation.
-  Middleware rejects and signs out every tombstoned session, and OAuth/app-user
-  recreation shares a transaction-scoped account identity lock with deletion
-  intent, so changing the provider order does not restore product access or
-  recreate local identity data.
+- After local cleanup, cancel captured Stripe subscriptions before Supabase
+  Auth or LiveKit cleanup so an unrelated provider outage cannot extend
+  billing. Middleware rejects and signs out every tombstoned session, and
+  OAuth/app-user recreation shares a transaction-scoped account identity lock
+  with deletion intent, so this provider order does not restore product access
+  or recreate local identity data.
 - Keep the tombstone outside the `app_user` foreign-key graph so it survives
   application-data deletion and blocks user recreation.
 - Enforce tombstone denial for password logins and existing sessions in the
@@ -45,16 +46,33 @@ report success while the authentication account remained active.
   metadata and client reference match. Any metadata, Checkout client-reference,
   mapping, or tombstone-fingerprint disagreement fails before active billing or
   destructive cleanup.
-- Reconcile invoices through every paginated paid InvoicePayment allocation.
-  Exact partial-allocation refunds carry a one-way allocation fingerprint, and
-  customer deletion waits for terminal allocation-specific or full-charge
-  refund evidence. Unsupported PaymentRecords and ambiguous partial refunds
-  remain recoverable for manual reconciliation.
+- Account deletion cancels captured subscriptions without proration, deletes
+  captured customer resources, and does not create payment, invoice,
+  customer-balance, or card refunds. Historical financial records remain subject
+  to Stripe and legal retention. An exceptional refund is a separate manual
+  support decision, never a deletion-workflow side effect. The inherited
+  [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+  billing-truth work reconciles refund, refund-failure, and dispute lifecycle
+  events with exact payment-funded credit allocations, but does not authorize
+  refund creation. Exceptional-refund execution remains paused pending a
+  human-owned support procedure, isolated Stripe test-mode rehearsal and
+  approval evidence, verified idempotency and exact payment/credit allocation,
+  and separate live-mode authorization. Deletion never creates an automatic
+  refund, proration, customer-balance credit, or make-good.
+- Once irreversible deletion intent is durably persisted, product access ends
+  immediately. Existing and newly presented sessions are denied by the durable
+  tombstone; local identity and entitlement data are then removed. Captured
+  subscriptions are canceled without proration, refund, or customer-balance
+  compensation. Unused credits are not redeemable after deletion because the
+  account and identity no longer have product access. This is the approved
+  deletion exception and does not change ordinary period-end cancellation.
 
 ## Consequences
 
 - A failed provider call leaves a recoverable tombstone rather than a live,
   partially recreated account.
+- Stripe cleanup may finish after access has already ended; the tombstone keeps
+  entitlement denial fail-safe throughout retries.
 - A Supabase Auth or Stripe outage occurs only after local product data and
   matching legacy provider-log payloads have been removed.
 - Account deletion now depends on the Inngest route and signing/event keys.

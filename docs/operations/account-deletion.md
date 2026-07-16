@@ -12,6 +12,9 @@ client claims are not accepted as proof of recent authentication.
 `deletion_requested` means the request is durable and initially queued.
 `deletion_retry_scheduled` means the request is durable but the initial enqueue
 failed; the recovery cron will retry. Neither status claims provider completion.
+Durable persistence is also the immediate product-access cutoff: middleware
+denies current and future sessions with `account_deletion_pending` while every
+cleanup stage remains retryable.
 
 The `account-deletion` Inngest function performs these idempotent stages:
 
@@ -19,12 +22,13 @@ The `account-deletion` Inngest function performs these idempotent stages:
    IDs, types, statuses, attempts, and timestamps;
 2. remove application data in a database transaction while preserving the
    tombstone, deleting `user_insights` before its `last_session_id` target;
-3. delete the Supabase Auth user through the server-only service-role client;
-4. cancel captured Stripe subscriptions and refund any typed late
-   invoice/PaymentIntent/charge references;
-5. delete every captured Stripe customer, including pass-only and historical
-   mapped customers, only after financial reconciliation;
-6. clear only processed raw provider IDs and mark the tombstone completed, or
+3. cancel captured Stripe subscriptions without proration and never create an
+   automatic invoice, PaymentIntent, charge, or customer-balance refund;
+4. delete the Supabase Auth user through the server-only service-role client;
+5. terminate every captured LiveKit room with durable, retryable cleanup;
+6. delete every captured Stripe customer, including pass-only and historical
+   mapped customers, only after subscription cancellation;
+7. clear only processed raw provider IDs and mark the tombstone completed, or
    leave concurrent late references recoverable.
 
 Local data and legacy provider-log payloads are removed before external Auth or
@@ -54,6 +58,9 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 - Confirm unconfirmed `DELETE` returns 405 and invalid confirmation returns 400.
 - Confirm a sign-in older than ten minutes returns 409 without a tombstone.
 - Confirm the API returns 202 and stores a pending tombstone.
+- Immediately after tombstone persistence, confirm all product pages and API
+  calls deny the original and second-device sessions even while the worker is
+  paused or failed; unused credits must not be readable or redeemable.
 - Simulate enqueue failure after persistence and confirm the API returns 202
   `deletion_retry_scheduled`, signs the user out, and recovery requeues it.
 - Confirm a second sign-in is rejected with `account_deletion_pending`.
@@ -78,37 +85,27 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   window.
 - Replay `checkout.session.completed` with matching user metadata and client
   reference after deletion. Confirm no credit, subscription row, or customer
-  mapping is created; the event payload is `{}`; and subscription cancellation
-  plus refundable payment reversal are attempted idempotently.
+  mapping is created; the event payload is `{}`; subscription cancellation and
+  customer cleanup are attempted idempotently; and no refund API is called.
 - Replay a signed Checkout event with mismatched metadata and
   `client_reference_id`, and replay a subscription/invoice event whose metadata
   disagrees with the persisted customer mapping. Confirm both fail before any
-  event-log, tombstone, entitlement, cancellation, refund, or customer mutation.
+  event-log, tombstone, entitlement, cancellation, or customer mutation.
 - Replay `customer.subscription.created` or `.updated` without a Checkout
-  event. For creation, confirm the initial invoice and paid payment are retained
-  and reconciled before customer deletion. Missing initial-invoice evidence
-  must retain the customer and fail for recovery. For update, confirm the
-  subscription is canceled with no local entitlement or raw event payload
-  retained.
+  event. Confirm the subscription is canceled without proration, the customer
+  is cleaned up, and no local entitlement, raw event payload, or automatic
+  refund is created.
 - Replay `invoice.payment_succeeded` without a Checkout event. Confirm the
-  referenced subscription is canceled, every paid InvoicePayment allocation is
-  refunded, and the event payload remains `{}`. Checkout, subscription, and
-  invoice events must reconcile safely in any order using shared idempotency
-  keys.
-- Model multiple and partial InvoicePayments across more than one response
-  page. Confirm the allocation amounts sum exactly to `invoice.amount_paid`,
-  every refundable allocation reaches terminal succeeded evidence, and customer
-  cleanup runs only afterward. Confirm `payment_record`, `has_more` beyond the
-  bounded page limit, currency/amount/total mismatches, and ambiguous untagged
-  partial refunds retain provider subjects and fail for operator recovery.
-- For each late Checkout/subscription/invoice event, confirm financial
-  reconciliation finishes before the Stripe customer deletion call. On cleanup
+  referenced subscription is canceled without proration, no refund API is
+  called, no entitlement is granted, and the event payload remains `{}`.
+- For each late Checkout/subscription/invoice event, confirm subscription
+  cancellation finishes before the Stripe customer deletion call. On cleanup
   failure, confirm the tombstone retains raw cleanup IDs and becomes recoverable;
   on retry success, confirm only fingerprints remain.
-- Fail cancellation, invoice lookup, and refund before customer deletion.
-  Confirm each failure retains explicit typed subscription/invoice/payment/
-  customer references, marks the tombstone recoverable, and that the recovery
-  worker retries cancel → refund → customer delete before clearing raw IDs.
+- Fail cancellation and customer deletion. Confirm each failure retains the
+  required typed subscription/customer references, marks the tombstone
+  recoverable, and that recovery retries cancel → customer delete before
+  clearing raw IDs.
 - Pause a deletion worker after it reads its subject snapshot, append late
   invoice/payment/customer subjects, then complete the worker. Confirm only the
   original snapshot is fingerprint-only, the late subjects remain recoverable,
@@ -122,18 +119,9 @@ the invariant that closes the late-webhook race, rather than delivery timing.
 - Hold the account identity lock while a callback upsert races deletion intent;
   commit the tombstone and local-user removal, then confirm the waiting upsert
   is denied and cannot recreate `app_user`.
-- Manually model a partially refunded PaymentIntent and charge, then replay the
-  event. Confirm Stripe is asked to refund the remaining amount, provider state
-  is retrieved, and customer cleanup proceeds only after the total is fully
-  refunded. Model a response that remains partial and confirm the event stays
-  failed, cleanup does not run, and the retry reference remains.
-- Model a full-amount refund with Stripe status `pending`. Confirm the event and
-  tombstone remain recoverable and customer cleanup does not run. After a
-  `refund.updated` transition to `succeeded`, allow the ten-minute recovery
-  worker or an operator replay of the original billing event to confirm the
-  succeeded total and finish cleanup without another refund. After a transition
-  to `failed`, confirm replay requests the remainder with a new deterministic
-  attempt key and still requires terminal `succeeded` evidence before cleanup.
+- Replay a paid late Checkout and invoice event after deletion intent. Confirm
+  the related subscription is canceled without proration, no refund API is
+  called, no entitlement is granted, and customer cleanup completes.
 - Replay older subscription-deleted and invoice success/failure events after a
   newer subscription state. Confirm payment history remains idempotent and the
   older event cannot overwrite the newer subscription state.
@@ -147,10 +135,8 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   correlated `subscription.created` event scopes and reactivates the row.
   Confirm delete/update/invoice events with a specific subscription ID fail
   closed until the billing sync route backfills the current resource identity.
-- Simulate a paid late Checkout without a refundable PaymentIntent/charge.
-  Confirm the event remains failed with
-  `deleted_checkout_manual_reconciliation_required`, no entitlement is granted,
-  and an operator reconciles the payment in Stripe before treating it as done.
+- Simulate a paid late Checkout without a PaymentIntent/charge reference.
+  Confirm it completes without granting entitlement or creating a refund.
 - Confirm an API retry that receives `401 account_deletion_pending` is displayed
   as an already-durable request, while an ordinary 401 offers sign-in again.
 - Inspect Inngest failure history and confirm provider/database/transcript detail
@@ -159,8 +145,14 @@ the invariant that closes the late-webhook race, rather than delivery timing.
   confirm no committed matching row retains payload or error content.
 
 Never manually delete the tombstone before Supabase Auth deletion is confirmed.
-Never mark a failed deleted-billing reconciliation processed merely to stop
-retries. Resolve or refund the provider payment first, then replay the event.
+Never issue an automatic refund from account-deletion recovery. Any exceptional
+refund decision follows [Manual Exceptional Refunds](./manual-exceptional-refunds.md),
+but execution for an existing account remains paused until SAV-231 provides
+verified payment-to-credit-ledger reconciliation.
+The accepted deletion exception ends paid product access at durable intent,
+before provider cleanup completes. Rehearse access denial and retryable
+`prorate=false` cancellation together; never delay denial until Stripe succeeds
+and never convert a cleanup retry into compensation.
 Completed tombstone retention remains intentionally undefined beyond the
 accepted durable-deletion requirement. Do not promise a removal date for the
 tombstone, provider records, logs, or backups until an owner/legal decision is

@@ -20,7 +20,11 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@meelni/core": ["./packages/core/src/index.ts"],
+      "@meelni/agent": ["./packages/agent/src/index.ts"],
+      "@meelni/integrations": ["./packages/integrations/src/index.ts"],
+      "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"]
     }
   },
   "include": [

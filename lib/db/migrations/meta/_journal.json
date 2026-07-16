@@ -141,6 +141,13 @@
       "when": 1783897862769,
       "tag": "0019_subscription_resource_convergence",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783901277855,
+      "tag": "0020_durable_livekit_deletion",
+      "breakpoints": true
     }
   ]
 }

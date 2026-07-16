@@ -3,7 +3,18 @@ export type StripeSubscriptionStateEvent =
   | "invoice_succeeded"
   | "subscription_created"
   | "subscription_deleted"
+  | "subscription_retrieved"
   | "subscription_updated";
+
+export function monotonicStripeEventTimestamp(
+  current: Date | null | undefined,
+  incoming: Date
+): Date {
+  if (!Number.isFinite(incoming.getTime())) {
+    throw new Error("stripe_event_timestamp_invalid");
+  }
+  return current && current > incoming ? current : incoming;
+}
 
 export function shouldApplyStripeSubscriptionState(input: {
   currentStatus?: string | null;
@@ -71,5 +82,8 @@ export function shouldApplyStripeSubscriptionState(input: {
   if (delta < 0) return false;
   // Stripe timestamps have second resolution. Cancellation is the terminal
   // tie-breaker and invoice events can never overwrite it in the same second.
-  return input.event === "subscription_deleted";
+  return (
+    input.event === "subscription_deleted" ||
+    input.event === "subscription_retrieved"
+  );
 }

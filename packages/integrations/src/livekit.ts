@@ -86,6 +86,16 @@ export interface LiveKitInterviewProvider {
   ): Promise<ProviderResult<StartedInterviewRoom>>;
 }
 
+export interface LiveKitRoomTerminationProvider {
+  terminateInterviewRoom(
+    input: TerminateInterviewRoomInput
+  ): Promise<ProviderResult<TerminatedInterviewRoom>>;
+}
+
+export interface LiveKitProvider
+  extends LiveKitInterviewProvider,
+    LiveKitRoomTerminationProvider {}
+
 export interface LiveKitProviderDependencies {
   accessTokenFactory?: AccessTokenFactory;
   agentDispatchClientFactory?: AgentDispatchClientFactory;
@@ -230,7 +240,8 @@ export function createLiveKitInterviewProvider({
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
-}: LiveKitProviderDependencies = {}): LiveKitInterviewProvider {
+  now = () => new Date(),
+}: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
       let signedToken: string;
@@ -393,6 +404,12 @@ export function createLiveKitInterviewProvider({
         roomName: input.roomName,
         token: signedToken,
         url: input.env.url,
+      });
+    },
+    async terminateInterviewRoom(input) {
+      return terminateInterviewRoom(input, {
+        roomServiceClientFactory,
+        now,
       });
     },
   };
@@ -719,4 +736,18 @@ function isLiveKitNotFoundError(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingRoomError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = String(record.code ?? "").toLowerCase();
+  const status = Number(record.status ?? record.statusCode ?? 0);
+  return (
+    status === 404 ||
+    code === "404" ||
+    code === "5" ||
+    code === "not_found" ||
+    code === "room_not_found"
+  );
 }

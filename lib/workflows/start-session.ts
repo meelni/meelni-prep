@@ -57,6 +57,12 @@ import { transitionInterviewSessionWorkflow } from "./transition-interview-sessi
 import { scheduleInterviewDeadline } from "./schedule-interview-deadline";
 import { createDrizzleInterviewReconnectStore } from "@/lib/db/session-reconnects";
 import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
+import {
+  clearLateLiveKitDeletionRoom,
+  fenceInterviewRoomAgainstAccountDeletion,
+  markAccountDeletionFailed,
+  type LiveKitDeletionRoom,
+} from "@/lib/db/account-deletions";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -126,6 +132,18 @@ export interface StartInterviewSessionDeps {
   }): Promise<boolean>;
   markRoomProvisioningSettled(sessionId: string): Promise<void>;
   settleCredit(sessionId: string): Promise<unknown>;
+  fenceCreatedRoomAgainstDeletion(
+    userId: string,
+    roomName: string
+  ): Promise<
+    | { deletionPending: false }
+    | { deletionPending: true; room: LiveKitDeletionRoom }
+  >;
+  clearDeletionRoom(
+    userId: string,
+    room: Pick<LiveKitDeletionRoom, "fingerprint" | "generation">
+  ): Promise<void>;
+  markDeletionCleanupFailed(userId: string): Promise<void>;
   livekitProvider: LiveKitInterviewProvider;
   issueParticipantToken(input: {
     identity: string;
@@ -492,6 +510,26 @@ export async function startInterviewSessionWorkflow(
       };
     }
 
+    const deletionFence = await deps.fenceCreatedRoomAgainstDeletion(
+      input.user.id,
+      start.roomName
+    );
+    if (deletionFence.deletionPending) {
+      await rejectCreatedRoomForAccountDeletion({
+        start,
+        leaseId: claim.leaseId,
+        reservationKey,
+        room: deletionFence.room,
+        env: input.env,
+        deps,
+      });
+      return {
+        ok: false,
+        status: 401,
+        body: { error: "account_deletion_pending" },
+      };
+    }
+
     try {
       start = await deps.startStore.markProvisioned({
         startAttemptId,
@@ -740,6 +778,10 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
     markRoomProvisioningSettled: (sessionId) =>
       reconnectStore.markRoomProvisioningSettled({ sessionId }),
     settleCredit: convergeDrizzleInterviewCreditSettlement,
+    fenceCreatedRoomAgainstDeletion: fenceInterviewRoomAgainstAccountDeletion,
+    clearDeletionRoom: clearLateLiveKitDeletionRoom,
+    markDeletionCleanupFailed: (userId) =>
+      markAccountDeletionFailed(userId, "livekit_provider_error"),
     livekitProvider: createLiveKitInterviewProvider(),
     issueParticipantToken: issueInterviewParticipantToken,
     transitionLifecycle: transitionInterviewSessionWorkflow,
@@ -1042,6 +1084,53 @@ async function failProvisioningAndRelease({
     leaseId,
   });
   await cleanupFailedStart(start, reservationKey, env, deps);
+}
+
+async function rejectCreatedRoomForAccountDeletion({
+  start,
+  leaseId,
+  reservationKey,
+  room,
+  env,
+  deps,
+}: {
+  start: PersistedStableInterviewStart;
+  leaseId: string;
+  reservationKey: string;
+  room: LiveKitDeletionRoom;
+  env: LiveKitEnvironment;
+  deps: StartInterviewSessionDeps;
+}) {
+  try {
+    await deps.terminateRoom({
+      roomName: start.roomName,
+      participantIdentity: start.userId,
+      env,
+    });
+    await deps.clearDeletionRoom(start.userId, room);
+  } catch {
+    console.error("Account deletion room cleanup remains pending");
+    await deps.markDeletionCleanupFailed(start.userId).catch(() => {
+      console.error("Account deletion cleanup state update remains pending");
+    });
+  }
+
+  await deps.startStore
+    .markProvisioningFailed({ startAttemptId: start.startAttemptId, leaseId })
+    .catch(() => {
+      console.error("Deleted account start fencing remains pending");
+    });
+  await terminalizeProviderFailure(start.sessionId, deps).catch(() => {
+    console.error("Deleted account session terminalization remains pending");
+  });
+  await deps
+    .releaseReservation({
+      reservationKey,
+      idempotencyKey: `release:${reservationKey}`,
+    })
+    .catch(() => {
+      console.error("Deleted account credit release remains pending");
+    });
 }
 
 async function cleanupFailedStart(

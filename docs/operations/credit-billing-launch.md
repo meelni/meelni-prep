@@ -1,6 +1,6 @@
 # Credit Billing Launch Runbook
 
-Updated: 2026-07-10
+Updated: 2026-07-12
 
 This runbook must be completed before enabling the credit-based billing catalog in production.
 
@@ -393,3 +393,120 @@ Possible outcomes:
 - No top-up: current pass/subscription mix is enough.
 - Small top-up: sell 3 credits with 90-day expiration.
 - Larger top-up: sell 6-10 credits only if variable cost data shows comfortable margin.
+
+## Subscription Cancellation
+
+Cancellation is period-end only. The customer keeps subscription access and
+otherwise valid unused credits through the current paid-through date, and
+Stripe must receive only `cancel_at_period_end: true`. The cancellation path
+does not create prorations, customer-balance compensation, or card refunds.
+At the exact provider timestamp (`now >= current_period_end`), subscription
+renewal and rollover grants stop being spendable even if a deletion webhook is
+late. Trial, pass/checkout, admin, refund, and migration grants keep their own
+expiry semantics. Reactivation before the cutoff removes only this subscription
+restriction.
+
+Credit reads and cancellation replays take one user-fenced database snapshot and
+read `clock_timestamp()` after the identity/subscription boundary is held. Do
+not replace that clock with application time: a rolled-back process clock must
+neither display subscription credits nor claim retained access at cutoff
+equality.
+
+While an active or trialing subscription is scheduled to cancel, subscription
+Checkout is blocked. The customer must use reactivation to clear the existing
+schedule; Meelni must not create an overlapping provider subscription. A paid
+invoice grants or rolls subscription credits only inside the same locked
+transaction that confirms its subscription ID and event ordering. An invoice
+for an older/replaced subscription can still be recorded idempotently in
+payment history but grants zero entitlement.
+
+Webhook ordering uses Stripe's event creation timestamp; local observation time
+must not advance that provider fence, and an accepted reordered invoice must
+not move it backward. A direct cancellation or reactivation has no provider
+event timestamp, so it preserves the existing provider fence. It takes the
+immediate account mutation lock before reading state or calling Stripe and uses
+a deterministic user/version/action idempotency key plus a ten-second provider
+timeout. A concurrent loser gets `billing_account_busy` with `Retry-After`; a
+later exact replay sees committed state and performs no provider mutation.
+
+For invoice entitlement, require the currently locked subscription resource, a
+supported subscription billing reason, and valid invoice/current periods. An
+invoice for the exact current period remains eligible even when a subscription
+update with an earlier or same-second provider timestamp arrives first. Moving
+to a later period additionally requires an event newer than the stored provider
+fence. Older periods, terminal subscriptions, and replaced resources grant and
+roll zero credits.
+
+Subscription Checkout tries the same per-user advisory lock before the account,
+mapping, and billing row locks used by webhook and cancellation paths. A loser
+returns immediate retry backpressure instead of waiting while holding a pooled
+database connection. The winner may hold one connection while it creates or
+recovers the user's mapped Stripe customer, checks active/trialing subscriptions
+and open sessions, creates Checkout, and rechecks provider and local truth. Each
+provider call is capped at ten seconds within a ninety-second aggregate
+deadline. Each actual creation attempt uses one user/plan/price/nonce
+idempotency key and retries an ambiguous create once with that exact key.
+Concurrent calls reuse the winning mapped customer's open session; after an
+abandoned or expired session, a new attempt gets a new key, including when the
+user switches plans. Provider or local drift after create/reuse expires and
+withholds the candidate. Ambiguous pagination fails closed.
+
+Renewal and rollover analytics are post-commit effects. The locked renewal
+transaction returns the effect description, and the webhook emits it only after
+the outer database transaction resolves. A rollback therefore emits no renewal
+event, while an analytics failure cannot undo committed ledger state.
+
+Account deletion is the accepted exception to period-end access. Once
+irreversible deletion intent is durably committed, the tombstone immediately
+denies every product session and credit redemption. Provider cleanup may retry
+after that cutoff, but every captured subscription cancellation uses
+`prorate=false` with a provider-object-derived idempotency key and creates no
+refund or customer-balance compensation. Ordinary cancellation remains
+period-end, and exceptional refunds remain separate manual support decisions.
+
+Before launch, use Stripe test mode to prove:
+
+- the subscription remains active and is marked to cancel at period end;
+- the current invoice and customer balance do not gain a cancellation credit;
+- no Refund object or card refund is created;
+- dashboard access and unused credits remain available through the same date;
+- reactivation clears the scheduled cancellation without creating a charge;
+- subscription Checkout is refused while the scheduled subscription remains
+  active/trialing, and becomes available only after it has truly ended;
+- delayed, same-second terminal, and old-resource invoice events grant/roll zero
+  credits, while reordered exact-current-period and duplicate current-resource
+  events grant at most once;
+- concurrent same-plan and different-plan subscription Checkout requests create
+  at most one open provider session, expired attempts can be replaced, and
+  provider/local post-create drift expires and withholds the candidate;
+- concurrent cancellation/reactivation duplicates produce one provider
+  mutation at most, and no direct observation moves the provider-event fence;
+- a rolled-back renewal emits no renewal or rollover analytics;
+- durable account deletion immediately denies original and second-device access
+  before provider cleanup completes, including while cleanup is retrying;
+- deletion captures every current/historical mapped subscription and customer,
+  captures LiveKit room names even after local terminalization, and disconnects
+  an already-connected LiveKit interview room; a simulated LiveKit failure
+  remains retryable without restoring access;
+- deletion between session persistence and LiveKit creation causes the
+  post-create fence to terminate the later room, withhold its token/URL, release
+  the reservation, and retain a newer cleanup generation when termination
+  fails; a prior missing-room result cannot clear either a still-provisioning
+  subject or a newer retry target, and a concurrent duplicate deletion request
+  cannot shorten its ten-minute provider uncertainty lease or reset/drop either
+  generation; verify the durable wake-up retries termination at lease expiry;
+- ambiguous provider failure followed by missing containment, local
+  terminalization, deletion snapshot, and a late room commit retains a
+  provisioning subject and terminates the late room without exposing token,
+  credit, room, endpoint, or provider error details;
+- account deletion cancels provider resources with `prorate=false`, stable retry
+  idempotency, and no invoice, charge, PaymentIntent, or customer-balance refund.
+
+Exceptional-refund decisions are manual. Execution for an existing account is
+paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+ships verified payment-to-credit-ledger reconciliation. Current
+`charge.refunded` handling updates payment history only, does not adjust
+credits, and there is no dispute-event support.
+
+See [Manual Exceptional Refunds](./manual-exceptional-refunds.md) for the
+human-owned decision policy and the SAV-231 execution gate.

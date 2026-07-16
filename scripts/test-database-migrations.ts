@@ -35,6 +35,7 @@ import {
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
+  DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -200,10 +201,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -5348,7 +5346,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "subscription_resource_convergence"
+      "durable_livekit_deletion"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -5637,7 +5635,7 @@ async function verifyProviderCreditRecovery(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 20);
+  assert.equal(await migrationCount(sql), 21);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -7461,6 +7459,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     deleteUserApplicationData,
     getAccountDeletionRequest,
     listRecoverableAccountDeletions,
+    LIVEKIT_DELETION_PROVISIONING_LEASE_MS,
+    markAccountDeletionProcessing,
     markAccountDeletionCompleted,
     recordLateStripeDeletionSubjects,
     redactStripeEventLogs,

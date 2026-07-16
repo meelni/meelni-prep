@@ -173,13 +173,13 @@ export function BillingSection() {
   }
 
   // Handle cancel subscription
-  async function handleCancelSubscription(cancelImmediately: boolean = false) {
+  async function handleCancelSubscription() {
     setCancellingSubscription(true);
     try {
       const response = await fetch("/api/billing/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cancelImmediately }),
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -679,48 +679,29 @@ export function BillingSection() {
                 Cancel Subscription
               </h3>
               <p className="text-muted-foreground text-sm">
-                We're sorry to see you go. Please choose how you'd like to
-                cancel:
+                Your subscription will stay active through the paid billing
+                period. You can keep using your access and unused credits until
+                then, and you won't be charged again.
               </p>
             </div>
 
             <div className="space-y-3">
-              {/* Cancel at period end option */}
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => handleCancelSubscription(false)}
+                variant="destructive"
+                onClick={handleCancelSubscription}
                 disabled={cancellingSubscription}
-                className="hover:border-primary/50 h-auto w-full justify-start p-4 text-left whitespace-normal"
+                className="h-auto w-full justify-start p-4 text-left whitespace-normal"
               >
                 <span>
-                  <span className="text-foreground block font-medium">
-                    Cancel at end of billing period
+                  <span className="block font-medium">
+                    Schedule cancellation
                   </span>
-                  <span className="text-muted-foreground mt-1 block text-sm">
-                    Keep access until{" "}
+                  <span className="mt-1 block text-sm opacity-90">
+                    Subscription ends{" "}
                     {subscription?.currentPeriodEnd &&
                       formatDate(subscription.currentPeriodEnd)}
-                    . You won't be charged again.
-                  </span>
-                </span>
-              </Button>
-
-              {/* Cancel immediately option */}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleCancelSubscription(true)}
-                disabled={cancellingSubscription}
-                className="border-destructive/30 hover:border-destructive/50 h-auto w-full justify-start p-4 text-left whitespace-normal"
-              >
-                <span>
-                  <span className="text-destructive block font-medium">
-                    Cancel immediately
-                  </span>
-                  <span className="text-muted-foreground mt-1 block text-sm">
-                    End subscription now. Any billing adjustment will appear
-                    separately after it is processed.
+                    . No automatic refund or proration is created.
                   </span>
                 </span>
               </Button>
@@ -745,7 +726,7 @@ export function BillingSection() {
             </div>
 
             <p className="text-muted-foreground text-center text-xs">
-              Need help?{" "}
+              Exceptional refund requests require a separate support review.{" "}
               <a href="/contact" className="text-primary hover:underline">
                 Contact support
               </a>

@@ -81,6 +81,13 @@ After persistence:
 - An ordinary HTTP 401 for export or deletion is an expired/absent session and
   must offer a safe sign-in path back to Data & privacy.
 
+The durable tombstone is the entitlement cutoff. As soon as persistence
+commits, middleware denies the authenticated session and every other existing
+or future session with `account_deletion_pending`, even when provider cleanup is
+still queued, retrying, or failed. Unused credits are not redeemable because the
+deleted identity has no product access; no ledger compensation or refund is
+created.
+
 The unconfirmed `DELETE` method returns `405`. Provider/admin error details are
 never returned to the client or stored in the tombstone; only stable categories
 are persisted.
@@ -91,8 +98,8 @@ The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter
 job history; the tombstone and job retain only a stable failure code.
 Local webhook redaction and application-data cleanup run before Supabase Auth
-and Stripe provider operations. Provider outages therefore retain only the
-durable typed cleanup references, not the user's local product data.
+and Stripe/LiveKit provider operations. Provider outages therefore retain only
+the durable typed cleanup references, not the user's local product data.
 
 ## Checkout and deletion concurrency
 
@@ -106,9 +113,59 @@ above Stripe's documented minimum so request latency cannot invalidate it. That
 expiry narrows exposure but is not treated as a guarantee against completion.
 
 The deletion request locks the local user row before taking its subscription
-and customer-mapping snapshot and committing the tombstone. Billing fulfillment
+and customer-mapping snapshot and committing the tombstone. The snapshot
+contains the current subscription and every subscription/customer ID on every
+historical mapping, sorted and deduplicated deterministically. Billing fulfillment
 uses the same lock, so a local mapping/subscription either commits before the
 snapshot or is denied after the tombstone; it cannot commit into the gap.
+
+The same accepted transaction snapshots every stored LiveKit room name;
+terminal local lifecycle state is not proof that provider cleanup occurred.
+Session creation takes the account identity lock, so it either commits before
+the snapshot or fails after the tombstone exists. Rooms whose local session is
+still `created` or `connecting`, plus rooms terminalized by provider failure,
+are retained as provisioning subjects: a provider 404 cannot clear them because
+an ambiguous room creation may still commit afterward. Each subject stores a database-clock ten-minute
+lease, chosen as the conservative bound for the LiveKit create/dispatch HTTP
+attempt and delayed outcome uncertainty. A missing room stays protected before
+that deadline. After a missing provider result, the deletion worker locks the
+tombstone and asks PostgreSQL `clock_timestamp()` whether that exact fingerprint
+and generation has expired. Application time is not expiry authority. A
+database error retains the subject and fails the job for retry; only a
+database-confirmed expiry may clear the exact-generation missing result. Durable
+execution wakes at the deadline and calls room termination again. Legacy null-expiry
+subjects receive one persisted database-clock lease under the tombstone row lock
+before cleanup begins. A duplicate deletion request unions its fresh
+snapshot with the tombstone under the same lock; it cannot drop an unresolved
+room, shorten its lease, lower its generation, or replace a newer raw cleanup
+subject.
+Because LiveKit provider creation happens after that database transaction, the
+start workflow takes the identity lock again after provider creation and before
+returning credentials. If deletion won that fence, the workflow durably
+re-enrolls the room with a newer cleanup generation, terminates it, releases the
+credit reservation, terminalizes the local session when it still exists, and
+returns only `account_deletion_pending`. It never returns the room token or URL.
+An older deletion worker that observed a pre-creation 404 can clear only its
+own generation, so it cannot erase the later room's retry target. The fence
+holds no database lock during LiveKit I/O. If the fence itself fails and direct
+termination returns a provider failure, start retries durable enrollment; the
+earlier provisioning subject remains the fallback retry authority, and no
+credential is returned.
+Cleanup removes local interview data first, then actively calls LiveKit room
+deletion, which disconnects current participants and ends that room. The HTTP
+202 confirms durable acceptance, not synchronous disconnection; a connection
+may persist until the background cleanup attempt reaches LiveKit. LiveKit
+failures persist only the stable `livekit_provider_error` category and remain
+recoverable. They never roll back the tombstone or restore product access.
+Successful cleanup clears the raw room name and retains only its fingerprint;
+raw room names never enter client responses, stable errors, or job step output.
+Post-create termination failures follow the same rule: the raw room remains in
+the tombstone for recovery, while workflow logs contain only a fixed cleanup
+category and no room name, token, URL, or provider message.
+Provider-start failures use the same containment path: only definitive
+pre-room configuration failures clear immediately; ambiguous failures attempt
+termination and retain a missing room until its lease. Logs expose only the
+stable error code and retryability category, never provider message or cause.
 
 Webhook fulfillment independently requires matching client-reference and
 metadata user IDs. Credit and subscription writes serialize with deletion on
@@ -116,12 +173,13 @@ the local user row and fail closed when a tombstone exists. A completed Checkout
 that arrives after deletion receives no credit, subscription entitlement, or
 customer mapping. Its event payload is redacted; known late customer and
 subscription subjects are folded into the tombstone as temporary cleanup IDs.
-Late invoice, PaymentIntent, or charge references are also retained only while
-financial recovery is pending. After cancellation/refund reconciliation,
-Meelni deletes the late Stripe customer and clears every raw ID, leaving
-fingerprints only. Any failure after subjects are recorded moves the tombstone
-into retryable failure. Recovery repeats cancellation, payment/invoice refund,
-then customer deletion with object-derived idempotency keys in that order.
+Late invoice, PaymentIntent, or charge references can be retained only while
+provider cleanup is pending. Account deletion does not create a proration,
+customer-balance credit, invoice refund, PaymentIntent refund, or charge refund.
+After subscription cancellation and customer cleanup, Meelni clears every raw
+ID, leaving fingerprints only. Any failure after subjects are recorded moves
+the tombstone into retryable failure. Recovery repeats cancellation and customer
+deletion with object-derived idempotency keys in that order.
 Completion clears only the provider fingerprints present in the worker's
 processed snapshot. Subjects appended by a concurrent webhook remain raw and
 recoverable; even a completed tombstone containing a raw reference is selected
@@ -134,7 +192,7 @@ proof. A Checkout event may establish ownership only when its metadata and
 `client_reference_id` are both present and identical. Any disagreement among
 Checkout correlation, customer mapping, event metadata, or a tombstone subject
 fingerprint fails before event logging, entitlement mutation, cancellation,
-refund, customer deletion, or tombstone mutation. The same ownership decision
+customer deletion, or tombstone mutation. The same ownership decision
 gates active billing updates and deleted-account reconciliation.
 
 Stripe event logs never persist raw webhook payloads, including for active
@@ -146,50 +204,27 @@ For a late completed Checkout, Meelni attempts deterministic reconciliation:
 
 - expire it when it is still open;
 - cancel a created subscription;
-- refund a directly referenced PaymentIntent/charge or every paid allocation
-  exposed by the initial invoice.
+- delete a captured Stripe customer only after subscription cancellation.
 
 Stripe does not guarantee that Checkout, subscription, and invoice webhooks
 arrive in a useful order. A deleted account's `customer.subscription.created`
-event therefore persists and inspects its initial invoice, cancels the
-subscription, and reconciles every paid PaymentIntent/charge allocation before
-customer deletion. Missing or malformed initial-invoice evidence fails closed
-and keeps the customer recoverable. A deleted account's
+event therefore records its captured subscription/customer subjects, cancels
+the subscription without proration, and deletes the customer. A deleted account's
 `customer.subscription.updated` event cancels its subscription independently,
 and an
 `invoice.payment_succeeded` event independently cancels the referenced
-subscription and refunds its paid PaymentIntent/charge. These paths share
+subscription without granting entitlement or creating a refund. These paths share
 provider-object-derived idempotency keys with Checkout reconciliation, so no
 path relies on another event arriving first.
 
-Invoice reconciliation uses the paginated InvoicePayments API rather than the
-embedded first page. Reads are capped at ten 100-object pages. Every paid
-allocation must have a safe positive amount, matching currency, supported
-PaymentIntent or charge reference, and the allocation total must equal the
-invoice `amount_paid`. `payment_record`, incomplete pagination, malformed
-amounts, unsupported resource prefixes, or an unexplained total fails closed
-and retains the invoice, payment, and customer subjects for recovery or manual
-reconciliation.
-
-Refunds for a partial charge allocation use the exact InvoicePayment amount and
-carry only a one-way InvoicePayment fingerprint in Stripe metadata. Retry proof
-accepts terminal succeeded refunds tagged for that allocation. An untagged
-partial refund is accepted only when the allocation equals the complete charge;
-otherwise it is ambiguous and requires manual reconciliation. A provider-wide
-full refund remains terminal proof for every allocation on that charge.
-
-If an operator partially refunds before replay, Meelni asks Stripe to refund
-the remaining unrefunded amount. After every create or replay outcome, Meelni
-retrieves the referenced PaymentIntent/charge and lists its refunds. Only
-refunds whose Stripe status is `succeeded` count toward the full amount; charge
-aggregates and pending refund amounts are not terminal evidence. If provider
-state remains partial, pending, or cannot be confirmed, reconciliation stays
-failed, provider references remain durable, and customer deletion does not run.
-A pending refund that succeeds is completed by webhook/worker replay without a
-new refund. If it fails, the next retry uses a deterministic attempt key derived
-from the terminal refund history and requests the remaining amount again.
-Refund history reads are capped at ten 100-object pages and malformed provider
-amount/status evidence fails closed.
+Historical invoices, charges, PaymentIntents, refunds, disputes, and legally
+required processor records remain subject to Stripe and legal retention. A
+support-approved exceptional refund is a separate manual decision and is not
+performed, promised, or retried by deletion. Execution for an existing account
+is paused until [SAV-231](https://linear.app/saviiii/issue/SAV-231/billing-truth-reconcile-stripe-refunds-and-retire-legacy-usage)
+provides verified payment-to-credit-ledger reconciliation. Current
+`charge.refunded` handling records payment-history status only, does not adjust
+credits, and dispute events are unsupported.
 Subscription-deleted and invoice success/failure state changes also lock the
 user and fail closed on deletion. Stripe timestamps have second resolution, so
 subscription deletion is the terminal tie-breaker for same-resource,
@@ -202,18 +237,25 @@ correlated `subscription.created` event may establish the replacement resource
 identity. Other resource-specific events fail closed until billing
 sync/backfill scopes the row.
 
-Provider deletion, cancellation, and refunds are not transactional with local
-deletion. When Stripe does not expose a refundable reference, or a provider
-operation fails, the webhook event remains failed with a stable reconciliation
-code for retry/operator review. Cancellation, refund lookup/refund, and customer
-cleanup failures preserve the required provider references until recovery
-succeeds. Meelni does not mark the event processed, grant an entitlement, or
-claim a refund occurred.
+Provider deletion and subscription cancellation are not transactional with local
+deletion. When a provider operation fails, the webhook event remains failed
+with a stable reconciliation code for retry/operator review. Cancellation and
+customer-cleanup failures preserve the required provider references until
+recovery succeeds. Meelni does not mark the event processed, grant an
+entitlement, or claim a refund occurred.
 
 Durable Stripe deletion subjects are validated as typed provider references:
 customer IDs must use `cus_`, subscriptions `sub_`, invoices `in_`, PaymentIntents
 `pi_`, and charges `ch_`. A kind/ID mismatch fails closed before any provider
 operation or fingerprint clearing.
+
+The accepted deletion exception removes product access immediately at durable
+intent even when a paid period remains. Local/Auth identity cleanup proceeds
+before provider cleanup, and provider failure cannot restore access because the
+tombstone remains authoritative. Captured subscriptions are retried with the
+same object-derived idempotency key and `prorate=false`; deletion never creates
+a refund or customer-balance compensation. Ordinary cancellation remains
+period-end.
 
 ## Retention boundary
 

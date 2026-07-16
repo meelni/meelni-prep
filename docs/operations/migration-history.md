@@ -26,10 +26,11 @@
 |    17 | `0017_webhook_convergence`            |
 |    18 | `0018_invoice_status_convergence`     |
 |    19 | `0019_subscription_resource_convergence` |
+|    20 | `0020_durable_livekit_deletion`       |
 
 <!-- migration-journal:end -->
 
-This twenty-entry inventory is generated from the same ordered contract as
+This twenty-one-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -230,3 +231,10 @@ same-second subscription event ordering.
 `0019_subscription_resource_convergence` persists subscription-resource
 creation proof and retired resource identities so delayed events cannot
 resurrect a superseded subscription generation.
+
+## Durable LiveKit account-deletion cleanup
+
+`0020_durable_livekit_deletion` stores the normalized LiveKit room cleanup
+targets on the durable account-deletion request. Account deletion can therefore
+immediately fence access while provider cleanup remains retryable and
+idempotent across process restarts.

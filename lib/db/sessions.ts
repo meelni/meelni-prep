@@ -1,7 +1,14 @@
 import { db } from "./index";
-import { interviewSession, appUser, feedback } from "./schema";
+import {
+  accountDeletionRequest,
+  interviewSession,
+  appUser,
+  feedback,
+} from "./schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
+import { lockAccountIdentity } from "./account-identity-lock";
+import { AccountDeletionPendingError } from "./users";
 
 export interface CreateSessionInput {
   userId: string;
@@ -21,21 +28,33 @@ export interface UpdateSessionInput {
  * Create a new interview session
  */
 export async function createSession(input: CreateSessionInput) {
-  const [session] = await db
-    .insert(interviewSession)
-    .values({
-      userId: input.userId,
-      role: input.role,
-      roundType: input.roundType,
-      mode: input.mode,
-      persona: null,
-      livekitRoomName: input.livekitRoomName,
-      config: input.config,
-      startedAt: new Date(),
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    // Serialize session creation with deletion capture. If creation commits
+    // first, deletion snapshots the room; after acceptance, creation fails.
+    await lockAccountIdentity(tx, input.userId);
+    const [tombstone] = await tx
+      .select({ userId: accountDeletionRequest.userId })
+      .from(accountDeletionRequest)
+      .where(eq(accountDeletionRequest.userId, input.userId))
+      .limit(1);
+    if (tombstone) throw new AccountDeletionPendingError();
 
-  return session;
+    const [session] = await tx
+      .insert(interviewSession)
+      .values({
+        userId: input.userId,
+        role: input.role,
+        roundType: input.roundType,
+        mode: input.mode,
+        persona: null,
+        livekitRoomName: input.livekitRoomName,
+        config: input.config,
+        startedAt: new Date(),
+      })
+      .returning();
+
+    return session;
+  });
 }
 
 /**

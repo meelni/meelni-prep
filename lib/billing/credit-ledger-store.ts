@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -13,6 +13,7 @@ import {
   creditReservationGrant,
   creditTransaction,
   paymentHistory,
+  subscription,
 } from "@/lib/db/schema";
 import type { BillingCatalogId } from "@meelni/core";
 
@@ -20,6 +21,7 @@ import type {
   CreditGrantSource,
   LedgerBillingAdjustment,
   LedgerBillingPaymentState,
+  CreditReadSnapshot,
   CreditLedgerTransaction,
   CreditLedgerStore,
   CreditReservationStatus,
@@ -66,6 +68,9 @@ export function createDrizzleCreditLedgerStore(
     findTransactionByIdempotencyKey: operations.findTransactionByIdempotencyKey,
     listSpendableGrants: operations.listSpendableGrants,
     listUserGrants: operations.listUserGrants,
+    getCreditReadSnapshot: (userId) =>
+      readCreditSnapshotWithUserFence(database, userId),
+    getSubscriptionCreditPolicy: operations.getSubscriptionCreditPolicy,
     findReservationByKey: operations.findReservationByKey,
     listAllocations: operations.listAllocations,
     async withUserTransaction<T>(
@@ -119,30 +124,80 @@ export async function withDrizzleCreditLedgerUserTransaction<T>(
       userId,
       lease
     );
-    const ledger = createCallbackScopedTransaction(operations, lease);
-    let callbackResult: T | undefined;
-    let callbackError: unknown;
-    let callbackFailed = false;
-    try {
-      callbackResult = await work({ database: transaction, ledger });
-    } catch (error) {
-      callbackFailed = true;
-      callbackError = error;
-    } finally {
-      lease.accepting = false;
-      const operationResults = await Promise.allSettled([...lease.inFlight]);
-      lease.active = false;
-      if (callbackFailed) throw callbackError;
-
-      const failedOperation = operationResults.find(
-        (result) => result.status === "rejected"
-      );
-      if (failedOperation?.status === "rejected") {
-        throw failedOperation.reason;
-      }
-    }
-    return callbackResult as T;
+    return runScopedCreditLedgerWork(operations, lease, (ledger) =>
+      work({ database: transaction, ledger })
+    );
   });
+}
+
+async function runScopedCreditLedgerWork<T>(
+  operations: CreditLedgerTransaction,
+  lease: CreditLedgerTransactionLease,
+  work: (transaction: CreditLedgerTransaction) => Promise<T>,
+  scopedTransaction = createCallbackScopedTransaction(operations, lease)
+): Promise<T> {
+  let callbackResult: T | undefined;
+  let callbackError: unknown;
+  let callbackFailed = false;
+  try {
+    callbackResult = await work(scopedTransaction);
+  } catch (error) {
+    callbackFailed = true;
+    callbackError = error;
+  } finally {
+    lease.accepting = false;
+    const operationResults = await Promise.allSettled([...lease.inFlight]);
+    lease.active = false;
+    if (callbackFailed) throw callbackError;
+
+    const failedOperation = operationResults.find(
+      (result) => result.status === "rejected"
+    );
+    if (failedOperation?.status === "rejected") {
+      throw failedOperation.reason;
+    }
+  }
+  return callbackResult as T;
+}
+
+/**
+ * Bind credit mutations to a caller-owned transaction after that caller has
+ * locked and deletion-checked the user. This keeps invoice state ordering and
+ * its entitlement mutation in one atomic database boundary.
+ */
+export function createDrizzleCreditLedgerStoreForLockedTransaction(
+  transaction: CreditLedgerTransactionDatabase,
+  lockedUserId: string
+): CreditLedgerStore {
+  const lease: CreditLedgerTransactionLease = {
+    active: true,
+    accepting: true,
+    inFlight: new Set(),
+  };
+  const operations = createDrizzleCreditLedgerTransaction(
+    transaction,
+    lockedUserId,
+    lease
+  );
+  return {
+    findGrantByIdempotencyKey: operations.findGrantByIdempotencyKey,
+    findTransactionByIdempotencyKey: operations.findTransactionByIdempotencyKey,
+    listSpendableGrants: operations.listSpendableGrants,
+    listUserGrants: operations.listUserGrants,
+    getCreditReadSnapshot: operations.getCreditReadSnapshot,
+    getSubscriptionCreditPolicy: operations.getSubscriptionCreditPolicy,
+    findReservationByKey: operations.findReservationByKey,
+    listAllocations: operations.listAllocations,
+    async withUserTransaction<T>(
+      userId: string,
+      work: (transaction: CreditLedgerTransaction) => Promise<T>
+    ): Promise<T> {
+      if (userId !== lockedUserId) {
+        throw new Error("credit_ledger_user_scope_mismatch");
+      }
+      return runScopedCreditLedgerWork(operations, lease, work);
+    },
+  };
 }
 
 function createCallbackScopedTransaction(
@@ -262,6 +317,20 @@ function createDrizzleCreditLedgerTransaction(
   }
 
   const store: CreditLedgerTransaction = {
+    async getCurrentTime() {
+      requireLockedUser();
+      return readDatabaseTime(database);
+    },
+
+    async getCreditReadSnapshot(userId) {
+      requireLockedUser(userId);
+      const currentTime = await store.getCurrentTime();
+      const grants = await store.listUserGrants(userId);
+      const subscriptionPolicy =
+        await store.getSubscriptionCreditPolicy(userId);
+      return { currentTime, grants, subscriptionPolicy };
+    },
+
     async createGrant(input) {
       requireActiveTransaction();
       requireLockedUser(input.userId);
@@ -429,6 +498,37 @@ function createDrizzleCreditLedgerTransaction(
         .for("update");
 
       return rows.map(mapGrant);
+    },
+
+    async getSubscriptionCreditPolicy(userId) {
+      requireActiveTransaction();
+      if (lockedUserId) requireLockedUser(userId);
+      const rows = await database
+        .select({
+          status: subscription.status,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      return subscriptionCreditPolicy(rows[0]);
+    },
+
+    async getSubscriptionCreditPolicyForUpdate(userId) {
+      requireActiveTransaction();
+      requireLockedUser(userId);
+      const rows = await database
+        .select({
+          status: subscription.status,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1)
+        .for("update");
+      return subscriptionCreditPolicy(rows[0]);
     },
 
     async listUserReservationsForUpdate(userId) {
@@ -923,6 +1023,59 @@ function createDrizzleCreditLedgerTransaction(
   return store;
 }
 
+async function readCreditSnapshotWithUserFence(
+  database: CreditLedgerDatabase,
+  userId: string
+): Promise<CreditReadSnapshot> {
+  return database.transaction(async (transaction) => {
+    const [user] = await transaction
+      .select({ id: appUser.id })
+      .from(appUser)
+      .where(eq(appUser.id, userId))
+      .limit(1)
+      .for("share");
+    if (!user) throw new Error("credit_ledger_user_not_found");
+
+    const [subscriptionRow] = await transaction
+      .select({
+        status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      })
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("share");
+    const operations = createDrizzleCreditLedgerTransaction(
+      transaction,
+      userId
+    );
+    const currentTime = await readDatabaseTime(transaction);
+    const grants = await operations.listUserGrants(userId);
+    const subscriptionPolicy = subscriptionCreditPolicy(subscriptionRow);
+    return { currentTime, grants, subscriptionPolicy };
+  });
+}
+
+async function readDatabaseTime(database: CreditLedgerExecutor): Promise<Date> {
+  const rows = await database.execute(
+    sql<{
+      currentTime: Date | string;
+    }>`select clock_timestamp() as "currentTime"`
+  );
+  const value: unknown = rows[0]?.currentTime;
+  const currentTime =
+    value instanceof Date
+      ? new Date(value)
+      : typeof value === "string"
+        ? new Date(value)
+        : new Date(Number.NaN);
+  if (!Number.isFinite(currentTime.getTime())) {
+    throw new Error("credit_ledger_clock_invalid");
+  }
+  return currentTime;
+}
+
 function mapGrant(row: CreditGrantRow): LedgerCreditGrant {
   return {
     id: row.id,
@@ -1065,6 +1218,24 @@ function mapTransaction(row: CreditTransactionRow): LedgerCreditTransaction {
     balanceAfter: row.balanceAfter,
     metadata: row.metadata ?? null,
     createdAt: row.createdAt,
+  };
+}
+
+function subscriptionCreditPolicy(
+  row:
+    | {
+        status: string;
+        cancelAtPeriodEnd: boolean;
+        currentPeriodEnd: Date | null;
+      }
+    | undefined
+) {
+  const restricted = Boolean(
+    row && (row.cancelAtPeriodEnd || row.status === "canceled")
+  );
+  return {
+    restricted,
+    availableThrough: restricted ? (row?.currentPeriodEnd ?? null) : null,
   };
 }
 
