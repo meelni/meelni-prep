@@ -48,6 +48,9 @@ describe("GET /api/insights", () => {
       const response = await GET(req);
 
       expect(response.status).toBe(401);
+      expect(response.headers.get("Cache-Control")).toBe(
+        "private, no-store, max-age=0"
+      );
       const body = await response.json();
       expect(body.error).toBe("Unauthorized");
     });
@@ -96,8 +99,6 @@ describe("GET /api/insights", () => {
           percentile25: 7.0,
           percentile75: 8.0,
           percentile90: 8.5,
-          currentStreak: 3,
-          longestStreak: 5,
         },
         byInterviewType: {
           product_sense: { count: 2, avgScore: 7.8, last5Avg: 7.9 },
@@ -141,6 +142,8 @@ describe("GET /api/insights", () => {
       expect(body).toHaveProperty("lastUpdated");
 
       expect(body.overall.totalSessions).toBe(5);
+      expect(body.overall).not.toHaveProperty("currentStreak");
+      expect(body.overall).not.toHaveProperty("longestStreak");
       expect(body.trends.improvementTrend).toBe("improving");
     });
 
@@ -156,8 +159,6 @@ describe("GET /api/insights", () => {
           percentile25: 0,
           percentile75: 0,
           percentile90: 0,
-          currentStreak: 0,
-          longestStreak: 0,
         },
         byInterviewType: {
           product_sense: { count: 0, avgScore: 0, last5Avg: 0 },
@@ -209,21 +210,51 @@ describe("GET /api/insights", () => {
 
       (aggregateUserInsights as any).mockResolvedValue({
         userId: mockUserId,
-        overallStats: { totalSessions: 0, completedSessions: 0, totalMinutes: 0, avgScore: 0, medianScore: 0, percentile25: 0, percentile75: 0, percentile90: 0, currentStreak: 0, longestStreak: 0 },
-        byInterviewType: { product_sense: { count: 0, avgScore: 0, last5Avg: 0 }, analytical: { count: 0, avgScore: 0, last5Avg: 0 }, leadership: { count: 0, avgScore: 0, last5Avg: 0 }, strategy: { count: 0, avgScore: 0, last5Avg: 0 } },
-        byDifficulty: { junior: { count: 0, avgScore: 0 }, intermediate: { count: 0, avgScore: 0 }, senior: { count: 0, avgScore: 0 } },
-        trends: { last5SessionsAvg: 0, allTimeAvg: 0, improvementTrend: "stable" as const, velocity: 0 },
-        competencyBreakdown: { structure: 0, clarity: 0, insight: 0, communication: 0, leadership: 0 },
+        overallStats: {
+          totalSessions: 0,
+          completedSessions: 0,
+          totalMinutes: 0,
+          avgScore: 0,
+          medianScore: 0,
+          percentile25: 0,
+          percentile75: 0,
+          percentile90: 0,
+        },
+        byInterviewType: {
+          product_sense: { count: 0, avgScore: 0, last5Avg: 0 },
+          analytical: { count: 0, avgScore: 0, last5Avg: 0 },
+          leadership: { count: 0, avgScore: 0, last5Avg: 0 },
+          strategy: { count: 0, avgScore: 0, last5Avg: 0 },
+        },
+        byDifficulty: {
+          junior: { count: 0, avgScore: 0 },
+          intermediate: { count: 0, avgScore: 0 },
+          senior: { count: 0, avgScore: 0 },
+        },
+        trends: {
+          last5SessionsAvg: 0,
+          allTimeAvg: 0,
+          improvementTrend: "stable" as const,
+          velocity: 0,
+        },
+        competencyBreakdown: {
+          structure: 0,
+          clarity: 0,
+          insight: 0,
+          communication: 0,
+          leadership: 0,
+        },
       });
     });
 
-    it("includes cache-control headers", async () => {
+    it("prevents shared and browser caching of user-specific insights", async () => {
       const req = new NextRequest("http://localhost:3000/api/insights");
       const response = await GET(req);
 
       const cacheControl = response.headers.get("Cache-Control");
-      expect(cacheControl).toContain("max-age=3600");
-      expect(cacheControl).toContain("stale-while-revalidate=7200");
+      expect(cacheControl).toBe("private, no-store, max-age=0");
+      expect(cacheControl).not.toContain("public");
+      expect(cacheControl).not.toContain("stale-while-revalidate");
     });
 
     it("includes response time header", async () => {
@@ -248,26 +279,46 @@ describe("GET /api/insights", () => {
     });
 
     it("returns 500 when aggregation fails", async () => {
-      (aggregateUserInsights as any).mockRejectedValue(new Error("Database error"));
+      (aggregateUserInsights as any).mockRejectedValue(
+        new Error("Database error")
+      );
 
       const req = new NextRequest("http://localhost:3000/api/insights");
       const response = await GET(req);
 
       expect(response.status).toBe(500);
+      expect(response.headers.get("Cache-Control")).toBe(
+        "private, no-store, max-age=0"
+      );
       const body = await response.json();
       expect(body.error).toBe("Failed to fetch insights");
       expect(body.ref).toBeDefined();
     });
 
-    it("logs error with correlation ID", async () => {
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      (aggregateUserInsights as any).mockRejectedValue(new Error("Test error"));
+    it("logs only a correlation ID and fixed category when aggregation fails", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      (aggregateUserInsights as any).mockRejectedValue(
+        new Error(`Failed query; params: ${mockUserId}`)
+      );
 
       const req = new NextRequest("http://localhost:3000/api/insights");
       await GET(req);
 
-      expect(consoleErrorSpy).toHaveBeenCalled();
-      expect(consoleErrorSpy.mock.calls[0][0]).toMatch(/\[insights\] Error/);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[insights] Aggregation failed",
+        expect.objectContaining({
+          errorId: expect.any(String),
+          category: "insights_aggregation_failed",
+        })
+      );
+      expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain(
+        mockUserId
+      );
+      expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain(
+        "Failed query"
+      );
     });
   });
 
@@ -284,18 +335,49 @@ describe("GET /api/insights", () => {
     });
 
     it("logs warning for slow queries (>500ms)", async () => {
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
 
       // Mock slow aggregation
       (aggregateUserInsights as any).mockImplementation(async () => {
         await new Promise((resolve) => setTimeout(resolve, 600));
         return {
           userId: mockUserId,
-          overallStats: { totalSessions: 0, completedSessions: 0, totalMinutes: 0, avgScore: 0, medianScore: 0, percentile25: 0, percentile75: 0, percentile90: 0, currentStreak: 0, longestStreak: 0 },
-          byInterviewType: { product_sense: { count: 0, avgScore: 0, last5Avg: 0 }, analytical: { count: 0, avgScore: 0, last5Avg: 0 }, leadership: { count: 0, avgScore: 0, last5Avg: 0 }, strategy: { count: 0, avgScore: 0, last5Avg: 0 } },
-          byDifficulty: { junior: { count: 0, avgScore: 0 }, intermediate: { count: 0, avgScore: 0 }, senior: { count: 0, avgScore: 0 } },
-          trends: { last5SessionsAvg: 0, allTimeAvg: 0, improvementTrend: "stable" as const, velocity: 0 },
-          competencyBreakdown: { structure: 0, clarity: 0, insight: 0, communication: 0, leadership: 0 },
+          overallStats: {
+            totalSessions: 0,
+            completedSessions: 0,
+            totalMinutes: 0,
+            avgScore: 0,
+            medianScore: 0,
+            percentile25: 0,
+            percentile75: 0,
+            percentile90: 0,
+          },
+          byInterviewType: {
+            product_sense: { count: 0, avgScore: 0, last5Avg: 0 },
+            analytical: { count: 0, avgScore: 0, last5Avg: 0 },
+            leadership: { count: 0, avgScore: 0, last5Avg: 0 },
+            strategy: { count: 0, avgScore: 0, last5Avg: 0 },
+          },
+          byDifficulty: {
+            junior: { count: 0, avgScore: 0 },
+            intermediate: { count: 0, avgScore: 0 },
+            senior: { count: 0, avgScore: 0 },
+          },
+          trends: {
+            last5SessionsAvg: 0,
+            allTimeAvg: 0,
+            improvementTrend: "stable" as const,
+            velocity: 0,
+          },
+          competencyBreakdown: {
+            structure: 0,
+            clarity: 0,
+            insight: 0,
+            communication: 0,
+            leadership: 0,
+          },
         };
       });
 
@@ -303,8 +385,9 @@ describe("GET /api/insights", () => {
       await GET(req);
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/Slow query/)
+        expect.stringMatching(/Slow authenticated query/)
       );
+      expect(consoleWarnSpy.mock.calls[0]?.[0]).not.toContain(mockUserId);
     });
   });
 });

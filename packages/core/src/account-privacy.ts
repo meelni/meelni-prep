@@ -60,6 +60,7 @@ export interface AccountDataExportV1 {
     email: string | null;
     name: string | null;
     createdAt: string | null;
+    /** Frozen legacy values retained for export-schema 1.0.0 compatibility. */
     streak: {
       current: number;
       longest: number;
@@ -71,6 +72,7 @@ export interface AccountDataExportV1 {
     interviews: Array<Record<string, unknown>>;
     bookmarks: Array<Record<string, unknown>>;
     practiceSets: Array<Record<string, unknown>>;
+    /** Frozen legacy rows retained for export-schema 1.0.0 compatibility. */
     achievements: Array<Record<string, unknown>>;
     insights: Array<Record<string, unknown>>;
   };

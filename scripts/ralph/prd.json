@@ -1,6 +1,6 @@
 {
-  "name": "Meelni Engagement & Retention Features",
-  "description": "Feature-focused roadmap to drive user engagement and retention. Organized around user value: see progress, stay motivated, keep practicing.",
+  "name": "Meelni Practice Experience Roadmap",
+  "description": "Feature-focused roadmap organized around evidence-backed progress, focused practice, and useful follow-up.",
   "version": "2.0.0",
   "created": "2026-01-16",
   "branchName": "ralph/engagement-features",
@@ -10,8 +10,8 @@
       "description": "Help users understand how they're improving over time"
     },
     {
-      "name": "Stay Motivated",
-      "description": "Gamification, streaks, and achievements to keep users coming back"
+      "name": "Keep Practicing",
+      "description": "Help users choose useful next practice from interview evidence"
     },
     {
       "name": "Practice Smarter",
@@ -217,69 +217,10 @@
       "userValue": "Users understand their strengths and weaknesses at a glance"
     },
     {
-      "id": "MOTI-001",
-      "title": "Add practice streak counter",
-      "description": "Track consecutive days of practice to build habits",
-      "theme": "Stay Motivated",
-      "acceptanceCriteria": [
-        "Add streak_current and streak_longest columns to app_user table",
-        "Update streak on each completed interview",
-        "Reset streak if user misses a day",
-        "Display streak prominently on dashboard (fire emoji + number)",
-        "Show 'Keep your streak!' message if at risk",
-        "npm run db:push succeeds",
-        "npm run typecheck passes"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Completed: Added streak tracking columns to app_user, created updateStreak() utility, integrated streak updates in interview end API, added getUserStreak() query, displayed streak on dashboard with fire icon and at-risk warnings",
-      "estimatedHours": 4,
-      "userValue": "Gamification drives daily engagement"
-    },
-    {
-      "id": "MOTI-002",
-      "title": "Create achievement badges system",
-      "description": "Award badges for milestones to celebrate progress",
-      "theme": "Stay Motivated",
-      "acceptanceCriteria": [
-        "Create user_achievements table (user_id, achievement_id, earned_at)",
-        "Define initial badges: First Interview, 5 Interviews, 10 Interviews, Perfect Score, 7-Day Streak, 30-Day Streak, All Types Practiced",
-        "Create /lib/achievements.ts with badge definitions and check logic",
-        "Award badges automatically after each interview",
-        "npm run db:push succeeds",
-        "npm run typecheck passes"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "Completed: Created user_achievement table, defined 7 badges in /lib/achievements.ts (milestones, excellence, streaks, exploration), integrated achievement checking in interview end API",
-      "estimatedHours": 4,
-      "userValue": "Achievements provide dopamine hits and goals"
-    },
-    {
-      "id": "MOTI-003",
-      "title": "Display earned badges on dashboard",
-      "description": "Show off achievements to motivate continued practice",
-      "theme": "Stay Motivated",
-      "acceptanceCriteria": [
-        "Create BadgeDisplay component with badge icons",
-        "Show earned badges in a horizontal row",
-        "Show locked badges as grayed out (teaser)",
-        "Add tooltip with badge name and description",
-        "Show 'NEW' indicator for recently earned badges",
-        "Add to dashboard overview section",
-        "npm run typecheck passes"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Completed: Created BadgeDisplay component with badge icons, horizontal row, locked badges grayed out, tooltips, NEW indicator for recent badges, integrated in overview section",
-      "estimatedHours": 3,
-      "userValue": "Visual rewards for consistent practice"
-    },
-    {
       "id": "MOTI-004",
       "title": "Add interview type distribution chart",
       "description": "Show which types the user has practiced most",
-      "theme": "Stay Motivated",
+      "theme": "Keep Practicing",
       "acceptanceCriteria": [
         "Create donut chart showing distribution by round_type",
         "Categories: product_sense, behavioral, execution, strategy",
@@ -293,25 +234,6 @@
       "notes": "Completed: Enhanced existing TypeDistribution component with gap indicator. Orange alert banner shows missing interview types with list of unpracticed categories.",
       "estimatedHours": 2,
       "userValue": "Encourages practicing all interview types"
-    },
-    {
-      "id": "MOTI-005",
-      "title": "Show 'Next Goal' recommendation",
-      "description": "Personalized suggestion for what to do next",
-      "theme": "Stay Motivated",
-      "acceptanceCriteria": [
-        "Create NextGoalCard component",
-        "Analyze user's history and suggest next action",
-        "Examples: 'Try a Strategy interview', 'Beat your high score', 'Complete your 7-day streak'",
-        "Link directly to setup page with pre-filled config",
-        "Add to dashboard overview section",
-        "npm run typecheck passes"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "Completed: Created NextGoalCard with 4 intelligent recommendations (streak completion, missing types, beat high score, improve weakest type). Links to /setup with pre-filled interview type. Gradient background, integrated in overview section.",
-      "estimatedHours": 3,
-      "userValue": "Reduces decision fatigue, increases sessions"
     },
     {
       "id": "PRAC-001",
@@ -472,7 +394,7 @@
       "theme": "Stay Connected",
       "acceptanceCriteria": [
         "Create weekly-digest email template",
-        "Include: interviews this week, average score, streak status, best improvement",
+        "Include: interviews this week, average score with sample count, and observed improvement",
         "Add personalized message based on activity level",
         "Set up Inngest cron job for weekly send (Sunday evening)",
         "Only send to users with at least 1 interview",
@@ -485,31 +407,12 @@
       "userValue": "Re-engages users weekly"
     },
     {
-      "id": "CONN-004",
-      "title": "Send streak at risk reminder",
-      "description": "Remind users before their streak resets",
-      "theme": "Stay Connected",
-      "acceptanceCriteria": [
-        "Create streak-reminder email template",
-        "Trigger if user has streak >= 3 and hasn't practiced today",
-        "Send in evening (6 PM user timezone or default)",
-        "Include current streak and encouragement",
-        "Add 'Practice Now' CTA button",
-        "npm run typecheck passes"
-      ],
-      "priority": 25,
-      "passes": false,
-      "notes": "",
-      "estimatedHours": 3,
-      "userValue": "Saves streaks, drives daily engagement"
-    },
-    {
       "id": "CONN-005",
       "title": "Add email preferences to settings",
       "description": "Let users control which emails they receive",
       "theme": "Stay Connected",
       "acceptanceCriteria": [
-        "Add email preferences columns to app_user (weekly_digest, streak_reminders, feedback_notifications)",
+        "Add email preferences columns to app_user (weekly_digest, feedback_notifications)",
         "Create email preferences UI in settings section",
         "Toggle switches for each email type",
         "Save preferences to database",
@@ -522,25 +425,6 @@
       "notes": "",
       "estimatedHours": 3,
       "userValue": "Users control their experience"
-    },
-    {
-      "id": "CONN-006",
-      "title": "Send achievement earned notification",
-      "description": "Celebrate when users earn new badges",
-      "theme": "Stay Connected",
-      "acceptanceCriteria": [
-        "Create achievement email template with badge image",
-        "Trigger email when badge is awarded",
-        "Include badge name, description, and encouragement",
-        "Show 'next badge to earn' teaser",
-        "Make emails shareable (social preview)",
-        "npm run typecheck passes"
-      ],
-      "priority": 27,
-      "passes": false,
-      "notes": "",
-      "estimatedHours": 3,
-      "userValue": "Celebrates wins, reinforces behavior"
     },
     {
       "id": "CONN-007",
