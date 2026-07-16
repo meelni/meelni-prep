@@ -69,9 +69,9 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
+    "subscription:sub_test",
     `auth:${REQUEST.userId}`,
     "livekit:interview-active-room",
-    "subscription:sub_test",
     "customer:cus_test",
     "customer:cus_second",
     `completed:${REQUEST.userId}`,
@@ -86,7 +86,7 @@ test("payment and charge subjects remain correlation tombstones only", async () 
   assert.equal(calls.includes("customer:ch_tombstone_only"), false);
 });
 
-test("auth failure preserves the tombstone and never reports completion", async () => {
+test("subscription cancellation precedes auth failure and the tombstone remains retryable", async () => {
   const calls: string[] = [];
   const deps = createDeps(calls);
   deps.deleteAuthUser = async (userId) => {
@@ -100,8 +100,43 @@ test("auth failure preserves the tombstone and never reports completion", async 
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
+    "subscription:sub_test",
     `auth:${REQUEST.userId}`,
   ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("completed:")),
+    false
+  );
+});
+
+test("subscription cancellation failure preserves completed local cleanup and remains retryable", async () => {
+  const calls: string[] = [];
+  const deps = createDeps(calls);
+  deps.cancelSubscription = async (subscriptionId) => {
+    calls.push(`subscription:${subscriptionId}`);
+    throw Object.assign(new Error("provider unavailable"), {
+      code: "stripe_provider_error",
+    });
+  };
+
+  await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
+  assert.deepEqual(calls, [
+    `redact:${REQUEST.userId}`,
+    `application:${REQUEST.userId}`,
+    "subscription:sub_test",
+  ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("auth:")),
+    false
+  );
+  assert.equal(
+    calls.some((call) => call.startsWith("livekit:")),
+    false
+  );
+  assert.equal(
+    calls.some((call) => call.startsWith("customer:")),
+    false
+  );
   assert.equal(
     calls.some((call) => call.startsWith("completed:")),
     false
@@ -202,7 +237,7 @@ test("known financial fingerprints remain in the completed deletion snapshot", a
   assert.equal(completedFingerprints[0]?.includes("payment-fingerprint"), true);
 });
 
-test("LiveKit cleanup failure remains retryable after irreversible local acceptance", async () => {
+test("subscription cancellation precedes retryable LiveKit cleanup failure", async () => {
   const calls: string[] = [];
   const deps = createDeps(calls);
   deps.terminateLiveKitRoom = async (roomName) => {
@@ -216,6 +251,7 @@ test("LiveKit cleanup failure remains retryable after irreversible local accepta
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
+    "subscription:sub_test",
     `auth:${REQUEST.userId}`,
     "livekit:interview-active-room",
   ]);
