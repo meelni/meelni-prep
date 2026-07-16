@@ -74,6 +74,7 @@ function interruptionMarker(): TranscriptInterruptionMarker {
     event_type: "integrity_unavailable",
     event_id: "writer-1:speech-1:unavailable",
     writer_id: "writer-1",
+    writer_generation: 1,
     sequence: 1,
     session_id: SESSION_ID,
     room_name: "interview-room",

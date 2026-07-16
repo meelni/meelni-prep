@@ -2,26 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 // Schema for settings validation
-const settingsSchema = z.object({
-  displayName: z.string().optional(),
-  defaultInterviewType: z
-    .enum(["product_sense", "analytical", "behavioral", "strategy"])
-    .optional(),
-  defaultDifficulty: z.enum(["easy", "medium", "hard"]).optional(),
-  questionRecency: z.enum(["current", "recent", "all"]).optional(),
-  autoSaveTranscripts: z.boolean().optional(),
-  emailNotifications: z.boolean().optional(),
-  sessionCompletionEmail: z.boolean().optional(),
-  feedbackReadyEmail: z.boolean().optional(),
-  weeklyProgressReport: z.boolean().optional(),
-  shareAnonymousData: z.boolean().optional(),
-  saveTranscripts: z.boolean().optional(),
-  theme: z.enum(["light", "dark", "system"]).optional(),
-});
+const settingsSchema = z
+  .object({
+    displayName: z.string().optional(),
+    defaultInterviewType: z
+      .enum(["product_sense", "analytical", "behavioral", "strategy"])
+      .optional(),
+    defaultDifficulty: z.enum(["easy", "medium", "hard"]).optional(),
+    questionRecency: z.enum(["current", "recent", "all"]).optional(),
+    emailNotifications: z.boolean().optional(),
+    sessionCompletionEmail: z.boolean().optional(),
+    feedbackReadyEmail: z.boolean().optional(),
+    weeklyProgressReport: z.boolean().optional(),
+    theme: z.enum(["light", "dark", "system"]).optional(),
+  })
+  .strict();
 
 export async function GET() {
   try {
@@ -65,13 +65,10 @@ export async function GET() {
       defaultInterviewType: setting.defaultInterviewType,
       defaultDifficulty: setting.defaultDifficulty,
       questionRecency: setting.questionRecency,
-      autoSaveTranscripts: setting.autoSaveTranscripts,
       emailNotifications: setting.emailNotifications,
       sessionCompletionEmail: setting.sessionCompletionEmail,
       feedbackReadyEmail: setting.feedbackReadyEmail,
       weeklyProgressReport: setting.weeklyProgressReport,
-      shareAnonymousData: setting.shareAnonymousData,
-      saveTranscripts: setting.saveTranscripts,
       theme: setting.theme,
     };
 
@@ -79,7 +76,10 @@ export async function GET() {
       settings: formattedSettings,
     });
   } catch (error) {
-    console.error("Error fetching settings:", error);
+    console.error("settings_read_failed", {
+      error_code: "SETTINGS_READ_FAILED",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       { error: "Internal Server Error", message: "Failed to fetch settings" },
       { status: 500 }
@@ -141,8 +141,6 @@ export async function PUT(request: NextRequest) {
       dbSettings.defaultDifficulty = settings.defaultDifficulty;
     if (settings.questionRecency !== undefined)
       dbSettings.questionRecency = settings.questionRecency;
-    if (settings.autoSaveTranscripts !== undefined)
-      dbSettings.autoSaveTranscripts = settings.autoSaveTranscripts;
     if (settings.emailNotifications !== undefined)
       dbSettings.emailNotifications = settings.emailNotifications;
     if (settings.sessionCompletionEmail !== undefined)
@@ -151,10 +149,6 @@ export async function PUT(request: NextRequest) {
       dbSettings.feedbackReadyEmail = settings.feedbackReadyEmail;
     if (settings.weeklyProgressReport !== undefined)
       dbSettings.weeklyProgressReport = settings.weeklyProgressReport;
-    if (settings.shareAnonymousData !== undefined)
-      dbSettings.shareAnonymousData = settings.shareAnonymousData;
-    if (settings.saveTranscripts !== undefined)
-      dbSettings.saveTranscripts = settings.saveTranscripts;
     if (settings.theme !== undefined) dbSettings.theme = settings.theme;
 
     // Upsert settings (insert or update)
@@ -169,7 +163,10 @@ export async function PUT(request: NextRequest) {
       settings,
     });
   } catch (error) {
-    console.error("Error updating settings:", error);
+    console.error("settings_update_failed", {
+      error_code: "SETTINGS_UPDATE_FAILED",
+      ...toSafeErrorLog(error),
+    });
     return NextResponse.json(
       { error: "Internal Server Error", message: "Failed to update settings" },
       { status: 500 }

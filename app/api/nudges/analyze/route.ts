@@ -89,6 +89,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
 import { createFrameworkTracker } from "@/lib/nudges/framework-tracker";
 import { shouldAnalyzeNudges } from "@meelni/core";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 // Rate limiting: Track last request time per session
 const sessionRateLimits = new Map<string, number>();
@@ -270,7 +271,10 @@ export async function POST(req: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error("Error analyzing nudges:", error);
+    console.error("[Nudge Analysis] analysis_failed", {
+      code: "nudge_analysis_failed",
+      ...toSafeErrorLog(error),
+    });
 
     // Graceful degradation: Return no-nudge response
     // This ensures interview flow isn't interrupted by nudge analysis errors

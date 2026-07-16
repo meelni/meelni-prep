@@ -689,6 +689,11 @@ function createFixture(
       reason: "conflict",
       current,
     }),
+    recoverFromDuePresence: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
     claimTimeout: async () => ({ applied: false, reason: "conflict", current }),
     refineTimeoutClaim: async () => ({
       applied: false,

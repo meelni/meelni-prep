@@ -322,7 +322,9 @@ async function run(url: string, environmentIdentity: string) {
         | "stable_start"
         | "credit_recovery"
         | "billing_truth"
-        | "webhook_convergence";
+        | "webhook_convergence"
+        | "invoice_convergence"
+        | "subscription_resource_convergence";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -360,17 +362,21 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "stable_start";
       } else if (migrations.length === 16) {
         startingContract = "credit_recovery";
-      } else if (migrations.length === 15) {
+      } else if (migrations.length === 17) {
         startingContract = "billing_truth";
-      } else {
+      } else if (migrations.length === 18) {
         startingContract = "webhook_convergence";
+      } else if (migrations.length === 19) {
+        startingContract = "invoice_convergence";
+      } else {
+        startingContract = "subscription_resource_convergence";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
           migrations.length >= 17
-            ? 29
+            ? 30
             : migrations.length >= 14
-              ? 25
+              ? 26
               : migrations.length === 13
                 ? 24
                 : 23;

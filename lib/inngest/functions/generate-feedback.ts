@@ -6,7 +6,8 @@
 import { inngest } from "../client";
 import { db } from "@/lib/db";
 import { feedback, interviewSession, transcriptTurn } from "@/lib/db/schema";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   SessionTier,
   validateSessionCompleteness,
@@ -47,13 +48,7 @@ async function fetchSessionData(sessionId: string) {
 async function fetchSessionTranscript(sessionId: string) {
   const turns = await db.query.transcriptTurn.findMany({
     where: eq(transcriptTurn.sessionId, sessionId),
-    orderBy: [
-      asc(transcriptTurn.startedAt),
-      asc(transcriptTurn.writerId),
-      asc(transcriptTurn.sequence),
-      asc(transcriptTurn.eventId),
-      asc(transcriptTurn.id),
-    ],
+    orderBy: transcriptChronologicalOrder(),
   });
 
   return turns

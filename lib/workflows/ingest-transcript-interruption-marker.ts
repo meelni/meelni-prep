@@ -16,6 +16,8 @@ export type PersistTranscriptInterruptionMarkerResult<TMarker> =
         | "room_mismatch"
         | "event_conflict"
         | "writer_sequence_conflict"
+        | "writer_not_registered"
+        | "writer_fenced"
         | "runtime_settled"
         | "event_time_out_of_bounds"
         | "session_closed"

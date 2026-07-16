@@ -10,7 +10,7 @@ The first restarted product is not a generic interview platform. It is a PM inte
 - live voice interview sessions;
 - transcript capture;
 - PM-calibrated feedback and focused practice exercises;
-- progress, streaks, insights, and billing.
+- evidence-backed progress, insights, and billing.
 
 ## Architecture
 
