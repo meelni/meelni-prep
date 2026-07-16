@@ -18,10 +18,11 @@ interface EventProperties {
  * @param eventName - Name of the event to track
  * @param properties - Optional properties to include with the event
  */
-export function track(eventName: string, properties?: EventProperties): void {
-  // Log to console for development
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`[Analytics] ${eventName}`, properties || {});
+export function track(_eventName: string, _properties?: EventProperties): void {
+  void _eventName;
+  void _properties;
+  if (process.env.NODE_ENV === "development") {
+    console.log("[Analytics] development_event_recorded");
   }
 
   // TODO: Add your analytics provider here
@@ -46,9 +47,11 @@ export function track(eventName: string, properties?: EventProperties): void {
  * @param userId - Unique identifier for the user
  * @param traits - Optional user traits/properties
  */
-export function identify(userId: string, traits?: EventProperties): void {
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`[Analytics] Identify User: ${userId}`, traits || {});
+export function identify(_userId: string, _traits?: EventProperties): void {
+  void _userId;
+  void _traits;
+  if (process.env.NODE_ENV === "development") {
+    console.log("[Analytics] development_identity_recorded");
   }
 
   // TODO: Add your analytics provider here
@@ -64,17 +67,17 @@ export function identify(userId: string, traits?: EventProperties): void {
  */
 export const AnalyticsEvents = {
   // Setup Page Events
-  SETUP_PAGE_VIEWED: 'Setup Page Viewed',
-  INTERVIEW_TYPE_SELECTED: 'Interview Type Selected',
+  SETUP_PAGE_VIEWED: "Setup Page Viewed",
+  INTERVIEW_TYPE_SELECTED: "Interview Type Selected",
 
   // Tier/Pricing Events
-  LOCKED_TYPE_CLICKED: 'Locked Interview Type Clicked',
-  UPGRADE_MODAL_VIEWED: 'Upgrade Modal Viewed',
-  UPGRADE_MODAL_DISMISSED: 'Upgrade Modal Dismissed',
-  UPGRADE_MODAL_CTA_CLICKED: 'Upgrade Modal CTA Clicked',
+  LOCKED_TYPE_CLICKED: "Locked Interview Type Clicked",
+  UPGRADE_MODAL_VIEWED: "Upgrade Modal Viewed",
+  UPGRADE_MODAL_DISMISSED: "Upgrade Modal Dismissed",
+  UPGRADE_MODAL_CTA_CLICKED: "Upgrade Modal CTA Clicked",
 
   // Quota Events
-  QUOTA_MODAL_VIEWED: 'Quota Exceeded Modal Viewed',
-  QUOTA_MODAL_DISMISSED: 'Quota Exceeded Modal Dismissed',
-  QUOTA_MODAL_CTA_CLICKED: 'Quota Exceeded Modal CTA Clicked',
+  QUOTA_MODAL_VIEWED: "Quota Exceeded Modal Viewed",
+  QUOTA_MODAL_DISMISSED: "Quota Exceeded Modal Dismissed",
+  QUOTA_MODAL_CTA_CLICKED: "Quota Exceeded Modal CTA Clicked",
 } as const;

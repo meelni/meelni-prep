@@ -51,6 +51,7 @@ import {
   type SettingsLoadState,
 } from "@/lib/dashboard/settings-actions";
 import { scrubRetiredTranscriptBrowserStorage } from "@/lib/privacy/transcript-browser-storage";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { cn } from "@/lib/utils";
 
 interface SubscriptionSummary {
@@ -120,7 +121,10 @@ export const SettingsSection = memo(function SettingsSection() {
           setLoadState("ready");
         }
       } catch (error) {
-        console.error("Failed to load settings:", error);
+        console.error("settings_load_failed", {
+          error_code: "SETTINGS_LOAD_FAILED",
+          ...toSafeErrorLog(error),
+        });
 
         if (!cancelled) {
           setSettings(normalizeDashboardSettings(null, fallbackName));
@@ -163,7 +167,10 @@ export const SettingsSection = memo(function SettingsSection() {
           setBillingState("ready");
         }
       } catch (error) {
-        console.error("Failed to load billing summary:", error);
+        console.error("billing_summary_load_failed", {
+          error_code: "BILLING_SUMMARY_LOAD_FAILED",
+          ...toSafeErrorLog(error),
+        });
 
         if (!cancelled) {
           setBillingState("error");
@@ -216,7 +223,10 @@ export const SettingsSection = memo(function SettingsSection() {
 
       setSaveState("ready");
     } catch (error) {
-      console.error("Failed to save settings:", error);
+      console.error("settings_save_failed", {
+        error_code: "SETTINGS_SAVE_FAILED",
+        ...toSafeErrorLog(error),
+      });
       setSaveState("error");
     }
   };
@@ -322,10 +332,6 @@ export const SettingsSection = memo(function SettingsSection() {
 
           {activeCategory === "data-privacy" && (
             <DataPrivacyPane
-              settings={settings}
-              onChange={updateSettings}
-              onSave={saveSettings}
-              saveState={saveState}
               onReauthenticate={async (path) => {
                 await signOut();
                 window.location.href = path;
@@ -490,20 +496,6 @@ function InterviewDefaultsPane({
           ["all", "All available questions"],
         ]}
       />
-      <SettingsSwitchRow
-        title="Save transcripts"
-        description="Keep transcripts available for feedback review."
-        checked={settings.saveTranscripts}
-        onCheckedChange={(saveTranscripts) => onChange({ saveTranscripts })}
-      />
-      <SettingsSwitchRow
-        title="Auto-save transcripts"
-        description="Store completed interview transcripts without asking each time."
-        checked={settings.autoSaveTranscripts}
-        onCheckedChange={(autoSaveTranscripts) =>
-          onChange({ autoSaveTranscripts })
-        }
-      />
     </PaneShell>
   );
 }
@@ -541,7 +533,10 @@ function PlanCreditsPane({
 
       window.location.href = data.portalUrl;
     } catch (error) {
-      console.error("Failed to open billing portal:", error);
+      console.error("billing_portal_open_failed", {
+        error_code: "BILLING_PORTAL_OPEN_FAILED",
+        ...toSafeErrorLog(error),
+      });
       setPortalState("error");
     }
   };
@@ -675,12 +670,8 @@ function NotificationsPane({
 }
 
 function DataPrivacyPane({
-  settings,
-  onChange,
-  onSave,
-  saveState,
   onReauthenticate,
-}: SettingsPaneProps & {
+}: {
   onReauthenticate: (path: string) => Promise<void>;
 }) {
   const [exportState, setExportState] = useState<
@@ -745,23 +736,18 @@ function DataPrivacyPane({
   return (
     <PaneShell
       title="Data & privacy"
-      description="Transcript storage, product improvement, and account data actions."
-      footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
+      description="How interview data is handled, plus export and deletion actions."
     >
-      <SettingsSwitchRow
-        title="Save transcripts"
-        description="Store transcripts so prior interviews can be reviewed later."
-        checked={settings.saveTranscripts}
-        onCheckedChange={(saveTranscripts) => onChange({ saveTranscripts })}
-      />
-      <SettingsSwitchRow
-        title="Share anonymous product data"
-        description="Help improve Meelni with de-identified usage patterns."
-        checked={settings.shareAnonymousData}
-        onCheckedChange={(shareAnonymousData) =>
-          onChange({ shareAnonymousData })
-        }
-      />
+      <SettingsGroup label="Interview data">
+        <SettingsReadOnlyRow
+          label="Transcript text"
+          value="Stored for feedback and review"
+        />
+        <SettingsReadOnlyRow
+          label="Interview audio"
+          value="Processed live by configured voice providers; no replayable interview recording is created or stored in the Meelni application"
+        />
+      </SettingsGroup>
 
       {exportMessage && (
         <SettingsNotice
@@ -1048,9 +1034,9 @@ function SettingsReadOnlyRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-6 py-4">
+    <div className="flex flex-col gap-1 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <p className="text-dashboard-foreground text-sm font-semibold">{label}</p>
-      <p className="text-dashboard-muted text-right text-sm">{value}</p>
+      <p className="text-dashboard-muted text-sm sm:text-right">{value}</p>
     </div>
   );
 }

@@ -6,6 +6,7 @@
 import posthog from "posthog-js";
 import { clientConfig } from "./config";
 import type { AnalyticsEvent, EventProperties, UserTraits } from "./types";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 /**
  * PII patterns to detect and sanitize
@@ -61,7 +62,7 @@ export class AnalyticsService {
   ): void {
     if (!clientConfig.enabled) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Tracking disabled", { event, properties });
+        console.log("[Analytics] tracking_disabled");
       }
       return;
     }
@@ -69,9 +70,7 @@ export class AnalyticsService {
     // CRITICAL: Check user consent before tracking
     if (!this.hasConsent()) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Tracking blocked - no user consent", {
-          event,
-        });
+        console.log("[Analytics] tracking_blocked_no_consent");
       }
       return;
     }
@@ -87,11 +86,13 @@ export class AnalyticsService {
       posthog.capture(event, sanitizedProperties);
 
       if (clientConfig.debug) {
-        console.log("[Analytics] Event tracked:", event, sanitizedProperties);
+        console.log("[Analytics] event_tracked");
       }
     } catch (error) {
       // Never throw errors from analytics
-      console.error("[Analytics] Error tracking event:", event, error);
+      console.error("[Analytics] event_tracking_failed", {
+        ...toSafeErrorLog(error),
+      });
     }
   }
 
@@ -103,7 +104,7 @@ export class AnalyticsService {
   identify(userId: string, traits?: Partial<UserTraits>): void {
     if (!clientConfig.enabled) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Identify disabled", { userId, traits });
+        console.log("[Analytics] identify_disabled");
       }
       return;
     }
@@ -111,7 +112,7 @@ export class AnalyticsService {
     // Check user consent before identifying
     if (!this.hasConsent()) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Identify blocked - no user consent");
+        console.log("[Analytics] identify_blocked_no_consent");
       }
       return;
     }
@@ -128,10 +129,12 @@ export class AnalyticsService {
       posthog.identify(userId, sanitizedTraits);
 
       if (clientConfig.debug) {
-        console.log("[Analytics] User identified:", userId, sanitizedTraits);
+        console.log("[Analytics] user_identified");
       }
     } catch (error) {
-      console.error("[Analytics] Error identifying user:", error);
+      console.error("[Analytics] user_identification_failed", {
+        ...toSafeErrorLog(error),
+      });
     }
   }
 
@@ -147,7 +150,7 @@ export class AnalyticsService {
     // Check user consent before tracking pageview
     if (!this.hasConsent()) {
       if (clientConfig.debug) {
-        console.log("[Analytics] Pageview blocked - no user consent");
+        console.log("[Analytics] pageview_blocked_no_consent");
       }
       return;
     }
@@ -160,10 +163,12 @@ export class AnalyticsService {
       });
 
       if (clientConfig.debug) {
-        console.log("[Analytics] Pageview tracked:", sanitizedPath);
+        console.log("[Analytics] pageview_tracked");
       }
     } catch (error) {
-      console.error("[Analytics] Error tracking pageview:", error);
+      console.error("[Analytics] pageview_tracking_failed", {
+        ...toSafeErrorLog(error),
+      });
     }
   }
 
@@ -179,10 +184,12 @@ export class AnalyticsService {
       posthog.reset();
 
       if (clientConfig.debug) {
-        console.log("[Analytics] User reset");
+        console.log("[Analytics] user_reset");
       }
     } catch (error) {
-      console.error("[Analytics] Error resetting user:", error);
+      console.error("[Analytics] user_reset_failed", {
+        ...toSafeErrorLog(error),
+      });
     }
   }
 

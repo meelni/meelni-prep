@@ -79,6 +79,48 @@ test("post-provider deletion fence withholds credentials and schedules room clea
   );
 });
 
+test("stable start logs exclude question, company, and unrestricted error content", async () => {
+  const questionSentinel = "QUESTION-CONTENT-SENTINEL";
+  const companySentinel = "COMPANY-CONTENT-SENTINEL";
+  const errorSentinel = "ERROR-CONTENT-SENTINEL";
+  const captured: unknown[][] = [];
+  const consoleLog = console.log;
+  const consoleError = console.error;
+  console.log = (...args: unknown[]) => captured.push(args);
+  console.error = (...args: unknown[]) => captured.push(args);
+
+  const fixture = createFixture();
+  fixture.deps.getQuestionById = async () => ({
+    id: QUESTION_ID,
+    company: companySentinel,
+    questionText: questionSentinel,
+    questionType: "Product Sense",
+    askedAt: STARTED_AT,
+    isActive: true,
+    createdAt: STARTED_AT,
+  });
+  fixture.deps.livekitProvider = {
+    startInterviewRoom: async () => {
+      throw new Error(errorSentinel);
+    },
+  };
+
+  try {
+    const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+    assert.equal(result.ok, false);
+
+    const serializedLogs = JSON.stringify(captured);
+    assert.doesNotMatch(serializedLogs, new RegExp(questionSentinel));
+    assert.doesNotMatch(serializedLogs, new RegExp(companySentinel));
+    assert.doesNotMatch(serializedLogs, new RegExp(errorSentinel));
+    assert.match(serializedLogs, new RegExp(QUESTION_ID));
+    assert.match(serializedLogs, /error_class/);
+  } finally {
+    console.log = consoleLog;
+    console.error = consoleError;
+  }
+});
+
 test("ready replay validates the same attempt and returns a fresh token without redispatch", async () => {
   const fixture = createFixture();
   const first = await startInterviewSessionWorkflow(input(), fixture.deps);

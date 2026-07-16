@@ -8,10 +8,17 @@ defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
 
-- account identity, profile, preferences, and practice streak;
+- account identity, profile, preferences, and frozen legacy streak records;
 - mock interviews, selected questions, transcripts, and feedback;
-- bookmarks, practice sets, achievements, and saved progress insights;
+- bookmarks, practice sets, frozen legacy achievement records, and saved progress insights;
 - subscription, usage, payment summaries, and credit-ledger summaries.
+
+The exported settings object contains only current, operative account and
+notification preferences. Deprecated compatibility columns such as
+`save_transcripts`, `auto_save_transcripts`, and `share_anonymous_data` are not
+exported as active preferences: they do not control transcript persistence and
+must never be interpreted as analytics consent. The columns remain in the
+database only for a separately rehearsed compatibility cleanup.
 
 The export excludes:
 
@@ -33,6 +40,13 @@ attachment filename.
 
 Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
+
+Meelni no longer writes or derives streaks and achievements in active product
+workflows. Export schema `1.0.0` continues to return any historical values so a
+product retirement does not silently discard user data. The legacy columns and
+table also remain covered by account deletion. Physical removal requires a
+separate retention decision, a versioned export-contract change, and a
+forward-only migration.
 
 ## Account deletion request
 

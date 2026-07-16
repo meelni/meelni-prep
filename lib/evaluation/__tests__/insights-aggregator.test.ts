@@ -3,134 +3,23 @@
  * P2-002: Validates user analytics calculation logic
  */
 
-import { describe, test, expect } from "vitest";
+import { beforeEach, describe, test, expect, vi } from "vitest";
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    query: {
+      interviewSession: {
+        findMany: vi.fn(),
+      },
+    },
+  },
+}));
+
+import { db } from "@/lib/db";
 import {
-  calculateStreakDays,
   computeAverageScores,
   aggregateUserInsights,
 } from "../insights-aggregator";
-
-// ==================== Streak Calculation Tests ====================
-
-describe("calculateStreakDays", () => {
-  test("should return 0 streaks for empty sessions array", () => {
-    const result = calculateStreakDays([]);
-    expect(result).toEqual({ currentStreak: 0, longestStreak: 0 });
-  });
-
-  test("should return 0 streaks when all sessions have null dates", () => {
-    const sessions = [
-      { startedAt: null },
-      { startedAt: null },
-      { startedAt: null },
-    ];
-    const result = calculateStreakDays(sessions);
-    expect(result).toEqual({ currentStreak: 0, longestStreak: 0 });
-  });
-
-  test("should count single session as 1-day current and longest streak", () => {
-    const today = new Date();
-    const sessions = [{ startedAt: today }];
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(1);
-    expect(result.longestStreak).toBe(1);
-  });
-
-  test("should calculate current streak for consecutive days including today", () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const twoDaysAgo = new Date(today);
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-    const sessions = [
-      { startedAt: today },
-      { startedAt: yesterday },
-      { startedAt: twoDaysAgo },
-    ];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(3);
-    expect(result.longestStreak).toBe(3);
-  });
-
-  test("should handle gap in streak (current streak broken)", () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const fiveDaysAgo = new Date(today);
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    const sixDaysAgo = new Date(today);
-    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
-
-    const sessions = [
-      { startedAt: today },
-      { startedAt: yesterday },
-      { startedAt: fiveDaysAgo },
-      { startedAt: sixDaysAgo },
-    ];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(2); // Today + yesterday
-    expect(result.longestStreak).toBe(2); // Multiple 2-day streaks
-  });
-
-  test("should detect longest streak when it's not the current streak", () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    // Long streak in the past (10 days ago to 13 days ago = 4 consecutive days)
-    const tenDaysAgo = new Date(today);
-    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-    const elevenDaysAgo = new Date(today);
-    elevenDaysAgo.setDate(elevenDaysAgo.getDate() - 11);
-    const twelveDaysAgo = new Date(today);
-    twelveDaysAgo.setDate(twelveDaysAgo.getDate() - 12);
-    const thirteenDaysAgo = new Date(today);
-    thirteenDaysAgo.setDate(thirteenDaysAgo.getDate() - 13);
-
-    const sessions = [
-      { startedAt: today },
-      { startedAt: yesterday },
-      { startedAt: tenDaysAgo },
-      { startedAt: elevenDaysAgo },
-      { startedAt: twelveDaysAgo },
-      { startedAt: thirteenDaysAgo },
-    ];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(2); // Today + yesterday
-    expect(result.longestStreak).toBe(4); // 10-13 days ago
-  });
-
-  test("should dedupe multiple sessions on same day", () => {
-    const today = new Date();
-    const sessions = [
-      { startedAt: new Date(today) },
-      { startedAt: new Date(today) },
-      { startedAt: new Date(today) },
-    ];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(1); // Same day counts as 1
-    expect(result.longestStreak).toBe(1);
-  });
-
-  test("should handle current streak = 0 when last session was >1 day ago", () => {
-    const today = new Date();
-    const threeDaysAgo = new Date(today);
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    const fourDaysAgo = new Date(today);
-    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
-
-    const sessions = [{ startedAt: threeDaysAgo }, { startedAt: fourDaysAgo }];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(0); // Streak broken (no session yesterday/today)
-    expect(result.longestStreak).toBe(2); // 3-4 days ago
-  });
-});
 
 // ==================== Average Scores Computation Tests ====================
 
@@ -253,95 +142,111 @@ describe("computeAverageScores", () => {
 // ==================== Full Insights Aggregation Tests ====================
 
 describe("aggregateUserInsights", () => {
-  // Note: These tests would require database mocking or test fixtures.
-  // For now, we provide test structure and expected behavior documentation.
+  beforeEach(() => {
+    vi.mocked(db.query.interviewSession.findMany).mockReset();
+  });
 
   test("should return empty insights for user with zero sessions", async () => {
-    // Mock: db.query.interviewSession.findMany returns []
-    // Expected: All stats should be 0, arrays empty, trend "stable"
+    vi.mocked(db.query.interviewSession.findMany).mockResolvedValue([]);
 
-    // This test requires database mocking - structure shown for reference:
-    // const insights = await aggregateUserInsights("user-with-no-sessions");
-    // expect(insights.overallStats.totalSessions).toBe(0);
-    // expect(insights.overallStats.currentStreak).toBe(0);
-    // expect(insights.trends.improvementTrend).toBe("stable");
+    const insights = await aggregateUserInsights("user-with-no-sessions");
+
+    expect(insights.overallStats.totalSessions).toBe(0);
+    expect(insights.overallStats.completedSessions).toBe(0);
+    expect(insights.trends.improvementTrend).toBe("stable");
   });
 
-  test("should calculate correct stats for single completed session", async () => {
-    // Mock: 1 session with feedback (score: 85)
-    // Expected:
-    //   - totalSessions: 1
-    //   - avgScore: 85
-    //   - medianScore: 85
-    //   - currentStreak: 1 (if today)
-    //   - velocity: 0 (need 2+ sessions)
-  });
+  test("uses only completed scored feedback and returns no reward fields", async () => {
+    const startedAt = new Date("2026-07-15T12:00:00.000Z");
+    const endedAt = new Date("2026-07-15T12:30:00.000Z");
+    const feedbackScores = {
+      structureScore: 8,
+      clarityScore: 7,
+      insightScore: 6,
+      communicationScore: 9,
+      leadershipScore: 7,
+    };
+    vi.mocked(db.query.interviewSession.findMany).mockResolvedValue([
+      {
+        id: "completed-1",
+        userId: "user-123",
+        roundType: "product_sense",
+        startedAt,
+        endedAt,
+        config: { difficulty: "senior" },
+        feedback: {
+          status: "completed",
+          overallScore: "8",
+          ...feedbackScores,
+        },
+      },
+      {
+        id: "processing",
+        userId: "user-123",
+        roundType: "strategy",
+        startedAt,
+        endedAt,
+        config: { difficulty: "intermediate" },
+        feedback: {
+          status: "processing",
+          overallScore: "10",
+          ...feedbackScores,
+        },
+      },
+      {
+        id: "invalid-score",
+        userId: "user-123",
+        roundType: "leadership",
+        startedAt,
+        endedAt,
+        config: { difficulty: "junior" },
+        feedback: {
+          status: "completed",
+          overallScore: "NaN",
+          ...feedbackScores,
+        },
+      },
+      {
+        id: "completed-2",
+        userId: "user-123",
+        roundType: "analytical",
+        startedAt,
+        endedAt,
+        config: { difficulty: "junior" },
+        feedback: {
+          status: "completed",
+          overallScore: "6",
+          ...feedbackScores,
+        },
+      },
+    ] as never);
 
-  test("should handle 50+ sessions performantly (<200ms)", async () => {
-    // Mock: 50 sessions with varying scores
-    // Expected: Aggregation completes in <200ms
-    // Performance test - measure execution time
-  });
+    const insights = await aggregateUserInsights("user-123");
 
-  test("should correctly detect 'improving' trend", async () => {
-    // Mock: Recent scores (80, 82, 85, 87, 90) vs all-time avg (75)
-    // Expected: improvementTrend = "improving"
-  });
-
-  test("should correctly detect 'declining' trend", async () => {
-    // Mock: Recent scores (60, 58, 55, 53, 50) vs all-time avg (70)
-    // Expected: improvementTrend = "declining"
-  });
-
-  test("should correctly detect 'stable' trend", async () => {
-    // Mock: Recent scores (75, 76, 74, 75, 76) vs all-time avg (75)
-    // Expected: improvementTrend = "stable"
-  });
-
-  test("should group sessions by interview type correctly", async () => {
-    // Mock: 3 product_sense (avg: 80), 2 analytical (avg: 85), 1 strategy (avg: 90)
-    // Expected:
-    //   - byInterviewType.product_sense = { count: 3, avgScore: 80, last5Avg: 80 }
-    //   - byInterviewType.analytical = { count: 2, avgScore: 85, last5Avg: 85 }
-    //   - byInterviewType.strategy = { count: 1, avgScore: 90, last5Avg: 90 }
-    //   - byInterviewType.leadership = { count: 0, avgScore: 0, last5Avg: 0 }
-  });
-
-  test("should group sessions by difficulty correctly", async () => {
-    // Mock: 2 junior (avg: 90), 3 intermediate (avg: 80), 1 senior (avg: 70)
-    // Expected:
-    //   - byDifficulty.junior = { count: 2, avgScore: 90 }
-    //   - byDifficulty.intermediate = { count: 3, avgScore: 80 }
-    //   - byDifficulty.senior = { count: 1, avgScore: 70 }
-  });
-
-  test("should calculate competency averages across all sessions", async () => {
-    // Mock: Multiple sessions with varying competency scores
-    // Expected: competencyBreakdown averages match manual calculation
-  });
-
-  test("should calculate velocity (improvement rate) correctly", async () => {
-    // Mock: Scores over time: [70, 72, 75, 78, 82] (steady +2.5 points/session)
-    // Expected: velocity ≈ 2.5
+    expect(insights.overallStats).toEqual({
+      totalSessions: 4,
+      completedSessions: 2,
+      totalMinutes: 120,
+      avgScore: 7,
+      medianScore: 7,
+      percentile25: 6.5,
+      percentile75: 7.5,
+      percentile90: 7.8,
+    });
+    expect(insights.byInterviewType.product_sense.count).toBe(1);
+    expect(insights.byInterviewType.analytical.count).toBe(1);
+    expect(insights.byInterviewType.strategy.count).toBe(0);
+    expect(insights.byInterviewType.leadership.count).toBe(0);
+    expect(insights.byDifficulty.senior.count).toBe(1);
+    expect(insights.byDifficulty.junior.count).toBe(1);
+    expect(insights.overallStats).not.toHaveProperty("currentStreak");
+    expect(insights.overallStats).not.toHaveProperty("longestStreak");
   });
 });
 
 // ==================== Edge Case Tests ====================
 
 describe("Edge Cases", () => {
-  test("calculateStreakDays: should handle timezone differences gracefully", () => {
-    // Sessions at different times of day but same calendar day
-    const today = new Date();
-    const todayMorning = new Date(today.setHours(8, 0, 0, 0));
-    const todayEvening = new Date(today.setHours(20, 0, 0, 0));
-
-    const sessions = [{ startedAt: todayMorning }, { startedAt: todayEvening }];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(1); // Same day = 1 streak day
-    expect(result.longestStreak).toBe(1);
-  });
-
   test("computeAverageScores: should round to 2 decimal places", () => {
     const feedback = [
       {
@@ -370,23 +275,5 @@ describe("Edge Cases", () => {
     const result = computeAverageScores(feedback);
     // (33+34+33)/3 = 33.333... → 33.33
     expect(result.structure).toBe(33.33);
-  });
-
-  test("calculateStreakDays: should handle sessions out of order", () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const twoDaysAgo = new Date(today);
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-
-    // Intentionally out of order
-    const sessions = [
-      { startedAt: yesterday },
-      { startedAt: twoDaysAgo },
-      { startedAt: today },
-    ];
-
-    const result = calculateStreakDays(sessions);
-    expect(result.currentStreak).toBe(3); // Should still detect 3-day streak
   });
 });

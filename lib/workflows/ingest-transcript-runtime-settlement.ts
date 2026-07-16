@@ -12,7 +12,8 @@ export type PersistTranscriptRuntimeSettlementResult<TSettlement> =
         | "room_mismatch"
         | "settlement_conflict"
         | "event_time_out_of_bounds"
-        | "session_closed";
+        | "session_closed"
+        | "writer_not_registered";
     };
 
 export interface TranscriptRuntimeSettlementStore<TSettlement> {

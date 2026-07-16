@@ -401,6 +401,23 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
     expect(response.headers.get("cache-control")).toBe("private, max-age=3600");
   });
+
+  it("never logs content-bearing exception messages", async () => {
+    const sentinel = "PRIVATE_FEEDBACK_SENTINEL_do_not_log";
+    vi.mocked(createClient).mockRejectedValueOnce(new Error(sentinel));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(500);
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sentinel);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to fetch feedback",
+    });
+    consoleError.mockRestore();
+  });
 });
 
 function request(method = "GET") {

@@ -18,6 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { SessionAttempt, ComparisonData } from "@/lib/types/comparison";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const roundTypeLabels: Record<string, string> = {
   product_sense: "Product Sense",
@@ -70,7 +71,10 @@ export default function ComparePage() {
         // Auto-select current session as attempt 2 (latest)
         setSelectedAttempt2(sessionId);
       } catch (err) {
-        console.error("Error fetching attempts:", err);
+        console.error("[Feedback Compare] attempts_fetch_failed", {
+          code: "feedback_attempts_fetch_failed",
+          ...toSafeErrorLog(err),
+        });
         setError("Failed to load attempts");
       } finally {
         setLoading(false);
@@ -108,7 +112,10 @@ export default function ComparePage() {
         const data = await res.json();
         setComparisonData(data.comparison);
       } catch (err) {
-        console.error("Error fetching comparison:", err);
+        console.error("[Feedback Compare] comparison_fetch_failed", {
+          code: "feedback_comparison_fetch_failed",
+          ...toSafeErrorLog(err),
+        });
         setError("Failed to load comparison data");
       } finally {
         setComparing(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Sprout, Zap, Trophy } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, Compass } from "lucide-react";
 import {
   SelectableCard,
   SelectableCardCheck,
@@ -16,25 +16,10 @@ interface DifficultySelectorProps {
 }
 
 const iconMap = {
-  Sprout,
-  Zap,
-  Trophy,
+  BookOpen,
+  BriefcaseBusiness,
+  Compass,
 };
-
-const difficultyTones = {
-  beginner: {
-    surface: "bg-success/10",
-    icon: "text-success",
-  },
-  intermediate: {
-    surface: "bg-warning/10",
-    icon: "text-warning",
-  },
-  advanced: {
-    surface: "bg-destructive/10",
-    icon: "text-destructive",
-  },
-} as const;
 
 export function DifficultySelector({
   selected,
@@ -60,7 +45,6 @@ export function DifficultySelector({
             const config = DIFFICULTY_LEVELS[difficulty];
             const Icon = iconMap[config.icon as keyof typeof iconMap];
             const isSelected = selected === difficulty;
-            const tone = difficultyTones[difficulty];
 
             return (
               <motion.div
@@ -75,7 +59,7 @@ export function DifficultySelector({
                 >
                   {/* Semantic selection background */}
                   <div
-                    className={`absolute inset-0 rounded-xl opacity-0 transition-opacity duration-200 ${tone.surface} ${isSelected ? "opacity-100" : ""} `}
+                    className={`bg-primary/10 absolute inset-0 rounded-xl opacity-0 transition-opacity duration-200 ${isSelected ? "opacity-100" : ""} `}
                   />
 
                   <div className="relative flex h-full flex-col">
@@ -86,9 +70,7 @@ export function DifficultySelector({
                         className="p-2.5"
                       >
                         <Icon
-                          className={`h-5 w-5 ${
-                            isSelected ? tone.icon : "text-muted-foreground"
-                          } `}
+                          className={`h-5 w-5 ${isSelected ? "text-primary" : "text-muted-foreground"} `}
                         />
                       </SelectableCardIcon>
                       {isSelected && (
