@@ -1,4 +1,6 @@
 # Ralph Progress Log for Meelni
+> Historical execution log only. SAV-257 retired the reward work described below. Do not use this file as active product direction; use `scripts/ralph/prd.json` and the accepted positioning decision.
+
 Started: 2026-01-16
 PRD Version: 2.0.0 - Engagement & Retention Features
 

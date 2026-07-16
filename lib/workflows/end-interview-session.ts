@@ -9,10 +9,7 @@ import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
-import { checkAndAwardAchievements } from "@/lib/achievements";
-import { updateStreak } from "@/lib/streaks";
 import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
-import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
@@ -27,7 +24,6 @@ export interface EndInterviewSessionDeps {
     userId: string;
     tier: string;
   }): Promise<DispatchFeedbackGenerationResult>;
-  updateMotivation(userId: string): Promise<void>;
 }
 
 export type InterviewSessionSettlement = Extract<
@@ -60,7 +56,7 @@ export async function settleInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "finalize" | "settleCredit" | "updateMotivation"
+    "authorize" | "finalize" | "settleCredit"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
@@ -72,10 +68,7 @@ export async function settleInterviewSessionWorkflow(
 
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  deps: Pick<
-    EndInterviewSessionDeps,
-    "finalize" | "settleCredit" | "updateMotivation"
-  >
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "settleCredit">
 ): Promise<SettleInterviewSessionResult> {
   const completion = await deps.finalize(input);
   if (!completion.ok) return completion;
@@ -83,21 +76,6 @@ async function completeInterviewSession(
   // Terminal truth is durable at this point. Keep settlement failures visible
   // so an authoritative caller retries the same idempotent completion.
   await deps.settleCredit(input.sessionId);
-
-  if (
-    completion.disposition === "applied" &&
-    completion.lifecycle.state === "completed"
-  ) {
-    try {
-      await deps.updateMotivation(completion.userId);
-    } catch (error) {
-      console.error("[Interview Completion] motivation_update_failed", {
-        code: "completion_motivation_update_failed",
-        ...toSafeErrorLog(error),
-      });
-    }
-  }
-
   return { ok: true, completion };
 }
 
@@ -149,25 +127,5 @@ export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
     finalize: finalizeInterviewSession,
     settleCredit: convergeDrizzleInterviewCreditSettlement,
     dispatch: dispatchFeedbackGenerationWorkflow,
-    updateMotivation: updateCompletionMotivation,
   };
-}
-
-async function updateCompletionMotivation(userId: string): Promise<void> {
-  try {
-    await updateStreak(userId);
-  } catch (error) {
-    console.error("[Interview Completion] streak_update_failed", {
-      code: "completion_streak_update_failed",
-      ...toSafeErrorLog(error),
-    });
-  }
-  try {
-    await checkAndAwardAchievements(userId);
-  } catch (error) {
-    console.error("[Interview Completion] achievement_update_failed", {
-      code: "completion_achievement_update_failed",
-      ...toSafeErrorLog(error),
-    });
-  }
 }
