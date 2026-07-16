@@ -40,7 +40,7 @@ export interface PrepareFeedbackTranscriptOptions {
 }
 
 const FEEDBACK_RESULT_TARGET_COMMAND_PATTERN =
-  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:choose|pick|provide|record|return|select)\s+(?:(?:(?:a|an|my|the)\s+)?(?:(?:final|evaluation)\s+)?(?:outcome|rating|result|score)\s+(?:as|at|of|to|with)\s+(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)|(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s+(?:as|at|for|of|to|with)\s+(?:(?:a|an|my|the)\s+)?(?:(?:final|evaluation)\s+)?(?:outcome|rating|result|score))\s*[.!?,;:]?$/iu;
+  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:choose|pick|provide|record|return|select)\s+(?:(?:(?:a|an|my|the)\s+)?(?:(?:evaluation|final|numeric)\s+)?(?:outcome|rating|result|score)\s+(?:(?:as|at|of|to|with)\s+)?(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)|(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s+(?:as|at|for|of|to|with)\s+(?:(?:(?:a|an|my|the)\s+)?(?:(?:evaluation|final|numeric)\s+)?(?:outcome|rating|result|score)|(?:my|the|this)\s+(?:answer|performance|response)))\s*[.!?,;:]?$/iu;
 
 const INJECTION_CLAUSE_PATTERNS = [
   /^(?:please\s+|you\s+(?:must|should|need\s+to|have\s+to)\s+|i\s+(?:(?:need|want)\s+you\s+to|(?:am\s+asking|ask)\s+you\s+to)\s+)?(?:ignore|disregard|override|forget)\b[\s\S]{0,100}\b(?:previous|prior|system|developer|instructions?|prompt|scoring\s+evidence|rubric|evaluation)\b/i,
@@ -101,7 +101,10 @@ interface CandidateSecurityTurn {
   tail: string;
 }
 
-type PartialFeedbackResultControlAction = "candidate" | "result";
+type PartialFeedbackResultControlAction =
+  | "candidate"
+  | "result"
+  | "targeted_result";
 
 interface PartialFeedbackResultControlState {
   fragmentCount: number;
@@ -109,6 +112,7 @@ interface PartialFeedbackResultControlState {
   hasTarget: boolean;
   hasTargetPrefix: boolean;
   hasResult: boolean;
+  hasResultModifier: boolean;
   hasOutcome: boolean;
 }
 
@@ -385,6 +389,8 @@ const PARTIAL_FEEDBACK_CANDIDATE_ACTION =
   /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:appraise|assign|award|bestow|furnish|give|grade|pencil(?:\s+in)?|rate|score)\b/iu;
 const PARTIAL_FEEDBACK_RESULT_ACTION =
   /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:choose|output|pick|provide|record|return|select|set)\b/iu;
+const PARTIAL_FEEDBACK_TARGETED_RESULT_ACTION =
+  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?use\b/iu;
 const PARTIAL_FEEDBACK_IMPLICIT_RESULT_ACTION =
   /\b(?:appraise|grade|rate|score)\b/iu;
 const PARTIAL_FEEDBACK_CANDIDATE_TARGET =
@@ -400,6 +406,7 @@ const PARTIAL_FEEDBACK_RESULT_NOUN =
   /\b(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|outcome|outcomes|rating|ratings|result|results|score|scores)\b/iu;
 const PARTIAL_FEEDBACK_RESULT_FRAGMENT =
   /^(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|outcome|outcomes|rating|ratings|result|results|score|scores)\s*[.!?,;:]?$/iu;
+const PARTIAL_FEEDBACK_RESULT_MODIFIER = /^final\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_RESULT_SELECTOR = /^(?:all|each|every)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_CONTROL_OUTCOME =
   /^(?:(?:as|at|of|to|with)\s+)?(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s*[.!?,;:]?$/iu;
@@ -438,11 +445,15 @@ function advancePartialFeedbackResultControl(
 
   const candidateAction = PARTIAL_FEEDBACK_CANDIDATE_ACTION.test(fragment);
   const resultAction = PARTIAL_FEEDBACK_RESULT_ACTION.test(fragment);
+  const targetedResultAction =
+    PARTIAL_FEEDBACK_TARGETED_RESULT_ACTION.test(fragment);
   const action: PartialFeedbackResultControlAction | null = candidateAction
     ? "candidate"
     : resultAction
       ? "result"
-      : null;
+      : targetedResultAction
+        ? "targeted_result"
+        : null;
   const politeOnly = PARTIAL_FEEDBACK_CONTROL_POLITENESS.test(fragment);
   const intentOnly = PARTIAL_FEEDBACK_CONTROL_INTENT.test(fragment);
   const participantOnly = PARTIAL_FEEDBACK_CONTROL_PARTICIPANT.test(fragment);
@@ -458,6 +469,7 @@ function advancePartialFeedbackResultControl(
     PARTIAL_FEEDBACK_RESULT_NOUN.test(fragment) ||
     (candidateAction && PARTIAL_FEEDBACK_IMPLICIT_RESULT_ACTION.test(fragment));
   const resultOnly = PARTIAL_FEEDBACK_RESULT_FRAGMENT.test(fragment);
+  const resultModifierOnly = PARTIAL_FEEDBACK_RESULT_MODIFIER.test(fragment);
   const outcome = PARTIAL_FEEDBACK_CONTROL_OUTCOME.test(fragment);
   const connectorOnly = PARTIAL_FEEDBACK_CONTROL_CONNECTOR.test(fragment);
 
@@ -469,6 +481,7 @@ function advancePartialFeedbackResultControl(
       hasTarget: target,
       hasTargetPrefix: Boolean(action && !target && targetPrefix),
       hasResult: result,
+      hasResultModifier: false,
       hasOutcome: outcome,
     };
   };
@@ -480,12 +493,15 @@ function advancePartialFeedbackResultControl(
       target ||
       targetPrefix ||
       result ||
+      resultModifierOnly ||
       connectorOnly ||
       outcome ||
       resultSelectorOnly;
     const detected =
       prior.action !== null &&
-      (prior.hasTarget || prior.hasResult || target || result) &&
+      (prior.action === "targeted_result"
+        ? prior.hasResult || result
+        : prior.hasTarget || prior.hasResult || target || result) &&
       (prior.hasOutcome || outcome) &&
       continuesControlGrammar;
     return { detected, next: detected ? null : start() };
@@ -502,11 +518,17 @@ function advancePartialFeedbackResultControl(
     !prior.hasTargetPrefix &&
     targetPrefix;
   const advancesResult = !prior.hasResult && result;
+  const advancesResultModifier =
+    prior.action !== null &&
+    !prior.hasResult &&
+    !prior.hasResultModifier &&
+    resultModifierOnly;
   const followsControlGrammar =
     advancesAction ||
     advancesTarget ||
     advancesTargetPrefix ||
     advancesResult ||
+    advancesResultModifier ||
     (prior.action === null && participantOnly) ||
     (prior.hasTarget && targetOnly) ||
     (prior.hasResult && resultOnly) ||
@@ -527,12 +549,16 @@ function advancePartialFeedbackResultControl(
       !target &&
       (prior.hasTargetPrefix || advancesTargetPrefix),
     hasResult: prior.hasResult || result,
+    hasResultModifier:
+      !result && (prior.hasResultModifier || advancesResultModifier),
     hasOutcome: prior.hasOutcome || outcome,
   } satisfies PartialFeedbackResultControlState;
   const detected =
     next.hasOutcome &&
     next.action !== null &&
-    (next.hasTarget || next.hasResult);
+    (next.action === "targeted_result"
+      ? next.hasResult
+      : next.hasTarget || next.hasResult);
   return { detected, next: detected ? null : next };
 }
 
