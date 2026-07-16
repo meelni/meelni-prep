@@ -14,6 +14,24 @@ test("evaluation failure reason identifies missing OpenAI key through error caus
   );
 });
 
+test("evaluation failure reason recognizes the stable missing-configuration code", () => {
+  assert.equal(
+    getEvaluationFailureReason(
+      new Error("feedback_configuration_missing_openai_key")
+    ),
+    "OpenAI API key is missing or not loaded. Set OPENAI_API_KEY and retry feedback generation."
+  );
+});
+
+test("evaluation failure reason recognizes the stable invalid-key code", () => {
+  assert.equal(
+    getEvaluationFailureReason(
+      new Error("feedback_configuration_invalid_openai_key")
+    ),
+    "OpenAI API key was rejected. Rotate OPENAI_API_KEY and retry feedback generation."
+  );
+});
+
 test("evaluation failure reason keeps generic provider failures sanitized", () => {
   assert.equal(
     getEvaluationFailureReason(new Error("Unexpected provider response")),

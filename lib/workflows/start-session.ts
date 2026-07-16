@@ -80,6 +80,7 @@ export interface StartInterviewSessionInput {
   body: StartInterviewSessionBody;
   env: LiveKitEnvironment;
   interviewAgentName: string;
+  appBaseUrl?: string;
 }
 
 export interface StartInterviewSessionDeps {
@@ -258,6 +259,11 @@ export async function startInterviewSessionWorkflow(
 
   const roomMetadata = buildInterviewRoomMetadata({
     session_id: session.id,
+    transcript_ingest_url: buildTranscriptIngestUrl(
+      input.appBaseUrl ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        "http://localhost:3000"
+    ),
     round_type: resolvedRoundType,
     mode,
     deadline_at: serializeInterviewDeadlineAt(deadlineAt),
@@ -284,7 +290,7 @@ export async function startInterviewSessionWorkflow(
       env: input.env,
     });
   } catch (error) {
-    console.error("LiveKit interview start exception:", getErrorMessage(error));
+    logStartFailure("livekit_start_exception", error);
     await terminalizeCleanupAndRelease(
       session.id,
       roomName,
@@ -301,7 +307,9 @@ export async function startInterviewSessionWorkflow(
   }
 
   if (!livekitResult.ok) {
-    console.error("LiveKit interview start error:", livekitResult.error);
+    console.error("[Session Start] livekit_start_failed", {
+      retryable: livekitResult.error.retryable,
+    });
     await terminalizeCleanupAndRelease(
       session.id,
       roomName,
@@ -320,7 +328,7 @@ export async function startInterviewSessionWorkflow(
   try {
     await deps.scheduleDeadline({ sessionId: session.id, deadlineAt });
   } catch (error) {
-    console.error("Interview deadline schedule error:", getErrorMessage(error));
+    logStartFailure("deadline_schedule_failed", error);
     await terminalizeCleanupAndRelease(
       session.id,
       roomName,
@@ -353,7 +361,7 @@ export async function startInterviewSessionWorkflow(
       throw new Error("room_provisioning_lease_lost");
     }
   } catch (error) {
-    console.error("Credit consume error:", getErrorMessage(error));
+    logStartFailure("credit_consume_failed", error);
     await terminalizeCleanupAndRelease(
       session.id,
       roomName,
@@ -391,6 +399,14 @@ export async function startInterviewSessionWorkflow(
         : null,
     },
   };
+}
+
+function buildTranscriptIngestUrl(appBaseUrl: string): string {
+  try {
+    return new URL("/api/internal/transcript", appBaseUrl).toString();
+  } catch {
+    throw new Error("Application URL is invalid for runtime transcript ingest");
+  }
 }
 
 export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
@@ -451,7 +467,7 @@ async function ensureTrialGrantForStart(
     await deps.ensureTrialGrant(userId);
     return { ok: true };
   } catch (error) {
-    console.error("Trial credit grant error:", getErrorMessage(error));
+    logStartFailure("trial_credit_grant_failed", error);
     return {
       ok: false,
       status: 503,
@@ -483,7 +499,7 @@ async function attemptProvisionedRoomCleanup(
     await deps.markRoomCleanupComplete(sessionId);
     return true;
   } catch (error) {
-    console.error("Interview room cleanup error:", getErrorMessage(error));
+    logStartFailure("room_cleanup_failed", error);
     return false;
   }
 }
@@ -657,7 +673,7 @@ async function reserveInterviewCredit({
       };
     }
 
-    console.error("Credit reservation error:", getErrorMessage(error));
+    logStartFailure("credit_reservation_failed", error);
     return {
       ok: false,
       status: 503,
@@ -678,7 +694,7 @@ async function releaseInterviewCredit(
     await deps.settleFailedReservation(reservationKey);
     return true;
   } catch (error) {
-    console.error("Credit release error:", getErrorMessage(error));
+    logStartFailure("credit_release_failed", error);
     return false;
   }
 }
@@ -783,8 +799,6 @@ function logQuestion(
   console.log(`[Session Start] ${message}:`, {
     id: question.id,
     type: question.questionType,
-    company: question.company,
-    text_preview: `${question.questionText.substring(0, 100)}...`,
     ...extra,
   });
 }
@@ -797,6 +811,16 @@ function isInsufficientCreditsError(error: unknown): boolean {
   return error instanceof Error && error.message === "insufficient_credits";
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function logStartFailure(event: string, error: unknown) {
+  console.error(`[Session Start] ${event}`, {
+    error_class: safeErrorClass(error),
+  });
+}
+
+function safeErrorClass(error: unknown): string {
+  if (error instanceof TypeError) return "TypeError";
+  if (error instanceof RangeError) return "RangeError";
+  if (error instanceof SyntaxError) return "SyntaxError";
+  if (error instanceof Error) return "Error";
+  return "NonError";
 }

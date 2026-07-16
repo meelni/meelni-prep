@@ -1,11 +1,23 @@
 const MISSING_OPENAI_KEY_REASON =
   "OpenAI API key is missing or not loaded. Set OPENAI_API_KEY and retry feedback generation.";
+const MISSING_OPENAI_KEY_CODE = "feedback_configuration_missing_openai_key";
+const INVALID_OPENAI_KEY_CODE = "feedback_configuration_invalid_openai_key";
 
 export function getEvaluationFailureReason(error: unknown): string {
   const messages = collectErrorMessages(error);
 
-  if (messages.some((message) => message.includes("OPENAI_API_KEY"))) {
+  if (
+    messages.some(
+      (message) =>
+        message === MISSING_OPENAI_KEY_CODE ||
+        message.includes("OPENAI_API_KEY")
+    )
+  ) {
     return MISSING_OPENAI_KEY_REASON;
+  }
+
+  if (messages.some((message) => message === INVALID_OPENAI_KEY_CODE)) {
+    return "OpenAI API key was rejected. Rotate OPENAI_API_KEY and retry feedback generation.";
   }
 
   if (

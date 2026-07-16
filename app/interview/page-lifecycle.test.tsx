@@ -3,6 +3,7 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,16 +16,16 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 const mocks = vi.hoisted(() => ({
   authUser: { id: "owner-a" } as { id: string } | null,
-  bindOwner: vi.fn(),
-  clearQueue: vi.fn(),
-  clearSession: vi.fn(),
   flush: vi.fn(),
   invalidateQueries: vi.fn(),
   livekitMounted: vi.fn(),
   livekitUnmounted: vi.fn(),
+  onTranscriptUpdate: null as
+    | null
+    | ((turn: Record<string, unknown>) => Promise<void> | void),
+  transcriptTurns: [] as Array<Record<string, unknown>>,
   push: vi.fn(),
   replace: vi.fn(),
-  save: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -41,30 +42,34 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
 }));
 
-vi.mock("@/lib/utils/transcript-queue", () => ({
-  getTranscriptQueue: () => ({
-    bindOwner: mocks.bindOwner,
-    clear: mocks.clearQueue,
-    clearSession: mocks.clearSession,
-    flush: mocks.flush,
-    save: mocks.save,
-  }),
-}));
-
 vi.mock("@/components/interview/livekit-room", async () => {
   const ReactModule = await import("react");
   return {
     LiveKitRoomWrapper: ({
       children,
       onConnectionStateChange,
+      onTranscriptFlushAvailable,
+      onTranscriptUpdate,
     }: {
       children: React.ReactNode;
       onConnectionStateChange(status: "connected"): void;
+      onTranscriptFlushAvailable(flush: typeof mocks.flush | null): void;
+      onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
       ReactModule.useEffect(() => {
         mocks.livekitMounted();
-        onConnectionStateChange("connected");
         return () => mocks.livekitUnmounted();
+      }, []);
+      ReactModule.useEffect(() => {
+        mocks.onTranscriptUpdate = onTranscriptUpdate;
+        onTranscriptFlushAvailable(mocks.flush);
+        return () => {
+          mocks.onTranscriptUpdate = null;
+          onTranscriptFlushAvailable(null);
+        };
+      }, [onTranscriptFlushAvailable, onTranscriptUpdate]);
+      ReactModule.useEffect(() => {
+        onConnectionStateChange("connected");
       }, [onConnectionStateChange]);
       return <div data-testid="livekit-room">{children}</div>;
     },
@@ -101,7 +106,10 @@ vi.mock("./components/timer-display", () => ({
 }));
 
 vi.mock("./components/transcript-panel", () => ({
-  TranscriptPanel: () => null,
+  TranscriptPanel: ({ turns }: { turns: Array<Record<string, unknown>> }) => {
+    mocks.transcriptTurns = turns;
+    return null;
+  },
 }));
 
 vi.mock("./components/interview-controls", () => ({
@@ -133,7 +141,8 @@ describe("active interview page lifecycle", () => {
   beforeEach(() => {
     mocks.authUser = { id: "owner-a" };
     mocks.flush.mockResolvedValue({ settled: true, pending: 0, failed: 0 });
-    mocks.save.mockResolvedValue({ success: true });
+    mocks.onTranscriptUpdate = null;
+    mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(createSessionResponse));
   });
 
@@ -152,13 +161,12 @@ describe("active interview page lifecycle", () => {
 
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(mocks.bindOwner).toHaveBeenCalledWith("owner-b")
+      expect(mocks.replace).toHaveBeenCalledWith("/dashboard")
     );
     expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
-    expect(mocks.replace).toHaveBeenCalledWith("/dashboard");
   });
 
-  it("unmounts the active room and closes the queue when the owner signs out", async () => {
+  it("unmounts the active room when the owner signs out", async () => {
     const view = render(<InterviewPageContent />);
     expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
 
@@ -166,17 +174,113 @@ describe("active interview page lifecycle", () => {
     view.rerender(<InterviewPageContent />);
 
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
-    await waitFor(() => expect(mocks.clearQueue).toHaveBeenCalledTimes(1));
-    expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
-    expect(mocks.replace).toHaveBeenCalledWith(
-      "/auth/signin?redirectTo=/interview"
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        "/auth/signin?redirectTo=/interview"
+      )
     );
+    expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders runtime transcript notifications without a browser write", async () => {
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/session/start") return createSessionResponse();
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          return Response.json({
+            turns: [
+              {
+                id: "f47ac10b-58cc-4372-a567-0e02b2c3d480",
+                eventId: "event-2",
+                writerId: "writer-a",
+                writerGeneration: 2,
+                sequence: 1,
+                sessionId: SESSION_ID,
+                roomName: "interview-room",
+                speaker: "interviewer",
+                text: "Durable generation two",
+                startedAt: "2099-07-15T21:00:00.000Z",
+                endedAt: "2099-07-15T21:00:01.000Z",
+                audioMs: 1000,
+                section: "product_sense",
+                deliveryState: "delivered",
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected request: ${url} ${init?.method ?? "GET"}`);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(mocks.onTranscriptUpdate).not.toBeNull();
+
+    await mocks.onTranscriptUpdate?.({
+      persistable: true,
+      eventId: "event-1",
+      rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      writerId: "writer-z",
+      writerGeneration: 1,
+      sequence: 1,
+      sessionId: SESSION_ID,
+      speaker: "interviewer",
+      text: "Synthetic fixture",
+      timestamp: new Date("2099-07-15T21:00:00.000Z"),
+      startedAt: new Date("2099-07-15T21:00:00.000Z"),
+      event: {
+        contract_version: 2,
+        event_id: "event-1",
+        writer_id: "writer-z",
+        writer_generation: 1,
+        sequence: 1,
+        session_id: SESSION_ID,
+        room_name: "interview-room",
+        speaker: "interviewer",
+        text: "Synthetic fixture",
+        is_final: true,
+        started_at: "2099-07-15T21:00:00.000Z",
+        ended_at: "2099-07-15T21:00:01.000Z",
+        audio_duration_ms: 1000,
+        section: "product_sense",
+        delivery_state: "delivered",
+      },
+    });
+
+    await waitFor(() =>
+      expect(mocks.transcriptTurns.map((turn) => turn.text)).toEqual([
+        "Synthetic fixture",
+        "Durable generation two",
+      ])
+    );
+    expect(mocks.transcriptTurns).toEqual([
+      expect.objectContaining({
+        rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        writerGeneration: 1,
+      }),
+      expect.objectContaining({
+        rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d480",
+        writerGeneration: 2,
+      }),
+    ]);
+
+    expect(
+      request.mock.calls.some(
+        ([input, init]) =>
+          String(input).includes("transcript") && init?.method === "POST"
+      )
+    ).toBe(false);
   });
 
   it("disconnects and freezes the room after an ambiguous end transport failure", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/session/start") return createSessionResponse();
+      if (url === `/api/session/${SESSION_ID}/transcript`) {
+        return Response.json({ turns: [] });
+      }
       if (url === "/api/interview/end") {
         throw new TypeError("connection reset after request write");
       }
@@ -196,17 +300,52 @@ describe("active interview page lifecycle", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
 
-    expect(await screen.findByRole("status", { name: "" })).toHaveAttribute(
+    const completionHeading = await screen.findByRole("heading", {
+      name: "Confirming interview completion",
+    });
+    expect(completionHeading.closest('[role="status"]')).toHaveAttribute(
       "aria-busy",
       "true"
     );
-    expect(
-      screen.getByRole("heading", { name: "Confirming interview completion" })
-    ).toBeInTheDocument();
     expect(screen.getByText(/interview cannot resume/i)).toBeInTheDocument();
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
+  });
+
+  it("terminates transcript verification as an actionable alert when settlement rejects", async () => {
+    let rejectSettlement: ((reason: Error) => void) | undefined;
+    mocks.flush.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSettlement = reject;
+        })
+    );
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open end confirmation" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    const verifying = await screen.findByRole("status");
+    expect(verifying).toHaveAttribute("aria-live", "polite");
+    expect(verifying).toHaveTextContent("Verifying");
+    expect(screen.getByText(/checking that the latest turns/i)).toBeVisible();
+
+    await act(async () => {
+      rejectSettlement?.(new Error("synthetic settlement failure"));
+    });
+
+    const degraded = await screen.findByRole("alert");
+    expect(degraded).toHaveAttribute("aria-live", "assertive");
+    expect(degraded).toHaveTextContent("Needs recovery");
+    expect(degraded).toHaveTextContent(/keep the room open and retry ending/i);
+    expect(screen.queryByText("Verifying")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Conversation turns are saved as the room runs.")
+    ).not.toBeInTheDocument();
   });
 });
 

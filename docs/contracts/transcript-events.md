@@ -9,9 +9,9 @@ runtime, correlated to the durable session and provider room, and backed by
 measured timing. `packages/agent/src/transcript-events.ts` is the TypeScript
 source of truth. `agent/shared/transcript_events.py` emits the same wire shape.
 
-The LiveKit data topic remains `transcript`. The packet is a transport fact,
-not proof that the turn was durably stored. Persistence ownership,
-deduplication, and out-of-order ingest belong to SAV-194.
+The Python runtime persists each event through the signed internal ingest route
+before publishing it on LiveKit data topic `transcript`. A browser packet is
+therefore a display notification, never the durability or trust boundary.
 
 ## Version 2
 
@@ -22,6 +22,7 @@ Canonical writers publish this shape:
   "contract_version": 2,
   "event_id": "writer-instance-id:livekit-message-id",
   "writer_id": "writer-instance-id",
+  "writer_generation": 2,
   "sequence": 7,
   "session_id": "durable-session-id",
   "room_name": "interview-runtime-room",
@@ -41,6 +42,7 @@ Canonical writers publish this shape:
 | `contract_version`         | Exactly `2` for canonical writers.                                                                                                            |
 | `event_id`                 | Non-empty identity generated once for the event. Replays retain it.                                                                           |
 | `writer_id`                | Non-empty identity for one agent job/writer instance. A replacement writer in the same room receives a new ID.                                |
+| `writer_generation`        | Positive generation assigned by durable writer registration before the runtime can produce audible output.                                    |
 | `sequence`                 | Positive safe integer, monotonically assigned within one `writer_id`. Gaps are allowed.                                                       |
 | `session_id` / `room_name` | Both required. The durable session ID comes from validated room metadata; the room name comes from the runtime.                               |
 | `speaker`                  | `user` or `interviewer`.                                                                                                                      |
@@ -50,15 +52,44 @@ Canonical writers publish this shape:
 | `section`                  | Non-empty durable section label. Until fine-grained section tracking lands, the runtime uses the interview round type; it never sends `null`. |
 | `delivery_state`           | `delivered` or `partially_delivered`. Fully unheard generated speech is not a transcript turn.                                                |
 
-The current Python writer consumes committed LiveKit conversation items and
+The Python writer consumes committed LiveKit conversation items and
 uses their runtime-measured `started_speaking_at` and `stopped_speaking_at`
-metrics. If positive timing cannot be measured, the writer drops and logs the
-event instead of inventing a zero-duration turn.
+metrics. LiveKit Agents 1.6.5 truncates an interrupted interviewer message to
+the TTS-synchronized prefix that was actually played. That prefix is persisted
+as `partially_delivered`; generated continuation is never stored.
+
+When an interruption has no provider-confirmed text—or a committed user or
+interviewer turn cannot be normalized to canonical measured evidence—the
+runtime persists a separate `integrity_unavailable` marker. It contains
+correlation, writer generation, identity, speaker, reason, and occurrence time but no `text`
+field. Markers live outside `transcript_turn`, are never rendered or passed to
+evaluation, and make the session ineligible for feedback because complete
+evidence cannot be proven.
+
+Before producing any audible output, each runtime durably registers a
+metadata-only `runtime_writer_registration`. Registration is idempotent for the
+same `(session_id, room_name, writer_id)` and returns a positive
+`writer_generation`. A replacement runtime receives a later generation, which
+fences the prior generation from distinct new writes without erasing that
+prior writer's settlement obligation. Every turn, marker, settlement, and
+targeted reconnect-settlement request carries the registered generation.
+
+At an explicit end or semantic cutoff `D`, the runtime first disables audio
+input and output at `D`, commits only measured evidence whose event time is at
+or before `D`, interrupts active interviewer speech, and drains the signed
+outbox. Every registered writer generation then persists its own metadata-only
+`runtime_settlement` with `settled_at = D` and state `settled` or `degraded`;
+database creation time records later operational arrival separately. Terminal
+completion requires every registered generation to have durable `settled`
+proof and no integrity markers. A missing or degraded generation fails closed.
+Settlement seals that generation: exact replays remain idempotent, but distinct
+new turns or markers from it are rejected.
 
 Consumers deduplicate globally by `event_id`. They order events from one writer
-by `sequence`; across replacement writers they order by measured `started_at`,
-then `writer_id` and `sequence` as deterministic tie-breakers. A sequence value
-without its `writer_id` has no ordering meaning.
+generation by `sequence`; across replacement writers they order by measured
+`started_at`, then `writer_generation`, `writer_id`, and `sequence` as
+deterministic tie-breakers. A sequence value without its generation and
+`writer_id` has no ordering meaning.
 
 ## Compatibility
 
@@ -93,27 +124,26 @@ columns so historical rows remain readable.
 3. Run the shared golden valid/invalid fixture through TypeScript and Python,
    including canonical timestamps, integer bounds, timing, and delivery state.
 4. Observe legacy-packet and invalid-packet logs before removing compatibility.
-5. SAV-193 may begin publishing heard interrupted speech as
-   `partially_delivered`; SAV-194 owns durable ordering and idempotency.
-
-Until SAV-193 lands, the canonical writer excludes interrupted interviewer
-items rather than publishing generated-but-unheard text as delivered speech.
+5. Verify completed speech, mid-sentence interruption, and zero-prefix
+   interruption against the pinned runtime contract.
 
 The public relaunch gate remains off until the downstream transcript privacy,
 ingest, evaluation, and launch-rehearsal slices pass.
 
 ## Durable Ingest
 
-SAV-194 makes version 2 the only durable writer shape. The authenticated web
-endpoint accepts `{ sessionId, event }`, validates the complete shared event,
-requires `event.session_id === sessionId`, and verifies both session ownership
-and the stored provider room inside the database transaction. Missing and
-cross-user sessions remain indistinguishable.
+Version 2 is the only durable turn writer shape. The runtime sends the exact
+canonical body to `/api/internal/transcript`, signed with a timestamped,
+domain-separated HMAC derived from the shared server-only LiveKit secret. The
+route validates the signature before parsing, requires
+`event.session_id === sessionId`, and verifies the stored provider room inside
+the database transaction. The candidate browser has no transcript-write API.
 
 `event_id` is globally unique. An equivalent replay returns the existing row;
 reusing the identity with different content fails closed. `(session_id,
-writer_id, sequence)` is also unique, so a writer cannot assign one sequence to
-two events. A session accepts at most 1,000 durable turns. Legacy rows keep all
+writer_id, sequence)` remains unique and the registered
+`(session_id, writer_generation, writer_id)` foreign key binds evidence to its
+durable writer generation. A session accepts at most 1,000 durable turns. Legacy rows keep all
 canonical identity fields null. Canonical rows
 require the entire version 2 identity/timing tuple and are immutable through
 the legacy correction helpers.
@@ -123,30 +153,53 @@ must remain within the server-owned interval from the stored session start
 through its absolute hard deadline. Operational failures log only a fixed code;
 database errors and transcript content are never written to server logs.
 
+An empty or truncated signed body is an invalid runtime transcript payload. An
+aborted body read is unreadable and receives the same fail-closed HTTP 400
+boundary. None of these cases invokes durable ingest or logs parser errors or
+partial transcript content. Unsupported media types, oversized bodies, and
+invalid service authentication retain their distinct 415, 413, and 401/503
+responses.
+
 Within one writer, measured start times must remain monotonic with sequence.
 The ingest transaction rejects an inversion. Readers therefore order by
-`started_at`, then `writer_id`, `sequence`, `event_id`, and row ID; this obeys
-writer sequence while producing a deterministic cross-writer order.
+`started_at`, then `writer_generation`, `writer_id`, `sequence`, `event_id`, and
+row ID. Generation precedes writer identity so same-millisecond turns from
+replacement runtimes remain in durable replacement order while each writer's
+sequence remains deterministic.
+
+After persistence, the runtime may add `row_id`, the durable transcript row
+UUID returned by ingest, to the LiveKit display notification. `row_id` is
+display and reconciliation metadata rather than signed transcript evidence;
+older compatible notifications fall back to `event_id` as their stable UI
+identity.
 
 Transcript insert and terminalization transactions lock the same session row.
-Explicit browser end establishes a client cutoff, stops accepting later packet
-arrivals, and performs a bounded retry/in-flight flush. Once the terminal
-transaction owns the row, it calculates feedback eligibility from the durable
-turns in that transaction and closes new distinct writes. A separately claimed
-`ending` state, including reconnect-timeout cleanup, also closes distinct
-writes. Equivalent replays remain idempotent after the cutoff. A hard deadline
+Explicit browser end invokes the runtime's transcript-settlement RPC. The
+runtime interrupts any active interviewer playout, waits for LiveKit to expose
+the synchronized prefix or no-prefix marker, and drains its bounded in-memory
+outbox before the browser requests terminalization. Once the terminal
+transaction owns the row, it calculates feedback eligibility from durable
+turns, markers, registered writers, and per-generation settlements in that
+transaction. A separately claimed `ending` state normally closes distinct
+writes. Reconnect timeout is the narrow exception: while the room stays alive,
+the server sends a reliable trusted metadata-only settlement request targeted
+to the current registered generation and cutoff `D`, awaits durable database
+acknowledgement (settled, degraded, or bounded failure), and only then deletes
+the room. Passive delay is not evidence. Only that generation's pre-cutoff
+drain is accepted; older generations remain fenced. Equivalent replays remain
+idempotent after the cutoff. A hard deadline
 first claims `ending` with a provisional `time_limit` reason, then the locked
 terminal transaction calculates one durable transcript snapshot. If that
 snapshot is insufficient, only that provisional reason is versionedly refined
 to `insufficient_signal` before the terminal transition. Other ending reasons
 and existing terminal truth remain immutable.
 
-The browser remains a temporary authenticated transport bridge and cannot make
-a packet durable until the server acknowledges it. SAV-193 owns removal of raw
-browser persistence and the longer-term server-side ingest trust boundary.
-The retry queue binds to the authenticated owner as soon as interview auth
-resolves, before processing or retaining restored events for that account.
-Signed-out bootstrap, sign-out events, and direct account replacement purge
-retained raw queue state before another owner can be admitted. Malformed stored
-state is deleted rather than retained, and terminal cleanup aborts only the
-closed session so another session's acknowledged write cannot be discarded.
+The runtime outbox is memory-only, bounded at 1,000 identities, and reserves
+control capacity for the mandatory settlement item so transcript data cannot
+consume the final control slot. It retries network failures plus HTTP
+408/425/429/5xx and treats other HTTP failures as permanent.
+It publishes transcript text to the room only after a 2xx persistence
+acknowledgement. Browser reload/reconnect hydrates owned durable turns and
+merges by event identity. Retired browser keys `transcript_queue` and
+`transcript_queue_v2` are deleted without reading their contents at bootstrap,
+sign-out, and account deletion.

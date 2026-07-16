@@ -1,6 +1,7 @@
 import {
   AccessToken,
   AgentDispatchClient,
+  DataPacket_Kind,
   RoomServiceClient,
   TrackSource,
 } from "livekit-server-sdk";
@@ -64,6 +65,12 @@ export interface TerminateInterviewRoomInput {
 export interface TerminatedInterviewRoom {
   roomName: string;
   disposition: "deleted" | "already_absent";
+}
+
+export interface SentInterviewRoomData {
+  roomName: string;
+  destinationIdentity: string;
+  topic: string;
 }
 
 export interface InterviewParticipantPresence {
@@ -136,6 +143,12 @@ interface RoomServiceClientLike {
       kind: number;
     }>
   >;
+  sendData?(
+    roomName: string,
+    data: Uint8Array,
+    kind: DataPacket_Kind,
+    options: { destinationIdentities?: string[]; topic?: string }
+  ): Promise<void>;
 }
 
 type RoomServiceClientFactory = (
@@ -444,6 +457,68 @@ export async function terminateInterviewRoom(
 
     return providerFailure("livekit", {
       code: "livekit_room_delete_failed",
+      message: getErrorMessage(error),
+      retryable: true,
+      cause: error,
+    });
+  }
+}
+
+export async function sendReliableInterviewRoomData(
+  input: {
+    roomName: string;
+    destinationIdentity: string;
+    topic: string;
+    data: Uint8Array;
+    env: LiveKitEnvironment;
+  },
+  {
+    roomServiceClientFactory = (url, apiKey, apiSecret) =>
+      new RoomServiceClient(url, apiKey, apiSecret),
+  }: LiveKitProviderDependencies = {}
+): Promise<ProviderResult<SentInterviewRoomData>> {
+  const roomClient = roomServiceClientFactory(
+    input.env.url,
+    input.env.apiKey,
+    input.env.apiSecret
+  );
+  if (!roomClient.sendData) {
+    return providerFailure("livekit", {
+      code: "livekit_room_data_unsupported",
+      message: "The LiveKit room adapter cannot send reliable data.",
+      retryable: false,
+    });
+  }
+  if (
+    !input.roomName.trim() ||
+    !input.destinationIdentity.trim() ||
+    !input.topic.trim() ||
+    input.data.byteLength === 0
+  ) {
+    return providerFailure("livekit", {
+      code: "livekit_room_data_invalid",
+      message: "The LiveKit reliable data request is invalid.",
+      retryable: false,
+    });
+  }
+  try {
+    await roomClient.sendData(
+      input.roomName,
+      input.data,
+      DataPacket_Kind.RELIABLE,
+      {
+        destinationIdentities: [input.destinationIdentity],
+        topic: input.topic,
+      }
+    );
+    return providerSuccess("livekit", {
+      roomName: input.roomName,
+      destinationIdentity: input.destinationIdentity,
+      topic: input.topic,
+    });
+  } catch (error) {
+    return providerFailure("livekit", {
+      code: "livekit_room_data_send_failed",
       message: getErrorMessage(error),
       retryable: true,
       cause: error,

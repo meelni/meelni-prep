@@ -29,7 +29,10 @@ export function TranscriptViewer({ transcript }: TranscriptViewerProps) {
       description="Complete conversation with timestamps and highlighted key moments"
       icon={<ScrollText className="h-5 w-5" />}
     >
-      <div className="max-h-[600px] space-y-4 overflow-y-auto pr-2">
+      <div
+        className="max-h-[600px] space-y-4 overflow-y-auto pr-2"
+        data-ph-no-capture
+      >
         {transcript.map((turn) => {
           const isUser = turn.speaker === "user";
           const timestamp = new Date(turn.timestamp).toLocaleTimeString(

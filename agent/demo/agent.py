@@ -26,6 +26,8 @@ from livekit.plugins.turn_detector.english import EnglishModel
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from shared.safe_logging import log_exception_class
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -281,8 +283,13 @@ async def monitor_session_time(ctx: JobContext, demo_agent: DemoAgent, session: 
     except asyncio.CancelledError:
         logger.info("Time monitoring task cancelled")
         raise
-    except Exception as e:
-        logger.error(f"Error in time monitoring: {e}", exc_info=True)
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Demo time monitoring failed",
+            error,
+        )
 
 
 async def entrypoint(ctx: JobContext):
@@ -301,17 +308,25 @@ async def entrypoint(ctx: JobContext):
             question = metadata.get("question")
 
             if question:
-                question_text = question.get("question_text", "")
-                company = question.get("company", "N/A")
-                logger.info(f"Demo using question: '{question_text[:60]}...' (Company: {company})")
+                logger.info("Demo metadata includes a selected question")
             else:
                 logger.info("No question provided - using default demo questions")
         else:
             logger.info("No metadata - using default demo questions")
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse demo metadata: {e}. Using default questions.")
-    except Exception as e:
-        logger.error(f"Error extracting question from metadata: {e}. Using default questions.")
+    except json.JSONDecodeError as error:
+        log_exception_class(
+            logger,
+            logging.WARNING,
+            "Demo metadata could not be parsed; using default questions",
+            error,
+        )
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Demo question metadata could not be normalized; using defaults",
+            error,
+        )
 
     # NEW: Build instructions with question
     instructions = build_demo_instructions(question)
@@ -352,7 +367,8 @@ async def entrypoint(ctx: JobContext):
     # NEW: Pass demo_agent instance to session
     await session.start(
         agent=demo_agent,
-        room=ctx.room
+        room=ctx.room,
+        record=False,
     )
 
     logger.info("Demo agent started successfully")
@@ -362,17 +378,27 @@ async def entrypoint(ctx: JobContext):
 
     try:
         await session.say(greeting)
-        logger.info(f"Demo greeting sent: {greeting}")
-    except Exception as e:
-        logger.error(f"Failed to send demo greeting: {e}", exc_info=True)
+        logger.info("Demo greeting sent")
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Demo greeting delivery failed",
+            error,
+        )
 
     # Wait for monitoring task to complete (when session ends)
     try:
         await monitoring_task
     except asyncio.CancelledError:
         logger.info("Monitoring task cancelled")
-    except Exception as e:
-        logger.error(f"Monitoring task error: {e}", exc_info=True)
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Demo monitoring task failed",
+            error,
+        )
 
 
 if __name__ == "__main__":

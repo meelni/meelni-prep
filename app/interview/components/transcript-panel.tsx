@@ -6,6 +6,8 @@ import { User, Bot } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export interface TranscriptTurn {
+  eventId?: string;
+  rowId?: string;
   speaker: "user" | "interviewer";
   text: string;
   timestamp: Date;
@@ -30,9 +32,9 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
 
   if (turns.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
+      <div className="text-muted-foreground flex h-full items-center justify-center">
         <div className="text-center">
-          <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <Bot className="mx-auto mb-4 h-12 w-12 opacity-50" />
           <p className="text-sm">Conversation transcript will appear here</p>
         </div>
       </div>
@@ -42,12 +44,17 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
   return (
     <div
       ref={scrollRef}
-      className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent p-6 space-y-4"
+      data-ph-no-capture
+      className="scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent h-full space-y-4 overflow-y-auto p-6"
     >
       <AnimatePresence mode="popLayout">
         {turns.map((turn, index) => (
           <motion.div
-            key={`${turn.speaker}-${index}`}
+            key={
+              turn.rowId ??
+              turn.eventId ??
+              `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${index}`
+            }
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
@@ -58,27 +65,27 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
           >
             {/* Avatar */}
             <div
-              className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
                 turn.speaker === "user"
                   ? "bg-primary/10 text-primary"
                   : "bg-muted text-muted-foreground"
               }`}
             >
               {turn.speaker === "user" ? (
-                <User className="w-4 h-4" />
+                <User className="h-4 w-4" />
               ) : (
-                <Bot className="w-4 h-4" />
+                <Bot className="h-4 w-4" />
               )}
             </div>
 
             {/* Message bubble */}
             <div
-              className={`flex-1 max-w-message-bubble ${
+              className={`max-w-message-bubble flex-1 ${
                 turn.speaker === "user" ? "items-end" : "items-start"
               } flex flex-col gap-1`}
             >
               <div
-                className={`px-4 py-2.5 rounded-2xl ${
+                className={`rounded-2xl px-4 py-2.5 ${
                   turn.speaker === "user"
                     ? "bg-primary text-primary-foreground rounded-tr-sm"
                     : "bg-muted text-foreground rounded-tl-sm"
@@ -88,7 +95,7 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
                   {turn.text}
                 </p>
               </div>
-              <span className="text-xs text-muted-foreground px-2">
+              <span className="text-muted-foreground px-2 text-xs">
                 {formatDistanceToNow(new Date(turn.timestamp), {
                   addSuffix: true,
                 })}

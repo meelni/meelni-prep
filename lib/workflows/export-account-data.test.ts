@@ -16,7 +16,20 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     exportedAt: new Date("2026-07-10T16:00:00.000Z"),
     source: {
       account: null,
-      settings: { userId: "user-one", saveTranscripts: true },
+      settings: {
+        userId: "user-one",
+        displayName: "Candidate",
+        defaultInterviewType: "product_sense",
+        defaultDifficulty: "medium",
+        questionRecency: "current",
+        emailNotifications: true,
+        sessionCompletionEmail: true,
+        feedbackReadyEmail: true,
+        weeklyProgressReport: false,
+        theme: "system",
+        createdAt: new Date("2026-06-01T12:00:00.000Z"),
+        updatedAt: new Date("2026-07-10T16:00:00.000Z"),
+      },
       interviews: [
         {
           userId: "user-one",
@@ -69,6 +82,22 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
   assert.equal(JSON.stringify(result).includes("provider/model"), false);
   assert.equal(JSON.stringify(result).includes("Do not export this"), false);
   assert.equal(JSON.stringify(result).includes("userId"), false);
+  assert.deepEqual(result.settings, {
+    displayName: "Candidate",
+    defaultInterviewType: "product_sense",
+    defaultDifficulty: "medium",
+    questionRecency: "current",
+    emailNotifications: true,
+    sessionCompletionEmail: true,
+    feedbackReadyEmail: true,
+    weeklyProgressReport: false,
+    theme: "system",
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-07-10T16:00:00.000Z",
+  });
+  assert.equal("saveTranscripts" in (result.settings ?? {}), false);
+  assert.equal("autoSaveTranscripts" in (result.settings ?? {}), false);
+  assert.equal("shareAnonymousData" in (result.settings ?? {}), false);
 });
 
 test("nested user content is recursively stripped of secrets and provider operations", () => {

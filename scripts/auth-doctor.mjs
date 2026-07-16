@@ -26,6 +26,9 @@ const requiredTables = [
   "interview_session",
   "feedback",
   "transcript_turn",
+  "transcript_interruption_marker",
+  "transcript_runtime_writer",
+  "transcript_runtime_settlement",
   "user_settings",
   "user_insights",
   "interview_question",
@@ -37,12 +40,7 @@ const requiredTables = [
   "stripe_customer_mapping",
 ];
 
-const migrationFiles = [
-  "lib/db/migrations/0000_many_nocturne.sql",
-  "lib/db/migrations/0001_panoramic_otto_octavius.sql",
-  "lib/db/migrations/0002_pricing_rls_policies.sql",
-  "supabase/migrations/apply_all_rls.sql",
-];
+const migrationJournalPath = "lib/db/migrations/meta/_journal.json";
 
 export function checkRequiredSupabaseEnv(values) {
   return requiredSupabaseEnv.map(([key, name]) => {
@@ -115,10 +113,72 @@ export function checkServiceRole(values) {
 }
 
 export function checkMigrationFiles(root = repoRoot) {
-  return migrationFiles.map((relativePath) =>
-    existsSync(resolve(root, relativePath))
-      ? pass("Migration file", `${relativePath} exists.`)
-      : fail("Migration file", `${relativePath} is missing.`)
+  const journalPath = resolve(root, migrationJournalPath);
+  if (!existsSync(journalPath)) {
+    return [fail("Migration journal", `${migrationJournalPath} is missing.`)];
+  }
+
+  try {
+    const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+    const entries = Array.isArray(journal.entries) ? journal.entries : [];
+    if (entries.length === 0) {
+      return [fail("Migration journal", "The Drizzle journal has no entries.")];
+    }
+    const missing = entries
+      .map((entry) => `lib/db/migrations/${entry.tag}.sql`)
+      .filter((relativePath) => !existsSync(resolve(root, relativePath)));
+    return missing.length === 0
+      ? [
+          pass(
+            "Migration journal",
+            `${entries.length} canonical Drizzle migration files exist through ${entries.at(-1).tag}.`
+          ),
+        ]
+      : [
+          fail(
+            "Migration journal",
+            `Missing journaled migration file(s): ${missing.join(", ")}.`
+          ),
+        ];
+  } catch {
+    return [fail("Migration journal", `${migrationJournalPath} is invalid.`)];
+  }
+}
+
+export function checkRuntimeTranscriptDatabaseBoundary(input) {
+  const browserWriteEnabled = [
+    input.authenticatedTranscriptMutation,
+    input.authenticatedMarkerMutation,
+    input.authenticatedWriterMutation,
+    input.authenticatedSettlementMutation,
+    input.anonTranscriptMutation,
+    input.anonMarkerMutation,
+    input.anonWriterMutation,
+    input.anonSettlementMutation,
+  ].some(Boolean);
+  if (input.unsafePolicyCount > 0 || browserWriteEnabled) {
+    return fail(
+      "Runtime transcript write boundary",
+      "Authenticated/browser roles can write runtime transcript evidence. Apply the canonical Drizzle journal and keep the relaunch gate off."
+    );
+  }
+
+  const serviceWriteMissing = [
+    input.serviceTranscriptInsert,
+    input.serviceMarkerInsert,
+    input.serviceWriterInsert,
+    input.serviceSettlementInsert,
+  ].some((value) => value !== true);
+  if (serviceWriteMissing) {
+    return fail(
+      "Runtime transcript write boundary",
+      "The service role is missing a required runtime transcript write privilege."
+    );
+  }
+
+  return pass(
+    "Runtime transcript write boundary",
+    "Browser roles are read-only for transcript turns and cannot write runtime integrity evidence."
   );
 }
 
@@ -177,6 +237,106 @@ export async function runDatabaseChecks(databaseUrl) {
       WHERE schemaname = 'public'
       GROUP BY tablename
     `;
+    const [runtimeBoundary] = await sql`
+      SELECT
+        (
+          SELECT count(*)::int
+          FROM pg_policies
+          WHERE schemaname = 'public'
+            AND (
+              (tablename = 'transcript_turn'
+                AND cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL'))
+              OR (tablename IN (
+                    'transcript_interruption_marker',
+                    'transcript_runtime_writer',
+                    'transcript_runtime_settlement'
+                  ) AND cmd IN (
+                    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALL'
+                  ))
+            )
+            AND roles && ARRAY['public', 'anon', 'authenticated']::name[]
+        ) AS unsafe_policy_count,
+        CASE WHEN to_regclass('public.transcript_turn') IS NULL THEN NULL
+          ELSE has_table_privilege(
+            'authenticated', 'public.transcript_turn', 'INSERT'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_turn', 'UPDATE'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_turn', 'DELETE'
+          ) END AS authenticated_transcript_mutation,
+        CASE WHEN to_regclass('public.transcript_interruption_marker') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'authenticated', 'public.transcript_interruption_marker', 'INSERT'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_interruption_marker', 'UPDATE'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_interruption_marker', 'DELETE'
+          ) END AS authenticated_marker_mutation,
+        CASE WHEN to_regclass('public.transcript_runtime_writer') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'authenticated', 'public.transcript_runtime_writer', 'INSERT'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_runtime_writer', 'UPDATE'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_runtime_writer', 'DELETE'
+          ) END AS authenticated_writer_mutation,
+        CASE WHEN to_regclass('public.transcript_runtime_settlement') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'authenticated', 'public.transcript_runtime_settlement', 'INSERT'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_runtime_settlement', 'UPDATE'
+          ) OR has_table_privilege(
+            'authenticated', 'public.transcript_runtime_settlement', 'DELETE'
+          ) END AS authenticated_settlement_mutation,
+        CASE WHEN to_regclass('public.transcript_turn') IS NULL THEN NULL
+          ELSE has_table_privilege(
+            'anon', 'public.transcript_turn', 'INSERT'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_turn', 'UPDATE'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_turn', 'DELETE'
+          ) END AS anon_transcript_mutation,
+        CASE WHEN to_regclass('public.transcript_interruption_marker') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'anon', 'public.transcript_interruption_marker', 'INSERT'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_interruption_marker', 'UPDATE'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_interruption_marker', 'DELETE'
+          ) END AS anon_marker_mutation,
+        CASE WHEN to_regclass('public.transcript_runtime_writer') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'anon', 'public.transcript_runtime_writer', 'INSERT'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_runtime_writer', 'UPDATE'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_runtime_writer', 'DELETE'
+          ) END AS anon_writer_mutation,
+        CASE WHEN to_regclass('public.transcript_runtime_settlement') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'anon', 'public.transcript_runtime_settlement', 'INSERT'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_runtime_settlement', 'UPDATE'
+          ) OR has_table_privilege(
+            'anon', 'public.transcript_runtime_settlement', 'DELETE'
+          ) END AS anon_settlement_mutation,
+        CASE WHEN to_regclass('public.transcript_turn') IS NULL THEN NULL
+          ELSE has_table_privilege(
+            'service_role', 'public.transcript_turn', 'INSERT'
+          ) END AS service_transcript_insert,
+        CASE WHEN to_regclass('public.transcript_interruption_marker') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'service_role', 'public.transcript_interruption_marker', 'INSERT'
+          ) END AS service_marker_insert,
+        CASE WHEN to_regclass('public.transcript_runtime_writer') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'service_role', 'public.transcript_runtime_writer', 'INSERT'
+          ) END AS service_writer_insert,
+        CASE WHEN to_regclass('public.transcript_runtime_settlement') IS NULL
+          THEN NULL ELSE has_table_privilege(
+            'service_role', 'public.transcript_runtime_settlement', 'INSERT'
+          ) END AS service_settlement_insert
+    `;
 
     const tableMap = new Map(
       tableRows.map((row) => [row.tablename, row.rowsecurity])
@@ -206,6 +366,28 @@ export async function runDatabaseChecks(databaseUrl) {
             "Database tables",
             `Missing table(s): ${missingTables.join(", ")}.`
           )
+    );
+
+    results.push(
+      checkRuntimeTranscriptDatabaseBoundary({
+        unsafePolicyCount: runtimeBoundary?.unsafe_policy_count ?? 0,
+        authenticatedTranscriptMutation:
+          runtimeBoundary?.authenticated_transcript_mutation,
+        authenticatedMarkerMutation:
+          runtimeBoundary?.authenticated_marker_mutation,
+        authenticatedWriterMutation:
+          runtimeBoundary?.authenticated_writer_mutation,
+        authenticatedSettlementMutation:
+          runtimeBoundary?.authenticated_settlement_mutation,
+        anonTranscriptMutation: runtimeBoundary?.anon_transcript_mutation,
+        anonMarkerMutation: runtimeBoundary?.anon_marker_mutation,
+        anonWriterMutation: runtimeBoundary?.anon_writer_mutation,
+        anonSettlementMutation: runtimeBoundary?.anon_settlement_mutation,
+        serviceTranscriptInsert: runtimeBoundary?.service_transcript_insert,
+        serviceMarkerInsert: runtimeBoundary?.service_marker_insert,
+        serviceWriterInsert: runtimeBoundary?.service_writer_insert,
+        serviceSettlementInsert: runtimeBoundary?.service_settlement_insert,
+      })
     );
 
     results.push(
