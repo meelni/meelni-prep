@@ -304,6 +304,11 @@ function parseEvidence(
         `${evidencePath}.turnRef does not exist in the canonical transcript`
       );
     }
+    if (turn.speaker !== "user") {
+      throw new FeedbackV2ParseError(
+        `${evidencePath}.turnRef must reference a candidate turn`
+      );
+    }
     if (!turn.text.includes(quote)) {
       throw new FeedbackV2ParseError(
         `${evidencePath}.quote is not exact evidence from ${turnRef}`
