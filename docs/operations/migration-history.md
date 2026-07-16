@@ -22,10 +22,14 @@
 |    13 | `0013_runtime_settlement`             |
 |    14 | `0014_stable_start_usable_credit`     |
 |    15 | `0015_provider_credit_recovery`       |
+|    16 | `0016_billing_truth`                  |
+|    17 | `0017_webhook_convergence`            |
+|    18 | `0018_invoice_status_convergence`     |
+|    19 | `0019_subscription_resource_convergence` |
 
 <!-- migration-journal:end -->
 
-This sixteen-entry inventory is generated from the same ordered contract as
+This twenty-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -208,3 +212,21 @@ reason, while a service-only trigger prevents later rewriting of fault,
 provider-event, or settlement evidence. A unique runtime-failure event index
 and deterministic settlement keys make retries converge without duplicate
 credit changes.
+
+## Billing and webhook convergence
+
+`0016_billing_truth` adds durable payment-adjustment, payment-state, and
+rollover-lot evidence so refunds and disputes reconcile to the exact paid
+credit source without clawing back unrelated credits.
+
+`0017_webhook_convergence` adds a nullable unique logical transition key so
+distinct Stripe Event deliveries for the same immutable provider transition
+replay one idempotent handler result.
+
+`0018_invoice_status_convergence` deduplicates invoice-status history,
+persists complete deletion-subject fingerprints, and adds deterministic
+same-second subscription event ordering.
+
+`0019_subscription_resource_convergence` persists subscription-resource
+creation proof and retired resource identities so delayed events cannot
+resurrect a superseded subscription generation.

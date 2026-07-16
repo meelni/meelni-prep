@@ -35,6 +35,12 @@ Failed work is marked with a stable error category and retried. The
 `account-deletion-recovery` cron runs every ten minutes and requeues pending,
 failed, or processing records stale for at least fifteen minutes.
 
+Tombstone creation and Stripe event ingestion serialize on every hashed
+provider-subject fingerprint. Database triggers redact payload and error fields
+before insertion whenever a matching tombstone exists; the deletion transaction
+also redacts any event that committed immediately before the tombstone. This is
+the invariant that closes the late-webhook race, rather than delivery timing.
+
 ## Required configuration
 
 - `DATABASE_URL`
@@ -149,6 +155,8 @@ failed, or processing records stale for at least fifteen minutes.
   as an already-durable request, while an ordinary 401 offers sign-in again.
 - Inspect Inngest failure history and confirm provider/database/transcript detail
   is absent; only the stable tombstone failure code is present.
+- Exercise both transaction orders (webhook first and tombstone first) and
+  confirm no committed matching row retains payload or error content.
 
 Never manually delete the tombstone before Supabase Auth deletion is confirmed.
 Never mark a failed deleted-billing reconciliation processed merely to stop

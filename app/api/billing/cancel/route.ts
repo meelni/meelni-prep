@@ -16,8 +16,6 @@ const stripe = process.env.STRIPE_SECRET_KEY
 // Request validation
 const cancelSchema = z.object({
   cancelImmediately: z.boolean().optional().default(false),
-  reason: z.string().optional(),
-  feedback: z.string().optional(),
 });
 
 /**
@@ -27,8 +25,6 @@ const cancelSchema = z.object({
  *
  * Options:
  * - cancelImmediately: true = cancel now, false = cancel at period end (default)
- * - reason: Optional cancellation reason for analytics
- * - feedback: Optional feedback for improvement
  *
  * California Automatic Renewal Law (ARL) Compliance:
  * - Users can cancel at any time through this API
@@ -59,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { cancelImmediately, reason, feedback } = result.data;
+    const { cancelImmediately } = result.data;
     const userId = user.id;
 
     // Get user's subscription
@@ -116,9 +112,10 @@ export async function POST(req: NextRequest) {
 
     try {
       if (cancelImmediately) {
-        // Cancel immediately - no more access after this
+        // Provider behavior is unchanged while SAV-237 decides cancellation
+        // economics. Do not promise a refund until that policy is accepted.
         await stripe.subscriptions.cancel(sub.stripeSubscriptionId, {
-          prorate: true, // Refund unused portion
+          prorate: true,
         });
 
         // Update database
@@ -132,20 +129,10 @@ export async function POST(req: NextRequest) {
           })
           .where(eq(subscription.userId, userId));
 
-        // Log cancellation reason for analytics
-        if (reason || feedback) {
-          console.log("Subscription canceled immediately:", {
-            userId,
-            reason,
-            feedback,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
         return NextResponse.json({
           success: true,
           message:
-            "Your subscription has been canceled immediately. You will receive a prorated refund.",
+            "Your subscription has been canceled immediately. Any billing adjustment will appear separately after it is processed.",
           status: "canceled",
           effectiveDate: new Date().toISOString(),
         });
@@ -164,17 +151,6 @@ export async function POST(req: NextRequest) {
           })
           .where(eq(subscription.userId, userId));
 
-        // Log cancellation reason for analytics
-        if (reason || feedback) {
-          console.log("Subscription set to cancel at period end:", {
-            userId,
-            reason,
-            feedback,
-            periodEnd: sub.currentPeriodEnd,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
         return NextResponse.json({
           success: true,
           message:
@@ -184,8 +160,8 @@ export async function POST(req: NextRequest) {
           accessUntil: sub.currentPeriodEnd?.toISOString(),
         });
       }
-    } catch (stripeError) {
-      console.error("Stripe cancellation error:", stripeError);
+    } catch {
+      console.error("billing_cancel_provider_failed");
       return NextResponse.json(
         {
           error:
@@ -194,8 +170,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-  } catch (error) {
-    console.error("Cancellation error:", error);
+  } catch {
+    console.error("billing_cancel_unexpected");
     return NextResponse.json(
       { error: "Failed to process cancellation request" },
       { status: 500 }
@@ -285,15 +261,15 @@ export async function DELETE() {
         message: "Your subscription has been reactivated.",
         status: "active",
       });
-    } catch (stripeError) {
-      console.error("Stripe reactivation error:", stripeError);
+    } catch {
+      console.error("billing_reactivate_provider_failed");
       return NextResponse.json(
         { error: "Failed to reactivate subscription. Please contact support." },
         { status: 500 }
       );
     }
-  } catch (error) {
-    console.error("Reactivation error:", error);
+  } catch {
+    console.error("billing_reactivate_unexpected");
     return NextResponse.json(
       { error: "Failed to process reactivation request" },
       { status: 500 }

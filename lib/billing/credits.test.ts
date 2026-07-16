@@ -784,6 +784,1122 @@ test("asynchronous analytics rejection is contained after settlement", async () 
   }
 });
 
+test("payment reversal revokes only the correlated grant and replays exactly", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-10T12:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-refund",
+    catalogId: "interview_pass",
+    source: "checkout",
+    sourceId: "cs_paid",
+    idempotencyKey: "stripe:checkout:cs_paid:interview_pass",
+  });
+  await ledger.grantCredits({
+    userId: "user-refund",
+    catalogId: "interview_pass",
+    source: "admin",
+    sourceId: "support",
+    idempotencyKey: "admin:unrelated",
+  });
+
+  const input = {
+    userId: "user-refund",
+    grantIdempotencyKey: "stripe:checkout:cs_paid:interview_pass",
+    stripeEventId: "evt_refund",
+    providerAdjustmentId: "re_refund",
+    adjustmentType: "refund" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+    currency: "usd",
+  };
+  const first = await ledger.revokePaidGrant(input);
+  const replay = await ledger.revokePaidGrant({
+    ...input,
+    stripeEventId: "evt_refund_updated",
+  });
+
+  assert.equal(first.adjustment.revokedCredits, 1);
+  assert.equal(first.adjustment.unrecoverableCredits, 0);
+  assert.equal(replay.adjustment.id, first.adjustment.id);
+  assert.equal(replay.duplicate, true);
+  assert.equal(
+    (await ledger.getCreditBalance("user-refund")).availableCredits,
+    1
+  );
+  const paidGrant = await store.findGrantByIdempotencyKey(
+    input.grantIdempotencyKey
+  );
+  assert.equal(paidGrant?.remainingCredits, 0);
+  assert.equal(paidGrant?.revocationKey, `payment:${paidGrant?.id}`);
+});
+
+test("cumulative partial refunds use floor rounding and never over-revoke", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  await ledger.grantCredits({
+    userId: "user-partial",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: "stripe:invoice:in_partial:starter",
+  });
+  const base = {
+    userId: "user-partial",
+    paymentHistoryId: "payment-partial",
+    grantIdempotencyKey: "stripe:invoice:in_partial:starter",
+    adjustmentType: "refund" as const,
+    sourcePaymentAmountInCents: 1900,
+    currency: "usd",
+  };
+
+  const goodwill = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_partial_1",
+    providerAdjustmentId: "re_partial_1",
+    amountInCents: 100,
+  });
+  assert.equal(goodwill.adjustment.revokedCredits, 0);
+  assert.equal(goodwill.adjustment.unrecoverableCredits, 0);
+  assert.equal(
+    (await ledger.getCreditBalance("user-partial")).availableCredits,
+    4
+  );
+
+  const first = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_partial_2",
+    providerAdjustmentId: "re_partial_2",
+    amountInCents: 400,
+  });
+  assert.equal(first.adjustment.revokedCredits, 1);
+
+  const second = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_partial_3",
+    providerAdjustmentId: "re_partial_3",
+    amountInCents: 450,
+  });
+  assert.equal(second.adjustment.revokedCredits, 1);
+
+  const capped = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_partial_4",
+    providerAdjustmentId: "re_partial_4",
+    amountInCents: 5000,
+  });
+  assert.equal(capped.adjustment.revokedCredits, 2);
+  assert.equal(
+    (await ledger.getCreditBalance("user-partial")).availableCredits,
+    0
+  );
+});
+
+test("reinstating one full withdrawal transfers the freeze to another active withdrawal", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const grantKey = "stripe:invoice:in_two_full:starter";
+  await ledger.grantCredits({
+    userId: "user-two-full",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: grantKey,
+  });
+  const base = {
+    userId: "user-two-full",
+    paymentHistoryId: "payment-two-full",
+    grantIdempotencyKey: grantKey,
+    adjustmentType: "refund" as const,
+    amountInCents: 1900,
+    sourcePaymentAmountInCents: 1900,
+    currency: "usd",
+  };
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_full_a",
+    providerAdjustmentId: "re_full_a",
+  });
+  const second = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_full_b",
+    providerAdjustmentId: "re_full_b",
+  });
+  assert.equal(second.adjustment.revokedCredits, 0);
+  assert.equal(
+    (await ledger.getCreditBalance("user-two-full")).availableCredits,
+    0
+  );
+
+  const firstRestored = await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_full_a_failed",
+    providerAdjustmentId: "re_full_a",
+  });
+  assert.equal(firstRestored.adjustment.revokedCredits, 0);
+  assert.equal(firstRestored.adjustment.unrecoverableCredits, 0);
+  assert.equal(
+    (await ledger.getCreditBalance("user-two-full")).availableCredits,
+    0
+  );
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-two-full",
+        reservationKey: "session:still-frozen",
+      }),
+    /insufficient_credits/
+  );
+
+  const secondRestored = await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_full_b_failed",
+    providerAdjustmentId: "re_full_b",
+  });
+  assert.equal(secondRestored.adjustment.revokedCredits, 4);
+  assert.equal(
+    (await ledger.getCreditBalance("user-two-full")).availableCredits,
+    4
+  );
+});
+
+test("aggregate full-to-partial downgrade clears the global source marker in either order", async (t) => {
+  for (const firstProvider of ["re_half_a", "re_half_b"] as const) {
+    await t.test(firstProvider, async () => {
+      const store = createMemoryCreditLedgerStore();
+      const ledger = createCreditLedgerService({ store });
+      const userId = `user-half-${firstProvider}`;
+      const grantKey = `stripe:invoice:${firstProvider}:starter`;
+      await ledger.grantCredits({
+        userId,
+        catalogId: "starter",
+        source: "subscription_renewal",
+        idempotencyKey: grantKey,
+      });
+      const base = {
+        userId,
+        paymentHistoryId: `payment-${firstProvider}`,
+        grantIdempotencyKey: grantKey,
+        adjustmentType: "refund" as const,
+        amountInCents: 950,
+        sourcePaymentAmountInCents: 1900,
+      };
+      for (const providerAdjustmentId of ["re_half_a", "re_half_b"]) {
+        await ledger.revokePaidGrant({
+          ...base,
+          stripeEventId: `evt-${firstProvider}-${providerAdjustmentId}`,
+          providerAdjustmentId,
+        });
+      }
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 0);
+
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${firstProvider}-reinstated`,
+        providerAdjustmentId: firstProvider,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 2);
+      assert.equal(
+        (await store.findGrantByIdempotencyKey(grantKey))?.revokedAt,
+        null
+      );
+
+      const secondProvider =
+        firstProvider === "re_half_a" ? "re_half_b" : "re_half_a";
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${secondProvider}-reinstated`,
+        providerAdjustmentId: secondProvider,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 4);
+    });
+  }
+});
+
+test("aggregate downgrade counts consumed credits as already accounted", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const userId = "user-half-consumed";
+  const grantKey = "stripe:invoice:half-consumed:starter";
+  await ledger.grantCredits({
+    userId,
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: grantKey,
+  });
+  await ledger.reserveCredit({
+    userId,
+    reservationKey: "session:half-consumed",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:half-consumed",
+    idempotencyKey: "consume:half-consumed",
+  });
+  const base = {
+    userId,
+    paymentHistoryId: "payment-half-consumed",
+    grantIdempotencyKey: grantKey,
+    adjustmentType: "refund" as const,
+    amountInCents: 950,
+    sourcePaymentAmountInCents: 1900,
+  };
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt-half-consumed-a",
+    providerAdjustmentId: "re_half_consumed_a",
+  });
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt-half-consumed-b",
+    providerAdjustmentId: "re_half_consumed_b",
+  });
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt-half-consumed-a-failed",
+    providerAdjustmentId: "re_half_consumed_a",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 2);
+  assert.equal(
+    (await store.findGrantByIdempotencyKey(grantKey))?.revokedAt,
+    null
+  );
+
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt-half-consumed-b-failed",
+    providerAdjustmentId: "re_half_consumed_b",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 3);
+});
+
+test("aggregate state converges after overlapping partial reversals change owners", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const userId = "user-overlapping-partials";
+  const grantKey = "stripe:invoice:overlapping-partials:starter";
+  const paymentHistoryId = "payment-overlapping-partials";
+  await ledger.grantCredits({
+    userId,
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: grantKey,
+  });
+  await ledger.reserveCredit({
+    userId,
+    reservationKey: "session:overlapping-partials",
+    credits: 3,
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:overlapping-partials",
+    idempotencyKey: "consume:overlapping-partials",
+  });
+  const base = {
+    userId,
+    paymentHistoryId,
+    grantIdempotencyKey: grantKey,
+    adjustmentType: "refund" as const,
+    amountInCents: 950,
+    sourcePaymentAmountInCents: 1900,
+  };
+  for (const providerAdjustmentId of ["re_overlap_a", "re_overlap_b"]) {
+    await ledger.revokePaidGrant({
+      ...base,
+      stripeEventId: `evt-${providerAdjustmentId}`,
+      providerAdjustmentId,
+    });
+  }
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt-re_overlap_a-failed",
+    providerAdjustmentId: "re_overlap_a",
+  });
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt-re_overlap_c",
+    providerAdjustmentId: "re_overlap_c",
+  });
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt-re_overlap_b-failed",
+    providerAdjustmentId: "re_overlap_b",
+  });
+
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 1);
+  const grant = await store.findGrantByIdempotencyKey(grantKey);
+  assert.ok(grant);
+  assert.equal(grant.revokedAt, null);
+  const state = await store.withUserTransaction(userId, (transaction) =>
+    transaction.findBillingPaymentStateForUpdate(grant.id)
+  );
+  assert.deepEqual(
+    state && {
+      targetCredits: state.targetCredits,
+      revokedCredits: state.revokedCredits,
+      unrecoverableCredits: state.unrecoverableCredits,
+      consumedCredits: state.consumedCredits,
+      grantRevocations: state.grantRevocations,
+      allocationRevocations: state.allocationRevocations,
+    },
+    {
+      targetCredits: 2,
+      revokedCredits: 0,
+      unrecoverableCredits: 2,
+      consumedCredits: 2,
+      grantRevocations: [],
+      allocationRevocations: [],
+    }
+  );
+
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt-re_overlap_c-failed",
+    providerAdjustmentId: "re_overlap_c",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 1);
+});
+
+test("aggregate downgrade preserves active and released frozen allocations", async (t) => {
+  for (const releaseBeforeReinstate of [false, true]) {
+    await t.test(releaseBeforeReinstate ? "released" : "active", async () => {
+      const store = createMemoryCreditLedgerStore();
+      const ledger = createCreditLedgerService({ store });
+      const userId = `user-half-${releaseBeforeReinstate ? "released" : "active"}`;
+      const grantKey = `stripe:invoice:${userId}:starter`;
+      const reservationKey = `session:${userId}`;
+      await ledger.grantCredits({
+        userId,
+        catalogId: "starter",
+        source: "subscription_renewal",
+        idempotencyKey: grantKey,
+      });
+      await ledger.reserveCredit({
+        userId,
+        reservationKey,
+        credits: 2,
+      });
+      const base = {
+        userId,
+        paymentHistoryId: `payment-${userId}`,
+        grantIdempotencyKey: grantKey,
+        adjustmentType: "refund" as const,
+        amountInCents: 950,
+        sourcePaymentAmountInCents: 1900,
+      };
+      await ledger.revokePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-a`,
+        providerAdjustmentId: `re-${userId}-a`,
+      });
+      await ledger.revokePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-b`,
+        providerAdjustmentId: `re-${userId}-b`,
+      });
+      if (releaseBeforeReinstate) {
+        await ledger.releaseReservation({
+          reservationKey,
+          idempotencyKey: `release:${userId}`,
+        });
+      }
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-a-failed`,
+        providerAdjustmentId: `re-${userId}-a`,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 2);
+      assert.equal(
+        (await store.findGrantByIdempotencyKey(grantKey))?.revokedAt,
+        null
+      );
+
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-b-failed`,
+        providerAdjustmentId: `re-${userId}-b`,
+      });
+      if (!releaseBeforeReinstate) {
+        await ledger.releaseReservation({
+          reservationKey,
+          idempotencyKey: `release:${userId}`,
+        });
+      }
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 4);
+    });
+  }
+});
+
+test("failed refund reinstates a released frozen allocation exactly once", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const grantKey = "stripe:checkout:cs_reinstate:interview_pass";
+  await ledger.grantCredits({
+    userId: "user-reinstate",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: grantKey,
+  });
+  await ledger.reserveCredit({
+    userId: "user-reinstate",
+    reservationKey: "session:reinstate",
+  });
+  const base = {
+    userId: "user-reinstate",
+    grantIdempotencyKey: grantKey,
+    providerAdjustmentId: "re_reinstate",
+    adjustmentType: "refund" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+    currency: "usd",
+  };
+  await ledger.revokePaidGrant({ ...base, stripeEventId: "evt_withdraw" });
+  await ledger.releaseReservation({
+    reservationKey: "session:reinstate",
+    idempotencyKey: "release:session:reinstate",
+  });
+  assert.equal(
+    (await ledger.getCreditBalance("user-reinstate")).availableCredits,
+    0
+  );
+
+  const reinstated = await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_reinstate",
+  });
+  const replay = await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_reinstate_updated",
+  });
+  assert.equal(reinstated.adjustment.revokedCredits, 1);
+  assert.equal(replay.duplicate, true);
+  assert.equal(
+    (await ledger.getCreditBalance("user-reinstate")).availableCredits,
+    1
+  );
+});
+
+test("reinstatement never restores a frozen allocation consumed in flight", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const grantKey = "stripe:checkout:cs_frozen_consume:interview_pass";
+  await ledger.grantCredits({
+    userId: "user-frozen-consume",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: grantKey,
+  });
+  await ledger.reserveCredit({
+    userId: "user-frozen-consume",
+    reservationKey: "session:frozen-consume",
+  });
+  const base = {
+    userId: "user-frozen-consume",
+    grantIdempotencyKey: grantKey,
+    providerAdjustmentId: "dp_frozen_consume",
+    adjustmentType: "dispute" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+  };
+  await ledger.revokePaidGrant({ ...base, stripeEventId: "evt_frozen" });
+  await ledger.consumeReservation({
+    reservationKey: "session:frozen-consume",
+    idempotencyKey: "consume:session:frozen-consume",
+  });
+  const restored = await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_funds_reinstated",
+  });
+  assert.equal(restored.adjustment.revokedCredits, 0);
+  assert.equal(restored.adjustment.unrecoverableCredits, 1);
+  assert.equal(
+    (await ledger.getCreditBalance("user-frozen-consume")).availableCredits,
+    0
+  );
+});
+
+test("refunding a consumed frozen allocation preserves unrecoverable provenance across overlapping withdrawals", async (t) => {
+  for (const firstReinstated of ["re_frozen_a", "re_frozen_b"] as const) {
+    await t.test(firstReinstated, async () => {
+      const store = createMemoryCreditLedgerStore();
+      const ledger = createCreditLedgerService({ store });
+      const userId = `user-refunded-frozen-${firstReinstated}`;
+      const grantKey = `stripe:checkout:${userId}:interview_pass`;
+      const paymentHistoryId = `payment-${userId}`;
+      await ledger.grantCredits({
+        userId,
+        catalogId: "interview_pass",
+        source: "checkout",
+        idempotencyKey: grantKey,
+      });
+      await ledger.reserveCredit({
+        userId,
+        reservationKey: `session:${userId}`,
+      });
+      const base = {
+        userId,
+        paymentHistoryId,
+        grantIdempotencyKey: grantKey,
+        adjustmentType: "refund" as const,
+        amountInCents: 900,
+        sourcePaymentAmountInCents: 900,
+      };
+      await ledger.revokePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-a`,
+        providerAdjustmentId: "re_frozen_a",
+      });
+      await ledger.consumeReservation({
+        reservationKey: `session:${userId}`,
+        idempotencyKey: `consume:${userId}`,
+      });
+      await ledger.revokePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-b`,
+        providerAdjustmentId: "re_frozen_b",
+      });
+      await ledger.refundReservation({
+        reservationKey: `session:${userId}`,
+        idempotencyKey: `refund:${userId}`,
+      });
+
+      const secondReinstated =
+        firstReinstated === "re_frozen_a" ? "re_frozen_b" : "re_frozen_a";
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-${firstReinstated}-reinstate`,
+        providerAdjustmentId: firstReinstated,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 0);
+      const grant = await store.findGrantByIdempotencyKey(grantKey);
+      assert.ok(grant);
+      const intermediate = await store.withUserTransaction(
+        userId,
+        (transaction) => transaction.findBillingPaymentStateForUpdate(grant.id)
+      );
+      assert.deepEqual(
+        intermediate && {
+          targetCredits: intermediate.targetCredits,
+          revokedCredits: intermediate.revokedCredits,
+          unrecoverableCredits: intermediate.unrecoverableCredits,
+          consumedCredits: intermediate.consumedCredits,
+        },
+        {
+          targetCredits: 1,
+          revokedCredits: 0,
+          unrecoverableCredits: 1,
+          consumedCredits: 1,
+        }
+      );
+
+      await ledger.reinstatePaidGrant({
+        ...base,
+        stripeEventId: `evt-${userId}-${secondReinstated}-reinstate`,
+        providerAdjustmentId: secondReinstated,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 0);
+      const finalState = await store.withUserTransaction(
+        userId,
+        (transaction) => transaction.findBillingPaymentStateForUpdate(grant.id)
+      );
+      assert.deepEqual(
+        finalState && {
+          targetCredits: finalState.targetCredits,
+          revokedCredits: finalState.revokedCredits,
+          unrecoverableCredits: finalState.unrecoverableCredits,
+          consumedCredits: finalState.consumedCredits,
+        },
+        {
+          targetCredits: 0,
+          revokedCredits: 0,
+          unrecoverableCredits: 0,
+          consumedCredits: 0,
+        }
+      );
+    });
+  }
+});
+
+test("out-of-order reinstatement prevents a later withdrawal from freezing credits", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const grantKey = "stripe:checkout:cs_reordered:interview_pass";
+  await ledger.grantCredits({
+    userId: "user-reordered",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: grantKey,
+  });
+  const base = {
+    userId: "user-reordered",
+    grantIdempotencyKey: grantKey,
+    providerAdjustmentId: "dp_reordered",
+    adjustmentType: "dispute" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+  };
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_reinstate_first",
+  });
+  const withdrawal = await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_withdraw_late",
+  });
+  assert.equal(withdrawal.adjustment.revokedCredits, 0);
+  assert.equal(
+    (await ledger.getCreditBalance("user-reordered")).availableCredits,
+    1
+  );
+});
+
+test("dispute withdrawal followed by reinstatement restores available credits", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const userId = "user-dispute-normal-order";
+  const grantKey = "stripe:checkout:cs_dispute_normal:interview_pass";
+  await ledger.grantCredits({
+    userId,
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: grantKey,
+  });
+  const base = {
+    userId,
+    grantIdempotencyKey: grantKey,
+    providerAdjustmentId: "dp_normal_order",
+    adjustmentType: "dispute" as const,
+    amountInCents: 900,
+    sourcePaymentAmountInCents: 900,
+  };
+  await ledger.revokePaidGrant({ ...base, stripeEventId: "evt_withdraw" });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 0);
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_reinstate",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 1);
+});
+
+test("payment status reflects all active refund and dispute adjustments", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const statuses: string[] = [];
+  store.updatePaymentHistoryStatus = async (_paymentId, status) => {
+    statuses.push(status);
+  };
+  const ledger = createCreditLedgerService({ store });
+  const grantKey = "stripe:invoice:in_aggregate:starter";
+  await ledger.grantCredits({
+    userId: "user-aggregate",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: grantKey,
+  });
+  const base = {
+    userId: "user-aggregate",
+    paymentHistoryId: "payment-aggregate",
+    grantIdempotencyKey: grantKey,
+    sourcePaymentAmountInCents: 1900,
+    currency: "usd",
+  };
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_refund_a",
+    providerAdjustmentId: "re_a",
+    adjustmentType: "refund",
+    amountInCents: 500,
+  });
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_refund_b",
+    providerAdjustmentId: "re_b",
+    adjustmentType: "refund",
+    amountInCents: 500,
+  });
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_refund_a_failed",
+    providerAdjustmentId: "re_a",
+    adjustmentType: "refund",
+    amountInCents: 500,
+  });
+  assert.equal(statuses.at(-1), "partially_refunded");
+
+  await ledger.revokePaidGrant({
+    ...base,
+    stripeEventId: "evt_dispute",
+    providerAdjustmentId: "dp_aggregate",
+    adjustmentType: "dispute",
+    amountInCents: 1400,
+  });
+  assert.equal(statuses.at(-1), "disputed");
+  await ledger.reinstatePaidGrant({
+    ...base,
+    stripeEventId: "evt_dispute_won",
+    providerAdjustmentId: "dp_aggregate",
+    adjustmentType: "dispute",
+    amountInCents: 1400,
+  });
+  assert.equal(statuses.at(-1), "partially_refunded");
+});
+
+test("releasing an active allocation after payment reversal cannot resurrect credits", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-10T12:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-reserved",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "stripe:checkout:cs_reserved:interview_pass",
+  });
+  await ledger.reserveCredit({
+    userId: "user-reserved",
+    reservationKey: "session:reserved",
+  });
+
+  const result = await ledger.revokePaidGrant({
+    userId: "user-reserved",
+    grantIdempotencyKey: "stripe:checkout:cs_reserved:interview_pass",
+    stripeEventId: "evt_reserved_refund",
+    providerAdjustmentId: "re_reserved",
+    adjustmentType: "refund",
+  });
+  assert.equal(result.adjustment.remainingCredits, 0);
+  assert.equal(result.adjustment.reservedCredits, 1);
+  assert.equal(result.adjustment.revokedCredits, 1);
+
+  await ledger.releaseReservation({
+    reservationKey: "session:reserved",
+    idempotencyKey: "release:session:reserved",
+  });
+  assert.deepEqual(await ledger.getCreditBalance("user-reserved"), {
+    availableCredits: 0,
+    reservedCredits: 0,
+    expiringCredits: 0,
+    nextCreditExpiresAt: null,
+  });
+});
+
+test("payment reversal records consumed credits without debt or unrelated clawback", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  await ledger.grantCredits({
+    userId: "user-consumed",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "stripe:checkout:cs_consumed:interview_pass",
+  });
+  await ledger.grantCredits({
+    userId: "user-consumed",
+    catalogId: "interview_pass",
+    source: "admin",
+    idempotencyKey: "admin:make-good",
+  });
+  await ledger.reserveCredit({
+    userId: "user-consumed",
+    reservationKey: "session:consumed",
+  });
+  await ledger.consumeReservation({
+    reservationKey: "session:consumed",
+    idempotencyKey: "consume:session:consumed",
+  });
+
+  const result = await ledger.revokePaidGrant({
+    userId: "user-consumed",
+    grantIdempotencyKey: "stripe:checkout:cs_consumed:interview_pass",
+    stripeEventId: "evt_dispute",
+    providerAdjustmentId: "dp_consumed",
+    adjustmentType: "dispute",
+  });
+  assert.equal(result.adjustment.consumedCredits, 1);
+  assert.equal(result.adjustment.revokedCredits, 0);
+  assert.equal(result.adjustment.unrecoverableCredits, 1);
+  assert.equal(
+    (await ledger.getCreditBalance("user-consumed")).availableCredits,
+    1
+  );
+});
+
+test("payment reversal follows the paid source into rollover without touching renewal credits", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-10T12:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-rollover-refund",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    sourceId: "in_old",
+    idempotencyKey: "stripe:invoice:in_old:starter",
+  });
+  await ledger.renewSubscriptionCredits({
+    userId: "user-rollover-refund",
+    catalogId: "starter",
+    sourceId: "in_new",
+    renewalIdempotencyKey: "stripe:invoice:in_new:starter",
+    rolloverIdempotencyKey: "stripe:rollover:in_new:starter",
+  });
+  assert.equal(
+    (await ledger.getCreditBalance("user-rollover-refund")).availableCredits,
+    8
+  );
+
+  const result = await ledger.revokePaidGrant({
+    userId: "user-rollover-refund",
+    grantIdempotencyKey: "stripe:invoice:in_old:starter",
+    stripeEventId: "evt_old_refund",
+    providerAdjustmentId: "re_old",
+    adjustmentType: "refund",
+  });
+  assert.equal(result.adjustment.revokedCredits, 4);
+  assert.equal(
+    (await ledger.getCreditBalance("user-rollover-refund")).availableCredits,
+    4
+  );
+});
+
+test("pooled rollover consumption belongs to exactly one payment source", async (t) => {
+  for (const mode of ["a-then-b", "b-then-a", "concurrent"] as const) {
+    await t.test(mode, async () => {
+      const store = createMemoryCreditLedgerStore();
+      const userId = `user-pooled-${mode}`;
+      const ledger = createCreditLedgerService({
+        store,
+        now: () => new Date("2026-07-10T12:00:00.000Z"),
+      });
+      const grantAKey = `stripe:invoice:${userId}:a:starter`;
+      const grantBKey = `stripe:invoice:${userId}:b:starter`;
+      const paymentA = `payment-${userId}-a`;
+      const paymentB = `payment-${userId}-b`;
+      const grantA = await ledger.grantCredits({
+        userId,
+        catalogId: "starter",
+        source: "subscription_renewal",
+        sourceId: "in_a",
+        idempotencyKey: grantAKey,
+      });
+      await ledger.reserveCredit({
+        userId,
+        reservationKey: `${userId}:consume-a`,
+        credits: 3,
+      });
+      await ledger.consumeReservation({
+        reservationKey: `${userId}:consume-a`,
+        idempotencyKey: `${userId}:consume-a:terminal`,
+      });
+
+      const temporaryDispute = {
+        userId,
+        paymentHistoryId: paymentA,
+        grantIdempotencyKey: grantAKey,
+        providerAdjustmentId: `dp-${userId}-temporary`,
+        adjustmentType: "dispute" as const,
+        amountInCents: 1900,
+        sourcePaymentAmountInCents: 1900,
+        currency: "usd",
+      };
+      await ledger.revokePaidGrant({
+        ...temporaryDispute,
+        stripeEventId: `evt-${userId}-temporary-withdraw`,
+      });
+
+      const grantB = await ledger.grantCredits({
+        userId,
+        catalogId: "starter",
+        source: "subscription_renewal",
+        sourceId: "in_b",
+        idempotencyKey: grantBKey,
+      });
+      await ledger.reserveCredit({
+        userId,
+        reservationKey: `${userId}:consume-b`,
+        credits: 3,
+      });
+      await ledger.consumeReservation({
+        reservationKey: `${userId}:consume-b`,
+        idempotencyKey: `${userId}:consume-b:terminal`,
+      });
+      await ledger.reinstatePaidGrant({
+        ...temporaryDispute,
+        stripeEventId: `evt-${userId}-temporary-reinstate`,
+      });
+
+      const renewal = await ledger.renewSubscriptionCredits({
+        userId,
+        catalogId: "starter",
+        sourceId: "in_c",
+        renewalIdempotencyKey: `stripe:invoice:${userId}:c:starter`,
+        rolloverIdempotencyKey: `stripe:rollover:${userId}:c:starter`,
+      });
+      assert.equal(renewal.rolledCredits, 2);
+      await ledger.reserveCredit({
+        userId,
+        reservationKey: `${userId}:consume-rollover`,
+      });
+      await ledger.consumeReservation({
+        reservationKey: `${userId}:consume-rollover`,
+        idempotencyKey: `${userId}:consume-rollover:terminal`,
+      });
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 5);
+
+      const refundA = {
+        userId,
+        paymentHistoryId: paymentA,
+        grantIdempotencyKey: grantAKey,
+        stripeEventId: `evt-${userId}-refund-a`,
+        providerAdjustmentId: `re-${userId}-a`,
+        adjustmentType: "refund" as const,
+        amountInCents: 1900,
+        sourcePaymentAmountInCents: 1900,
+        currency: "usd",
+      };
+      const refundB = {
+        ...refundA,
+        paymentHistoryId: paymentB,
+        grantIdempotencyKey: grantBKey,
+        stripeEventId: `evt-${userId}-refund-b`,
+        providerAdjustmentId: `re-${userId}-b`,
+      };
+      if (mode === "a-then-b") {
+        await ledger.revokePaidGrant(refundA);
+        await ledger.revokePaidGrant(refundB);
+      } else if (mode === "b-then-a") {
+        await ledger.revokePaidGrant(refundB);
+        await ledger.revokePaidGrant(refundA);
+      } else {
+        await Promise.all([
+          ledger.revokePaidGrant(refundA),
+          ledger.revokePaidGrant(refundB),
+        ]);
+      }
+      await ledger.revokePaidGrant(refundA);
+      await ledger.revokePaidGrant(refundB);
+
+      assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 4);
+      const [stateA, stateB] = await store.withUserTransaction(
+        userId,
+        async (transaction) => [
+          await transaction.findBillingPaymentStateForUpdate(grantA.grant.id),
+          await transaction.findBillingPaymentStateForUpdate(grantB.grant.id),
+        ]
+      );
+      assert.ok(stateA);
+      assert.ok(stateB);
+      assert.equal(
+        stateA.unrecoverableCredits + stateB.unrecoverableCredits,
+        7
+      );
+      assert.equal(stateA.revokedCredits + stateB.revokedCredits, 1);
+      assert.deepEqual(
+        [
+          [stateA.unrecoverableCredits, stateA.revokedCredits],
+          [stateB.unrecoverableCredits, stateB.revokedCredits],
+        ].sort((left, right) => left[0] - right[0]),
+        [
+          [3, 1],
+          [4, 0],
+        ]
+      );
+    });
+  }
+});
+
+test("rollover lot allocation release and reinstatement preserve source ownership", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const userId = "user-rollover-reserved";
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-10T12:00:00.000Z"),
+  });
+  const sourceKey = "stripe:invoice:rollover-reserved:old:starter";
+  await ledger.grantCredits({
+    userId,
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: sourceKey,
+  });
+  await ledger.renewSubscriptionCredits({
+    userId,
+    catalogId: "starter",
+    sourceId: "in_rollover_reserved_new",
+    renewalIdempotencyKey: "stripe:invoice:rollover-reserved:new:starter",
+    rolloverIdempotencyKey: "stripe:rollover:rollover-reserved:new:starter",
+  });
+  await ledger.reserveCredit({
+    userId,
+    reservationKey: "session:rollover-reserved",
+  });
+  const reversal = {
+    userId,
+    grantIdempotencyKey: sourceKey,
+    providerAdjustmentId: "re_rollover_reserved",
+    adjustmentType: "refund" as const,
+    amountInCents: 1900,
+    sourcePaymentAmountInCents: 1900,
+  };
+  const withdrawn = await ledger.revokePaidGrant({
+    ...reversal,
+    stripeEventId: "evt_rollover_reserved_withdraw",
+  });
+  assert.equal(withdrawn.adjustment.remainingCredits, 3);
+  assert.equal(withdrawn.adjustment.reservedCredits, 1);
+  await ledger.releaseReservation({
+    reservationKey: "session:rollover-reserved",
+    idempotencyKey: "release:session:rollover-reserved",
+  });
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 4);
+
+  const reinstated = await ledger.reinstatePaidGrant({
+    ...reversal,
+    stripeEventId: "evt_rollover_reserved_reinstate",
+  });
+  assert.equal(reinstated.adjustment.remainingCredits, 3);
+  assert.equal(reinstated.adjustment.reservedCredits, 1);
+  assert.equal((await ledger.getCreditBalance(userId)).availableCredits, 8);
+});
+
+test("expired rollover lots remain attributed without a second clawback", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const userId = "user-rollover-expired";
+  const issued = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-10T12:00:00.000Z"),
+  });
+  const sourceKey = "stripe:invoice:rollover-expired:old:starter";
+  await issued.grantCredits({
+    userId,
+    catalogId: "starter",
+    source: "subscription_renewal",
+    idempotencyKey: sourceKey,
+  });
+  await issued.renewSubscriptionCredits({
+    userId,
+    catalogId: "starter",
+    sourceId: "in_rollover_expired_new",
+    renewalIdempotencyKey: "stripe:invoice:rollover-expired:new:starter",
+    rolloverIdempotencyKey: "stripe:rollover:rollover-expired:new:starter",
+  });
+  const expired = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-09-10T12:00:00.000Z"),
+  });
+  assert.equal((await expired.expireCredits(userId)).expiredCredits, 4);
+  const reversal = await expired.revokePaidGrant({
+    userId,
+    grantIdempotencyKey: sourceKey,
+    stripeEventId: "evt_rollover_expired_refund",
+    providerAdjustmentId: "re_rollover_expired",
+    adjustmentType: "refund",
+    amountInCents: 1900,
+    sourcePaymentAmountInCents: 1900,
+  });
+  assert.equal(reversal.adjustment.revokedCredits, 0);
+  assert.equal(reversal.adjustment.unrecoverableCredits, 4);
+  assert.equal((await expired.getCreditBalance(userId)).availableCredits, 4);
+});
+
 test("provider refund creates one usable make-good when the source grant expired", async () => {
   const store = createMemoryCreditLedgerStore();
   const issued = createCreditLedgerService({
@@ -877,7 +1993,9 @@ test("provider refund creates one usable make-good when the source grant expired
 
 test("subscription renewal respects the rollover cap and 60 day expiration", async () => {
   const store = createMemoryCreditLedgerStore();
-  const renewedAt = new Date();
+  // Keep the domain clock independent from wall time so replay validation never
+  // relies on storage timestamps created by a different clock.
+  const renewedAt = new Date("2026-07-10T12:00:00.000Z");
   const ledger = createCreditLedgerService({
     store,
     now: () => renewedAt,
@@ -1038,7 +2156,7 @@ test("subscription renewal atomically rolls prior credits and replays one result
   assert.equal((await store.listUserGrants("user-1")).length, 3);
 });
 
-test("subscription renewal repairs a complete legacy rollover missing its renewal grant", async () => {
+test("subscription renewal rejects legacy rollover without durable source lots", async () => {
   const store = createMemoryCreditLedgerStore();
   const ledger = createCreditLedgerService({
     store,
@@ -1092,18 +2210,108 @@ test("subscription renewal repairs a complete legacy rollover missing its renewa
     metadata: null,
   });
 
-  const repaired = await ledger.renewSubscriptionCredits({
-    userId: "user-1",
+  await assert.rejects(
+    () =>
+      ledger.renewSubscriptionCredits({
+        userId: "user-1",
+        catalogId: "starter",
+        sourceId: "in_current",
+        renewalIdempotencyKey: "stripe:invoice:current:starter",
+        rolloverIdempotencyKey: "stripe:rollover:current:starter",
+      }),
+    /credit_rollover_incomplete/
+  );
+  assert.equal(
+    await store.findGrantByIdempotencyKey("stripe:invoice:current:starter"),
+    null
+  );
+});
+
+test("subscription renewal rejects orphan rollover with an invalid durable expiry contract", async () => {
+  const issuedAt = new Date("2026-08-01T00:00:00.000Z");
+  const invalidExpiry = new Date("2099-01-01T00:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store, now: () => issuedAt });
+  const source = await ledger.grantCredits({
+    userId: "user-invalid-orphan-expiry",
     catalogId: "starter",
-    sourceId: "in_current",
-    renewalIdempotencyKey: "stripe:invoice:current:starter",
-    rolloverIdempotencyKey: "stripe:rollover:current:starter",
+    source: "subscription_renewal",
+    sourceId: "in_prior_invalid_expiry",
+    idempotencyKey: "stripe:invoice:prior-invalid-expiry:starter",
+  });
+  const rollover = await store.createGrant({
+    userId: "user-invalid-orphan-expiry",
+    catalogId: "starter",
+    source: "rollover",
+    sourceId: "in_invalid_expiry",
+    idempotencyKey: "stripe:rollover:invalid-expiry:starter",
+    originalCredits: 4,
+    remainingCredits: 4,
+    reservedCredits: 0,
+    expiresAt: invalidExpiry,
+    rolloverEligible: false,
+    rolloverSourceGrantId: source.grant.id,
+    metadata: null,
+  });
+  await store.updateGrantBalances(source.grant.id, {
+    remainingCredits: 0,
+    reservedCredits: 0,
+  });
+  await store.createRolloverLot({
+    userId: "user-invalid-orphan-expiry",
+    rolloverGrantId: rollover.id,
+    sourceGrantId: source.grant.id,
+    originalCredits: 4,
+    remainingCredits: 4,
+    reservedCredits: 0,
+    consumedCredits: 0,
+    revokedCredits: 0,
+  });
+  await store.createTransaction({
+    userId: "user-invalid-orphan-expiry",
+    grantId: source.grant.id,
+    reservationId: null,
+    type: "rollover",
+    credits: 4,
+    idempotencyKey: `stripe:rollover:invalid-expiry:starter:source:${source.grant.id}`,
+    sourceId: "in_invalid_expiry",
+    balanceAfter: 0,
+    metadata: {
+      version: 1,
+      rolloverGrantId: rollover.id,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: invalidExpiry.toISOString(),
+    },
+  });
+  await store.createTransaction({
+    userId: "user-invalid-orphan-expiry",
+    grantId: rollover.id,
+    reservationId: null,
+    type: "rollover",
+    credits: 4,
+    idempotencyKey: "stripe:rollover:invalid-expiry:starter:grant",
+    sourceId: "in_invalid_expiry",
+    balanceAfter: 4,
+    metadata: null,
   });
 
-  assert.equal(repaired.rolloverGrant?.id, rollover.id);
-  assert.equal(repaired.rolledCredits, 4);
-  assert.equal(repaired.grant.source, "subscription_renewal");
-  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 8);
+  await assert.rejects(
+    () =>
+      ledger.renewSubscriptionCredits({
+        userId: "user-invalid-orphan-expiry",
+        catalogId: "starter",
+        sourceId: "in_invalid_expiry",
+        renewalIdempotencyKey: "stripe:invoice:invalid-expiry:starter",
+        rolloverIdempotencyKey: "stripe:rollover:invalid-expiry:starter",
+      }),
+    /credit_rollover_incomplete/
+  );
+  assert.equal(
+    await store.findGrantByIdempotencyKey(
+      "stripe:invoice:invalid-expiry:starter"
+    ),
+    null
+  );
 });
 
 test("subscription renewal rejects corrupt legacy rollover expiry, source, and debit evidence", async (t) => {
@@ -1175,9 +2383,7 @@ test("subscription renewal rejects corrupt legacy rollover expiry, source, and d
             renewalIdempotencyKey: "stripe:invoice:corrupt:starter",
             rolloverIdempotencyKey: "stripe:rollover:corrupt:starter",
           }),
-        scenario === "missing_debit"
-          ? /credit_ledger_reconciliation_required/
-          : /credit_rollover_incomplete/
+        /credit_rollover_incomplete/
       );
       assert.equal(
         await store.findGrantByIdempotencyKey("stripe:invoice:corrupt:starter"),

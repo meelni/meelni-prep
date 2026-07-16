@@ -9,7 +9,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { createCreditLedgerService } from "@/lib/billing/credits";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
@@ -32,6 +32,7 @@ import {
 } from "@/lib/billing/stripe-privacy";
 import {
   clearLateStripeDeletionSubjects,
+  findStripeDeletionTombstoneFingerprint,
   getAccountDeletionRequestByStripeFingerprint,
   hasAccountDeletionTombstone,
   getAccountDeletionRequest,
@@ -52,6 +53,19 @@ import {
   getStripeCatalogIdForPrice,
   isStripeCheckoutCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
+import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
+import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
+import {
+  mayApplyStripeSubscriptionResource,
+  stripeSubscriptionCursorMayApply,
+  stripeSubscriptionEventCursor,
+  type StripeSubscriptionResourceProof,
+  type StripeSubscriptionEventCursor,
+} from "@/lib/billing/stripe-subscription-event-order";
+
+const MAX_STRIPE_WEBHOOK_BODY_BYTES = 64 * 1024;
+const PAYMENT_FAILURE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Stripe Webhook Handler with Idempotency
@@ -68,7 +82,6 @@ export async function POST(req: NextRequest) {
   try {
     const stripe = getStripe();
     const webhookSecret = getStripeWebhookSecret();
-    const body = await req.text();
     const signature = req.headers.get("stripe-signature");
 
     if (!signature) {
@@ -78,16 +91,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const contentLength = req.headers.get("content-length");
+    if (
+      contentLength !== null &&
+      (!/^\d+$/.test(contentLength) ||
+        Number(contentLength) > MAX_STRIPE_WEBHOOK_BODY_BYTES)
+    ) {
+      return NextResponse.json({ error: "Webhook too large" }, { status: 413 });
+    }
+    const body = await readBoundedStripeWebhookBody(req);
+    if (!body.ok) {
+      return NextResponse.json(
+        {
+          error:
+            body.reason === "too_large"
+              ? "Webhook too large"
+              : "Invalid webhook",
+        },
+        { status: body.reason === "too_large" ? 413 : 400 }
+      );
+    }
+
     // Verify webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      event = stripe.webhooks.constructEvent(
+        body.value,
+        signature,
+        webhookSecret
+      );
     } catch {
       console.error("Webhook signature verification failed");
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
     const subject = getStripeEventSubject(event);
+    const logicalEventKey = getStripeLogicalEventKey(event);
     const metadataUserId = stripeEventMetadataUserId(event);
     const checkoutCorrelation = getCheckoutCorrelation(event, metadataUserId);
     const eventUserId =
@@ -96,8 +135,12 @@ export async function POST(req: NextRequest) {
             event.data.object as Stripe.Checkout.Session
           )
         : metadataUserId;
-    const subjectDeletionRequest = subject.fingerprint
-      ? await getAccountDeletionRequestByStripeFingerprint(subject.fingerprint)
+    const matchedDeletionFingerprint =
+      await findStripeDeletionTombstoneFingerprint(subject.fingerprints);
+    const subjectDeletionRequest = matchedDeletionFingerprint
+      ? await getAccountDeletionRequestByStripeFingerprint(
+          matchedDeletionFingerprint
+        )
       : undefined;
     const mappedUserId = await getMappedStripeCustomerUserId(
       subject.customerId
@@ -121,29 +164,30 @@ export async function POST(req: NextRequest) {
       deletionTombstone && isDeletedBillingReconciliationEvent(event.type);
 
     // CRITICAL: Idempotency check using stripe_event_log
-    const existingEvent = await db
+    let existingEvent = await db
       .select()
       .from(stripeEventLog)
-      .where(eq(stripeEventLog.stripeEventId, event.id))
+      .where(
+        logicalEventKey
+          ? or(
+              eq(stripeEventLog.stripeEventId, event.id),
+              eq(stripeEventLog.logicalEventKey, logicalEventKey)
+            )
+          : eq(stripeEventLog.stripeEventId, event.id)
+      )
       .limit(1);
 
-    if (existingEvent.length > 0) {
-      const eventLog = existingEvent[0];
+    let eventLog = existingEvent[0];
+    let logicalReplay = false;
+
+    if (eventLog) {
+      logicalReplay = eventLog.stripeEventId !== event.id;
       // Upgrade legacy rows before any early return or retry transition. This
       // prevents a process interruption from leaving an old raw payload behind.
       await db
         .update(stripeEventLog)
         .set({ payload: "{}", lastError: null })
         .where(eq(stripeEventLog.id, eventLog.id));
-
-      // If already processed, return success (idempotent)
-      if (eventLog.status === "processed" && !reconcileDeletedBilling) {
-        console.log(`Event ${event.id} already processed, skipping`);
-        return NextResponse.json({
-          received: true,
-          status: "already_processed",
-        });
-      }
 
       if (deletionTombstone && !reconcileDeletedBilling) {
         await db
@@ -153,10 +197,22 @@ export async function POST(req: NextRequest) {
             payload: "{}",
             lastError: null,
             processedAt: new Date(),
-            subjectFingerprint: subject.fingerprint,
+            subjectFingerprint: matchedDeletionFingerprint,
+            subjectFingerprints: subject.fingerprints,
           })
           .where(eq(stripeEventLog.id, eventLog.id));
         return NextResponse.json({ received: true, status: "deleted_subject" });
+      }
+
+      // Exact duplicate Event deliveries require no state validation. A new
+      // Event object with the same logical key replays the idempotent handler,
+      // which verifies the already-persisted payment truth below.
+      if (eventLog.status === "processed" && !logicalReplay) {
+        console.log("Stripe webhook duplicate skipped");
+        return NextResponse.json({
+          received: true,
+          status: "already_processed",
+        });
       }
 
       // If failed, allow retry (increment attempts)
@@ -178,22 +234,45 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Log new event
-      await db.insert(stripeEventLog).values({
-        stripeEventId: event.id,
-        eventType: event.type,
-        subjectFingerprint: subject.fingerprint,
-        // Raw Stripe payloads are never persisted. The verified event remains
-        // in memory for this request; durable logs retain only operational
-        // metadata so deletion cannot race a PII-bearing insert.
-        payload: "{}",
-        status:
-          deletionTombstone && !reconcileDeletedBilling
-            ? "processed"
-            : "pending",
-        attempts: 1,
-        processedAt:
-          deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
-      });
+      const inserted = await db
+        .insert(stripeEventLog)
+        .values({
+          stripeEventId: event.id,
+          logicalEventKey,
+          eventType: event.type,
+          subjectFingerprint: matchedDeletionFingerprint ?? subject.fingerprint,
+          subjectFingerprints: subject.fingerprints,
+          // Never persist raw Stripe payloads. The verified event is scoped to
+          // this request; durable logs retain only operational metadata.
+          payload: "{}",
+          status:
+            deletionTombstone && !reconcileDeletedBilling
+              ? "processed"
+              : "pending",
+          attempts: 1,
+          processedAt:
+            deletionTombstone && !reconcileDeletedBilling ? new Date() : null,
+        })
+        .onConflictDoNothing()
+        .returning();
+      eventLog = inserted[0];
+      if (!eventLog) {
+        existingEvent = await db
+          .select()
+          .from(stripeEventLog)
+          .where(
+            logicalEventKey
+              ? or(
+                  eq(stripeEventLog.stripeEventId, event.id),
+                  eq(stripeEventLog.logicalEventKey, logicalEventKey)
+                )
+              : eq(stripeEventLog.stripeEventId, event.id)
+          )
+          .limit(1);
+        eventLog = existingEvent[0];
+        if (!eventLog) throw new Error("stripe_event_log_conflict_unresolved");
+        logicalReplay = eventLog.stripeEventId !== event.id;
+      }
     }
 
     if (deletionTombstone) {
@@ -271,8 +350,18 @@ export async function POST(req: NextRequest) {
           await handleTrialWillEnd(event);
           break;
 
+        case "refund.created":
+        case "refund.updated":
+        case "refund.failed":
         case "charge.refunded":
-          await handleRefund(event);
+          await handleRefundOrDispute(event);
+          break;
+
+        case "charge.dispute.created":
+        case "charge.dispute.funds_withdrawn":
+        case "charge.dispute.funds_reinstated":
+        case "charge.dispute.closed":
+          await handleRefundOrDispute(event);
           break;
 
         default:
@@ -287,9 +376,12 @@ export async function POST(req: NextRequest) {
           payload: "{}",
           processedAt: new Date(),
         })
-        .where(eq(stripeEventLog.stripeEventId, event.id));
+        .where(eq(stripeEventLog.id, eventLog.id));
 
-      return NextResponse.json({ received: true });
+      return NextResponse.json({
+        received: true,
+        ...(logicalReplay ? { status: "logical_replay" } : {}),
+      });
     } catch (error) {
       if (
         isAccountDeletionPendingError(error) &&
@@ -339,7 +431,7 @@ export async function POST(req: NextRequest) {
           payload: "{}",
           lastError: safeStripeWebhookErrorCode(error),
         })
-        .where(eq(stripeEventLog.stripeEventId, event.id));
+        .where(eq(stripeEventLog.id, eventLog.id));
 
       throw error;
     }
@@ -393,7 +485,9 @@ async function getUserIdFromStripe(
   });
   if (userId) return userId;
 
-  throw new Error(`Cannot find userId for Stripe customer ${customerId}`);
+  if (fallbackMetadata) return fallbackMetadata;
+
+  throw new Error("stripe_customer_owner_not_found");
 }
 
 /**
@@ -412,6 +506,51 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
   );
 
   const eventTimestamp = new Date(event.created * 1000);
+  const eventCursor = stripeSubscriptionEventCursor(event);
+  const candidateResourceProof = subscriptionResourceProofFromEvent(
+    stripeSubscription,
+    eventCursor,
+    event.type
+  );
+
+  // Get current subscription (for optimistic locking)
+  const currentSub = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId))
+    .limit(1);
+
+  const currentResourceId = currentSub[0]?.stripeSubscriptionId ?? null;
+  const currentResourceProof = subscriptionResourceProofFromRow(currentSub[0]);
+  const replacingResource = Boolean(
+    currentResourceId && currentResourceId !== stripeSubscription.id
+  );
+  if (
+    !mayApplyStripeSubscriptionResource({
+      currentResourceId,
+      currentStatus: currentSub[0]?.status ?? null,
+      currentResourceProof,
+      retiredResourceIds: currentSub[0]?.retiredStripeSubscriptionIds ?? [],
+      candidateResourceId: stripeSubscription.id,
+      candidateResourceProof,
+      eventType: event.type,
+    })
+  ) {
+    console.log("Stripe event skipped for superseded subscription resource");
+    return;
+  }
+  const currentCursor = subscriptionEventCursorFromRow(currentSub[0]);
+  if (
+    !stripeSubscriptionCursorMayApply({
+      currentResourceId,
+      candidateResourceId: stripeSubscription.id,
+      currentCursor,
+      candidateCursor: eventCursor,
+    })
+  ) {
+    console.log("Stripe subscription event skipped as stale");
+    return;
+  }
 
   const catalogId = getStripeCatalogIdForPrice(
     stripeSubscription.items.data[0]?.price.id
@@ -443,6 +582,19 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
     stripeCustomerId: stripeSubscription.customer as string,
     stripeSubscriptionId: stripeSubscription.id,
     stripePriceId: firstItem?.price.id,
+    stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
+    stripeResourceCreatedEventTimestamp:
+      candidateResourceProof.createdEventCursor?.createdAt ??
+      currentSub[0]?.stripeResourceCreatedEventTimestamp ??
+      null,
+    stripeResourceCreatedEventId:
+      candidateResourceProof.createdEventCursor?.eventId ??
+      currentSub[0]?.stripeResourceCreatedEventId ??
+      null,
+    retiredStripeSubscriptionIds:
+      replacingResource && currentResourceId
+        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+        : (currentSub[0]?.retiredStripeSubscriptionIds ?? []),
     currentPeriodStart: firstItem?.current_period_start
       ? new Date(firstItem.current_period_start * 1000)
       : null,
@@ -457,6 +609,8 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
       : null,
     cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
     lastEventTimestamp: eventTimestamp,
+    lastEventPriority: eventCursor.priority,
+    lastEventId: eventCursor.eventId,
     updatedAt: new Date(),
     ...trialUpdates,
   };
@@ -470,21 +624,27 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
       .where(eq(subscription.userId, userId))
       .limit(1)
       .for("update");
-    if (
-      currentSub[0] &&
-      !shouldApplyStripeSubscriptionState({
-        currentStatus: currentSub[0].status,
-        currentStripeSubscriptionId: currentSub[0].stripeSubscriptionId,
-        event:
-          event.type === "customer.subscription.created"
-            ? "subscription_created"
-            : "subscription_updated",
-        eventTimestamp,
-        incomingStripeSubscriptionId: stripeSubscription.id,
-        lastEventTimestamp: currentSub[0].lastEventTimestamp,
-      })
-    ) {
-      return;
+    if (currentSub[0]) {
+      const lockedResourceId = currentSub[0].stripeSubscriptionId;
+      if (
+        !mayApplyStripeSubscriptionResource({
+          currentResourceId: lockedResourceId,
+          currentStatus: currentSub[0].status,
+          currentResourceProof: subscriptionResourceProofFromRow(currentSub[0]),
+          retiredResourceIds: currentSub[0].retiredStripeSubscriptionIds ?? [],
+          candidateResourceId: stripeSubscription.id,
+          candidateResourceProof,
+          eventType: event.type,
+        }) ||
+        !stripeSubscriptionCursorMayApply({
+          currentResourceId: lockedResourceId,
+          candidateResourceId: stripeSubscription.id,
+          currentCursor: subscriptionEventCursorFromRow(currentSub[0]),
+          candidateCursor: eventCursor,
+        })
+      ) {
+        return;
+      }
     }
     const currentVersion = currentSub[0]?.version ?? 0;
     const nextSubscriptionData = {
@@ -510,9 +670,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event) {
 
       // If no rows updated, version mismatch (concurrent update detected)
       if (result.length === 0) {
-        throw new Error(
-          `Optimistic lock failure: subscription version mismatch for user ${userId}`
-        );
+        throw new Error("stripe_subscription_version_conflict");
       }
     }
 
@@ -558,20 +716,15 @@ async function handleCheckoutCompleted(
     return "deleted_checkout_reconciled";
   }
 
-  try {
-    if (catalogId === "interview_pass") {
-      const ledger = createCreditLedgerService({
-        store: createDrizzleCreditLedgerStore(),
-      });
-      await ledger.grantCredits({
-        userId,
-        catalogId,
-        source: "checkout",
-        sourceId: session.id,
-        idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
-      });
-    }
+  if (session.payment_status !== "paid") {
+    throw new Error("checkout_payment_not_settled");
+  }
+  const paymentIntentId = getExpandableId(session.payment_intent);
+  if (!paymentIntentId || session.amount_total === null || !session.currency) {
+    throw new Error("billing_payment_correlation_required");
+  }
 
+  try {
     const customerId = getStripeCustomerId(session.customer);
     if (customerId) {
       await upsertStripeCustomerMapping({
@@ -586,6 +739,45 @@ async function handleCheckoutCompleted(
     return "deleted_checkout_reconciled";
   }
 
+  const ledger = createCreditLedgerService({
+    store: createDrizzleCreditLedgerStore(),
+  });
+  const { grant } = await ledger.grantCredits({
+    userId,
+    catalogId,
+    source: "checkout",
+    sourceId: session.id,
+    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
+  });
+  await db
+    .insert(paymentHistory)
+    .values({
+      userId,
+      stripePaymentIntentId: paymentIntentId,
+      stripeCheckoutSessionId: session.id,
+      stripeEventId: event.id,
+      creditGrantId: grant.id,
+      catalogId,
+      amountInCents: session.amount_total,
+      currency: session.currency,
+      status: "succeeded",
+      tier: catalogId,
+    })
+    .onConflictDoNothing();
+  const persisted = await db
+    .select()
+    .from(paymentHistory)
+    .where(eq(paymentHistory.stripeCheckoutSessionId, session.id))
+    .limit(1);
+  assertPersistedPayment(persisted[0], {
+    userId,
+    stripePaymentIntentId: paymentIntentId,
+    creditGrantId: grant.id,
+    catalogId,
+    amountInCents: session.amount_total,
+    currency: session.currency,
+    status: "succeeded",
+  });
   return "processed";
 }
 
@@ -654,20 +846,23 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
   }
 
   const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
+  let creditGrantId: string | null = null;
 
   if (catalogId === "starter" || catalogId === "pro") {
     const ledger = createCreditLedgerService({
       store: createDrizzleCreditLedgerStore(),
     });
-    await ledger.renewSubscriptionCredits({
+    const renewal = await ledger.renewSubscriptionCredits({
       userId,
       catalogId,
       renewalIdempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
       rolloverIdempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
       sourceId: invoice.id,
     });
+    creditGrantId = renewal.grant.id;
   }
 
+  const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
@@ -677,9 +872,12 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       .insert(paymentHistory)
       .values({
         userId,
-        stripePaymentIntentId: null,
+        stripePaymentIntentId: invoicePayment.paymentIntentId,
         stripeInvoiceId: invoice.id,
+        stripeChargeId: invoicePayment.chargeId,
         stripeEventId: event.id,
+        creditGrantId,
+        catalogId,
         amountInCents: invoice.amount_paid,
         currency: invoice.currency,
         status: "succeeded",
@@ -693,6 +891,27 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
         receiptUrl: invoice.hosted_invoice_url,
       })
       .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+
+    const persisted = await tx
+      .select()
+      .from(paymentHistory)
+      .where(
+        and(
+          eq(paymentHistory.stripeInvoiceId, invoice.id),
+          eq(paymentHistory.status, "succeeded")
+        )
+      )
+      .limit(1);
+    assertPersistedPayment(persisted[0], {
+      userId,
+      stripePaymentIntentId: invoicePayment.paymentIntentId,
+      stripeChargeId: invoicePayment.chargeId,
+      creditGrantId,
+      catalogId,
+      amountInCents: invoice.amount_paid,
+      currency: invoice.currency,
+      status: "succeeded",
+    });
 
     const [currentSub] = await tx
       .select()
@@ -745,9 +964,23 @@ async function handlePaymentFailed(event: Stripe.Event) {
     return;
   }
 
+  const settledPayment = await db
+    .select({ id: paymentHistory.id })
+    .from(paymentHistory)
+    .where(
+      and(
+        eq(paymentHistory.stripeInvoiceId, invoice.id),
+        eq(paymentHistory.status, "succeeded")
+      )
+    )
+    .limit(1);
+  if (settledPayment[0]) {
+    // Stripe does not guarantee delivery order. A delayed failure must not
+    // overwrite a later successful settlement for the same invoice.
+    return;
+  }
+
   // Set a 7-day grace period without persisting raw provider errors.
-  const gracePeriodEnd = new Date();
-  gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 7);
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
@@ -769,8 +1002,29 @@ async function handlePaymentFailed(event: Stripe.Event) {
           ? new Date(invoice.period_end * 1000)
           : null,
         failureReason: "payment_failed",
+        createdAt: stripeEventCreatedAt(event),
       })
-      .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+      .onConflictDoNothing();
+    const persisted = await tx
+      .select()
+      .from(paymentHistory)
+      .where(
+        and(
+          eq(paymentHistory.stripeInvoiceId, invoice.id),
+          eq(paymentHistory.status, "failed")
+        )
+      )
+      .limit(1);
+    assertPersistedPayment(persisted[0], {
+      userId,
+      catalogId: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+      amountInCents: invoice.amount_due,
+      currency: invoice.currency,
+      status: "failed",
+    });
+    const gracePeriodEnd = new Date(
+      persisted[0]!.createdAt.getTime() + PAYMENT_FAILURE_GRACE_MS
+    );
 
     const [currentSub] = await tx
       .select()
@@ -804,6 +1058,63 @@ async function handlePaymentFailed(event: Stripe.Event) {
   });
 }
 
+function subscriptionEventCursorFromRow(
+  row:
+    | {
+        lastEventTimestamp: Date | null;
+        lastEventPriority: number | null;
+        lastEventId: string | null;
+      }
+    | undefined
+): StripeSubscriptionEventCursor | null {
+  if (!row?.lastEventTimestamp) return null;
+  return {
+    createdAt: row.lastEventTimestamp,
+    priority: row.lastEventPriority ?? -1,
+    eventId: row.lastEventId ?? "",
+  };
+}
+
+function subscriptionResourceProofFromEvent(
+  stripeSubscription: Stripe.Subscription,
+  eventCursor: StripeSubscriptionEventCursor,
+  eventType: string
+): StripeSubscriptionResourceProof {
+  const resourceCreatedAt = new Date(stripeSubscription.created * 1000);
+  if (!Number.isFinite(resourceCreatedAt.getTime())) {
+    throw new Error("stripe_subscription_created_at_invalid");
+  }
+  return {
+    resourceCreatedAt,
+    createdEventCursor:
+      eventType === "customer.subscription.created" ? eventCursor : null,
+  };
+}
+
+function subscriptionResourceProofFromRow(
+  row:
+    | {
+        stripeResourceCreatedAt: Date | null;
+        stripeResourceCreatedEventTimestamp: Date | null;
+        stripeResourceCreatedEventId: string | null;
+      }
+    | undefined
+): StripeSubscriptionResourceProof | null {
+  if (!row?.stripeResourceCreatedAt) return null;
+  return {
+    resourceCreatedAt: row.stripeResourceCreatedAt,
+    createdEventCursor:
+      row.stripeResourceCreatedEventTimestamp &&
+      row.stripeResourceCreatedEventId
+        ? {
+            createdAt: row.stripeResourceCreatedEventTimestamp,
+            priority: 30,
+            eventId: row.stripeResourceCreatedEventId,
+          }
+        : null,
+  };
+}
+
 /**
  * Handle customer.subscription.trial_will_end event
  *
@@ -818,7 +1129,7 @@ async function handleTrialWillEnd(event: Stripe.Event) {
   }
 
   // TODO: Send trial ending email notification (Phase 1)
-  console.log(`Trial ending soon for user ${userId}`);
+  console.log("Stripe trial ending event accepted");
 }
 
 /**
@@ -826,22 +1137,36 @@ async function handleTrialWillEnd(event: Stripe.Event) {
  *
  * Phase 0.5B: Track refunds in payment history
  */
-async function handleRefund(event: Stripe.Event) {
-  const charge = event.data.object as Stripe.Charge;
-  const paymentIntentId = charge.payment_intent as string;
+async function handleRefundOrDispute(event: Stripe.Event) {
+  await reconcileStripeBillingAdjustment(
+    normalizeStripeBillingAdjustmentEvent(event)
+  );
+}
 
-  if (!paymentIntentId) {
-    console.warn("Missing payment_intent in refund event");
-    return;
+type PersistedPayment = typeof paymentHistory.$inferSelect;
+
+function assertPersistedPayment(
+  actual: PersistedPayment | undefined,
+  expected: Partial<
+    Pick<
+      PersistedPayment,
+      | "userId"
+      | "stripePaymentIntentId"
+      | "stripeChargeId"
+      | "creditGrantId"
+      | "catalogId"
+      | "amountInCents"
+      | "currency"
+      | "status"
+    >
+  >
+) {
+  if (!actual) throw new Error("billing_payment_persistence_conflict");
+  for (const [field, value] of Object.entries(expected)) {
+    if (actual[field as keyof PersistedPayment] !== value) {
+      throw new Error(`billing_payment_truth_mismatch:${field}`);
+    }
   }
-
-  // Update payment history to mark as refunded
-  await db
-    .update(paymentHistory)
-    .set({
-      status: "refunded",
-    })
-    .where(eq(paymentHistory.stripePaymentIntentId, paymentIntentId));
 }
 
 /**
@@ -899,6 +1224,35 @@ async function lockBillingUserUnlessDeleting(
     .where(eq(accountDeletionRequest.userId, userId))
     .limit(1);
   if (tombstone) throw new Error("account_deletion_pending");
+}
+
+function getExpandableId(value: { id: string } | string | null | undefined) {
+  if (!value) return null;
+  return typeof value === "string" ? value : value.id;
+}
+
+async function getInvoicePaymentCorrelation(invoice: Stripe.Invoice) {
+  const embedded = invoice.payments?.data.find(
+    (candidate) => candidate.status === "paid"
+  );
+  const invoicePayment =
+    embedded ??
+    (
+      await getStripe().invoicePayments.list({
+        invoice: invoice.id,
+        limit: 10,
+      })
+    ).data.find((candidate) => candidate.status === "paid");
+  const paymentIntent = invoicePayment?.payment.payment_intent;
+  const charge = invoicePayment?.payment.charge;
+  const expandedPaymentIntent =
+    paymentIntent && typeof paymentIntent !== "string" ? paymentIntent : null;
+  return {
+    paymentIntentId: getExpandableId(paymentIntent),
+    chargeId:
+      getExpandableId(charge) ??
+      getExpandableId(expandedPaymentIntent?.latest_charge),
+  };
 }
 
 async function upsertStripeCustomerMapping({
@@ -1322,7 +1676,7 @@ function safeStripeWebhookErrorCode(error: unknown) {
       return reconciliationCode;
     }
   }
-  return "stripe_webhook_processing_failed";
+  return stripeWebhookErrorCode(error);
 }
 
 function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {
@@ -1380,4 +1734,75 @@ function getCheckoutCorrelation(
   if (!metadataUserId && !session.client_reference_id) return "not_applicable";
   if (!correlatedUserId) throw stripeSubjectOwnerMismatch();
   return "valid";
+}
+
+async function readBoundedStripeWebhookBody(
+  req: NextRequest
+): Promise<
+  | { ok: true; value: string }
+  | { ok: false; reason: "too_large" | "unreadable" }
+> {
+  if (!req.body) return { ok: true, value: "" };
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytesRead = 0;
+  let resolveAbort!: () => void;
+  const aborted = new Promise<{ aborted: true }>((resolve) => {
+    resolveAbort = () => resolve({ aborted: true });
+  });
+  const onAbort = () => {
+    resolveAbort();
+    void reader.cancel().catch(() => undefined);
+  };
+  if (req.signal.aborted) onAbort();
+  else req.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      const next = await Promise.race([
+        reader.read().then((result) => ({ aborted: false as const, result })),
+        aborted,
+      ]);
+      if (next.aborted) return { ok: false, reason: "unreadable" };
+      const { done, value } = next.result;
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > MAX_STRIPE_WEBHOOK_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size verdict is final; cancellation is best-effort.
+        }
+        return { ok: false, reason: "too_large" };
+      }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(bytesRead);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { ok: true, value: new TextDecoder().decode(body) };
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  } finally {
+    req.signal.removeEventListener("abort", onAbort);
+    reader.releaseLock();
+  }
+}
+
+function stripeWebhookErrorCode(error: unknown) {
+  if (!(error instanceof Error)) return "stripe_webhook_processing_failed";
+  const code = error.message.split(":", 1)[0];
+  return /^(billing_|checkout_|credit_|stripe_)[a-z0-9_]+$/.test(code)
+    ? code
+    : "stripe_webhook_processing_failed";
+}
+
+function stripeEventCreatedAt(event: Stripe.Event) {
+  const value = new Date(event.created * 1000);
+  if (!Number.isFinite(value.getTime())) {
+    throw new Error("stripe_event_timestamp_invalid");
+  }
+  return value;
 }
