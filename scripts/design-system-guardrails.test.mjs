@@ -628,20 +628,23 @@ test("authenticated product routes follow the product container taxonomy", async
   assert.deepEqual(violations, []);
 });
 
-test("setup difficulty selector uses semantic selection tones", async () => {
+test("setup difficulty selector uses one neutral selection tone", async () => {
   const file = "app/setup/components/difficulty-selector.tsx";
   const content = await readFile(file, "utf8");
   const rawDifficultyTone =
     /\b(?:from|to|bg|text|border)-(?:emerald|green|orange|red|rose|yellow)-\d+(?:\/\d+)?\b/;
-  const requiredTokens = [
+  const requiredTokens = ["bg-primary/10", "text-primary"];
+  const violations = requiredTokens.filter((token) => !content.includes(token));
+  for (const retiredTone of [
     "bg-success",
     "text-success",
     "bg-warning",
     "text-warning",
     "bg-destructive",
     "text-destructive",
-  ];
-  const violations = requiredTokens.filter((token) => !content.includes(token));
+  ]) {
+    if (content.includes(retiredTone)) violations.push(retiredTone);
+  }
 
   if (rawDifficultyTone.test(content)) {
     violations.push(`${file}:raw-difficulty-tone`);
@@ -1037,22 +1040,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
       requiredImport: "DashboardChartCard",
     },
     {
-      file: "components/dashboard/charts/score-by-difficulty.tsx",
-      requiredImport: "DashboardChartCard",
-    },
-    {
-      file: "components/dashboard/next-goal-card.tsx",
-      requiredImport: "DashboardActionCard",
-    },
-    {
-      file: "components/dashboard/badge-display.tsx",
-      requiredImport: "DashboardSectionCard",
-    },
-    {
-      file: "components/dashboard/badge-display.tsx",
-      requiredImport: "DashboardSkeletonCard",
-    },
-    {
       file: "components/dashboard/error.tsx",
       requiredImport: "DashboardStateCard",
     },
@@ -1143,17 +1130,13 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
       missingImports.push(`${file}:ui/card`);
     }
     if (
-      [
-        "components/dashboard/sections/overview.tsx",
-        "components/dashboard/next-goal-card.tsx",
-      ].includes(file) &&
+      file === "components/dashboard/sections/overview.tsx" &&
       content.includes("@/components/ui/card")
     ) {
       missingImports.push(`${file}:ui/card`);
     }
     if (
       [
-        "components/dashboard/badge-display.tsx",
         "components/dashboard/weakest-area-card.tsx",
         "components/dashboard/sections/history.tsx",
         "components/dashboard/session-list.tsx",
@@ -1179,12 +1162,6 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
     }
     if (
       file === "components/dashboard/sections/questions.tsx" &&
-      content.includes("<button")
-    ) {
-      missingImports.push(`${file}:button`);
-    }
-    if (
-      file === "components/dashboard/badge-display.tsx" &&
       content.includes("<button")
     ) {
       missingImports.push(`${file}:button`);
@@ -1420,11 +1397,8 @@ test("dashboard helper callouts use semantic status tokens", async () => {
   ].filter((token) => !globals.includes(token));
 
   const files = [
-    "components/dashboard/stats/milestone-badge.tsx",
     "components/dashboard/stats/trend-indicator.tsx",
     "components/dashboard/weakest-area-card.tsx",
-    "components/dashboard/next-goal-card.tsx",
-    "components/dashboard/charts/score-by-difficulty.tsx",
     "components/dashboard/charts/type-distribution.tsx",
     "components/dashboard/charts/clipped-area-chart.tsx",
   ];
@@ -1643,7 +1617,6 @@ test("priority microcopy uses shared type scale utilities", async () => {
     "components/demo-modal.tsx",
     "components/interview/nudge-overlay.tsx",
     "components/dashboard/charts/glowing-radar-chart.tsx",
-    "components/dashboard/badge-display.tsx",
   ];
   const arbitraryMicrocopy = /\btext-\[(?:9px|10px|0\.70rem)\]\b/;
   const violations = [];
@@ -2487,10 +2460,6 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     },
     {
       file: "components/feedback/improvements-list.tsx",
-      requiredImports: ["FeedbackSectionCard"],
-    },
-    {
-      file: "components/feedback/drill-list.tsx",
       requiredImports: ["FeedbackSectionCard"],
     },
     {

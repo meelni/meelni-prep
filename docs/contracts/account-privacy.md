@@ -8,9 +8,9 @@ defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
 
-- account identity, profile, preferences, and practice streak;
+- account identity, profile, preferences, and frozen legacy streak records;
 - mock interviews, selected questions, transcripts, and feedback;
-- bookmarks, practice sets, achievements, and saved progress insights;
+- bookmarks, practice sets, frozen legacy achievement records, and saved progress insights;
 - subscription, usage, payment summaries, and credit-ledger summaries.
 
 The exported settings object contains only current, operative account and
@@ -40,6 +40,13 @@ attachment filename.
 
 Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
+
+Meelni no longer writes or derives streaks and achievements in active product
+workflows. Export schema `1.0.0` continues to return any historical values so a
+product retirement does not silently discard user data. The legacy columns and
+table also remain covered by account deletion. Physical removal requires a
+separate retention decision, a versioned export-contract change, and a
+forward-only migration.
 
 ## Account deletion request
 
