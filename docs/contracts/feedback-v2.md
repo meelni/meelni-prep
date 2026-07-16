@@ -85,10 +85,13 @@ Historical string-array v1 rows keep `rubric_version=1.0.0` and remain readable.
 New completed writes use v2 only.
 
 The asynchronous worker uses the durable Inngest step IDs
-`evaluate-session-v2` and `save-feedback-v2`. They intentionally do not reuse
-the legacy v1 step IDs because Inngest may replay a memoized step result across
-a deployment. Any future incompatible cached result shape requires another
-step-ID version rather than feeding old output into new persistence logic.
+`fetch-transcript-v2`, `evaluate-session-v2`, and `save-feedback-v2`. They
+intentionally do not reuse the legacy v1 step IDs because Inngest may replay a
+memoized step result across a deployment. The fetch boundary is versioned
+because legacy output can use database row UUIDs where v2 requires canonical
+event IDs. Any future incompatible cached evidence contract or result shape
+requires another step-ID version rather than feeding old output into new
+persistence logic.
 
 ## Ownership boundary
 

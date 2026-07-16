@@ -6,6 +6,7 @@ import {
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   FeedbackV2ParseError,
+  isFeedbackV2Item,
   projectFeedbackItems,
   parseFeedbackV2,
 } from "./feedback-v2";
@@ -101,6 +102,31 @@ test("projects legacy and v2 items into safe comparison text", () => {
       "The answer chooses a specific audience and measurable behavior. Next step: Carry the segment into solution prioritization.",
     ]
   );
+});
+
+test("recognizes only complete feedback v2 items at read boundaries", () => {
+  const valid = validResponse().strengths[0];
+  assert.equal(isFeedbackV2Item(valid), true);
+
+  const invalidItems = [
+    { ...valid, observation: " " },
+    { ...valid, transcriptRefs: [] },
+    { ...valid, transcriptRefs: ["writer-a:1", "writer-a:1"] },
+    { ...valid, evidence: [null] },
+    { ...valid, evidence: [{ turnRef: "writer-a:1", quote: " " }] },
+    {
+      ...valid,
+      transcriptRefs: ["writer-a:1"],
+      evidence: [{ turnRef: "writer-a:2", quote: "exact text" }],
+    },
+    { ...valid, nextStep: " " },
+    { ...valid, confidence: Number.NaN },
+    { ...valid, confidence: 1.1 },
+  ];
+
+  for (const invalid of invalidItems) {
+    assert.equal(isFeedbackV2Item(invalid), false);
+  }
 });
 
 test("accepts an explicitly matching partial evaluation state", () => {

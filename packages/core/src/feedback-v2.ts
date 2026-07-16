@@ -94,15 +94,53 @@ export function isFeedbackV2Item(value: unknown): value is FeedbackV2Item {
     return false;
   }
   const item = value as Partial<FeedbackV2Item>;
+  const transcriptRefs = item.transcriptRefs;
+  const evidence = item.evidence;
+  if (
+    !Array.isArray(transcriptRefs) ||
+    transcriptRefs.length < 1 ||
+    transcriptRefs.length > 5 ||
+    !transcriptRefs.every(
+      (reference) =>
+        typeof reference === "string" && reference.trim().length > 0
+    ) ||
+    new Set(transcriptRefs).size !== transcriptRefs.length
+  ) {
+    return false;
+  }
+  if (
+    !Array.isArray(evidence) ||
+    evidence.length < 1 ||
+    evidence.length > 5 ||
+    !evidence.every(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry) &&
+        typeof entry.turnRef === "string" &&
+        entry.turnRef.trim().length > 0 &&
+        typeof entry.quote === "string" &&
+        entry.quote.trim().length > 0
+    )
+  ) {
+    return false;
+  }
+  const evidenceRefs = evidence.map((entry) => entry.turnRef);
   return (
     typeof item.dimension === "string" &&
     DIMENSIONS.has(item.dimension as FeedbackDimension) &&
     typeof item.observation === "string" &&
-    Array.isArray(item.transcriptRefs) &&
-    Array.isArray(item.evidence) &&
+    item.observation.trim().length > 0 &&
+    new Set(evidenceRefs).size === evidenceRefs.length &&
+    evidenceRefs.length === transcriptRefs.length &&
+    transcriptRefs.every((reference) => evidenceRefs.includes(reference)) &&
     typeof item.nextStep === "string" &&
+    item.nextStep.trim().length > 0 &&
     item.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
-    typeof item.confidence === "number"
+    typeof item.confidence === "number" &&
+    Number.isFinite(item.confidence) &&
+    item.confidence >= 0 &&
+    item.confidence <= 1
   );
 }
 

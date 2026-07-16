@@ -16,6 +16,7 @@ import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/s
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import {
   FEEDBACK_V2_EVALUATE_STEP_ID,
+  FEEDBACK_V2_FETCH_TRANSCRIPT_STEP_ID,
   FEEDBACK_V2_SAVE_STEP_ID,
 } from "@/lib/evaluation/feedback-generation-step-contract";
 import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
@@ -288,9 +289,12 @@ export const generateFeedback = inngest.createFunction(
       return await fetchSessionData(sessionId);
     });
 
-    const transcript = await step.run("fetch-transcript", async () => {
-      return await fetchSessionTranscript(sessionId);
-    });
+    const transcript = await step.run(
+      FEEDBACK_V2_FETCH_TRANSCRIPT_STEP_ID,
+      async () => {
+        return await fetchSessionTranscript(sessionId);
+      }
+    );
 
     if (!transcript || transcript.length === 0) {
       await step.run("mark-failed-no-transcript", async () => {
