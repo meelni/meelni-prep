@@ -7,6 +7,15 @@ export interface CheckoutSessionReference {
   url: string | null;
 }
 
+const CANONICAL_ACCOUNT_USER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function isCanonicalAccountUserId(
+  value: string | null | undefined
+): value is string {
+  return Boolean(value && CANONICAL_ACCOUNT_USER_ID_PATTERN.test(value));
+}
+
 export async function obtainCheckoutSessionUnlessDeleting<
   T extends CheckoutSessionReference,
 >(input: {
@@ -45,7 +54,8 @@ export function checkoutSessionAuthenticatedUserId(
   if (
     !metadataUserId ||
     !clientReferenceId ||
-    metadataUserId !== clientReferenceId
+    metadataUserId !== clientReferenceId ||
+    !isCanonicalAccountUserId(metadataUserId)
   ) {
     return null;
   }

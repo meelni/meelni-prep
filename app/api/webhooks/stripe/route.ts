@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import {
-  accountDeletionRequest,
-  appUser,
   stripeEventLog,
   subscription,
   paymentHistory,
@@ -25,6 +23,7 @@ import {
 } from "@/lib/billing/stripe-event-ordering";
 import { applyCurrentSubscriptionInvoice } from "@/lib/billing/subscription-invoice";
 import {
+  claimStripeCustomerOwnership,
   getMappedStripeCustomerUserId,
   resolveAuthoritativeStripeUserId,
   stripeSubjectOwnerMismatch,
@@ -50,6 +49,7 @@ import {
   checkoutReconciliationErrorCode,
   checkoutSessionAuthenticatedUserId,
   deletedBillingIdempotencyKey,
+  isCanonicalAccountUserId,
   reconcileDeletedCheckoutSession,
   stripeEventMetadataUserId,
 } from "@/lib/billing/account-deletion-guard";
@@ -64,8 +64,14 @@ import {
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
-  isStripeCheckoutCatalogId,
+  getStripePriceIdForCatalogId,
 } from "@/lib/billing/stripe-catalog";
+import {
+  fulfillInterviewPassCheckout,
+  isCheckoutFulfillmentError,
+  isCheckoutPaymentEventType,
+  type AuthoritativeCheckoutSession,
+} from "@/lib/billing/stripe-checkout-fulfillment";
 import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
@@ -142,12 +148,11 @@ export async function POST(req: NextRequest) {
     const logicalEventKey = getStripeLogicalEventKey(event);
     const metadataUserId = stripeEventMetadataUserId(event);
     const checkoutCorrelation = getCheckoutCorrelation(event, metadataUserId);
-    const eventUserId =
-      event.type === "checkout.session.completed"
-        ? checkoutSessionAuthenticatedUserId(
-            event.data.object as Stripe.Checkout.Session
-          )
-        : metadataUserId;
+    const eventUserId = isCheckoutPaymentEventType(event.type)
+      ? checkoutSessionAuthenticatedUserId(
+          event.data.object as Stripe.Checkout.Session
+        )
+      : metadataUserId;
     const matchedDeletionFingerprint =
       await findStripeDeletionTombstoneFingerprint(subject.fingerprints);
     const subjectDeletionRequest = matchedDeletionFingerprint
@@ -339,7 +344,9 @@ export async function POST(req: NextRequest) {
     try {
       switch (event.type) {
         case "checkout.session.completed":
-          await handleCheckoutCompleted(event, stripe);
+        case "checkout.session.async_payment_succeeded":
+        case "checkout.session.async_payment_failed":
+          await handleCheckoutPayment(event, stripe);
           break;
 
         case "customer.subscription.created":
@@ -697,90 +704,128 @@ async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
 }
 
 /**
- * Handle checkout.session.completed events for one-time credit products.
+ * Reconcile signed Checkout payment events against current provider truth.
  */
-async function handleCheckoutCompleted(
+async function handleCheckoutPayment(
   event: Stripe.Event,
   stripe: Stripe
 ): Promise<"processed" | "deleted_checkout_reconciled"> {
-  const session = event.data.object as Stripe.Checkout.Session;
-  const userId = checkoutSessionAuthenticatedUserId(session);
-  const catalogId = session.metadata?.catalogId;
-
-  if (!userId || !catalogId || !isStripeCheckoutCatalogId(catalogId)) {
-    console.warn("Checkout fulfillment rejected invalid account correlation");
-    return "processed";
-  }
-
-  if (await hasAccountDeletionTombstone(userId)) {
-    await redactDeletedStripeEvent(event);
-    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
-    return "deleted_checkout_reconciled";
-  }
-
-  if (session.payment_status !== "paid") {
-    throw new Error("checkout_payment_not_settled");
-  }
-  const paymentIntentId = getExpandableId(session.payment_intent);
-  if (!paymentIntentId || session.amount_total === null || !session.currency) {
-    throw new Error("billing_payment_correlation_required");
-  }
-
-  try {
-    const customerId = getStripeCustomerId(session.customer);
-    if (customerId) {
-      await upsertStripeCustomerMapping({
-        stripeCustomerId: customerId,
-        userId,
-      });
-    }
-  } catch (error) {
-    if (!isAccountDeletionPendingError(error)) throw error;
-    await redactDeletedStripeEvent(event);
-    await reconcileCheckoutForDeletedAccount(session, stripe, userId);
-    return "deleted_checkout_reconciled";
-  }
-
+  if (!isCheckoutPaymentEventType(event.type)) return "processed";
+  const signedSession = event.data.object as Stripe.Checkout.Session;
+  // Subscription state and renewal credits remain owned by subscription and
+  // invoice handlers. Signed Checkout events only trigger one-time fulfillment.
+  if (signedSession.mode !== "payment") return "processed";
   const ledger = createCreditLedgerService({
     store: createDrizzleCreditLedgerStore(),
   });
-  const { grant } = await ledger.grantCredits({
-    userId,
-    catalogId,
-    source: "checkout",
-    sourceId: session.id,
-    idempotencyKey: `stripe:checkout:${session.id}:interview_pass`,
-  });
-  await db
-    .insert(paymentHistory)
-    .values({
-      userId,
-      stripePaymentIntentId: paymentIntentId,
-      stripeCheckoutSessionId: session.id,
-      stripeEventId: event.id,
-      creditGrantId: grant.id,
-      catalogId,
-      amountInCents: session.amount_total,
-      currency: session.currency,
-      status: "succeeded",
-      tier: catalogId,
-    })
-    .onConflictDoNothing();
-  const persisted = await db
-    .select()
-    .from(paymentHistory)
-    .where(eq(paymentHistory.stripeCheckoutSessionId, session.id))
-    .limit(1);
-  assertPersistedPayment(persisted[0], {
-    userId,
-    stripePaymentIntentId: paymentIntentId,
-    creditGrantId: grant.id,
-    catalogId,
-    amountInCents: session.amount_total,
-    currency: session.currency,
-    status: "succeeded",
-  });
+
+  try {
+    const result = await fulfillInterviewPassCheckout(
+      {
+        eventType: event.type,
+        sessionId: signedSession.id,
+        expectedPriceId: getStripePriceIdForCatalogId("interview_pass"),
+      },
+      {
+        retrieveSession: (sessionId) =>
+          retrieveAuthoritativeCheckoutSession(stripe, sessionId),
+        claimCustomerOwnership: ({ customerId, userId }) =>
+          claimStripeCustomerOwnership({ customerId, userId }),
+        hasDeletionTombstone: hasAccountDeletionTombstone,
+        grantInterviewPass: async (input) => {
+          const { grant } = await ledger.grantCredits(input);
+          return { grantId: grant.id };
+        },
+      }
+    );
+
+    if (result.status === "account_deletion_pending") {
+      await redactDeletedStripeEvent(event);
+      if (isCheckoutSettlementEvent(event.type)) {
+        await reconcileCheckoutForDeletedAccount(
+          signedSession,
+          stripe,
+          result.userId
+        );
+        return "deleted_checkout_reconciled";
+      }
+      return "processed";
+    }
+
+    if (result.status !== "fulfilled") return "processed";
+
+    await db
+      .insert(paymentHistory)
+      .values({
+        userId: result.userId,
+        stripePaymentIntentId: result.paymentIntentId,
+        stripeCheckoutSessionId: result.sessionId,
+        stripeEventId: event.id,
+        creditGrantId: result.grantId,
+        catalogId: "interview_pass",
+        amountInCents: result.amountInCents,
+        currency: result.currency,
+        status: "succeeded",
+        tier: "interview_pass",
+      })
+      .onConflictDoNothing();
+    const persisted = await db
+      .select()
+      .from(paymentHistory)
+      .where(eq(paymentHistory.stripeCheckoutSessionId, result.sessionId))
+      .limit(1);
+    assertPersistedCheckoutPayment(persisted[0], {
+      userId: result.userId,
+      stripePaymentIntentId: result.paymentIntentId,
+      creditGrantId: result.grantId,
+      catalogId: "interview_pass",
+      amountInCents: result.amountInCents,
+      currency: result.currency,
+    });
+  } catch (error) {
+    if (!isAccountDeletionPendingError(error)) throw error;
+    await redactDeletedStripeEvent(event);
+    if (isCheckoutSettlementEvent(event.type)) {
+      await reconcileCheckoutForDeletedAccount(
+        signedSession,
+        stripe,
+        checkoutSessionAuthenticatedUserId(signedSession)
+      );
+      return "deleted_checkout_reconciled";
+    }
+  }
   return "processed";
+}
+
+async function retrieveAuthoritativeCheckoutSession(
+  stripe: Stripe,
+  sessionId: string
+): Promise<AuthoritativeCheckoutSession> {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["line_items"],
+  });
+  const lineItems = session.line_items;
+
+  return {
+    id: session.id,
+    status: session.status,
+    paymentStatus: session.payment_status,
+    mode: session.mode,
+    clientReferenceId: session.client_reference_id,
+    metadata: session.metadata ? { ...session.metadata } : null,
+    customerId: getStripeCustomerId(session.customer),
+    paymentIntentId: getProviderId(session.payment_intent),
+    amountTotal: session.amount_total,
+    currency: session.currency,
+    lineItems: {
+      data: (lineItems?.data ?? []).map((lineItem) => ({
+        priceId: getProviderId(lineItem.price),
+        quantity: lineItem.quantity,
+        currency: lineItem.currency,
+      })),
+      hasMore: lineItems?.has_more ?? true,
+    },
+  };
 }
 
 /**
@@ -1184,6 +1229,33 @@ function assertPersistedPayment(
   }
 }
 
+const CHECKOUT_REPLAY_PAYMENT_STATUSES = new Set([
+  "succeeded",
+  "partially_refunded",
+  "refunded",
+  "disputed",
+]);
+
+function assertPersistedCheckoutPayment(
+  actual: PersistedPayment | undefined,
+  expected: Partial<
+    Pick<
+      PersistedPayment,
+      | "userId"
+      | "stripePaymentIntentId"
+      | "creditGrantId"
+      | "catalogId"
+      | "amountInCents"
+      | "currency"
+    >
+  >
+) {
+  assertPersistedPayment(actual, expected);
+  if (!actual || !CHECKOUT_REPLAY_PAYMENT_STATUSES.has(actual.status)) {
+    throw new Error("billing_payment_truth_mismatch:status");
+  }
+}
+
 /**
  * Map Stripe subscription status to our internal status
  */
@@ -1248,48 +1320,6 @@ async function getInvoicePaymentCorrelation(invoice: Stripe.Invoice) {
       getExpandableId(expandedPaymentIntent?.latest_charge),
   };
 }
-async function upsertStripeCustomerMapping({
-  stripeCustomerId,
-  stripeSubscriptionId,
-  userId,
-}: {
-  stripeCustomerId: string;
-  stripeSubscriptionId?: string | null;
-  userId: string;
-}) {
-  await db.transaction(async (tx) => {
-    const [user] = await tx
-      .select({ id: appUser.id })
-      .from(appUser)
-      .where(eq(appUser.id, userId))
-      .limit(1)
-      .for("update");
-    if (!user) throw new Error("billing_user_not_found");
-    const [tombstone] = await tx
-      .select({ userId: accountDeletionRequest.userId })
-      .from(accountDeletionRequest)
-      .where(eq(accountDeletionRequest.userId, userId))
-      .limit(1);
-    if (tombstone) throw new Error("account_deletion_pending");
-
-    await tx
-      .insert(stripeCustomerMapping)
-      .values({
-        stripeCustomerId,
-        stripeSubscriptionId: stripeSubscriptionId ?? null,
-        userId,
-      })
-      .onConflictDoUpdate({
-        target: stripeCustomerMapping.stripeCustomerId,
-        set: {
-          stripeSubscriptionId: stripeSubscriptionId ?? null,
-          userId,
-          updatedAt: new Date(),
-        },
-      });
-  });
-}
-
 async function reconcileCheckoutForDeletedAccount(
   session: Stripe.Checkout.Session,
   stripe: Stripe,
@@ -1351,7 +1381,7 @@ async function reconcileStripeEventForDeletedAccount(
   | "deleted_subscription_reconciled"
   | "deleted_invoice_reconciled"
 > {
-  if (event.type === "checkout.session.completed") {
+  if (isCheckoutSettlementEvent(event.type)) {
     await reconcileCheckoutForDeletedAccount(
       event.data.object as Stripe.Checkout.Session,
       stripe,
@@ -1557,6 +1587,7 @@ function isAccountDeletionPendingError(error: unknown) {
 }
 
 function safeStripeWebhookErrorCode(error: unknown) {
+  if (isCheckoutFulfillmentError(error)) return error.code;
   if (isAccountDeletionPendingError(error)) return "account_deletion_pending";
   if (error && typeof error === "object" && "code" in error) {
     const reconciliationCode = checkoutReconciliationErrorCode(error);
@@ -1575,10 +1606,17 @@ function safeStripeWebhookErrorCode(error: unknown) {
 
 function isDeletedBillingReconciliationEvent(type: Stripe.Event.Type) {
   return (
-    type === "checkout.session.completed" ||
+    isCheckoutSettlementEvent(type) ||
     type === "customer.subscription.created" ||
     type === "customer.subscription.updated" ||
     type === "invoice.payment_succeeded"
+  );
+}
+
+function isCheckoutSettlementEvent(type: Stripe.Event.Type) {
+  return (
+    type === "checkout.session.completed" ||
+    type === "checkout.session.async_payment_succeeded"
   );
 }
 
@@ -1622,10 +1660,20 @@ function getCheckoutCorrelation(
   event: Stripe.Event,
   metadataUserId: string | null
 ): StripeCheckoutCorrelation {
-  if (event.type !== "checkout.session.completed") return "not_applicable";
+  if (!isCheckoutPaymentEventType(event.type)) return "not_applicable";
   const session = event.data.object as Stripe.Checkout.Session;
   const correlatedUserId = checkoutSessionAuthenticatedUserId(session);
   if (!metadataUserId && !session.client_reference_id) return "not_applicable";
+  if (
+    metadataUserId &&
+    metadataUserId === session.client_reference_id &&
+    !isCanonicalAccountUserId(metadataUserId)
+  ) {
+    // Canonical validation runs against the authoritative Checkout Session
+    // after the event has a durable operational log. Never pass an untrusted
+    // non-UUID value into an account-deletion UUID query.
+    return "not_applicable";
+  }
   if (!correlatedUserId) throw stripeSubjectOwnerMismatch();
   return "valid";
 }
