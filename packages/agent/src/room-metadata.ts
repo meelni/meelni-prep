@@ -45,6 +45,7 @@ export interface InterviewRoomQuestion {
 export interface InterviewRoomMetadata {
   contract_version: typeof INTERVIEW_ROOM_METADATA_CONTRACT_VERSION;
   session_id: string;
+  candidate_identity?: string;
   transcript_ingest_url: string;
   deadline_at: string | null;
   round_type: RoundType;
@@ -68,6 +69,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_json"
       | "unsupported_contract"
       | "missing_session_id"
+      | "missing_candidate_identity"
       | "invalid_transcript_ingest_url"
       | "invalid_deadline"
       | "invalid_round_type"
@@ -174,6 +176,12 @@ export function buildInterviewRoomMetadata(
   if (!isNonEmptyString(metadata.session_id)) {
     throw new InterviewRoomMetadataError("missing_session_id");
   }
+  if (
+    metadata.candidate_identity !== undefined &&
+    !isNonEmptyString(metadata.candidate_identity)
+  ) {
+    throw new InterviewRoomMetadataError("missing_candidate_identity");
+  }
 
   const transcriptIngestUrl = normalizeTranscriptIngestUrl(
     metadata.transcript_ingest_url
@@ -183,6 +191,7 @@ export function buildInterviewRoomMetadata(
     ...metadata,
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: metadata.session_id,
+    candidate_identity: metadata.candidate_identity?.trim(),
     transcript_ingest_url: transcriptIngestUrl,
     deadline_at: normalizeDeadlineAt(metadata.deadline_at),
     config: metadata.config,
@@ -213,6 +222,12 @@ export function parseInterviewRoomMetadata(
   if (!isNonEmptyString(parsed.session_id)) {
     throw new InterviewRoomMetadataError("missing_session_id");
   }
+  if (
+    "candidate_identity" in parsed &&
+    !isNonEmptyString(parsed.candidate_identity)
+  ) {
+    throw new InterviewRoomMetadataError("missing_candidate_identity");
+  }
   if (!isRoundType(parsed.round_type)) {
     throw new InterviewRoomMetadataError("invalid_round_type");
   }
@@ -220,6 +235,9 @@ export function parseInterviewRoomMetadata(
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: parsed.session_id,
+    candidate_identity: isNonEmptyString(parsed.candidate_identity)
+      ? parsed.candidate_identity
+      : undefined,
     transcript_ingest_url: normalizeTranscriptIngestUrl(
       parsed.transcript_ingest_url
     ),

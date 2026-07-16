@@ -61,6 +61,8 @@ export interface LedgerCreditReservation {
   status: CreditReservationStatus;
   credits: number;
   sessionId: string | null;
+  startContractVersion: number;
+  startAttemptId: string | null;
   expiresAt: Date;
   metadata: Record<string, unknown> | null;
   createdAt: Date;
@@ -226,6 +228,8 @@ export interface ReserveCreditInput {
   userId: string;
   reservationKey: string;
   sessionId?: string | null;
+  startContractVersion?: number;
+  startAttemptId?: string | null;
   credits?: number;
   expiresAt?: Date;
   metadata?: Record<string, unknown> | null;
@@ -446,114 +450,12 @@ export function createCreditLedgerService({
         | undefined;
 
       try {
-        result = await store.withUserTransaction(
-          input.userId,
-          async (transaction) => {
-            const existing = await transaction.findReservationByKeyForUpdate(
-              input.reservationKey
-            );
-            if (existing) {
-              assertReservationMatchesRequest(
-                existing,
-                input,
-                requestedCredits
-              );
-              const allocations = await assertReservationEvidence(
-                transaction,
-                existing
-              );
-              return { reservation: existing, allocations, events: [] };
-            }
-
-            await assertUserReservationIntegrity(transaction, input.userId);
-            const spendableGrants =
-              await transaction.listSpendableGrantsForUpdate(
-                input.userId,
-                currentTime
-              );
-            const availableCredits = sumBy(
-              spendableGrants,
-              (grant) => grant.remainingCredits
-            );
-
-            if (availableCredits < requestedCredits) {
-              throw new InsufficientCreditsError(availableCredits);
-            }
-
-            const reservation = await transaction.createReservation({
-              userId: input.userId,
-              reservationKey: input.reservationKey,
-              status: "active",
-              credits: requestedCredits,
-              sessionId: input.sessionId ?? null,
-              expiresAt: input.expiresAt ?? addMinutes(currentTime, 30),
-              metadata: input.metadata ?? null,
-            });
-            assertReservationMatchesRequest(
-              reservation,
-              input,
-              requestedCredits
-            );
-
-            const allocations: LedgerReservationAllocation[] = [];
-            const events: Array<{
-              grant: LedgerCreditGrant;
-              credits: number;
-              balanceAfter: number;
-              transactionKey: string;
-            }> = [];
-            let remainingToReserve = requestedCredits;
-
-            for (const grant of spendableGrants) {
-              if (remainingToReserve === 0) break;
-
-              const reservedFromGrant = Math.min(
-                grant.remainingCredits,
-                remainingToReserve
-              );
-              const updatedGrant = await transaction.updateGrantBalances(
-                grant.id,
-                {
-                  remainingCredits: grant.remainingCredits - reservedFromGrant,
-                  reservedCredits: grant.reservedCredits + reservedFromGrant,
-                }
-              );
-              allocations.push(
-                await transaction.createAllocation({
-                  reservationId: reservation.id,
-                  grantId: grant.id,
-                  credits: reservedFromGrant,
-                })
-              );
-              const transactionKey = `reserve:${input.reservationKey}:${grant.id}`;
-              await createAndValidateTransaction(transaction, {
-                userId: input.userId,
-                grantId: grant.id,
-                reservationId: reservation.id,
-                type: "reserve",
-                credits: reservedFromGrant,
-                idempotencyKey: transactionKey,
-                sourceId: input.sessionId ?? null,
-                balanceAfter: updatedGrant.remainingCredits,
-                metadata: input.metadata ?? null,
-              });
-              events.push({
-                grant,
-                credits: reservedFromGrant,
-                balanceAfter: updatedGrant.remainingCredits,
-                transactionKey,
-              });
-              remainingToReserve -= reservedFromGrant;
-            }
-
-            if (remainingToReserve !== 0) {
-              throw new Error("credit_reservation_incomplete");
-            }
-
-            await assertReservationEvidence(transaction, reservation);
-            await assertUserReservationIntegrity(transaction, input.userId);
-            return { reservation, allocations, events };
-          }
+        result = await store.withUserTransaction(input.userId, (transaction) =>
+          reserveCreditInTransaction({
+            store: transaction,
+            input,
+            currentTime,
+          })
         );
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -568,21 +470,7 @@ export function createCreditLedgerService({
         throw error;
       }
 
-      for (const event of result.events) {
-        trackBillingCreditReserved({
-          userId: input.userId,
-          catalogId: event.grant.catalogId,
-          creditSource: event.grant.source,
-          transactionType: "reserve",
-          credits: event.credits,
-          balanceAfter: event.balanceAfter,
-          idempotencyKey: event.transactionKey,
-          sourceId: input.sessionId,
-          sessionId: input.sessionId,
-          grantId: event.grant.id,
-          reservationId: result.reservation.id,
-        });
-      }
+      trackReservedCreditEvents(input, result);
 
       return {
         reservation: result.reservation,
@@ -1243,6 +1131,8 @@ function assertReservationMatchesRequest(
     reservation.userId !== input.userId ||
     reservation.credits !== requestedCredits ||
     reservation.sessionId !== (input.sessionId ?? null) ||
+    reservation.startContractVersion !== (input.startContractVersion ?? 0) ||
+    reservation.startAttemptId !== (input.startAttemptId ?? null) ||
     !metadataEquals(reservation.metadata, input.metadata ?? null) ||
     (input.expiresAt !== undefined &&
       reservation.expiresAt.getTime() !== input.expiresAt.getTime())
@@ -1610,6 +1500,8 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
       const timestamp = new Date();
       const reservation: LedgerCreditReservation = {
         ...input,
+        startContractVersion: input.startContractVersion ?? 0,
+        startAttemptId: input.startAttemptId ?? null,
         id: id("reservation"),
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -1764,6 +1656,132 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+export interface ReserveCreditTransactionResult extends ReserveCreditResult {
+  events: Array<{
+    grant: LedgerCreditGrant;
+    credits: number;
+    balanceAfter: number;
+    transactionKey: string;
+  }>;
+}
+
+/** Reserves credit after the caller has acquired the owning app_user lock. */
+export async function reserveCreditInTransaction({
+  store,
+  input,
+  currentTime,
+}: {
+  store: CreditLedgerTransaction;
+  input: ReserveCreditInput;
+  currentTime: Date;
+}): Promise<ReserveCreditTransactionResult> {
+  const requestedCredits = input.credits ?? 1;
+  assertPositiveCredits(requestedCredits);
+  const existing = await store.findReservationByKeyForUpdate(
+    input.reservationKey
+  );
+  if (existing) {
+    assertReservationMatchesRequest(existing, input, requestedCredits);
+    const allocations = await assertReservationEvidence(store, existing);
+    return { reservation: existing, allocations, events: [] };
+  }
+
+  await assertUserReservationIntegrity(store, input.userId);
+  const spendableGrants = await store.listSpendableGrantsForUpdate(
+    input.userId,
+    currentTime
+  );
+  const availableCredits = sumBy(
+    spendableGrants,
+    (grant) => grant.remainingCredits
+  );
+  if (availableCredits < requestedCredits) {
+    throw new InsufficientCreditsError(availableCredits);
+  }
+
+  const reservation = await store.createReservation({
+    userId: input.userId,
+    reservationKey: input.reservationKey,
+    status: "active",
+    credits: requestedCredits,
+    sessionId: input.sessionId ?? null,
+    startContractVersion: input.startContractVersion ?? 0,
+    startAttemptId: input.startAttemptId ?? null,
+    expiresAt: input.expiresAt ?? addMinutes(currentTime, 30),
+    metadata: input.metadata ?? null,
+  });
+  assertReservationMatchesRequest(reservation, input, requestedCredits);
+
+  const allocations: LedgerReservationAllocation[] = [];
+  const events: ReserveCreditTransactionResult["events"] = [];
+  let remainingToReserve = requestedCredits;
+  for (const grant of spendableGrants) {
+    if (remainingToReserve === 0) break;
+    const reservedFromGrant = Math.min(
+      grant.remainingCredits,
+      remainingToReserve
+    );
+    const updatedGrant = await store.updateGrantBalances(grant.id, {
+      remainingCredits: grant.remainingCredits - reservedFromGrant,
+      reservedCredits: grant.reservedCredits + reservedFromGrant,
+    });
+    allocations.push(
+      await store.createAllocation({
+        reservationId: reservation.id,
+        grantId: grant.id,
+        credits: reservedFromGrant,
+      })
+    );
+    const transactionKey = `reserve:${input.reservationKey}:${grant.id}`;
+    await createAndValidateTransaction(store, {
+      userId: input.userId,
+      grantId: grant.id,
+      reservationId: reservation.id,
+      type: "reserve",
+      credits: reservedFromGrant,
+      idempotencyKey: transactionKey,
+      sourceId: input.sessionId ?? null,
+      balanceAfter: updatedGrant.remainingCredits,
+      metadata: input.metadata ?? null,
+    });
+    events.push({
+      grant,
+      credits: reservedFromGrant,
+      balanceAfter: updatedGrant.remainingCredits,
+      transactionKey,
+    });
+    remainingToReserve -= reservedFromGrant;
+  }
+
+  if (remainingToReserve !== 0) {
+    throw new Error("credit_reservation_incomplete");
+  }
+  await assertReservationEvidence(store, reservation);
+  await assertUserReservationIntegrity(store, input.userId);
+  return { reservation, allocations, events };
+}
+
+export function trackReservedCreditEvents(
+  input: ReserveCreditInput,
+  result: ReserveCreditTransactionResult
+): void {
+  for (const event of result.events) {
+    trackBillingCreditReserved({
+      userId: input.userId,
+      catalogId: event.grant.catalogId,
+      creditSource: event.grant.source,
+      transactionType: "reserve",
+      credits: event.credits,
+      balanceAfter: event.balanceAfter,
+      idempotencyKey: event.transactionKey,
+      sourceId: input.sessionId,
+      sessionId: input.sessionId,
+      grantId: event.grant.id,
+      reservationId: result.reservation.id,
+    });
+  }
+}
+
 async function completeReservation({
   store,
   trackTerminalSettlement,
@@ -1790,121 +1808,16 @@ async function completeReservation({
   }
   const outcome = await store.withUserTransaction(
     ownerLookup.userId,
-    async (transaction) => {
-      const reservation =
-        await transaction.findReservationByKeyForUpdate(reservationKey);
-      if (!reservation || reservation.userId !== ownerLookup.userId) {
-        throw new Error("credit_reservation_idempotency_conflict");
-      }
-
-      await assertUserReservationIntegrity(transaction, reservation.userId);
-      const allocations = await assertReservationEvidence(
-        transaction,
-        reservation
-      );
-      const userGrants = await transaction.listUserGrantsForUpdate(
-        reservation.userId
-      );
-      const grantsById = new Map(userGrants.map((grant) => [grant.id, grant]));
-      const transactionInput = {
-        userId: reservation.userId,
-        grantId: null,
-        reservationId: reservation.id,
-        type: transactionType,
-        credits: reservation.credits,
+    (transaction) =>
+      settleReservationInTransaction({
+        store: transaction,
+        expectedUserId: ownerLookup.userId,
+        reservationKey,
         idempotencyKey,
-        sourceId: reservation.sessionId,
-        balanceAfter: null,
-        metadata: {
-          allocations: allocations.map((allocation) => ({
-            grantId: allocation.grantId,
-            credits: allocation.credits,
-          })),
-        },
-      } satisfies Omit<LedgerCreditTransaction, "id" | "createdAt">;
-      const terminalTransactions =
-        await transaction.listTerminalTransactionsByReservationForUpdate(
-          reservation.id
-        );
-      assertReservationTerminalHistory(
-        reservation,
-        allocations,
-        terminalTransactions
-      );
-      const terminalTransaction =
-        terminalTransactions.find(
-          (candidate) => candidate.type === transactionType
-        ) ?? null;
-      if (
-        terminalTransaction &&
-        terminalTransaction.idempotencyKey !== idempotencyKey
-      ) {
-        throw new Error("credit_transaction_idempotency_conflict");
-      }
-      const existingTransaction =
-        await transaction.findTransactionByIdempotencyKeyForUpdate(
-          idempotencyKey
-        );
-
-      if (existingTransaction) {
-        assertTransactionMatchesRequest(existingTransaction, transactionInput);
-        if (reservation.status !== nextStatus) {
-          throw new Error("credit_transaction_idempotency_conflict");
-        }
-        return {
-          reservation,
-          duplicate: true,
-          firstGrant: allocations[0]
-            ? (grantsById.get(allocations[0].grantId) ?? null)
-            : null,
-        };
-      }
-
-      if (reservation.status === nextStatus) {
-        throw new Error("credit_ledger_reconciliation_required");
-      }
-
-      if (!canTransitionReservation(reservation.status, nextStatus)) {
-        throw new Error(
-          `Cannot move credit reservation ${reservationKey} from ${reservation.status} to ${nextStatus}`
-        );
-      }
-
-      for (const allocation of allocations) {
-        const grant = grantsById.get(allocation.grantId);
-        if (!grant) {
-          throw new Error("credit_ledger_reconciliation_required");
-        }
-        const balances = applyAllocation({
-          grant,
-          credits: allocation.credits,
-        });
-        assertGrantBalances(grant, balances);
-        await transaction.updateGrantBalances(allocation.grantId, balances);
-      }
-
-      const updatedReservation = await transaction.updateReservationStatus(
-        reservation.id,
-        nextStatus
-      );
-      await createAndValidateTransaction(transaction, transactionInput);
-      assertReservationTerminalHistory(
-        updatedReservation,
-        allocations,
-        await transaction.listTerminalTransactionsByReservationForUpdate(
-          reservation.id
-        )
-      );
-      await assertUserReservationIntegrity(transaction, reservation.userId);
-
-      return {
-        reservation: updatedReservation,
-        duplicate: false,
-        firstGrant: allocations[0]
-          ? (grantsById.get(allocations[0].grantId) ?? null)
-          : null,
-      };
-    }
+        nextStatus,
+        transactionType,
+        applyAllocation,
+      })
   );
 
   if (!outcome.duplicate) {
@@ -1936,7 +1849,148 @@ async function completeReservation({
   };
 }
 
-function trackCompletedReservationEvent({
+export interface ReservationSettlementTransactionOutcome {
+  reservation: LedgerCreditReservation;
+  firstGrant: LedgerCreditGrant | null;
+  duplicate: boolean;
+}
+
+/**
+ * Settles a reservation after the caller has acquired the owning app_user lock.
+ * This is intentionally transaction-scoped so durable interview evidence and
+ * the ledger terminal action can commit together.
+ */
+export async function settleReservationInTransaction({
+  store,
+  expectedUserId,
+  reservationKey,
+  idempotencyKey,
+  action,
+  nextStatus = action === "consume" ? "consumed" : "released",
+  transactionType = action ?? "release",
+  applyAllocation = action === "consume"
+    ? ({ grant, credits }) => ({
+        remainingCredits: grant.remainingCredits,
+        reservedCredits: grant.reservedCredits - credits,
+      })
+    : ({ grant, credits }) => ({
+        remainingCredits: grant.remainingCredits + credits,
+        reservedCredits: grant.reservedCredits - credits,
+      }),
+}: {
+  store: CreditLedgerTransaction;
+  expectedUserId: string;
+  reservationKey: string;
+  idempotencyKey: string;
+  action?: "consume" | "release";
+  nextStatus?: CreditReservationStatus;
+  transactionType?: CreditTransactionType;
+  applyAllocation?: (input: {
+    grant: LedgerCreditGrant;
+    credits: number;
+  }) => Pick<LedgerCreditGrant, "remainingCredits" | "reservedCredits">;
+}): Promise<ReservationSettlementTransactionOutcome> {
+  const reservation = await store.findReservationByKeyForUpdate(reservationKey);
+  if (!reservation || reservation.userId !== expectedUserId) {
+    throw new Error("credit_reservation_idempotency_conflict");
+  }
+
+  await assertUserReservationIntegrity(store, reservation.userId);
+  const allocations = await assertReservationEvidence(store, reservation);
+  const userGrants = await store.listUserGrantsForUpdate(reservation.userId);
+  const grantsById = new Map(userGrants.map((grant) => [grant.id, grant]));
+  const transactionInput = {
+    userId: reservation.userId,
+    grantId: null,
+    reservationId: reservation.id,
+    type: transactionType,
+    credits: reservation.credits,
+    idempotencyKey,
+    sourceId: reservation.sessionId,
+    balanceAfter: null,
+    metadata: {
+      allocations: allocations.map((allocation) => ({
+        grantId: allocation.grantId,
+        credits: allocation.credits,
+      })),
+    },
+  } satisfies Omit<LedgerCreditTransaction, "id" | "createdAt">;
+  const terminalTransactions =
+    await store.listTerminalTransactionsByReservationForUpdate(reservation.id);
+  assertReservationTerminalHistory(
+    reservation,
+    allocations,
+    terminalTransactions
+  );
+  const terminalTransaction =
+    terminalTransactions.find(
+      (candidate) => candidate.type === transactionType
+    ) ?? null;
+  if (
+    terminalTransaction &&
+    terminalTransaction.idempotencyKey !== idempotencyKey
+  ) {
+    throw new Error("credit_transaction_idempotency_conflict");
+  }
+  const existingTransaction =
+    await store.findTransactionByIdempotencyKeyForUpdate(idempotencyKey);
+
+  if (existingTransaction) {
+    assertTransactionMatchesRequest(existingTransaction, transactionInput);
+    if (reservation.status !== nextStatus) {
+      throw new Error("credit_transaction_idempotency_conflict");
+    }
+    return {
+      reservation,
+      duplicate: true,
+      firstGrant: allocations[0]
+        ? (grantsById.get(allocations[0].grantId) ?? null)
+        : null,
+    };
+  }
+
+  if (reservation.status === nextStatus) {
+    throw new Error("credit_ledger_reconciliation_required");
+  }
+
+  if (!canTransitionReservation(reservation.status, nextStatus)) {
+    throw new Error(
+      `Cannot move credit reservation ${reservationKey} from ${reservation.status} to ${nextStatus}`
+    );
+  }
+
+  for (const allocation of allocations) {
+    const grant = grantsById.get(allocation.grantId);
+    if (!grant) {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
+    const balances = applyAllocation({ grant, credits: allocation.credits });
+    assertGrantBalances(grant, balances);
+    await store.updateGrantBalances(allocation.grantId, balances);
+  }
+
+  const updatedReservation = await store.updateReservationStatus(
+    reservation.id,
+    nextStatus
+  );
+  await createAndValidateTransaction(store, transactionInput);
+  assertReservationTerminalHistory(
+    updatedReservation,
+    allocations,
+    await store.listTerminalTransactionsByReservationForUpdate(reservation.id)
+  );
+  await assertUserReservationIntegrity(store, reservation.userId);
+
+  return {
+    reservation: updatedReservation,
+    duplicate: false,
+    firstGrant: allocations[0]
+      ? (grantsById.get(allocations[0].grantId) ?? null)
+      : null,
+  };
+}
+
+export function trackCompletedReservationEvent({
   transactionType,
   userId,
   catalogId,

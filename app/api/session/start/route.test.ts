@@ -9,6 +9,9 @@ vi.mock("@/lib/internal/integrations", () => ({
 vi.mock("@/lib/workflows/start-session", () => ({
   startInterviewSessionWorkflow: vi.fn(),
 }));
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess: vi.fn().mockResolvedValue({ value: true }),
+}));
 
 import {
   getLiveKitAgentName,

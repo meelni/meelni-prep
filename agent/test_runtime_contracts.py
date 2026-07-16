@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from shared.config import parse_room_metadata
 from shared.safe_logging import log_exception_class
 from shared.utils.prompt_builder import build_agent_prompt
+from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_events import create_runtime_event
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
@@ -81,6 +82,18 @@ class RuntimeContractTests(unittest.TestCase):
             "room_options=room_io.RoomOptions(close_on_disconnect=False)",
             source,
         )
+
+    def test_interview_agent_waits_for_candidate_before_greeting(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        wait_offset = source.index(
+            "candidate = await wait_for_candidate_before_greeting("
+        )
+        greeting_offset = source.index("await session.say(greeting)")
+
+        self.assertLess(wait_offset, greeting_offset)
+        self.assertIn("candidate_identity=candidate_identity", source)
+        self.assertIn("deadline_task=deadline_task", source)
 
     def test_voice_runtimes_disable_livekit_observability_recording(self):
         for relative_path in ("interview/agent.py", "demo/agent.py"):
@@ -143,6 +156,7 @@ class RuntimeContractTests(unittest.TestCase):
         }))
 
         self.assertEqual(metadata["session_id"], "session-1")
+        self.assertIsNone(metadata["candidate_identity"])
         self.assertEqual(metadata["deadline_at"], "2026-07-09T21:30:00.000Z")
         self.assertEqual(metadata["round_type"], "product_sense")
         self.assertEqual(metadata["question"]["text"], "Design a product for students at Meta.")
@@ -169,6 +183,37 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(metadata["question"]["text"], "Should Notion build a calendar?")
         self.assertEqual(metadata["question"]["type"], "Strategy")
         self.assertIsNone(metadata["deadline_at"])
+
+    def test_parse_room_metadata_preserves_expected_candidate_identity(self):
+        metadata = parse_room_metadata(json.dumps({
+            "contract_version": 1,
+            "session_id": "session-candidate",
+            "candidate_identity": " authenticated-user-id ",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+            "round_type": "product_sense",
+            "config": {},
+        }))
+
+        self.assertEqual(
+            metadata["candidate_identity"],
+            "authenticated-user-id",
+        )
+
+    def test_parse_room_metadata_rejects_malformed_candidate_identity(self):
+        for candidate_identity in ("", "   ", 123, False, {}):
+            with self.subTest(candidate_identity=candidate_identity):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Invalid interview room metadata",
+                ):
+                    parse_room_metadata(json.dumps({
+                        "contract_version": 1,
+                        "session_id": "session-invalid-candidate",
+                        "candidate_identity": candidate_identity,
+                        "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+                        "round_type": "product_sense",
+                        "config": {},
+                    }))
 
     def test_parse_room_metadata_rejects_noncanonical_deadlines(self):
         for deadline_at in (
@@ -1518,6 +1563,107 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.timed_out)
         self.assertEqual(result.pending, 1)
         self.assertFalse(result.settled)
+
+
+class CandidatePresenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_expected_identity_is_required_before_greeting(self):
+        joined = asyncio.Event()
+        wait_started = asyncio.Event()
+        calls = []
+
+        async def wait_for_participant(**kwargs):
+            calls.append(kwargs)
+            wait_started.set()
+            await joined.wait()
+            return SimpleNamespace(identity="candidate-1")
+
+        task = asyncio.create_task(wait_for_candidate_before_greeting(
+            wait_for_participant=wait_for_participant,
+            candidate_identity="candidate-1",
+            deadline_task=None,
+        ))
+        await wait_started.wait()
+
+        self.assertFalse(task.done())
+        self.assertEqual(calls, [{"identity": "candidate-1"}])
+
+        joined.set()
+        participant = await task
+        self.assertEqual(participant.identity, "candidate-1")
+
+    async def test_legacy_metadata_waits_for_first_non_agent_participant(self):
+        calls = []
+
+        async def wait_for_participant(**kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(identity="legacy-candidate")
+
+        participant = await wait_for_candidate_before_greeting(
+            wait_for_participant=wait_for_participant,
+            candidate_identity=None,
+            deadline_task=None,
+        )
+
+        self.assertEqual(participant.identity, "legacy-candidate")
+        self.assertEqual(calls, [{}])
+
+    async def test_deadline_cancels_candidate_wait_and_suppresses_greeting(self):
+        wait_started = asyncio.Event()
+        wait_cancelled = asyncio.Event()
+        deadline_reached = asyncio.Event()
+
+        async def wait_for_participant(**_kwargs):
+            wait_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                wait_cancelled.set()
+                raise
+
+        async def enforce_deadline():
+            await deadline_reached.wait()
+            return True
+
+        deadline_task = asyncio.create_task(enforce_deadline())
+        candidate_task = asyncio.create_task(wait_for_candidate_before_greeting(
+            wait_for_participant=wait_for_participant,
+            candidate_identity="candidate-1",
+            deadline_task=deadline_task,
+        ))
+        await wait_started.wait()
+        deadline_reached.set()
+
+        self.assertIsNone(await candidate_task)
+        self.assertTrue(wait_cancelled.is_set())
+
+    async def test_job_cancellation_does_not_leave_candidate_wait_running(self):
+        wait_started = asyncio.Event()
+        wait_cancelled = asyncio.Event()
+
+        async def wait_for_participant(**_kwargs):
+            wait_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                wait_cancelled.set()
+                raise
+
+        deadline_task = asyncio.create_task(asyncio.Event().wait())
+        candidate_task = asyncio.create_task(wait_for_candidate_before_greeting(
+            wait_for_participant=wait_for_participant,
+            candidate_identity="candidate-1",
+            deadline_task=deadline_task,
+        ))
+        await wait_started.wait()
+        candidate_task.cancel()
+
+        with self.assertRaises(asyncio.CancelledError):
+            await candidate_task
+        self.assertTrue(wait_cancelled.is_set())
+
+        deadline_task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await deadline_task
 
 
 class SessionDeadlineWatchdogTests(unittest.IsolatedAsyncioTestCase):

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   getLiveKitEnvironment: vi.fn(),
   joinInterviewSessionWorkflow: vi.fn(),
+  resolveReactivationAccess: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -17,6 +18,10 @@ vi.mock("@/lib/internal/integrations", () => ({
 
 vi.mock("@/lib/workflows/join-interview-session", () => ({
   joinInterviewSessionWorkflow: mocks.joinInterviewSessionWorkflow,
+}));
+
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess: mocks.resolveReactivationAccess,
 }));
 
 import { POST } from "../route";
@@ -36,6 +41,44 @@ describe("POST /api/livekit/token", () => {
       provider: "livekit",
       data: livekitEnv,
     });
+    mocks.resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: true,
+    });
+  });
+
+  it("rejects token issuance while relaunch access is disabled", async () => {
+    const user = {
+      id: "authenticated-user",
+      email: "owner@example.com",
+    };
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user },
+          error: null,
+        }),
+      },
+    });
+    mocks.resolveReactivationAccess.mockResolvedValue({
+      source: "fallback",
+      value: false,
+    });
+
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "interview_practice_unavailable",
+      message: "Interview practice is not open for this account yet.",
+      retryable: false,
+    });
+    expect(mocks.resolveReactivationAccess).toHaveBeenCalledWith({
+      user,
+      localOverride: undefined,
+    });
+    expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated token requests before reading session data", async () => {

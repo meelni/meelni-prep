@@ -35,6 +35,7 @@ from livekit.plugins.turn_detector.english import EnglishModel
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
+from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.safe_logging import log_exception_class
 from shared.session_deadline import (
@@ -145,6 +146,7 @@ async def entrypoint(ctx: JobContext):
     config = metadata["config"]
     question = metadata.get("question")  # NEW: Extract question from metadata
     session_id = metadata["session_id"]
+    candidate_identity = metadata["candidate_identity"]
     transcript_ingest_url = metadata["transcript_ingest_url"]
     deadline_at = parse_deadline_at(metadata["deadline_at"])
     room_name = ctx.room.name
@@ -828,6 +830,23 @@ async def entrypoint(ctx: JobContext):
         logger.warning(
             "Interview metadata has no hard deadline; accepting legacy rollout payload"
         )
+
+    candidate = await wait_for_candidate_before_greeting(
+        wait_for_participant=ctx.wait_for_participant,
+        candidate_identity=candidate_identity,
+        deadline_task=deadline_task,
+    )
+    if candidate is None:
+        return
+    if deadline_enforcer.enforcement_started:
+        if deadline_task is not None:
+            await deadline_task
+        return
+    logger.info(
+        "Expected interview candidate is present"
+        if candidate_identity is not None
+        else "Legacy interview candidate is present"
+    )
 
     # CRITICAL: Send initial greeting so agent speaks first
     # AgentSession doesn't auto-generate output - it waits for user input

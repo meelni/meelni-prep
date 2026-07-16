@@ -100,8 +100,8 @@ test("auth doctor follows the complete canonical Drizzle journal", () => {
 
   assert.equal(results.length, 1);
   assert.equal(results[0].status, "pass");
-  assert.match(results[0].message, /14 canonical Drizzle migration files/);
-  assert.match(results[0].message, /0013_runtime_settlement/);
+  assert.match(results[0].message, /15 canonical Drizzle migration files/);
+  assert.match(results[0].message, /0014_stable_start_usable_credit/);
   assert.doesNotMatch(results[0].message, /supabase\/migrations/);
 });
 

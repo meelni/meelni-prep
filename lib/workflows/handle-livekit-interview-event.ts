@@ -11,6 +11,7 @@ import {
   type InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
 import { scheduleInterviewReconnect } from "./schedule-interview-reconnect";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export type LiveKitInterviewTransportEventName = InterviewTransportEventName;
 
@@ -30,6 +31,7 @@ export interface HandleLiveKitInterviewEventDeps {
     expectedVersion: number;
     deadlineAt: Date;
   }): Promise<unknown>;
+  settleCredit(sessionId: string): Promise<unknown>;
 }
 
 export type HandleLiveKitInterviewEventResult =
@@ -92,6 +94,9 @@ export async function handleLiveKitInterviewEventWorkflow(
         // Candidate presence may be stored before runtime readiness. The exact
         // replay is still allowed to complete that two-signal activation.
       } else {
+        if (current.state === "active" && current.activatedAt) {
+          await deps.settleCredit(current.sessionId);
+        }
         await reschedulePersistedReconnect(current, deps);
         return { ok: true, disposition: "duplicate", lifecycle: current };
       }
@@ -157,6 +162,13 @@ export async function handleLiveKitInterviewEventWorkflow(
         current = observation.current;
         if (current.lastTransportEventName === "participant_joined") continue;
       }
+      if (
+        input.eventName === "participant_joined" &&
+        current.state === "active" &&
+        current.activatedAt
+      ) {
+        await deps.settleCredit(current.sessionId);
+      }
       return { ok: true, disposition: "ignored", lifecycle: current };
     }
 
@@ -176,6 +188,9 @@ export async function handleLiveKitInterviewEventWorkflow(
     });
 
     if (result.applied) {
+      if (desired.disposition === "activated") {
+        await deps.settleCredit(result.current.sessionId);
+      }
       await reschedulePersistedReconnect(result.current, deps);
       return {
         ok: true,
@@ -347,6 +362,7 @@ export function createHandleLiveKitInterviewEventDeps(): HandleLiveKitInterviewE
   return {
     store: createDrizzleInterviewReconnectStore(),
     scheduleReconnect: scheduleInterviewReconnect,
+    settleCredit: convergeDrizzleInterviewCreditSettlement,
   };
 }
 
