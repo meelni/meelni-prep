@@ -23,6 +23,7 @@ import {
   userInsights,
   userSettings,
 } from "./schema";
+import { transcriptChronologicalOrder } from "./transcript-ordering";
 
 export async function loadAccountExportSource(
   userId: string
@@ -47,13 +48,10 @@ export async function loadAccountExportSource(
       defaultInterviewType: userSettings.defaultInterviewType,
       defaultDifficulty: userSettings.defaultDifficulty,
       questionRecency: userSettings.questionRecency,
-      autoSaveTranscripts: userSettings.autoSaveTranscripts,
       emailNotifications: userSettings.emailNotifications,
       sessionCompletionEmail: userSettings.sessionCompletionEmail,
       feedbackReadyEmail: userSettings.feedbackReadyEmail,
       weeklyProgressReport: userSettings.weeklyProgressReport,
-      shareAnonymousData: userSettings.shareAnonymousData,
-      saveTranscripts: userSettings.saveTranscripts,
       theme: userSettings.theme,
       createdAt: userSettings.createdAt,
       updatedAt: userSettings.updatedAt,
@@ -118,7 +116,10 @@ export async function loadAccountExportSource(
         })
         .from(transcriptTurn)
         .where(inArray(transcriptTurn.sessionId, sessionIds))
-        .orderBy(asc(transcriptTurn.startedAt))
+        .orderBy(
+          asc(transcriptTurn.sessionId),
+          ...transcriptChronologicalOrder()
+        )
     : [];
   const feedbackRows = sessionIds.length
     ? await db

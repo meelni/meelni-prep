@@ -17,6 +17,11 @@ Use an authenticated Preview account and complete these cases:
 - sufficient interview: end once, then replay the end request; both responses must identify the same feedback record;
 - double-submit: trigger concurrent end requests and verify one terminal lifecycle result;
 - insufficient interview: verify `abandoned/insufficient_signal`, skipped feedback, and no dispatch event;
+- writer replacement: register writer A then writer B; verify B's settled proof
+  does not make feedback eligible while A is missing or degraded, and that all
+  registered generations settled with no markers is required;
+- full data queue: verify reserved control capacity still persists the mandatory
+  writer-scoped settlement;
 - dispatch interruption: make Inngest unavailable, end the session, verify HTTP 200 with retryable dispatch, restore Inngest, and use Queue Feedback;
 - terminal repair: seed or locate a safe test session that is terminal without feedback, retry feedback, and confirm lifecycle state/version do not change;
 - client failure: make the end endpoint return non-2xx and confirm the room stays mounted with an announced retry message.
@@ -65,6 +70,7 @@ Alert on:
 - duplicate Inngest event identities;
 - feedback pending/processing age above the product latency target;
 - non-2xx end-session responses.
+- registered writer generations without durable settled proof.
 
 ## Rollback
 

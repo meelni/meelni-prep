@@ -1,14 +1,17 @@
 """Utility to build dynamic prompts based on room metadata"""
 
-from typing import Dict, Any
+import logging
 import sys
 from pathlib import Path
+from typing import Dict, Any
 
 # Add parent directory to path to import shared modules
 shared_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(shared_dir))
 
 from prompts import get_prompt
+
+logger = logging.getLogger("prompt-builder")
 
 
 def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[str, Any] = None) -> str:
@@ -62,9 +65,6 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
     frontend_difficulty = config.get("difficulty", "intermediate")
     difficulty = difficulty_map.get(frontend_difficulty, "intermediate")
 
-    # Log difficulty mapping for debugging
-    print(f"[PROMPT_BUILDER] Difficulty: {frontend_difficulty} (frontend) → {difficulty} (agent)")
-
     # Get base prompt from new prompts.py system
     base_prompt = get_prompt(
         role=role,
@@ -81,11 +81,6 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
         question_text = question.get("question_text") or question.get("text")
         company = question.get("company")
         question_type = question.get("question_type") or question.get("type")
-
-        # DEBUG: Log what we received
-        print(f"[PROMPT_BUILDER] Received question: {question}")
-        print(f"[PROMPT_BUILDER] Extracted text: {question_text[:100] if question_text else 'None'}...")
-        print(f"[PROMPT_BUILDER] Company: {company}, Type: {question_type}")
 
         if question_text:
             base_prompt = "\n\n" + "=" * 80 + "\n" + base_prompt  # Move base prompt DOWN
@@ -168,11 +163,6 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
         company = question.get("company")
         question_type = question.get("question_type") or question.get("type")
 
-        # DEBUG: Log what we received
-        print(f"[PROMPT_BUILDER] Received question: {question}")
-        print(f"[PROMPT_BUILDER] Extracted text: {question_text[:100] if question_text else 'None'}...")
-        print(f"[PROMPT_BUILDER] Company: {company}, Type: {question_type}")
-
         base_prompt += "\n\n## INTERVIEW QUESTION FROM QUESTION BANK:"
 
         # Add company context if available
@@ -188,4 +178,12 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
             base_prompt += f"\n\nYour PRIMARY interview question:\n\"{question_text}\""
             base_prompt += "\n\nIMPORTANT: Use this exact question as the main question in your interview. After your opening, ask this question and guide the candidate through their response using the framework appropriate to this interview type."
 
+    logger.info(
+        "Built interview prompt",
+        extra={
+            "round_type": round_type,
+            "difficulty": difficulty,
+            "has_question": bool(question_text),
+        },
+    )
     return base_prompt

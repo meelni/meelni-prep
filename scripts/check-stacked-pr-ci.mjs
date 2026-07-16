@@ -10,6 +10,51 @@ import {
 } from "./check-stacked-pr.mjs";
 
 export const STACK_TOPOLOGY_CHECK_NAME = "Stack Topology / Verify";
+const GITHUB_GET_MAX_ATTEMPTS = 3;
+const GITHUB_GET_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
+const GITHUB_GET_RETRY_BASE_DELAY_MS = 250;
+const GITHUB_GET_RETRY_MAX_DELAY_MS = 5_000;
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function retryAfterMilliseconds(response, now) {
+  const value = response.headers?.get?.("retry-after")?.trim();
+  if (!value) return null;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1_000);
+  }
+
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : null;
+}
+
+function retryDelayMilliseconds(response, attempt, now) {
+  const requestedDelay =
+    retryAfterMilliseconds(response, now) ??
+    GITHUB_GET_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  return Math.min(requestedDelay, GITHUB_GET_RETRY_MAX_DELAY_MS);
+}
+
+function sanitizeRequestMethod(method) {
+  const value = String(method).toUpperCase();
+  return /^[A-Z]+$/.test(value) ? value : "UNKNOWN";
+}
+
+function sanitizeRequestPath(path) {
+  const value = String(path)
+    .split("?", 1)[0]
+    .replace(/[\u0000-\u001f\u007f]/g, "");
+  return value.startsWith("/") ? value.slice(0, 500) : "unavailable";
+}
+
+function sanitizeRequestId(response) {
+  const value = response.headers?.get?.("x-github-request-id")?.trim();
+  return value && /^[A-Za-z0-9:-]{1,128}$/.test(value) ? value : "unavailable";
+}
 
 function git(repo, args) {
   return execFileSync("git", ["-C", repo, ...args], {
@@ -171,26 +216,53 @@ export async function githubApi({
   method = "GET",
   body,
   fetchImpl = fetch,
+  sleepImpl = sleep,
+  nowImpl = Date.now,
 }) {
   if (!token) throw new Error("stack_gate_github_token_required");
-  const response = await fetchImpl(
-    `https://api.github.com/repos/${repository}${path}`,
-    {
-      method,
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${token}`,
-        "x-github-api-version": "2022-11-28",
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+  const requestMethod = sanitizeRequestMethod(method);
+  const maxAttempts = requestMethod === "GET" ? GITHUB_GET_MAX_ATTEMPTS : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetchImpl(
+      `https://api.github.com/repos/${repository}${path}`,
+      {
+        method: requestMethod,
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: `Bearer ${token}`,
+          "x-github-api-version": "2022-11-28",
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      }
+    );
+    if (response.ok) {
+      return response.status === 204 ? null : response.json();
     }
-  );
-  if (!response.ok) {
-    const error = new Error(`stack_gate_github_api_failed:${response.status}`);
+
+    const retryable =
+      requestMethod === "GET" &&
+      GITHUB_GET_RETRYABLE_STATUSES.has(response.status) &&
+      attempt < maxAttempts;
+    if (retryable) {
+      await sleepImpl(retryDelayMilliseconds(response, attempt, nowImpl()));
+      continue;
+    }
+
+    const requestPath = sanitizeRequestPath(path);
+    const requestId = sanitizeRequestId(response);
+    const error = new Error(
+      `stack_gate_github_api_failed:${response.status};method=${requestMethod};path=${requestPath};attempt=${attempt}/${maxAttempts};request_id=${requestId}`
+    );
     error.status = response.status;
+    error.method = requestMethod;
+    error.path = requestPath;
+    error.attempt = attempt;
+    error.requestId = requestId;
     throw error;
   }
-  return response.status === 204 ? null : response.json();
+
+  throw new Error("stack_gate_github_api_retry_state_invalid");
 }
 
 function pullRequestEvent({ repository, defaultBranch, pullRequest }) {
