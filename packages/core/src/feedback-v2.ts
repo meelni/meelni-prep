@@ -1596,6 +1596,59 @@ const MATERIAL_ACTION_ASSERTION_FAMILIES = [
   },
 ] as const;
 
+const MATERIAL_ACTION_NON_SUBJECT_HEAD_PATTERN =
+  /^(?:address(?:ed|es|ing)?|articulat(?:ed|es|ing)?|cho(?:ose|oses|osing|se)|compar(?:ed|es|ing)?|defin(?:e|ed|es|ing)?|discuss(?:ed|es|ing)?|establish(?:ed|es|ing)?|explain(?:ed|s|ing)?|identif(?:ied|ies|y|ying)|implement(?:ed|s|ing)?|includ(?:e|ed|es|ing)?|measur(?:e|ed|es|ing)?|mention(?:ed|s|ing)?|nam(?:e|ed|es|ing)?|outlin(?:e|ed|es|ing)?|present(?:ed|s|ing)?|prioriti[sz](?:e|ed|es|ing)?|provid(?:e|ed|es|ing)?|recommend(?:ed|s|ing)?|select(?:ed|s|ing)?|set(?:s|ting)?|specif(?:ied|ies|y|ying)|stat(?:e|ed|es|ing)?|test(?:ed|s|ing)?|track(?:ed|s|ing)?|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)?)$/iu;
+
+function hasBoundedMaterialActionSubject(
+  text: string,
+  assertionStart: number
+): boolean {
+  const clausePrefix = text
+    .slice(Math.max(0, assertionStart - 96), assertionStart)
+    .split(/[.!?;,:()\n\u2026\u2013\u2014]+/u)
+    .at(-1)
+    ?.trim();
+  if (!clausePrefix) return false;
+
+  const subjectTokens = [...clausePrefix.matchAll(/[\p{L}\p{N}_-]+/gu)].map(
+    (match) => ({ raw: match[0], normalized: match[0].toLowerCase() })
+  );
+  while (
+    subjectTokens.length > 0 &&
+    /ly$/u.test(subjectTokens.at(-1)?.normalized ?? "")
+  ) {
+    subjectTokens.pop();
+  }
+  if (subjectTokens.length === 0) return false;
+
+  if (
+    subjectTokens.length === 1 &&
+    /^(?:he|i|it|she|they|we|you)$/u.test(subjectTokens[0].normalized)
+  ) {
+    return true;
+  }
+
+  const startsWithDeterminer = /^(?:a|an|my|our|that|the|their|this)$/u.test(
+    subjectTokens[0].normalized
+  );
+  const subjectHead = subjectTokens.at(-1);
+  if (
+    !subjectHead ||
+    MATERIAL_ACTION_NON_SUBJECT_HEAD_PATTERN.test(subjectHead.normalized)
+  ) {
+    return false;
+  }
+
+  if (startsWithDeterminer) {
+    return subjectTokens.length >= 2 && subjectTokens.length <= 4;
+  }
+
+  return (
+    subjectTokens.length === 1 &&
+    (/^\p{Lu}/u.test(subjectHead.raw) || /s$/u.test(subjectHead.normalized))
+  );
+}
+
 function addMaterialActionAssertionAnchors(
   anchors: Set<string>,
   text: string
@@ -1606,9 +1659,7 @@ function addMaterialActionAssertionAnchors(
       const assertionMode = getLocalAssertionMode(text, assertionStart);
       if (
         assertionMode === "asserted" &&
-        !/\b(?:(?:he|i|it|she|they|we|you)|(?:a|an|my|our|that|the|their|this)\s+\p{L}[\p{L}\p{N}_-]*)\s+(?:\p{L}+ly\s+){0,2}$/iu.test(
-          text.slice(Math.max(0, assertionStart - 64), assertionStart)
-        )
+        !hasBoundedMaterialActionSubject(text, assertionStart)
       ) {
         continue;
       }
@@ -1775,6 +1826,12 @@ const SUMMARY_OUTCOME_PATTERNS = [
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had|is|was|were)\s+)?(?:advanc(?:e|ed|es|ing)|mov(?:e|ed|es|ing))\s+(?:in|into|through|to)\s+(?:the\s+)?(?:another\s+round|interview\s+process|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had)\s+|(?:is|was|were)\s+)?(?:made|make|makes|making)\s+it\s+(?:in|into|through|to)\s+(?:the\s+)?(?:another\s+round|interview\s+process|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
   /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:is|was|were)\s+)?through\s+to\s+(?:the\s+)?(?:another\s+round|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:became|(?:is|was)\s+now)\s+(?:(?:a|an|the)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm)\s+(?:at|with)\s+(?:(?:a|an|the)\s+)?[\p{L}\p{N}&.'-]+\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)(?=\s*(?:[.!?;]|$))/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?receiv(?:e|ed|es|ing)\s+(?:(?:a|an|the)\s+)?(?:(?:employment|job|pm|product\s+manager)\s+)?offer(?=\s*(?:[.!?;]|$))/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:will|would|should|must|may|might|can|could)\s+|(?:is|are|was|were)\s+)?join(?:ed|ing|s)?\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,2}(?:company|employer|organization|organisation)\s+as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had|is|was|were)\s+)?(?:mov(?:e|ed|es|ing)\s+on|progress(?:ed|es|ing)?)\s+to\s+(?:the\s+)?(?:final|next)\s+(?:interview\s+)?(?:round|stage)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?clear(?:ed|ing|s)?\s+(?:the\s+)?final\s+interview\b/iu,
 ] as const;
 
 const SUMMARY_UNSUPPORTED_ABSOLUTE_PATTERNS = [

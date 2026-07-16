@@ -4975,6 +4975,88 @@ test("binds assertion mode for material security and privacy actions", () => {
   }
 });
 
+test("binds material action assertion mode for bounded noun subjects", () => {
+  const cases = [
+    {
+      hypothetical:
+        "The security team will encrypt customer records before migration.",
+      asserted:
+        "The security team encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "The launch team plans to secure customer records against abuse.",
+      asserted: "The launch team secured customer records against abuse.",
+    },
+    {
+      hypothetical:
+        "The platform team will preserve customer privacy during migration.",
+      asserted:
+        "The platform team preserved customer privacy during migration.",
+    },
+    {
+      hypothetical: "Acme will encrypt customer records before migration.",
+      asserted: "Acme encrypted customer records before migration.",
+    },
+    {
+      hypothetical: "Engineers will encrypt customer records before migration.",
+      asserted: "Engineers encrypted customer records before migration.",
+    },
+  ] as const;
+
+  for (const { hypothetical, asserted } of cases) {
+    const mismatch = validResponse();
+    mismatch.scores.insight = 8;
+    mismatch.strengths[0].observation = asserted;
+    mismatch.strengths[0].evidence[0].quote = hypothetical;
+    assert.throws(
+      () =>
+        parseFeedbackV2(mismatch, {
+          transcript: [{ ...transcript[0], text: hypothetical }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      /material claim absent/,
+      hypothetical
+    );
+
+    for (const source of [hypothetical, asserted]) {
+      const matching = validResponse();
+      matching.scores.insight = 8;
+      matching.strengths[0].observation = source;
+      matching.strengths[0].evidence[0].quote = source;
+      assert.doesNotThrow(
+        () =>
+          parseFeedbackV2(matching, {
+            transcript: [{ ...transcript[0], text: source }, transcript[1]],
+            evaluationState: "full",
+            modelVersion: "gpt-test-1",
+          }),
+        source
+      );
+    }
+  }
+
+  for (const source of [
+    "I establish encrypted records as the source of truth and measure weekly retention.",
+    "I select secure customer records for migration and measure weekly retention.",
+  ]) {
+    const control = validResponse();
+    control.scores.insight = 8;
+    control.strengths[0].observation = source;
+    control.strengths[0].evidence[0].quote = source;
+    assert.doesNotThrow(
+      () =>
+        parseFeedbackV2(control, {
+          transcript: [{ ...transcript[0], text: source }, transcript[1]],
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      source
+    );
+  }
+});
+
 test("keeps common adverse security nouns negative in double negations", () => {
   for (const adverseNoun of [
     "concerns",
@@ -5169,6 +5251,15 @@ test("rejects common employment and advancement outcome paraphrases", () => {
     "The candidate was advanced to the next round.",
     "The candidate is moving to the next interview stage.",
     "The candidate is through to the next round.",
+    "The candidate became a product manager at Acme.",
+    "The candidate is now a product manager at Acme.",
+    "The candidate received the PM position.",
+    "The candidate received an employment offer.",
+    "The candidate will join the company as product manager.",
+    "The candidate is joining the company as product manager.",
+    "The candidate moved on to the final round.",
+    "The candidate progressed to the next round.",
+    "The candidate cleared the final interview.",
   ]) {
     const source = `In the prior interview debrief, ${summary
       .replace(/^The /u, "the ")
@@ -5208,6 +5299,30 @@ test("rejects common employment and advancement outcome paraphrases", () => {
       source:
         "The candidate joined the cross-functional team for the product launch.",
       summary: "The candidate joined the cross-functional team.",
+    },
+    {
+      source:
+        "The candidate will join the cross-functional team for the product launch.",
+      summary:
+        "The candidate will join the cross-functional team for the product launch.",
+    },
+    {
+      source:
+        "The candidate received the PM position requirements from the recruiter.",
+      summary:
+        "The candidate received the PM position requirements from the recruiter.",
+    },
+    {
+      source:
+        "The candidate progressed the product rollout to the next milestone.",
+      summary:
+        "The candidate progressed the product rollout to the next milestone.",
+    },
+    {
+      source:
+        "The candidate cleared the final product review blocker before launch.",
+      summary:
+        "The candidate cleared the final product review blocker before launch.",
     },
   ]) {
     const response = validResponse();
