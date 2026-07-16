@@ -1028,7 +1028,7 @@ function getCriticalClaimAnchors(text: string): Set<string> {
   const anchors = new Set<string>();
   let materialProjection = normalizeMaterialNegationContractions(normalized);
   materialProjection = materialProjection.replace(
-    /\bnot\s+without(?:\s+any)?\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(security|privacy|compliance)\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(?:defects?|failures?|flaws?|gaps?|issues?|problems?|risks?|vulnerabilit(?:y|ies)|weakness(?:es)?)\b/giu,
+    /\bnot\s+without(?:\s+any)?\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(security|privacy|compliance)\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(?:concerns?|defects?|deficienc(?:y|ies)|exposures?|failures?|flaws?|gaps?|hazards?|holes?|issues?|liabilit(?:y|ies)|problems?|risks?|shortcomings?|threats?|vulnerabilit(?:y|ies)|weakness(?:es)?)\b/giu,
     (_match, material: string) => {
       anchors.add(`material:${material.toLocaleLowerCase("en-US")}:negative`);
       return " ";
@@ -1090,6 +1090,7 @@ function getCriticalClaimAnchors(text: string): Set<string> {
       if (family.pattern.test(token)) anchors.add(family.anchor);
     }
   }
+  addMaterialActionAssertionAnchors(anchors, materialProjection);
   if (
     /\bproduct[\s\p{Pd}/\u2044\u2212\u2215]+market\s+fit\b/iu.test(
       materialProjection
@@ -1573,6 +1574,49 @@ const DOUBLE_NEGATED_MATERIAL_CLAIM_FAMILIES = [
   },
 ] as const;
 
+const MATERIAL_ACTION_ASSERTION_FAMILIES = [
+  {
+    anchor: "material:security",
+    pattern:
+      /\bsecur(?:e|ed|es|ing)\s+(?:(?:customer|personal|private|sensitive|user)\s+){0,2}(?:data|information|records?)\b/giu,
+  },
+  {
+    anchor: "material:encryption",
+    pattern:
+      /\bencrypt(?:ed|ing|s)?\s+(?:(?:customer|personal|private|sensitive|user)\s+){0,2}(?:data|information|records?)\b/giu,
+  },
+  {
+    anchor: "material:compliance",
+    pattern: /\bcompl(?:y|ied|ies|ying)\s+(?:to|with)\b/giu,
+  },
+  {
+    anchor: "material:privacy",
+    pattern:
+      /\b(?:preserv(?:e|ed|es|ing)|protect(?:ed|ing|s)?|safeguard(?:ed|ing|s)?)\s+(?:\p{L}[\p{L}-]*\s+){0,2}privacy\b/giu,
+  },
+] as const;
+
+function addMaterialActionAssertionAnchors(
+  anchors: Set<string>,
+  text: string
+): void {
+  for (const family of MATERIAL_ACTION_ASSERTION_FAMILIES) {
+    for (const match of text.matchAll(family.pattern)) {
+      const assertionStart = match.index ?? 0;
+      const assertionMode = getLocalAssertionMode(text, assertionStart);
+      if (
+        assertionMode === "asserted" &&
+        !/\b(?:(?:he|i|it|she|they|we|you)|(?:a|an|my|our|that|the|their|this)\s+\p{L}[\p{L}\p{N}_-]*)\s+(?:\p{L}+ly\s+){0,2}$/iu.test(
+          text.slice(Math.max(0, assertionStart - 64), assertionStart)
+        )
+      ) {
+        continue;
+      }
+      anchors.add(`${family.anchor}:action-${assertionMode}`);
+    }
+  }
+}
+
 function normalizeMaterialNegationContractions(text: string): string {
   return text.replace(
     /\b(?:(?:aren|couldn|didn|doesn|don|hadn|hasn|haven|isn|shouldn|wasn|weren|won|wouldn)['’]?t|can['’]?t|cannot)\b/giu,
@@ -1605,7 +1649,7 @@ function getLocalAssertionMode(
     return "negated";
   }
   if (
-    /\b(?:(?:will|would|could|should|might|may)(?:\s+(?:be|have(?:\s+been)?))?|(?:am|are|is|was|were)\s+going\s+to|(?:aim(?:ed|s|ing)?|decid(?:e|ed|es|ing)|expect(?:ed|s|ing)?|intend(?:ed|s|ing)?|plan(?:ned|s|ning)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
+    /\b(?:(?:will|would|could|should|might|may)(?:\s+(?:be|have(?:\s+been)?))?|(?:am|are|is|was|were)\s+going\s+to|(?:aim(?:ed|s|ing)?|attempt(?:ed|s|ing)?|decid(?:e|ed|es|ing)|expect(?:ed|s|ing)?|hop(?:e|ed|es|ing)|intend(?:ed|s|ing)?|plan(?:ned|s|ning)?|propos(?:e|ed|es|ing)|seek(?:ing|s)?|sought|tr(?:ied|ies|y|ying)|want(?:ed|s|ing)?)(?:\s+[\p{L}\p{N}_-]+){0,4}\s+to)\s+(?:\p{L}+ly\s+){0,2}$/u.test(
       modePrefix
     )
   ) {
@@ -1641,7 +1685,7 @@ function isFollowedByAdverseMaterialHead(
   text: string,
   offset: number
 ): boolean {
-  return /^(?:\s+(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)){0,2}\s+(?:defects?|failures?|flaws?|gaps?|issues?|problems?|risks?|vulnerabilit(?:y|ies)|weakness(?:es)?)\b/iu.test(
+  return /^(?:\s+(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)){0,2}\s+(?:concerns?|defects?|deficienc(?:y|ies)|exposures?|failures?|flaws?|gaps?|hazards?|holes?|issues?|liabilit(?:y|ies)|problems?|risks?|shortcomings?|threats?|vulnerabilit(?:y|ies)|weakness(?:es)?)\b/iu.test(
     text.slice(offset, offset + 64)
   );
 }
@@ -1722,6 +1766,15 @@ const SUMMARY_OUTCOME_PATTERNS = [
   /\b(?:(?:the|this)\s+)?(?:applicant|candidate|interviewee|they|he|she)\s+(?:has\s+|had\s+)?accept(?:ed|ing|s)?\s+(?!(?:(?:a|an|our|that|the|their|this)\s+)?(?:(?:design|discount(?:ed)?|experiment|package|pricing|product|segment|structure|test)\s+){1,2}offer\b)(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,2}offer\b/iu,
   /\b(?:(?:the|this)\s+)?(?:applicant|candidate|interviewee|they|he|she|you|we|i)\s+(?:(?:(?:has|had)\s+been|(?:am|are|is|was|were|will\s+be|would\s+be|should\s+be|must\s+be)|got)\s+)?pick(?:ed|s|ing)?\s+for\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role|team)\b/iu,
   /\b(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)\s+(?:ended\s+up|fell|landed|went)\s+(?:on|to|with)\s+(?:(?:the|this)\s+)?(?:applicant|candidate|interviewee|them|him|her|you|us|me)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:got|gets?|getting)\s+hired\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had)\s+been|(?:is|was|were))\s+offered\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:clinch(?:ed|es|ing)|win(?:s|ning)?|won)\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:job|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:sign(?:ed|ing|s)?|take|takes|taking|took)\s+(?!(?:(?:a|an|our|that|the|their|this)\s+)?(?:(?:design|discount(?:ed)?|experiment|package|pricing|product|segment|structure|test)\s+){1,2}offer\b)(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,2}offer\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:join(?:ed|ing|s)?|start(?:ed|ing|s)?(?:\s+(?:(?:next|this)\s+(?:month|quarter|week|year)|on\s+\p{L}+))?)\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,2}(?:company|employer|organization|organisation)\s+as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+start(?:ed|ing|s)?\s+(?:(?:(?:next|this)\s+(?:month|quarter|week|year)|on\s+\p{L}+)\s+)?as\s+(?:(?:a|an|our|that|the|their|this)\s+)?(?:[\p{L}\p{N}&.'-]+\s+){0,3}(?:manager|pm|position|role)\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had|is|was|were)\s+)?(?:advanc(?:e|ed|es|ing)|mov(?:e|ed|es|ing))\s+(?:in|into|through|to)\s+(?:the\s+)?(?:another\s+round|interview\s+process|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:has|had)\s+|(?:is|was|were)\s+)?(?:made|make|makes|making)\s+it\s+(?:in|into|through|to)\s+(?:the\s+)?(?:another\s+round|interview\s+process|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
+  /\b(?:applicant|candidate|interviewee|they|he|she)\s+(?:(?:is|was|were)\s+)?through\s+to\s+(?:the\s+)?(?:another\s+round|next\s+(?:interview\s+)?(?:round|stage))\b/iu,
 ] as const;
 
 const SUMMARY_UNSUPPORTED_ABSOLUTE_PATTERNS = [
@@ -2215,7 +2268,11 @@ const RECOGNIZED_QUANTITY_PREDICATE_PATTERN = new RegExp(
   "u"
 );
 const GENERIC_COUNT_PREDICATE_PATTERN = new RegExp(
-  String.raw`\b([\p{L}]{3,}(?:ed|ing)|built|bought|chose|drove|found|had|made|met|ran|sent|sold|spoke|wrote)\s+${QUANTITY_PREFIX_MODIFIER_SOURCE}$`,
+  String.raw`\b([\p{L}]{3,}(?:ed|ing)|bet|bid|built|bought|burst|cast|chose|cost|cut|drove|found|had|hit|hurt|lead|led|let|made|met|put|quit|ran|read|sent|set|shut|sold|spoke|split|spread|thrust|upset|wrote)\s+${QUANTITY_PREFIX_MODIFIER_SOURCE}$`,
+  "u"
+);
+const ASSERTION_SCOPED_COUNT_PREDICATE_PATTERN = new RegExp(
+  String.raw`\b([\p{L}]{3,})\s+${QUANTITY_PREFIX_MODIFIER_SOURCE}$`,
   "u"
 );
 const NON_COUNT_QUANTITY_UNITS = new Set([
@@ -2264,10 +2321,25 @@ function addBoundQuantityAnchors(
   const genericPredicateMatch = quantityPrefix.match(
     GENERIC_COUNT_PREDICATE_PATTERN
   );
+  const assertionScopedPredicateMatch = quantityPrefix.match(
+    ASSERTION_SCOPED_COUNT_PREDICATE_PATTERN
+  );
+  const assertionScopedPredicate = assertionScopedPredicateMatch?.[1];
+  const assertionScopedMode =
+    assertionScopedPredicateMatch && assertionScopedPredicate
+      ? getLocalAssertionMode(
+          quantityPrefix,
+          (assertionScopedPredicateMatch.index ?? 0) +
+            assertionScopedPredicateMatch[0].indexOf(assertionScopedPredicate)
+        )
+      : undefined;
   const predicateMatch =
     recognizedPredicateMatch ??
     (unit && !NON_COUNT_QUANTITY_UNITS.has(unit)
-      ? genericPredicateMatch
+      ? (genericPredicateMatch ??
+        (assertionScopedMode && assertionScopedMode !== "asserted"
+          ? assertionScopedPredicateMatch
+          : null))
       : null);
   const predicate = predicateMatch?.[1];
   const predicateMode =
@@ -2472,6 +2544,7 @@ function getSupportStem(token: string): string {
     ["identified", "identify"],
     ["identifies", "identify"],
     ["identifying", "identify"],
+    ["led", "lead"],
     ["measurable", "measure"],
     ["measurement", "measure"],
     ["prioritization", "prioritize"],
