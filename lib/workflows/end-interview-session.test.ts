@@ -9,7 +9,6 @@ import type { FinalizeInterviewSessionResult } from "@/lib/db/end-interview-sess
 import { feedback as feedbackTable } from "@/lib/db/schema";
 import type { DispatchFeedbackGenerationResult } from "./dispatch-feedback-generation";
 import {
-  endInterviewSessionWithValidationWorkflow,
   endInterviewSessionWorkflow,
   type EndInterviewSessionDeps,
 } from "./end-interview-session";
@@ -156,22 +155,22 @@ test("authorization runs before atomic transcript settlement", async () => {
   assert.equal(finalizations, 0);
 });
 
-test("a caller-provided validation snapshot is finalized without revalidation", async () => {
-  let finalizedValidation: SessionValidation | null = null;
-  const snapshot = validation();
-  const result = await endInterviewSessionWithValidationWorkflow(
-    userEndInput(),
-    snapshot,
+test("workflow passes only the authorized end command to finalization", async () => {
+  let finalizedInput: Parameters<EndInterviewSessionDeps["finalize"]>[0] | null =
+    null;
+  const input = userEndInput();
+  const result = await endInterviewSessionWorkflow(
+    input,
     createDeps({
-      finalize: async (input) => {
-        finalizedValidation = input.validationOverride ?? null;
+      finalize: async (finalizeInput) => {
+        finalizedInput = finalizeInput;
         return completion();
       },
     })
   );
 
   assert.equal(result.ok, true);
-  assert.equal(finalizedValidation, snapshot);
+  assert.deepEqual(finalizedInput, input);
 });
 
 test("terminal credit settlement completes before feedback dispatch", async () => {
@@ -220,7 +219,6 @@ test("a failed terminal credit settlement stays retryable and blocks dispatch", 
 test("hard deadline sends a system time-limit command and dispatches for the stored owner", async () => {
   const finalized: Parameters<EndInterviewSessionDeps["finalize"]>[0][] = [];
   const dispatched: Parameters<EndInterviewSessionDeps["dispatch"]>[0][] = [];
-  const motivated: string[] = [];
   const result = await endInterviewSessionWorkflow(
     {
       sessionId: SESSION_ID,
@@ -243,9 +241,6 @@ test("hard deadline sends a system time-limit command and dispatches for the sto
         dispatched.push(input);
         return sentDispatch();
       },
-      updateMotivation: async (userId) => {
-        motivated.push(userId);
-      },
     })
   );
 
@@ -256,80 +251,6 @@ test("hard deadline sends a system time-limit command and dispatches for the sto
     source: "hard_deadline",
   });
   assert.equal(dispatched[0]?.userId, USER_ID);
-  assert.deepEqual(motivated, [USER_ID]);
-});
-
-test("manual completion updates motivation for the stored owner", async () => {
-  const motivated: string[] = [];
-  const result = await endInterviewSessionWorkflow(
-    userEndInput(),
-    createDeps({
-      updateMotivation: async (userId) => {
-        motivated.push(userId);
-      },
-    })
-  );
-
-  assert.equal(result.ok, true);
-  assert.deepEqual(motivated, [USER_ID]);
-});
-
-test("abandoned and existing completion results do not update motivation", async () => {
-  const motivated: string[] = [];
-  const updateMotivation = async (userId: string) => {
-    motivated.push(userId);
-  };
-  const skippedFeedback = feedbackRecord({
-    status: "skipped",
-    dispatchStatus: "not_required",
-    dispatchEventId: null,
-  });
-
-  await endInterviewSessionWorkflow(
-    userEndInput(),
-    createDeps({
-      finalize: async () =>
-        completion({
-          lifecycle: {
-            state: "abandoned",
-            version: 3,
-            terminalReason: "insufficient_signal",
-            endedAt: new Date("2026-07-09T22:00:00.000Z"),
-          },
-          feedback: skippedFeedback,
-        }),
-      updateMotivation,
-    })
-  );
-  await endInterviewSessionWorkflow(
-    userEndInput(),
-    createDeps({
-      finalize: async () => completion({ disposition: "existing" }),
-      updateMotivation,
-    })
-  );
-
-  assert.deepEqual(motivated, []);
-});
-
-test("motivation failure preserves committed completion and feedback dispatch", async () => {
-  let dispatches = 0;
-  const result = await endInterviewSessionWorkflow(
-    userEndInput(),
-    createDeps({
-      dispatch: async () => {
-        dispatches += 1;
-        return sentDispatch();
-      },
-      updateMotivation: async () => {
-        throw new Error("motivation unavailable");
-      },
-    })
-  );
-
-  assert.equal(result.ok, true);
-  assert.equal(dispatches, 1);
-  if (result.ok) assert.equal(result.completion.lifecycle.state, "completed");
 });
 
 function createDeps(
@@ -340,7 +261,6 @@ function createDeps(
     finalize: async () => completion(),
     settleCredit: async () => undefined,
     dispatch: async () => sentDispatch(),
-    updateMotivation: async () => undefined,
     ...overrides,
   };
 }

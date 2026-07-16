@@ -35,7 +35,7 @@ Do not imply that Meelni can guarantee interview outcomes, predict hiring decisi
 | --------------------------- | ------------------------------------------------------------------------------------------------- |
 | PM interview gym            | Live PM interview practice                                                                        |
 | rep / reps                  | mock interview, practice session, completed interview, or interview history, according to context |
-| drill / workout             | focused practice, practice question, or suggested exercise, according to context                   |
+| drill / workout             | focused practice, practice question, or suggested exercise, according to context                  |
 | New Rep                     | New Mock Interview                                                                                |
 | Practice Home               | Overview                                                                                          |
 | readiness / readiness score | practice progress, recent practice score, or the specific measured trend                          |
@@ -67,16 +67,26 @@ The fitness-language restriction applies to Meelni's own product framing, includ
 - Test the enabled path in controlled development and preview environments.
 - Enable it by default only as a deliberate launch action after the accepted launch criteria pass, with an operational disable path retained for rollback.
 
+### Progress without a reward economy
+
+- Retain evidence-backed progress: completed-interview history, feedback, score trends with sample context, competency evidence, and a concrete next practice action.
+- Do not create a parallel reward economy around streaks, achievements, trophies, badges, flames, confetti, points, or high-score chasing.
+- Interview completion must not write new streak or achievement records, and active APIs must not derive or expose those concepts as progress.
+- Historical streak columns and achievement rows remain frozen and read-only for account-export and account-deletion compatibility. Historical migrations remain unchanged.
+- Physical removal of those legacy fields or rows requires a separate accepted retention decision, a versioned export-contract change, and a forward-only migration.
+
 ## Consequences
 
 - Marketing, authenticated UI, product strategy references, and developer guidance use one positioning contract.
 - Dashboard aggregates are progress signals based on completed practice. They are not readiness predictions.
+- Retention should come from useful feedback and an obvious next practice action, not extrinsic rewards or daily-pressure mechanics.
 - Historical code or docs that describe the fitness metaphor must be updated when they are active guidance; legitimate interview-question content remains unchanged.
 - Future capabilities must be labeled as future direction until they ship and are verified.
 
 ## Validation
 
 - Product-language guardrails should catch new customer-facing uses of the fitness metaphor and unsupported readiness claims.
+- Product-language guardrails should prevent retired reward mechanics from returning to active product surfaces or completion workflows.
 - Route tests should prove that legacy launch URLs preserve query context.
 - Analytics tests should prove canonical events and the time-bounded compatibility behavior.
 - Relaunch review should compare public promises with the production experience before enabling the product gate by default.

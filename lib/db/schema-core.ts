@@ -7,7 +7,8 @@ export const appUser = pgTable("app_user", {
   name: text("name"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 
-  // MOTI-001: Practice streak tracking
+  // Legacy read-only compatibility. SAV-257 stopped active writes; retain these
+  // columns until a separately approved export/retention migration removes them.
   streakCurrent: integer("streak_current").default(0).notNull(),
   streakLongest: integer("streak_longest").default(0).notNull(),
   lastPracticeDate: timestamp("last_practice_date", { withTimezone: true }),

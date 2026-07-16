@@ -118,7 +118,6 @@ The complete behavior is in `docs/contracts/interview-session-lifecycle.md`.
   - `lib/workflows/join-interview-session.test.ts`
   - `lib/db/sessions.ts`
   - `lib/types/session.ts`
-  - `lib/db/queries/user-stats.ts`
 - Migration/schema verification:
   - `scripts/database-migration-preflight.ts`
   - `scripts/database-schema-contract.ts`

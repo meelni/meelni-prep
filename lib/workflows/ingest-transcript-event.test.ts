@@ -62,32 +62,46 @@ test("identical text remains distinct when canonical event identity differs", as
   );
 });
 
-test("out-of-order arrivals sort by measured time and canonical tie-breakers", () => {
+test("out-of-order arrivals use the complete durable ordering contract", () => {
   const turns = [
     {
       timestamp: new Date("2026-07-10T05:00:05.000Z"),
-      writerId: "writer-b",
+      writerGeneration: 1,
+      writerId: "writer-z",
       sequence: 2,
       eventId: "event-3",
+      rowId: "row-d",
     },
     {
       timestamp: new Date("2026-07-10T05:00:00.000Z"),
-      writerId: "writer-b",
+      writerGeneration: 2,
+      writerId: "writer-a",
       sequence: 1,
       eventId: "event-2",
+      rowId: "row-c",
     },
     {
       timestamp: new Date("2026-07-10T05:00:00.000Z"),
-      writerId: "writer-a",
-      sequence: 9,
+      writerGeneration: 1,
+      writerId: "writer-z",
+      sequence: 1,
       eventId: "event-1",
+      rowId: "row-b",
+    },
+    {
+      timestamp: new Date("2026-07-10T05:00:00.000Z"),
+      writerGeneration: 1,
+      writerId: "writer-z",
+      sequence: 1,
+      eventId: "event-1",
+      rowId: "row-a",
     },
   ];
 
   turns.sort(compareTranscriptOrdering);
   assert.deepEqual(
-    turns.map((turn) => turn.eventId),
-    ["event-1", "event-2", "event-3"]
+    turns.map((turn) => turn.rowId),
+    ["row-a", "row-b", "row-c", "row-d"]
   );
 });
 
@@ -253,6 +267,7 @@ function transcriptEvent(
   return createTranscriptEvent({
     event_id: "writer-1:message-1",
     writer_id: "writer-1",
+    writer_generation: 1,
     sequence: 1,
     session_id: SESSION_ID,
     room_name: ROOM_NAME,

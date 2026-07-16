@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "repository": "saviii/meelni-prep",
+  "repository": "meelni/meelni-prep",
   "stacks": [
     {
       "pr": 253,
@@ -9,40 +9,10 @@
       "parentRef": "codex/bound-public-demo"
     },
     {
-      "pr": 258,
-      "parentPr": 257,
-      "headRef": "codex/sav-190-reconnect-recovery",
-      "parentRef": "codex/sav-189-deadline-server"
-    },
-    {
-      "pr": 259,
-      "parentPr": 258,
-      "headRef": "codex/sav-194-transcript-ingest",
-      "parentRef": "codex/sav-190-reconnect-recovery"
-    },
-    {
-      "pr": 260,
-      "parentPr": 259,
-      "headRef": "codex/sav-193-transcript-privacy",
-      "parentRef": "codex/sav-194-transcript-ingest"
-    },
-    {
-      "pr": 263,
-      "parentPr": 260,
-      "headRef": "codex/sav-229-stable-start-attempt",
-      "parentRef": "codex/sav-193-transcript-privacy"
-    },
-    {
-      "pr": 265,
-      "parentPr": 263,
-      "headRef": "codex/sav-230-provider-credit-recovery",
-      "parentRef": "codex/sav-229-stable-start-attempt"
-    },
-    {
       "pr": 266,
-      "parentPr": 259,
+      "parentPr": 298,
       "headRef": "codex/sav-195-feedback-v2",
-      "parentRef": "codex/sav-194-transcript-ingest"
+      "parentRef": "codex/sav-237-period-end-cancellation"
     },
     {
       "pr": 268,
@@ -55,6 +25,12 @@
       "parentPr": 265,
       "headRef": "codex/sav-231-billing-truth",
       "parentRef": "codex/sav-230-provider-credit-recovery"
+    },
+    {
+      "pr": 298,
+      "parentPr": 270,
+      "headRef": "codex/sav-237-period-end-cancellation",
+      "parentRef": "codex/sav-231-billing-truth"
     },
     {
       "pr": 272,
@@ -75,16 +51,16 @@
       "parentRef": "codex/sav-197-feedback-workflow"
     },
     {
-      "pr": 277,
-      "parentPr": 259,
-      "headRef": "codex/sav-149-transcript-body-hardening",
-      "parentRef": "codex/sav-194-transcript-ingest"
-    },
-    {
       "pr": 281,
       "parentPr": 274,
       "headRef": "codex/sav-201-deterministic-recommendations",
       "parentRef": "codex/sav-198-evaluation-calibration"
+    },
+    {
+      "pr": 302,
+      "parentPr": 281,
+      "headRef": "codex/sav-226-provider-isolation",
+      "parentRef": "codex/sav-201-deterministic-recommendations"
     }
   ]
 }

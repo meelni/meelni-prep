@@ -14,11 +14,11 @@ import {
   Minus,
   Calendar,
   MessageSquare,
-  Award,
+  Lightbulb,
+  ClipboardList,
   Target,
   Eye,
   Users,
-  Trophy,
 } from "lucide-react";
 
 interface AttemptComparisonProps {
@@ -115,7 +115,7 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-foreground flex items-center gap-2 text-sm font-semibold">
-              <Trophy className="text-primary h-4 w-4" />
+              <ClipboardList className="text-primary h-4 w-4" />
               Overall Score
             </h3>
             <div className="flex items-center gap-2">
@@ -149,7 +149,7 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
             label: "Insight",
             value: session.scores.insight,
             delta: delta?.insight,
-            icon: <Award className="text-muted-foreground h-4 w-4" />,
+            icon: <Lightbulb className="text-muted-foreground h-4 w-4" />,
           },
           {
             key: "communication",

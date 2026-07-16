@@ -1,5 +1,34 @@
 # Migration History
 
+## Current committed journal
+
+<!-- migration-journal:start -->
+
+| Index | Journal tag                           |
+| ----: | ------------------------------------- |
+|     0 | `0000_many_nocturne`                  |
+|     1 | `0001_panoramic_otto_octavius`        |
+|     2 | `0002_relaunch_reconciliation`        |
+|     3 | `0003_durable_account_deletion`       |
+|     4 | `0004_stripe_deletion_privacy`        |
+|     5 | `0005_multi_subject_account_deletion` |
+|     6 | `0006_interview_session_lifecycle`    |
+|     7 | `0007_atomic_session_completion`      |
+|     8 | `0008_deadline_room_cleanup_ack`      |
+|     9 | `0009_interview_session_reconnect`    |
+|    10 | `0010_reconnect_cutoff_owner`         |
+|    11 | `0011_transcript_ingest`              |
+|    12 | `0012_transcript_privacy_integrity`   |
+|    13 | `0013_runtime_settlement`             |
+|    14 | `0014_stable_start_usable_credit`     |
+|    15 | `0015_provider_credit_recovery`       |
+
+<!-- migration-journal:end -->
+
+This sixteen-entry inventory is generated from the same ordered contract as
+`lib/db/migrations/meta/_journal.json`; the operations test fails if either the
+count, order, or tag changes without this section being updated.
+
 ## Relaunch reconciliation
 
 The original Drizzle chain recorded only `0000_many_nocturne` and
@@ -26,6 +55,13 @@ idempotent migration that supports both accepted starting states:
 Do not restore or mark the retired files as applied. Run the migration preflight
 and disposable-database verification before applying the reconciliation to an
 environment.
+
+The standalone Supabase helpers `apply_all_rls.sql` and
+`feedback_system_rls.sql` are also retired. They predated the reconciled
+Drizzle journal and could grant authenticated users direct `transcript_turn`
+inserts, bypassing the signed runtime ingest boundary. Git history preserves
+them for audit purposes; no doctor, runbook, rollback, or deployment path may
+execute or restore them.
 
 The journaled `0003_durable_account_deletion`,
 `0004_stripe_deletion_privacy`, and `0005_multi_subject_account_deletion` are
@@ -62,23 +98,113 @@ nonnegative attempts, active claims, and sent acknowledgements. See the
 [session completion runbook](./interview-session-completion.md) for Preview
 rehearsal and recovery.
 
-## Reconnect and transcript evidence
+## Deadline room cleanup acknowledgement
 
-`0008_interview_session_reconnect` adds the durable reconnect deadline,
-generation fence, cleanup intent, and shared issuance limiter used by SAV-190.
+`0008_deadline_room_cleanup_ack` adds durable room-cleanup ownership and
+acknowledgement state for server-enforced interview deadlines. It records the
+cleanup status and acknowledgement time independently from terminal reason,
+backfills existing explicit `time_limit` outcomes to `pending`, and indexes the
+recovery selector used to find cleanup work after exact-event retries are
+exhausted.
 
-`0009_reflective_galactus` adds canonical transcript event identity, writer
-sequence, room correlation, delivery state, deterministic ordering, and
-database-enforced idempotency while retaining nullable legacy rows.
+Database constraints keep pending and acknowledged states consistent: pending
+cleanup has no acknowledgement timestamp, while `deleted` and
+`already_absent` require one. Application code must not expose or dispatch
+feedback until a deadline-owned cleanup claim is acknowledged. See the
+[deadline operations runbook](./interview-session-deadline.md) for failure,
+recovery, and rollback behavior.
 
-`0011_transcript_privacy_integrity` adds the service-only
+## Interview session reconnect recovery
+
+`0009_interview_session_reconnect` adds the durable reconnect deadline,
+provider-cleanup and provisioning recovery claims, readiness and presence
+reconciliation timestamps, and last accepted transport-event identity. Its
+indexes support reconnect expiry, presence repair, room cleanup, and stale
+provisioning recovery without scanning unrelated sessions. The provisioning
+constraint requires the pending claim and its lease timestamp to move together.
+
+## Reconnect cutoff ownership
+
+`0010_reconnect_cutoff_owner` records whether each persisted reconnect cutoff
+is owned by reconnect grace or by the immutable hard interview deadline. The
+backfill derives ownership from the stored start time and canonical configured
+duration, using the 30-minute default for missing or legacy duration shapes.
+The database constraint requires every cutoff to have one valid owner and
+forbids an owner when no cutoff exists. Application authorization and recovery
+use PostgreSQL time and treat equality with the stored cutoff as expired.
+
+See the [reconnect operations runbook](./interview-session-reconnect.md) for
+provider recovery, exact-boundary verification, and rollback behavior.
+
+## Transcript ingest identity and ordering
+
+`0011_transcript_ingest` adds the canonical version-2 transcript identity,
+writer sequence, measured timing, section, and delivery-state fields. The
+canonical tuple is all-or-nothing, event IDs are globally unique, and
+`(session_id, writer_id, sequence)` prevents a writer from assigning one
+sequence to multiple events. Historical transcript rows remain readable with
+all canonical fields null.
+
+Transcript insertion and terminalization serialize through the interview
+session row so feedback eligibility is calculated from one durable transcript
+snapshot and new distinct turns cannot race a terminal claim. Rehearse clean,
+legacy-upgrade, idempotent replay, exact lock-interleaving, and post-claim
+rejection paths with `npm run test:database-migrations` before applying the
+migration remotely.
+
+## Transcript privacy integrity
+
+`0012_transcript_privacy_integrity` adds the service-only
 `transcript_interruption_marker` table. The table contains no transcript text;
 it records a provider-confirmed interruption whose heard prefix was unavailable
 or a committed turn whose canonical measurement failed. RLS and ACLs deny
 browser roles. A marker makes feedback ineligible so incomplete evidence
 cannot be scored as complete.
 
-`0012_runtime_settlement` adds the service-only
-`transcript_runtime_settlement` table. A trusted metadata-only watermark is
-required before terminal completion can mark transcript evidence eligible for
-feedback; missing or degraded settlement fails closed.
+## Runtime settlement
+
+`0013_runtime_settlement` adds the service-only
+`transcript_runtime_writer` registry and writer-scoped
+`transcript_runtime_settlement` table. Audible runtimes register before output
+and receive a positive generation; replacement writers are fenced by later
+generations without erasing earlier settlement obligations. The migration adds
+`writer_generation` to canonical turns and interruption markers, backfills
+legacy version-2 writer evidence deterministically, and binds turns, markers,
+and settlements to `(session_id, generation, writer_id)` through composite
+foreign keys.
+
+Terminal feedback eligibility requires a trusted metadata-only `settled`
+watermark for every registered writer generation and no integrity markers.
+Missing or degraded settlement fails closed. Both writer and settlement tables
+enable RLS, revoke browser roles, and grant access only to `service_role`.
+
+## Stable interview start and usable credit
+
+`0014_stable_start_usable_credit` adds durable start-attempt identity,
+request-fingerprint fencing, provider-provisioning state, and immutable usable
+interview evidence to the existing session, question, and credit-reservation
+records. A version-1 start uses one deterministic attempt ID across those
+records and the LiveKit room name, so retries converge on the same interview
+instead of creating duplicate reservations or rooms.
+
+The migration distinguishes a provider-ready interview from one that became
+usable. Credit settlement can consume a reservation only after the session has
+both activation evidence and its first accepted candidate transcript event;
+otherwise terminal recovery releases the reservation. Database checks, unique
+indexes, foreign keys, and an immutability trigger prevent identity drift or
+later rewriting of provisioning and usable evidence.
+
+## Provider credit recovery
+
+`0015_provider_credit_recovery` adds immutable billing-fault classification,
+provider-failure identity, and terminal credit-settlement evidence to version-1
+interview sessions. Provider and transcript-integrity failures after usable
+signal can issue one idempotent make-good grant, pre-usable terminal outcomes
+release the reservation, and user-owned outcomes after usable signal retain the
+consumed credit.
+
+Database constraints bind each settlement action to its allowed fault and
+reason, while a service-only trigger prevents later rewriting of fault,
+provider-event, or settlement evidence. A unique runtime-failure event index
+and deterministic settlement keys make retries converge without duplicate
+credit changes.

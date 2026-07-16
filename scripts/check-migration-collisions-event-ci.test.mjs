@@ -11,12 +11,12 @@ import {
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-function event({ state = "open", headRepository = "saviii/meelni-prep" } = {}) {
+function event({ state = "open", headRepository = "meelni/meelni-prep" } = {}) {
   return JSON.stringify({
     action: state === "closed" ? "closed" : "synchronize",
     number: 77,
     repository: {
-      full_name: "saviii/meelni-prep",
+      full_name: "meelni/meelni-prep",
       default_branch: "main",
     },
     pull_request: {
@@ -47,7 +47,7 @@ test("same-repository PR events run the migration audit with exact event identit
     },
   });
   assert.equal(result.status, "pass");
-  assert.equal(calls[0].repository, "saviii/meelni-prep");
+  assert.equal(calls[0].repository, "meelni/meelni-prep");
   assert.equal(calls[0].triggeringPrNumber, 77);
   assert.equal(calls[0].fallbackPullRequest.number, 77);
 });
@@ -157,7 +157,7 @@ test("closed triggers do not inherit peer collisions after a complete audit", as
   assert.equal(migrationEventJobFailed(result), false);
 });
 
-test("migration publishers share one non-canceling global concurrency group", () => {
+test("migration publishers share the workflow's non-canceling serialization boundary", () => {
   const workflow = readFileSync(
     join(repositoryRoot, ".github/workflows/stack-topology.yml"),
     "utf8"
@@ -167,8 +167,8 @@ test("migration publishers share one non-canceling global concurrency group", ()
     workflow.match(
       /group: migration-collision-audit\n      cancel-in-progress: false/g
     ) ?? [];
-  assert.equal(groups.length, 2);
-  assert.equal(nonCanceling.length, 2);
+  assert.equal(groups.length, 3);
+  assert.equal(nonCanceling.length, 3);
   assert.match(
     workflow,
     /run: node scripts\/check-migration-collisions-event-ci\.mjs/

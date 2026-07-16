@@ -15,8 +15,28 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
     exportedAt: new Date("2026-07-10T16:00:00.000Z"),
     source: {
-      account: null,
-      settings: { userId: "user-one", saveTranscripts: true },
+      account: {
+        id: "user-one",
+        name: "Candidate",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        streakCurrent: 4,
+        streakLongest: 9,
+        lastPracticeDate: new Date("2026-02-01T00:00:00.000Z"),
+      },
+      settings: {
+        userId: "user-one",
+        displayName: "Candidate",
+        defaultInterviewType: "product_sense",
+        defaultDifficulty: "medium",
+        questionRecency: "current",
+        emailNotifications: true,
+        sessionCompletionEmail: true,
+        feedbackReadyEmail: true,
+        weeklyProgressReport: false,
+        theme: "system",
+        createdAt: new Date("2026-06-01T12:00:00.000Z"),
+        updatedAt: new Date("2026-07-10T16:00:00.000Z"),
+      },
       interviews: [
         {
           userId: "user-one",
@@ -46,7 +66,18 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
       ],
       bookmarks: [{ userId: "user-two", questionText: "Do not export this" }],
       practiceSets: [],
-      achievements: [],
+      achievements: [
+        {
+          userId: "user-one",
+          achievementId: "legacy_first_interview",
+          earnedAt: new Date("2026-01-15T00:00:00.000Z"),
+        },
+        {
+          userId: "user-two",
+          achievementId: "do_not_export",
+          earnedAt: new Date("2026-01-16T00:00:00.000Z"),
+        },
+      ],
       insights: [],
       subscription: null,
       usage: [],
@@ -59,6 +90,17 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
 
   assert.equal(result.schemaVersion, "1.0.0");
   assert.equal(result.account.id, "user-one");
+  assert.deepEqual(result.account.streak, {
+    current: 4,
+    longest: 9,
+    lastPracticeAt: "2026-02-01T00:00:00.000Z",
+  });
+  assert.deepEqual(result.practice.achievements, [
+    {
+      achievementId: "legacy_first_interview",
+      earnedAt: "2026-01-15T00:00:00.000Z",
+    },
+  ]);
   assert.deepEqual(result.practice.interviews[0]?.practiceOptions, {
     difficulty: "medium",
     durationMinutes: 30,
@@ -68,7 +110,24 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
   assert.equal(JSON.stringify(result).includes("never-export"), false);
   assert.equal(JSON.stringify(result).includes("provider/model"), false);
   assert.equal(JSON.stringify(result).includes("Do not export this"), false);
+  assert.equal(JSON.stringify(result).includes("do_not_export"), false);
   assert.equal(JSON.stringify(result).includes("userId"), false);
+  assert.deepEqual(result.settings, {
+    displayName: "Candidate",
+    defaultInterviewType: "product_sense",
+    defaultDifficulty: "medium",
+    questionRecency: "current",
+    emailNotifications: true,
+    sessionCompletionEmail: true,
+    feedbackReadyEmail: true,
+    weeklyProgressReport: false,
+    theme: "system",
+    createdAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-07-10T16:00:00.000Z",
+  });
+  assert.equal("saveTranscripts" in (result.settings ?? {}), false);
+  assert.equal("autoSaveTranscripts" in (result.settings ?? {}), false);
+  assert.equal("shareAnonymousData" in (result.settings ?? {}), false);
 });
 
 test("nested user content is recursively stripped of secrets and provider operations", () => {
