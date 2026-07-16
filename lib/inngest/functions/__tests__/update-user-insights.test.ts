@@ -14,7 +14,12 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { userInsights, appUser, interviewSession, feedback } from "@/lib/db/schema";
+import {
+  userInsights,
+  appUser,
+  interviewSession,
+  feedback,
+} from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { updateUserInsights } from "../update-user-insights";
 import { aggregateUserInsights } from "@/lib/evaluation/insights-aggregator";
@@ -39,8 +44,6 @@ describe("updateUserInsights Inngest Worker", () => {
       percentile25: 6.5,
       percentile75: 8.5,
       percentile90: 9.0,
-      currentStreak: 3,
-      longestStreak: 5,
     },
     byInterviewType: {
       product_sense: { count: 2, avgScore: 7.8, last5Avg: 8.0 },
@@ -70,8 +73,8 @@ describe("updateUserInsights Inngest Worker", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // @ts-ignore - Mock implementation
-    aggregateUserInsights.mockResolvedValue(mockInsights);
+    vi.mocked(aggregateUserInsights).mockReset();
+    vi.mocked(aggregateUserInsights).mockResolvedValue(mockInsights);
   });
 
   describe("Test 1: New User - First Insights Record", () => {
@@ -191,8 +194,6 @@ describe("updateUserInsights Inngest Worker", () => {
           percentile25: 0,
           percentile75: 0,
           percentile90: 0,
-          currentStreak: 0,
-          longestStreak: 0,
         },
         byInterviewType: {
           product_sense: { count: 0, avgScore: 0, last5Avg: 0 },
@@ -240,8 +241,6 @@ describe("updateUserInsights Inngest Worker", () => {
           completedSessions: 10,
           totalMinutes: 300,
           avgScore: 7.8,
-          currentStreak: 7,
-          longestStreak: 10,
         },
       };
 
@@ -250,9 +249,7 @@ describe("updateUserInsights Inngest Worker", () => {
 
       // Expected: Aggregation should handle large datasets
       // Expected: Percentiles should be calculated correctly
-      // Expected: Streaks should be accurate
       expect(manySessionsInsights.overallStats.totalSessions).toBe(12);
-      expect(manySessionsInsights.overallStats.currentStreak).toBe(7);
     });
   });
 

@@ -331,10 +331,10 @@ Status:
 
 - Started. `components/dashboard/dashboard-surface.tsx` now provides `DashboardMetricCard`, `DashboardChartCard`, `DashboardStateCard`, `DashboardSkeletonCard`, `DashboardSectionCard`, and `DashboardActionCard`.
 - Overview stat cards, analytics stat cards, score trend chart, and competency radar chart now use the dashboard surface vocabulary.
-- Performance trend, competency breakdown, score-by-type, time investment, type distribution, and score-by-difficulty now use the shared dashboard chart surface.
+- Performance trend, competency breakdown, score-by-type, time investment, and type distribution use the shared dashboard chart surface. The unused reward-oriented difficulty chart was retired in SAV-257.
 - Analytics empty, loading, and error states now use shared dashboard state/skeleton cards.
-- Dashboard overview recent activity, interview type breakdown, practice streak, welcome state, next-goal recommendation, and start-interview CTA now use shared dashboard section/action/state cards.
-- Badge/achievement and weakest-area focus cards now use shared dashboard section/action/skeleton cards.
+- Dashboard overview recent activity, interview type breakdown, welcome state, evidence-backed next practice recommendation, and start-interview CTA use shared dashboard section/action/state cards. The former streak/reward surfaces were retired in SAV-257.
+- Weakest-area focus cards now use shared dashboard section/action/skeleton cards. The former badge/achievement cards were retired in SAV-257.
 - History loading, empty, and session-list states now use dashboard skeleton/state/action primitives.
 - Legacy score trend and competency radar panels now use dashboard chart/state primitives; competency radar hard-coded chart colors were replaced with theme tokens.
 - Settings account, appearance, and danger-zone surfaces now use shared dashboard section/action primitives.
@@ -343,7 +343,7 @@ Status:
 - Priority dashboard and feedback chart configs now use shared chart tokens instead of hard-coded purple hex values.
 - Dashboard question-bank loading, practice-set, empty-result, desktop-table, mobile-filter, tab, bookmark, and filter controls now use shared dashboard surface and button primitives.
 - Question-bank child filter, drawer, question card, practice-set list, practice-set dialog, and autocomplete controls now use shared button/form/dialog primitives; `components/ui/textarea.tsx` adds the missing shared textarea primitive.
-- Dashboard badge display, dashboard error, and dashboard loading states now use shared button/state/skeleton primitives and semantic status treatments.
+- Dashboard error and loading states now use shared button/state/skeleton primitives and semantic status treatments. The former dashboard badge display was retired in SAV-257.
 - Added shared `success`, `warning`, and `info` status tokens and migrated dashboard helper badges, recommendations, and chart callouts off raw green/orange/blue/red/purple utility classes.
 - 2026-07-09 update: interview launch CTAs now target `/dashboard/new-interview`; `/setup` and `/dashboard/new-rep` remain only as compatibility redirects.
 - Remaining P1 work: scan remaining dashboard/supporting surfaces for bespoke token usage, then continue into marketing and SEO surfaces.

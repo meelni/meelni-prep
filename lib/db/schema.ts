@@ -846,7 +846,8 @@ export const userInsights = pgTable(
   })
 );
 
-// MOTI-002: User achievements tracking
+// Legacy read-only compatibility. SAV-257 stopped active writes; retain rows for
+// account export and cascade deletion until a separately approved migration.
 export const userAchievement = pgTable(
   "user_achievement",
   {

@@ -52,6 +52,7 @@ const SESSION_TOO_SHORT = "77777777-7777-4777-8777-777777777777";
 const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SESSION_RETIRED_REWARD_GUARD = "abababab-abab-4bab-8bab-abababababab";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const SESSION_PROVIDER_START_FAILURE = "ffffffff-ffff-4fff-8fff-ffffffffffff";
@@ -1828,12 +1829,87 @@ async function verifyAtomicSessionCompletion(
     startedAt: "2026-07-10T05:00:00.000Z",
     settledAt: "2026-07-10T05:45:00.000Z",
   });
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at, started_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_RETIRED_REWARD_GUARD}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      1,
+      now(),
+      '2026-07-10T05:00:00.000Z'::timestamptz,
+      'retired-reward-guard-room'
+    )
+  `;
+  await seedValidTranscriptIntegrityFixture(sql, {
+    sessionId: SESSION_RETIRED_REWARD_GUARD,
+    roomName: "retired-reward-guard-room",
+    writerId: "retired-reward-guard-writer",
+    startedAt: "2026-07-10T05:00:00.000Z",
+    settledAt: "2026-07-10T05:45:00.000Z",
+  });
   const clients = Array.from({ length: 10 }, () =>
     postgres(databaseUrl, { max: 1, prepare: false })
   );
   const databases = clients.map((client) => drizzle(client, { schema }));
 
   try {
+    await sql`
+      UPDATE app_user
+      SET streak_current = 4,
+        streak_longest = 9,
+        last_practice_date = '2026-07-01T00:00:00.000Z'::timestamptz
+      WHERE id = ${USER_ONE}::uuid
+    `;
+    await sql`
+      INSERT INTO user_achievement (user_id, achievement_id)
+      VALUES (${USER_ONE}::uuid, 'legacy_reward_guard')
+      ON CONFLICT (user_id, achievement_id) DO NOTHING
+    `;
+    const rewardGuardCompletion = await settleInterviewSessionWorkflow(
+      {
+        sessionId: SESSION_RETIRED_REWARD_GUARD,
+        actor: { type: "user", userId: USER_ONE },
+        requestedTerminalReason: "user_end",
+      },
+      {
+        authorize: async () => true,
+        finalize: (input) => finalizeInterviewSession(input, databases[0]!),
+      }
+    );
+    assert.equal(rewardGuardCompletion.ok, true);
+    const [legacyRewardState] = await sql<
+      {
+        streak_current: number;
+        streak_longest: number;
+        last_practice_unchanged: boolean;
+        achievement_count: number;
+      }[]
+    >`
+      SELECT streak_current,
+        streak_longest,
+        last_practice_date = '2026-07-01T00:00:00.000Z'::timestamptz
+          AS last_practice_unchanged,
+        (SELECT count(*)::int
+          FROM user_achievement
+          WHERE user_id = ${USER_ONE}::uuid
+            AND achievement_id = 'legacy_reward_guard') AS achievement_count
+      FROM app_user
+      WHERE id = ${USER_ONE}::uuid
+    `;
+    assert.deepEqual(legacyRewardState, {
+      streak_current: 4,
+      streak_longest: 9,
+      last_practice_unchanged: true,
+      achievement_count: 1,
+    });
+
     const results = await Promise.all(
       databases.map((database, index) =>
         finalizeInterviewSession(
@@ -2067,7 +2143,6 @@ async function verifyAtomicSessionCompletion(
               finalize: (
                 input: Parameters<typeof finalizeInterviewSession>[0]
               ) => finalizeInterviewSession(input, databases[0]!),
-              updateMotivation: async () => {},
             }
           ),
         settleInvalidSession: async () => ({
@@ -2323,7 +2398,6 @@ async function verifyAtomicSessionCompletion(
                 finalize: (
                   input: Parameters<typeof finalizeInterviewSession>[0]
                 ) => finalizeInterviewSession(input, databases[0]!),
-                updateMotivation: async () => {},
               }
             ),
           settleInvalidSession: async () => ({
@@ -3429,7 +3503,6 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
                   },
                 };
               },
-              updateMotivation: async () => undefined,
             }
           ),
       }
@@ -4692,6 +4765,10 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     VALUES (${USER_TWO}::uuid, 'deletion-user@example.invalid')
   `;
   await sql`
+    INSERT INTO user_achievement (user_id, achievement_id)
+    VALUES (${USER_TWO}::uuid, 'legacy_first_interview')
+  `;
+  await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status, lifecycle_state,
       livekit_room_name, activated_at
@@ -4894,6 +4971,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       app_user_exists: boolean;
       interview_session_exists: boolean;
       user_insights_exists: boolean;
+      user_achievement_exists: boolean;
       tombstone_exists: boolean;
       raw_provider_ids: number;
       provider_fingerprints: number;
@@ -4916,6 +4994,10 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
         SELECT 1 FROM user_insights
         WHERE user_id = ${USER_TWO}::uuid
       ) AS user_insights_exists,
+      EXISTS (
+        SELECT 1 FROM user_achievement
+        WHERE user_id = ${USER_TWO}::uuid
+      ) AS user_achievement_exists,
       EXISTS (
         SELECT 1 FROM account_deletion_request
         WHERE user_id = ${USER_TWO}::uuid
@@ -4947,6 +5029,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     app_user_exists: false,
     interview_session_exists: false,
     user_insights_exists: false,
+    user_achievement_exists: false,
     tombstone_exists: true,
     interruption_markers: 0,
     runtime_settlements: 0,
