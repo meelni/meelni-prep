@@ -1602,7 +1602,33 @@ const MATERIAL_ACTION_NON_SUBJECT_BOUNDARY_PATTERN =
   /^(?:a|an|and|as|at|by|for|from|he|her|hers|him|his|i|in|into|it|its|me|mine|my|of|on|or|our|ours|she|that|the|their|theirs|them|they|this|to|us|we|which|who|whose|with|you|your|yours)$/iu;
 const MATERIAL_ACTION_COMMON_SUBJECT_HEAD_PATTERN =
   /^(?:app|application|business|candidate|company|engineering|group|launch|model|organization|organisation|pipeline|platform|product|program|service|system|team|workflow)$/iu;
-const MAX_MATERIAL_ACTION_SUBJECT_TOKENS = 16;
+
+const MATERIAL_PASSIVE_ACTION_ASSERTION_FAMILIES = [
+  {
+    anchor: "material:security",
+    pattern:
+      /\b(?:(?:customer|personal|private|sensitive|user)\s+){0,2}(?:data|information|records?)\s+(?:(?:can|could|may|might|must|should|will|would)\s+(?:be|have\s+been)|(?:am|are|is|was|were)\s+(?:being\s+)?|(?:had|has|have)\s+been\s+)secur(?:e|ed)\b/giu,
+    actionPattern: /\bsecur(?:e|ed)\b/iu,
+  },
+  {
+    anchor: "material:encryption",
+    pattern:
+      /\b(?:(?:customer|personal|private|sensitive|user)\s+){0,2}(?:data|information|records?)\s+(?:(?:can|could|may|might|must|should|will|would)\s+(?:be|have\s+been)|(?:am|are|is|was|were)\s+(?:being\s+)?|(?:had|has|have)\s+been\s+)encrypted\b/giu,
+    actionPattern: /\bencrypted\b/iu,
+  },
+  {
+    anchor: "material:compliance",
+    pattern:
+      /\b(?:privacy\s+)?regulation\s+(?:(?:can|could|may|might|must|should|will|would)\s+(?:be|have\s+been)|(?:am|are|is|was|were)\s+(?:being\s+)?|(?:had|has|have)\s+been\s+)complied\s+with\b/giu,
+    actionPattern: /\bcomplied\b/iu,
+  },
+  {
+    anchor: "material:privacy",
+    pattern:
+      /\b(?:\p{L}[\p{L}-]*\s+){0,2}privacy\s+(?:(?:can|could|may|might|must|should|will|would)\s+(?:be|have\s+been)|(?:am|are|is|was|were)\s+(?:being\s+)?|(?:had|has|have)\s+been\s+)(?:preserved|protected|safeguarded)\b/giu,
+    actionPattern: /\b(?:preserved|protected|safeguarded)\b/iu,
+  },
+] as const;
 
 function hasBoundedMaterialActionSubject(
   text: string,
@@ -1650,11 +1676,7 @@ function hasBoundedMaterialActionSubject(
     /s$/u.test(subjectHead.normalized) ||
     MATERIAL_ACTION_COMMON_SUBJECT_HEAD_PATTERN.test(subjectHead.normalized);
   if (startsWithDeterminer) {
-    return (
-      subjectTokens.length >= 2 &&
-      subjectTokens.length <= MAX_MATERIAL_ACTION_SUBJECT_TOKENS &&
-      hasNounLikeHead
-    );
+    return subjectTokens.length >= 2 && hasNounLikeHead;
   }
 
   const hasCoordinator = subjectTokens.some((token) =>
@@ -1662,7 +1684,6 @@ function hasBoundedMaterialActionSubject(
   );
   const startsWithProperNoun = /^\p{Lu}/u.test(subjectTokens[0].raw);
   return (
-    subjectTokens.length <= MAX_MATERIAL_ACTION_SUBJECT_TOKENS &&
     hasNounLikeHead &&
     (subjectTokens.length === 1 || hasCoordinator || startsWithProperNoun)
   );
@@ -1682,6 +1703,15 @@ function addMaterialActionAssertionAnchors(
       ) {
         continue;
       }
+      anchors.add(`${family.anchor}:action-${assertionMode}`);
+    }
+  }
+  for (const family of MATERIAL_PASSIVE_ACTION_ASSERTION_FAMILIES) {
+    for (const match of text.matchAll(family.pattern)) {
+      const actionOffset = match[0].search(family.actionPattern);
+      if (actionOffset < 0) continue;
+      const assertionStart = (match.index ?? 0) + actionOffset;
+      const assertionMode = getLocalAssertionMode(text, assertionStart);
       anchors.add(`${family.anchor}:action-${assertionMode}`);
     }
   }

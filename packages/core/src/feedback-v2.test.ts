@@ -5122,6 +5122,36 @@ test("binds material action assertion mode for descriptive and coordinated noun 
       asserted:
         "The enterprise customer identity data governance privacy security compliance architecture platform engineering organization secured customer records against abuse.",
     },
+    {
+      hypothetical:
+        "The cross functional global financial services customer identity data governance privacy security compliance architecture platform engineering organization will encrypt customer records before migration.",
+      asserted:
+        "The cross functional global financial services customer identity data governance privacy security compliance architecture platform engineering organization encrypted customer records before migration.",
+    },
+    {
+      hypothetical:
+        "Customer records will be encrypted by the security team before migration.",
+      asserted:
+        "Customer records were encrypted by the security team before migration.",
+    },
+    {
+      hypothetical:
+        "Customer records should be secured by the security team against abuse.",
+      asserted:
+        "Customer records were secured by the security team against abuse.",
+    },
+    {
+      hypothetical:
+        "Customer privacy might be preserved by the security team during migration.",
+      asserted:
+        "Customer privacy was preserved by the security team during migration.",
+    },
+    {
+      hypothetical:
+        "The privacy regulation must be complied with by the security team before launch.",
+      asserted:
+        "The privacy regulation was complied with by the security team before launch.",
+    },
   ] as const;
 
   for (const { hypothetical, asserted } of cases) {
