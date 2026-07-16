@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
@@ -65,4 +65,17 @@ test("draft and closed lifecycle events cannot publish the required Validate con
     workflow,
     /name: Validate[\s\S]*if: github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false/
   );
+});
+
+test("hosted workflows cannot reintroduce unattended schedules", () => {
+  const workflowDirectory = ".github/workflows";
+  for (const filename of readdirSync(workflowDirectory)) {
+    if (!/\.ya?ml$/.test(filename)) continue;
+    const source = readFileSync(`${workflowDirectory}/${filename}`, "utf8");
+    assert.doesNotMatch(
+      source,
+      /^\s{2}schedule:\s*$/m,
+      `${filename} must not run on an unattended schedule`
+    );
+  }
 });

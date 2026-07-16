@@ -9,10 +9,7 @@ import {
   shouldRefineProvisionalTerminalReason,
   type EndInterviewSessionDatabase,
 } from "./end-interview-session";
-import {
-  SessionTier,
-  type SessionValidation,
-} from "@/lib/evaluation/session-validator";
+import { SessionTier } from "@/lib/evaluation/session-validator";
 
 test("valid durable signal preserves the command's terminal reason", () => {
   assert.equal(
@@ -144,9 +141,15 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   };
 
   for (const input of [
-    { runtimeSettlementState: null, interruptionCount: 0 },
-    { runtimeSettlementState: "degraded" as const, interruptionCount: 0 },
-    { runtimeSettlementState: "settled" as const, interruptionCount: 1 },
+    { runtimeWriterStates: [], interruptionCount: 0 },
+    {
+      runtimeWriterStates: [{ generation: 1, state: "degraded" as const }],
+      interruptionCount: 0,
+    },
+    {
+      runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
+      interruptionCount: 1,
+    },
   ]) {
     const result = applyTranscriptIntegrityValidation({
       baseValidation,
@@ -159,16 +162,57 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   assert.deepEqual(
     applyTranscriptIntegrityValidation({
       baseValidation,
-      runtimeSettlementState: "settled",
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
       interruptionCount: 0,
+    }),
+    baseValidation
+  );
+
+  const replacementMissing = applyTranscriptIntegrityValidation({
+    baseValidation,
+    interruptionCount: 0,
+    runtimeWriterStates: [
+      { generation: 1, state: null },
+      { generation: 2, state: "settled" },
+    ],
+  });
+  assert.equal(replacementMissing.isValid, false);
+  assert.match(replacementMissing.reasons[0] ?? "", /1 writer generation/);
+
+  const replacementDegraded = applyTranscriptIntegrityValidation({
+    baseValidation,
+    interruptionCount: 0,
+    runtimeWriterStates: [
+      { generation: 1, state: "degraded" },
+      { generation: 2, state: "settled" },
+    ],
+  });
+  assert.equal(replacementDegraded.isValid, false);
+
+  assert.deepEqual(
+    applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptionCount: 0,
+      runtimeWriterStates: [
+        { generation: 1, state: "settled" },
+        { generation: 2, state: "settled" },
+      ],
     }),
     baseValidation
   );
 });
 
 test("durable turns do not synthesize canonical activation during terminalization", async () => {
-  const validation = validSessionValidation();
   const transitions: string[] = [];
+  const answer = Array.from({ length: 40 }, (_, index) => `word${index}`).join(
+    " "
+  );
+  const validTurns = Array.from({ length: 20 }, (_, index) => ({
+    speaker: index % 2 === 0 ? "user" : "interviewer",
+    text: answer,
+    startedAt: new Date(Date.UTC(2026, 6, 10, 7, index)),
+    endedAt: new Date(Date.UTC(2026, 6, 10, 7, index, 30)),
+  }));
   let lifecycle = {
     state: "connecting",
     version: 2,
@@ -189,25 +233,44 @@ test("durable turns do not synthesize canonical activation during terminalizatio
     endingAt: lifecycle.endingAt,
     endedAt: lifecycle.endedAt,
   };
+  let selectCall = 0;
   const database = {
     async transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T> {
       const tx = {
         select() {
+          selectCall += 1;
           return {
             from() {
-              return {
+              if (selectCall === 1) {
+                return {
+                  where() {
+                    return {
+                      limit() {
+                        return {
+                          async for() {
+                            return [{ ...stored }];
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              }
+              const rows =
+                selectCall === 2
+                  ? validTurns
+                  : selectCall === 3
+                    ? [{ value: 0 }]
+                    : [{ generation: 1, state: "settled" }];
+              const chain = {
+                leftJoin() {
+                  return chain;
+                },
                 where() {
-                  return {
-                    limit() {
-                      return {
-                        async for() {
-                          return [{ ...stored }];
-                        },
-                      };
-                    },
-                  };
+                  return Promise.resolve(rows);
                 },
               };
+              return chain;
             },
           };
         },
@@ -284,7 +347,6 @@ test("durable turns do not synthesize canonical activation during terminalizatio
       sessionId: stored.id,
       actor: { type: "user", userId: stored.userId },
       requestedTerminalReason: "user_end",
-      validationOverride: validation,
       now: new Date("2026-07-10T08:00:00.000Z"),
     },
     database
@@ -298,19 +360,3 @@ test("durable turns do not synthesize canonical activation during terminalizatio
   assert.deepEqual(transitions, ["ending", "abandoned"]);
   assert.equal(stored.activatedAt, null);
 });
-
-function validSessionValidation(): SessionValidation {
-  return {
-    tier: SessionTier.FULL,
-    isValid: true,
-    stats: {
-      totalTurns: 20,
-      userTurns: 10,
-      totalWords: 800,
-      durationSeconds: 1200,
-      substantiveResponses: 8,
-    },
-    reasons: [],
-    recommendations: [],
-  };
-}

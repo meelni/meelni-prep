@@ -443,12 +443,20 @@ test("TypeScript accepts and rejects the shared transcript golden cases", () => 
 test("transcript contract distinguishes partially delivered interviewer speech", () => {
   const fixture = createLiveKitStartFixture().transcriptEvent;
   const parsed = parseTranscriptEvent(
-    JSON.stringify({ ...fixture, delivery_state: "partially_delivered" })
+    JSON.stringify({
+      ...fixture,
+      row_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      delivery_state: "partially_delivered",
+    })
   );
 
   assert.equal(
     parsed && "delivery_state" in parsed ? parsed.delivery_state : null,
     "partially_delivered"
+  );
+  assert.equal(
+    parsed && "row_id" in parsed ? parsed.row_id : null,
+    "f47ac10b-58cc-4372-a567-0e02b2c3d479"
   );
 });
 
@@ -458,6 +466,7 @@ test("integrity markers contain no transcript text and stay outside transcript p
     event_type: "integrity_unavailable",
     event_id: "writer-1:speech-1:unavailable",
     writer_id: "writer-1",
+    writer_generation: 1,
     sequence: 1,
     session_id: "session-1",
     room_name: "interview-room",
@@ -488,6 +497,7 @@ test("runtime settlement is strict metadata-only evidence", () => {
     session_id: "session-1",
     room_name: "interview-room",
     writer_id: "writer-1",
+    writer_generation: 1,
     state: "settled",
     settled_at: "2026-07-10T08:30:00.000Z",
   };

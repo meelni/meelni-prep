@@ -4,7 +4,9 @@ The product contract is [Interview Session Lifecycle](../contracts/interview-ses
 
 ## Required Configuration
 
-- LiveKit server URL, API key, and API secret.
+- A LiveKit Cloud project, server URL, API key, and API secret. This teardown
+  contract relies on Cloud token revocation; a self-hosted deployment requires
+  a separately reviewed equivalent before use.
 - A LiveKit webhook targeting `POST /api/webhooks/livekit`, with
   `participant_joined`, `participant_left`, and
   `participant_connection_aborted` delivery enabled.
@@ -39,7 +41,9 @@ Never place an intermediary in front of the route that rewrites the body.
   recovery scan retries each row independently until LiveKit acknowledges
   deletion or absence. Never-attempted and least-recently-attempted rooms run
   first; the same cursor advances before cleanup, provisioning, and credit-only
-  recovery attempts.
+  recovery attempts. Revocation omits a client-provided cutoff so LiveKit Cloud
+  records provider current time; a slow or rolled-back app clock cannot leave
+  an older token valid, and a missing participant response still revokes it.
 - Because LiveKit webhooks are best-effort, a one-minute reconciliation scan
   checks authoritative participant presence for connecting, active, and
   reconnecting rooms. Connecting activation requires the exact standard
@@ -55,11 +59,18 @@ Never place an intermediary in front of the route that rewrites the body.
 - Reconnect expiry rechecks authoritative presence before claiming timeout,
   accepts only `JOINED`/`ACTIVE` candidate evidence with a finite `joinedAt`
   strictly before the stored reconnect deadline,
-  revokes candidate tokens before room deletion, waits a bounded two seconds
-  for durable transcript delivery, and finalizes from one validation snapshot.
-  Token authorization, signed rejoin, presence repair, stale-provisioning
-  claims, and timeout claims use PostgreSQL time. The cutoff is exclusive:
-  database time or participant `joinedAt` equal to the cutoff is denied.
+  fences candidate access, keeps the room and agent alive, and sends a reliable
+  trusted metadata-only settlement request targeted to the current registered
+  writer generation and semantic cutoff. It waits for durable database
+  acknowledgement (settled, degraded, or bounded missing result), then deletes
+  the room and finalizes from one validation snapshot. Passive drain time is not
+  settlement evidence, and transcript data cannot consume the outbox's reserved
+  control slot.
+  Token authorization, signed rejoin, ordinary presence repair,
+  stale-provisioning claims, and timeout claims use PostgreSQL time. At or after
+  a grace-owned cutoff, only the due-presence CAS may recover the session, and
+  only from exact-generation provider evidence whose `joinedAt` is strictly
+  before the stored cutoff. Equality or later evidence is denied.
 
 ## Preview Rehearsal
 
@@ -78,13 +89,16 @@ ready:
 5. Kill the tab and verify the signed webhook starts grace without a browser
    signal.
 6. Stay disconnected through the exact deadline. Confirm one
-   `disconnect_timeout` claim, candidate revocation before room deletion, a
-   two-second transcript drain, one validation snapshot, terminal session, and
-   feedback intent. Replay the event and confirm no duplicate result.
+   `disconnect_timeout` claim, candidate fencing, reliable targeted settlement
+   request while the room remains live, durable per-generation acknowledgement,
+   room deletion only afterward, one validation snapshot, terminal session,
+   and feedback intent. Drop the request and the acknowledgement in separate
+   runs and confirm both fail closed without treating passive delay as proof.
 7. Overlap a drop with the hard deadline. Confirm `time_limit` wins when its
    absolute deadline is earlier or equal.
 8. Exercise a room-delete failure. Confirm the accepted timeout claim remains
-   immutable and a retry completes deletion and settlement.
+   immutable, durable settlement evidence remains intact, and a retry completes
+   deletion without repeating or weakening the settlement obligation.
 9. Race two retries with divergent durable-signal validation. Confirm the first
    completed or abandoned settlement remains immutable and the loser cannot
    rewrite `disconnect_timeout` or `insufficient_signal`.
@@ -120,7 +134,9 @@ ready:
     accepted only for the matching lifecycle version and stored deadline.
 18. Simulate application clocks that are slow, fast, and roll backward. Confirm
     token issuance, presence repair, stale provisioning, and timeout claims
-    still follow PostgreSQL time and never extend the stored cutoff.
+    still follow PostgreSQL time and never extend the stored cutoff. Confirm
+    teardown sends no client revocation timestamp and therefore uses LiveKit
+    Cloud provider time before room deletion.
 19. Create more than 250 retryable poison rows ahead of one healthy cleanup,
     including credit-only rows. Confirm every attempted row advances the shared
     cursor, the healthy row reaches the next scan, and a failed credit settlement

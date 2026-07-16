@@ -44,6 +44,47 @@ test("a reconnect timeout claim persists the durable room cleanup marker", async
   assert.match(query.sql, /clock_timestamp\(\)/);
 });
 
+test("presence recovery uses disjoint pre-cutoff and grace-due database fences", async () => {
+  const predicates: SQL[] = [];
+  const database = {
+    update() {
+      const builder = {
+        set() {
+          return builder;
+        },
+        where(predicate: SQL) {
+          predicates.push(predicate);
+          return builder;
+        },
+        async returning() {
+          return [reconnectRow(false)];
+        },
+      };
+      return builder;
+    },
+  } as never;
+  const store = createDrizzleInterviewReconnectStore(database);
+  const input = {
+    sessionId: "session-1",
+    expectedVersion: 4,
+    deadlineAt: new Date("2026-07-10T08:00:30.000Z"),
+    joinedAt: new Date("2026-07-10T08:00:29.999Z"),
+    transitionedAt: new Date("2026-07-10T08:00:30.000Z"),
+  };
+
+  assert.equal((await store.recoverFromPresence(input)).applied, true);
+  assert.equal((await store.recoverFromDuePresence(input)).applied, true);
+
+  const dialect = new PgDialect();
+  const beforeCutoff = dialect.sqlToQuery(predicates[0]!);
+  const graceDue = dialect.sqlToQuery(predicates[1]!);
+  assert.match(beforeCutoff.sql, /clock_timestamp\(\)/);
+  assert.doesNotMatch(beforeCutoff.sql, /reconnect_deadline_owner/);
+  assert.match(graceDue.sql, /clock_timestamp\(\)/);
+  assert.match(graceDue.sql, /reconnect_deadline_owner/);
+  assert.notEqual(beforeCutoff.sql, graceDue.sql);
+});
+
 function reconnectRow(roomCleanupPending: boolean) {
   return {
     id: "session-1",

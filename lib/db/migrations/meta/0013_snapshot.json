@@ -1,5 +1,5 @@
 {
-  "id": "311e3478-5e84-4a15-ae82-e520b3f03ab5",
+  "id": "e4be3afc-b321-4094-aed4-ea06721b195d",
   "prevId": "cb0fc32f-ff9e-4730-ab51-11b39d603238",
   "version": "7",
   "dialect": "postgresql",
@@ -2995,6 +2995,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "writer_generation": {
+          "name": "writer_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "sequence": {
           "name": "sequence",
           "type": "bigint",
@@ -3111,6 +3117,23 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "transcript_interruption_marker_runtime_writer_fk": {
+          "name": "transcript_interruption_marker_runtime_writer_fk",
+          "tableFrom": "transcript_interruption_marker",
+          "tableTo": "transcript_runtime_writer",
+          "columnsFrom": [
+            "session_id",
+            "writer_generation",
+            "writer_id"
+          ],
+          "columnsTo": [
+            "session_id",
+            "generation",
+            "writer_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3129,6 +3152,10 @@
           "name": "transcript_interruption_marker_sequence_check",
           "value": "\"transcript_interruption_marker\".\"sequence\" > 0"
         },
+        "transcript_interruption_marker_writer_generation_check": {
+          "name": "transcript_interruption_marker_writer_generation_check",
+          "value": "\"transcript_interruption_marker\".\"writer_generation\" > 0"
+        },
         "transcript_interruption_marker_reason_check": {
           "name": "transcript_interruption_marker_reason_check",
           "value": "\"transcript_interruption_marker\".\"reason\" IN ('no_provider_confirmed_prefix', 'canonicalization_failed')"
@@ -3143,7 +3170,13 @@
         "session_id": {
           "name": "session_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
+          "notNull": true
+        },
+        "writer_generation": {
+          "name": "writer_generation",
+          "type": "integer",
+          "primaryKey": false,
           "notNull": true
         },
         "contract_version": {
@@ -3220,9 +3253,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "transcript_runtime_settlement_writer_fk": {
+          "name": "transcript_runtime_settlement_writer_fk",
+          "tableFrom": "transcript_runtime_settlement",
+          "tableTo": "transcript_runtime_writer",
+          "columnsFrom": [
+            "session_id",
+            "writer_generation",
+            "writer_id"
+          ],
+          "columnsTo": [
+            "session_id",
+            "generation",
+            "writer_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "transcript_runtime_settlement_pkey": {
+          "name": "transcript_runtime_settlement_pkey",
+          "columns": [
+            "session_id",
+            "writer_generation"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
@@ -3233,6 +3291,167 @@
         "transcript_runtime_settlement_state_check": {
           "name": "transcript_runtime_settlement_state_check",
           "value": "\"transcript_runtime_settlement\".\"state\" IN ('settled', 'degraded')"
+        },
+        "transcript_runtime_settlement_writer_generation_check": {
+          "name": "transcript_runtime_settlement_writer_generation_check",
+          "value": "\"transcript_runtime_settlement\".\"writer_generation\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transcript_runtime_writer": {
+      "name": "transcript_runtime_writer",
+      "schema": "",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contract_version": {
+          "name": "contract_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_name": {
+          "name": "room_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "writer_id": {
+          "name": "writer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registered_at": {
+          "name": "registered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transcript_runtime_writer_session_writer_idx": {
+          "name": "transcript_runtime_writer_session_writer_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "writer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transcript_runtime_writer_identity_idx": {
+          "name": "transcript_runtime_writer_identity_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "writer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transcript_runtime_writer_room_generation_idx": {
+          "name": "transcript_runtime_writer_room_generation_idx",
+          "columns": [
+            {
+              "expression": "room_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transcript_runtime_writer_session_id_interview_session_id_fk": {
+          "name": "transcript_runtime_writer_session_id_interview_session_id_fk",
+          "tableFrom": "transcript_runtime_writer",
+          "tableTo": "interview_session",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transcript_runtime_writer_pkey": {
+          "name": "transcript_runtime_writer_pkey",
+          "columns": [
+            "session_id",
+            "generation"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transcript_runtime_writer_contract_check": {
+          "name": "transcript_runtime_writer_contract_check",
+          "value": "\"transcript_runtime_writer\".\"contract_version\" = 1"
+        },
+        "transcript_runtime_writer_generation_check": {
+          "name": "transcript_runtime_writer_generation_check",
+          "value": "\"transcript_runtime_writer\".\"generation\" > 0"
         }
       },
       "isRLSEnabled": false
@@ -3269,6 +3488,12 @@
         "writer_id": {
           "name": "writer_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "writer_generation": {
+          "name": "writer_generation",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
@@ -3394,6 +3619,12 @@
               "nulls": "last"
             },
             {
+              "expression": "writer_generation",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "writer_id",
               "isExpression": false,
               "asc": true,
@@ -3401,6 +3632,18 @@
             },
             {
               "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3422,6 +3665,23 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transcript_turn_runtime_writer_fk": {
+          "name": "transcript_turn_runtime_writer_fk",
+          "tableFrom": "transcript_turn",
+          "tableTo": "transcript_runtime_writer",
+          "columnsFrom": [
+            "session_id",
+            "writer_generation",
+            "writer_id"
+          ],
+          "columnsTo": [
+            "session_id",
+            "generation",
+            "writer_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -3449,7 +3709,7 @@
         },
         "transcript_turn_canonical_identity_check": {
           "name": "transcript_turn_canonical_identity_check",
-          "value": "(\n        \"transcript_turn\".\"contract_version\" IS NULL AND\n        \"transcript_turn\".\"event_id\" IS NULL AND\n        \"transcript_turn\".\"writer_id\" IS NULL AND\n        \"transcript_turn\".\"sequence\" IS NULL AND\n        \"transcript_turn\".\"room_name\" IS NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NULL\n      ) OR (\n        \"transcript_turn\".\"contract_version\" = 2 AND\n        \"transcript_turn\".\"event_id\" IS NOT NULL AND\n        \"transcript_turn\".\"writer_id\" IS NOT NULL AND\n        \"transcript_turn\".\"sequence\" IS NOT NULL AND\n        \"transcript_turn\".\"room_name\" IS NOT NULL AND\n        \"transcript_turn\".\"started_at\" IS NOT NULL AND\n        \"transcript_turn\".\"ended_at\" IS NOT NULL AND\n        \"transcript_turn\".\"text\" IS NOT NULL AND\n        \"transcript_turn\".\"audio_ms\" IS NOT NULL AND\n        \"transcript_turn\".\"section\" IS NOT NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NOT NULL\n      )"
+          "value": "(\n        \"transcript_turn\".\"contract_version\" IS NULL AND\n        \"transcript_turn\".\"event_id\" IS NULL AND\n        \"transcript_turn\".\"writer_id\" IS NULL AND\n        \"transcript_turn\".\"writer_generation\" IS NULL AND\n        \"transcript_turn\".\"sequence\" IS NULL AND\n        \"transcript_turn\".\"room_name\" IS NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NULL\n      ) OR (\n        \"transcript_turn\".\"contract_version\" = 2 AND\n        \"transcript_turn\".\"event_id\" IS NOT NULL AND\n        \"transcript_turn\".\"writer_id\" IS NOT NULL AND\n        \"transcript_turn\".\"writer_generation\" IS NOT NULL AND\n        \"transcript_turn\".\"sequence\" IS NOT NULL AND\n        \"transcript_turn\".\"room_name\" IS NOT NULL AND\n        \"transcript_turn\".\"started_at\" IS NOT NULL AND\n        \"transcript_turn\".\"ended_at\" IS NOT NULL AND\n        \"transcript_turn\".\"text\" IS NOT NULL AND\n        \"transcript_turn\".\"audio_ms\" IS NOT NULL AND\n        \"transcript_turn\".\"section\" IS NOT NULL AND\n        \"transcript_turn\".\"delivery_state\" IS NOT NULL\n      )"
         }
       },
       "isRLSEnabled": false

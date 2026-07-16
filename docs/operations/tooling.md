@@ -234,12 +234,14 @@ reliably enforce REST-created checks. Every
 same-repository PR event also fans out to its open registered children. The
 globally serialized, maximum-depth pending queue retains parent movement and
 closure events. The publisher refreshes exact child and parent refs just before
-success; a deleted parent ref fails the child closed. A five-minute trusted
-schedule and manual dispatch remain backstops for manifest movement and
-operator recovery. Parent-triggered child topology failures fail the child's
-custom check without failing the parent's stable required context. A triggering
-registered child's own topology failure, or any API/publication failure, fails
-the stable context.
+success; a deleted parent ref fails the child closed. Draft branch/base movement
+uses one combined dependency audit, while draft body/title edits wait until the
+PR becomes ready. Filtered trusted-checker or manifest pushes to `main` and
+manual dispatch provide full backstops for default-branch movement and operator
+recovery. Parent-triggered child topology failures fail the child's custom check
+without failing the parent's stable required context. A triggering registered
+child's own topology failure, or any API/publication failure, fails the stable
+context.
 
 Unregistered PRs targeting `main` publish an explicit successful custom check
 whose output says the PR is not a registered stack child. The required
@@ -274,21 +276,24 @@ claiming that collision absence was proved. When the open PR list is known, an
 incomplete file inventory publishes failure to every known migration or
 immutable-history owner, every PR whose diff failed, and the triggering PR. Any
 missing diff could collide with a known migration owner. On a PR event where
-the list itself fails, the triggering exact head receives failure. The
-scheduled job also fails so an operator cannot mistake missing checks for a
-clean inventory.
+the list itself fails, the triggering exact head receives failure. The combined
+full-revalidation job also fails so an operator cannot mistake missing checks
+for a clean inventory.
 
 GitHub caps the pull-request files API at 3,000 files. Reaching that ceiling is
 treated as incomplete rather than assuming the unseen tail has no migration.
 
-Opened, reopened, synchronized, edited, closed, draft-conversion, and
-ready-for-review events refresh affected owners immediately. The five-minute
-schedule is a recovery path for missed events and parent/default-branch
-movement. Scheduled runs publish only migration or immutable-history owners,
-not every open PR, and reuse the latest completed Check Run when its exact head,
-GitHub Actions app identity, conclusion, and summary are unchanged.
+Non-draft opened, reopened, synchronized, relevant edited, closed, and
+ready-for-review events refresh affected owners immediately. Draft branch/base
+movement uses one combined audit; draft body/title edits allocate no runner.
+Filtered trusted-checker or manifest pushes to `main` and manual dispatch are the
+recovery paths for default-branch movement or an intentionally requested full
+sweep. Full sweeps publish only migration or immutable-history owners, not every
+open PR, and reuse the latest completed Check Run when its exact head, GitHub
+Actions app identity, conclusion, and summary are unchanged.
 
-Event-driven and scheduled migration publishers share the global
+Event-driven, filtered default-branch, and manual migration publishers share the
+global
 `migration-collision-audit` concurrency group with running-run cancellation
 disabled. An older inventory therefore cannot finish after a newer audit and
 overwrite its collision failure with stale success. Immediately before each

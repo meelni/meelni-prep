@@ -11,9 +11,12 @@ export const TRANSCRIPT_PERSISTENCE_LIMITS = {
 
 export interface TranscriptOrderingKey {
   timestamp: Date;
+  startedAt?: Date;
+  writerGeneration?: number;
   writerId?: string;
   sequence?: number;
   eventId?: string;
+  rowId?: string;
 }
 
 export function compareTranscriptOrdering(
@@ -21,11 +24,32 @@ export function compareTranscriptOrdering(
   right: TranscriptOrderingKey
 ): number {
   return (
-    left.timestamp.getTime() - right.timestamp.getTime() ||
-    (left.writerId ?? "").localeCompare(right.writerId ?? "") ||
-    (left.sequence ?? 0) - (right.sequence ?? 0) ||
-    (left.eventId ?? "").localeCompare(right.eventId ?? "")
+    (left.startedAt ?? left.timestamp).getTime() -
+      (right.startedAt ?? right.timestamp).getTime() ||
+    compareOptionalNumber(left.writerGeneration, right.writerGeneration) ||
+    compareOptionalString(left.writerId, right.writerId) ||
+    compareOptionalNumber(left.sequence, right.sequence) ||
+    compareOptionalString(left.eventId, right.eventId) ||
+    compareOptionalString(left.rowId, right.rowId)
   );
+}
+
+function compareOptionalNumber(
+  left: number | undefined,
+  right: number | undefined
+): number {
+  if (left === undefined) return right === undefined ? 0 : 1;
+  if (right === undefined) return -1;
+  return left - right;
+}
+
+function compareOptionalString(
+  left: string | undefined,
+  right: string | undefined
+): number {
+  if (left === undefined) return right === undefined ? 0 : 1;
+  if (right === undefined) return -1;
+  return left.localeCompare(right);
 }
 
 export type PersistTranscriptEventResult<TTurn> =
@@ -42,6 +66,8 @@ export type PersistTranscriptEventResult<TTurn> =
         | "event_conflict"
         | "writer_sequence_conflict"
         | "writer_order_conflict"
+        | "writer_not_registered"
+        | "writer_fenced"
         | "runtime_settled"
         | "event_time_out_of_bounds"
         | "session_closed"

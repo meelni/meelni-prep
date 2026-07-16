@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import {
   FeedbackSectionCard,
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 interface FeedbackData {
   id: string;
@@ -74,6 +75,8 @@ interface TranscriptTurn {
 interface TranscriptResponse {
   turns: TranscriptTurn[];
 }
+
+type TranscriptLoadState = "idle" | "loading" | "ready" | "empty" | "error";
 
 function LoadingSkeleton() {
   return (
@@ -128,11 +131,14 @@ export default function FeedbackPage() {
   const [feedbackData, setFeedbackData] = useState<FeedbackResponse | null>(
     null
   );
+  const feedbackRequestIdRef = useRef(0);
   const [transcriptData, setTranscriptData] = useState<TranscriptTurn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
-  const [loadingTranscript, setLoadingTranscript] = useState(false);
+  const [transcriptLoadState, setTranscriptLoadState] =
+    useState<TranscriptLoadState>("idle");
+  const transcriptRequestIdRef = useRef(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
 
@@ -163,11 +169,17 @@ export default function FeedbackPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    const requestId = ++feedbackRequestIdRef.current;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    setLoading(true);
+    setError(null);
+    setFeedbackData(null);
 
     async function fetchFeedback() {
       try {
         const response = await fetch(`/api/feedback/${sessionId}`);
         const data: FeedbackResponse = await response.json();
+        if (requestId !== feedbackRequestIdRef.current) return;
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -191,44 +203,74 @@ export default function FeedbackPage() {
           data.status === "pending" ||
           data.status === "processing"
         ) {
-          setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
+          pollTimer = setTimeout(fetchFeedback, 3000); // Poll every 3 seconds
         }
       } catch (err) {
+        if (requestId !== feedbackRequestIdRef.current) return;
         setError(
           err instanceof Error ? err.message : "Failed to load feedback"
         );
       } finally {
-        setLoading(false);
+        if (requestId === feedbackRequestIdRef.current) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchFeedback();
+    void fetchFeedback();
+    return () => {
+      feedbackRequestIdRef.current += 1;
+      if (pollTimer !== null) clearTimeout(pollTimer);
+    };
   }, [sessionId, router]);
 
-  // Fetch transcript when expanded
-  useEffect(() => {
-    if (!transcriptExpanded || transcriptData.length > 0 || !sessionId) return;
+  const fetchTranscript = useCallback(async () => {
+    if (!sessionId) return;
 
-    async function fetchTranscript() {
-      setLoadingTranscript(true);
-      try {
-        const response = await fetch(`/api/transcript/${sessionId}`);
+    const requestId = ++transcriptRequestIdRef.current;
+    setTranscriptLoadState("loading");
+    try {
+      const response = await fetch(`/api/session/${sessionId}/transcript`, {
+        cache: "no-store",
+      });
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch transcript");
-        }
-
-        const data: TranscriptResponse = await response.json();
-        setTranscriptData(data.turns);
-      } catch (err) {
-        console.error("Error fetching transcript:", err);
-      } finally {
-        setLoadingTranscript(false);
+      if (!response.ok) {
+        throw new Error("Failed to fetch transcript");
       }
-    }
 
-    fetchTranscript();
-  }, [transcriptExpanded, sessionId, transcriptData.length]);
+      const data =
+        (await response.json()) as Partial<TranscriptResponse> | null;
+      if (!data || !Array.isArray(data.turns)) {
+        throw new Error("Invalid transcript response");
+      }
+      if (requestId !== transcriptRequestIdRef.current) return;
+      const turns = data.turns;
+      setTranscriptData(turns);
+      setTranscriptLoadState(turns.length > 0 ? "ready" : "empty");
+    } catch (err) {
+      if (requestId !== transcriptRequestIdRef.current) return;
+      console.error("[Feedback] transcript_fetch_failed", {
+        code: "feedback_transcript_fetch_failed",
+        ...toSafeErrorLog(err),
+      });
+      setTranscriptData([]);
+      setTranscriptLoadState("error");
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    transcriptRequestIdRef.current += 1;
+    setTranscriptData([]);
+    setTranscriptLoadState("idle");
+    setTranscriptExpanded(false);
+  }, [sessionId]);
+
+  // Fetch transcript only after the user opens it. A failed read remains an
+  // explicit recoverable error; only a successful empty response is "empty."
+  useEffect(() => {
+    if (!transcriptExpanded || transcriptLoadState !== "idle") return;
+    void fetchTranscript();
+  }, [fetchTranscript, transcriptExpanded, transcriptLoadState]);
 
   const formatTimestamp = (timestamp: string | null): string => {
     if (!timestamp) return "";
@@ -528,6 +570,8 @@ export default function FeedbackPage() {
               variant="ghost"
               size="sm"
               onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+              aria-expanded={transcriptExpanded}
+              aria-controls="feedback-transcript-content"
             >
               {transcriptExpanded ? (
                 <>
@@ -544,12 +588,47 @@ export default function FeedbackPage() {
           }
         >
           {transcriptExpanded && (
-            <>
-              {loadingTranscript ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="text-primary h-8 w-8 animate-spin" />
+            <div id="feedback-transcript-content">
+              {transcriptLoadState === "idle" ||
+              transcriptLoadState === "loading" ? (
+                <div
+                  className="flex items-center justify-center gap-3 py-8"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Loader2
+                    className="text-primary h-8 w-8 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  <span className="text-muted-foreground text-sm">
+                    Loading transcript...
+                  </span>
                 </div>
-              ) : transcriptData.length === 0 ? (
+              ) : transcriptLoadState === "error" ? (
+                <div
+                  className="border-destructive/25 bg-destructive/10 text-destructive flex flex-col items-start gap-3 rounded-lg border p-4"
+                  role="alert"
+                >
+                  <div>
+                    <p className="font-medium">
+                      Transcript could not be loaded
+                    </p>
+                    <p className="mt-1 text-sm">
+                      Your interview is still saved. Check your connection and
+                      try loading the transcript again.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void fetchTranscript()}
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    Retry transcript
+                  </Button>
+                </div>
+              ) : transcriptLoadState === "empty" ? (
                 <p className="text-muted-foreground py-8 text-center">
                   No transcript available for this session
                 </p>
@@ -585,7 +664,7 @@ export default function FeedbackPage() {
                   ))}
                 </div>
               )}
-            </>
+            </div>
           )}
         </FeedbackSectionCard>
       </div>

@@ -19,6 +19,7 @@ import {
   listProviderEnvVars,
   providerFailure,
   providerSuccess,
+  sendReliableInterviewRoomData,
   terminateInterviewRoom,
   type LiveKitInterviewProvider,
 } from "./index";
@@ -747,7 +748,7 @@ test("LiveKit reconnect token issuance fails closed for a signer past the canoni
     assert.equal(result.error.code, "livekit_token_expiry_invalid");
 });
 
-test("LiveKit room termination revokes the candidate before deleting the room", async () => {
+test("LiveKit room termination uses provider-time revocation before deleting the room", async () => {
   const calls: string[] = [];
   const env = {
     apiKey: "key",
@@ -758,16 +759,15 @@ test("LiveKit room termination revokes the candidate before deleting the room", 
     {
       roomName: "interview-deadline-room",
       participantIdentity: "candidate-id",
-      revokedAt: new Date("2026-07-10T08:00:30.900Z"),
       env,
     },
     {
+      now: () => new Date("1970-01-01T00:00:00.000Z"),
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
         removeParticipant: async (roomName, identity, options) => {
-          calls.push(
-            `revoke:${roomName}:${identity}:${options?.revokeTokenTs}`
-          );
+          assert.equal(options, undefined);
+          calls.push(`revoke:${roomName}:${identity}:provider-time`);
         },
         deleteRoom: async (roomName) => {
           calls.push(`delete:${roomName}`);
@@ -779,7 +779,6 @@ test("LiveKit room termination revokes the candidate before deleting the room", 
     {
       roomName: "interview-deadline-room",
       participantIdentity: "candidate-id",
-      revokedAt: new Date("2026-07-10T08:00:30.900Z"),
       env,
     },
     {
@@ -797,7 +796,7 @@ test("LiveKit room termination revokes the candidate before deleting the room", 
   );
 
   assert.deepEqual(calls, [
-    "revoke:interview-deadline-room:candidate-id:1783670431",
+    "revoke:interview-deadline-room:candidate-id:provider-time",
     "delete:interview-deadline-room",
   ]);
   assert.deepEqual(deletedResult, {
@@ -814,6 +813,49 @@ test("LiveKit room termination revokes the candidate before deleting the room", 
     data: {
       roomName: "interview-deadline-room",
       disposition: "already_absent",
+    },
+  });
+});
+
+test("LiveKit reliable server data targets only the exact runtime identity and topic", async () => {
+  const payload = new TextEncoder().encode(
+    '{"event_type":"runtime_settlement_request"}'
+  );
+  const result = await sendReliableInterviewRoomData(
+    {
+      roomName: "interview-reconnect-room",
+      destinationIdentity: "agent-worker",
+      topic: "meelni.transcript.settlement.request",
+      data: payload,
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        sendData: async (roomName, data, kind, options) => {
+          assert.equal(roomName, "interview-reconnect-room");
+          assert.deepEqual(data, payload);
+          assert.equal(kind, 0);
+          assert.deepEqual(options, {
+            destinationIdentities: ["agent-worker"],
+            topic: "meelni.transcript.settlement.request",
+          });
+        },
+      }),
+    }
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    provider: "livekit",
+    data: {
+      roomName: "interview-reconnect-room",
+      destinationIdentity: "agent-worker",
+      topic: "meelni.transcript.settlement.request",
     },
   });
 });
@@ -927,7 +969,6 @@ test("LiveKit room termination fails closed for invalid revocation input", async
     {
       roomName: "interview-deadline-room",
       participantIdentity: " ",
-      revokedAt: new Date(Number.NaN),
       env: {
         apiKey: "key",
         apiSecret: "secret",

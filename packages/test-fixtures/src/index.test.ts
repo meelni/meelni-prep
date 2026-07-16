@@ -89,6 +89,7 @@ test("LiveKit start fixture matches provider and transcript-event contracts", ()
     contract_version: 2,
     event_id: "transcript-event-1",
     writer_id: "writer-fixture-1",
+    writer_generation: 1,
     sequence: 1,
     session_id: "fixture-session-product-sense-1",
     room_name: "interview-1782600000000-i00000",
