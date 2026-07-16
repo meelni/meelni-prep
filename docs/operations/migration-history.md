@@ -21,10 +21,11 @@
 |    12 | `0012_transcript_privacy_integrity`   |
 |    13 | `0013_runtime_settlement`             |
 |    14 | `0014_stable_start_usable_credit`     |
+|    15 | `0015_provider_credit_recovery`       |
 
 <!-- migration-journal:end -->
 
-This fifteen-entry inventory is generated from the same ordered contract as
+This sixteen-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -192,3 +193,18 @@ both activation evidence and its first accepted candidate transcript event;
 otherwise terminal recovery releases the reservation. Database checks, unique
 indexes, foreign keys, and an immutability trigger prevent identity drift or
 later rewriting of provisioning and usable evidence.
+
+## Provider credit recovery
+
+`0015_provider_credit_recovery` adds immutable billing-fault classification,
+provider-failure identity, and terminal credit-settlement evidence to version-1
+interview sessions. Provider and transcript-integrity failures after usable
+signal can issue one idempotent make-good grant, pre-usable terminal outcomes
+release the reservation, and user-owned outcomes after usable signal retain the
+consumed credit.
+
+Database constraints bind each settlement action to its allowed fault and
+reason, while a service-only trigger prevents later rewriting of fault,
+provider-event, or settlement evidence. A unique runtime-failure event index
+and deterministic settlement keys make retries converge without duplicate
+credit changes.

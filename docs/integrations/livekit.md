@@ -88,6 +88,12 @@ npm run typecheck
 - Start leaves the credit reserved. Consume only after canonical activation and
   the first persisted, non-blank, fully delivered version-2 interviewer turn.
   Pre-usable terminal outcomes release the reservation.
+- The interview worker reports allowlisted `provider_failed` lifecycle facts
+  through the existing signed internal ingest URL. The payload contains only a
+  stable event/session/runtime identity, safe failure code, retryability, and
+  time—never raw exceptions, transcript content, tokens, or secrets. Equivalent
+  replays repair missing credit settlement; conflicting terminal claims fail
+  closed. Post-usable provider faults refund under the versioned credit policy.
 - Treat an authenticated, owned, active `voice_video` session created through
   the credit-gated start workflow as the reconnect entitlement. Do not recheck
   remaining credit balance after its credit was durably reserved. Reject absent,

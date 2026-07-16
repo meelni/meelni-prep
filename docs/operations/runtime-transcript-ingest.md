@@ -17,6 +17,9 @@ Both services derive a domain-separated signing key from the server-only
 `<timestamp>.<raw-body>`. Requests outside the five-minute clock window,
 malformed signatures, weak/missing server configuration, or body mutation fail
 closed. Never log the secret, signature, raw body, or transcript text.
+The server reads the request as an abort-aware byte stream, cancels it as soon
+as it exceeds 64 KiB, and never buffers an unbounded body even when
+`Content-Length` is absent or false.
 
 The room metadata contains the exact ingest URL. It must use HTTPS and the
 literal `/api/internal/transcript` path without credentials, query, or fragment.
@@ -64,8 +67,8 @@ Loopback HTTP is accepted only for local development.
 ## Deployment and rehearsal
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
-2. Apply the complete committed chain through `0014_stable_start_usable_credit`
-   and require the fifteen-entry schema preflight.
+2. Apply the complete committed chain through `0015_provider_credit_recovery`
+   and require the sixteen-entry schema preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime with the same environment's `LIVEKIT_API_SECRET`.
 5. In an isolated Preview environment, verify completed speech, mid-sentence
@@ -95,7 +98,7 @@ Loopback HTTP is accepted only for local development.
 
 The isolated `meelni-preview` Supabase project now has a distinct project
 identity and is connected to `meelni/meelni-prep`. Isolation is only the safety
-prerequisite: the fifteen-entry migration preflight, application deployment,
+prerequisite: the sixteen-entry migration preflight, application deployment,
 matching LiveKit runtime configuration, and this end-to-end rehearsal still
 need recorded Preview evidence before the relaunch gate can change.
 

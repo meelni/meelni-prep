@@ -2,6 +2,7 @@
 """Runtime contract tests for the LiveKit interview agent."""
 
 import asyncio
+import ast
 import contextlib
 import hashlib
 import hmac
@@ -9,6 +10,7 @@ import io
 import json
 import logging
 import os
+import re
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -22,7 +24,14 @@ from shared.config import parse_room_metadata
 from shared.safe_logging import log_exception_class
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
-from shared.runtime_events import create_runtime_event
+from shared.runtime_events import (
+    ALLOWED_PROVIDER_FAILURE_CODES,
+    DEFAULT_PROVIDER_FAILURE_CODE,
+    PROVIDER_FAILURE_CODES,
+    create_runtime_event,
+    provider_failure_code,
+    stop_provider_runtime_then_report,
+)
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
     get_model_config,
@@ -75,6 +84,299 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_runtime_provider_error_codes_are_allowlisted_and_payload_free(self):
+        self.assertEqual(provider_failure_code("stt_error"), "stt_provider_failed")
+        self.assertEqual(provider_failure_code("llm_error"), "llm_provider_failed")
+        self.assertEqual(provider_failure_code("tts_error"), "tts_provider_failed")
+        self.assertEqual(
+            provider_failure_code("realtime_model_error"),
+            "realtime_model_provider_failed",
+        )
+
+    def test_provider_failure_stop_precedes_bounded_reporting(self):
+        async def scenario():
+            calls = []
+            report_started = asyncio.Event()
+            release_report = asyncio.Event()
+
+            async def report_failure():
+                calls.append("report")
+                report_started.set()
+                await release_report.wait()
+                return True
+
+            async def close_session():
+                calls.append("close_session")
+
+            async def terminate_room():
+                calls.append("terminate_room")
+
+            task = asyncio.create_task(stop_provider_runtime_then_report(
+                disable_input=lambda: calls.append("disable_input"),
+                close_session=close_session,
+                terminate_room=terminate_room,
+                shutdown=lambda: calls.append("shutdown"),
+                report_failure=report_failure,
+            ))
+            await report_started.wait()
+            calls_before_report_settles = list(calls)
+            release_report.set()
+            return await task, calls_before_report_settles, calls
+
+        persisted, calls_before_report_settles, calls = asyncio.run(scenario())
+
+        self.assertTrue(persisted)
+        self.assertEqual(
+            calls_before_report_settles,
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+        self.assertEqual(
+            calls,
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+
+    def test_provider_failure_stop_is_guaranteed_when_reporting_fails(self):
+        async def scenario():
+            calls = []
+
+            async def report_failure():
+                calls.append("report")
+                raise RuntimeError("persistence unavailable")
+
+            async def close_session():
+                calls.append("close_session")
+
+            async def terminate_room():
+                calls.append("terminate_room")
+
+            try:
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
+                    close_session=close_session,
+                    terminate_room=terminate_room,
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
+                )
+            except RuntimeError as error:
+                return error, calls
+            raise AssertionError("provider failure should propagate")
+
+        error, calls = asyncio.run(scenario())
+        self.assertRegex(str(error), "persistence unavailable")
+
+        self.assertEqual(
+            calls,
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+        self.assertEqual(
+            provider_failure_code("raw provider stack with token"),
+            "voice_runtime_provider_failed",
+        )
+
+    def test_provider_failure_stop_continues_after_hung_close_and_terminate(self):
+        async def scenario(hung_step):
+            calls = []
+            never = asyncio.Event()
+
+            async def close_session():
+                calls.append("close_session")
+                if hung_step == "close_session":
+                    await never.wait()
+
+            async def terminate_room():
+                calls.append("terminate_room")
+                if hung_step == "terminate_room":
+                    await never.wait()
+
+            async def report_failure():
+                calls.append("report")
+                return True
+
+            with self.assertRaises(asyncio.TimeoutError):
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
+                    close_session=close_session,
+                    terminate_room=terminate_room,
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
+                    stop_timeout_seconds=0.01,
+                    report_timeout_seconds=0.01,
+                )
+            return calls
+
+        for hung_step in ("close_session", "terminate_room"):
+            calls = asyncio.run(scenario(hung_step))
+            self.assertEqual(
+                calls,
+                ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+            )
+
+    def test_provider_failure_stop_finishes_before_a_hung_report_times_out(self):
+        async def scenario():
+            calls = []
+            never = asyncio.Event()
+
+            async def report_failure():
+                calls.append("report")
+                await never.wait()
+                return True
+
+            with self.assertRaises(asyncio.TimeoutError):
+                await stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.append("disable_input"),
+                    close_session=lambda: append_async(calls, "close_session"),
+                    terminate_room=lambda: append_async(calls, "terminate_room"),
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=report_failure,
+                    stop_timeout_seconds=0.01,
+                    report_timeout_seconds=0.01,
+                )
+            return calls
+
+        async def append_async(calls, value):
+            calls.append(value)
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            ["disable_input", "close_session", "terminate_room", "shutdown", "report"],
+        )
+
+    def test_interview_agent_reports_fatal_session_errors(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn('@session.on("error")', source)
+        self.assertIn('getattr(event.error, "recoverable", False)', source)
+        self.assertIn("schedule_provider_failure_report(", source)
+        self.assertNotIn(
+            'await report_provider_failure("initial_greeting_failed"', source
+        )
+        self.assertNotIn(
+            'await report_provider_failure("voice_session_start_failed"', source
+        )
+        self.assertIn(
+            'stop_runtime_and_report(\n            "initial_greeting_failed"', source
+        )
+
+    def test_normal_deadline_safety_stop_precedes_blocked_cleanup(self):
+        async def scenario():
+            calls = []
+            cleanup_started = asyncio.Event()
+            release_cleanup = asyncio.Event()
+
+            async def cleanup():
+                calls.append("cleanup")
+                cleanup_started.set()
+                await release_cleanup.wait()
+                return True
+
+            task = asyncio.create_task(
+                stop_provider_runtime_then_report(
+                    disable_input=lambda: calls.extend(["disable_input", "interrupt"]),
+                    close_session=lambda: append_async(calls, "close_session"),
+                    terminate_room=lambda: append_async(calls, "terminate_room"),
+                    shutdown=lambda: calls.append("shutdown"),
+                    report_failure=cleanup,
+                )
+            )
+            await cleanup_started.wait()
+            before_cleanup_settles = list(calls)
+            release_cleanup.set()
+            await task
+            return before_cleanup_settles
+
+        async def append_async(calls, value):
+            calls.append(value)
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            [
+                "disable_input",
+                "interrupt",
+                "close_session",
+                "terminate_room",
+                "shutdown",
+                "cleanup",
+            ],
+        )
+
+    def test_provider_failure_callsites_and_mapper_match_shared_vocabulary(self):
+        fixture_path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "provider-failure-codes.json"
+        )
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+        tree = ast.parse(source)
+        literal_codes = {
+            "report_provider_failure": set(),
+            "stop_runtime_and_report": set(),
+            "schedule_provider_failure_report": set(),
+        }
+        dynamic_calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            reporter = node.func.id
+            if reporter not in literal_codes or not node.args:
+                continue
+            code_argument = node.args[0]
+            if isinstance(code_argument, ast.Constant) and isinstance(
+                code_argument.value, str
+            ):
+                literal_codes[reporter].add(code_argument.value)
+            else:
+                dynamic_calls.append((reporter, code_argument))
+
+        self.assertEqual(
+            literal_codes["stop_runtime_and_report"],
+            set(fixture["stop_first_codes"]),
+        )
+        self.assertEqual(
+            literal_codes["schedule_provider_failure_report"],
+            set(fixture["scheduled_report_codes"]),
+        )
+        dynamic_by_reporter = {
+            reporter: [
+                argument
+                for dynamic_reporter, argument in dynamic_calls
+                if dynamic_reporter == reporter
+            ]
+            for reporter in literal_codes
+        }
+        self.assertEqual(
+            {reporter: len(calls) for reporter, calls in dynamic_by_reporter.items()},
+            {
+                "report_provider_failure": 1,
+                "stop_runtime_and_report": 1,
+                "schedule_provider_failure_report": 1,
+            },
+        )
+        forwarded_code = dynamic_by_reporter["report_provider_failure"][0]
+        self.assertIsInstance(forwarded_code, ast.Name)
+        self.assertEqual(forwarded_code.id, "code")
+        for forwarded_stop_code in dynamic_by_reporter["stop_runtime_and_report"]:
+            self.assertIsInstance(forwarded_stop_code, ast.Name)
+            self.assertEqual(forwarded_stop_code.id, "code")
+        scheduled_code = dynamic_by_reporter["schedule_provider_failure_report"][0]
+        self.assertIsInstance(scheduled_code, ast.Call)
+        self.assertIsInstance(scheduled_code.func, ast.Name)
+        self.assertEqual(scheduled_code.func.id, "provider_failure_code")
+        self.assertEqual(
+            set(PROVIDER_FAILURE_CODES.values()), set(fixture["mapper_codes"])
+        )
+        self.assertEqual(DEFAULT_PROVIDER_FAILURE_CODE, fixture["fallback_code"])
+        self.assertEqual(fixture["reserved_codes"], [])
+        deployed_codes = (
+            set(PROVIDER_FAILURE_CODES.values())
+            | {DEFAULT_PROVIDER_FAILURE_CODE}
+            | literal_codes["stop_runtime_and_report"]
+            | literal_codes["schedule_provider_failure_report"]
+        )
+        self.assertEqual(deployed_codes, set(fixture["deployed_codes"]))
+        self.assertEqual(ALLOWED_PROVIDER_FAILURE_CODES, deployed_codes)
+
     def test_interview_agent_keeps_room_io_open_for_reconnect_grace(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
 
@@ -638,6 +940,37 @@ class RuntimeContractTests(unittest.TestCase):
                 session_id="session-1",
                 event_type="provider_failed",
                 occurred_at="2026-07-09T21:00:00.000Z",
+            )
+
+        for provider, code in [
+            ("invented-runtime", "llm_provider_failed"),
+            ("livekit", "plausible_but_unknown"),
+        ]:
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                create_runtime_event(
+                    event_id=f"runtime-event-{provider}-{code}",
+                    session_id="session-1",
+                    event_type="provider_failed",
+                    occurred_at="2026-07-09T21:00:00.000Z",
+                    runtime_ref={"provider": provider, "id": "runtime-1"},
+                    failure={
+                        "reason": "provider_failure",
+                        "code": code,
+                        "retryable": False,
+                    },
+                )
+
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            create_runtime_event(
+                event_id="runtime-event-3",
+                session_id="session-1",
+                event_type="provider_failed",
+                occurred_at="2026-07-09T21:00:00.000Z",
+                failure={
+                    "reason": "provider_failure",
+                    "code": "Provider stack: secret",
+                    "retryable": False,
+                },
             )
 
 
@@ -1359,6 +1692,56 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             bodies,
             [{"sessionId": "session-1", "settlement": settlement}],
+        )
+        self.assertEqual(published, [])
+
+    async def test_provider_failure_uses_signed_runtime_event_envelope_after_seal(self):
+        bodies = []
+        published = []
+
+        async def transport(_url, body, _headers):
+            bodies.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event)
+
+        queue = TranscriptIngestQueue(
+            ingest_url="http://localhost:3000/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=1,
+                state="settled",
+                settled_at=1783650000,
+            )
+        )
+        failure = create_runtime_event(
+            event_id="provider-failure:session-1:voice_session_start_failed",
+            session_id="session-1",
+            event_type="provider_failed",
+            occurred_at="2026-07-10T08:30:00.000Z",
+            runtime_ref={"provider": "livekit", "id": "room-1"},
+            failure={
+                "reason": "provider_failure",
+                "code": "voice_session_start_failed",
+                "retryable": True,
+            },
+        )
+        queue.enqueue_runtime_event(failure)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            bodies[1],
+            {"sessionId": "session-1", "runtimeEvent": failure},
         )
         self.assertEqual(published, [])
 

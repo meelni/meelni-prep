@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import {
   withDrizzleCreditLedgerUserTransaction,
@@ -27,7 +27,10 @@ export async function convergeDrizzleInterviewCreditSettlement(
 }
 
 export function createDrizzleInterviewCreditSettlementStore(
-  database: CreditLedgerDatabase = db
+  database: CreditLedgerDatabase = db,
+  trackCompletedSettlement: (
+    evidence: InterviewCreditSettlementEvidence
+  ) => void = trackCompletedInterviewCreditSettlement
 ): InterviewCreditSettlementStore {
   return {
     async lookupOwner(sessionId) {
@@ -52,6 +55,15 @@ export function createDrizzleInterviewCreditSettlementStore(
               activatedAt: interviewSession.activatedAt,
               usableAt: interviewSession.usableAt,
               usableTranscriptEventId: interviewSession.usableTranscriptEventId,
+              billingFault: interviewSession.billingFault,
+              billingFaultCode: interviewSession.billingFaultCode,
+              creditPolicyVersion: interviewSession.creditPolicyVersion,
+              creditSettlementAction: interviewSession.creditSettlementAction,
+              creditSettlementReason: interviewSession.creditSettlementReason,
+              creditSettlementIdempotencyKey:
+                interviewSession.creditSettlementIdempotencyKey,
+              creditSettledAt: interviewSession.creditSettledAt,
+              creditMakeGoodGrantId: interviewSession.creditMakeGoodGrantId,
             })
             .from(interviewSession)
             .where(
@@ -100,6 +112,7 @@ export function createDrizzleInterviewCreditSettlementStore(
                 reservationKey: input.reservationKey,
                 idempotencyKey: input.idempotencyKey,
                 action: input.action,
+                currentTime: input.now,
               });
               const reservation = outcome.reservation;
               if (
@@ -119,7 +132,31 @@ export function createDrizzleInterviewCreditSettlementStore(
                 sessionId: reservation.sessionId,
                 reservationId: reservation.id,
                 grantId: outcome.firstGrant?.id,
+                makeGoodGrantId: outcome.makeGoodGrant?.id,
               } satisfies InterviewCreditSettlementEvidence;
+            },
+            async getReservation(reservationKey) {
+              const reservation =
+                await ledger.findReservationByKeyForUpdate(reservationKey);
+              if (
+                !reservation ||
+                reservation.userId !== userId ||
+                reservation.sessionId !== sessionId ||
+                reservation.startContractVersion !== 1 ||
+                reservation.startAttemptId !== sessionId ||
+                !["active", "consumed", "released", "refunded"].includes(
+                  reservation.status
+                )
+              ) {
+                throw new Error("interview_start_credit_correlation_invalid");
+              }
+              return {
+                status: reservation.status as
+                  | "active"
+                  | "consumed"
+                  | "released"
+                  | "refunded",
+              };
             },
             async markUsable({ eventId, usableAt }) {
               const updated = await transaction
@@ -141,27 +178,76 @@ export function createDrizzleInterviewCreditSettlementStore(
                 throw new Error("interview_usable_evidence_write_failed");
               }
             },
+            async recordPolicySettlement(input) {
+              const updated = await transaction
+                .update(interviewSession)
+                .set({
+                  creditPolicyVersion: input.policyVersion,
+                  creditSettlementAction: input.action,
+                  creditSettlementReason: input.reason,
+                  creditSettlementIdempotencyKey: input.idempotencyKey,
+                  creditSettledAt: input.settledAt,
+                  creditMakeGoodGrantId: input.makeGoodGrantId,
+                })
+                .where(
+                  and(
+                    eq(interviewSession.id, sessionId),
+                    eq(interviewSession.userId, userId),
+                    eq(interviewSession.startContractVersion, 1),
+                    inArray(interviewSession.lifecycleState, [
+                      "completed",
+                      "abandoned",
+                      "failed",
+                    ]),
+                    isNull(interviewSession.creditSettledAt)
+                  )
+                )
+                .returning({ id: interviewSession.id });
+              if (!updated[0]) {
+                throw new Error(
+                  "interview_credit_settlement_evidence_write_failed"
+                );
+              }
+            },
           });
         },
         database
       );
     },
-    trackCompletedSettlement(evidence) {
-      trackCompletedReservationEvent({
-        transactionType: evidence.transactionType,
-        userId: evidence.userId,
-        catalogId: evidence.catalogId as Parameters<
-          typeof trackCompletedReservationEvent
-        >[0]["catalogId"],
-        creditSource: evidence.creditSource as Parameters<
-          typeof trackCompletedReservationEvent
-        >[0]["creditSource"],
-        credits: evidence.credits,
-        idempotencyKey: evidence.idempotencyKey,
-        sessionId: evidence.sessionId,
-        reservationId: evidence.reservationId,
-        grantId: evidence.grantId,
-      });
-    },
+    trackCompletedSettlement,
   };
+}
+
+export function trackCompletedInterviewCreditSettlement(
+  evidence: InterviewCreditSettlementEvidence
+): void {
+  trackCompletedReservationEvent({
+    transactionType: evidence.transactionType,
+    userId: evidence.userId,
+    catalogId: evidence.catalogId as Parameters<
+      typeof trackCompletedReservationEvent
+    >[0]["catalogId"],
+    creditSource: evidence.creditSource as Parameters<
+      typeof trackCompletedReservationEvent
+    >[0]["creditSource"],
+    credits: evidence.credits,
+    idempotencyKey: evidence.idempotencyKey,
+    sessionId: evidence.sessionId,
+    reservationId: evidence.reservationId,
+    grantId: evidence.grantId,
+  });
+}
+
+export async function withDeferredInterviewCreditSettlementTracking<T>(
+  work: (
+    defer: (evidence: InterviewCreditSettlementEvidence) => void
+  ) => Promise<T>,
+  track: (
+    evidence: InterviewCreditSettlementEvidence
+  ) => void = trackCompletedInterviewCreditSettlement
+): Promise<T> {
+  const completed: InterviewCreditSettlementEvidence[] = [];
+  const result = await work((evidence) => completed.push(evidence));
+  for (const evidence of completed) track(evidence);
+  return result;
 }

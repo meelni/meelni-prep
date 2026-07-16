@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from itertools import count
 from pathlib import Path
 from uuid import uuid4
@@ -20,6 +21,7 @@ from livekit.agents import (
     AgentSession,
     AutoSubscribe,
     ConversationItemAddedEvent,
+    ErrorEvent,
     JobContext,
     JobProcess,
     WorkerOptions,
@@ -37,6 +39,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.config import parse_room_metadata
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_config import get_model_config, get_tts_config
+from shared.runtime_events import (
+    create_runtime_event,
+    provider_failure_code,
+    stop_provider_runtime_then_report,
+)
 from shared.safe_logging import log_exception_class
 from shared.session_deadline import (
     DeadlineEnforcer,
@@ -205,18 +212,8 @@ async def entrypoint(ctx: JobContext):
     )
     logger.info("Initializing voice agent session with LiveKit inference...")
 
-    # Note: Using string-based TTS model with LiveKit Inference
-    # ElevenLabs is available through LiveKit Inference - NO API KEY NEEDED!
-    # String format: "elevenlabs/model:voiceId"
-    # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
-    session = AgentSession(
-        turn_detection=EnglishModel(),  # Context-aware turn detection
-        stt=stt_model,
-        llm=llm_model,
-        tts=tts_model,  # String format: "elevenlabs/eleven_turbo_v2_5:56bWURjYFHyYyVf490Dp"
-        vad=ctx.proc.userdata["vad"],
-    )
-
+    # Establish the signed provider-neutral failure path before constructing
+    # provider-backed voice components.
     # The runtime must register durably before it can produce audible output.
     transcript_writer_id = str(uuid4())
     writer_registration = create_runtime_writer_registration(
@@ -272,6 +269,129 @@ async def entrypoint(ctx: JobContext):
             deadline_at.timestamp() if deadline_at is not None else None
         ),
     )
+
+    async def report_provider_failure(code: str, *, retryable: bool) -> bool:
+        event = create_runtime_event(
+            event_id=f"provider-failure:{session_id}:{code}",
+            session_id=session_id,
+            event_type="provider_failed",
+            occurred_at=datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
+            runtime_ref={"provider": "livekit", "id": room_name},
+            failure={
+                "reason": "provider_failure",
+                "code": code,
+                "retryable": retryable,
+            },
+        )
+        transcript_queue.enqueue_runtime_event(event)
+        return (await transcript_queue.flush(5.0)).settled
+
+    async def no_op_async() -> None:
+        return None
+
+    async def stop_runtime_and_report(
+        code: str,
+        *,
+        retryable: bool,
+        active_session: AgentSession | None,
+        shutdown_reason: str,
+    ) -> bool:
+        try:
+            persisted = await stop_provider_runtime_then_report(
+                disable_input=(
+                    lambda: active_session.input.set_audio_enabled(False)
+                    if active_session is not None
+                    else None
+                ),
+                close_session=(
+                    active_session.aclose
+                    if active_session is not None
+                    else no_op_async
+                ),
+                terminate_room=lambda: terminate_livekit_room(ctx, room_name),
+                shutdown=lambda: ctx.shutdown(shutdown_reason),
+                report_failure=lambda: report_provider_failure(
+                    code,
+                    retryable=retryable,
+                ),
+            )
+            if not persisted:
+                logger.error(
+                    "Provider failure report did not settle before shutdown",
+                    extra={"failure_code": code},
+                )
+            return persisted
+        except BaseException as error:
+            logger.error(
+                "Provider runtime stop or failure report failed",
+                extra={
+                    "failure_code": code,
+                    "error_type": type(error).__name__,
+                },
+            )
+            return False
+
+    provider_failure_report_scheduled = False
+
+    def schedule_provider_failure_report(code: str, *, retryable: bool) -> None:
+        """Persist the first fatal provider fact before ending the local job."""
+        nonlocal provider_failure_report_scheduled
+        if provider_failure_report_scheduled:
+            return
+        provider_failure_report_scheduled = True
+
+        async def report_and_shutdown() -> None:
+            await stop_runtime_and_report(
+                code,
+                retryable=retryable,
+                active_session=session,
+                shutdown_reason="voice runtime provider failure",
+            )
+
+        task = asyncio.create_task(report_and_shutdown())
+        background_transcript_tasks.add(task)
+
+        def on_report_done(done: asyncio.Task[object]) -> None:
+            background_transcript_tasks.discard(done)
+            if done.cancelled():
+                return
+            error = done.exception()
+            if error is not None:
+                logger.error(
+                    "Provider failure reporting task failed",
+                    extra={"error_type": type(error).__name__},
+                )
+
+        task.add_done_callback(on_report_done)
+
+    # Note: Using string-based TTS model with LiveKit Inference
+    # ElevenLabs is available through LiveKit Inference - NO API KEY NEEDED!
+    # String format: "elevenlabs/model:voiceId"
+    # Supports all default ElevenLabs voices (custom/cloned voices require ElevenLabs plugin)
+    try:
+        session = AgentSession(
+            turn_detection=EnglishModel(),  # Context-aware turn detection
+            stt=stt_model,
+            llm=llm_model,
+            tts=tts_model,
+            vad=ctx.proc.userdata["vad"],
+        )
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Voice session construction failed",
+            error,
+        )
+        await stop_runtime_and_report(
+            "voice_session_construction_failed",
+            retryable=True,
+            active_session=None,
+            shutdown_reason="voice session construction failed",
+        )
+        return
 
     async def publish_transcript_status(
         state: str,
@@ -747,6 +867,16 @@ async def entrypoint(ctx: JobContext):
 
         handle.add_done_callback(on_speech_done)
 
+    @session.on("error")
+    def on_session_error(event: ErrorEvent) -> None:
+        """Convert fatal STT/LLM/TTS failures into provider-neutral facts."""
+        if bool(getattr(event.error, "recoverable", False)):
+            return
+        schedule_provider_failure_report(
+            provider_failure_code(getattr(event.error, "type", None)),
+            retryable=False,
+        )
+
     logger.info("Transcript event handlers registered successfully")
 
     if deadline_at is not None and is_deadline_reached(deadline_at):
@@ -769,12 +899,27 @@ async def entrypoint(ctx: JobContext):
     # Start session and wait for it to be fully ready
     # Note: Do NOT call session.say() before session.start() completes!
     # Calling say() on an uninitialized session breaks the TTS pipeline
-    await session.start(
-        agent=InterviewAgent(instructions=instructions),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(close_on_disconnect=False),
-        record=False,
-    )
+    try:
+        await session.start(
+            agent=InterviewAgent(instructions=instructions),
+            room=ctx.room,
+            room_options=room_io.RoomOptions(close_on_disconnect=False),
+            record=False,
+        )
+    except Exception as error:
+        log_exception_class(
+            logger,
+            logging.ERROR,
+            "Voice session start failed",
+            error,
+        )
+        await stop_runtime_and_report(
+            "voice_session_start_failed",
+            retryable=True,
+            active_session=session,
+            shutdown_reason="voice session start failed",
+        )
+        return
 
     logger.info(f"Voice agent started successfully - {round_type} interview with {config['difficulty']} difficulty")
 
@@ -810,6 +955,10 @@ async def entrypoint(ctx: JobContext):
                     logging.ERROR,
                     "Hard-deadline enforcement failed",
                     error,
+                )
+                schedule_provider_failure_report(
+                    "deadline_enforcement_failed",
+                    retryable=True,
                 )
 
         deadline_task.add_done_callback(on_deadline_task_done)
@@ -863,6 +1012,13 @@ async def entrypoint(ctx: JobContext):
             "Initial greeting delivery failed",
             error,
         )
+        await stop_runtime_and_report(
+            "initial_greeting_failed",
+            retryable=True,
+            active_session=session,
+            shutdown_reason="initial greeting failed",
+        )
+        return
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import {
   isInterviewTerminalState,
   projectLegacyInterviewSessionStatus,
   type InterviewLifecycleState,
+  type InterviewBillingFault,
   type InterviewTerminalReason,
 } from "@meelni/core";
 
@@ -117,54 +118,70 @@ export async function finalizeInterviewSession(
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
     const [turns, interruptionCounts, writerEvidence] = await Promise.all([
-        tx
-          .select({
-            speaker: transcriptTurn.speaker,
-            text: transcriptTurn.text,
-            startedAt: transcriptTurn.startedAt,
-            endedAt: transcriptTurn.endedAt,
-          })
-          .from(transcriptTurn)
-          .where(eq(transcriptTurn.sessionId, input.sessionId)),
-        tx
-          .select({ value: sql<number>`count(*)::int` })
-          .from(transcriptInterruptionMarker)
-          .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
-        tx
-          .select({
-            generation: transcriptRuntimeWriter.generation,
-            state: transcriptRuntimeSettlement.state,
-          })
-          .from(transcriptRuntimeWriter)
-          .leftJoin(
-            transcriptRuntimeSettlement,
-            and(
-              eq(
-                transcriptRuntimeSettlement.sessionId,
-                transcriptRuntimeWriter.sessionId
-              ),
-              eq(
-                transcriptRuntimeSettlement.writerGeneration,
-                transcriptRuntimeWriter.generation
-              ),
-              eq(
-                transcriptRuntimeSettlement.writerId,
-                transcriptRuntimeWriter.writerId
-              )
+      tx
+        .select({
+          speaker: transcriptTurn.speaker,
+          text: transcriptTurn.text,
+          startedAt: transcriptTurn.startedAt,
+          endedAt: transcriptTurn.endedAt,
+        })
+        .from(transcriptTurn)
+        .where(eq(transcriptTurn.sessionId, input.sessionId)),
+      tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(transcriptInterruptionMarker)
+        .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
+      tx
+        .select({
+          generation: transcriptRuntimeWriter.generation,
+          state: transcriptRuntimeSettlement.state,
+        })
+        .from(transcriptRuntimeWriter)
+        .leftJoin(
+          transcriptRuntimeSettlement,
+          and(
+            eq(
+              transcriptRuntimeSettlement.sessionId,
+              transcriptRuntimeWriter.sessionId
+            ),
+            eq(
+              transcriptRuntimeSettlement.writerGeneration,
+              transcriptRuntimeWriter.generation
+            ),
+            eq(
+              transcriptRuntimeSettlement.writerId,
+              transcriptRuntimeWriter.writerId
             )
           )
-          .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
+        )
+        .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
     ]);
     const baseValidation = validateSessionStats(
       calculateSessionStatsFromTurns(turns)
     );
+    const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
+    const runtimeWriterStates = writerEvidence.map((writer) => ({
+      generation: writer.generation,
+      state: writer.state as "settled" | "degraded" | null,
+    }));
+    const preservePostUsableDisconnectCharge =
+      shouldPreservePostUsableDisconnectCharge({
+        requestedTerminalReason: input.requestedTerminalReason,
+        usableAt: stored.usableAt,
+        missingRuntimeSettlement:
+          runtimeWriterStates.length === 0 ||
+          runtimeWriterStates.some((writer) => writer.state === null),
+        unavailableInterruptions,
+      });
+    const hasIntegrityFault =
+      (unavailableInterruptions > 0 ||
+        runtimeWriterStates.length === 0 ||
+        runtimeWriterStates.some((writer) => writer.state !== "settled")) &&
+      !preservePostUsableDisconnectCharge;
     const validation = applyTranscriptIntegrityValidation({
       baseValidation,
-      interruptionCount: interruptionCounts[0]?.value ?? 0,
-      runtimeWriterStates: writerEvidence.map((writer) => ({
-        generation: writer.generation,
-        state: writer.state as "settled" | "degraded" | null,
-      })),
+      interruptionCount: unavailableInterruptions,
+      runtimeWriterStates,
     });
 
     let state = stored.lifecycleState;
@@ -173,6 +190,8 @@ export async function finalizeInterviewSession(
     let activatedAt = stored.activatedAt;
     let endingAt = stored.endingAt;
     let endedAt = stored.endedAt;
+    let billingFault = stored.billingFault;
+    let billingFaultCode = stored.billingFaultCode;
     const wasTerminal = isInterviewTerminalState(state);
     const hardDeadlineOwnsCleanup =
       !wasTerminal &&
@@ -223,7 +242,8 @@ export async function finalizeInterviewSession(
 
     const advance = async (
       nextState: InterviewLifecycleState,
-      reason: InterviewTerminalReason | null
+      reason: InterviewTerminalReason | null,
+      requestedBillingFault: InterviewBillingFault
     ) => {
       if (!canTransitionInterviewLifecycle(state, nextState)) {
         throw new Error(
@@ -244,6 +264,16 @@ export async function finalizeInterviewSession(
           lifecycleState: nextState,
           lifecycleVersion: sql`${interviewSession.lifecycleVersion} + 1`,
           terminalReason: reason,
+          billingFault: sql`CASE
+            WHEN ${interviewSession.startContractVersion} = 1
+            THEN COALESCE(${interviewSession.billingFault}, ${requestedBillingFault})
+            ELSE ${interviewSession.billingFault}
+          END`,
+          billingFaultCode: sql`CASE
+            WHEN ${interviewSession.startContractVersion} = 1
+            THEN COALESCE(${interviewSession.billingFaultCode}, ${billingFaultCode ?? reason})
+            ELSE ${interviewSession.billingFaultCode}
+          END`,
           status: projectLegacyInterviewSessionStatus({
             state: nextState,
             terminalReason: reason,
@@ -286,6 +316,8 @@ export async function finalizeInterviewSession(
           terminalReason: interviewSession.terminalReason,
           activatedAt: interviewSession.activatedAt,
           endedAt: interviewSession.endedAt,
+          billingFault: interviewSession.billingFault,
+          billingFaultCode: interviewSession.billingFaultCode,
         });
 
       if (!updated[0]) {
@@ -297,6 +329,8 @@ export async function finalizeInterviewSession(
       activatedAt = nextActivatedAt;
       endingAt = nextEndingAt;
       endedAt = nextEndedAt;
+      billingFault = updated[0].billingFault;
+      billingFaultCode = updated[0].billingFaultCode;
     };
 
     if (!wasTerminal) {
@@ -305,19 +339,39 @@ export async function finalizeInterviewSession(
           validation,
           input.requestedTerminalReason
         );
-        await advance("ending", requestedReason);
+        const requestedFault = hasIntegrityFault
+          ? "integrity"
+          : input.requestedTerminalReason === "provider_failure"
+            ? "provider"
+            : "user";
+        billingFaultCode ??=
+          requestedFault === "integrity"
+            ? "transcript_integrity_unavailable"
+            : requestedReason;
+        await advance("ending", requestedReason, requestedFault);
       }
 
       if (state === "ending") {
         if (!terminalReason) {
           throw new Error("Ending interview is missing its terminal reason");
         }
+        if (!billingFault) {
+          billingFault = hasIntegrityFault
+            ? "integrity"
+            : terminalReason === "provider_failure"
+              ? "provider"
+              : "user";
+          billingFaultCode = hasIntegrityFault
+            ? "transcript_integrity_unavailable"
+            : terminalReason;
+        }
         await advance(
           deriveInterviewTerminalState({
             reason: terminalReason,
             activated: activatedAt !== null,
           }),
-          terminalReason
+          terminalReason,
+          billingFault
         );
       }
     }
@@ -481,4 +535,22 @@ export function resolveInterviewTerminalReason(
     return "provider_failure";
   }
   return validation.isValid ? requestedTerminalReason : "insufficient_signal";
+}
+
+export function shouldPreservePostUsableDisconnectCharge(input: {
+  requestedTerminalReason:
+    | "user_end"
+    | "time_limit"
+    | "provider_failure"
+    | "disconnect_timeout";
+  usableAt: Date | null;
+  missingRuntimeSettlement: boolean;
+  unavailableInterruptions: number;
+}): boolean {
+  return (
+    input.requestedTerminalReason === "disconnect_timeout" &&
+    input.usableAt !== null &&
+    input.missingRuntimeSettlement &&
+    input.unavailableInterruptions === 0
+  );
 }
