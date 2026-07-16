@@ -9,6 +9,7 @@ import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
+import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export type EndInterviewSessionInput = EndInterviewSessionCommand;
 
@@ -17,6 +18,7 @@ export interface EndInterviewSessionDeps {
   finalize(
     input: FinalizeInterviewSessionInput
   ): Promise<FinalizeInterviewSessionResult>;
+  settleCredit(sessionId: string): Promise<unknown>;
   dispatch(input: {
     sessionId: string;
     userId: string;
@@ -54,7 +56,7 @@ export async function settleInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "finalize"
+    "authorize" | "finalize" | "settleCredit"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
@@ -66,11 +68,14 @@ export async function settleInterviewSessionWorkflow(
 
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  deps: Pick<EndInterviewSessionDeps, "finalize">
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "settleCredit">
 ): Promise<SettleInterviewSessionResult> {
   const completion = await deps.finalize(input);
   if (!completion.ok) return completion;
 
+  // Terminal truth is durable at this point. Keep settlement failures visible
+  // so an authoritative caller retries the same idempotent completion.
+  await deps.settleCredit(input.sessionId);
   return { ok: true, completion };
 }
 
@@ -120,6 +125,7 @@ export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
   return {
     authorize: authorizeInterviewSessionEnd,
     finalize: finalizeInterviewSession,
+    settleCredit: convergeDrizzleInterviewCreditSettlement,
     dispatch: dispatchFeedbackGenerationWorkflow,
   };
 }

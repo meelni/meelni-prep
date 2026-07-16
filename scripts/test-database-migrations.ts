@@ -31,9 +31,10 @@ import {
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
+  getStableStartDatabaseSchemaContract,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
-  RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
+  STABLE_START_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -85,6 +86,8 @@ const SESSION_RECONNECT_INTEGRITY_INTERRUPTED =
   "c3000000-0000-4000-8000-000000000003";
 const SESSION_RECONNECT_INTEGRITY_VALID =
   "c4000000-0000-4000-8000-000000000004";
+const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
+const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
 
 const configuredBaseUrl = process.env.MIGRATION_TEST_DATABASE_URL;
@@ -157,16 +160,24 @@ async function run() {
     assertZeroCreditLedgerIntegrity(
       runPreflight(cleanUrl, true, "reconciled")!
     );
+    await verifyStableStartContract(clean);
+    await verifyStableStartConcurrency(clean, cleanUrl);
+    await verifyStableStartNegativePreflight(clean, cleanUrl);
+    assertZeroStableStartV1Integrity(
+      runPreflight(cleanUrl, true, "reconciled")!
+    );
 
-    const cleanContract = await getDatabaseSchemaContract(clean);
+    const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, STABLE_START_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
     assert.equal(
-      databaseSchemaFingerprint(await getDatabaseSchemaContract(clean)),
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(clean)
+      ),
       cleanFingerprint
     );
 
@@ -312,11 +323,18 @@ async function run() {
       await verifyReconnectTimeoutRuntimeIntegrity(upgrade, upgradeUrl);
       await verifyAuthorization(upgrade);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
-      assertLegacyCreditLedgerIntegrity(
-        runPreflight(upgradeUrl, true, "reconciled")!
-      );
+      await verifyStableStartContract(upgrade);
+      const finalUpgradePreflight = runPreflight(
+        upgradeUrl,
+        true,
+        "reconciled"
+      )!;
+      assertLegacyCreditLedgerIntegrity(finalUpgradePreflight);
+      assertZeroStableStartV1Integrity(finalUpgradePreflight);
       assert.equal(
-        databaseSchemaFingerprint(await getDatabaseSchemaContract(upgrade)),
+        databaseSchemaFingerprint(
+          await getStableStartDatabaseSchemaContract(upgrade)
+        ),
         cleanFingerprint
       );
     } finally {
@@ -381,6 +399,18 @@ function runPreflight(
   }
 }
 
+function runStrictPreflight(databaseUrl: string) {
+  return spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      MEELNI_LAUNCH_STRICT: "1",
+    },
+  });
+}
+
 interface MigrationPreflightCount {
   projected_legacy_status: string;
   lifecycle_state: string;
@@ -394,6 +424,25 @@ interface MigrationPreflightResult {
     counts: MigrationPreflightCount[];
   };
   creditLedgerIntegrity: CreditLedgerIntegrity;
+  stableStartIntegrity: StableStartIntegrity;
+  stableStartLaunchReady: boolean;
+}
+
+interface StableStartIntegrity {
+  legacy_nonterminal_sessions: number;
+  legacy_active_reservations: number;
+  malformed_or_duplicate_v1_attempts: number;
+  cross_user_or_missing_session_correlations: number;
+  duplicate_v1_reservations: number;
+  duplicate_v1_rooms: number;
+  multiple_session_questions: number;
+  incomplete_usable_evidence: number;
+  invalid_usable_transcript_evidence: number;
+  usable_without_consume: number;
+  consumed_without_usable: number;
+  activated_and_delivered_still_active: number;
+  terminal_v1_active_reservations: number;
+  non_ready_or_stale_v1_active_reservations: number;
 }
 
 interface CreditLedgerIntegrity {
@@ -478,6 +527,22 @@ function assertZeroCreditLedgerIntegrity(result: MigrationPreflightResult) {
     Object.values(result.creditLedgerIntegrity).every((count) => count === 0),
     `Expected runtime ledger integrity counts to be zero: ${JSON.stringify(
       result.creditLedgerIntegrity
+    )}`
+  );
+}
+
+function assertZeroStableStartV1Integrity(result: MigrationPreflightResult) {
+  const {
+    legacy_nonterminal_sessions: _legacySessions,
+    legacy_active_reservations: _legacyReservations,
+    ...versionOneIntegrity
+  } = result.stableStartIntegrity;
+  void _legacySessions;
+  void _legacyReservations;
+  assert.ok(
+    Object.values(versionOneIntegrity).every((count) => count === 0),
+    `Expected version-1 stable-start integrity counts to be zero: ${JSON.stringify(
+      result.stableStartIntegrity
     )}`
   );
 }
@@ -1584,6 +1649,7 @@ async function verifyReconnectTransportOrdering(
   const workflowDeps = {
     store,
     scheduleReconnect: async () => undefined,
+    settleCredit: async () => undefined,
     now: () => occurredAt,
   };
   const disconnected = await handleLiveKitInterviewEventWorkflow(
@@ -1881,6 +1947,7 @@ async function verifyAtomicSessionCompletion(
       {
         authorize: async () => true,
         finalize: (input) => finalizeInterviewSession(input, databases[0]!),
+        settleCredit: async () => undefined,
       }
     );
     assert.equal(rewardGuardCompletion.ok, true);
@@ -2143,6 +2210,7 @@ async function verifyAtomicSessionCompletion(
               finalize: (
                 input: Parameters<typeof finalizeInterviewSession>[0]
               ) => finalizeInterviewSession(input, databases[0]!),
+              settleCredit: async () => undefined,
             }
           ),
         settleInvalidSession: async () => ({
@@ -2398,6 +2466,7 @@ async function verifyAtomicSessionCompletion(
                 finalize: (
                   input: Parameters<typeof finalizeInterviewSession>[0]
                 ) => finalizeInterviewSession(input, databases[0]!),
+                settleCredit: async () => undefined,
               }
             ),
           settleInvalidSession: async () => ({
@@ -3488,6 +3557,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
               authorize: (input) =>
                 authorizeInterviewSessionEnd(input, database),
               finalize: (input) => finalizeInterviewSession(input, database),
+              settleCredit: async () => undefined,
               dispatch: async ({ sessionId: dispatchedSessionId }) => {
                 dispatches += 1;
                 return {
@@ -3622,8 +3692,786 @@ function lifecycleOutcome(
   return [row.lifecycle_state, row.terminal_reason];
 }
 
+async function verifyStableStartContract(sql: postgres.Sql) {
+  const missingAttempt = "f3333333-3333-4333-8333-333333333333";
+  const eventId = `turn:${STABLE_START_ATTEMPT}:1`;
+  const replacementEventId = `turn:${STABLE_START_ATTEMPT}:2`;
+  const fingerprint = "a".repeat(64);
+  const roomName = `interview-${STABLE_START_ATTEMPT}`;
+
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${USER_TWO}::uuid, 'stable-start-contract@example.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO interview_question (id, question_text, question_type)
+    VALUES (
+      ${STABLE_START_QUESTION}::uuid,
+      'Design a launch plan for a PM interview practice product.',
+      'Product Strategy'
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, livekit_room_name,
+      start_contract_version, start_attempt_id, start_request_fingerprint,
+      provisioning_state
+    ) VALUES (
+      ${STABLE_START_ATTEMPT}::uuid, ${USER_TWO}::uuid,
+      'strategy', 'voice_video', ${roomName},
+      1, ${STABLE_START_ATTEMPT}::uuid, ${fingerprint}, 'pending'
+    )
+  `;
+  await sql`
+    INSERT INTO session_question (
+      session_id, question_id, start_contract_version, start_attempt_id
+    ) VALUES (
+      ${STABLE_START_ATTEMPT}::uuid, ${STABLE_START_QUESTION}::uuid,
+      1, ${STABLE_START_ATTEMPT}::uuid
+    )
+  `;
+  await sql`
+    INSERT INTO credit_reservation (
+      user_id, reservation_key, status, credits, session_id,
+      start_contract_version, start_attempt_id, expires_at
+    ) VALUES (
+      ${USER_TWO}::uuid,
+      ${`interview-start:${USER_TWO}:${STABLE_START_ATTEMPT}`},
+      'active', 1, ${STABLE_START_ATTEMPT}::uuid,
+      1, ${STABLE_START_ATTEMPT}::uuid, now() + interval '2 hours'
+    )
+  `;
+
+  await assert.rejects(
+    () => sql`
+      INSERT INTO session_question (
+        session_id, question_id, start_contract_version, start_attempt_id
+      ) VALUES (
+        ${STABLE_START_ATTEMPT}::uuid, ${STABLE_START_QUESTION}::uuid,
+        1, ${STABLE_START_ATTEMPT}::uuid
+      )
+    `,
+    /duplicate key/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, livekit_room_name,
+        start_contract_version, start_attempt_id, start_request_fingerprint,
+        provisioning_state
+      ) VALUES (
+        ${STABLE_START_ATTEMPT}::uuid, ${USER_TWO}::uuid,
+        'strategy', 'voice_video', ${roomName},
+        1, ${STABLE_START_ATTEMPT}::uuid, ${fingerprint}, 'pending'
+      )
+    `,
+    /duplicate key/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO credit_reservation (
+        user_id, reservation_key, status, credits, session_id,
+        start_contract_version, start_attempt_id, expires_at
+      ) VALUES (
+        ${USER_ONE}::uuid,
+        ${`interview-start:${USER_ONE}:${missingAttempt}`},
+        'active', 1, ${missingAttempt}::uuid,
+        1, ${missingAttempt}::uuid, now() + interval '2 hours'
+      )
+    `,
+    /foreign key/
+  );
+
+  const leaseId = "f4444444-4444-4444-8444-444444444444";
+  await sql`
+    UPDATE interview_session
+    SET provisioning_state = 'provisioning',
+      provisioning_lease_id = ${leaseId}::uuid,
+      provisioning_lease_expires_at = now() + interval '1 minute'
+    WHERE id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    UPDATE interview_session
+    SET provisioning_state = 'ready',
+      provisioning_lease_id = NULL,
+      provisioning_lease_expires_at = NULL,
+      provisioned_at = now()
+    WHERE id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await assert.rejects(
+    () => sql`
+      UPDATE interview_session
+      SET usable_at = now(), usable_transcript_event_id = ${eventId}
+      WHERE id = ${STABLE_START_ATTEMPT}::uuid
+    `,
+    /interview_session_usable_evidence_check/
+  );
+  await sql`
+    UPDATE interview_session
+    SET activated_at = now()
+    WHERE id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${STABLE_START_ATTEMPT}::uuid, 1, 1, ${roomName}, 'migration-test',
+      now() - interval '3 seconds'
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_turn (
+      session_id, contract_version, event_id, writer_id, writer_generation,
+      sequence,
+      room_name, speaker, started_at, ended_at, text, audio_ms,
+      section, delivery_state
+    ) VALUES (
+      ${STABLE_START_ATTEMPT}::uuid, 2, ${eventId}, 'migration-test', 1, 1,
+      ${roomName}, 'interviewer', now() - interval '2 seconds', now(),
+      'Welcome to your interview.', 1800, 'opening', 'delivered'
+    )
+  `;
+  await sql`
+    UPDATE interview_session
+    SET usable_at = now(), usable_transcript_event_id = ${eventId}
+    WHERE id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await assert.rejects(
+    () => sql`
+      UPDATE interview_session
+      SET usable_transcript_event_id = ${replacementEventId}
+      WHERE id = ${STABLE_START_ATTEMPT}::uuid
+    `,
+    /usable evidence is immutable/
+  );
+  await assert.rejects(
+    () => sql`
+      UPDATE interview_session
+      SET provisioned_at = now() + interval '1 second'
+      WHERE id = ${STABLE_START_ATTEMPT}::uuid
+    `,
+    /provisioning acknowledgement is immutable/
+  );
+
+  await sql`
+    DELETE FROM credit_reservation
+    WHERE session_id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    DELETE FROM session_question
+    WHERE session_id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    DELETE FROM transcript_turn
+    WHERE session_id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    DELETE FROM transcript_runtime_writer
+    WHERE session_id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    DELETE FROM interview_session
+    WHERE id = ${STABLE_START_ATTEMPT}::uuid
+  `;
+  await sql`
+    DELETE FROM interview_question
+    WHERE id = ${STABLE_START_QUESTION}::uuid
+  `;
+}
+
+async function verifyStableStartNegativePreflight(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  const staleAttempt = "f5555555-5555-4555-8555-555555555555";
+  const terminalAttempt = "f6666666-6666-4666-8666-666666666666";
+  const fingerprint = "b".repeat(64);
+
+  for (const attempt of [staleAttempt, terminalAttempt]) {
+    await sql`
+      INSERT INTO interview_session (
+        id, user_id, round_type, mode, livekit_room_name,
+        start_contract_version, start_attempt_id, start_request_fingerprint,
+        provisioning_state, last_transition_at
+      ) VALUES (
+        ${attempt}::uuid, ${USER_TWO}::uuid, 'strategy', 'voice_video',
+        ${`interview-${attempt}`}, 1, ${attempt}::uuid, ${fingerprint},
+        'pending', now() - interval '10 minutes'
+      )
+    `;
+    await sql`
+      INSERT INTO credit_reservation (
+        user_id, reservation_key, status, credits, session_id,
+        start_contract_version, start_attempt_id, expires_at
+      ) VALUES (
+        ${USER_TWO}::uuid,
+        ${`interview-start:${USER_TWO}:${attempt}`},
+        'active', 1, ${attempt}::uuid, 1, ${attempt}::uuid,
+        now() + interval '2 hours'
+      )
+    `;
+  }
+  await sql`
+    UPDATE interview_session
+    SET provisioning_state = 'failed', lifecycle_state = 'failed',
+      lifecycle_version = lifecycle_version + 1,
+      terminal_reason = 'provider_failure', status = 'error',
+      ending_at = now(), ended_at = now(), last_transition_at = now(),
+      room_cleanup_pending = true
+    WHERE id = ${terminalAttempt}::uuid
+  `;
+
+  try {
+    const diagnostic = runPreflight(databaseUrl, true, "reconciled")!;
+    assert.equal(diagnostic.stableStartLaunchReady, false);
+    assert.equal(
+      diagnostic.stableStartIntegrity.terminal_v1_active_reservations,
+      1
+    );
+    assert.equal(
+      diagnostic.stableStartIntegrity.non_ready_or_stale_v1_active_reservations,
+      1
+    );
+
+    const strict = runStrictPreflight(databaseUrl);
+    assert.equal(strict.status, 1);
+    assert.match(
+      `${strict.stdout}\n${strict.stderr}`,
+      /Stable-start launch readiness checks are not clean/
+    );
+  } finally {
+    await sql`
+      DELETE FROM credit_reservation
+      WHERE session_id IN (${staleAttempt}::uuid, ${terminalAttempt}::uuid)
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE id IN (${staleAttempt}::uuid, ${terminalAttempt}::uuid)
+    `;
+  }
+}
+
+async function verifyStableStartConcurrency(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    {
+      createDrizzleInterviewStartStore,
+      INTERVIEW_PROVISIONING_LEASE_MS,
+      InterviewProvisioningLeaseLostError,
+    },
+    { createCreditLedgerService },
+    { createDrizzleCreditLedgerStore },
+    { createDrizzleInterviewCreditSettlementStore },
+    { createDrizzleInterviewStartRecoveryStore },
+    { convergeInterviewCreditSettlement },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/interview-starts"),
+    import("../lib/billing/credits"),
+    import("../lib/billing/credit-ledger-store"),
+    import("../lib/db/interview-credit-settlement"),
+    import("../lib/db/interview-start-recovery"),
+    import("../lib/workflows/converge-interview-credit-settlement"),
+    import("../lib/db/schema"),
+  ]);
+  const questionId = "f7777777-7777-4777-8777-777777777777";
+  const sameUser = "51000000-0000-4000-8000-000000000001";
+  const distinctUser = "51000000-0000-4000-8000-000000000002";
+  const orderingUser = "51000000-0000-4000-8000-000000000003";
+  const lockWaitUser = "51000000-0000-4000-8000-000000000004";
+  const sameAttempt = "52000000-0000-4000-8000-000000000001";
+  const distinctAttempts = [
+    "52000000-0000-4000-8000-000000000002",
+    "52000000-0000-4000-8000-000000000003",
+  ];
+  const orderingAttempts = [
+    "52000000-0000-4000-8000-000000000004",
+    "52000000-0000-4000-8000-000000000005",
+  ];
+  const lockWaitAttempts = [
+    "52000000-0000-4000-8000-000000000006",
+    "52000000-0000-4000-8000-000000000007",
+  ];
+  const now = new Date();
+  const clients = Array.from({ length: 6 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const databases = clients.map((client) => drizzle(client, { schema }));
+  const startStores = databases.map((database) =>
+    createDrizzleInterviewStartStore(database)
+  );
+  const ledgers = databases.map((database) =>
+    createCreditLedgerService({
+      store: createDrizzleCreditLedgerStore(database),
+      now: () => now,
+    })
+  );
+  const question = {
+    id: questionId,
+    company: "Example",
+    questionText: "How would you relaunch a PM interview practice product?",
+    questionType: "Product Strategy",
+    askedAt: null,
+    isActive: true,
+    createdAt: now,
+  };
+  const makeStart = (userId: string, attemptId: string) => ({
+    startAttemptId: attemptId,
+    userId,
+    requestFingerprint: "c".repeat(64),
+    role: "pm",
+    roundType: "strategy" as const,
+    mode: "voice_video" as const,
+    roomName: `interview-${attemptId}`,
+    config: { duration: 30 },
+    startedAt: now,
+    question,
+  });
+  const prepare = (
+    store: (typeof startStores)[number],
+    userId: string,
+    attemptId: string
+  ) =>
+    store.createOrLoadAndReserve({
+      start: makeStart(userId, attemptId),
+      reservation: {
+        userId,
+        reservationKey: `interview-start:${userId}:${attemptId}`,
+        sessionId: attemptId,
+        startContractVersion: 1,
+        startAttemptId: attemptId,
+      },
+      currentTime: now,
+    });
+
+  try {
+    await Promise.all(clients.map((client) => client`SELECT 1`));
+    await sql`
+      INSERT INTO interview_question (
+        id, question_text, question_type, company, is_active
+      ) VALUES (
+        ${questionId}::uuid, ${question.questionText},
+        ${question.questionType}, ${question.company}, true
+      )
+    `;
+    for (const [index, userId] of [
+      sameUser,
+      distinctUser,
+      orderingUser,
+      lockWaitUser,
+    ].entries()) {
+      await seedCreditTestUser(sql, userId, `stable-start-${index}`);
+    }
+
+    await ledgers[0]!.grantCredits({
+      userId: sameUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:stable-start:same-attempt-grant",
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    const sameResults = await runConcurrently(
+      startStores.map((store) => () => prepare(store, sameUser, sameAttempt))
+    );
+    assert.equal(rejected(sameResults).length, 0);
+    const sameValues = fulfilled(sameResults).map(({ value }) => value);
+    assert.ok(
+      sameValues.every(
+        ({ start, credit }) =>
+          start.sessionId === sameAttempt &&
+          credit.reservation.id === sameValues[0]!.credit.reservation.id
+      )
+    );
+    const [sameCounts] = await sql<
+      { sessions: number; reservations: number; reserve_events: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM interview_session
+          WHERE id = ${sameAttempt}::uuid) AS sessions,
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE session_id = ${sameAttempt}::uuid) AS reservations,
+        (SELECT count(*)::int FROM credit_transaction transaction
+          JOIN credit_reservation reservation
+            ON reservation.id = transaction.reservation_id
+          WHERE reservation.session_id = ${sameAttempt}::uuid
+            AND transaction.type = 'reserve') AS reserve_events
+    `;
+    assert.deepEqual(sameCounts, {
+      sessions: 1,
+      reservations: 1,
+      reserve_events: 1,
+    });
+
+    const expiredLeaseId = "f8888888-8888-4888-8888-888888888888";
+    const provisioningDeadlineAt = new Date(now.getTime() + 30 * 60_000);
+    const provisioningClaim = await startStores[0]!.claimProvisioning({
+      startAttemptId: sameAttempt,
+      userId: sameUser,
+      requestFingerprint: "c".repeat(64),
+      leaseId: expiredLeaseId,
+      now,
+      deadlineAt: provisioningDeadlineAt,
+    });
+    assert.equal(provisioningClaim.disposition, "claimed");
+    await sql`
+      UPDATE interview_session
+      SET provisioning_lease_expires_at = CURRENT_TIMESTAMP - interval '1 second'
+      WHERE id = ${sameAttempt}::uuid
+    `;
+    await assert.rejects(
+      () =>
+        startStores[1]!.markProvisioned({
+          startAttemptId: sameAttempt,
+          leaseId: expiredLeaseId,
+          provisionedAt: new Date(
+            now.getTime() + INTERVIEW_PROVISIONING_LEASE_MS
+          ),
+          deadlineAt: provisioningDeadlineAt,
+        }),
+      InterviewProvisioningLeaseLostError
+    );
+
+    const recoveryStore = createDrizzleInterviewStartRecoveryStore(
+      databases[0]!
+    );
+    const recoveryNow = new Date(now.getTime() + 10 * 60_000);
+    assert.ok(
+      (await recoveryStore.listCandidates({ now: recoveryNow })).some(
+        ({ sessionId }) => sessionId === sameAttempt
+      )
+    );
+    assert.equal(
+      (await recoveryStore.claim({ sessionId: sameAttempt, now: recoveryNow }))
+        .disposition,
+      "claimed"
+    );
+    assert.equal(
+      (
+        await convergeInterviewCreditSettlement({
+          sessionId: sameAttempt,
+          store: createDrizzleInterviewCreditSettlementStore(databases[1]!),
+          now: recoveryNow,
+        })
+      ).disposition,
+      "released"
+    );
+    const [recoveredStart] = await sql<
+      {
+        lifecycle_state: string;
+        terminal_reason: string;
+        provisioning_state: string;
+        room_cleanup_pending: boolean;
+        reservation_status: string;
+      }[]
+    >`
+      SELECT session.lifecycle_state, session.terminal_reason,
+        session.provisioning_state, session.room_cleanup_pending,
+        reservation.status AS reservation_status
+      FROM interview_session session
+      JOIN credit_reservation reservation ON reservation.session_id = session.id
+      WHERE session.id = ${sameAttempt}::uuid
+    `;
+    assert.deepEqual(recoveredStart, {
+      lifecycle_state: "failed",
+      terminal_reason: "provider_failure",
+      provisioning_state: "failed",
+      room_cleanup_pending: true,
+      reservation_status: "released",
+    });
+    assert.ok(
+      !(await recoveryStore.listCandidates({ now: recoveryNow })).some(
+        ({ sessionId }) => sessionId === sameAttempt
+      )
+    );
+
+    await ledgers[0]!.grantCredits({
+      userId: distinctUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:stable-start:distinct-grant",
+      includedCredits: 1,
+      expiresAt: null,
+    });
+    const distinctResults = await runConcurrently(
+      distinctAttempts.map(
+        (attemptId, index) => () =>
+          prepare(startStores[index]!, distinctUser, attemptId)
+      )
+    );
+    assert.equal(fulfilled(distinctResults).length, 1);
+    assert.equal(rejected(distinctResults).length, 1);
+    assert.match(
+      errorMessage(rejected(distinctResults)[0]!.reason),
+      /insufficient_credits/
+    );
+    const [distinctCounts] = await sql<
+      { sessions: number; reservations: number; remaining: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM interview_session
+          WHERE user_id = ${distinctUser}::uuid) AS sessions,
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE user_id = ${distinctUser}::uuid) AS reservations,
+        (SELECT sum(remaining_credits)::int FROM credit_grant
+          WHERE user_id = ${distinctUser}::uuid) AS remaining
+    `;
+    assert.deepEqual(distinctCounts, {
+      sessions: 1,
+      reservations: 1,
+      remaining: 0,
+    });
+
+    await ledgers[0]!.grantCredits({
+      userId: orderingUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:stable-start:ordering-grant",
+      includedCredits: 2,
+      expiresAt: null,
+    });
+    for (const [index, attemptId] of orderingAttempts.entries()) {
+      await prepare(startStores[index]!, orderingUser, attemptId);
+    }
+    const settlementStores = databases.map((database) =>
+      createDrizzleInterviewCreditSettlementStore(database)
+    );
+    const converge = (attemptId: string, index = 0) =>
+      convergeInterviewCreditSettlement({
+        sessionId: attemptId,
+        store: settlementStores[index]!,
+        now,
+      });
+    const insertTurn = async (attemptId: string, sequence: number) => {
+      await sql`
+        INSERT INTO transcript_runtime_writer (
+          session_id, generation, contract_version, room_name, writer_id,
+          registered_at
+        ) VALUES (
+          ${attemptId}::uuid, 1, 1, ${`interview-${attemptId}`},
+          'stable-start-pg', ${now.toISOString()}::timestamptz
+        )
+        ON CONFLICT DO NOTHING
+      `;
+      await sql`
+        INSERT INTO transcript_turn (
+          session_id, contract_version, event_id, writer_id,
+          writer_generation, sequence, room_name, speaker, started_at,
+          ended_at, text, audio_ms, section, delivery_state
+        ) VALUES (
+          ${attemptId}::uuid, 2, ${`stable-start:${attemptId}:turn`},
+          'stable-start-pg', 1, ${sequence}, ${`interview-${attemptId}`},
+          'interviewer', ${now.toISOString()}::timestamptz,
+          ${new Date(now.getTime() + 1000).toISOString()}::timestamptz,
+          'Welcome to your interview.', 1000, 'opening', 'delivered'
+        )
+      `;
+    };
+    const activate = (attemptId: string) => sql`
+      UPDATE interview_session
+      SET lifecycle_state = 'active', lifecycle_version = lifecycle_version + 1,
+        activated_at = ${now.toISOString()}::timestamptz,
+        last_transition_at = ${now.toISOString()}::timestamptz
+      WHERE id = ${attemptId}::uuid
+    `;
+
+    await insertTurn(orderingAttempts[0]!, 1);
+    assert.equal((await converge(orderingAttempts[0]!)).disposition, "pending");
+    await activate(orderingAttempts[0]!);
+    assert.equal(
+      (await converge(orderingAttempts[0]!)).disposition,
+      "consumed"
+    );
+
+    await activate(orderingAttempts[1]!);
+    assert.equal((await converge(orderingAttempts[1]!)).disposition, "pending");
+    await insertTurn(orderingAttempts[1]!, 1);
+    const stressResults = await runConcurrently(
+      settlementStores.map(
+        (_, index) => () => converge(orderingAttempts[1]!, index)
+      )
+    );
+    assert.equal(rejected(stressResults).length, 0);
+    assert.ok(
+      fulfilled(stressResults).every(
+        ({ value }) => value.disposition === "consumed"
+      )
+    );
+    const [orderingCounts] = await sql<
+      { consumed: number; usable: number; consume_events: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE user_id = ${orderingUser}::uuid AND status = 'consumed')
+          AS consumed,
+        (SELECT count(*)::int FROM interview_session
+          WHERE user_id = ${orderingUser}::uuid AND usable_at IS NOT NULL)
+          AS usable,
+        (SELECT count(*)::int FROM credit_transaction
+          WHERE user_id = ${orderingUser}::uuid AND type = 'consume')
+          AS consume_events
+    `;
+    assert.deepEqual(orderingCounts, {
+      consumed: 2,
+      usable: 2,
+      consume_events: 2,
+    });
+
+    await ledgers[0]!.grantCredits({
+      userId: lockWaitUser,
+      catalogId: "interview_pass",
+      source: "admin",
+      idempotencyKey: "postgres:stable-start:lock-wait-grant",
+      includedCredits: 2,
+      expiresAt: null,
+    });
+
+    await prepare(startStores[0]!, lockWaitUser, lockWaitAttempts[0]!);
+    const [deadlineRow] = await clients[0]!<
+      {
+        started_at: Date;
+        deadline_at: Date;
+      }[]
+    >`
+      UPDATE interview_session
+      SET started_at = clock_timestamp() - interval '29 minutes 59.8 seconds'
+      WHERE id = ${lockWaitAttempts[0]}::uuid
+      RETURNING started_at, started_at + interval '30 minutes' AS deadline_at
+    `;
+    assert.ok(deadlineRow);
+    let pendingDeadlineClaim:
+      | ReturnType<(typeof startStores)[number]["claimProvisioning"]>
+      | undefined;
+    await clients[0]!.begin(async (transaction) => {
+      await transaction`
+        SELECT id FROM interview_session
+        WHERE id = ${lockWaitAttempts[0]}::uuid
+        FOR UPDATE
+      `;
+      pendingDeadlineClaim = startStores[1]!.claimProvisioning({
+        startAttemptId: lockWaitAttempts[0]!,
+        userId: lockWaitUser,
+        requestFingerprint: "c".repeat(64),
+        leaseId: "f9999999-9999-4999-8999-999999999991",
+        now: new Date(deadlineRow.started_at),
+        deadlineAt: new Date(deadlineRow.deadline_at),
+      });
+      await transaction`SELECT pg_sleep(0.35)`;
+    });
+    const deadlineClaim = await pendingDeadlineClaim!;
+    assert.equal(deadlineClaim?.disposition, "not_joinable");
+
+    await prepare(startStores[2]!, lockWaitUser, lockWaitAttempts[1]!);
+    const leaseDeadlineAt = new Date(now.getTime() + 30 * 60_000);
+    const leaseId = "f9999999-9999-4999-8999-999999999992";
+    const leaseClaim = await startStores[2]!.claimProvisioning({
+      startAttemptId: lockWaitAttempts[1]!,
+      userId: lockWaitUser,
+      requestFingerprint: "c".repeat(64),
+      leaseId,
+      now,
+      deadlineAt: leaseDeadlineAt,
+    });
+    assert.equal(leaseClaim.disposition, "claimed");
+    await clients[2]!`
+      UPDATE interview_session
+      SET lifecycle_state = 'connecting',
+        provisioning_lease_expires_at = clock_timestamp() + interval '200 milliseconds'
+      WHERE id = ${lockWaitAttempts[1]}::uuid
+    `;
+    let delayedAcknowledgement: Promise<unknown> | undefined;
+    await clients[2]!.begin(async (transaction) => {
+      await transaction`
+        SELECT id FROM interview_session
+        WHERE id = ${lockWaitAttempts[1]}::uuid
+        FOR UPDATE
+      `;
+      delayedAcknowledgement = startStores[3]!.markProvisioned({
+        startAttemptId: lockWaitAttempts[1]!,
+        leaseId,
+        provisionedAt: now,
+        deadlineAt: leaseDeadlineAt,
+      });
+      await transaction`SELECT pg_sleep(0.35)`;
+    });
+    await assert.rejects(
+      delayedAcknowledgement!,
+      InterviewProvisioningLeaseLostError
+    );
+  } finally {
+    // The v1 correlation FK is NO ACTION. Exercise the application-required
+    // deletion order: reservation evidence first, then session, then user.
+    await sql`
+      DELETE FROM credit_transaction
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM credit_reservation_grant allocation
+      USING credit_reservation reservation
+      WHERE allocation.reservation_id = reservation.id
+        AND reservation.user_id IN (
+          ${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid,
+          ${lockWaitUser}::uuid
+        )
+    `;
+    await sql`
+      DELETE FROM credit_reservation
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM credit_grant
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM transcript_turn
+      WHERE session_id IN (
+        ${sameAttempt}::uuid,
+        ${distinctAttempts[0]}::uuid, ${distinctAttempts[1]}::uuid,
+        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid,
+        ${lockWaitAttempts[0]}::uuid, ${lockWaitAttempts[1]}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM transcript_runtime_writer
+      WHERE session_id IN (
+        ${sameAttempt}::uuid,
+        ${distinctAttempts[0]}::uuid, ${distinctAttempts[1]}::uuid,
+        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid,
+        ${lockWaitAttempts[0]}::uuid, ${lockWaitAttempts[1]}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM session_question
+      WHERE session_id IN (
+        ${sameAttempt}::uuid,
+        ${distinctAttempts[0]}::uuid, ${distinctAttempts[1]}::uuid,
+        ${orderingAttempts[0]}::uuid, ${orderingAttempts[1]}::uuid,
+        ${lockWaitAttempts[0]}::uuid, ${lockWaitAttempts[1]}::uuid
+      )
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE user_id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
+    `;
+    await sql`
+      DELETE FROM interview_question WHERE id = ${questionId}::uuid
+    `;
+    await sql`
+      DELETE FROM app_user
+      WHERE id IN (${sameUser}::uuid, ${distinctUser}::uuid, ${orderingUser}::uuid, ${lockWaitUser}::uuid)
+    `;
+    await Promise.all(clients.map((client) => client.end()));
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 14);
+  assert.equal(await migrationCount(sql), 15);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -3668,6 +4516,52 @@ async function verifyDatabase(sql: postgres.Sql) {
     ORDER BY column_name
   `;
   assert.equal(lifecycleColumns.length, 8);
+
+  const stableStartColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'interview_session'
+      AND column_name IN (
+        'start_contract_version', 'start_attempt_id',
+        'start_request_fingerprint', 'provisioning_state',
+        'provisioning_lease_id', 'provisioning_lease_expires_at',
+        'provisioned_at', 'usable_at', 'usable_transcript_event_id'
+      )
+    ORDER BY column_name
+  `;
+  assert.equal(stableStartColumns.length, 9);
+
+  const stableStartContracts = await sql<{ name: string }[]>`
+    SELECT conname AS name FROM pg_constraint
+    WHERE conname IN (
+      'interview_session_start_contract_version_check',
+      'interview_session_start_contract_shape_check',
+      'interview_session_provisioning_evidence_check',
+      'interview_session_usable_evidence_check',
+      'credit_reservation_start_contract_version_check',
+      'credit_reservation_start_contract_shape_check',
+      'credit_reservation_session_user_start_attempt_fk',
+      'session_question_start_contract_version_check',
+      'session_question_start_contract_shape_check',
+      'session_question_session_start_attempt_fk'
+    )
+    UNION ALL
+    SELECT indexname AS name FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname IN (
+      'interview_session_user_start_attempt_idx',
+      'interview_session_livekit_room_v1_idx',
+      'credit_reservation_session_v1_idx',
+      'credit_reservation_start_attempt_idx',
+      'session_question_session_idx',
+      'session_question_start_attempt_idx'
+    )
+    UNION ALL
+    SELECT trigger_name AS name FROM information_schema.triggers
+    WHERE trigger_schema = 'public'
+      AND trigger_name = 'protect_interview_session_stable_evidence'
+  `;
+  assert.equal(stableStartContracts.length, 17);
 
   const lifecycleIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -4771,7 +5665,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
   await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status, lifecycle_state,
-      livekit_room_name, activated_at
+      livekit_room_name, activated_at, start_contract_version,
+      start_attempt_id, start_request_fingerprint, provisioning_state,
+      provisioned_at
     ) VALUES (
       ${SESSION_DELETION_MARKER}::uuid,
       ${USER_TWO}::uuid,
@@ -4779,8 +5675,28 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       'voice_video',
       'in_progress',
       'active',
-      'deletion-marker-room',
+      ${`interview-${SESSION_DELETION_MARKER}`},
+      now(),
+      1,
+      ${SESSION_DELETION_MARKER}::uuid,
+      ${"d".repeat(64)},
+      'ready',
       now()
+    )
+  `;
+  await sql`
+    INSERT INTO credit_reservation (
+      user_id, reservation_key, status, credits, session_id,
+      start_contract_version, start_attempt_id, expires_at
+    ) VALUES (
+      ${USER_TWO}::uuid,
+      ${`interview-start:${USER_TWO}:${SESSION_DELETION_MARKER}`},
+      'active',
+      1,
+      ${SESSION_DELETION_MARKER}::uuid,
+      1,
+      ${SESSION_DELETION_MARKER}::uuid,
+      now() + interval '1 hour'
     )
   `;
   await sql`
@@ -4791,7 +5707,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       ${SESSION_DELETION_MARKER}::uuid,
       1,
       1,
-      'deletion-marker-room',
+      ${`interview-${SESSION_DELETION_MARKER}`},
       'deletion-marker-writer',
       now()
     )
@@ -4807,7 +5723,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       'deletion-marker-writer',
       1,
       1,
-      'deletion-marker-room',
+      ${`interview-${SESSION_DELETION_MARKER}`},
       'interviewer',
       now(),
       'no_provider_confirmed_prefix'
@@ -4821,7 +5737,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       ${SESSION_DELETION_MARKER}::uuid,
       1,
       1,
-      'deletion-marker-room',
+      ${`interview-${SESSION_DELETION_MARKER}`},
       'deletion-marker-writer',
       'degraded',
       now()
@@ -4980,6 +5896,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       redacted_error: string | null;
       interruption_markers: number;
       runtime_settlements: number;
+      reservations: number;
       runtime_writers: number;
     }[]
   >`
@@ -5008,6 +5925,8 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT count(*)::int FROM transcript_runtime_settlement
         WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
         AS runtime_settlements,
+      (SELECT count(*)::int FROM credit_reservation
+        WHERE user_id = ${USER_TWO}::uuid) AS reservations,
       (SELECT count(*)::int FROM transcript_runtime_writer
         WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
         AS runtime_writers,
@@ -5033,6 +5952,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     tombstone_exists: true,
     interruption_markers: 0,
     runtime_settlements: 0,
+    reservations: 0,
     runtime_writers: 0,
     raw_provider_ids: 0,
     provider_fingerprints: 5,

@@ -26,6 +26,21 @@ test("duplicate transcript delivery returns the existing durable turn", async ()
   assert.equal(first.ok && first.disposition, "created");
   assert.equal(replay.ok && replay.disposition, "existing");
   assert.equal(store.events.size, 1);
+  assert.deepEqual(store.convergences, [SESSION_ID, SESSION_ID]);
+});
+
+test("failed credit convergence leaves the durable turn retryable through replay", async () => {
+  const store = createMemoryStore();
+  const event = transcriptEvent();
+  store.convergeError = new Error("settlement unavailable");
+
+  await assert.rejects(ingest(store, event), /settlement unavailable/);
+  assert.equal(store.events.size, 1);
+
+  store.convergeError = null;
+  const replay = await ingest(store, event);
+  assert.equal(replay.ok && replay.disposition, "existing");
+  assert.deepEqual(store.convergences, [SESSION_ID, SESSION_ID]);
 });
 
 test("identical text remains distinct when canonical event identity differs", async () => {
@@ -280,6 +295,8 @@ function ingest(store: MemoryStore, event: TranscriptEvent) {
 
 function createMemoryStore() {
   const events = new Map<string, TranscriptEvent>();
+  const convergences: string[] = [];
+  let convergeError: Error | null = null;
   const writerSequences = new Map<string, string>();
   const sessions = new Map([
     [
@@ -299,9 +316,22 @@ function createMemoryStore() {
   const store: TranscriptIngestStore<TranscriptEvent> & {
     events: typeof events;
     sessions: typeof sessions;
+    convergences: typeof convergences;
+    convergeError: Error | null;
   } = {
     events,
     sessions,
+    convergences,
+    get convergeError() {
+      return convergeError;
+    },
+    set convergeError(value) {
+      convergeError = value;
+    },
+    async convergeCredit(sessionId) {
+      convergences.push(sessionId);
+      if (convergeError) throw convergeError;
+    },
     async persist({ principal, event }) {
       const session = sessions.get(event.session_id);
       if (

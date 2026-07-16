@@ -81,6 +81,7 @@ export interface TranscriptIngestStore<TTurn> {
       | { kind: "voice_runtime" };
     event: TranscriptEvent;
   }): Promise<PersistTranscriptEventResult<TTurn>>;
+  convergeCredit(sessionId: string): Promise<unknown>;
 }
 
 export type IngestTranscriptEventResult<TTurn> =
@@ -106,10 +107,16 @@ export async function ingestTranscriptEvent<TTurn>(input: {
     return { ok: false, reason: "session_mismatch" };
   }
 
-  return input.store.persist({
+  const result = await input.store.persist({
     principal: input.principal,
     event: input.event,
   });
+  if (result.ok) {
+    // Both a newly-created turn and an equivalent replay can be the recovery
+    // trigger for a previously interrupted credit settlement.
+    await input.store.convergeCredit(input.event.session_id);
+  }
+  return result;
 }
 
 export function isPersistableTranscriptEvent(

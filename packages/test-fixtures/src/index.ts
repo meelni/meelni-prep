@@ -118,6 +118,7 @@ const productSenseInterviewFixture: ProductSenseInterviewFixture = {
   roomMetadata: {
     contract_version: 1,
     session_id: "fixture-session-product-sense-1",
+    candidate_identity: "fixture-user-1",
     transcript_ingest_url:
       "https://fixture.meelni.test/api/internal/transcript",
     deadline_at: FIXTURE_CLOCK.endedAt.toISOString(),

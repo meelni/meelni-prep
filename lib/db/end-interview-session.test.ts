@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   applyTranscriptIntegrityValidation,
+  finalizeInterviewSession,
   resolveInterviewTerminalReason,
   shouldRefineProvisionalTerminalReason,
+  type EndInterviewSessionDatabase,
 } from "./end-interview-session";
 import { SessionTier } from "@/lib/evaluation/session-validator";
 
@@ -166,4 +168,163 @@ test("runtime settlement and textless interruption own final feedback eligibilit
     }),
     baseValidation
   );
+});
+
+test("durable turns do not synthesize canonical activation during terminalization", async () => {
+  const transitions: string[] = [];
+  const answer = Array.from({ length: 40 }, (_, index) => `word${index}`).join(
+    " "
+  );
+  const validTurns = Array.from({ length: 20 }, (_, index) => ({
+    speaker: index % 2 === 0 ? "user" : "interviewer",
+    text: answer,
+    startedAt: new Date(Date.UTC(2026, 6, 10, 7, index)),
+    endedAt: new Date(Date.UTC(2026, 6, 10, 7, index, 30)),
+  }));
+  let lifecycle = {
+    state: "connecting",
+    version: 2,
+    terminalReason: null as string | null,
+    activatedAt: null as Date | null,
+    endingAt: null as Date | null,
+    endedAt: null as Date | null,
+  };
+  const stored = {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    userId: "650e8400-e29b-41d4-a716-446655440000",
+    livekitRoomName: "interview-session",
+    reconnectDeadlineAt: null,
+    lifecycleState: lifecycle.state,
+    lifecycleVersion: lifecycle.version,
+    terminalReason: lifecycle.terminalReason,
+    activatedAt: lifecycle.activatedAt,
+    endingAt: lifecycle.endingAt,
+    endedAt: lifecycle.endedAt,
+  };
+  let selectCall = 0;
+  const database = {
+    async transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T> {
+      const tx = {
+        select() {
+          selectCall += 1;
+          return {
+            from() {
+              if (selectCall === 1) {
+                return {
+                  where() {
+                    return {
+                      limit() {
+                        return {
+                          async for() {
+                            return [{ ...stored }];
+                          },
+                        };
+                      },
+                    };
+                  },
+                };
+              }
+              const rows =
+                selectCall === 2
+                  ? validTurns
+                  : selectCall === 3
+                    ? [{ value: 0 }]
+                    : [{ generation: 1, state: "settled" }];
+              const chain = {
+                leftJoin() {
+                  return chain;
+                },
+                where() {
+                  return Promise.resolve(rows);
+                },
+              };
+              return chain;
+            },
+          };
+        },
+        update() {
+          return {
+            set(values: Record<string, unknown>) {
+              return {
+                where() {
+                  return {
+                    async returning() {
+                      const nextState = values.lifecycleState;
+                      if (typeof nextState !== "string") return [];
+                      transitions.push(nextState);
+                      lifecycle = {
+                        state: nextState,
+                        version: lifecycle.version + 1,
+                        terminalReason:
+                          (values.terminalReason as string | null) ?? null,
+                        activatedAt: lifecycle.activatedAt,
+                        endingAt:
+                          nextState === "ending"
+                            ? new Date("2026-07-10T08:00:00.000Z")
+                            : lifecycle.endingAt,
+                        endedAt:
+                          nextState === "completed" ||
+                          nextState === "abandoned" ||
+                          nextState === "failed"
+                            ? new Date("2026-07-10T08:00:00.000Z")
+                            : lifecycle.endedAt,
+                      };
+                      Object.assign(stored, {
+                        lifecycleState: lifecycle.state,
+                        lifecycleVersion: lifecycle.version,
+                        terminalReason: lifecycle.terminalReason,
+                        activatedAt: lifecycle.activatedAt,
+                        endingAt: lifecycle.endingAt,
+                        endedAt: lifecycle.endedAt,
+                      });
+                      return [{ ...lifecycle }];
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+        insert() {
+          return {
+            values(values: Record<string, unknown>) {
+              return {
+                onConflictDoNothing() {
+                  return {
+                    async returning() {
+                      return [
+                        {
+                          id: "750e8400-e29b-41d4-a716-446655440000",
+                          ...values,
+                        },
+                      ];
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+      return callback(tx);
+    },
+  } as EndInterviewSessionDatabase;
+
+  const result = await finalizeInterviewSession(
+    {
+      sessionId: stored.id,
+      actor: { type: "user", userId: stored.userId },
+      requestedTerminalReason: "user_end",
+      now: new Date("2026-07-10T08:00:00.000Z"),
+    },
+    database
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.lifecycle.state, "abandoned");
+    assert.equal(result.lifecycle.terminalReason, "user_end");
+  }
+  assert.deepEqual(transitions, ["ending", "abandoned"]);
+  assert.equal(stored.activatedAt, null);
 });

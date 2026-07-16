@@ -20,10 +20,11 @@
 |    11 | `0011_transcript_ingest`              |
 |    12 | `0012_transcript_privacy_integrity`   |
 |    13 | `0013_runtime_settlement`             |
+|    14 | `0014_stable_start_usable_credit`     |
 
 <!-- migration-journal:end -->
 
-This fourteen-entry inventory is generated from the same ordered contract as
+This fifteen-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -175,3 +176,19 @@ Terminal feedback eligibility requires a trusted metadata-only `settled`
 watermark for every registered writer generation and no integrity markers.
 Missing or degraded settlement fails closed. Both writer and settlement tables
 enable RLS, revoke browser roles, and grant access only to `service_role`.
+
+## Stable interview start and usable credit
+
+`0014_stable_start_usable_credit` adds durable start-attempt identity,
+request-fingerprint fencing, provider-provisioning state, and immutable usable
+interview evidence to the existing session, question, and credit-reservation
+records. A version-1 start uses one deterministic attempt ID across those
+records and the LiveKit room name, so retries converge on the same interview
+instead of creating duplicate reservations or rooms.
+
+The migration distinguishes a provider-ready interview from one that became
+usable. Credit settlement can consume a reservation only after the session has
+both activation evidence and its first accepted candidate transcript event;
+otherwise terminal recovery releases the reservation. Database checks, unique
+indexes, foreign keys, and an immutability trigger prevent identity drift or
+later rewriting of provisioning and usable evidence.

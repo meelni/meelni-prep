@@ -27,6 +27,7 @@ import {
   reconcileInterviewPresence,
   recoverInterviewPresenceReconciliation,
 } from "@/lib/inngest/functions/reconcile-interview-presence";
+import { recoverInterviewStarts } from "@/lib/inngest/functions/recover-interview-starts";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -56,5 +57,6 @@ export const { GET, POST, PUT } = serve({
     recoverInterviewRoomCleanup, // Reclaims terminal rooms after provider outages
     reconcileInterviewPresence, // Repairs missed participant webhooks
     recoverInterviewPresenceReconciliation, // Fairly scans active voice sessions
+    recoverInterviewStarts, // Fences stale starts and releases stranded credits
   ],
 });

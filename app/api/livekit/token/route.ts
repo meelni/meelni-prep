@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
@@ -22,6 +24,24 @@ export async function POST(req: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const access = await resolveReactivationAccess({
+      user,
+      localOverride: req.cookies.get(
+        `meelni_feature_flag_${encodeURIComponent(gateName)}`
+      )?.value,
+    });
+    if (!access.value) {
+      return NextResponse.json(
+        {
+          error: "interview_practice_unavailable",
+          message: "Interview practice is not open for this account yet.",
+          retryable: false,
+        },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();

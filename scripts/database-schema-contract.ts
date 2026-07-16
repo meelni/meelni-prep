@@ -22,6 +22,11 @@ export const TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT =
   "c77ee4fcbe14d7d7689850d7e68a629ec22e76951864527c9ea5f5d268af6caa";
 export const RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT =
   "b88622c7a970d748f058dd1c5eaa71e0ef31651c49505c2604bada48965b9b67";
+// Filled from the clean PostgreSQL migration acceptance test. This contract
+// includes the stable-evidence trigger, which the earlier schema fingerprints
+// deliberately did not inspect.
+export const STABLE_START_SCHEMA_FINGERPRINT =
+  "0fcd5e505fdf94c8b40bb55a02bd04877874a18fa23d9e6b78b077b61174acbd";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -121,6 +126,40 @@ export async function getDatabaseSchemaContract(sql: Queryable) {
     ]);
 
   return { columns, constraints, indexes, policies, rls, grants, limiter };
+}
+
+export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
+  const [schema, stableEvidenceFunctions, stableEvidenceTriggers] =
+    await Promise.all([
+      getDatabaseSchemaContract(sql),
+      sql`
+        SELECT p.proname, p.prosecdef, p.provolatile,
+          pg_get_function_identity_arguments(p.oid) AS arguments,
+          pg_get_function_result(p.oid) AS result,
+          pg_get_functiondef(p.oid) AS definition,
+          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+          has_function_privilege('authenticated', p.oid, 'EXECUTE')
+            AS authenticated_execute,
+          has_function_privilege('service_role', p.oid, 'EXECUTE')
+            AS service_execute
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = 'protect_interview_session_stable_evidence'
+        ORDER BY p.proname, arguments
+      `,
+      sql`
+        SELECT event_object_table AS table_name, trigger_name,
+          action_timing, event_manipulation,
+          action_orientation, action_statement
+        FROM information_schema.triggers
+        WHERE trigger_schema = 'public'
+          AND trigger_name = 'protect_interview_session_stable_evidence'
+        ORDER BY event_object_table, trigger_name, event_manipulation
+      `,
+    ]);
+
+  return { schema, stableEvidenceFunctions, stableEvidenceTriggers };
 }
 
 export function databaseSchemaFingerprint(contract: unknown): string {

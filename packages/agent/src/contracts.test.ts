@@ -33,6 +33,7 @@ test("buildInterviewRoomMetadata serializes the production room metadata shape",
   const metadata = buildInterviewRoomMetadata(fixture.roomMetadata);
 
   assert.equal(metadata.round_type, "product_sense");
+  assert.equal(metadata.candidate_identity, "fixture-user-1");
   assert.equal(metadata.deadline_at, fixture.roomMetadata.deadline_at);
   assert.equal(metadata.question?.id, fixture.question.questionId);
   assert.equal(metadata.config.difficulty, "intermediate");
@@ -49,6 +50,23 @@ test("parseInterviewRoomMetadata fails closed for malformed metadata", () => {
   assert.throws(
     () => parseInterviewRoomMetadata("not-json"),
     /Invalid interview room metadata: invalid_json/
+  );
+});
+
+test("room metadata rejects an explicitly malformed candidate identity", () => {
+  assert.throws(
+    () =>
+      parseInterviewRoomMetadata(
+        JSON.stringify({
+          contract_version: 1,
+          session_id: "session-1",
+          candidate_identity: " ",
+          transcript_ingest_url: TRANSCRIPT_INGEST_URL,
+          round_type: "strategy",
+          config: {},
+        })
+      ),
+    /missing_candidate_identity/
   );
 });
 

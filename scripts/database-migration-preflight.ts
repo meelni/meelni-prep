@@ -12,6 +12,7 @@ import {
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
+  getStableStartDatabaseSchemaContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
   INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
@@ -20,6 +21,7 @@ import {
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
   RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT,
+  STABLE_START_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 import {
   canonicalEnvironmentForEnvFile,
@@ -102,9 +104,11 @@ async function run(url: string, environmentIdentity: string) {
         FROM drizzle.__drizzle_migrations
         ORDER BY created_at
       `;
-      if (![2, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(migrations.length)) {
+      if (
+        ![2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(migrations.length)
+      ) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, or 14 runtime-settlement migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, or 15 stable-start migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -235,6 +239,13 @@ async function run(url: string, environmentIdentity: string) {
       const creditLedgerIntegrity = optionalTables.credit_ledger
         ? await getCreditLedgerIntegrity(tx)
         : emptyCreditLedgerIntegrity();
+      const stableStartIntegrity =
+        migrations.length >= 14
+          ? await getStableStartIntegrity(tx, migrations.length >= 15)
+          : emptyStableStartIntegrity();
+      const stableStartLaunchReady =
+        migrations.length === 15 &&
+        Object.values(stableStartIntegrity).every((count) => count === 0);
       if (
         summary.unsupported_tiers > 0 ||
         summary.legacy_premium_trials > 0 ||
@@ -257,7 +268,8 @@ async function run(url: string, environmentIdentity: string) {
         | "interview_reconnect_db_time"
         | "transcript_ingest"
         | "transcript_privacy"
-        | "runtime_settlement";
+        | "runtime_settlement"
+        | "stable_start";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -289,12 +301,14 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "transcript_ingest";
       } else if (migrations.length === 13) {
         startingContract = "transcript_privacy";
-      } else {
+      } else if (migrations.length === 14) {
         startingContract = "runtime_settlement";
+      } else {
+        startingContract = "stable_start";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length === 14 ? 26 : migrations.length === 13 ? 24 : 23;
+          migrations.length >= 14 ? 26 : migrations.length === 13 ? 24 : 23;
         if (
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
@@ -306,7 +320,9 @@ async function run(url: string, environmentIdentity: string) {
           );
         }
         const schemaFingerprint = databaseSchemaFingerprint(
-          await getDatabaseSchemaContract(tx)
+          migrations.length === 15
+            ? await getStableStartDatabaseSchemaContract(tx)
+            : await getDatabaseSchemaContract(tx)
         );
         const expectedFingerprint =
           migrations.length === 6
@@ -325,7 +341,9 @@ async function run(url: string, environmentIdentity: string) {
                         ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
                         : migrations.length === 13
                           ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                          : RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT;
+                          : migrations.length === 14
+                            ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                            : STABLE_START_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -403,25 +421,27 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 14
-            ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-            : migrations.length === 13
-              ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-              : migrations.length === 12
-                ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                : migrations.length === 11
-                  ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                  : migrations.length === 10
-                    ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                    : migrations.length === 9
-                      ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                      : migrations.length === 8
-                        ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                        : migrations.length === 7
-                          ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                          : migrations.length === 6
-                            ? RELAUNCH_SCHEMA_FINGERPRINT
-                            : "pending",
+          migrations.length === 15
+            ? STABLE_START_SCHEMA_FINGERPRINT
+            : migrations.length === 14
+              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+              : migrations.length === 13
+                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                : migrations.length === 12
+                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                  : migrations.length === 11
+                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                    : migrations.length === 10
+                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                      : migrations.length === 9
+                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                        : migrations.length === 8
+                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                          : migrations.length === 7
+                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                            : migrations.length === 6
+                              ? RELAUNCH_SCHEMA_FINGERPRINT
+                              : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
@@ -429,11 +449,21 @@ async function run(url: string, environmentIdentity: string) {
               ? { phase: "applied", counts: lifecycleBackfillCounts }
               : { phase: "not_ready", counts: [] },
         creditLedgerIntegrity,
+        stableStartIntegrity,
+        stableStartLaunchReady,
         ...summary,
       };
     });
 
     console.log(JSON.stringify(result, null, 2));
+    if (
+      process.env.MEELNI_LAUNCH_STRICT === "1" &&
+      !result.stableStartLaunchReady
+    ) {
+      throw new Error(
+        "Stable-start launch readiness checks are not clean; inspect stableStartIntegrity"
+      );
+    }
   } finally {
     await sql.end();
   }
@@ -452,6 +482,231 @@ interface CreditLedgerIntegrity {
   orphan_rollover_grants: number;
   subscription_renewal_evidence_mismatches: number;
   cross_user_references: number;
+}
+
+interface StableStartIntegrity {
+  legacy_nonterminal_sessions: number;
+  legacy_active_reservations: number;
+  malformed_or_duplicate_v1_attempts: number;
+  cross_user_or_missing_session_correlations: number;
+  duplicate_v1_reservations: number;
+  duplicate_v1_rooms: number;
+  multiple_session_questions: number;
+  incomplete_usable_evidence: number;
+  invalid_usable_transcript_evidence: number;
+  usable_without_consume: number;
+  consumed_without_usable: number;
+  activated_and_delivered_still_active: number;
+  terminal_v1_active_reservations: number;
+  non_ready_or_stale_v1_active_reservations: number;
+}
+
+function emptyStableStartIntegrity(): StableStartIntegrity {
+  return {
+    legacy_nonterminal_sessions: 0,
+    legacy_active_reservations: 0,
+    malformed_or_duplicate_v1_attempts: 0,
+    cross_user_or_missing_session_correlations: 0,
+    duplicate_v1_reservations: 0,
+    duplicate_v1_rooms: 0,
+    multiple_session_questions: 0,
+    incomplete_usable_evidence: 0,
+    invalid_usable_transcript_evidence: 0,
+    usable_without_consume: 0,
+    consumed_without_usable: 0,
+    activated_and_delivered_still_active: 0,
+    terminal_v1_active_reservations: 0,
+    non_ready_or_stale_v1_active_reservations: 0,
+  };
+}
+
+async function getStableStartIntegrity(
+  tx: postgres.TransactionSql,
+  stableStartApplied: boolean
+): Promise<StableStartIntegrity> {
+  if (!stableStartApplied) {
+    const [counts] = await tx<
+      {
+        legacy_nonterminal_sessions: number;
+        legacy_active_reservations: number;
+        multiple_session_questions: number;
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM interview_session
+          WHERE lifecycle_state NOT IN
+            ('completed', 'abandoned', 'failed'))
+          AS legacy_nonterminal_sessions,
+        (SELECT count(*)::int FROM credit_reservation
+          WHERE status = 'active') AS legacy_active_reservations,
+        (SELECT count(*)::int FROM (
+          SELECT session_id FROM session_question
+          GROUP BY session_id HAVING count(*) > 1
+        ) duplicate_questions) AS multiple_session_questions
+    `;
+    return {
+      ...emptyStableStartIntegrity(),
+      legacy_nonterminal_sessions: Number(
+        counts?.legacy_nonterminal_sessions ?? 0
+      ),
+      legacy_active_reservations: Number(
+        counts?.legacy_active_reservations ?? 0
+      ),
+      multiple_session_questions: Number(
+        counts?.multiple_session_questions ?? 0
+      ),
+    };
+  }
+
+  const [counts] = await tx<StableStartIntegrity[]>`
+    WITH qualifying_turn AS (
+      SELECT session_id, event_id
+      FROM transcript_turn
+      WHERE contract_version = 2
+        AND speaker = 'interviewer'
+        AND delivery_state = 'delivered'
+        AND event_id IS NOT NULL
+        AND text IS NOT NULL
+        AND btrim(text) <> ''
+    )
+    SELECT
+      (SELECT count(*)::int FROM interview_session
+        WHERE start_contract_version = 0
+          AND lifecycle_state NOT IN ('completed', 'abandoned', 'failed'))
+        AS legacy_nonterminal_sessions,
+      (SELECT count(*)::int FROM credit_reservation
+        WHERE start_contract_version = 0 AND status = 'active')
+        AS legacy_active_reservations,
+      (
+        SELECT count(*)::int FROM (
+          SELECT id FROM interview_session
+          WHERE start_contract_version = 1 AND NOT (
+            start_attempt_id IS NOT NULL
+            AND id = start_attempt_id
+            AND start_request_fingerprint ~ '^[0-9a-f]{64}$'
+            AND livekit_room_name = 'interview-' || start_attempt_id::text
+          )
+          UNION ALL
+          SELECT (array_agg(id ORDER BY id))[1] FROM interview_session
+          WHERE start_contract_version = 1
+          GROUP BY user_id, start_attempt_id HAVING count(*) > 1
+        ) malformed_or_duplicate
+      ) AS malformed_or_duplicate_v1_attempts,
+      (
+        SELECT count(*)::int FROM (
+          SELECT reservation.id
+          FROM credit_reservation reservation
+          LEFT JOIN interview_session session
+            ON session.id = reservation.session_id
+            AND session.user_id = reservation.user_id
+            AND session.start_attempt_id = reservation.start_attempt_id
+            AND session.start_contract_version = 1
+          WHERE reservation.start_contract_version = 1
+            AND session.id IS NULL
+          UNION ALL
+          SELECT question.id
+          FROM session_question question
+          LEFT JOIN interview_session session
+            ON session.id = question.session_id
+            AND session.start_attempt_id = question.start_attempt_id
+            AND session.start_contract_version = 1
+          WHERE question.start_contract_version = 1
+            AND session.id IS NULL
+        ) invalid_correlations
+      ) AS cross_user_or_missing_session_correlations,
+      (
+        SELECT count(*)::int FROM (
+          SELECT user_id, start_attempt_id FROM credit_reservation
+          WHERE start_contract_version = 1
+          GROUP BY user_id, start_attempt_id HAVING count(*) > 1
+        ) duplicates
+      ) AS duplicate_v1_reservations,
+      (
+        SELECT count(*)::int FROM (
+          SELECT livekit_room_name FROM interview_session
+          WHERE start_contract_version = 1
+          GROUP BY livekit_room_name HAVING count(*) > 1
+        ) duplicates
+      ) AS duplicate_v1_rooms,
+      (
+        SELECT count(*)::int FROM (
+          SELECT session_id FROM session_question
+          GROUP BY session_id HAVING count(*) > 1
+        ) duplicates
+      ) AS multiple_session_questions,
+      (SELECT count(*)::int FROM interview_session
+        WHERE (usable_at IS NULL) <> (usable_transcript_event_id IS NULL)
+          OR (start_contract_version = 0 AND usable_at IS NOT NULL))
+        AS incomplete_usable_evidence,
+      (SELECT count(*)::int
+        FROM interview_session session
+        LEFT JOIN qualifying_turn turn
+          ON turn.session_id = session.id
+          AND turn.event_id = session.usable_transcript_event_id
+        WHERE session.usable_at IS NOT NULL AND turn.event_id IS NULL)
+        AS invalid_usable_transcript_evidence,
+      (SELECT count(*)::int
+        FROM interview_session session
+        LEFT JOIN credit_reservation reservation
+          ON reservation.session_id = session.id
+          AND reservation.user_id = session.user_id
+          AND reservation.start_attempt_id = session.start_attempt_id
+          AND reservation.start_contract_version = 1
+        WHERE session.start_contract_version = 1
+          AND session.usable_at IS NOT NULL
+          AND reservation.status IS DISTINCT FROM 'consumed')
+        AS usable_without_consume,
+      (SELECT count(*)::int
+        FROM credit_reservation reservation
+        LEFT JOIN interview_session session
+          ON session.id = reservation.session_id
+          AND session.user_id = reservation.user_id
+          AND session.start_attempt_id = reservation.start_attempt_id
+        WHERE reservation.start_contract_version = 1
+          AND reservation.status = 'consumed'
+          AND session.usable_at IS NULL)
+        AS consumed_without_usable,
+      (SELECT count(DISTINCT session.id)::int
+        FROM interview_session session
+        JOIN qualifying_turn turn ON turn.session_id = session.id
+        JOIN credit_reservation reservation
+          ON reservation.session_id = session.id
+          AND reservation.user_id = session.user_id
+          AND reservation.start_attempt_id = session.start_attempt_id
+          AND reservation.start_contract_version = 1
+        WHERE session.start_contract_version = 1
+          AND session.activated_at IS NOT NULL
+          AND session.usable_at IS NULL
+          AND reservation.status = 'active')
+        AS activated_and_delivered_still_active,
+      (SELECT count(*)::int
+        FROM credit_reservation reservation
+        JOIN interview_session session
+          ON session.id = reservation.session_id
+          AND session.user_id = reservation.user_id
+          AND session.start_attempt_id = reservation.start_attempt_id
+          AND session.start_contract_version = 1
+        WHERE reservation.start_contract_version = 1
+          AND reservation.status = 'active'
+          AND session.lifecycle_state IN ('completed', 'abandoned', 'failed'))
+        AS terminal_v1_active_reservations,
+      (SELECT count(*)::int
+        FROM credit_reservation reservation
+        JOIN interview_session session
+          ON session.id = reservation.session_id
+          AND session.user_id = reservation.user_id
+          AND session.start_attempt_id = reservation.start_attempt_id
+          AND session.start_contract_version = 1
+        WHERE reservation.start_contract_version = 1
+          AND reservation.status = 'active'
+          AND session.lifecycle_state NOT IN ('completed', 'abandoned', 'failed')
+          AND (
+            session.provisioning_state <> 'ready'
+            OR reservation.expires_at <= now()
+          )) AS non_ready_or_stale_v1_active_reservations
+  `;
+
+  return counts ?? emptyStableStartIntegrity();
 }
 
 function emptyCreditLedgerIntegrity(): CreditLedgerIntegrity {

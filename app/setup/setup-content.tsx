@@ -45,6 +45,12 @@ import {
   parseInterviewLaunchContext,
 } from "@/lib/navigation/interview-launch";
 import { getCanonicalInterviewHref } from "@/components/interview/session-recovery";
+import {
+  clearInterviewStartAttempt,
+  getOrCreateInterviewStartAttempt,
+  isDefinitiveInterviewStartFailure,
+  parseInterviewStartSessionId,
+} from "@/lib/interview/start-attempt";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export function SetupContent() {
@@ -364,26 +370,37 @@ export function SetupContent() {
         return;
       }
 
+      const startAttemptId = getOrCreateInterviewStartAttempt(validation.data);
+      const startBody = { ...validation.data, startAttemptId };
+
       // Call session start API
       const response = await fetch("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validation.data),
+        body: JSON.stringify(startBody),
       });
+      const responseData: unknown = await response.json().catch(() => null);
 
       if (!response.ok) {
-        const errorData = await response.json();
+        if (isDefinitiveInterviewStartFailure(response.status, responseData)) {
+          clearInterviewStartAttempt(startAttemptId);
+        }
+        const errorData = isRecord(responseData) ? responseData : {};
+        const errorCode =
+          typeof errorData.error === "string" ? errorData.error : null;
+        const errorMessage =
+          typeof errorData.message === "string" ? errorData.message : null;
 
         // Handle interview type locked error
-        if (
-          response.status === 403 &&
-          errorData.error === "interview_type_locked"
-        ) {
+        if (response.status === 403 && errorCode === "interview_type_locked") {
           setTierUpgradeInfo({
             requestedType: effectiveRoundType,
-            currentTier: errorData.currentTier || "free",
+            currentTier:
+              typeof errorData.currentTier === "string"
+                ? errorData.currentTier
+                : "free",
             message:
-              errorData.message ||
+              errorMessage ||
               "This interview type requires an interview credit.",
           });
           setShowTierUpgradeModal(true);
@@ -393,9 +410,8 @@ export function SetupContent() {
 
         // Handle no-credit errors from the credit ledger.
         if (
-          (response.status === 402 &&
-            errorData.error === "no_credits_remaining") ||
-          (response.status === 403 && errorData.error === "quota_exceeded")
+          (response.status === 402 && errorCode === "no_credits_remaining") ||
+          (response.status === 403 && errorCode === "quota_exceeded")
         ) {
           setQuotaInfo({
             currentUsage: creditBalance?.availableCredits ?? 0,
@@ -407,10 +423,14 @@ export function SetupContent() {
           return;
         }
 
-        throw new Error(errorData.error || "Failed to start session");
+        throw new Error(errorMessage || errorCode || "Failed to start session");
       }
 
-      const { sessionId } = await response.json();
+      const sessionId = parseInterviewStartSessionId(responseData);
+      if (!sessionId) {
+        throw new Error("Interview start returned an invalid session ID");
+      }
+      clearInterviewStartAttempt(startAttemptId);
 
       const startSucceededProperties = {
         session_id: sessionId,
@@ -426,7 +446,7 @@ export function SetupContent() {
 
       // Keep room credentials out of browser history. The interview route
       // authorizes this owned session and mints a fresh short-lived token.
-      router.push(getCanonicalInterviewHref(String(sessionId)));
+      router.push(getCanonicalInterviewHref(sessionId));
     } catch (err) {
       console.error("[Interview Setup] start_failed", {
         code: "interview_start_failed",
@@ -747,4 +767,8 @@ export function SetupContent() {
       )}
     </div>
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

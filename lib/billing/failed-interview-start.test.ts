@@ -60,6 +60,8 @@ function reservation(
     status,
     credits: 1,
     sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
     expiresAt: new Date("2026-07-10T09:00:00.000Z"),
     metadata: null,
     createdAt: new Date("2026-07-10T08:00:00.000Z"),
