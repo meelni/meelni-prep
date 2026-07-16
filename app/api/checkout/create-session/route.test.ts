@@ -3,13 +3,23 @@ import { NextRequest } from "next/server";
 
 const stripeMocks = vi.hoisted(() => ({
   list: vi.fn(),
+  subscriptionList: vi.fn(),
   create: vi.fn(),
   expire: vi.fn(),
+  customerCreate: vi.fn(),
+}));
+const dbMocks = vi.hoisted(() => ({
+  selectLimit: vi.fn(),
+  transactionRows: [] as unknown[][],
+  insertValues: vi.fn(),
+  tryLock: vi.fn(),
 }));
 
 vi.mock("stripe", () => ({
   default: class StripeMock {
     checkout = { sessions: stripeMocks };
+    subscriptions = { list: stripeMocks.subscriptionList };
+    customers = { create: stripeMocks.customerCreate };
   },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -17,17 +27,42 @@ vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        where: vi.fn(() => ({ limit: dbMocks.selectLimit })),
       })),
     })),
+    transaction: vi.fn(async (work) =>
+      work({
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(() => ({
+                  for: vi.fn(async () => dbMocks.transactionRows.shift() ?? []),
+                })),
+              })),
+              limit: vi.fn(() => ({
+                for: vi.fn(async () => dbMocks.transactionRows.shift() ?? []),
+              })),
+            })),
+          })),
+        })),
+        insert: vi.fn(() => ({ values: dbMocks.insertValues })),
+      })
+    ),
   },
 }));
+vi.mock("@/lib/billing/subscription-state", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/billing/subscription-state")>();
+  return { ...actual, tryLockBillingUserUnlessDeleting: dbMocks.tryLock };
+});
 vi.mock("@/lib/db/account-deletions", () => ({
   hasAccountDeletionTombstone: vi.fn(),
 }));
 
 import { createClient } from "@/lib/supabase/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
+import { BillingAccountBusyError } from "@/lib/billing/subscription-state";
 import { POST } from "./route";
 
 describe("POST /api/checkout/create-session deletion guard", () => {
@@ -35,6 +70,7 @@ describe("POST /api/checkout/create-session deletion guard", () => {
     vi.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_test_pass";
+    process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_test_starter";
     vi.mocked(createClient).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -48,12 +84,19 @@ describe("POST /api/checkout/create-session deletion guard", () => {
         }),
       },
     } as never);
-    stripeMocks.list.mockResolvedValue({ data: [] });
+    stripeMocks.list.mockResolvedValue({ data: [], has_more: false });
+    stripeMocks.subscriptionList.mockResolvedValue({ data: [] });
     stripeMocks.create.mockResolvedValue({
       id: "cs_test_created",
       url: "https://checkout.example.invalid/session",
+      customer: "cus_test",
     });
+    stripeMocks.customerCreate.mockResolvedValue({ id: "cus_test" });
     stripeMocks.expire.mockResolvedValue({ id: "cs_test_created" });
+    dbMocks.selectLimit.mockResolvedValue([]);
+    dbMocks.transactionRows.length = 0;
+    dbMocks.insertValues.mockResolvedValue(undefined);
+    dbMocks.tryLock.mockResolvedValue(undefined);
   });
 
   it("makes no Stripe request when the deletion tombstone already exists", async () => {
@@ -101,12 +144,83 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       Math.floor(Date.now() / 1000) + 29 * 60
     );
   });
+
+  it("blocks overlapping subscription Checkout while cancellation is scheduled", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    setTransactionSubscription(
+      subscriptionFixture({ cancelAtPeriodEnd: true })
+    );
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      reactivationRequired: true,
+    });
+    expect(stripeMocks.list).not.toHaveBeenCalled();
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("continues to block an ordinary active subscription", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    setTransactionSubscription(subscriptionFixture());
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      reactivationRequired: false,
+    });
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("allows subscription Checkout after the prior resource is truly canceled", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    setTransactionSubscription(
+      subscriptionFixture({ status: "canceled", cancelAtPeriodEnd: true })
+    );
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(200);
+    expect(stripeMocks.create).toHaveBeenCalledOnce();
+  });
+
+  it("returns immediate retry backpressure without provider work", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    dbMocks.tryLock.mockRejectedValue(new BillingAccountBusyError());
+
+    const response = await POST(request("starter"));
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(stripeMocks.subscriptionList).not.toHaveBeenCalled();
+    expect(stripeMocks.create).not.toHaveBeenCalled();
+  });
 });
 
-function request() {
+function request(catalogId = "interview_pass") {
   return new NextRequest("http://localhost/api/checkout/create-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ catalogId: "interview_pass" }),
+    body: JSON.stringify({ catalogId }),
   });
+}
+
+function setTransactionSubscription(
+  row: ReturnType<typeof subscriptionFixture>
+) {
+  dbMocks.transactionRows.push([row], [], [row], []);
+}
+
+function subscriptionFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    version: 1,
+    tier: "starter",
+    status: "active",
+    cancelAtPeriodEnd: false,
+    stripeCustomerId: "cus_test",
+    stripeSubscriptionId: "sub_test",
+    ...overrides,
+  };
 }

@@ -90,6 +90,12 @@ Configure the Stripe Customer Portal so users can:
 - Switch between Starter and Pro if you want self-serve plan changes at launch.
 - View invoices and receipts.
 
+For live mode, configure subscription cancellation as **at the end of the
+billing period**. Do not enable immediate cancellation, prorated cancellation
+credits, or automatic refunds. Verify both Starter and Pro show the paid-through
+date and that portal cancellation leaves the subscription active with
+`cancel_at_period_end=true` until that timestamp.
+
 Do not expose Interview Pass as a subscription option in the portal; it is a one-time Checkout purchase.
 
 ## Pre-Launch Verification
@@ -119,6 +125,8 @@ Manual Stripe checks:
 - Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate credits.
 - Failed invoice payment marks the subscription `past_due` and does not grant credits.
 - Customer Portal opens for paid subscribers.
+- Customer Portal cancellation schedules period-end cancellation for Starter
+  and Pro without a proration, customer-balance credit, or Refund object.
 - Unknown price IDs do not silently map to Pro.
 
 ## Production Cutover

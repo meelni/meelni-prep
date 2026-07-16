@@ -1,21 +1,18 @@
 import Stripe from "stripe";
-
-import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
-import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
-import { ensureStripePaymentFullyRefunded } from "@/lib/billing/stripe-refund-reconciliation";
 import {
-  loadStripeInvoicePaymentAllocations,
-  refundStripeInvoicePaymentAllocations,
-} from "@/lib/billing/stripe-invoice-reconciliation";
-import { buildStripeDeletionSubject } from "@/lib/billing/stripe-privacy";
+  createLiveKitInterviewProvider,
+  getLiveKitEnvironment,
+} from "@meelni/integrations";
+import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
+import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import {
   deleteUserApplicationData,
   getAccountDeletionRequest,
   listRecoverableAccountDeletions,
+  isLiveKitProvisioningLeaseExpired,
   markAccountDeletionCompleted,
   markAccountDeletionFailed,
   markAccountDeletionProcessing,
-  recordLateStripeDeletionSubjects,
   redactStripeEventLogs,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
@@ -53,7 +50,8 @@ export const deleteAccount = inngest.createFunction(
     }
     if (
       request.status === "completed" &&
-      request.stripeSubjects.every(({ providerId }) => providerId === null)
+      request.stripeSubjects.every(({ providerId }) => providerId === null) &&
+      request.livekitRooms.every(({ roomName }) => roomName === null)
     ) {
       return { status: "completed" };
     }
@@ -64,76 +62,40 @@ export const deleteAccount = inngest.createFunction(
         "account_deletion_state_update_failed"
       )
     );
+    // Mark-processing upgrades legacy provisioning subjects with a persisted
+    // database-clock lease. Re-read so this attempt cannot retain a null-expiry
+    // target forever or invent an app-clock deadline.
+    try {
+      request = await getAccountDeletionRequest(userId);
+    } catch (error) {
+      throw safeAccountDeletionError(error);
+    }
+    if (!request) {
+      throw safeAccountDeletionError(
+        null,
+        "account_deletion_tombstone_missing"
+      );
+    }
 
     try {
-      await step.run("delete-account-providers-and-data", () =>
+      const cleanup = await step.run("delete-account-providers-and-data", () =>
         runSafeAccountDeletionStep(
           () =>
             deleteAccountWorkflow(request, {
-              cancelSubscription: async (subscriptionId) => {
+              cancelSubscription: async (subscriptionId, cancellation) => {
                 const stripe = createStripeClient();
                 try {
                   await stripe.subscriptions.cancel(
                     subscriptionId,
-                    { prorate: false },
+                    { prorate: cancellation.prorate },
                     {
-                      idempotencyKey: deletedBillingIdempotencyKey(
-                        subscriptionId,
-                        "cancel"
-                      ),
+                      idempotencyKey: cancellation.idempotencyKey,
                     }
                   );
                 } catch (error) {
                   if (!isAlreadyDeletedProviderError(error)) {
                     throw safeProviderError("stripe_provider_error");
                   }
-                }
-              },
-              refundInvoice: async (invoiceId) => {
-                const stripe = createStripeClient();
-                try {
-                  const invoice = await stripe.invoices.retrieve(invoiceId);
-                  const allocations = await loadStripeInvoicePaymentAllocations(
-                    stripe,
-                    invoice
-                  );
-                  const subjects = allocations.map((allocation) => {
-                    const subject = buildStripeDeletionSubject(
-                      allocation.kind,
-                      allocation.providerId
-                    );
-                    if (!subject) {
-                      throw safeProviderError("stripe_provider_error");
-                    }
-                    return subject;
-                  });
-                  await recordLateStripeDeletionSubjects(userId, subjects);
-                  await refundStripeInvoicePaymentAllocations(
-                    stripe,
-                    allocations
-                  );
-                  return subjects.map(({ fingerprint }) => fingerprint);
-                } catch (error) {
-                  if (
-                    error &&
-                    typeof error === "object" &&
-                    "code" in error &&
-                    error.code === "stripe_provider_error"
-                  ) {
-                    throw error;
-                  }
-                  throw safeProviderError("stripe_provider_error");
-                }
-              },
-              refundPayment: async (kind, providerId) => {
-                try {
-                  await refundStripePayment(
-                    createStripeClient(),
-                    kind,
-                    providerId
-                  );
-                } catch {
-                  throw safeProviderError("stripe_provider_error");
                 }
               },
               deleteCustomer: async (customerId) => {
@@ -155,6 +117,24 @@ export const deleteAccount = inngest.createFunction(
                   }
                 }
               },
+              terminateLiveKitRoom: async (roomName) => {
+                const environment = getLiveKitEnvironment();
+                if (!environment.ok) {
+                  throw safeProviderError("livekit_provider_error");
+                }
+                const result =
+                  await createLiveKitInterviewProvider().terminateInterviewRoom(
+                    {
+                      roomName,
+                      participantIdentity: userId,
+                      env: environment.data,
+                    }
+                  );
+                if (!result.ok) {
+                  throw safeProviderError("livekit_provider_error");
+                }
+                return result.data;
+              },
               redactProviderLogs: redactStripeEventLogs,
               deleteApplicationData: deleteUserApplicationData,
               deleteAuthUser: async (targetUserId) => {
@@ -165,10 +145,21 @@ export const deleteAccount = inngest.createFunction(
                 }
               },
               markCompleted: markAccountDeletionCompleted,
+              isProvisioningLeaseExpired: isLiveKitProvisioningLeaseExpired,
             }),
           undefined
         )
       );
+      if (cleanup.retryAt) {
+        await step.sleepUntil(
+          "wait-for-livekit-provisioning-lease",
+          cleanup.retryAt
+        );
+        await step.sendEvent("retry-livekit-provisioning-cleanup", {
+          name: "account/deletion.requested",
+          data: { userId },
+        });
+      }
     } catch (error) {
       const failureCode = accountDeletionFailureCode(error);
       try {
@@ -224,17 +215,4 @@ function createStripeClient() {
 
 function safeProviderError(code: string) {
   return Object.assign(new Error("Provider deletion step failed"), { code });
-}
-
-async function refundStripePayment(
-  stripe: Stripe,
-  kind: "charge" | "payment_intent",
-  providerIdValue: string
-) {
-  await ensureStripePaymentFullyRefunded(
-    stripe,
-    kind,
-    providerIdValue,
-    deletedBillingIdempotencyKey(providerIdValue, "refund")
-  );
 }

@@ -4,11 +4,11 @@ import test from "node:test";
 import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
 
 import {
+  type DeleteAccountWorkflowDeps,
   deleteAccountWorkflow,
   isAlreadyDeletedProviderError,
   runSafeAccountDeletionStep,
   safeAccountDeletionError,
-  type DeleteAccountWorkflowDeps,
 } from "./delete-account";
 
 const REQUEST: AccountDeletionRecord = {
@@ -51,6 +51,15 @@ const REQUEST: AccountDeletionRecord = {
       fingerprint: "charge-fingerprint",
     },
   ],
+  livekitRooms: [
+    {
+      roomName: "interview-active-room",
+      fingerprint: "livekit-room-fingerprint",
+      generation: 1,
+      provisioning: false,
+      provisioningExpiresAt: null,
+    },
+  ],
   attempts: 1,
 };
 
@@ -60,17 +69,14 @@ test("durable deletion runs providers and application cleanup in retry-safe orde
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
-    `auth:${REQUEST.userId}`,
     "subscription:sub_test",
-    "payment:payment_intent:pi_test",
-    "payment:payment_intent:pi_tombstone_only",
-    "payment:charge:ch_tombstone_only",
-    "invoice:in_test",
+    `auth:${REQUEST.userId}`,
+    "livekit:interview-active-room",
     "customer:cus_test",
     "customer:cus_second",
     `completed:${REQUEST.userId}`,
   ]);
-  assert.deepEqual(result, { alreadyCompleted: false });
+  assert.deepEqual(result, { alreadyCompleted: false, retryAt: null });
 });
 
 test("payment and charge subjects remain correlation tombstones only", async () => {
@@ -80,7 +86,7 @@ test("payment and charge subjects remain correlation tombstones only", async () 
   assert.equal(calls.includes("customer:ch_tombstone_only"), false);
 });
 
-test("auth failure preserves the tombstone and never reports completion", async () => {
+test("subscription cancellation precedes auth failure and the tombstone remains retryable", async () => {
   const calls: string[] = [];
   const deps = createDeps(calls);
   deps.deleteAuthUser = async (userId) => {
@@ -94,6 +100,7 @@ test("auth failure preserves the tombstone and never reports completion", async 
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
+    "subscription:sub_test",
     `auth:${REQUEST.userId}`,
   ]);
   assert.equal(
@@ -102,22 +109,30 @@ test("auth failure preserves the tombstone and never reports completion", async 
   );
 });
 
-test("financial recovery failure preserves customer references and stops before deletion", async () => {
+test("subscription cancellation failure preserves completed local cleanup and remains retryable", async () => {
   const calls: string[] = [];
   const deps = createDeps(calls);
-  deps.refundPayment = async (kind, id) => {
-    calls.push(`payment:${kind}:${id}`);
-    throw new Error("refund unavailable");
+  deps.cancelSubscription = async (subscriptionId) => {
+    calls.push(`subscription:${subscriptionId}`);
+    throw Object.assign(new Error("provider unavailable"), {
+      code: "stripe_provider_error",
+    });
   };
 
   await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
   assert.deepEqual(calls, [
     `redact:${REQUEST.userId}`,
     `application:${REQUEST.userId}`,
-    `auth:${REQUEST.userId}`,
     "subscription:sub_test",
-    "payment:payment_intent:pi_test",
   ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("auth:")),
+    false
+  );
+  assert.equal(
+    calls.some((call) => call.startsWith("livekit:")),
+    false
+  );
   assert.equal(
     calls.some((call) => call.startsWith("customer:")),
     false
@@ -125,6 +140,43 @@ test("financial recovery failure preserves customer references and stops before 
   assert.equal(
     calls.some((call) => call.startsWith("completed:")),
     false
+  );
+});
+
+test("account deletion never creates automatic payment or invoice refunds", async () => {
+  const calls: string[] = [];
+  await deleteAccountWorkflow(REQUEST, createDeps(calls));
+  assert.equal(
+    calls.some((call) => call.startsWith("payment:")),
+    false
+  );
+  assert.equal(
+    calls.some((call) => call.startsWith("invoice:")),
+    false
+  );
+});
+
+test("deletion cancellation is immediate, non-prorated, and retry-idempotent", async () => {
+  const cancellations: Array<{
+    id: string;
+    prorate: false;
+    idempotencyKey: string;
+  }> = [];
+  const deps = createDeps([]);
+  deps.cancelSubscription = async (id, cancellation) => {
+    cancellations.push({ id, ...cancellation });
+  };
+
+  await deleteAccountWorkflow(REQUEST, deps);
+  await deleteAccountWorkflow(REQUEST, deps);
+
+  assert.equal(cancellations.length, 2);
+  assert.deepEqual(cancellations[0], cancellations[1]);
+  assert.equal(cancellations[0]?.id, "sub_test");
+  assert.equal(cancellations[0]?.prorate, false);
+  assert.match(
+    cancellations[0]?.idempotencyKey ?? "",
+    /^account-deletion:cancel:[a-f0-9]{64}$/
   );
 });
 
@@ -139,10 +191,14 @@ test("completed deletion and missing provider records are idempotent", async () 
           ...subject,
           providerId: null,
         })),
+        livekitRooms: REQUEST.livekitRooms.map((room) => ({
+          ...room,
+          roomName: null,
+        })),
       },
       createDeps(calls)
     ),
-    { alreadyCompleted: true }
+    { alreadyCompleted: true, retryAt: null }
   );
   assert.deepEqual(calls, []);
   assert.equal(
@@ -159,30 +215,167 @@ test("completed tombstones with late raw references remain recoverable", async (
     { ...REQUEST, status: "completed" },
     createDeps(calls)
   );
-  assert.equal(calls.includes("payment:payment_intent:pi_test"), true);
+  assert.equal(
+    calls.some((call) => call.startsWith("payment:")),
+    false
+  );
   assert.equal(calls.includes("customer:cus_test"), true);
   assert.equal(calls.at(-1), `completed:${REQUEST.userId}`);
 });
 
-test("invoice allocations discovered by recovery are included in snapshot completion", async () => {
+test("known financial fingerprints remain in the completed deletion snapshot", async () => {
   const calls: string[] = [];
   const completedFingerprints: string[][] = [];
   const deps = createDeps(calls);
-  deps.refundInvoice = async (invoiceId) => {
-    calls.push(`invoice:${invoiceId}`);
-    return ["discovered-payment-fingerprint"];
-  };
   deps.markCompleted = async (_userId, fingerprints) => {
     completedFingerprints.push(fingerprints);
   };
 
   await deleteAccountWorkflow(REQUEST, deps);
 
-  assert.equal(
-    completedFingerprints[0]?.includes("discovered-payment-fingerprint"),
-    true
-  );
   assert.equal(completedFingerprints[0]?.includes("invoice-fingerprint"), true);
+  assert.equal(completedFingerprints[0]?.includes("payment-fingerprint"), true);
+});
+
+test("subscription cancellation precedes retryable LiveKit cleanup failure", async () => {
+  const calls: string[] = [];
+  const deps = createDeps(calls);
+  deps.terminateLiveKitRoom = async (roomName) => {
+    calls.push(`livekit:${roomName}`);
+    throw Object.assign(new Error("wss://secret-livekit-host"), {
+      code: "livekit_provider_error",
+    });
+  };
+
+  await assert.rejects(() => deleteAccountWorkflow(REQUEST, deps));
+  assert.deepEqual(calls, [
+    `redact:${REQUEST.userId}`,
+    `application:${REQUEST.userId}`,
+    "subscription:sub_test",
+    `auth:${REQUEST.userId}`,
+    "livekit:interview-active-room",
+  ]);
+  assert.equal(
+    calls.some((call) => call.startsWith("completed:")),
+    false
+  );
+});
+
+test("an ahead application clock cannot override the database lease predicate", async () => {
+  const processedRooms: unknown[][] = [];
+  const deps = createDeps([]);
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+
+  await deleteAccountWorkflow(
+    {
+      ...REQUEST,
+      livekitRooms: REQUEST.livekitRooms.map((room) => ({
+        ...room,
+        provisioning: true,
+        provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+      })),
+    },
+    deps
+  );
+
+  assert.deepEqual(processedRooms, [[]]);
+});
+
+test("a behind application clock cannot retain a database-expired lease", async () => {
+  const processedRooms: unknown[][] = [];
+  const deps = createDeps([]);
+  deps.isProvisioningLeaseExpired = async () => true;
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+
+  await deleteAccountWorkflow(
+    {
+      ...REQUEST,
+      livekitRooms: REQUEST.livekitRooms.map((room) => ({
+        ...room,
+        provisioning: true,
+        provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+      })),
+    },
+    deps
+  );
+
+  assert.deepEqual(processedRooms, [
+    [
+      {
+        fingerprint: "livekit-room-fingerprint",
+        generation: 1,
+      },
+    ],
+  ]);
+});
+
+test("database clock failure retains the provisioning target for job retry", async () => {
+  const deps = createDeps([]);
+  let completed = false;
+  deps.terminateLiveKitRoom = async () => ({ disposition: "already_absent" });
+  deps.isProvisioningLeaseExpired = async () => {
+    throw new Error("private database endpoint");
+  };
+  deps.markCompleted = async () => {
+    completed = true;
+  };
+
+  await assert.rejects(() =>
+    deleteAccountWorkflow(
+      {
+        ...REQUEST,
+        livekitRooms: REQUEST.livekitRooms.map((room) => ({
+          ...room,
+          provisioning: true,
+          provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+        })),
+      },
+      deps
+    )
+  );
+  assert.equal(completed, false);
+});
+
+test("a room that appears after the first missing check remains durable and is terminated on retry", async () => {
+  const processedRooms: unknown[][] = [];
+  const calls: string[] = [];
+  let roomExists = false;
+  const deps = createDeps([]);
+  deps.terminateLiveKitRoom = async () => {
+    calls.push(roomExists ? "terminate:late-room" : "terminate:missing");
+    return {
+      disposition: roomExists ? "deleted" : "already_absent",
+    } as const;
+  };
+  deps.markCompleted = async (_userId, _fingerprints, rooms) => {
+    processedRooms.push(rooms);
+  };
+  const request = {
+    ...REQUEST,
+    livekitRooms: REQUEST.livekitRooms.map((room) => ({
+      ...room,
+      provisioning: true,
+      provisioningExpiresAt: "2026-07-12T00:10:00.000Z",
+    })),
+  };
+
+  const first = await deleteAccountWorkflow(request, deps);
+  roomExists = true;
+  const retry = await deleteAccountWorkflow(request, deps);
+
+  assert.deepEqual(calls, ["terminate:missing", "terminate:late-room"]);
+  assert.equal(first.retryAt, "2026-07-12T00:10:00.000Z");
+  assert.equal(retry.retryAt, null);
+  assert.deepEqual(processedRooms, [
+    [],
+    [{ fingerprint: "livekit-room-fingerprint", generation: 1 }],
+  ]);
 });
 
 test("deletion failures are reduced to a stable code without raw details", () => {
@@ -205,6 +398,14 @@ test("deletion preserves accepted provider failure categories", () => {
       })
     ).code,
     "stripe_provider_error"
+  );
+  assert.equal(
+    safeAccountDeletionError(
+      Object.assign(new Error("private room name"), {
+        code: "livekit_provider_error",
+      })
+    ).code,
+    "livekit_provider_error"
   );
 });
 
@@ -230,15 +431,12 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     cancelSubscription: async (id) => {
       calls.push(`subscription:${id}`);
     },
-    refundInvoice: async (id) => {
-      calls.push(`invoice:${id}`);
-      return [];
-    },
-    refundPayment: async (kind, id) => {
-      calls.push(`payment:${kind}:${id}`);
-    },
     deleteCustomer: async (id) => {
       calls.push(`customer:${id}`);
+    },
+    terminateLiveKitRoom: async (roomName) => {
+      calls.push(`livekit:${roomName}`);
+      return { disposition: "deleted" };
     },
     redactProviderLogs: async (request) => {
       calls.push(`redact:${request.userId}`);
@@ -252,5 +450,6 @@ function createDeps(calls: string[]): DeleteAccountWorkflowDeps {
     markCompleted: async (id) => {
       calls.push(`completed:${id}`);
     },
+    isProvisioningLeaseExpired: async () => false,
   };
 }

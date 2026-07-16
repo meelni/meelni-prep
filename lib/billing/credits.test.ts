@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getCreditBalanceReadModel } from "./credit-balance-read-model";
 import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
 import {
   createCreditLedgerService,
@@ -27,6 +28,8 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
     "findGrantByIdempotencyKey",
     "findReservationByKey",
     "findTransactionByIdempotencyKey",
+    "getCreditReadSnapshot",
+    "getSubscriptionCreditPolicy",
     "listAllocations",
     "listSpendableGrants",
     "listUserGrants",
@@ -34,6 +37,126 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
   ]);
   assert.equal(typeof store.findReservationByKey, "function");
   assert.equal(typeof store.withUserTransaction, "function");
+});
+
+test("production transaction clock is read after the user lock and rejects invalid database time", async () => {
+  function clockDatabase(value: unknown) {
+    return {
+      async transaction(
+        work: (transaction: unknown) => Promise<unknown>
+      ): Promise<unknown> {
+        let selectIndex = 0;
+        const transaction = {
+          select() {
+            const rows = selectIndex++ === 0 ? [{ id: "user-1" }] : [];
+            return {
+              from() {
+                return {
+                  where() {
+                    return {
+                      limit() {
+                        return Object.assign(Promise.resolve(rows), {
+                          for: async () => rows,
+                        });
+                      },
+                    };
+                  },
+                };
+              },
+            };
+          },
+          async execute() {
+            assert.equal(selectIndex, 2);
+            return [{ currentTime: value }];
+          },
+        };
+        return work(transaction);
+      },
+    } as never;
+  }
+
+  const currentTime = await createDrizzleCreditLedgerStore(
+    clockDatabase("2026-08-01T12:00:00.000Z")
+  ).withUserTransaction("user-1", (transaction) =>
+    transaction.getCurrentTime()
+  );
+  assert.equal(currentTime.toISOString(), "2026-08-01T12:00:00.000Z");
+
+  await assert.rejects(
+    createDrizzleCreditLedgerStore(
+      clockDatabase("not-a-date")
+    ).withUserTransaction("user-1", (transaction) =>
+      transaction.getCurrentTime()
+    ),
+    /credit_ledger_clock_invalid/
+  );
+});
+
+test("production balance read uses one user-fenced database-time snapshot", async () => {
+  const order: string[] = [];
+  const rowSets = [
+    [{ id: "user-1" }],
+    [
+      {
+        status: "active",
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+      },
+    ],
+    [],
+  ];
+  const database = {
+    async transaction(work: (transaction: unknown) => Promise<unknown>) {
+      let selectIndex = 0;
+      const transaction = {
+        select() {
+          const index = selectIndex++;
+          const rows = rowSets[index] ?? [];
+          order.push(`select:${index}`);
+          const result = Promise.resolve(rows);
+          const builder = {
+            from() {
+              return builder;
+            },
+            where() {
+              return builder;
+            },
+            limit() {
+              return builder;
+            },
+            async for(mode: string) {
+              order.push(`lock:${mode}`);
+              return rows;
+            },
+            then: result.then.bind(result),
+            catch: result.catch.bind(result),
+            finally: result.finally.bind(result),
+          };
+          return builder;
+        },
+        async execute() {
+          order.push("clock");
+          return [{ currentTime: "2026-08-01T12:00:00.000Z" }];
+        },
+      };
+      return work(transaction);
+    },
+  } as never;
+
+  const snapshot =
+    await createDrizzleCreditLedgerStore(database).getCreditReadSnapshot(
+      "user-1"
+    );
+
+  assert.equal(snapshot.currentTime.toISOString(), "2026-08-01T12:00:00.000Z");
+  assert.deepEqual(order, [
+    "select:0",
+    "lock:share",
+    "select:1",
+    "lock:share",
+    "clock",
+    "select:2",
+  ]);
 });
 
 test("production transaction mutations cannot escape the locked user scope", async () => {
@@ -2038,6 +2161,198 @@ test("subscription renewal respects the rollover cap and 60 day expiration", asy
     rolloverIdempotencyKey: "rollover:2026-07",
   });
   assert.equal(duplicate.rolloverGrant?.id, rollover.rolloverGrant?.id);
+});
+
+test("period-end policy bounds only subscription-derived credits and reactivation preserves expiry", async () => {
+  let currentTime = new Date("2026-08-01T11:59:59.999Z");
+  const periodEnd = new Date("2026-08-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => currentTime,
+  });
+
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:period-boundary:prior",
+  });
+  const renewal = await ledger.renewSubscriptionCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    sourceId: "renewal:period-boundary:current",
+    renewalIdempotencyKey: "renewal:period-boundary:current",
+    rolloverIdempotencyKey: "rollover:period-boundary",
+  });
+  for (const [source, catalogId] of [
+    ["trial", "trial"],
+    ["checkout", "interview_pass"],
+    ["admin", "starter"],
+    ["refund", "starter"],
+    ["migration", "starter"],
+  ] as const) {
+    await ledger.grantCredits({
+      userId: "user-1",
+      catalogId,
+      source,
+      includedCredits: 1,
+      expiresAt: null,
+      idempotencyKey: `${source}:period-boundary`,
+    });
+  }
+
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: true,
+    availableThrough: periodEnd,
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 10);
+
+  currentTime = periodEnd;
+  store.setCurrentTime(periodEnd);
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 5);
+  const reservation = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:after-period",
+    credits: 5,
+  });
+  const reservedSources = new Set(
+    await Promise.all(
+      reservation.allocations.map(
+        async ({ grantId }) =>
+          (await store.listUserGrants("user-1")).find(
+            (grant) => grant.id === grantId
+          )?.source
+      )
+    )
+  );
+  assert.deepEqual([...reservedSources].sort(), [
+    "admin",
+    "checkout",
+    "migration",
+    "refund",
+    "trial",
+  ]);
+
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: false,
+    availableThrough: null,
+  });
+  assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 5);
+  const grants = await store.listUserGrants("user-1");
+  assert.deepEqual(
+    grants.find(({ id }) => id === renewal.grant.id)?.expiresAt,
+    renewal.grant.expiresAt
+  );
+  assert.equal(
+    grants
+      .find(({ id }) => id === renewal.rolloverGrant?.id)
+      ?.expiresAt?.toISOString(),
+    renewal.rolloverGrant?.expiresAt?.toISOString()
+  );
+});
+
+test("credit read model uses authoritative snapshot time at cutoff and ignores app rollback", async () => {
+  const cutoff = new Date("2026-08-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-07-01T00:00:00.000Z"),
+  });
+  await ledger.grantCredits({
+    userId: "user-read-cutoff",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:read-cutoff",
+  });
+  await ledger.grantCredits({
+    userId: "user-read-cutoff",
+    catalogId: "interview_pass",
+    source: "checkout",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "checkout:read-cutoff",
+  });
+  store.setSubscriptionCreditPolicy("user-read-cutoff", {
+    restricted: true,
+    availableThrough: cutoff,
+  });
+  store.setCurrentTime(cutoff);
+
+  const read = await getCreditBalanceReadModel({
+    store,
+    userId: "user-read-cutoff",
+  });
+
+  assert.equal(read.availableCredits, 1);
+  assert.deepEqual(
+    read.grants.map(({ source }) => source),
+    ["checkout"]
+  );
+});
+
+test("reservation uses locked database time and denies subscription credits after waiting across equality", async () => {
+  const appTime = new Date("2026-08-01T11:59:59.999Z");
+  const periodEnd = new Date("2026-08-01T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  store.setCurrentTime(appTime);
+  const ledger = createCreditLedgerService({
+    store,
+    // A rolled-back application clock must not re-enable entitlement.
+    now: () => new Date("2026-07-01T00:00:00.000Z"),
+  });
+
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:locked-clock",
+  });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "checkout:locked-clock",
+  });
+  store.setSubscriptionCreditPolicy("user-1", {
+    restricted: true,
+    availableThrough: periodEnd,
+  });
+
+  const getPolicy = store.getSubscriptionCreditPolicyForUpdate.bind(store);
+  store.getSubscriptionCreditPolicyForUpdate = async (userId) => {
+    const policy = await getPolicy(userId);
+    // Model a transaction that acquired its locks just before the boundary but
+    // resumed authorization exactly at the cutoff.
+    store.setCurrentTime(periodEnd);
+    return policy;
+  };
+
+  const result = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:locked-clock",
+  });
+  const [allocation] = result.allocations;
+  const allocatedGrant = (await store.listUserGrants("user-1")).find(
+    (grant) => grant.id === allocation?.grantId
+  );
+  assert.equal(allocatedGrant?.source, "checkout");
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:subscription-only-after-cutoff",
+      }),
+    /insufficient_credits/
+  );
 });
 
 test("subscription renewal replay preserves a committed zero-rollover outcome", async () => {

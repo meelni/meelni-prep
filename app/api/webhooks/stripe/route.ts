@@ -10,14 +10,20 @@ import {
   stripeCustomerMapping,
 } from "@/lib/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
-import { createCreditLedgerService } from "@/lib/billing/credits";
-import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
-import { shouldApplyStripeSubscriptionState } from "@/lib/billing/stripe-event-ordering";
 import {
-  ensureStripeInvoicePaymentAllocationRefunded,
-  ensureStripePaymentFullyRefunded,
-} from "@/lib/billing/stripe-refund-reconciliation";
-import { loadStripeInvoicePaymentAllocations } from "@/lib/billing/stripe-invoice-reconciliation";
+  createCreditLedgerService,
+  emitSubscriptionRenewalPostCommitEffects,
+  type SubscriptionRenewalPostCommitEffects,
+} from "@/lib/billing/credits";
+import {
+  createDrizzleCreditLedgerStore,
+  createDrizzleCreditLedgerStoreForLockedTransaction,
+} from "@/lib/billing/credit-ledger-store";
+import {
+  monotonicStripeEventTimestamp,
+  shouldApplyStripeSubscriptionState,
+} from "@/lib/billing/stripe-event-ordering";
+import { applyCurrentSubscriptionInvoice } from "@/lib/billing/subscription-invoice";
 import {
   getMappedStripeCustomerUserId,
   resolveAuthoritativeStripeUserId,
@@ -48,6 +54,13 @@ import {
   stripeEventMetadataUserId,
 } from "@/lib/billing/account-deletion-guard";
 import { isAlreadyDeletedProviderError } from "@/lib/workflows/delete-account";
+import {
+  getBillingDatabaseTime,
+  lockBillingUserUnlessDeleting,
+  reconcileAuthoritativeProviderSnapshot,
+  retrieveAuthoritativeSubscription,
+  shouldApplyAuthoritativeProviderSnapshot,
+} from "@/lib/billing/subscription-state";
 import {
   STRIPE_API_VERSION,
   getStripeCatalogIdForPrice,
@@ -331,7 +344,7 @@ export async function POST(req: NextRequest) {
 
         case "customer.subscription.created":
         case "customer.subscription.updated":
-          await handleSubscriptionUpdate(event);
+          await handleSubscriptionUpdate(event, stripe);
           break;
 
         case "customer.subscription.deleted":
@@ -496,201 +509,190 @@ async function getUserIdFromStripe(
  * Updates subscription state with optimistic locking
  * Phase 0.5C: Added customer mapping upsert and trial tracking (P0 fixes #2, #4)
  */
-async function handleSubscriptionUpdate(event: Stripe.Event) {
-  const stripeSubscription = event.data.object as Stripe.Subscription;
-
-  // Phase 0.5C: Use metadata fallback (P0 fix #3)
+async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
+  const eventSubscription = event.data.object as Stripe.Subscription;
   const userId = await getUserIdFromStripe(
-    stripeSubscription.customer as string,
-    stripeSubscription.metadata.userId
+    eventSubscription.customer as string,
+    eventSubscription.metadata.userId
   );
-
   const eventTimestamp = new Date(event.created * 1000);
   const eventCursor = stripeSubscriptionEventCursor(event);
-  const candidateResourceProof = subscriptionResourceProofFromEvent(
-    stripeSubscription,
-    eventCursor,
-    event.type
-  );
-
-  // Get current subscription (for optimistic locking)
-  const currentSub = await db
-    .select()
-    .from(subscription)
-    .where(eq(subscription.userId, userId))
-    .limit(1);
-
-  const currentResourceId = currentSub[0]?.stripeSubscriptionId ?? null;
-  const currentResourceProof = subscriptionResourceProofFromRow(currentSub[0]);
-  const replacingResource = Boolean(
-    currentResourceId && currentResourceId !== stripeSubscription.id
-  );
-  if (
-    !mayApplyStripeSubscriptionResource({
-      currentResourceId,
-      currentStatus: currentSub[0]?.status ?? null,
-      currentResourceProof,
-      retiredResourceIds: currentSub[0]?.retiredStripeSubscriptionIds ?? [],
-      candidateResourceId: stripeSubscription.id,
-      candidateResourceProof,
-      eventType: event.type,
-    })
-  ) {
-    console.log("Stripe event skipped for superseded subscription resource");
-    return;
-  }
-  const currentCursor = subscriptionEventCursorFromRow(currentSub[0]);
-  if (
-    !stripeSubscriptionCursorMayApply({
-      currentResourceId,
-      candidateResourceId: stripeSubscription.id,
-      currentCursor,
-      candidateCursor: eventCursor,
-    })
-  ) {
-    console.log("Stripe subscription event skipped as stale");
-    return;
-  }
-
-  const catalogId = getStripeCatalogIdForPrice(
-    stripeSubscription.items.data[0]?.price.id
-  );
-
-  // Phase 0.5C: Set trial tracking flags (P0 fix #4)
-  let trialUpdates = {};
-  if (
-    stripeSubscription.status === "trialing" ||
-    (stripeSubscription.trial_end &&
-      new Date(stripeSubscription.trial_end * 1000) < new Date())
-  ) {
-    if (catalogId === "pro") {
-      trialUpdates = { proTrialUsed: true };
-    }
-  }
-
-  // In recent Stripe API versions, current_period_start/end are read from the SubscriptionItem.
-  const firstItem = stripeSubscription.items.data[0];
-
-  const subscriptionData = {
-    userId,
-    tier: catalogId,
-    status: mapStripeStatus(stripeSubscription.status),
-    billingCycle:
-      firstItem?.price.recurring?.interval === "month"
-        ? ("monthly" as const)
-        : ("annual" as const),
-    stripeCustomerId: stripeSubscription.customer as string,
-    stripeSubscriptionId: stripeSubscription.id,
-    stripePriceId: firstItem?.price.id,
-    stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
-    stripeResourceCreatedEventTimestamp:
-      candidateResourceProof.createdEventCursor?.createdAt ??
-      currentSub[0]?.stripeResourceCreatedEventTimestamp ??
-      null,
-    stripeResourceCreatedEventId:
-      candidateResourceProof.createdEventCursor?.eventId ??
-      currentSub[0]?.stripeResourceCreatedEventId ??
-      null,
-    retiredStripeSubscriptionIds:
-      replacingResource && currentResourceId
-        ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
-        : (currentSub[0]?.retiredStripeSubscriptionIds ?? []),
-    currentPeriodStart: firstItem?.current_period_start
-      ? new Date(firstItem.current_period_start * 1000)
-      : null,
-    currentPeriodEnd: firstItem?.current_period_end
-      ? new Date(firstItem.current_period_end * 1000)
-      : null,
-    trialEnd: stripeSubscription.trial_end
-      ? new Date(stripeSubscription.trial_end * 1000)
-      : null,
-    canceledAt: stripeSubscription.canceled_at
-      ? new Date(stripeSubscription.canceled_at * 1000)
-      : null,
-    cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
-    lastEventTimestamp: eventTimestamp,
-    lastEventPriority: eventCursor.priority,
-    lastEventId: eventCursor.eventId,
-    updatedAt: new Date(),
-    ...trialUpdates,
-  };
-
-  // Wrap all updates in a transaction for atomicity (P1 fix #5)
-  await db.transaction(async (tx) => {
-    await lockBillingUserUnlessDeleting(tx, userId);
-    const currentSub = await tx
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1)
-      .for("update");
-    if (currentSub[0]) {
-      const lockedResourceId = currentSub[0].stripeSubscriptionId;
-      if (
-        !mayApplyStripeSubscriptionResource({
-          currentResourceId: lockedResourceId,
-          currentStatus: currentSub[0].status,
-          currentResourceProof: subscriptionResourceProofFromRow(currentSub[0]),
-          retiredResourceIds: currentSub[0].retiredStripeSubscriptionIds ?? [],
-          candidateResourceId: stripeSubscription.id,
-          candidateResourceProof,
-          eventType: event.type,
-        }) ||
-        !stripeSubscriptionCursorMayApply({
-          currentResourceId: lockedResourceId,
-          candidateResourceId: stripeSubscription.id,
-          currentCursor: subscriptionEventCursorFromRow(currentSub[0]),
-          candidateCursor: eventCursor,
-        })
-      ) {
-        return;
+  await reconcileAuthoritativeProviderSnapshot({
+    readVersion: async () => {
+      const [current] = await db
+        .select({ version: subscription.version })
+        .from(subscription)
+        .where(eq(subscription.userId, userId))
+        .limit(1);
+      return current?.version ?? null;
+    },
+    retrieve: () =>
+      retrieveAuthoritativeSubscription(
+        stripe.subscriptions,
+        eventSubscription.id
+      ),
+    commit: async ({ expectedVersion, snapshot: stripeSubscription }) => {
+      const snapshotUserId = await getUserIdFromStripe(
+        stripeSubscription.customer as string,
+        stripeSubscription.metadata.userId
+      );
+      if (snapshotUserId !== userId) {
+        throw new Error("billing_subscription_snapshot_owner_mismatch");
       }
-    }
-    const currentVersion = currentSub[0]?.version ?? 0;
-    const nextSubscriptionData = {
-      ...subscriptionData,
-      version: currentVersion + 1,
-    };
 
-    if (currentSub.length === 0) {
-      // Create new subscription
-      await tx.insert(subscription).values(nextSubscriptionData);
-    } else {
-      // Update with optimistic locking
-      const result = await tx
-        .update(subscription)
-        .set(nextSubscriptionData)
-        .where(
-          and(
-            eq(subscription.userId, userId),
-            eq(subscription.version, currentVersion)
-          )
-        )
-        .returning({ id: subscription.id });
+      return db.transaction(async (tx) => {
+        await lockBillingUserUnlessDeleting(tx, userId);
+        const [currentSub] = await tx
+          .select()
+          .from(subscription)
+          .where(eq(subscription.userId, userId))
+          .limit(1)
+          .for("update");
+        if ((currentSub?.version ?? null) !== expectedVersion) return "retry";
 
-      // If no rows updated, version mismatch (concurrent update detected)
-      if (result.length === 0) {
-        throw new Error("stripe_subscription_version_conflict");
-      }
-    }
+        const incomingStatus = mapStripeStatus(stripeSubscription.status);
+        const currentResourceId = currentSub?.stripeSubscriptionId ?? null;
+        const candidateResourceProof = subscriptionResourceProofFromEvent(
+          stripeSubscription,
+          eventCursor,
+          event.type
+        );
+        if (
+          !mayApplyStripeSubscriptionResource({
+            currentResourceId,
+            currentStatus: currentSub?.status ?? null,
+            currentResourceProof: subscriptionResourceProofFromRow(currentSub),
+            retiredResourceIds: currentSub?.retiredStripeSubscriptionIds ?? [],
+            candidateResourceId: stripeSubscription.id,
+            candidateResourceProof,
+            eventType: event.type,
+          }) ||
+          !stripeSubscriptionCursorMayApply({
+            currentResourceId,
+            candidateResourceId: stripeSubscription.id,
+            currentCursor: subscriptionEventCursorFromRow(currentSub),
+            candidateCursor: eventCursor,
+          })
+        ) {
+          return "skipped";
+        }
+        if (
+          currentResourceId === stripeSubscription.id &&
+          !shouldApplyAuthoritativeProviderSnapshot({
+            current: currentSub ?? null,
+            incomingStatus,
+            incomingStripeSubscriptionId: stripeSubscription.id,
+            triggeringEvent:
+              event.type === "customer.subscription.created"
+                ? "subscription_created"
+                : "subscription_updated",
+            eventTimestamp,
+          })
+        ) {
+          return "skipped";
+        }
 
-    // Phase 0.5C: Upsert stripe_customer_mapping (P0 fix #2)
-    // CRITICAL: This is the source of truth if Stripe metadata gets overwritten
-    await tx
-      .insert(stripeCustomerMapping)
-      .values({
-        stripeCustomerId: stripeSubscription.customer as string,
-        stripeSubscriptionId: stripeSubscription.id,
-        userId,
-      })
-      .onConflictDoUpdate({
-        target: stripeCustomerMapping.stripeCustomerId,
-        set: {
-          stripeSubscriptionId: stripeSubscription.id,
+        const observedAt = await getBillingDatabaseTime(tx);
+        const catalogId = getStripeCatalogIdForPrice(
+          stripeSubscription.items.data[0]?.price.id
+        );
+        const firstItem = stripeSubscription.items.data[0];
+        const replacingResource = Boolean(
+          currentResourceId && currentResourceId !== stripeSubscription.id
+        );
+        const lastEventTimestamp =
+          currentSub?.lastEventTimestamp &&
+          currentSub.lastEventTimestamp > eventTimestamp
+            ? currentSub.lastEventTimestamp
+            : eventTimestamp;
+        const trialUpdates =
+          catalogId === "pro" &&
+          (stripeSubscription.status === "trialing" ||
+            Boolean(
+              stripeSubscription.trial_end &&
+                new Date(stripeSubscription.trial_end * 1000) < observedAt
+            ))
+            ? { proTrialUsed: true }
+            : {};
+        const nextSubscriptionData = {
           userId,
-          updatedAt: new Date(),
-        },
+          tier: catalogId,
+          status: incomingStatus,
+          billingCycle:
+            firstItem?.price.recurring?.interval === "month"
+              ? ("monthly" as const)
+              : ("annual" as const),
+          stripeCustomerId: stripeSubscription.customer as string,
+          stripeSubscriptionId: stripeSubscription.id,
+          stripePriceId: firstItem?.price.id,
+          stripeResourceCreatedAt: candidateResourceProof.resourceCreatedAt,
+          stripeResourceCreatedEventTimestamp:
+            candidateResourceProof.createdEventCursor?.createdAt ??
+            currentSub?.stripeResourceCreatedEventTimestamp ??
+            null,
+          stripeResourceCreatedEventId:
+            candidateResourceProof.createdEventCursor?.eventId ??
+            currentSub?.stripeResourceCreatedEventId ??
+            null,
+          retiredStripeSubscriptionIds:
+            replacingResource && currentResourceId
+              ? sql`array_append(${subscription.retiredStripeSubscriptionIds}, ${currentResourceId})`
+              : (currentSub?.retiredStripeSubscriptionIds ?? []),
+          currentPeriodStart: firstItem?.current_period_start
+            ? new Date(firstItem.current_period_start * 1000)
+            : null,
+          currentPeriodEnd: firstItem?.current_period_end
+            ? new Date(firstItem.current_period_end * 1000)
+            : null,
+          trialEnd: stripeSubscription.trial_end
+            ? new Date(stripeSubscription.trial_end * 1000)
+            : null,
+          canceledAt: stripeSubscription.canceled_at
+            ? new Date(stripeSubscription.canceled_at * 1000)
+            : null,
+          cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+          lastEventTimestamp,
+          lastEventPriority: eventCursor.priority,
+          lastEventId: eventCursor.eventId,
+          updatedAt: observedAt,
+          version: (currentSub?.version ?? 0) + 1,
+          ...trialUpdates,
+        };
+
+        if (!currentSub) {
+          await tx.insert(subscription).values(nextSubscriptionData);
+        } else {
+          const updated = await tx
+            .update(subscription)
+            .set(nextSubscriptionData)
+            .where(
+              and(
+                eq(subscription.userId, userId),
+                eq(subscription.version, currentSub.version)
+              )
+            )
+            .returning({ id: subscription.id });
+          if (updated.length !== 1) return "retry";
+        }
+
+        await tx
+          .insert(stripeCustomerMapping)
+          .values({
+            stripeCustomerId: stripeSubscription.customer as string,
+            stripeSubscriptionId: stripeSubscription.id,
+            userId,
+          })
+          .onConflictDoUpdate({
+            target: stripeCustomerMapping.stripeCustomerId,
+            set: {
+              stripeSubscriptionId: stripeSubscription.id,
+              userId,
+              updatedAt: observedAt,
+            },
+          });
+        return "applied";
       });
+    },
   });
 }
 
@@ -846,28 +848,69 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
   }
 
   const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
-  let creditGrantId: string | null = null;
-
-  if (catalogId === "starter" || catalogId === "pro") {
-    const ledger = createCreditLedgerService({
-      store: createDrizzleCreditLedgerStore(),
-    });
-    const renewal = await ledger.renewSubscriptionCredits({
-      userId,
-      catalogId,
-      renewalIdempotencyKey: `stripe:invoice:${invoice.id}:${catalogId}`,
-      rolloverIdempotencyKey: `stripe:rollover:${invoice.id}:${catalogId}`,
-      sourceId: invoice.id,
-    });
-    creditGrantId = renewal.grant.id;
-  }
-
   const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
+  const invoicePeriodStart = providerTimestamp(invoice.period_start);
+  const invoicePeriodEnd = providerTimestamp(invoice.period_end);
+  let postCommitEffects: SubscriptionRenewalPostCommitEffects | null = null;
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
-    // In recent Stripe API versions, payment_intent moved to invoice payments.
-    // The event ID remains the durable idempotency key for payment history.
+    const [currentSub] = await tx
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId))
+      .limit(1)
+      .for("update");
+    const observedAt = await getBillingDatabaseTime(tx);
+    let creditGrantId: string | null = null;
+    const result = await applyCurrentSubscriptionInvoice({
+      current: currentSub ?? null,
+      incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
+      eventTimestamp,
+      billingReason: invoice.billing_reason,
+      invoicePeriodStart,
+      invoicePeriodEnd,
+      invoiceId: invoice.id,
+      catalogId,
+      userId,
+      ledger: createCreditLedgerService({
+        store: createDrizzleCreditLedgerStoreForLockedTransaction(tx, userId),
+        now: () => observedAt,
+      }),
+      onCreditGrant: (grantId) => {
+        creditGrantId = grantId;
+      },
+      applySubscriptionState: async () => {
+        // Older invoice events remain recorded in payment history but cannot
+        // reach this state or entitlement mutation.
+        const updated = await tx
+          .update(subscription)
+          .set({
+            status: "active",
+            gracePeriodEnd: null,
+            lastEventTimestamp: monotonicStripeEventTimestamp(
+              currentSub!.lastEventTimestamp,
+              eventTimestamp
+            ),
+            currentPeriodStart: invoicePeriodStart,
+            currentPeriodEnd: invoicePeriodEnd,
+            version: currentSub!.version + 1,
+            updatedAt: observedAt,
+          })
+          .where(
+            and(
+              eq(subscription.userId, userId),
+              eq(subscription.version, currentSub!.version)
+            )
+          )
+          .returning({ id: subscription.id });
+        if (updated.length !== 1) {
+          throw new Error("billing_subscription_version_conflict");
+        }
+      },
+    });
+    // Provider correlation is resolved before the transaction; payment truth,
+    // entitlement truth, and subscription state commit atomically here.
     await tx
       .insert(paymentHistory)
       .values({
@@ -912,39 +955,11 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
       currency: invoice.currency,
       status: "succeeded",
     });
-
-    const [currentSub] = await tx
-      .select()
-      .from(subscription)
-      .where(eq(subscription.userId, userId))
-      .limit(1)
-      .for("update");
-    if (
-      !currentSub ||
-      !shouldApplyStripeSubscriptionState({
-        currentStatus: currentSub.status,
-        currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
-        event: "invoice_succeeded",
-        eventTimestamp,
-        incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
-        lastEventTimestamp: currentSub.lastEventTimestamp,
-      })
-    ) {
-      return;
-    }
-    // Older invoice events may still be recorded, but cannot overwrite newer
-    // or terminal subscription state.
-    await tx
-      .update(subscription)
-      .set({
-        status: "active",
-        gracePeriodEnd: null,
-        lastEventTimestamp: eventTimestamp,
-        version: currentSub.version + 1,
-        updatedAt: new Date(),
-      })
-      .where(eq(subscription.userId, userId));
+    postCommitEffects = result.postCommitEffects;
   });
+  if (postCommitEffects) {
+    emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
+  }
 }
 
 /**
@@ -1205,27 +1220,6 @@ function getInvoicePriceId(invoice: Stripe.Invoice): string | undefined {
   return invoice.lines.data[0]?.pricing?.price_details?.price;
 }
 
-type BillingTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-async function lockBillingUserUnlessDeleting(
-  tx: BillingTransaction,
-  userId: string
-) {
-  const [user] = await tx
-    .select({ id: appUser.id })
-    .from(appUser)
-    .where(eq(appUser.id, userId))
-    .limit(1)
-    .for("update");
-  if (!user) throw new Error("billing_user_not_found");
-  const [tombstone] = await tx
-    .select({ userId: accountDeletionRequest.userId })
-    .from(accountDeletionRequest)
-    .where(eq(accountDeletionRequest.userId, userId))
-    .limit(1);
-  if (tombstone) throw new Error("account_deletion_pending");
-}
-
 function getExpandableId(value: { id: string } | string | null | undefined) {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
@@ -1254,7 +1248,6 @@ async function getInvoicePaymentCorrelation(invoice: Stripe.Invoice) {
       getExpandableId(expandedPaymentIntent?.latest_charge),
   };
 }
-
 async function upsertStripeCustomerMapping({
   stripeCustomerId,
   stripeSubscriptionId,
@@ -1332,13 +1325,6 @@ async function reconcileCheckoutForDeletedAccount(
       cancelSubscription: async (subscriptionId, idempotencyKey) => {
         await cancelDeletedSubscription(stripe, subscriptionId, idempotencyKey);
       },
-      loadInvoicePayments: async (invoiceId) => {
-        const invoice = await stripe.invoices.retrieve(invoiceId);
-        return loadStripeInvoicePaymentAllocations(stripe, invoice);
-      },
-      refundPayment: async (payment, idempotencyKey) => {
-        await refundDeletedPayment(stripe, payment, idempotencyKey);
-      },
     });
     await cleanupDeletedCustomer(
       stripe,
@@ -1355,13 +1341,6 @@ async function reconcileCheckoutForDeletedAccount(
     );
   }
 }
-
-type DeletedPaymentReference = {
-  allocationAmount?: number;
-  allocationFingerprint?: string;
-  kind: "payment_intent" | "charge";
-  providerId: string;
-};
 
 async function reconcileStripeEventForDeletedAccount(
   event: Stripe.Event,
@@ -1404,51 +1383,11 @@ async function reconcileStripeEventForDeletedAccount(
         deletedBillingIdempotencyKey(stripeSubscription.id, "cancel")
       );
 
-      let reconciledSubjects = lateSubjects;
-      if (event.type === "customer.subscription.created") {
-        if (!latestInvoiceId) {
-          throw deletedBillingError(
-            "deleted_subscription_manual_reconciliation_required"
-          );
-        }
-        const invoice = await stripe.invoices.retrieve(latestInvoiceId);
-        if (
-          !Number.isSafeInteger(invoice.amount_paid) ||
-          invoice.amount_paid < 0
-        ) {
-          throw deletedBillingError(
-            "deleted_subscription_manual_reconciliation_required"
-          );
-        }
-        const payments = await loadStripeInvoicePaymentAllocations(
-          stripe,
-          invoice
-        );
-        if (invoice.amount_paid > 0) {
-          const paymentSubjects = await recordAndRedactLateSubjects(
-            userId,
-            null,
-            null,
-            compactSubjects(
-              payments.map((payment) =>
-                buildStripeDeletionSubject(payment.kind, payment.providerId)
-              )
-            )
-          );
-          reconciledSubjects = dedupeSubjects([
-            ...reconciledSubjects,
-            ...paymentSubjects,
-          ]);
-          for (const payment of payments) {
-            await refundDeletedPayment(stripe, payment);
-          }
-        }
-      }
       await cleanupDeletedCustomer(
         stripe,
         userId,
         customerId,
-        reconciledSubjects.map(({ fingerprint }) => fingerprint)
+        lateSubjects.map(({ fingerprint }) => fingerprint)
       );
     } catch (error) {
       if (userId) await markLateStripeReconciliationFailed(userId);
@@ -1472,24 +1411,6 @@ async function reconcileStripeEventForDeletedAccount(
       compactSubjects([buildStripeDeletionSubject("invoice", invoice.id)])
     );
     try {
-      const payments = await loadStripeInvoicePaymentAllocations(
-        stripe,
-        invoice
-      );
-      const paymentSubjects = await recordAndRedactLateSubjects(
-        userId,
-        null,
-        null,
-        compactSubjects(
-          payments.map((payment) =>
-            buildStripeDeletionSubject(payment.kind, payment.providerId)
-          )
-        )
-      );
-      const lateSubjects = dedupeSubjects([
-        ...initialSubjects,
-        ...paymentSubjects,
-      ]);
       if (subscriptionId) {
         await cancelDeletedSubscription(
           stripe,
@@ -1498,16 +1419,11 @@ async function reconcileStripeEventForDeletedAccount(
         );
       }
 
-      if (invoice.amount_paid > 0) {
-        for (const payment of payments) {
-          await refundDeletedPayment(stripe, payment);
-        }
-      }
       await cleanupDeletedCustomer(
         stripe,
         userId,
         customerId,
-        lateSubjects.map(({ fingerprint }) => fingerprint)
+        initialSubjects.map(({ fingerprint }) => fingerprint)
       );
     } catch (error) {
       if (userId) await markLateStripeReconciliationFailed(userId);
@@ -1609,36 +1525,14 @@ async function cancelDeletedSubscription(
   }
 }
 
-async function refundDeletedPayment(
-  stripe: Stripe,
-  payment: DeletedPaymentReference,
-  idempotencyKey?: string
-) {
-  if (
-    payment.allocationAmount !== undefined &&
-    payment.allocationFingerprint !== undefined
-  ) {
-    await ensureStripeInvoicePaymentAllocationRefunded(stripe, {
-      allocationAmount: payment.allocationAmount,
-      allocationFingerprint: payment.allocationFingerprint,
-      kind: payment.kind,
-      providerId: payment.providerId,
-      baseIdempotencyKey:
-        idempotencyKey ??
-        `account-deletion:invoice-payment-refund:${payment.allocationFingerprint}`,
-    });
-    return;
-  }
-  await ensureStripePaymentFullyRefunded(
-    stripe,
-    payment.kind,
-    payment.providerId,
-    idempotencyKey ?? deletedBillingIdempotencyKey(payment.providerId, "refund")
-  );
-}
-
 function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
   return getProviderId(invoice.parent?.subscription_details?.subscription);
+}
+
+function providerTimestamp(value: number | null | undefined): Date | null {
+  if (!value || !Number.isSafeInteger(value)) return null;
+  const timestamp = new Date(value * 1000);
+  return Number.isFinite(timestamp.getTime()) ? timestamp : null;
 }
 
 async function redactDeletedStripeEvent(event: Stripe.Event) {

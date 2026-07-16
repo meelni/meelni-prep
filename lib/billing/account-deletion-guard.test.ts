@@ -68,7 +68,7 @@ test("checkout fulfillment requires matching authenticated correlation", () => {
   );
 });
 
-test("completed deleted subscription checkout is canceled and refunded idempotently", async () => {
+test("completed deleted subscription checkout is canceled without an automatic refund", async () => {
   const calls: Array<{ operation: string; key: string }> = [];
   const result = await reconcileDeletedCheckoutSession(
     {
@@ -85,57 +85,40 @@ test("completed deleted subscription checkout is canceled and refunded idempoten
       cancelSubscription: async (_id, key) => {
         calls.push({ operation: "cancel", key });
       },
-      loadInvoicePayments: async () => [
-        {
-          kind: "payment_intent",
-          providerId: "pi_test_complete",
-        },
-      ],
-      refundPayment: async (_payment, key) => {
-        calls.push({ operation: "refund", key });
-      },
     }
   );
 
   assert.deepEqual(result, {
     status: "reconciled",
     subscriptionCanceled: true,
-    paymentRefunded: true,
+    paymentRefunded: false,
   });
   assert.deepEqual(
     calls.map(({ operation }) => operation),
-    ["cancel", "refund"]
+    ["cancel"]
   );
-  assert.notEqual(calls[0]?.key, calls[1]?.key);
   assert.equal(JSON.stringify(calls).includes("cs_test_complete"), false);
 });
 
-test("paid deleted checkout without a refundable reference fails visibly and safely", async () => {
-  await assert.rejects(
-    () =>
-      reconcileDeletedCheckoutSession(
-        {
-          id: "cs_test_manual",
-          status: "complete",
-          payment_status: "paid",
-          payment_intent: null,
-          invoice: null,
-          subscription: null,
-        },
-        {
-          expireCheckout: async () => undefined,
-          cancelSubscription: async () => undefined,
-          loadInvoicePayments: async () => [],
-          refundPayment: async () => undefined,
-        }
-      ),
-    (error: unknown) => {
-      assert.equal(
-        (error as { code?: string }).code,
-        "deleted_checkout_manual_reconciliation_required"
-      );
-      assert.equal(JSON.stringify(error).includes("cs_test_manual"), false);
-      return true;
+test("paid deleted checkout without a payment reference completes without refunding", async () => {
+  const result = await reconcileDeletedCheckoutSession(
+    {
+      id: "cs_test_manual",
+      status: "complete",
+      payment_status: "paid",
+      payment_intent: null,
+      invoice: null,
+      subscription: null,
+    },
+    {
+      expireCheckout: async () => undefined,
+      cancelSubscription: async () => undefined,
     }
   );
+
+  assert.deepEqual(result, {
+    status: "reconciled",
+    subscriptionCanceled: false,
+    paymentRefunded: false,
+  });
 });

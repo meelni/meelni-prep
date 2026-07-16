@@ -1,0 +1,1 @@
+ALTER TABLE "account_deletion_request" ADD COLUMN "livekit_rooms" jsonb DEFAULT '[]'::jsonb NOT NULL;

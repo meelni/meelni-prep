@@ -1,17 +1,35 @@
-import type { AccountDeletionRecord } from "@/lib/db/account-deletions";
+import { deletedBillingIdempotencyKey } from "@/lib/billing/account-deletion-guard";
+import type {
+  AccountDeletionRecord,
+  ProcessedLiveKitDeletionRoom,
+} from "@/lib/db/account-deletions";
+
+export interface AccountDeletionSubscriptionCancellation {
+  prorate: false;
+  idempotencyKey: string;
+}
 
 export interface DeleteAccountWorkflowDeps {
-  cancelSubscription(subscriptionId: string): Promise<void>;
-  refundInvoice(invoiceId: string): Promise<string[]>;
-  refundPayment(
-    kind: "charge" | "payment_intent",
-    providerId: string
+  cancelSubscription(
+    subscriptionId: string,
+    cancellation: AccountDeletionSubscriptionCancellation
   ): Promise<void>;
   deleteCustomer(customerId: string): Promise<void>;
+  terminateLiveKitRoom(
+    roomName: string
+  ): Promise<{ disposition: "deleted" | "already_absent" }>;
   redactProviderLogs(request: AccountDeletionRecord): Promise<void>;
   deleteApplicationData(userId: string): Promise<void>;
   deleteAuthUser(userId: string): Promise<void>;
-  markCompleted(userId: string, processedFingerprints: string[]): Promise<void>;
+  markCompleted(
+    userId: string,
+    processedFingerprints: string[],
+    processedLiveKitRooms: ProcessedLiveKitDeletionRoom[]
+  ): Promise<void>;
+  isProvisioningLeaseExpired(
+    userId: string,
+    room: ProcessedLiveKitDeletionRoom
+  ): Promise<boolean>;
 }
 
 export async function deleteAccountWorkflow(
@@ -20,16 +38,11 @@ export async function deleteAccountWorkflow(
 ) {
   if (
     request.status === "completed" &&
-    request.stripeSubjects.every(({ providerId }) => providerId === null)
+    request.stripeSubjects.every(({ providerId }) => providerId === null) &&
+    request.livekitRooms.every(({ roomName }) => roomName === null)
   ) {
-    return { alreadyCompleted: true };
+    return { alreadyCompleted: true, retryAt: null };
   }
-
-  // Local privacy cleanup does not wait on an external provider. The durable
-  // tombstone keeps every provider reference required for later retries.
-  await deps.redactProviderLogs(request);
-  await deps.deleteApplicationData(request.userId);
-  await deps.deleteAuthUser(request.userId);
 
   const pendingSubjects = request.stripeSubjects.filter(
     (subject): subject is typeof subject & { providerId: string } =>
@@ -38,32 +51,75 @@ export async function deleteAccountWorkflow(
   const processedFingerprints = new Set(
     request.stripeSubjects.map(({ fingerprint }) => fingerprint)
   );
+
+  // Local privacy cleanup does not wait on an external provider. The durable
+  // tombstone keeps every provider reference required for later retries.
+  await deps.redactProviderLogs(request);
+  await deps.deleteApplicationData(request.userId);
+
+  // Cancellation is the first external cleanup action. Access is already
+  // fenced by the tombstone, and the stable idempotency key makes retries safe.
+  // Running this before Auth or LiveKit prevents an unrelated provider outage
+  // from extending billing without letting Stripe delay local data erasure.
   for (const subject of pendingSubjects) {
     if (subject.kind === "subscription") {
-      await deps.cancelSubscription(subject.providerId);
+      await deps.cancelSubscription(subject.providerId, {
+        prorate: false,
+        idempotencyKey: deletedBillingIdempotencyKey(
+          subject.providerId,
+          "cancel"
+        ),
+      });
     }
   }
-  for (const subject of pendingSubjects) {
-    if (subject.kind === "charge" || subject.kind === "payment_intent") {
-      await deps.refundPayment(subject.kind, subject.providerId);
+
+  await deps.deleteAuthUser(request.userId);
+
+  const pendingRooms = request.livekitRooms.filter(
+    (room): room is typeof room & { roomName: string } => room.roomName !== null
+  );
+  const processedLiveKitRooms: ProcessedLiveKitDeletionRoom[] = [];
+  const retainedProvisioningExpiries: string[] = [];
+  for (const room of pendingRooms) {
+    const result = await deps.terminateLiveKitRoom(room.roomName);
+    // A missing room is normally an idempotent success. A provisioning target
+    // is different: the create call may still commit after this lookup, so its
+    // raw subject must survive until start either advances the generation or a
+    // later cleanup actually terminates the room.
+    const roomIdentity = {
+      fingerprint: room.fingerprint,
+      generation: room.generation,
+    };
+    const terminated = result.disposition === "deleted";
+    const provisioningLeaseExpired =
+      room.provisioning &&
+      !terminated &&
+      (await deps.isProvisioningLeaseExpired(request.userId, roomIdentity));
+    if (terminated || !room.provisioning || provisioningLeaseExpired) {
+      processedLiveKitRooms.push(roomIdentity);
+    } else if (room.provisioningExpiresAt !== null) {
+      retainedProvisioningExpiries.push(room.provisioningExpiresAt);
     }
   }
-  for (const subject of pendingSubjects) {
-    if (subject.kind === "invoice") {
-      for (const fingerprint of await deps.refundInvoice(subject.providerId)) {
-        processedFingerprints.add(fingerprint);
-      }
-    }
-  }
-  // Customer deletion is deliberately last: cancellation and every known
-  // refundable payment must reconcile before the provider identity disappears.
+
+  // Accepted deletion policy never compensates automatically. Historical
+  // invoice and payment records remain subject to Stripe/legal retention; an
+  // exceptional refund is a separate manual support decision.
+  // Customer deletion remains last so the subscription is canceled first.
   for (const subject of pendingSubjects) {
     if (subject.kind === "customer") {
       await deps.deleteCustomer(subject.providerId);
     }
   }
-  await deps.markCompleted(request.userId, [...processedFingerprints]);
-  return { alreadyCompleted: false };
+  await deps.markCompleted(
+    request.userId,
+    [...processedFingerprints],
+    processedLiveKitRooms
+  );
+  return {
+    alreadyCompleted: false,
+    retryAt: retainedProvisioningExpiries.sort()[0] ?? null,
+  };
 }
 
 export function isAlreadyDeletedProviderError(error: unknown): boolean {
@@ -81,6 +137,7 @@ export function accountDeletionFailureCode(error: unknown): string {
     if (
       code === "stripe_provider_error" ||
       code === "auth_provider_error" ||
+      code === "livekit_provider_error" ||
       code === "account_deletion_step_failed" ||
       code === "account_deletion_state_update_failed" ||
       code === "account_deletion_tombstone_missing"
