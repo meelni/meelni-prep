@@ -393,9 +393,13 @@ const PARTIAL_FEEDBACK_CANDIDATE_TARGET_FRAGMENT =
   /^(?:(?:answer|candidate|me|mine|my|myself|performance|response|the|this)\s*){1,4}[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_RESULT_NOUN =
   /\b(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|rating|ratings|score|scores)\b/iu;
+const PARTIAL_FEEDBACK_RESULT_FRAGMENT =
+  /^(?:assessment|categories|category|dimension|dimensions|evaluation|grade|mark|marks|rating|ratings|score|scores)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_RESULT_SELECTOR = /^(?:all|each|every)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_CONTROL_OUTCOME =
   /^(?:(?:as|at|of|to|with)\s+)?(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s*[.!?,;:]?$/iu;
+const PARTIAL_FEEDBACK_DIRECT_BARE_OUTCOME_CONTROL =
+  /^(?:(?:please|kindly|(?:(?:can|could|would|will)\s+you))\s+)?(?:to\s+)?(?:appraise|assign|award|bestow|furnish|give|grade|pencil(?:\s+in)?|rate|score|output|provide|record|return|set)\s+(?:(?:as|at|of|to|with)\s+)?(?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|10|[0-9])(?:\s*(?:\/\s*(?:ten|10)|out\s+of\s+(?:ten|10)))?|full\s+marks|high(?:est)?|maximum|perfect)\s*[.!?,;:]?$/iu;
 const PARTIAL_FEEDBACK_CONTROL_CONNECTOR =
   /^(?:(?:a|an|as|at|for|of|the|to|with)\s*){1,3}[.!?,;:]?$/iu;
 const MAX_PARTIAL_FEEDBACK_CONTROL_FRAGMENT_LENGTH = 192;
@@ -420,6 +424,9 @@ function advancePartialFeedbackResultControl(
   ) {
     return { detected: false, next: null };
   }
+  if (PARTIAL_FEEDBACK_DIRECT_BARE_OUTCOME_CONTROL.test(fragment)) {
+    return { detected: true, next: null };
+  }
 
   const candidateAction = PARTIAL_FEEDBACK_CANDIDATE_ACTION.test(fragment);
   const resultAction = PARTIAL_FEEDBACK_RESULT_ACTION.test(fragment);
@@ -442,6 +449,7 @@ function advancePartialFeedbackResultControl(
   const result =
     PARTIAL_FEEDBACK_RESULT_NOUN.test(fragment) ||
     (candidateAction && PARTIAL_FEEDBACK_IMPLICIT_RESULT_ACTION.test(fragment));
+  const resultOnly = PARTIAL_FEEDBACK_RESULT_FRAGMENT.test(fragment);
   const outcome = PARTIAL_FEEDBACK_CONTROL_OUTCOME.test(fragment);
   const connectorOnly = PARTIAL_FEEDBACK_CONTROL_CONNECTOR.test(fragment);
 
@@ -491,6 +499,7 @@ function advancePartialFeedbackResultControl(
     advancesResult ||
     (prior.action === null && participantOnly) ||
     (prior.hasTarget && targetOnly) ||
+    (prior.hasResult && resultOnly) ||
     resultSelectorOnly ||
     connectorOnly ||
     outcome;
