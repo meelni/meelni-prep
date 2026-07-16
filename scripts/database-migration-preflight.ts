@@ -378,9 +378,9 @@ async function run(url: string, environmentIdentity: string) {
       if (migrations.length >= 6) {
         const expectedTableCount =
           migrations.length >= 17
-            ? 29
+            ? 30
             : migrations.length >= 14
-              ? 25
+              ? 26
               : migrations.length === 13
                 ? 24
                 : 23;

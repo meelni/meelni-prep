@@ -30,8 +30,8 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     async function fetchData() {
       try {
         const [insightsResponse, sessionsResponse] = await Promise.all([
-          fetch("/api/insights"),
-          fetch("/api/sessions?limit=30"),
+          fetch("/api/insights", { cache: "no-store" }),
+          fetch("/api/sessions?limit=30", { cache: "no-store" }),
         ]);
 
         if (!insightsResponse.ok) {

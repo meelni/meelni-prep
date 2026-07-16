@@ -4,13 +4,13 @@
  * Returns pre-aggregated user insights for the authenticated user.
  *
  * Response includes:
- * - Overall stats (sessions, scores, streaks)
+ * - Overall stats (sessions and scores)
  * - Breakdown by interview type
  * - Breakdown by difficulty
  * - Performance trends
  * - Competency averages
  *
- * Caching: 1-hour public cache with 2-hour stale-while-revalidate
+ * Caching: private and non-cacheable because the response is user-specific
  *
  * @example
  * ```bash
@@ -25,6 +25,9 @@ import { aggregateUserInsights } from "@/lib/evaluation/insights-aggregator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const PRIVATE_NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0",
+};
 
 /**
  * GET /api/insights
@@ -44,7 +47,10 @@ export async function GET() {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: PRIVATE_NO_STORE_HEADERS }
+      );
     }
 
     // 2. Calculate insights (aggregates from database)
@@ -54,10 +60,10 @@ export async function GET() {
 
     // 3. Log performance (for monitoring)
     if (duration > 500) {
-      console.warn(`[insights] Slow query: ${duration}ms for user ${user.id}`);
+      console.warn(`[insights] Slow authenticated query: ${duration}ms`);
     }
 
-    // 4. Return insights with cache headers
+    // 4. Return user-specific insights without shared or browser persistence.
     return NextResponse.json(
       {
         overall: insights.overallStats,
@@ -69,23 +75,25 @@ export async function GET() {
       },
       {
         headers: {
-          // Cache for 1 hour, allow stale responses for 2 hours while revalidating
-          "Cache-Control": "public, max-age=3600, stale-while-revalidate=7200",
+          ...PRIVATE_NO_STORE_HEADERS,
           "X-Response-Time": `${duration}ms`,
         },
       }
     );
-  } catch (error) {
+  } catch {
     // 5. Handle errors
     const errorId = Math.random().toString(36).substring(2, 15);
-    console.error(`[insights] Error ${errorId}:`, error);
+    console.error("[insights] Aggregation failed", {
+      errorId,
+      category: "insights_aggregation_failed",
+    });
 
     return NextResponse.json(
       {
         error: "Failed to fetch insights",
         ref: errorId,
       },
-      { status: 500 }
+      { status: 500, headers: PRIVATE_NO_STORE_HEADERS }
     );
   }
 }

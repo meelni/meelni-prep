@@ -3,9 +3,12 @@
 
 import asyncio
 import ast
+import contextlib
 import hashlib
 import hmac
+import io
 import json
+import logging
 import os
 import re
 import sys
@@ -18,6 +21,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.safe_logging import log_exception_class
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.runtime_events import (
@@ -47,6 +51,10 @@ from shared.transcript_ingest import (
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
     IngestResponse,
+    RuntimeSettlementRequestDispatcher,
+    RuntimeSettlementRequestLedger,
+    TranscriptIngestAfterCutoff,
+    TranscriptIngestError,
     TranscriptIngestIdentityConflict,
     TranscriptIngestQueue,
     TranscriptIngestQueueFull,
@@ -54,10 +62,15 @@ from shared.transcript_ingest import (
     canonical_json_bytes,
     create_interruption_marker,
     create_runtime_settlement,
+    create_runtime_writer_registration,
+    finish_tasks_before_shutdown,
     derive_ingest_signing_key,
     is_interruption_marker,
     is_runtime_settlement,
+    is_runtime_writer_registration,
     is_retryable_status,
+    parse_runtime_settlement_request,
+    register_runtime_writer,
     sign_ingest_body,
     validate_internal_ingest_url,
 )
@@ -397,6 +410,35 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertIn("session.commit_user_turn(", source)
         self.assertIn("skip_reply=True", source)
 
+    def test_interview_registers_writer_before_session_start_or_audible_output(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        registration = source.index("await asyncio.wait_for(")
+        session_start = source.index("await session.start(")
+        greeting = source.index("await session.say(greeting)")
+        self.assertLess(registration, session_start)
+        self.assertLess(registration, greeting)
+
+    def test_server_settlement_packet_uses_the_rtc_reliable_enum(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn("from livekit.rtc import DataPacketKind", source)
+        self.assertIn(
+            "packet.kind == DataPacketKind.KIND_RELIABLE",
+            source,
+        )
+        self.assertNotIn("ProtoDataPacket.RELIABLE", source)
+
+    def test_shutdown_bounds_then_cancels_and_awaits_runtime_settlement_tasks(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        self.assertIn(
+            "SERVER_SETTLEMENT_SHUTDOWN_TIMEOUT_SECONDS = 20.0",
+            source,
+        )
+        self.assertIn("runtime_settlement_requests.close()", source)
+        self.assertIn("finish_tasks_before_shutdown(", source)
+
     def test_parse_room_metadata_accepts_production_question_shape(self):
         metadata = parse_room_metadata(json.dumps({
             "contract_version": 1,
@@ -658,6 +700,7 @@ class RuntimeContractTests(unittest.TestCase):
         event = create_transcript_event(
             event_id="transcript-event-1",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=1,
             session_id="session-1",
             room_name="interview-room-1",
@@ -674,6 +717,7 @@ class RuntimeContractTests(unittest.TestCase):
             "contract_version": 2,
             "event_id": "transcript-event-1",
             "writer_id": "writer-1",
+            "writer_generation": 1,
             "sequence": 1,
             "session_id": "session-1",
             "room_name": "interview-room-1",
@@ -692,6 +736,7 @@ class RuntimeContractTests(unittest.TestCase):
             create_transcript_event(
                 event_id="transcript-event-1",
                 writer_id="writer-1",
+                writer_generation=1,
                 sequence=1,
                 session_id="session-1",
                 room_name="interview-room-1",
@@ -707,6 +752,7 @@ class RuntimeContractTests(unittest.TestCase):
         event = create_transcript_event(
             event_id="transcript-event-partial",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=2,
             session_id="session-1",
             room_name="interview-room-1",
@@ -748,6 +794,7 @@ class RuntimeContractTests(unittest.TestCase):
         event = create_transcript_event_from_message(
             message=message,
             writer_id="writer-1",
+            writer_generation=1,
             sequence=1,
             session_id="session-1",
             room_name="room-1",
@@ -783,6 +830,7 @@ class RuntimeContractTests(unittest.TestCase):
                 create_transcript_event_from_message(
                     message=message,
                     writer_id="writer-1",
+                    writer_generation=1,
                     sequence=1,
                     session_id="session-1",
                     room_name="room-1",
@@ -805,6 +853,7 @@ class RuntimeContractTests(unittest.TestCase):
         event = create_transcript_event_from_message(
             message=interrupted,
             writer_id="writer-1",
+            writer_generation=1,
             sequence=2,
             session_id="session-1",
             room_name="room-1",
@@ -831,6 +880,7 @@ class RuntimeContractTests(unittest.TestCase):
         event = create_transcript_event_from_message(
             message=completed,
             writer_id="writer-1",
+            writer_generation=1,
             sequence=3,
             session_id="session-1",
             room_name="room-1",
@@ -855,12 +905,13 @@ class RuntimeContractTests(unittest.TestCase):
             create_transcript_event_from_message(
                 message=message,
                 writer_id=writer_id,
+                writer_generation=generation,
                 sequence=1,
                 session_id="session-1",
                 room_name="room-1",
                 section="product_sense",
             )
-            for writer_id in ("writer-a", "writer-b")
+            for writer_id, generation in (("writer-a", 1), ("writer-b", 2))
         ]
 
         self.assertEqual([event["sequence"] for event in events], [1, 1])
@@ -934,6 +985,7 @@ class TranscriptPublisherTests(unittest.IsolatedAsyncioTestCase):
         event = create_transcript_event(
             event_id="event-1",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=1,
             session_id="session-1",
             room_name="room-1",
@@ -1005,6 +1057,7 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
         marker = create_interruption_marker(
             event_id="writer-1:message-zero:unavailable",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=1,
             session_id="session-1",
             room_name="room-1",
@@ -1020,6 +1073,7 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
         user_failure = create_interruption_marker(
             event_id="writer-1:user-message:unavailable",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=2,
             session_id="session-1",
             room_name="room-1",
@@ -1044,6 +1098,7 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
             session_id="session-1",
             room_name="room-1",
             writer_id="writer-1",
+            writer_generation=1,
             state="settled",
             settled_at=1783650000,
         )
@@ -1052,12 +1107,164 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
             is_runtime_settlement({**settlement, "text": "must be rejected"})
         )
 
+    def test_runtime_writer_registration_and_server_settlement_request_are_strict(self):
+        registration = create_runtime_writer_registration(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            registered_at=1783650000,
+        )
+        self.assertTrue(is_runtime_writer_registration(registration))
+
+        request = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_request",
+            "session_id": "session-1",
+            "room_name": "room-1",
+            "writer_generation": 3,
+            "request_id": "reconnect-settlement:session-1:4:cutoff",
+            "cutoff_at": "2026-07-10T02:20:00.000Z",
+        }
+        encoded = json.dumps(request).encode("utf-8")
+        parsed = parse_runtime_settlement_request(
+            data=encoded,
+            topic="meelni.transcript.settlement.request",
+            sent_by_server=True,
+            reliable=True,
+            expected_session_id="session-1",
+            expected_room_name="room-1",
+            expected_writer_generation=3,
+            hard_deadline_at=datetime(
+                2026, 7, 10, 2, 30, tzinfo=timezone.utc
+            ),
+        )
+        self.assertEqual(parsed, request)
+        self.assertIsNone(
+            parse_runtime_settlement_request(
+                data=encoded,
+                topic="unrelated.topic",
+                sent_by_server=True,
+                reliable=True,
+                expected_session_id="session-1",
+                expected_room_name="room-1",
+                expected_writer_generation=3,
+                hard_deadline_at=None,
+            )
+        )
+        for overrides in (
+            {"sent_by_server": False},
+            {"reliable": False},
+            {"expected_session_id": "wrong-session"},
+            {"expected_writer_generation": 4},
+        ):
+            arguments = {
+                "data": encoded,
+                "topic": "meelni.transcript.settlement.request",
+                "sent_by_server": True,
+                "reliable": True,
+                "expected_session_id": "session-1",
+                "expected_room_name": "room-1",
+                "expected_writer_generation": 3,
+                "hard_deadline_at": datetime(
+                    2026, 7, 10, 2, 30, tzinfo=timezone.utc
+                ),
+                **overrides,
+            }
+            with self.subTest(overrides=overrides), self.assertRaises(
+                TranscriptIngestError
+            ):
+                parse_runtime_settlement_request(**arguments)
+
+        after_deadline = {
+            **request,
+            "cutoff_at": "2026-07-10T02:30:00.001Z",
+        }
+        with self.assertRaises(TranscriptIngestError):
+            parse_runtime_settlement_request(
+                data=json.dumps(after_deadline).encode("utf-8"),
+                topic="meelni.transcript.settlement.request",
+                sent_by_server=True,
+                reliable=True,
+                expected_session_id="session-1",
+                expected_room_name="room-1",
+                expected_writer_generation=3,
+                hard_deadline_at=datetime(
+                    2026, 7, 10, 2, 30, tzinfo=timezone.utc
+                ),
+            )
+
+        ledger = RuntimeSettlementRequestLedger()
+        self.assertTrue(ledger.accept(request))
+        self.assertFalse(ledger.accept(request))
+        with self.assertRaises(TranscriptIngestIdentityConflict):
+            ledger.accept({**request, "cutoff_at": "2026-07-10T02:19:59.000Z"})
+
+    def test_content_sentinel_is_absent_from_runtime_logs_and_stdout(self):
+        sentinel = "SENSITIVE-CONTENT-SENTINEL-9f8b"
+        output = io.StringIO()
+        config_logger = logging.getLogger("agent-config")
+        prompt_logger = logging.getLogger("prompt-builder")
+        error_logger = logging.getLogger("safe-log-test")
+
+        with self.assertLogs(config_logger, level="INFO") as config_logs:
+            parse_room_metadata(json.dumps({
+                "contract_version": 1,
+                "session_id": "session-1",
+                "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+                "round_type": "product_sense",
+                "question": {"text": sentinel, "company": sentinel},
+                "config": {},
+            }))
+        with contextlib.redirect_stdout(output), self.assertLogs(
+            prompt_logger, level="INFO"
+        ) as prompt_logs:
+            prompt = build_agent_prompt(
+                "product_sense",
+                {"difficulty": "intermediate"},
+                {"text": sentinel, "company": sentinel},
+            )
+        with self.assertLogs(error_logger, level="ERROR") as error_logs:
+            log_exception_class(
+                error_logger,
+                logging.ERROR,
+                "Synthetic runtime failure",
+                RuntimeError(sentinel),
+            )
+
+        self.assertIn(sentinel, prompt)
+        captured = "\n".join(
+            config_logs.output + prompt_logs.output + error_logs.output
+        ) + output.getvalue()
+        self.assertNotIn(sentinel, captured)
+        self.assertNotIn("Traceback", captured)
+
 
 class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_task_join_cancels_and_awaits_stragglers(self):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def operation():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        task = asyncio.create_task(operation())
+        await started.wait()
+        cancelled_count = await finish_tasks_before_shutdown((task,), 0.01)
+
+        self.assertEqual(cancelled_count, 1)
+        self.assertTrue(task.done())
+        self.assertTrue(task.cancelled())
+        self.assertTrue(cancelled.is_set())
+
     def make_event(self, *, event_id="writer-1:message-1", sequence=1, text="Measured."):
         return create_transcript_event(
             event_id=event_id,
             writer_id="writer-1",
+            writer_generation=1,
             sequence=sequence,
             session_id="session-1",
             room_name="room-1",
@@ -1069,12 +1276,319 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             section="product_sense",
         )
 
+    async def test_writer_registration_retries_same_signed_identity_before_output(self):
+        registration = create_runtime_writer_registration(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            registered_at=1783650000,
+        )
+        bodies = []
+        outcomes = [
+            IngestResponse(503),
+            IngestResponse(
+                200,
+                body=json.dumps({
+                    "success": True,
+                    "disposition": "existing",
+                    "kind": "writer_registration",
+                    "writer_generation": 7,
+                }).encode("utf-8"),
+            ),
+        ]
+
+        async def transport(_url, body, _headers):
+            bodies.append(body)
+            return outcomes.pop(0)
+
+        async def sleep(_delay):
+            return None
+
+        generation = await register_runtime_writer(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            registration=registration,
+            transport=transport,
+            sleep=sleep,
+            now=lambda: 1783650000,
+        )
+
+        self.assertEqual(generation, 7)
+        self.assertEqual(bodies, [bodies[0], bodies[0]])
+        self.assertEqual(
+            json.loads(bodies[0]),
+            {"sessionId": "session-1", "writerRegistration": registration},
+        )
+
+        async def invalid_disposition(_url, _body, _headers):
+            return IngestResponse(
+                200,
+                body=json.dumps({
+                    "success": True,
+                    "disposition": "replaced",
+                    "kind": "writer_registration",
+                    "writer_generation": 7,
+                }).encode("utf-8"),
+            )
+
+        with self.assertRaises(TranscriptIngestError):
+            await register_runtime_writer(
+                ingest_url="https://meelni.com/api/internal/transcript",
+                livekit_api_secret="livekit-secret",
+                registration=registration,
+                transport=invalid_disposition,
+                now=lambda: 1783650000,
+            )
+
+    async def test_exact_settlement_request_retries_after_first_operation_failure(self):
+        dispatcher = RuntimeSettlementRequestDispatcher()
+        request = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_request",
+            "session_id": "session-1",
+            "room_name": "room-1",
+            "writer_generation": 3,
+            "request_id": "reconnect-settlement:session-1:4:cutoff",
+            "cutoff_at": "2026-07-10T02:20:00.000Z",
+        }
+        attempts = 0
+
+        async def operation():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("synthetic persistence failure")
+            return "settled"
+
+        first = dispatcher.prepare(request, operation)
+        self.assertTrue(first.started)
+        with self.assertRaises(RuntimeError):
+            await first.task
+        retry = dispatcher.prepare(request, operation)
+        self.assertTrue(retry.started)
+        self.assertEqual(await retry.task, "settled")
+        self.assertEqual(attempts, 2)
+
+    async def test_concurrent_exact_settlement_requests_are_single_flight(self):
+        dispatcher = RuntimeSettlementRequestDispatcher()
+        request = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_request",
+            "session_id": "session-1",
+            "room_name": "room-1",
+            "writer_generation": 3,
+            "request_id": "reconnect-settlement:session-1:4:cutoff",
+            "cutoff_at": "2026-07-10T02:20:00.000Z",
+        }
+        settlement_lock = asyncio.Lock()
+        entered = 0
+        active = 0
+        max_active = 0
+
+        async def operation():
+            nonlocal entered, active, max_active
+            async with settlement_lock:
+                entered += 1
+                active += 1
+                max_active = max(max_active, active)
+                await asyncio.sleep(0)
+                active -= 1
+                return entered
+
+        first = dispatcher.prepare(request, operation)
+        duplicate = dispatcher.prepare(request, operation)
+        self.assertTrue(first.started)
+        self.assertFalse(duplicate.started)
+        self.assertIs(first.task, duplicate.task)
+
+        results = await asyncio.gather(first.task, duplicate.task)
+        self.assertEqual(results, [1, 1])
+        self.assertEqual(entered, 1)
+        self.assertEqual(max_active, 1)
+
+        replay = dispatcher.prepare(request, operation)
+        self.assertFalse(replay.started)
+        self.assertIs(replay.task, first.task)
+        self.assertEqual(await replay.task, 1)
+        self.assertEqual(entered, 1)
+
+    async def test_closed_settlement_dispatcher_fences_new_shutdown_work(self):
+        dispatcher = RuntimeSettlementRequestDispatcher()
+        dispatcher.close()
+
+        async def operation():
+            return "must not start"
+
+        with self.assertRaises(TranscriptIngestQueueSealed):
+            dispatcher.prepare(
+                {
+                    "request_id": "reconnect-settlement:closed",
+                    "cutoff_at": "2026-07-10T02:20:00.000Z",
+                },
+                operation,
+            )
+
+    async def test_full_data_ledger_reserves_control_capacity_after_completion(self):
+        persisted = []
+
+        async def transport(_url, body, _headers):
+            persisted.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            max_size=2,
+        )
+        queue.enqueue_transcript(self.make_event())
+        self.assertTrue((await queue.flush(0.5)).settled)
+        with self.assertRaises(TranscriptIngestQueueFull):
+            queue.enqueue_transcript(
+                self.make_event(event_id="writer-1:message-2", sequence=2)
+            )
+
+        settlement = create_runtime_settlement(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            writer_generation=1,
+            state="degraded",
+            settled_at=1783650000,
+        )
+        self.assertTrue(queue.seal_and_enqueue_runtime_settlement(settlement))
+        self.assertTrue((await queue.flush(0.5)).settled)
+        self.assertEqual(persisted[-1]["settlement"], settlement)
+
+    async def test_semantic_cutoff_accepts_equality_and_rejects_later_evidence(self):
+        async def transport(_url, _body, _headers):
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        cutoff = 1782600002
+        queue.set_evidence_cutoff(cutoff)
+        equal_event = self.make_event(sequence=1)
+        self.assertEqual(equal_event["ended_at"], "2026-06-27T22:40:02.000Z")
+        self.assertTrue(queue.enqueue_transcript(equal_event))
+        with self.assertRaises(TranscriptIngestAfterCutoff):
+            queue.enqueue_transcript(
+                self.make_event(event_id="writer-1:message-2", sequence=2)
+            )
+        self.assertTrue(queue.post_cutoff_evidence)
+
+        settlement = create_runtime_settlement(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            writer_generation=1,
+            state="degraded",
+            settled_at=cutoff,
+        )
+        queue.seal_and_enqueue_runtime_settlement(settlement)
+        await queue.flush(0.5)
+        self.assertEqual(settlement["settled_at"], equal_event["ended_at"])
+
+    async def test_hard_deadline_rejects_late_evidence_before_settlement_begins(self):
+        async def transport(_url, _body, _headers):
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            hard_evidence_cutoff=1782600002,
+        )
+        self.assertTrue(queue.enqueue_transcript(self.make_event(sequence=1)))
+        with self.assertRaises(TranscriptIngestAfterCutoff):
+            queue.enqueue_transcript(
+                self.make_event(event_id="writer-1:message-2", sequence=2)
+            )
+        self.assertTrue(queue.post_cutoff_evidence)
+
+    async def test_raw_submillisecond_evidence_cannot_round_back_to_the_cutoff(self):
+        async def transport(_url, _body, _headers):
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        cutoff = 1782600002
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+            hard_evidence_cutoff=cutoff,
+        )
+        event = self.make_event(sequence=1)
+        self.assertEqual(event["ended_at"], "2026-06-27T22:40:02.000Z")
+        with self.assertRaises(TranscriptIngestAfterCutoff):
+            queue.enqueue_transcript(
+                event,
+                measured_ended_at=cutoff + 0.0009,
+            )
+
+    async def test_retroactive_cutoff_quarantines_pending_late_evidence(self):
+        persisted = []
+
+        async def transport(_url, body, _headers):
+            persisted.append(json.loads(body))
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.enqueue_transcript(
+            self.make_event(sequence=1),
+            measured_ended_at=1782600002.001,
+        )
+        queue.set_evidence_cutoff(1782600002)
+
+        result = await queue.flush(0.5)
+
+        self.assertTrue(queue.post_cutoff_evidence)
+        self.assertEqual(result.permanent, 1)
+        self.assertEqual(persisted, [])
+
     async def test_persists_signed_envelope_before_publishing_transcript(self):
         calls = []
+        row_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
         async def transport(url, body, headers):
             calls.append(("transport", url, body, dict(headers)))
-            return IngestResponse(201)
+            return IngestResponse(
+                201,
+                body=json.dumps(
+                    {
+                        "success": True,
+                        "disposition": "created",
+                        "kind": "turn",
+                        "row_id": row_id,
+                    }
+                ).encode("utf-8"),
+            )
 
         async def publisher(event):
             calls.append(("publish", event))
@@ -1103,7 +1617,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             body,
         )
         self.assertEqual(headers[SIGNATURE_HEADER], expected_signature)
-        self.assertEqual(calls[1], ("publish", event))
+        self.assertEqual(calls[1], ("publish", {**event, "row_id": row_id}))
 
     async def test_integrity_marker_uses_separate_envelope_and_is_never_published(self):
         bodies = []
@@ -1119,6 +1633,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         marker = create_interruption_marker(
             event_id="writer-1:message-zero:unavailable",
             writer_id="writer-1",
+            writer_generation=1,
             sequence=1,
             session_id="session-1",
             room_name="room-1",
@@ -1156,6 +1671,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             session_id="session-1",
             room_name="room-1",
             writer_id="writer-1",
+            writer_generation=1,
             state="degraded",
             settled_at=1783650000,
         )
@@ -1201,6 +1717,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
                 session_id="session-1",
                 room_name="room-1",
                 writer_id="writer-1",
+                writer_generation=1,
                 state="settled",
                 settled_at=1783650000,
             )
@@ -1380,7 +1897,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             livekit_api_secret="livekit-secret",
             transport=transport,
             publisher=publisher,
-            max_size=1,
+            max_size=2,
         )
         event = self.make_event()
         self.assertTrue(queue.enqueue_transcript(event))

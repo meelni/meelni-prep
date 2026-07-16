@@ -315,10 +315,7 @@ export async function startInterviewSessionWorkflow(
       try {
         await cleanupFailedStart(start, reservationKey, input.env, deps);
       } catch (cleanupError) {
-        console.error(
-          "Failed interview start cleanup remains pending:",
-          getErrorMessage(cleanupError)
-        );
+        logStartFailure("failed_start_cleanup_pending", cleanupError);
         return {
           ok: false,
           status: 503,
@@ -376,10 +373,7 @@ export async function startInterviewSessionWorkflow(
     try {
       await cleanupFailedStart(start, reservationKey, input.env, deps);
     } catch (cleanupError) {
-      console.error(
-        "Expired interview start cleanup remains pending:",
-        getErrorMessage(cleanupError)
-      );
+      logStartFailure("expired_start_cleanup_pending", cleanupError);
       return {
         ok: false,
         status: 503,
@@ -438,10 +432,7 @@ export async function startInterviewSessionWorkflow(
         env: input.env,
       });
     } catch (error) {
-      console.error(
-        "LiveKit interview provisioning threw:",
-        getErrorMessage(error)
-      );
+      logStartFailure("livekit_start_exception", error);
       await safelyTerminateProvisioningRoom(
         start.roomName,
         input.user.id,
@@ -463,7 +454,9 @@ export async function startInterviewSessionWorkflow(
       };
     }
     if (!livekitResult.ok) {
-      console.error("LiveKit interview start error:", livekitResult.error);
+      console.error("[Session Start] livekit_start_failed", {
+        retryable: livekitResult.error.retryable,
+      });
       if (livekitResult.error.retryable) {
         await safelyTerminateProvisioningRoom(
           start.roomName,
@@ -494,10 +487,7 @@ export async function startInterviewSessionWorkflow(
           deps,
         });
       } catch (cleanupError) {
-        console.error(
-          "Failed interview start cleanup remains pending:",
-          getErrorMessage(cleanupError)
-        );
+        logStartFailure("failed_start_cleanup_pending", cleanupError);
         return {
           ok: false,
           status: 503,
@@ -555,10 +545,7 @@ export async function startInterviewSessionWorkflow(
         throw new InterviewProvisioningLeaseLostError();
       }
     } catch (error) {
-      console.error(
-        "Interview provisioning acknowledgement error:",
-        getErrorMessage(error)
-      );
+      logStartFailure("provisioning_acknowledgement_failed", error);
 
       let durableStart: PersistedStableInterviewStart | null;
       try {
@@ -568,9 +555,9 @@ export async function startInterviewSessionWorkflow(
           requestFingerprint,
         });
       } catch (reconciliationError) {
-        console.error(
-          "Interview provisioning acknowledgement reconciliation error:",
-          getErrorMessage(reconciliationError)
+        logStartFailure(
+          "provisioning_acknowledgement_reconciliation_failed",
+          reconciliationError
         );
         return {
           ok: false,
@@ -817,7 +804,7 @@ async function ensureTrialGrantForStart(
     await deps.ensureTrialGrant(userId);
     return { ok: true };
   } catch (error) {
-    console.error("Trial credit grant error:", getErrorMessage(error));
+    logStartFailure("trial_credit_grant_failed", error);
     return {
       ok: false,
       status: 503,
@@ -1046,8 +1033,6 @@ function logQuestion(
   console.log(`[Session Start] ${message}:`, {
     id: question.id,
     type: question.questionType,
-    company: question.company,
-    text_preview: `${question.questionText.substring(0, 100)}...`,
     ...extra,
   });
 }
@@ -1252,10 +1237,7 @@ async function safelyTerminateProvisioningRoom(
   try {
     await deps.terminateRoom({ roomName, participantIdentity, env });
   } catch (error) {
-    console.error(
-      "Interview provisioning room cleanup failed:",
-      getErrorMessage(error)
-    );
+    logStartFailure("provisioning_room_cleanup_failed", error);
   }
 }
 
@@ -1286,7 +1268,17 @@ function isInsufficientCreditsError(error: unknown): boolean {
   return error instanceof Error && error.message === "insufficient_credits";
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function logStartFailure(event: string, error: unknown) {
+  console.error(`[Session Start] ${event}`, {
+    error_class: safeErrorClass(error),
+  });
+}
+
+function safeErrorClass(error: unknown): string {
+  if (error instanceof TypeError) return "TypeError";
+  if (error instanceof RangeError) return "RangeError";
+  if (error instanceof SyntaxError) return "SyntaxError";
+  if (error instanceof Error) return "Error";
+  return "NonError";
 }
 import { createHash, randomUUID } from "node:crypto";

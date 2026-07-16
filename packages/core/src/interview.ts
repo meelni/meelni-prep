@@ -46,19 +46,19 @@ export const DIFFICULTY_LEVELS = {
     label: "Junior/APM",
     description: "0-2 years experience",
     subtitle: "Patient coaching with learning mode",
-    icon: "Sprout",
+    icon: "BookOpen",
   },
   intermediate: {
     label: "IC PM",
     description: "2-4 years experience",
     subtitle: "Balanced approach with standard bar",
-    icon: "Zap",
+    icon: "BriefcaseBusiness",
   },
   advanced: {
     label: "Senior PM",
     description: "5+ years experience",
     subtitle: "High bar with strategic deep-dives",
-    icon: "Trophy",
+    icon: "Compass",
   },
 } as const;
 

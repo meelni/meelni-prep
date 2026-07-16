@@ -9,9 +9,6 @@ import {
   dispatchFeedbackGenerationWorkflow,
   type DispatchFeedbackGenerationResult,
 } from "./dispatch-feedback-generation";
-import { checkAndAwardAchievements } from "@/lib/achievements";
-import { updateStreak } from "@/lib/streaks";
-import type { SessionValidation } from "@/lib/evaluation/session-validator";
 import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
 
 export type EndInterviewSessionInput = EndInterviewSessionCommand;
@@ -27,7 +24,6 @@ export interface EndInterviewSessionDeps {
     userId: string;
     tier: string;
   }): Promise<DispatchFeedbackGenerationResult>;
-  updateMotivation(userId: string): Promise<void>;
 }
 
 export type InterviewSessionSettlement = Extract<
@@ -60,7 +56,7 @@ export async function settleInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
   deps: Pick<
     EndInterviewSessionDeps,
-    "authorize" | "finalize" | "settleCredit" | "updateMotivation"
+    "authorize" | "finalize" | "settleCredit"
   > = createEndInterviewSessionDeps()
 ): Promise<SettleInterviewSessionResult> {
   if (!(await deps.authorize(input))) {
@@ -70,60 +66,16 @@ export async function settleInterviewSessionWorkflow(
   return completeInterviewSession(input, deps);
 }
 
-export async function endInterviewSessionWithValidationWorkflow(
-  input: EndInterviewSessionInput,
-  validation: SessionValidation,
-  deps: EndInterviewSessionDeps = createEndInterviewSessionDeps()
-): Promise<EndInterviewSessionResult> {
-  const settlement = await settleInterviewSessionWithValidationWorkflow(
-    input,
-    validation,
-    deps
-  );
-  if (!settlement.ok) return settlement;
-  return dispatchInterviewSessionSettlement(settlement.completion, deps);
-}
-
-export async function settleInterviewSessionWithValidationWorkflow(
-  input: EndInterviewSessionInput,
-  validation: SessionValidation,
-  deps: Pick<
-    EndInterviewSessionDeps,
-    "authorize" | "finalize" | "settleCredit" | "updateMotivation"
-  > = createEndInterviewSessionDeps()
-): Promise<SettleInterviewSessionResult> {
-  if (!(await deps.authorize(input))) {
-    return { ok: false, reason: "not_found" };
-  }
-  return completeInterviewSession(input, deps, validation);
-}
-
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
-  deps: Pick<
-    EndInterviewSessionDeps,
-    "finalize" | "settleCredit" | "updateMotivation"
-  >,
-  validationOverride?: SessionValidation
+  deps: Pick<EndInterviewSessionDeps, "finalize" | "settleCredit">
 ): Promise<SettleInterviewSessionResult> {
-  const completion = await deps.finalize({ ...input, validationOverride });
+  const completion = await deps.finalize(input);
   if (!completion.ok) return completion;
 
   // Terminal truth is durable at this point. Keep settlement failures visible
   // so an authoritative caller retries the same idempotent completion.
   await deps.settleCredit(input.sessionId);
-
-  if (
-    completion.disposition === "applied" &&
-    completion.lifecycle.state === "completed"
-  ) {
-    try {
-      await deps.updateMotivation(completion.userId);
-    } catch (error) {
-      console.error("Failed to update completion motivation:", error);
-    }
-  }
-
   return { ok: true, completion };
 }
 
@@ -175,19 +127,5 @@ export function createEndInterviewSessionDeps(): EndInterviewSessionDeps {
     finalize: finalizeInterviewSession,
     settleCredit: convergeDrizzleInterviewCreditSettlement,
     dispatch: dispatchFeedbackGenerationWorkflow,
-    updateMotivation: updateCompletionMotivation,
   };
-}
-
-async function updateCompletionMotivation(userId: string): Promise<void> {
-  try {
-    await updateStreak(userId);
-  } catch (error) {
-    console.error("Failed to update completion streak:", error);
-  }
-  try {
-    await checkAndAwardAchievements(userId);
-  } catch (error) {
-    console.error("Failed to update completion achievements:", error);
-  }
 }

@@ -162,6 +162,7 @@ export const transcriptTurn = pgTable(
     contractVersion: integer("contract_version"),
     eventId: text("event_id"),
     writerId: text("writer_id"),
+    writerGeneration: integer("writer_generation"),
     sequence: bigint("sequence", { mode: "number" }),
     roomName: text("room_name"),
     speaker: text("speaker").notNull(),
@@ -196,6 +197,7 @@ export const transcriptTurn = pgTable(
         ${table.contractVersion} IS NULL AND
         ${table.eventId} IS NULL AND
         ${table.writerId} IS NULL AND
+        ${table.writerGeneration} IS NULL AND
         ${table.sequence} IS NULL AND
         ${table.roomName} IS NULL AND
         ${table.deliveryState} IS NULL
@@ -203,6 +205,7 @@ export const transcriptTurn = pgTable(
         ${table.contractVersion} = 2 AND
         ${table.eventId} IS NOT NULL AND
         ${table.writerId} IS NOT NULL AND
+        ${table.writerGeneration} IS NOT NULL AND
         ${table.sequence} IS NOT NULL AND
         ${table.roomName} IS NOT NULL AND
         ${table.startedAt} IS NOT NULL AND
@@ -226,9 +229,21 @@ export const transcriptTurn = pgTable(
     chronologicalIdx: index("transcript_turn_chronological_idx").on(
       table.sessionId,
       table.startedAt,
+      table.writerGeneration,
       table.writerId,
-      table.sequence
+      table.sequence,
+      table.eventId,
+      table.id
     ),
+    runtimeWriterForeignKey: foreignKey({
+      name: "transcript_turn_runtime_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId,
+      ],
+    }),
   })
 );
 
@@ -245,6 +260,7 @@ export const transcriptInterruptionMarker = pgTable(
     contractVersion: integer("contract_version").notNull(),
     eventId: text("event_id").notNull(),
     writerId: text("writer_id").notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
     sequence: bigint("sequence", { mode: "number" }).notNull(),
     roomName: text("room_name").notNull(),
     speaker: text("speaker").notNull(),
@@ -267,6 +283,10 @@ export const transcriptInterruptionMarker = pgTable(
       "transcript_interruption_marker_sequence_check",
       sql`${table.sequence} > 0`
     ),
+    writerGenerationCheck: check(
+      "transcript_interruption_marker_writer_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
     reasonCheck: check(
       "transcript_interruption_marker_reason_check",
       sql`${table.reason} IN ('no_provider_confirmed_prefix', 'canonicalization_failed')`
@@ -280,17 +300,69 @@ export const transcriptInterruptionMarker = pgTable(
     sessionOccurredAtIdx: index(
       "transcript_interruption_marker_session_occurred_at_idx"
     ).on(table.sessionId, table.occurredAt),
+    runtimeWriterForeignKey: foreignKey({
+      name: "transcript_interruption_marker_runtime_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId,
+      ],
+    }),
   })
 );
 
-// Trusted runtime proof that every queued transcript fact reached a terminal
-// persistence outcome before interview completion freezes evaluation evidence.
+// Every audible runtime writer registers before output. A later registration
+// fences earlier generations without erasing their settlement obligation.
+export const transcriptRuntimeWriter = pgTable(
+  "transcript_runtime_writer",
+  {
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id)
+      .notNull(),
+    generation: integer("generation").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    roomName: text("room_name").notNull(),
+    writerId: text("writer_id").notNull(),
+    registeredAt: timestamp("registered_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_runtime_writer_pkey",
+      columns: [table.sessionId, table.generation],
+    }),
+    contractCheck: check(
+      "transcript_runtime_writer_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    generationCheck: check(
+      "transcript_runtime_writer_generation_check",
+      sql`${table.generation} > 0`
+    ),
+    writerUnique: uniqueIndex(
+      "transcript_runtime_writer_session_writer_idx"
+    ).on(table.sessionId, table.writerId),
+    writerIdentityUnique: uniqueIndex(
+      "transcript_runtime_writer_identity_idx"
+    ).on(table.sessionId, table.generation, table.writerId),
+    roomGenerationIdx: index(
+      "transcript_runtime_writer_room_generation_idx"
+    ).on(table.roomName, table.generation),
+  })
+);
+
+// Trusted writer-scoped proof that every queued transcript fact reached a
+// terminal persistence outcome before completion freezes evaluation evidence.
 export const transcriptRuntimeSettlement = pgTable(
   "transcript_runtime_settlement",
   {
     sessionId: uuid("session_id")
-      .primaryKey()
-      .references(() => interviewSession.id),
+      .references(() => interviewSession.id)
+      .notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
     contractVersion: integer("contract_version").notNull(),
     roomName: text("room_name").notNull(),
     writerId: text("writer_id").notNull(),
@@ -301,6 +373,10 @@ export const transcriptRuntimeSettlement = pgTable(
       .notNull(),
   },
   (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_runtime_settlement_pkey",
+      columns: [table.sessionId, table.writerGeneration],
+    }),
     contractCheck: check(
       "transcript_runtime_settlement_contract_check",
       sql`${table.contractVersion} = 1`
@@ -309,6 +385,19 @@ export const transcriptRuntimeSettlement = pgTable(
       "transcript_runtime_settlement_state_check",
       sql`${table.state} IN ('settled', 'degraded')`
     ),
+    writerGenerationCheck: check(
+      "transcript_runtime_settlement_writer_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
+    writerRegistrationForeignKey: foreignKey({
+      name: "transcript_runtime_settlement_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId,
+      ],
+    }),
     roomSettledAtIdx: index(
       "transcript_runtime_settlement_room_settled_at_idx"
     ).on(table.roomName, table.settledAt),
@@ -530,6 +619,8 @@ export const userSettings = pgTable(
     ),
     defaultDifficulty: text("default_difficulty").default("medium"),
     questionRecency: text("question_recency").default("current"),
+    // Deprecated compatibility column. Runtime transcript persistence is not
+    // controlled by a user setting; retain until a separately rehearsed cleanup.
     autoSaveTranscripts: boolean("auto_save_transcripts")
       .default(true)
       .notNull(),
@@ -541,7 +632,11 @@ export const userSettings = pgTable(
     weeklyProgressReport: boolean("weekly_progress_report")
       .default(false)
       .notNull(),
+    // Deprecated compatibility column. Analytics consent is owned by the
+    // explicit consent contract, not this historical setting.
     shareAnonymousData: boolean("share_anonymous_data").default(true).notNull(),
+    // Deprecated compatibility column. Canonical transcripts are persisted for
+    // feedback and review regardless of this historical preference.
     saveTranscripts: boolean("save_transcripts").default(true).notNull(),
     theme: text("theme").default("system"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -648,7 +743,8 @@ export const userInsights = pgTable(
   })
 );
 
-// MOTI-002: User achievements tracking
+// Legacy read-only compatibility. SAV-257 stopped active writes; retain rows for
+// account export and cascade deletion until a separately approved migration.
 export const userAchievement = pgTable(
   "user_achievement",
   {
@@ -778,10 +874,8 @@ export const interviewSessionRelations = relations(
     }),
     transcriptTurns: many(transcriptTurn),
     transcriptInterruptionMarkers: many(transcriptInterruptionMarker),
-    transcriptRuntimeSettlement: one(transcriptRuntimeSettlement, {
-      fields: [interviewSession.id],
-      references: [transcriptRuntimeSettlement.sessionId],
-    }),
+    transcriptRuntimeWriters: many(transcriptRuntimeWriter),
+    transcriptRuntimeSettlements: many(transcriptRuntimeSettlement),
     sessionQuestions: many(sessionQuestion),
   })
 );
@@ -817,6 +911,27 @@ export const transcriptRuntimeSettlementRelations = relations(
       fields: [transcriptRuntimeSettlement.sessionId],
       references: [interviewSession.id],
     }),
+    writer: one(transcriptRuntimeWriter, {
+      fields: [
+        transcriptRuntimeSettlement.sessionId,
+        transcriptRuntimeSettlement.writerGeneration,
+      ],
+      references: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+      ],
+    }),
+  })
+);
+
+export const transcriptRuntimeWriterRelations = relations(
+  transcriptRuntimeWriter,
+  ({ one, many }) => ({
+    session: one(interviewSession, {
+      fields: [transcriptRuntimeWriter.sessionId],
+      references: [interviewSession.id],
+    }),
+    settlements: many(transcriptRuntimeSettlement),
   })
 );
 

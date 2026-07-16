@@ -6,6 +6,8 @@ import { User, Bot } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export interface TranscriptTurn {
+  eventId?: string;
+  rowId?: string;
   speaker: "user" | "interviewer";
   text: string;
   timestamp: Date;
@@ -48,7 +50,11 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
       <AnimatePresence mode="popLayout">
         {turns.map((turn, index) => (
           <motion.div
-            key={`${turn.speaker}-${index}`}
+            key={
+              turn.rowId ??
+              turn.eventId ??
+              `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${index}`
+            }
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}

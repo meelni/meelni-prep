@@ -21,6 +21,7 @@ import {
   interviewSession,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
+  transcriptRuntimeWriter,
   transcriptTurn,
 } from "./schema";
 
@@ -44,7 +45,6 @@ export type EndInterviewSessionCommand = { sessionId: string } & (
 );
 
 export type FinalizeInterviewSessionInput = EndInterviewSessionCommand & {
-  validationOverride?: SessionValidation;
   now?: Date;
 };
 
@@ -117,52 +117,72 @@ export async function finalizeInterviewSession(
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
-    let validation = input.validationOverride;
-    let hasIntegrityFault = false;
-    if (!validation) {
-      const [turns, interruptionCounts, settlements] = await Promise.all([
-        tx
-          .select({
-            speaker: transcriptTurn.speaker,
-            text: transcriptTurn.text,
-            startedAt: transcriptTurn.startedAt,
-            endedAt: transcriptTurn.endedAt,
-          })
-          .from(transcriptTurn)
-          .where(eq(transcriptTurn.sessionId, input.sessionId)),
-        tx
-          .select({ value: sql<number>`count(*)::int` })
-          .from(transcriptInterruptionMarker)
-          .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
-        tx
-          .select({ state: transcriptRuntimeSettlement.state })
-          .from(transcriptRuntimeSettlement)
-          .where(eq(transcriptRuntimeSettlement.sessionId, input.sessionId))
-          .limit(1),
-      ]);
-      const baseValidation = validateSessionStats(
-        calculateSessionStatsFromTurns(turns)
-      );
-      const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
-      const runtimeSettlementState =
-        (settlements[0]?.state as "settled" | "degraded" | undefined) ?? null;
-      const preservePostUsableDisconnectCharge =
-        shouldPreservePostUsableDisconnectCharge({
-          requestedTerminalReason: input.requestedTerminalReason,
-          usableAt: stored.usableAt,
-          missingRuntimeSettlement: runtimeSettlementState === null,
-          unavailableInterruptions,
-        });
-      hasIntegrityFault =
-        (unavailableInterruptions > 0 ||
-          runtimeSettlementState !== "settled") &&
-        !preservePostUsableDisconnectCharge;
-      validation = applyTranscriptIntegrityValidation({
-        baseValidation,
-        interruptionCount: unavailableInterruptions,
-        runtimeSettlementState,
+    const [turns, interruptionCounts, writerEvidence] = await Promise.all([
+      tx
+        .select({
+          speaker: transcriptTurn.speaker,
+          text: transcriptTurn.text,
+          startedAt: transcriptTurn.startedAt,
+          endedAt: transcriptTurn.endedAt,
+        })
+        .from(transcriptTurn)
+        .where(eq(transcriptTurn.sessionId, input.sessionId)),
+      tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(transcriptInterruptionMarker)
+        .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
+      tx
+        .select({
+          generation: transcriptRuntimeWriter.generation,
+          state: transcriptRuntimeSettlement.state,
+        })
+        .from(transcriptRuntimeWriter)
+        .leftJoin(
+          transcriptRuntimeSettlement,
+          and(
+            eq(
+              transcriptRuntimeSettlement.sessionId,
+              transcriptRuntimeWriter.sessionId
+            ),
+            eq(
+              transcriptRuntimeSettlement.writerGeneration,
+              transcriptRuntimeWriter.generation
+            ),
+            eq(
+              transcriptRuntimeSettlement.writerId,
+              transcriptRuntimeWriter.writerId
+            )
+          )
+        )
+        .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
+    ]);
+    const baseValidation = validateSessionStats(
+      calculateSessionStatsFromTurns(turns)
+    );
+    const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
+    const runtimeWriterStates = writerEvidence.map((writer) => ({
+      generation: writer.generation,
+      state: writer.state as "settled" | "degraded" | null,
+    }));
+    const preservePostUsableDisconnectCharge =
+      shouldPreservePostUsableDisconnectCharge({
+        requestedTerminalReason: input.requestedTerminalReason,
+        usableAt: stored.usableAt,
+        missingRuntimeSettlement:
+          runtimeWriterStates.length === 0 ||
+          runtimeWriterStates.some((writer) => writer.state === null),
+        unavailableInterruptions,
       });
-    }
+    const hasIntegrityFault =
+      (unavailableInterruptions > 0 ||
+        runtimeWriterStates.length === 0 ||
+        runtimeWriterStates.some((writer) => writer.state !== "settled")) &&
+      !preservePostUsableDisconnectCharge;
+    const validation = applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptionCount: unavailableInterruptions,
+      runtimeWriterStates,
+    });
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;
@@ -319,7 +339,11 @@ export async function finalizeInterviewSession(
           validation,
           input.requestedTerminalReason
         );
-        const requestedFault = hasIntegrityFault ? "integrity" : "user";
+        const requestedFault = hasIntegrityFault
+          ? "integrity"
+          : input.requestedTerminalReason === "provider_failure"
+            ? "provider"
+            : "user";
         billingFaultCode ??=
           requestedFault === "integrity"
             ? "transcript_integrity_unavailable"
@@ -457,16 +481,30 @@ export function shouldRefineProvisionalTerminalReason(input: {
 export function applyTranscriptIntegrityValidation(input: {
   baseValidation: SessionValidation;
   interruptionCount: number;
-  runtimeSettlementState: "settled" | "degraded" | null;
+  runtimeWriterStates: Array<{
+    generation: number;
+    state: "settled" | "degraded" | null;
+  }>;
 }): SessionValidation {
+  const writerStates = input.runtimeWriterStates;
+  const degradedWriters = writerStates.filter(
+    (writer) => writer.state === "degraded"
+  );
+  const missingWriters = writerStates.filter((writer) => writer.state === null);
   const integrityReasons = [
-    ...(input.runtimeSettlementState === "settled"
-      ? []
-      : [
-          input.runtimeSettlementState === "degraded"
-            ? "Voice runtime reported degraded transcript integrity"
-            : "Voice runtime transcript settlement was not confirmed",
-        ]),
+    ...(writerStates.length === 0
+      ? ["Voice runtime writer registration was not confirmed"]
+      : []),
+    ...(degradedWriters.length > 0
+      ? [
+          `Voice runtime reported degraded transcript integrity for ${degradedWriters.length} writer generation(s)`,
+        ]
+      : []),
+    ...(missingWriters.length > 0
+      ? [
+          `Voice runtime transcript settlement was not confirmed for ${missingWriters.length} writer generation(s)`,
+        ]
+      : []),
     ...(input.interruptionCount > 0
       ? [
           `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,

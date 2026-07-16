@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -55,6 +56,7 @@ test("workspace package entrypoints expose named contracts", () => {
     createTranscriptEvent({
       event_id: "event-1",
       writer_id: "writer-1",
+      writer_generation: 1,
       sequence: 1,
       session_id: "session-1",
       room_name: "room-1",
@@ -94,4 +96,54 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   assert.equal(typeof agent.createTranscriptEvent, "function");
   assert.equal(typeof integrations.buildInterviewRoomName, "function");
   assert.equal(typeof integrations.getLiveKitEnvironment, "function");
+});
+
+test("server transcript persistence has no direct mutation bypass", async () => {
+  const source = await readFile(
+    new URL("../lib/db/transcripts.ts", import.meta.url),
+    "utf8"
+  );
+
+  for (const forbiddenExport of [
+    "createTranscriptTurn",
+    "updateTranscriptTurn",
+    "deleteTranscriptTurn",
+    "batchCreateTranscriptTurns",
+    "CreateTranscriptTurnInput",
+    "UpdateTranscriptTurnInput",
+  ]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(`export\\s+(?:async\\s+function|interface)\\s+${forbiddenExport}\\b`)
+    );
+  }
+
+  assert.match(source, /export function createDrizzleTranscriptIngestStore\b/);
+  assert.match(source, /export async function getSessionTranscript\b/);
+  assert.match(source, /export async function getSessionTranscriptStats\b/);
+});
+
+test("session finalization has no caller-supplied validation bypass", async () => {
+  const [databaseSource, workflowSource] = await Promise.all([
+    readFile(
+      new URL("../lib/db/end-interview-session.ts", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../lib/workflows/end-interview-session.ts", import.meta.url),
+      "utf8"
+    ),
+  ]);
+
+  assert.doesNotMatch(databaseSource, /validationOverride/);
+  assert.doesNotMatch(databaseSource, /runtimeSettlementState/);
+  assert.doesNotMatch(workflowSource, /validationOverride/);
+  assert.doesNotMatch(
+    workflowSource,
+    /export async function (?:end|settle)InterviewSessionWithValidationWorkflow\b/
+  );
+  assert.match(
+    databaseSource,
+    /const validation = applyTranscriptIntegrityValidation\(/
+  );
 });
