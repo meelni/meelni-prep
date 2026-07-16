@@ -12,6 +12,10 @@ const state = vi.hoisted(() => ({
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
   lastSelectResponse: [] as Array<Record<string, unknown>>,
   tombstoneFingerprints: new Set<string>(),
+  checkoutSession: {} as Record<string, unknown>,
+  retrieveCheckoutSession: vi.fn(),
+  ownershipClaims: [] as Array<Record<string, string>>,
+  deletedCustomerIds: [] as string[],
   signatureCalls: 0,
   currentEvent: null as Record<string, unknown> | null,
 }));
@@ -36,6 +40,17 @@ vi.mock("stripe", () => ({
     };
     invoicePayments = {
       list: vi.fn(async () => ({ data: [] })),
+    };
+    checkout = {
+      sessions: {
+        retrieve: state.retrieveCheckoutSession,
+        expire: vi.fn(async () => undefined),
+      },
+    };
+    customers = {
+      del: vi.fn(async (customerId: string) => {
+        state.deletedCustomerIds.push(customerId);
+      }),
     };
   },
 }));
@@ -64,6 +79,13 @@ vi.mock("@/lib/db", () => ({
               (row) =>
                 row.stripeInvoiceId === value.stripeInvoiceId &&
                 row.status === value.status
+            );
+            if (!duplicate) state.payments.push(value);
+          }
+          if ("stripeCheckoutSessionId" in value) {
+            const duplicate = state.payments.some(
+              (row) =>
+                row.stripeCheckoutSessionId === value.stripeCheckoutSessionId
             );
             if (!duplicate) state.payments.push(value);
           }
@@ -210,6 +232,11 @@ vi.mock("@/lib/billing/stripe-customer-ownership", async (importOriginal) => {
     >();
   return {
     ...actual,
+    claimStripeCustomerOwnership: vi.fn(
+      async (input: Record<string, string>) => {
+        state.ownershipClaims.push(input);
+      }
+    ),
     getMappedStripeCustomerUserId: vi.fn(async () => {
       const mappingResponse = state.selectResponses[1];
       const mapping = mappingResponse?.[0];
@@ -248,6 +275,7 @@ vi.mock("@/lib/db/account-deletions", () => ({
 }));
 
 import { fingerprintStripeSubject } from "@/lib/billing/stripe-privacy";
+import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { POST } from "./route";
 
 describe("POST /api/webhooks/stripe", () => {
@@ -262,11 +290,19 @@ describe("POST /api/webhooks/stripe", () => {
     state.selectResponses.length = 0;
     state.lastSelectResponse = [];
     state.tombstoneFingerprints.clear();
+    state.ownershipClaims.length = 0;
+    state.deletedCustomerIds.length = 0;
     state.signatureCalls = 0;
     state.currentEvent = null;
+    vi.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = "sk_test_route";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_route";
     process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_starter_route";
+    process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_pass_route";
+    state.checkoutSession = authoritativeCheckoutSession();
+    state.retrieveCheckoutSession.mockImplementation(async () =>
+      structuredClone(state.checkoutSession)
+    );
   });
 
   it("replays and acknowledges distinct Event IDs for one logical transition", async () => {
@@ -578,6 +614,14 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   it("fails a logical payment replay when persisted truth disagrees", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: "cs_route",
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      payment_intent: "pi_route",
+      amount_total: 900,
+    });
     state.selectResponses.push(
       [],
       [
@@ -600,9 +644,10 @@ describe("POST /api/webhooks/stripe", () => {
           object: {
             id: "cs_route",
             object: "checkout.session",
-            client_reference_id: "user_route",
+            mode: "payment",
+            client_reference_id: userId,
             metadata: {
-              userId: "user_route",
+              userId,
               catalogId: "interview_pass",
             },
             customer: null,
@@ -622,7 +667,142 @@ describe("POST /api/webhooks/stripe", () => {
     });
   });
 
-  it("rejects an unpaid async checkout before every fulfillment mutation", async () => {
+  it.each(["partially_refunded", "refunded", "disputed"])(
+    "preserves a %s payment transition when completed arrives after async success",
+    async (adjustedStatus) => {
+      const userId = "11111111-1111-4111-8111-111111111111";
+      const sessionId = `cs_route_${adjustedStatus}`;
+      const paymentIntentId = `pi_route_${adjustedStatus}`;
+      const persisted = {
+        userId,
+        stripePaymentIntentId: paymentIntentId,
+        stripeCheckoutSessionId: sessionId,
+        stripeEventId: `evt_async_${adjustedStatus}`,
+        creditGrantId: "grant_route",
+        catalogId: "interview_pass",
+        amountInCents: 900,
+        currency: "usd",
+        status: "succeeded",
+        tier: "interview_pass",
+      };
+      state.checkoutSession = authoritativeCheckoutSession({
+        id: sessionId,
+        client_reference_id: userId,
+        metadata: { userId, catalogId: "interview_pass" },
+        payment_intent: paymentIntentId,
+        amount_total: 900,
+      });
+      state.selectResponses.push([], [persisted]);
+
+      const asyncSuccess = await POST(
+        request({
+          id: `evt_async_${adjustedStatus}`,
+          type: "checkout.session.async_payment_succeeded",
+          data: {
+            object: {
+              id: sessionId,
+              object: "checkout.session",
+              mode: "payment",
+              client_reference_id: userId,
+              metadata: { userId, catalogId: "interview_pass" },
+              customer: null,
+            },
+          },
+        })
+      );
+      expect(asyncSuccess.status).toBe(200);
+
+      const storedPayment = state.payments.find(
+        (payment) => payment.stripeCheckoutSessionId === sessionId
+      );
+      expect(storedPayment).toBeDefined();
+      Object.assign(storedPayment ?? {}, { status: adjustedStatus });
+      state.selectResponses.push(
+        [],
+        [{ ...persisted, status: adjustedStatus }]
+      );
+
+      const delayedCompletion = await POST(
+        request({
+          id: `evt_completed_${adjustedStatus}`,
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              id: sessionId,
+              object: "checkout.session",
+              mode: "payment",
+              client_reference_id: userId,
+              metadata: { userId, catalogId: "interview_pass" },
+              customer: null,
+            },
+          },
+        })
+      );
+
+      expect(delayedCompletion.status).toBe(200);
+      expect(storedPayment?.status).toBe(adjustedStatus);
+      expect(state.grantCalls).toHaveLength(2);
+      expect(
+        new Set(state.grantCalls.map((grant) => grant.idempotencyKey)).size
+      ).toBe(1);
+    }
+  );
+
+  it("durably rejects a malformed matching Checkout owner before any UUID tombstone query", async () => {
+    const malformedUserId = "not-a-uuid";
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: "cs_route_malformed_owner",
+      client_reference_id: malformedUserId,
+      metadata: {
+        userId: malformedUserId,
+        catalogId: "interview_pass",
+      },
+    });
+    state.selectResponses.push([]);
+
+    const response = await POST(
+      request({
+        id: "evt_checkout_malformed_owner",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_route_malformed_owner",
+            object: "checkout.session",
+            mode: "payment",
+            client_reference_id: malformedUserId,
+            metadata: {
+              userId: malformedUserId,
+              catalogId: "interview_pass",
+            },
+            customer: null,
+          },
+        },
+      })
+    );
+
+    expect(response.status).toBe(500);
+    expect(hasAccountDeletionTombstone).not.toHaveBeenCalled();
+    expect(state.retrieveCheckoutSession).toHaveBeenCalledOnce();
+    expect(state.logs).toHaveLength(1);
+    expect(state.logs[0]).toMatchObject({
+      stripeEventId: "evt_checkout_malformed_owner",
+      status: "failed",
+      lastError: "stripe_checkout_owner_invalid",
+      payload: "{}",
+    });
+  });
+
+  it("acknowledges an unpaid completion before every fulfillment mutation", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: "cs_route_unpaid",
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      customer: "cus_route_unpaid",
+      payment_status: "unpaid",
+      payment_intent: "pi_route_unpaid",
+      amount_total: 900,
+    });
     state.selectResponses.push([]);
     const response = await POST(
       request({
@@ -632,9 +812,10 @@ describe("POST /api/webhooks/stripe", () => {
           object: {
             id: "cs_route_unpaid",
             object: "checkout.session",
-            client_reference_id: "user_route",
+            mode: "payment",
+            client_reference_id: userId,
             metadata: {
-              userId: "user_route",
+              userId,
               catalogId: "interview_pass",
             },
             customer: "cus_route_unpaid",
@@ -647,15 +828,171 @@ describe("POST /api/webhooks/stripe", () => {
       })
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
     expect(state.logs[0]).toMatchObject({
-      status: "failed",
-      lastError: "checkout_payment_not_settled",
+      status: "processed",
     });
     expect(state.grantCalls).toHaveLength(0);
-    expect(state.mappingWrites).toHaveLength(0);
+    expect(state.ownershipClaims).toHaveLength(0);
     expect(state.payments).toHaveLength(0);
     expect(state.subscriptionWrites).toHaveLength(0);
+  });
+
+  it("persists authoritative payment truth for delayed Checkout success", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const persisted = {
+      userId,
+      stripePaymentIntentId: "pi_route_async",
+      stripeCheckoutSessionId: "cs_route_async",
+      stripeEventId: "evt_checkout_async_success",
+      creditGrantId: "grant_route",
+      catalogId: "interview_pass",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+      tier: "interview_pass",
+    };
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: "cs_route_async",
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      customer: "cus_route_async",
+      payment_intent: "pi_route_async",
+      amount_total: 900,
+    });
+    state.selectResponses.push([], [persisted]);
+
+    const response = await POST(
+      request({
+        id: "evt_checkout_async_success",
+        type: "checkout.session.async_payment_succeeded",
+        data: {
+          object: {
+            id: "cs_route_async",
+            object: "checkout.session",
+            mode: "payment",
+            client_reference_id: userId,
+            metadata: { userId, catalogId: "interview_pass" },
+            customer: "cus_route_async",
+          },
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.retrieveCheckoutSession).toHaveBeenCalledWith(
+      "cs_route_async",
+      { expand: ["line_items"] }
+    );
+    expect(state.grantCalls).toEqual([
+      {
+        userId,
+        catalogId: "interview_pass",
+        source: "checkout",
+        sourceId: "cs_route_async",
+        idempotencyKey: "stripe:checkout:cs_route_async:interview_pass",
+      },
+    ]);
+    expect(state.ownershipClaims).toEqual([
+      { customerId: "cus_route_async", userId },
+    ]);
+    expect(state.payments).toContainEqual(persisted);
+  });
+
+  it("reconciles delayed Checkout success after deletion without granting or refunding", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    state.tombstoneFingerprints.add(
+      fingerprintStripeSubject("cus_route_async_deleted")!
+    );
+
+    const response = await POST(
+      request({
+        id: "evt_checkout_async_deleted",
+        type: "checkout.session.async_payment_succeeded",
+        data: {
+          object: {
+            id: "cs_route_async_deleted",
+            object: "checkout.session",
+            status: "complete",
+            mode: "payment",
+            client_reference_id: userId,
+            metadata: { userId, catalogId: "interview_pass" },
+            customer: "cus_route_async_deleted",
+            payment_status: "paid",
+            payment_intent: "pi_route_async_deleted",
+          },
+        },
+      })
+    );
+
+    expect(await response.json()).toEqual({
+      received: true,
+      status: "deleted_checkout_reconciled",
+    });
+    expect(state.deletedCustomerIds).toEqual(["cus_route_async_deleted"]);
+    expect(state.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(state.ownershipClaims).toHaveLength(0);
+    expect(state.grantCalls).toHaveLength(0);
+    expect(state.payments).toHaveLength(0);
+    expect(state.logs[0]).toMatchObject({
+      status: "processed",
+      payload: "{}",
+      lastError: null,
+    });
+  });
+
+  it("acknowledges async payment failure without provider or credit mutation", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    state.selectResponses.push([]);
+
+    const response = await POST(
+      request({
+        id: "evt_checkout_async_failure",
+        type: "checkout.session.async_payment_failed",
+        data: {
+          object: {
+            id: "cs_route_async_failure",
+            object: "checkout.session",
+            mode: "payment",
+            client_reference_id: userId,
+            metadata: { userId, catalogId: "interview_pass" },
+            customer: null,
+          },
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(state.grantCalls).toHaveLength(0);
+    expect(state.payments).toHaveLength(0);
+  });
+
+  it("leaves subscription Checkout events to subscription and invoice handlers", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    state.selectResponses.push([]);
+
+    const response = await POST(
+      request({
+        id: "evt_subscription_checkout",
+        type: "checkout.session.async_payment_succeeded",
+        data: {
+          object: {
+            id: "cs_subscription_route",
+            object: "checkout.session",
+            mode: "subscription",
+            client_reference_id: userId,
+            metadata: { userId, catalogId: "starter" },
+            customer: null,
+          },
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(state.grantCalls).toHaveLength(0);
+    expect(state.payments).toHaveLength(0);
   });
 
   it("accepts a newer cross-resource creation and retires the prior identity", async () => {
@@ -861,6 +1198,35 @@ function streamRequest(body: ReadableStream<Uint8Array>, signal?: AbortSignal) {
     duplex: "half",
     headers: { "stripe-signature": "test-signature" },
   } as never);
+}
+
+function authoritativeCheckoutSession(overrides: Record<string, unknown> = {}) {
+  const userId = "11111111-1111-4111-8111-111111111111";
+  return {
+    id: "cs_route_authoritative",
+    object: "checkout.session",
+    status: "complete",
+    mode: "payment",
+    payment_status: "paid",
+    payment_intent: "pi_route_authoritative",
+    amount_total: 900,
+    currency: "usd",
+    customer: null,
+    client_reference_id: userId,
+    metadata: { userId, catalogId: "interview_pass" },
+    line_items: {
+      data: [
+        {
+          id: "li_route_authoritative",
+          currency: "usd",
+          price: { id: "price_pass_route" },
+          quantity: 1,
+        },
+      ],
+      has_more: false,
+    },
+    ...overrides,
+  };
 }
 
 function failedInvoiceEvent(

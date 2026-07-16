@@ -181,10 +181,54 @@ npm run typecheck
 
 Stripe manual checks:
 
-- Interview Pass Checkout creates one `checkout` credit grant.
+Hard stop: do not start `stripe listen`, create a test Checkout, replay a
+webhook, or run any other provider-backed manual billing check until one of the
+following database preflights exits successfully:
+
+- For a separately created, disposable PostgreSQL 17 database on loopback:
+
+  ```bash
+  DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/meelni_test \
+    MEELNI_LAUNCH_STRICT=1 npm run db:preflight
+  ```
+
+  Proceed only when the JSON reports `environmentIdentity: "local"`,
+  `status: "reconciled"`, `stableStartLaunchReady: true`, and zero counts under
+  `creditLedgerIntegrity`. The named `meelni_test` database must be disposable;
+  loopback identity alone does not make an existing developer database safe to
+  mutate.
+
+- For the isolated Preview Supabase target established by SAV-226:
+
+  ```bash
+  npm run env:pull:preview
+  MEELNI_LAUNCH_STRICT=1 npm run db:preflight:preview
+  ```
+
+  Proceed only when both commands exit successfully and preflight reports
+  `environmentIdentity: "preview"`, `status: "reconciled"`,
+  `stableStartLaunchReady: true`, and zero counts under
+  `creditLedgerIntegrity`. The scoped pull and preflight enforce that Preview's
+  Supabase project differs from `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF`.
+
+Any failure, missing identity marker, Production identity, shared data, or
+uncertain database provenance stops the rehearsal. Repository tests may
+continue, but no manual Stripe event may be sent until the database gate is
+proved again on the same selected environment.
+
+- Paid Interview Pass Checkout creates one `checkout` credit grant and one
+  correlated payment-history row only after authoritative session, owner,
+  price, quantity, currency, amount, PaymentIntent, and complete line-item
+  validation.
+- Unpaid completion creates no grant; delayed async success creates the same
+  single grant; async failure creates no grant or credit revocation.
+- Immediate completion and delayed-success events remain exactly once when
+  duplicated, concurrent, or reordered.
 - Starter Checkout creates subscription state and one 4-credit renewal grant.
 - Pro Checkout creates subscription state and one 12-credit renewal grant.
-- Replayed `checkout.session.completed` and `invoice.payment_succeeded` events do not duplicate grants.
+- Replayed `checkout.session.completed`,
+  `checkout.session.async_payment_succeeded`, and
+  `invoice.payment_succeeded` events do not duplicate grants.
 - `refund.created`, `refund.updated`, and legacy `charge.refunded` converge on one provider-object withdrawal; `refund.failed` or canceled status reinstates eligible value once.
 - `charge.dispute.created` and `charge.dispute.funds_withdrawn` converge on one withdrawal; `charge.dispute.funds_reinstated` and `charge.dispute.closed` with `won` or `warning_closed` converge on one reinstatement.
 - Reversed event order does not leave a stale freeze, and a second same-direction event ID does not produce an idempotency conflict.

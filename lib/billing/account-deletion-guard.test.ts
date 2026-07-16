@@ -45,24 +45,32 @@ test("checkout expires a session when deletion wins the provider race", async ()
 });
 
 test("checkout fulfillment requires matching authenticated correlation", () => {
+  const userId = "11111111-1111-4111-8111-111111111111";
   assert.equal(
     checkoutSessionAuthenticatedUserId({
-      client_reference_id: "user-1",
-      metadata: { userId: "user-1" },
+      client_reference_id: userId,
+      metadata: { userId },
     }),
-    "user-1"
+    userId
   );
   assert.equal(
     checkoutSessionAuthenticatedUserId({
-      client_reference_id: "user-2",
-      metadata: { userId: "user-1" },
+      client_reference_id: "22222222-2222-4222-8222-222222222222",
+      metadata: { userId },
     }),
     null
   );
   assert.equal(
     checkoutSessionAuthenticatedUserId({
       client_reference_id: null,
-      metadata: { userId: "user-1" },
+      metadata: { userId },
+    }),
+    null
+  );
+  assert.equal(
+    checkoutSessionAuthenticatedUserId({
+      client_reference_id: "not-a-uuid",
+      metadata: { userId: "not-a-uuid" },
     }),
     null
   );

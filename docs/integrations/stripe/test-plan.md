@@ -61,15 +61,19 @@ Steps:
 1. Start Checkout with `catalogId = "interview_pass"`.
 2. Complete payment with `4242 4242 4242 4242`.
 3. Confirm redirect to `/pricing/success`.
-4. Confirm `checkout.session.completed` processed.
+4. Confirm the signed `checkout.session.completed` trigger caused the server to retrieve and validate the authoritative Checkout Session.
 
 Expected:
 
 - Checkout Session mode is `payment`.
+- Checkout Session status is `complete` and payment status is `paid`.
 - Checkout metadata includes `userId` and `catalogId = "interview_pass"`.
+- The complete line-item collection contains exactly one configured Interview Pass price with quantity 1.
 - One `credit_grant` row exists with `catalog_id = 'interview_pass'`.
 - Grant has `original_credits = 1`, `remaining_credits = 1`, source `checkout`, and an expiration about 30 days after purchase.
 - Replaying the same event does not create another grant.
+
+For a delayed payment method, the completed event remains unpaid and creates no grant. The later `checkout.session.async_payment_succeeded` event creates the same single grant; `checkout.session.async_payment_failed` creates no grant.
 
 Verification:
 
@@ -202,6 +206,8 @@ HAVING COUNT(*) > 1;
 ```
 
 The second query should return zero rows.
+
+Also deliver `checkout.session.completed` and `checkout.session.async_payment_succeeded` for the same synthetic session in both orders. Paid reconciliation must converge on the same grant key. Delivering `checkout.session.async_payment_failed` before or after success must not grant or revoke credits.
 
 ## Scenario 7: Subscription Renewal
 
