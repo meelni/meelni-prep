@@ -90,7 +90,8 @@ be copied onto the public holding pages merely because those pages are
 - Application storage can contain account/profile settings, interview
   lifecycle and timing data, selected questions, transcript text and turn
   timing, generated feedback and scores, bookmarks, practice sets,
-  achievements, and progress insights.
+  progress insights, and frozen legacy streak or achievement records retained
+  for export and account-deletion compatibility.
 - The account export is an allowlisted JSON projection of account, settings,
   practice, transcript, feedback, progress, and billing-summary data. It
   excludes credentials, raw provider operations, logs, deletion tombstones,

@@ -1,8 +1,15 @@
 # ADR-036: Insights API Caching Strategy
 
 **Date**: 2025-11-08
-**Status**: Implemented
+**Status**: Superseded on 2026-07-15 by SAV-257
 **Context**: P2-004 Insights API Endpoint
+
+---
+
+> Do not implement the public-cache decision below. `/api/insights` returns
+> authenticated, user-specific practice data and now requires
+> `Cache-Control: private, no-store, max-age=0`. The current contract is
+> `docs/api/insights-endpoint.md`. This ADR remains only as historical context.
 
 ---
 
@@ -15,16 +22,19 @@ Use HTTP-based caching with `Cache-Control: public, max-age=3600, stale-while-re
 ## Context
 
 The insights API aggregates session/feedback data on-demand, involving:
+
 - 1 database query (sessions + feedback join)
 - In-memory aggregation (grouping, sorting, calculations)
 - Typical response time: 150-250ms
 
 **Challenges**:
+
 1. Insights change slowly (only after new sessions complete)
 2. Recalculating on every request wastes resources
 3. Need balance between freshness and performance
 
 **Options Considered**:
+
 1. **No caching** - Fresh every request (~200ms)
 2. **Application-level cache** (Redis/Memory) - Fast but complex
 3. **HTTP cache** - Leverages CDN/browser, simple
@@ -49,6 +59,7 @@ The insights API aggregates session/feedback data on-demand, involving:
 - **Pre-aggregation**: Coming in P2-003 (Inngest worker)
 
 **Cache Parameters**:
+
 - `public`: Allow CDN caching (safe, no user-specific PII in response)
 - `max-age=3600`: Cache for 1 hour (insights change slowly)
 - `stale-while-revalidate=7200`: Serve stale up to 2 hours while refreshing in background
@@ -62,26 +73,28 @@ The insights API aggregates session/feedback data on-demand, involving:
 ```typescript
 return NextResponse.json(insights, {
   headers: {
-    'Cache-Control': 'public, max-age=3600, stale-while-revalidate=7200',
-    'X-Response-Time': `${duration}ms`,
+    "Cache-Control": "public, max-age=3600, stale-while-revalidate=7200",
+    "X-Response-Time": `${duration}ms`,
   },
 });
 ```
 
 ### Cache Behavior
 
-| Time Since Request | Behavior |
-|-------------------|----------|
-| 0-60 min | Serve from cache (no DB query) |
-| 60-180 min | Serve stale, revalidate in background |
-| >180 min | Fresh query, update cache |
+| Time Since Request | Behavior                              |
+| ------------------ | ------------------------------------- |
+| 0-60 min           | Serve from cache (no DB query)        |
+| 60-180 min         | Serve stale, revalidate in background |
+| >180 min           | Fresh query, update cache             |
 
 ### Performance Impact
 
 **Before Caching** (all requests hit DB):
+
 - 1,000 requests/hour → 1,000 queries → ~200s DB time
 
 **After Caching** (1-hour cache):
+
 - 1,000 requests/hour → ~1 query → ~0.2s DB time
 - **99.95% reduction in DB load**
 
@@ -131,6 +144,7 @@ return NextResponse.json(insights, {
 **Decision**: **Coming in P2-003** - This is the future solution
 
 **Migration Path**:
+
 ```
 MVP (P2-004): HTTP cache + on-demand aggregation
 Next (P2-003): Inngest worker + user_insights table + HTTP cache
@@ -140,18 +154,19 @@ Next (P2-003): Inngest worker + user_insights table + HTTP cache
 
 ## Performance Targets
 
-| Metric | Target | Actual (MVP) | Future (P2-003) |
-|--------|--------|--------------|-----------------|
-| P50 (cached) | <50ms | <10ms ✅ | <5ms |
-| P50 (uncached) | <200ms | 150ms ✅ | 30ms (table read) |
-| P95 (uncached) | <500ms | 250ms ✅ | 50ms (table read) |
-| Cache hit rate | >95% | ~99% ✅ | ~99% |
+| Metric         | Target | Actual (MVP) | Future (P2-003)   |
+| -------------- | ------ | ------------ | ----------------- |
+| P50 (cached)   | <50ms  | <10ms ✅     | <5ms              |
+| P50 (uncached) | <200ms | 150ms ✅     | 30ms (table read) |
+| P95 (uncached) | <500ms | 250ms ✅     | 50ms (table read) |
+| Cache hit rate | >95%   | ~99% ✅      | ~99%              |
 
 ---
 
 ## Monitoring
 
 **Log Slow Queries** (>500ms):
+
 ```typescript
 if (duration > 500) {
   console.warn(`[insights] Slow query: ${duration}ms for user ${userId}`);
@@ -159,11 +174,13 @@ if (duration > 500) {
 ```
 
 **Response Time Header**:
+
 ```
 X-Response-Time: 145ms
 ```
 
 **Dashboards** (Future):
+
 - P50/P95/P99 response times
 - Cache hit rate
 - Slow query frequency
@@ -175,6 +192,7 @@ X-Response-Time: 145ms
 When `user_insights` table is deployed:
 
 1. **Update aggregation**:
+
    ```typescript
    // OLD: Always calculate fresh
    const insights = await aggregateUserInsights(userId);
@@ -184,7 +202,7 @@ When `user_insights` table is deployed:
      where: eq(userInsights.userId, userId),
    });
 
-   const insights = cached || await aggregateUserInsights(userId);
+   const insights = cached || (await aggregateUserInsights(userId));
    ```
 
 2. **Keep HTTP cache**: Still beneficial for CDN/browser caching
@@ -196,11 +214,13 @@ When `user_insights` table is deployed:
 ## Security
 
 **No PII Exposure**:
+
 - Response contains only aggregate stats (no individual session details)
 - `public` cache is safe (no sensitive user data)
 - User ID in URL? No - auth via cookie, no query params
 
 **RLS Enforcement**:
+
 - Authentication check before query
 - Drizzle ORM queries filtered by `userId` from session
 - No risk of data leakage between users
@@ -220,4 +240,3 @@ When `user_insights` table is deployed:
 
 - **2025-11-08**: Initial implementation (P2-004)
 - **Future**: Migrate to pre-aggregation (P2-003)
-

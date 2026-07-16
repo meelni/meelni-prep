@@ -178,8 +178,8 @@ truth and attempt room deletion.
 If a delivery arrives before PostgreSQL says it is due, the worker
 creates a distinct durable retry at the unchanged canonical deadline before it
 returns `not_due`. The idempotent completion workflow then settles terminal
-truth before provider deletion and owns feedback intent, streaks, and
-completion-time achievements. Validation may refine lifecycle truth to
+truth before provider deletion and owns feedback intent. It does not write
+legacy streak or achievement data. Validation may refine lifecycle truth to
 `insufficient_signal` without erasing the cleanup claim. A concurrent ordinary
 end never creates the claim and cannot erase one already owned by the deadline
 worker. Provider acknowledgement changes it to `deleted` or `already_absent`;

@@ -61,9 +61,9 @@ export interface AccountExportSource {
 }
 
 export const ACCOUNT_EXPORT_INCLUDED = [
-  "Account identity, profile, preferences, and practice streak",
+  "Account identity, profile, preferences, and frozen legacy streak records",
   "Mock interviews, selected questions, transcripts, and feedback",
-  "Bookmarks, practice sets, achievements, and saved progress insights",
+  "Bookmarks, practice sets, frozen legacy achievement records, and saved progress insights",
   "Subscription, usage, payment summaries, and credit-ledger summaries",
 ] as const;
 

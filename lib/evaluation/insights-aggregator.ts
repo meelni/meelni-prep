@@ -3,8 +3,8 @@
  * P2-002: Calculates user analytics from session/feedback data
  *
  * This module aggregates raw session and feedback data into structured insights
- * for the user dashboard. It calculates overall stats, trends, streaks, and
- * competency breakdowns.
+ * for the user dashboard. It calculates overall stats, trends, and competency
+ * breakdowns.
  */
 
 import { db } from "@/lib/db";
@@ -26,8 +26,6 @@ export interface UserInsights {
     percentile25: number;
     percentile75: number;
     percentile90: number;
-    currentStreak: number;
-    longestStreak: number;
   };
   byInterviewType: {
     product_sense: InterviewTypeStats;
@@ -109,7 +107,6 @@ interface SessionWithFeedback {
  * ```typescript
  * const insights = await aggregateUserInsights(userId);
  * console.log(`Avg score: ${insights.overallStats.avgScore}`);
- * console.log(`Current streak: ${insights.overallStats.currentStreak} days`);
  * ```
  */
 export async function aggregateUserInsights(
@@ -149,10 +146,6 @@ export async function aggregateUserInsights(
     (session) => getCompletedFeedbackScore(session.feedback)!
   );
 
-  // Calculate streak days
-  const { currentStreak, longestStreak } =
-    calculateStreakDays(completedSessions);
-
   // Calculate overall stats
   const totalMinutes = Math.round(
     sessions.reduce((sum, s) => {
@@ -172,8 +165,6 @@ export async function aggregateUserInsights(
     percentile25: percentile(scores, 25),
     percentile75: percentile(scores, 75),
     percentile90: percentile(scores, 90),
-    currentStreak,
-    longestStreak,
   };
 
   // Group by interview type
@@ -225,99 +216,6 @@ export async function aggregateUserInsights(
     trends,
     competencyBreakdown,
   };
-}
-
-/**
- * Calculate current and longest streak of consecutive interview days
- *
- * Counts how many consecutive days (up to today) the user has completed
- * interviews, and the longest such streak in their history.
- *
- * @param sessions - Array of sessions (must have startedAt dates)
- * @returns Object with currentStreak and longestStreak in days
- *
- * @example
- * ```typescript
- * const { currentStreak, longestStreak } = calculateStreakDays(sessions);
- * console.log(`You've interviewed ${currentStreak} days in a row!`);
- * ```
- */
-export function calculateStreakDays(sessions: { startedAt: Date | null }[]): {
-  currentStreak: number;
-  longestStreak: number;
-} {
-  if (sessions.length === 0) {
-    return { currentStreak: 0, longestStreak: 0 };
-  }
-
-  // Extract dates and remove nulls
-  const dates = sessions
-    .map((s) => s.startedAt)
-    .filter((d): d is Date => d !== null)
-    .map((d) => {
-      // Normalize to midnight UTC for day comparison
-      const date = new Date(d);
-      date.setHours(0, 0, 0, 0);
-      return date.getTime();
-    });
-
-  if (dates.length === 0) {
-    return { currentStreak: 0, longestStreak: 0 };
-  }
-
-  // Get unique days (dedupe same-day sessions)
-  const uniqueDays = Array.from(new Set(dates)).sort((a, b) => b - a); // newest first
-
-  // Calculate current streak (working backwards from today)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTime = today.getTime();
-  const oneDayMs = 24 * 60 * 60 * 1000;
-
-  let currentStreak = 0;
-  let expectedDay = todayTime;
-
-  for (const dayTime of uniqueDays) {
-    // Check if this day matches expected (today, yesterday, day before, etc.)
-    const daysDiff = Math.round((expectedDay - dayTime) / oneDayMs);
-
-    if (daysDiff === 0) {
-      // Matches expected day
-      currentStreak++;
-      expectedDay -= oneDayMs; // Move to previous day
-    } else if (daysDiff === 1 && currentStreak === 0) {
-      // First day is yesterday (streak ended today)
-      currentStreak++;
-      expectedDay = dayTime - oneDayMs;
-    } else {
-      // Gap found, stop current streak
-      break;
-    }
-  }
-
-  // Calculate longest streak (scan all days)
-  let longestStreak = 0;
-  let tempStreak = 1;
-  let prevDay = uniqueDays[0];
-
-  for (let i = 1; i < uniqueDays.length; i++) {
-    const daysDiff = Math.round((prevDay - uniqueDays[i]) / oneDayMs);
-
-    if (daysDiff === 1) {
-      // Consecutive day
-      tempStreak++;
-    } else {
-      // Gap found
-      longestStreak = Math.max(longestStreak, tempStreak);
-      tempStreak = 1;
-    }
-
-    prevDay = uniqueDays[i];
-  }
-
-  longestStreak = Math.max(longestStreak, tempStreak);
-
-  return { currentStreak, longestStreak };
 }
 
 /**
@@ -520,8 +418,6 @@ function getEmptyInsights(userId: string): UserInsights {
       percentile25: 0,
       percentile75: 0,
       percentile90: 0,
-      currentStreak: 0,
-      longestStreak: 0,
     },
     byInterviewType: {
       product_sense: { count: 0, avgScore: 0, last5Avg: 0 },

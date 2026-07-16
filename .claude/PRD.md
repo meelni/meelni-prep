@@ -65,6 +65,7 @@ Core jobs to be done:
 6. Return for another mock interview and compare observed practice progress.
 
 The loop should optimize for useful completed interviews and clear follow-up actions, not time spent in the product.
+Meelni should earn repeat use through trustworthy feedback and useful next actions, not streaks, badges, achievements, points, trophies, or other extrinsic reward mechanics.
 
 ## Current Product Truth
 
@@ -170,6 +171,7 @@ Future work should strengthen acquisition, activation, retention, monetization, 
 - PM-specific depth beats generic breadth.
 - Realistic practice is the core value; content should lead into practice.
 - Feedback should make the next action obvious.
+- Evidence-backed progress should remain separate from gamification or daily-pressure mechanics.
 - Measured behavior beats aspirational claims.
 - Monetization should attach to serious preparation and visible value.
 - Enterprise optionality must not distort the consumer wedge prematurely.
