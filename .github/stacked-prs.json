@@ -3,12 +3,6 @@
   "repository": "meelni/meelni-prep",
   "stacks": [
     {
-      "pr": 266,
-      "parentPr": 298,
-      "headRef": "codex/sav-195-feedback-v2",
-      "parentRef": "codex/sav-237-period-end-cancellation"
-    },
-    {
       "pr": 268,
       "parentPr": 266,
       "headRef": "codex/sav-196-evaluation-validation",
