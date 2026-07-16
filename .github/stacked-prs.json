@@ -15,12 +15,6 @@
       "parentRef": "codex/sav-195-feedback-v2"
     },
     {
-      "pr": 298,
-      "parentPr": 270,
-      "headRef": "codex/sav-237-period-end-cancellation",
-      "parentRef": "codex/sav-231-billing-truth"
-    },
-    {
       "pr": 272,
       "parentPr": 268,
       "headRef": "codex/sav-197-feedback-workflow",
