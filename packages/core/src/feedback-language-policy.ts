@@ -997,7 +997,7 @@ const ENGLISH_POSTNOMINAL_ADJECTIVES = new Set([
 const ENGLISH_POSTNOMINAL_ADJECTIVE_SUFFIX =
   /(?:able|al|ant|ary|ent|ful|ible|ic|ive|less|ly|ory|ous)$/u;
 const ENGLISH_CONTENT_PREDICATE =
-  /^(?:align(?:ed|ing)?|analy[sz](?:e|ed|ing)|ask(?:ed|ing|s)?|assess(?:ed|ing|es)?|build(?:ing|s)?|built|caus(?:e|ed|es|ing)|cho(?:ose|oses|osing|se)|commit(?:s|ted|ting)?|compar(?:e|ed|es|ing)|consider(?:ed|ing|s)?|consum(?:e|ed|es|ing)|creat(?:e|ed|es|ing)|defin(?:e|ed|es|ing)|delay(?:ed|ing|s)?|design(?:ed|ing|s)?|destroy(?:ed|ing|s)?|discover(?:ed|ing|s)?|disrupt(?:ed|ing|s)?|evaluat(?:e|ed|es|ing)|fac(?:e|ed|es|ing)|find|finds|finding|focus(?:ed|es|ing)?|get|gets|got|happen(?:ed|ing|s)?|identif(?:y|ied|ies|ying)|investigat(?:e|ed|es|ing)|interview(?:ed|ing|s)?|learn(?:ed|ing|s|t)?|los(?:e|es|ing)|lost|measur(?:e|ed|es|ing)|observ(?:e|ed|es|ing)|prevent(?:ed|ing|s)?|prioriti[sz](?:e|ed|es|ing)|rank(?:ed|ing|s)?|receiv(?:e|ed|es|ing)|reconcil(?:e|ed|es|ing)|research(?:ed|ing|es)?|sequenc(?:e|ed|es|ing)|ship(?:ped|ping|s)?|speak(?:ing|s)?|spoke|start(?:ed|ing|s)?|take|takes|taking|talk(?:ed|ing|s)?|test(?:ed|ing|s)?|uncover(?:ed|ing|s)?|understand(?:ing|s)?|understood|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)|wait(?:ed|ing|s)?|wast(?:e|ed|es|ing))$/u;
+  /^(?:align(?:ed|ing)?|analy[sz](?:e|ed|ing)|ask(?:ed|ing|s)?|assess(?:ed|ing|es)?|build(?:ing|s)?|built|caus(?:e|ed|es|ing)|cho(?:ose|oses|osing|se)|commit(?:s|ted|ting)?|compar(?:e|ed|es|ing)|consider(?:ed|ing|s)?|consum(?:e|ed|es|ing)|creat(?:e|ed|es|ing)|defin(?:e|ed|es|ing)|delay(?:ed|ing|s)?|design(?:ed|ing|s)?|destroy(?:ed|ing|s)?|discover(?:ed|ing|s)?|disrupt(?:ed|ing|s)?|evaluat(?:e|ed|es|ing)|fac(?:e|ed|es|ing)|find|finds|finding|focus(?:ed|es|ing)?|get|gets|got|happen(?:ed|ing|s)?|identif(?:y|ied|ies|ying)|investigat(?:e|ed|es|ing)|interview(?:ed|ing|s)?|learn(?:ed|ing|s|t)?|los(?:e|es|ing)|lost|measur(?:e|ed|es|ing)|notif(?:y|ied|ies|ying)|observ(?:e|ed|es|ing)|prevent(?:ed|ing|s)?|prioriti[sz](?:e|ed|es|ing)|rank(?:ed|ing|s)?|receiv(?:e|ed|es|ing)|reconcil(?:e|ed|es|ing)|research(?:ed|ing|es)?|sequenc(?:e|ed|es|ing)|ship(?:ped|ping|s)?|speak(?:ing|s)?|spoke|start(?:ed|ing|s)?|take|takes|taking|talk(?:ed|ing|s)?|test(?:ed|ing|s)?|uncover(?:ed|ing|s)?|understand(?:ing|s)?|understood|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)|wait(?:ed|ing|s)?|wast(?:e|ed|es|ing))$/u;
 const ENGLISH_DECLARATIVE_PREDICATE =
   /^(?:abandon(?:ed|ing|s)?|approv(?:e|ed|es|ing)|belong(?:ed|ing|s)?|block(?:ed|ing|s)?|bought|buy|buying|buys|confus(?:e|ed|es|ing)|consist(?:ed|ing|s)?|contain(?:ed|ing|s)?|depend(?:ed|ing|s)?|discourag(?:e|ed|es|ing)|drive|drives|driven|driving|enable(?:d|s)?|extend(?:ed|ing|s)?|feel|feels|felt|frustrat(?:e|ed|es|ing)|generate(?:d|s)?|handl(?:e|ed|es|ing)|have|has|had|help(?:ed|ing|s)?|improv(?:e|ed|es|ing)|includ(?:e|ed|es|ing)|increas(?:e|ed|es|ing)|juggl(?:e|ed|es|ing)|lead|leads|led|leading|leave|leaves|left|leaving|lie|lies|lay|lain|lying|make|makes|made|making|need(?:ed|ing|s)?|prefer(?:red|ring|s)?|preserv(?:e|ed|es|ing)|reduc(?:e|ed|es|ing)|remain(?:ed|ing|s)?|requir(?:e|ed|es|ing)|result(?:ed|ing|s)?|review(?:ed|ing|s)?|send|sends|sending|sent|show(?:ed|ing|s|n)?|solv(?:e|ed|es|ing)|stem(?:med|ming|s)?|struggl(?:e|ed|es|ing)|support(?:ed|ing|s)?|surpris(?:e|ed|es|ing)|upload(?:ed|ing|s)?|visit(?:ed|ing|s)?|want(?:ed|ing|s)?|work(?:ed|ing|s)?)$/u;
 const ENGLISH_DECLARATIVE_RELATIONSHIP_PREDICATE =
@@ -1652,10 +1652,14 @@ function hasEnglishDependentClause(
       subjectHead.endsWith("s") ||
       subjectHead === "data" ||
       subjectHead === "people";
-    const hasPronounSubject = SPACED_SUBJECT_MARKERS.has(subjectWords[0]);
+    const hasPronounSubject =
+      SPACED_SUBJECT_MARKERS.has(subjectWords[0]) ||
+      ENGLISH_BASE_AGREEMENT_SUBJECT_PRONOUNS.has(subjectWords[0]);
     const predicateNeedsPluralSubject =
       !ENGLISH_FINITE_AUXILIARIES.has(predicate) &&
       !/(?:ed|ing|s)$/u.test(predicate);
+    const hasSingularPredicate =
+      getEnglishPredicateAgreement(predicate) === "singular";
     if (
       (predicate.endsWith("ing") && !hasGerundSubject) ||
       (!isEnglishDeclarativePredicate(predicate) &&
@@ -1664,6 +1668,7 @@ function hasEnglishDependentClause(
             looksLikeEnglishPluralHead(predicate) &&
             isEnglishAdjectiveShaped(trimmed[predicateIndex + 1])))) ||
       !trimmed.slice(predicateIndex + 1).some(isPotentialEnglishContentWord) ||
+      (hasPronounSubject && hasSingularPredicate) ||
       (predicateNeedsPluralSubject &&
         !hasGerundSubject &&
         !hasPluralSubject &&
@@ -2034,20 +2039,43 @@ function hasSpacedStructuralCoherence(
   const hasContentConnector = englishWords.some((word) =>
     SPACED_CONTENT_CONNECTORS.has(word)
   );
-  const relationshipIndex = englishWords.findIndex((word) =>
-    ENGLISH_RELATIONSHIP_MARKERS.has(word)
+  const relationshipIndex = englishWords.findIndex(
+    (word, index) => index > 0 && ENGLISH_RELATIONSHIP_MARKERS.has(word)
   );
   if (relationshipIndex > 0) {
     const marker = englishWords[relationshipIndex];
     const mainWords = englishWords.slice(0, relationshipIndex);
-    const mainPredicateIndex = getEnglishSentencePredicateIndex(mainWords);
+    const boundedFrontedSubjectIndex = ENGLISH_FRONTED_CONTEXT_CONNECTORS.has(
+      mainWords[0]
+    )
+      ? mainWords.findIndex((word, index) => index > 0 && word === "the")
+      : -1;
+    const predicateWords =
+      boundedFrontedSubjectIndex > 0
+        ? mainWords.slice(boundedFrontedSubjectIndex)
+        : mainWords;
+    const mainPredicateIndex = getEnglishSentencePredicateIndex(predicateWords);
+    const mainModalIndex = predicateWords.findIndex((word) =>
+      SPACED_MODAL_MARKERS.has(word)
+    );
+    const hasCompleteFrontedModalMainClause =
+      boundedFrontedSubjectIndex > 0 &&
+      mainModalIndex > 0 &&
+      hasEnglishMainClause(predicateWords) &&
+      predicateWords
+        .slice(mainModalIndex + 1)
+        .filter(isPotentialEnglishContentWord).length >= 3;
     const hasCompleteMainClauseBeforeWhile =
       marker !== "while" ||
+      hasCompleteFrontedModalMainClause ||
       (mainPredicateIndex > 0 &&
-        hasCompleteEnglishPredicateComplement(mainWords, mainPredicateIndex));
+        hasCompleteEnglishPredicateComplement(
+          predicateWords,
+          mainPredicateIndex
+        ));
     return (
       hasCompleteMainClauseBeforeWhile &&
-      hasEnglishMainClause(mainWords) &&
+      hasEnglishMainClause(predicateWords) &&
       hasEnglishDependentClause(
         englishWords.slice(relationshipIndex + 1),
         marker

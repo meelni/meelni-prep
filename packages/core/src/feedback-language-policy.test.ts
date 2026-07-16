@@ -66,6 +66,9 @@ test("multilingual prefixes do not exempt an owned English clause from validatio
 
 test("accepts ordinary domain reasoning and concise declarative PM answers", () => {
   const cases = [
+    "Users struggle to keep track of shifting schedules, so I would centralize changes and notify the relevant caregiver before pickup.",
+    "My target user would be working parents with young children because they face frequent coordination problems across multiple caregivers.",
+    "For success, the primary metric would be weekly retained households, while guardrails would include notification opt-outs and missed handoffs.",
     "I would speak with nurses because their handoff process creates delays before the night shift.",
     "I would speak with nurses to understand handoffs and observe their night shift.",
     "I would ask nurses about handoff delays during the night shift to understand where work gets stuck.",
@@ -122,6 +125,16 @@ test("accepts complete PM answers with ordinary release, success, and rollout cl
 
   for (const text of cases) {
     assert.equal(hasSubstantiveCandidateResponseSignal(text), true, text);
+  }
+});
+
+test("ordinary dependent clauses retain agreement and predicate boundaries", () => {
+  const malformed = [
+    "My target user would be working parents because they faces frequent coordination problems across caregivers.",
+  ] as const;
+
+  for (const text of malformed) {
+    assert.equal(hasSubstantiveCandidateResponseSignal(text), false, text);
   }
 });
 

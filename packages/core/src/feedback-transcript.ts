@@ -512,8 +512,8 @@ function advancePartialFeedbackResultControl(
   const detected =
     outcome &&
     next.action !== null &&
-    next.hasResult &&
-    (next.action === "result" || next.hasTarget);
+    ((next.action === "candidate" && next.hasTarget) ||
+      (next.action === "result" && next.hasResult));
   return { detected, next: detected ? null : next };
 }
 
