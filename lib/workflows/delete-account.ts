@@ -44,10 +44,35 @@ export async function deleteAccountWorkflow(
     return { alreadyCompleted: true, retryAt: null };
   }
 
+  const pendingSubjects = request.stripeSubjects.filter(
+    (subject): subject is typeof subject & { providerId: string } =>
+      subject.providerId !== null
+  );
+  const processedFingerprints = new Set(
+    request.stripeSubjects.map(({ fingerprint }) => fingerprint)
+  );
+
   // Local privacy cleanup does not wait on an external provider. The durable
   // tombstone keeps every provider reference required for later retries.
   await deps.redactProviderLogs(request);
   await deps.deleteApplicationData(request.userId);
+
+  // Cancellation is the first external cleanup action. Access is already
+  // fenced by the tombstone, and the stable idempotency key makes retries safe.
+  // Running this before Auth or LiveKit prevents an unrelated provider outage
+  // from extending billing without letting Stripe delay local data erasure.
+  for (const subject of pendingSubjects) {
+    if (subject.kind === "subscription") {
+      await deps.cancelSubscription(subject.providerId, {
+        prorate: false,
+        idempotencyKey: deletedBillingIdempotencyKey(
+          subject.providerId,
+          "cancel"
+        ),
+      });
+    }
+  }
+
   await deps.deleteAuthUser(request.userId);
 
   const pendingRooms = request.livekitRooms.filter(
@@ -77,24 +102,6 @@ export async function deleteAccountWorkflow(
     }
   }
 
-  const pendingSubjects = request.stripeSubjects.filter(
-    (subject): subject is typeof subject & { providerId: string } =>
-      subject.providerId !== null
-  );
-  const processedFingerprints = new Set(
-    request.stripeSubjects.map(({ fingerprint }) => fingerprint)
-  );
-  for (const subject of pendingSubjects) {
-    if (subject.kind === "subscription") {
-      await deps.cancelSubscription(subject.providerId, {
-        prorate: false,
-        idempotencyKey: deletedBillingIdempotencyKey(
-          subject.providerId,
-          "cancel"
-        ),
-      });
-    }
-  }
   // Accepted deletion policy never compensates automatically. Historical
   // invoice and payment records remain subject to Stripe/legal retention; an
   // exceptional refund is a separate manual support decision.

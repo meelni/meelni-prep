@@ -22,12 +22,13 @@ The `account-deletion` Inngest function performs these idempotent stages:
    IDs, types, statuses, attempts, and timestamps;
 2. remove application data in a database transaction while preserving the
    tombstone, deleting `user_insights` before its `last_session_id` target;
-3. delete the Supabase Auth user through the server-only service-role client;
-4. cancel captured Stripe subscriptions without proration and never create an
+3. cancel captured Stripe subscriptions without proration and never create an
    automatic invoice, PaymentIntent, charge, or customer-balance refund;
-5. delete every captured Stripe customer, including pass-only and historical
+4. delete the Supabase Auth user through the server-only service-role client;
+5. terminate every captured LiveKit room with durable, retryable cleanup;
+6. delete every captured Stripe customer, including pass-only and historical
    mapped customers, only after subscription cancellation;
-6. clear only processed raw provider IDs and mark the tombstone completed, or
+7. clear only processed raw provider IDs and mark the tombstone completed, or
    leave concurrent late references recoverable.
 
 Local data and legacy provider-log payloads are removed before external Auth or

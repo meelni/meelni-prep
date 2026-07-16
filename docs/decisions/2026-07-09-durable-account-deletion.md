@@ -22,11 +22,12 @@ report success while the authentication account remained active.
 - Redact local provider logs and delete application data before calling Supabase
   Auth or Stripe. Provider outages must not extend retention of local product
   data; the tombstone keeps only the typed provider references needed for retry.
-- Delete Supabase Auth after local cleanup and before Stripe reconciliation.
-  Middleware rejects and signs out every tombstoned session, and OAuth/app-user
-  recreation shares a transaction-scoped account identity lock with deletion
-  intent, so changing the provider order does not restore product access or
-  recreate local identity data.
+- After local cleanup, cancel captured Stripe subscriptions before Supabase
+  Auth or LiveKit cleanup so an unrelated provider outage cannot extend
+  billing. Middleware rejects and signs out every tombstoned session, and
+  OAuth/app-user recreation shares a transaction-scoped account identity lock
+  with deletion intent, so this provider order does not restore product access
+  or recreate local identity data.
 - Keep the tombstone outside the `app_user` foreign-key graph so it survives
   application-data deletion and blocks user recreation.
 - Enforce tombstone denial for password logins and existing sessions in the
