@@ -3,6 +3,10 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
+The current committed journal contains fifteen entries, from
+`0000_many_nocturne` through `0014_stable_start_usable_credit`. The migration-history
+inventory is checked against `_journal.json` in the local operations suite so
+documentation cannot silently drift from the executable chain.
 
 Open PRs do not reserve sequence numbers independently. Before merging a
 migration-bearing PR, require the stable GitHub Actions
@@ -66,14 +70,14 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirteen
-ledger entries, 25 RLS-enabled tables, three unique contracts, zero unsafe
+six ledger entries. Expected post-migration status is `reconciled` with fifteen
+ledger entries, 26 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect, and
-transcript-privacy and runtime-settlement contract fingerprint.
-Preflight keeps distinct accepted fingerprints for the 12-migration privacy
-state and the 13-migration runtime-settlement state so a rolling deployment is
-diagnosable without weakening either contract.
+transcript-privacy, runtime-settlement, and stable-start contract fingerprint.
+Preflight keeps distinct accepted fingerprints for the 13-migration privacy
+state, the 14-migration runtime-settlement state, and the 15-migration stable-start
+state so a rolling deployment is diagnosable without weakening any contract.
 
 ## Rehearsal
 

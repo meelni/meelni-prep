@@ -304,6 +304,11 @@ function createFixture(): {
       reason: "conflict",
       current,
     }),
+    recoverFromDuePresence: async () => ({
+      applied: false,
+      reason: "conflict",
+      current,
+    }),
   };
   return {
     calls,

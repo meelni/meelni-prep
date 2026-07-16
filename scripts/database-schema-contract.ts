@@ -21,12 +21,12 @@ export const TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT =
 export const TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT =
   "c77ee4fcbe14d7d7689850d7e68a629ec22e76951864527c9ea5f5d268af6caa";
 export const RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT =
-  "b5d68fa180f7b39fe56b440b2a0c21725f275f9d342d99df98a241089bbb7899";
+  "b88622c7a970d748f058dd1c5eaa71e0ef31651c49505c2604bada48965b9b67";
 // Filled from the clean PostgreSQL migration acceptance test. This contract
 // includes the stable-evidence trigger, which the earlier schema fingerprints
 // deliberately did not inspect.
 export const STABLE_START_SCHEMA_FINGERPRINT =
-  "01eb23d537b61f1c3aefccbde75d7cefb2679741cd96c411af59993f4cf7bf93";
+  "0fcd5e505fdf94c8b40bb55a02bd04877874a18fa23d9e6b78b077b61174acbd";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

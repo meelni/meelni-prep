@@ -9,7 +9,6 @@ import type { FinalizeInterviewSessionResult } from "@/lib/db/end-interview-sess
 import { feedback as feedbackTable } from "@/lib/db/schema";
 import type { DispatchFeedbackGenerationResult } from "./dispatch-feedback-generation";
 import {
-  endInterviewSessionWithValidationWorkflow,
   endInterviewSessionWorkflow,
   type EndInterviewSessionDeps,
 } from "./end-interview-session";
@@ -156,22 +155,22 @@ test("authorization runs before atomic transcript settlement", async () => {
   assert.equal(finalizations, 0);
 });
 
-test("a caller-provided validation snapshot is finalized without revalidation", async () => {
-  let finalizedValidation: SessionValidation | null = null;
-  const snapshot = validation();
-  const result = await endInterviewSessionWithValidationWorkflow(
-    userEndInput(),
-    snapshot,
+test("workflow passes only the authorized end command to finalization", async () => {
+  let finalizedInput: Parameters<EndInterviewSessionDeps["finalize"]>[0] | null =
+    null;
+  const input = userEndInput();
+  const result = await endInterviewSessionWorkflow(
+    input,
     createDeps({
-      finalize: async (input) => {
-        finalizedValidation = input.validationOverride ?? null;
+      finalize: async (finalizeInput) => {
+        finalizedInput = finalizeInput;
         return completion();
       },
     })
   );
 
   assert.equal(result.ok, true);
-  assert.equal(finalizedValidation, snapshot);
+  assert.deepEqual(finalizedInput, input);
 });
 
 test("terminal credit settlement completes before feedback dispatch", async () => {
