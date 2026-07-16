@@ -21,8 +21,8 @@ export interface LiveKitEnvironment {
 
 export type LiveKitAgentKind = "interview" | "demo";
 
-const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
+const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -112,7 +112,17 @@ type AccessTokenFactory = new (
 ) => AccessTokenLike;
 
 interface AgentDispatchClientLike {
-  createDispatch(roomName: string, agentName: string): Promise<unknown>;
+  createDispatch(
+    roomName: string,
+    agentName: string
+  ): Promise<AgentDispatchLike>;
+  listDispatch(roomName: string): Promise<AgentDispatchLike[]>;
+}
+
+interface AgentDispatchLike {
+  id: string;
+  agentName: string;
+  room: string;
 }
 
 type AgentDispatchClientFactory = (
@@ -129,6 +139,9 @@ interface RoomServiceClientLike {
     maxParticipants: number;
     departureTimeout: number;
   }): Promise<unknown>;
+  listRooms?(
+    names?: string[]
+  ): Promise<Array<{ name: string; metadata: string }>>;
   deleteRoom?(roomName: string): Promise<void>;
   removeParticipant?(
     roomName: string,
@@ -281,11 +294,95 @@ export function createLiveKitInterviewProvider({
         }
       }
 
+      if (!roomClient.listRooms) {
+        return providerFailure("livekit", {
+          code: "livekit_room_reconcile_unsupported",
+          message: "The LiveKit room adapter cannot reconcile room metadata.",
+          retryable: false,
+        });
+      }
       try {
-        await dispatchClient.createDispatch(input.roomName, input.agentName);
+        const rooms = await roomClient.listRooms([input.roomName]);
+        const expectedMetadata = JSON.stringify(input.metadata);
+        if (
+          rooms.length !== 1 ||
+          rooms[0].name !== input.roomName ||
+          rooms[0].metadata !== expectedMetadata
+        ) {
+          return providerFailure("livekit", {
+            code: "livekit_room_metadata_conflict",
+            message:
+              "Interview room metadata does not match the start request.",
+            retryable: false,
+          });
+        }
       } catch (error) {
         return providerFailure("livekit", {
-          code: "livekit_agent_dispatch_failed",
+          code: "livekit_room_reconcile_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+
+      try {
+        const existingDispatches = await dispatchClient.listDispatch(
+          input.roomName
+        );
+
+        if (existingDispatches.length > 1) {
+          return providerFailure("livekit", {
+            code: "livekit_agent_dispatch_conflict",
+            message: "Interview room has multiple agent dispatches.",
+            retryable: false,
+          });
+        }
+
+        if (existingDispatches.length === 1) {
+          const existing = existingDispatches[0];
+          if (
+            existing.agentName !== input.agentName ||
+            existing.room !== input.roomName
+          ) {
+            return providerFailure("livekit", {
+              code: "livekit_agent_dispatch_conflict",
+              message:
+                "Interview room dispatch does not match the start request.",
+              retryable: false,
+            });
+          }
+        } else {
+          const created = await dispatchClient.createDispatch(
+            input.roomName,
+            input.agentName
+          );
+          if (
+            created.agentName !== input.agentName ||
+            created.room !== input.roomName
+          ) {
+            return providerFailure("livekit", {
+              code: "livekit_agent_dispatch_conflict",
+              message: "LiveKit created a mismatched interview dispatch.",
+              retryable: false,
+            });
+          }
+          const reconciled = await dispatchClient.listDispatch(input.roomName);
+          if (
+            reconciled.length !== 1 ||
+            reconciled[0].agentName !== input.agentName ||
+            reconciled[0].room !== input.roomName
+          ) {
+            return providerFailure("livekit", {
+              code: "livekit_agent_dispatch_conflict",
+              message:
+                "Interview room dispatch could not be reconciled uniquely.",
+              retryable: false,
+            });
+          }
+        }
+      } catch (error) {
+        return providerFailure("livekit", {
+          code: "livekit_agent_dispatch_reconcile_failed",
           message: getErrorMessage(error),
           retryable: true,
           cause: error,
@@ -349,10 +446,13 @@ export async function issueInterviewParticipantToken(
 
     const signedToken = await token.toJwt();
     const actualExpiration = readJwtExpiration(signedToken);
+    const signedAtMilliseconds = now().getTime();
     if (
       actualExpiration === null ||
+      !Number.isFinite(signedAtMilliseconds) ||
       actualExpiration > expirationSeconds ||
-      actualExpiration * 1_000 <= observedAtMilliseconds
+      actualExpiration * 1_000 <= observedAtMilliseconds ||
+      actualExpiration * 1_000 <= signedAtMilliseconds
     ) {
       return invalidTokenExpiration();
     }

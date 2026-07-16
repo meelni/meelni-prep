@@ -49,14 +49,14 @@ test("migration operations docs match the ordered Drizzle journal", async () => 
   const journalTags = entries.map((entry) => entry.tag);
 
   assert.deepEqual(documentedTags, journalTags);
-  assert.equal(entries.length, 14);
-  assert.equal(entries.at(-1).tag, "0013_runtime_settlement");
-  assert.match(runbook, /fourteen-entry schema preflight/);
-  assert.match(runbook, /through `0013_runtime_settlement`/);
+  assert.equal(entries.length, 15);
+  assert.equal(entries.at(-1).tag, "0014_stable_start_usable_credit");
+  assert.match(runbook, /fifteen-entry schema preflight/);
+  assert.match(runbook, /through `0014_stable_start_usable_credit`/);
   assert.match(runbook, /isolated `meelni-preview` Supabase project/);
   assert.match(
     await readFile("docs/operations/database-migrations.md", "utf8"),
-    /fourteen\s+ledger entries, 26 RLS-enabled tables/i
+    /fifteen\s+ledger entries, 26 RLS-enabled tables/i
   );
 
   assert.match(history, /`transcript_runtime_writer` registry/);

@@ -170,7 +170,14 @@ Set `MEELNI_DISABLE_LOCAL_CREDIT_BYPASS=1` in `.env.local` to test the real cred
 
 ## Relaunch Gate Fallback
 
-The public relaunch gate is resolved on the server with a non-identifying operational Statsig user and disabled event logging. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage fallback: keep it `false` before relaunch and change it to `true` only as part of the rehearsed launch flip. Rollback changes the Statsig gate and this fallback together so a Statsig outage cannot invert the intended public state.
+The relaunch gate is resolved on the server with disabled event logging. Public
+surfaces use a non-identifying operational Statsig user; authenticated interview
+start and reconnect-token issuance use the signed-in Statsig user. Disabled
+access is rejected before any session/credit mutation or participant-token
+issuance. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage
+fallback: keep it `false` before relaunch and change it to `true` only as part of
+the rehearsed launch flip. Rollback changes the Statsig gate and this fallback
+together so a Statsig outage cannot invert the intended product state.
 
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
