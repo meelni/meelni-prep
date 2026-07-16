@@ -62,10 +62,7 @@ export async function generateFeedback(
       evaluationState,
       modelVersion,
     });
-    return {
-      ...result,
-      drills: normalizePracticeRecommendations(result.drills),
-    };
+    return normalizeFeedbackV2Recommendations(result);
   } catch (error) {
     const code = getEvaluationFailureCode(error);
     console.error("[Feedback Evaluation] generation_failed", {
@@ -74,6 +71,19 @@ export async function generateFeedback(
     });
     throw new Error(code);
   }
+}
+
+export function normalizeFeedbackV2Recommendations(
+  result: FeedbackV2Result
+): FeedbackV2Result {
+  const recommendations = normalizePracticeRecommendations(result.drills);
+  if (recommendations.length === 0) {
+    throw new Error(
+      "Feedback v2 requires at least one product-language-safe practice recommendation"
+    );
+  }
+
+  return { ...result, drills: recommendations };
 }
 
 export function getEvaluationFailureCode(error: unknown): string {

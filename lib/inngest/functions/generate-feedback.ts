@@ -14,6 +14,10 @@ import {
 } from "@/lib/evaluation/session-validator";
 import { generateFeedback as generateFeedbackWithGPT4 } from "@/lib/evaluation/scorer";
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
+import {
+  FEEDBACK_V2_EVALUATE_STEP_ID,
+  FEEDBACK_V2_SAVE_STEP_ID,
+} from "@/lib/evaluation/feedback-generation-step-contract";
 import { resolveFeedbackGenerationEligibility } from "@/lib/workflows/feedback-generation-evidence";
 import type { FeedbackTranscriptTurn, FeedbackV2Result } from "@meelni/core";
 
@@ -314,7 +318,7 @@ export const generateFeedback = inngest.createFunction(
     // Step 3: Evaluate with GPT-4
     const evaluation: FeedbackV2Result & {
       processingDurationMs: number;
-    } = await step.run("evaluate-session", async () => {
+    } = await step.run(FEEDBACK_V2_EVALUATE_STEP_ID, async () => {
       const startTime = Date.now();
 
       // Call the real GPT-4 evaluation service
@@ -333,7 +337,7 @@ export const generateFeedback = inngest.createFunction(
     });
 
     // Step 4: Save feedback
-    await step.run("save-feedback", async () => {
+    await step.run(FEEDBACK_V2_SAVE_STEP_ID, async () => {
       await db
         .update(feedback)
         .set({

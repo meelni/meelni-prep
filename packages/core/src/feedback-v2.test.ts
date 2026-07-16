@@ -142,6 +142,42 @@ test("rejects evidence quotes that do not exactly occur in the referenced turn",
   );
 });
 
+test("accepts evidence from a canonical candidate turn", () => {
+  const result = parseFeedbackV2(validResponse(), {
+    transcript,
+    evaluationState: "full",
+    modelVersion: "gpt-test-1",
+  });
+
+  assert.equal(result.strengths[0].evidence[0].turnRef, "writer-a:1");
+});
+
+test("rejects an exact quote from an interviewer turn as candidate evidence", () => {
+  const response = validResponse();
+  response.strengths[0].transcriptRefs[0] = "writer-a:interviewer";
+  response.strengths[0].evidence[0] = {
+    turnRef: "writer-a:interviewer",
+    quote: "prioritized enterprise customers",
+  };
+
+  assert.throws(
+    () =>
+      parseFeedbackV2(response, {
+        transcript: [
+          ...transcript,
+          {
+            eventId: "writer-a:interviewer",
+            speaker: "interviewer",
+            text: "You clearly prioritized enterprise customers.",
+          },
+        ],
+        evaluationState: "full",
+        modelVersion: "gpt-test-1",
+      }),
+    /must reference a candidate turn/
+  );
+});
+
 test("rejects reference and evidence sets that do not match", () => {
   const response = validResponse();
   response.strengths[0].transcriptRefs.push("writer-a:2");

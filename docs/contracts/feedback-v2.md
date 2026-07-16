@@ -52,11 +52,16 @@ Each strength and improvement contains exactly these fields:
   database row UUID is not a feedback evidence identity.
 - Every reference has exactly one evidence entry and vice versa.
 - `quote` is a non-empty, case-sensitive substring of the referenced durable
-  turn. The parser rejects paraphrases, altered capitalization, and unknown
-  references.
+  candidate turn. Interviewer turns provide evaluation context but are not
+  evidence of candidate behavior. The parser rejects interviewer references,
+  paraphrases, altered capitalization, and unknown references.
 - `confidence` is a finite number from zero through one. SAV-196 owns policy
   thresholds and adversarial confidence validation.
 - Unknown fields at the result, score, finding, or evidence level are rejected.
+- `drills` retains the legacy storage key but contains one to three focused
+  practice recommendations. Product-language normalization fails closed when it
+  would remove every recommendation; completed v2 feedback is never persisted
+  with an empty practice action.
 
 ## Scores
 
@@ -78,6 +83,12 @@ evaluation-state columns. The database enforces either a completely absent v2
 version tuple for a legacy row or a complete, internally consistent v2 tuple.
 Historical string-array v1 rows keep `rubric_version=1.0.0` and remain readable.
 New completed writes use v2 only.
+
+The asynchronous worker uses the durable Inngest step IDs
+`evaluate-session-v2` and `save-feedback-v2`. They intentionally do not reuse
+the legacy v1 step IDs because Inngest may replay a memoized step result across
+a deployment. Any future incompatible cached result shape requires another
+step-ID version rather than feeding old output into new persistence logic.
 
 ## Ownership boundary
 
