@@ -1,5 +1,9 @@
 import { resolve } from "node:path";
 
+import {
+  EXPECTED_PREVIEW_SUPABASE_PROJECT_REF,
+  EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF,
+} from "../lib/supabase/supabase-jwt.mjs";
 import { inferDatabaseProjectRef } from "./supabase-project-ref.mjs";
 
 export const PRODUCTION_SUPABASE_PROJECT_REF_ENV =
@@ -65,6 +69,11 @@ export function getSupabaseEnvironmentIdentityPolicy({
       `${PRODUCTION_SUPABASE_PROJECT_REF_ENV} must be a 20-character lowercase Supabase project ref`
     );
   }
+  if (declaredProductionRef !== EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF) {
+    return denied(
+      `${PRODUCTION_SUPABASE_PROJECT_REF_ENV} does not match the canonical Production Supabase project`
+    );
+  }
 
   const databaseProjectRef = inferDatabaseProjectRef(databaseUrl);
   if (!databaseProjectRef) {
@@ -75,10 +84,10 @@ export function getSupabaseEnvironmentIdentityPolicy({
 
   if (
     environment === "preview" &&
-    databaseProjectRef === declaredProductionRef
+    databaseProjectRef !== EXPECTED_PREVIEW_SUPABASE_PROJECT_REF
   ) {
     return denied(
-      "Preview database target matches the declared Production Supabase project"
+      "Preview database target does not match the canonical Preview Supabase project"
     );
   }
 

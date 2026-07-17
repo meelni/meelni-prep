@@ -23,6 +23,10 @@ import {
   inferSupabaseProjectRef,
 } from "./supabase-project-ref.mjs";
 import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import {
+  readSupabaseJwtClaims,
+  supabaseJwtIssuerMatchesProject,
+} from "../lib/supabase/supabase-jwt.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -68,6 +72,13 @@ const REQUIRED_RUNTIME_KEYS = [
   "DATABASE_URL",
   "LIVEKIT_API_KEY",
   "LIVEKIT_API_SECRET",
+  "MEELNI_INTERVIEW_LLM_MODEL",
+  "MEELNI_INTERVIEW_STT_MODEL",
+  "MEELNI_INTERVIEW_TTS_EMOTION",
+  "MEELNI_INTERVIEW_TTS_MODEL",
+  "MEELNI_INTERVIEW_TTS_SPEED",
+  "MEELNI_INTERVIEW_TTS_VOLUME",
+  "MEELNI_INTERVIEW_VOICE",
   "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -239,7 +250,7 @@ export function validateRefreshedEnv(env, environment) {
       `Vercel ${environment} NEXT_PUBLIC_SUPABASE_ANON_KEY is not an anon-role token. The existing file was kept.`
     );
   }
-  if (!issuerMatchesProject(anonClaims.iss, publicRef)) {
+  if (!supabaseJwtIssuerMatchesProject(anonClaims.iss, publicRef)) {
     throw new Error(
       `Vercel ${environment} NEXT_PUBLIC_SUPABASE_ANON_KEY has an unexpected issuer. The existing file was kept.`
     );
@@ -272,22 +283,7 @@ export function inferSupabaseAnonProjectRef(value) {
 }
 
 export function readSupabaseAnonClaims(value) {
-  if (!value) return undefined;
-
-  try {
-    const payload = value.split(".")[1];
-    if (!payload) return undefined;
-    const decoded = JSON.parse(
-      Buffer.from(payload, "base64url").toString("utf8")
-    );
-    return {
-      iss: typeof decoded.iss === "string" ? decoded.iss : undefined,
-      ref: typeof decoded.ref === "string" ? decoded.ref : undefined,
-      role: typeof decoded.role === "string" ? decoded.role : undefined,
-    };
-  } catch {
-    return undefined;
-  }
+  return readSupabaseJwtClaims(value);
 }
 
 export function parseEnv(env) {
@@ -561,19 +557,6 @@ function upsertRaw(env, key, rawValue) {
     : `${line}\n${env}`;
 }
 
-function issuerMatchesProject(issuer, projectRef) {
-  if (!issuer || issuer === "supabase") return true;
-  try {
-    const url = new URL(issuer);
-    return (
-      url.hostname === `${projectRef}.supabase.co` &&
-      url.pathname.replace(/\/$/, "") === "/auth/v1"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function findEnvAssignment(env, key) {
   const match = new RegExp(`^${escapeRegExp(key)}=`, "m").exec(env);
   if (!match || match.index === undefined) return undefined;
@@ -657,7 +640,7 @@ function serviceRoleMatchesProject(value, projectRef) {
   return (
     claims?.ref === projectRef &&
     claims.role === "service_role" &&
-    issuerMatchesProject(claims.iss, projectRef)
+    supabaseJwtIssuerMatchesProject(claims.iss, projectRef)
   );
 }
 

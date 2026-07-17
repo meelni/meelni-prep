@@ -11,8 +11,11 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
   getProviderEnvContract,
+  inferSupabaseDatabaseProjectRef,
+  inferSupabaseProjectRef,
   INTEGRATION_PROVIDERS,
   isProviderFailure,
+  isSupabaseProjectRef,
   issueInterviewParticipantToken,
   inspectInterviewParticipantPresence,
   receiveLiveKitParticipantWebhook,
@@ -62,6 +65,32 @@ test("Supabase env contract includes the non-secret Production identity guard", 
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   ]);
+});
+
+test("Supabase identity helpers normalize public, direct, and pooler targets", () => {
+  const projectRef = "previewpreviewprevie";
+  assert.equal(
+    inferSupabaseProjectRef(`https://${projectRef}.supabase.co`),
+    projectRef
+  );
+  assert.equal(
+    inferSupabaseDatabaseProjectRef(
+      `postgresql://postgres:secret@db.${projectRef}.supabase.co:5432/postgres`
+    ),
+    projectRef
+  );
+  assert.equal(
+    inferSupabaseDatabaseProjectRef(
+      `postgresql://postgres.${projectRef}:secret@aws-0-us-east-1.pooler.supabase.com:6543/postgres`
+    ),
+    projectRef
+  );
+  assert.equal(isSupabaseProjectRef(projectRef), true);
+  assert.equal(inferSupabaseProjectRef("https://example.com"), undefined);
+  assert.equal(
+    inferSupabaseDatabaseProjectRef("postgresql://localhost/meelni"),
+    undefined
+  );
 });
 
 test("missing env detection supports required vars and at-least-one groups", () => {

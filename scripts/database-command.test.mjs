@@ -8,8 +8,8 @@ import test from "node:test";
 import { getDatabaseCommandPolicy } from "./database-command.mjs";
 
 const local = "postgresql://postgres:postgres@127.0.0.1:5432/meelni_test";
-const previewRef = "previewprojectref123";
-const productionRef = "productionproject123";
+const previewRef = "kxpvidtxznllfosfemdl";
+const productionRef = "rarrrwkjuhfyfatcmrkw";
 const remote = databaseUrl(previewRef, 5432);
 const pooler = databaseUrl(previewRef, 6543);
 const sessionPooler = databaseUrl(previewRef, 5432);
@@ -217,7 +217,10 @@ test("the selected env file supplies remote migration identity", async () => {
       }
     );
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Preview database target matches/);
+    assert.match(
+      result.stderr,
+      /Preview database target does not match the canonical Preview/
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

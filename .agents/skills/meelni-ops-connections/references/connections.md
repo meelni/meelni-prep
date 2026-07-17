@@ -202,6 +202,13 @@ Canonical target:
 - Region observed for Cloud agents: `us-east`
 - Interview Cloud agent: `CA_yawKG67rCMG4`
 - Demo Cloud agent: `CA_t3sKQEihMQ7x`
+- Isolated Preview project: `meelni-preview` (`p_16unz4e48is`)
+- Preview WebSocket host: `meelni-preview-dk7443ua.livekit.cloud`
+- Preview interview deployment: `CA_ZbGxFjfEYwsD`, dispatch name
+  `meelni-preview-interview`
+- Preview demo deployment: not yet source-authorized; deploy preflight remains
+  fail-closed until a distinct demo dispatch is provisioned and recorded in
+  `lib/deployment/provider-identities.ts`
 
 Auth:
 
@@ -231,6 +238,9 @@ Env and secrets:
 - Web app envs: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`, `LIVEKIT_URL`, `LIVEKIT_INTERVIEW_AGENT_NAME`, `LIVEKIT_DEMO_AGENT_NAME`
 - Cloud agent secrets: `LIVEKIT_INTERVIEW_AGENT_NAME` for the interview agent and `LIVEKIT_DEMO_AGENT_NAME` for the demo agent, plus model/provider secrets such as `OPENAI_API_KEY`
 - Values live in Vercel envs and local gitignored `.env.local` files. Do not document raw API keys or secrets.
+- Preview/Production deploy checks use `npm run deploy:preflight:preview` and
+  `npm run deploy:preflight:production`. They are read-only; LiveKit smoke
+  sessions remain separately authorized rehearsal work.
 
 Operational notes:
 

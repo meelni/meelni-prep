@@ -2,6 +2,10 @@ export const FEATURE_GATES = {
   meelniReactivationAccess: "meelni_reactivation_access",
 } as const;
 
+export const FEATURE_CONFIGS = {
+  previewRehearsalAuthority: "meelni_preview_rehearsal_authority",
+} as const;
+
 export const FEATURE_FLAG_DEFINITIONS = [
   {
     name: FEATURE_GATES.meelniReactivationAccess,

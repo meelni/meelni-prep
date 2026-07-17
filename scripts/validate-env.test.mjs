@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const previewRef = "previewprojectref123";
-const productionRef = "productionproject123";
+const previewRef = "kxpvidtxznllfosfemdl";
+const productionRef = "rarrrwkjuhfyfatcmrkw";
 
 test("environment validation keeps loopback database workflows provider-independent", () => {
   const result = validateWith({
@@ -70,7 +70,7 @@ function validateWith(overrides) {
           "postgresql://postgres:postgres@127.0.0.1:5432/meelni_test",
         LIVEKIT_API_KEY: "livekit-api-key",
         LIVEKIT_API_SECRET: "livekit-api-secret",
-        NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni.livekit.cloud",
+        NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJvalid",
         NEXT_PUBLIC_SUPABASE_URL: `https://${previewRef}.supabase.co`,
         OPENAI_API_KEY: "sk-valid",

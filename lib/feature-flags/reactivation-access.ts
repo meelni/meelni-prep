@@ -1,6 +1,5 @@
-import type { StatsigUser } from "@statsig/js-client";
-
 import { buildStatsigUser, getStatsigConfig } from "./config";
+import { buildServerGateDeploymentContext } from "./server-deployment-context";
 import { FEATURE_GATES } from "./gates";
 import {
   resolveServerGate,
@@ -15,16 +14,10 @@ interface ReactivationUser {
 }
 
 export async function resolveReactivationAccess(input: {
-  user: ReactivationUser;
+  user: ReactivationUser | null;
   localOverride?: string;
   env?: NodeJS.ProcessEnv;
-  resolveGate?: (input: {
-    apiUrl?: string;
-    clientKey: string;
-    gateName: string;
-    fallbackValue: boolean;
-    user: StatsigUser;
-  }) => Promise<ServerGateResolution>;
+  resolveGate?: typeof resolveServerGate;
 }): Promise<ServerGateResolution> {
   const env = input.env ?? process.env;
   if (
@@ -42,9 +35,12 @@ export async function resolveReactivationAccess(input: {
     clientKey: config.enabled ? config.clientKey : "",
     gateName: FEATURE_GATES.meelniReactivationAccess,
     fallbackValue,
-    user: buildStatsigUser({
-      anonymousId: `authenticated:${input.user.id}`,
-      user: input.user,
-    }),
+    ...buildServerGateDeploymentContext(env, config.environmentTier),
+    user: input.user
+      ? buildStatsigUser({
+          anonymousId: `authenticated:${input.user.id}`,
+          user: input.user,
+        })
+      : { userID: "public-launch-state" },
   });
 }
