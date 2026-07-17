@@ -223,6 +223,21 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("does not offer pending legacy work a recovery that cannot preserve its tier", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        dispatchStatus: "failed",
+        completionTier: null,
+      }) as never
+    );
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      retryable: false,
+      dispatch: { status: "failed", retryable: false },
+    });
+  });
+
   it("offers a retry after feedback generation exhausts its attempts", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({
@@ -237,6 +252,24 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "failed",
       retryable: true,
+    });
+  });
+
+  it("keeps legacy failure without committed completion evidence non-retryable", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "failed",
+        statusReason: "provider timeout",
+        dispatchStatus: "sent",
+        completionTier: null,
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "failed",
+      retryable: false,
     });
   });
 

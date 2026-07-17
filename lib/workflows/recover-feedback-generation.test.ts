@@ -200,6 +200,7 @@ test("missing completion tier is never promoted to full", async () => {
     retryable: false,
     dispatch: null,
   });
+  assert.equal(store.prepareCount, 0);
   assert.equal(dispatches.length, 0);
 });
 

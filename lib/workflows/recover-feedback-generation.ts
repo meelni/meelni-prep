@@ -120,6 +120,17 @@ export async function recoverFeedbackGenerationWorkflow(
     };
   }
 
+  const completionTier = generation.completionTier;
+  if (!completionTier) {
+    return {
+      ok: true,
+      status: "failed",
+      disposition: "dispatch_failed",
+      retryable: false,
+      dispatch: null,
+    };
+  }
+
   if (
     generation.status === "failed" ||
     isFeedbackGenerationLeaseExpired(generation, deps.now())
@@ -154,20 +165,10 @@ export async function recoverFeedbackGenerationWorkflow(
     };
   }
 
-  if (!generation.completionTier) {
-    return {
-      ok: true,
-      status: "failed",
-      disposition: "dispatch_failed",
-      retryable: false,
-      dispatch: null,
-    };
-  }
-
   const dispatched = await deps.dispatch({
     sessionId: input.sessionId,
     userId: input.userId,
-    tier: generation.completionTier,
+    tier: completionTier,
   });
   if (dispatched.ok) {
     return {

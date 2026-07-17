@@ -120,6 +120,46 @@ test("a retired event cannot overwrite or emit insights after a retry completes"
   assert.deepEqual(insights, [`insights:update:${SESSION_ID}:${EVENT_2}`]);
 });
 
+test("a superseded durable retry is fenced before repeating provider work", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      throw new Error("provider_timeout");
+    },
+  });
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = await work();
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /provider_timeout/
+  );
+  store.replace(
+    record({
+      eventId: EVENT_2,
+      status: "processing",
+      processingStartedAt: NOW,
+    })
+  );
+
+  const replay = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.equal(replay.disposition, "fenced");
+  assert.equal(evaluations, 1);
+  assert.equal(store.current.eventId, EVENT_2);
+  assert.equal(store.current.status, "processing");
+});
+
 test("stale failure callbacks and terminal replays are immutable", async () => {
   const completed = record({ status: "completed", eventId: EVENT_2 });
   const store = new MemoryGenerationStore(completed);

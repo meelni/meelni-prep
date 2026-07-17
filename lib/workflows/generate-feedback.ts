@@ -173,6 +173,15 @@ export async function generateFeedbackWorkflow(
   await assertAccountIsActive(input.userId, deps);
 
   const evaluated = await deps.steps.run("evaluate-feedback", async () => {
+    const current = await deps.store.get(input.sessionId);
+    if (
+      !current ||
+      current.status !== "processing" ||
+      current.eventId !== input.eventId
+    ) {
+      return { disposition: "fenced" as const };
+    }
+
     const startedAt = deps.now();
     const evaluation = await deps.evaluate({
       roundType: authorization.session.roundType || "product_sense",
@@ -183,6 +192,7 @@ export async function generateFeedbackWorkflow(
       throw new Error("feedback_generation_evaluation_state_mismatch");
     }
     return {
+      disposition: "evaluated" as const,
       evaluation,
       processingDurationMs: Math.max(
         0,
@@ -190,6 +200,13 @@ export async function generateFeedbackWorkflow(
       ),
     };
   });
+  if (evaluated.disposition === "fenced") {
+    const current = await deps.steps.run(
+      "read-fenced-feedback-evaluation",
+      () => deps.store.get(input.sessionId)
+    );
+    return unclaimedResult(input, current);
+  }
 
   const applied = await deps.steps.run("complete-feedback-generation", () =>
     assertAccountIsActive(input.userId, deps).then(() =>

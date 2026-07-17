@@ -103,6 +103,11 @@ test("both feedback clients bind top-level retry truth to the shared gate", asyn
     assert.match(source, /data\.retryable === true/);
     assert.match(source, /recoveryCoordinator\.current\.attempt/);
     assert.match(source, /createFeedbackPollBudget/);
+    assert.match(
+      source,
+      /recoveryCoordinator\.current = createFeedbackRecoveryCoordinator\(\)/
+    );
+    assert.match(source, /pollBudget\.current = createFeedbackPollBudget\(/);
     assert.doesNotMatch(source, /dispatch\??\.retryable/);
   }
 });
