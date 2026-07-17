@@ -1,15 +1,15 @@
 import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
 import { isMinimallySubstantiveEvidenceQuote } from "./feedback-language-policy";
 import {
-  normalizeEvidenceQuoteToSource,
   type FeedbackTranscriptTurn,
+  normalizeEvidenceQuoteToSource,
 } from "./feedback-transcript";
 
-export type { FeedbackTranscriptTurn } from "./feedback-transcript";
 export {
   hasRecognizedCandidateEvidenceSignal,
   hasSubstantiveCandidateResponseSignal,
 } from "./feedback-language-policy";
+export type { FeedbackTranscriptTurn } from "./feedback-transcript";
 
 export const FEEDBACK_SCHEMA_VERSION = "feedback.v2" as const;
 export const FEEDBACK_PROMPT_VERSION = "feedback.prompt.v2" as const;
@@ -59,10 +59,8 @@ export const FEEDBACK_V2_REJECTION_CODES = [
   "finding_absolute_claim_unsupported",
   "finding_negative_claim_contradicted",
   "finding_material_claim_unsupported",
-  "finding_directional_claim_unsupported",
   "finding_observable_claim_missing",
   "finding_observable_evidence_insufficient",
-  "finding_observable_source_insufficient",
   "finding_high_confidence_insufficient_evidence",
   "drills_invalid",
   "practice_recommendation_normalization_failed",
@@ -71,7 +69,6 @@ export const FEEDBACK_V2_REJECTION_CODES = [
   "summary_absolute_claim_unsupported",
   "summary_quantitative_claim_unsupported",
   "summary_material_claim_unsupported",
-  "summary_directional_claim_unsupported",
   "summary_observable_support_insufficient",
   "parser_internal_failure",
 ] as const;
@@ -1071,22 +1068,6 @@ function requireObservableFindingSupport({
       `${path}.observation contains a material claim absent from its exact evidence quotes`
     );
   }
-  const directionalClaims = getDirectionalClaimAnchors(observation);
-  const groundedDirectionalClaims = getGroundedDirectionalClaimAnchors(
-    evidence,
-    transcriptById
-  );
-  if (
-    ![...directionalClaims].every((anchor) =>
-      groundedDirectionalClaims.has(anchor)
-    )
-  ) {
-    throw new FeedbackV2ParseError(
-      "finding_directional_claim_unsupported",
-      `${path}.observation contains a directional claim absent from an individual exact evidence quote and its cited candidate turn`
-    );
-  }
-
   if (
     observationSignals.size === 0 &&
     !hasCompactObservationAnchor &&
@@ -1113,17 +1094,6 @@ function requireObservableFindingSupport({
       `${path}.observation requires at least two independent observable supports in its exact evidence quotes and cited candidate turns`
     );
   }
-  if (
-    sourceSupportCount === 0 &&
-    !hasCompactObservationAnchor &&
-    !isExactCitation
-  ) {
-    throw new FeedbackV2ParseError(
-      "finding_observable_source_insufficient",
-      `${path}.observation has no observable support in its cited candidate turns`
-    );
-  }
-
   if (confidence > 0.9) {
     const evidenceUnits = countEvidenceLexicalUnits(evidenceText);
     const evidenceLetters = (evidenceText.match(/\p{L}/gu) ?? []).length;
@@ -1526,31 +1496,6 @@ function isCoordinatedDirectionalTargetGap(gap: string): boolean {
     modifiers.every((modifier) =>
       ["a", "an", "calculated", "segmented", "the"].includes(modifier)
     )
-  );
-}
-
-function getGroundedDirectionalClaimAnchors(
-  evidence: readonly FeedbackEvidence[],
-  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>
-): Set<string> {
-  const grounded = new Set<string>();
-  for (const entry of evidence) {
-    const quoteAnchors = getDirectionalClaimAnchors(entry.quote);
-    const sourceAnchors = getDirectionalClaimAnchors(
-      transcriptById.get(entry.turnRef)?.text ?? ""
-    );
-    for (const anchor of quoteAnchors) {
-      if (sourceAnchors.has(anchor)) grounded.add(anchor);
-    }
-  }
-  return grounded;
-}
-
-function getIndividualDirectionalClaimAnchors(
-  evidence: readonly FeedbackEvidence[]
-): Set<string> {
-  return new Set(
-    evidence.flatMap((entry) => [...getDirectionalClaimAnchors(entry.quote)])
   );
 }
 
@@ -2130,21 +2075,6 @@ function requireEvidenceLimitedSummary(
       "summary contains a material claim absent from grounded findings"
     );
   }
-  const directionalClaims = getDirectionalClaimAnchors(normalized);
-  const groundedDirectionalClaims = getIndividualDirectionalClaimAnchors(
-    findings.flatMap((finding) => finding.evidence)
-  );
-  if (
-    ![...directionalClaims].every((anchor) =>
-      groundedDirectionalClaims.has(anchor)
-    )
-  ) {
-    throw new FeedbackV2ParseError(
-      "summary_directional_claim_unsupported",
-      "summary contains a directional claim absent from an individual exact evidence quote"
-    );
-  }
-
   const groundedFindingSignals =
     getObservableSupportAnchors(groundedFindingText);
   const coachingSignals = new Set([

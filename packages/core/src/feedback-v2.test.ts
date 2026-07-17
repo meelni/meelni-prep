@@ -7,12 +7,13 @@ import {
   FEEDBACK_SCHEMA_VERSION,
   FEEDBACK_V2_REJECTION_CODES,
   FEEDBACK_V2_REJECTION_TAXONOMY_VERSION,
-  FeedbackV2ParseError,
-  isFeedbackV2Item,
-  projectFeedbackItems,
-  parseFeedbackV2,
   type FeedbackTranscriptTurn,
+  FeedbackV2ParseError,
   type FeedbackV2RejectionCode,
+  isFeedbackV2Item,
+  type ParseFeedbackV2Options,
+  parseFeedbackV2,
+  projectFeedbackItems,
 } from "./feedback-v2";
 
 const transcript = [
@@ -236,7 +237,7 @@ test("accepts an explicitly matching partial evaluation state", () => {
   assert.equal(result.evaluationState, "partial");
 });
 
-test("classifies synthetic feedback mutations with the closed content-free rejection taxonomy", () => {
+test("exhaustively classifies every parser-owned rejection code", () => {
   assert.equal(
     FEEDBACK_V2_REJECTION_TAXONOMY_VERSION,
     "feedback-v2-rejection.v1"
@@ -246,87 +247,365 @@ test("classifies synthetic feedback mutations with the closed content-free rejec
     FEEDBACK_V2_REJECTION_CODES.length
   );
 
-  const assertRejection = (
-    expected: FeedbackV2RejectionCode,
-    mutate: (response: ReturnType<typeof validResponse>) => void,
-    mutatedTranscript: FeedbackTranscriptTurn[] = transcript
-  ) => {
-    const response = structuredClone(validResponse());
-    mutate(response);
-    assert.throws(
-      () =>
-        parseFeedbackV2(response, {
-          transcript: mutatedTranscript,
-          evaluationState: "full",
-          modelVersion: "gpt-test-1",
-        }),
-      (error: unknown) =>
-        error instanceof FeedbackV2ParseError && error.code === expected,
-      expected
-    );
+  const adapterOwnedCodes = [
+    "practice_recommendation_normalization_failed",
+    "parser_internal_failure",
+  ] as const satisfies readonly FeedbackV2RejectionCode[];
+  type AdapterOwnedCode = (typeof adapterOwnedCodes)[number];
+  type ParserOwnedCode = Exclude<FeedbackV2RejectionCode, AdapterOwnedCode>;
+  type Fixture = {
+    value: unknown;
+    options: ParseFeedbackV2Options;
   };
-
-  assertRejection("schema_version_mismatch", (response) => {
-    response.schemaVersion =
-      "feedback.future" as typeof FEEDBACK_SCHEMA_VERSION;
-  });
-  assertRejection("prompt_version_mismatch", (response) => {
-    response.promptVersion = "prompt.future" as typeof FEEDBACK_PROMPT_VERSION;
-  });
-  assertRejection("rubric_version_mismatch", (response) => {
-    response.rubricVersion = "rubric.future" as typeof FEEDBACK_RUBRIC_VERSION;
-  });
-  assertRejection("evaluation_state_mismatch", (response) => {
-    response.evaluationState = "partial";
-  });
-  assertRejection("score_invalid", (response) => {
-    response.scores.structure = 10.5;
-  });
-  assertRejection("exceptional_score_insufficient_evidence", (response) => {
-    response.scores.structure = 9;
-  });
-  assertRejection(
-    "evidence_turn_ref_wrong_speaker",
-    (response) => {
-      response.strengths[0].transcriptRefs = ["writer-a:3"];
-      response.strengths[0].evidence = [
-        { turnRef: "writer-a:3", quote: "define a decision threshold" },
-      ];
+  const fixture = (
+    mutate?: (response: ReturnType<typeof validResponse>) => void,
+    options: Partial<ParseFeedbackV2Options> = {}
+  ): Fixture => {
+    const response = structuredClone(validResponse());
+    mutate?.(response);
+    return {
+      value: response,
+      options: {
+        transcript,
+        evaluationState: "full",
+        modelVersion: "gpt-test-1",
+        ...options,
+      },
+    };
+  };
+  const rawFixture = (
+    value: unknown,
+    options: Partial<ParseFeedbackV2Options> = {}
+  ): Fixture => ({
+    value,
+    options: {
+      transcript,
+      evaluationState: "full",
+      modelVersion: "gpt-test-1",
+      ...options,
     },
-    [
-      ...transcript,
-      {
-        eventId: "writer-a:3",
-        speaker: "interviewer" as const,
-        text: "Please define a decision threshold before continuing.",
-      },
-    ]
+  });
+
+  const parserFixtures = {
+    response_not_object: () => rawFixture(null),
+    response_unknown_field: () =>
+      fixture((response) =>
+        Object.assign(response, { providerPrivateText: "synthetic-secret" })
+      ),
+    schema_version_mismatch: () =>
+      fixture((response) => {
+        response.schemaVersion =
+          "feedback.future" as typeof FEEDBACK_SCHEMA_VERSION;
+      }),
+    prompt_version_mismatch: () =>
+      fixture((response) => {
+        response.promptVersion =
+          "prompt.future" as typeof FEEDBACK_PROMPT_VERSION;
+      }),
+    rubric_version_mismatch: () =>
+      fixture((response) => {
+        response.rubricVersion =
+          "rubric.future" as typeof FEEDBACK_RUBRIC_VERSION;
+      }),
+    evaluation_state_mismatch: () =>
+      fixture((response) => {
+        response.evaluationState = "partial";
+      }),
+    model_version_invalid: () => fixture(undefined, { modelVersion: " " }),
+    canonical_transcript_empty: () => fixture(undefined, { transcript: [] }),
+    canonical_transcript_turn_invalid: () =>
+      fixture(undefined, {
+        transcript: [
+          {
+            ...transcript[0],
+            speaker: "provider" as FeedbackTranscriptTurn["speaker"],
+          },
+        ],
+      }),
+    canonical_transcript_duplicate_event_id: () =>
+      fixture(undefined, { transcript: [transcript[0], transcript[0]] }),
+    scores_not_object: () =>
+      fixture((response) => {
+        (response as { scores: unknown }).scores = null;
+      }),
+    scores_unknown_field: () =>
+      fixture((response) => {
+        Object.assign(response.scores, { privateScore: 10 });
+      }),
+    score_invalid: () =>
+      fixture((response) => {
+        response.scores.structure = 10.5;
+      }),
+    exceptional_score_insufficient_evidence: () =>
+      fixture((response) => {
+        response.scores.structure = 9;
+      }),
+    findings_count_invalid: () =>
+      fixture((response) => {
+        response.strengths = [];
+      }),
+    finding_not_object: () =>
+      fixture((response) => {
+        (response as { strengths: unknown[] }).strengths = [null];
+      }),
+    finding_unknown_field: () =>
+      fixture((response) => {
+        Object.assign(response.strengths[0], { providerNote: "private" });
+      }),
+    finding_dimension_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].dimension = "speed" as "insight";
+      }),
+    finding_rubric_version_mismatch: () =>
+      fixture((response) => {
+        response.strengths[0].rubricVersion =
+          "rubric.future" as typeof FEEDBACK_RUBRIC_VERSION;
+      }),
+    finding_text_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].observation = " ";
+      }),
+    transcript_refs_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].transcriptRefs = [];
+      }),
+    transcript_refs_duplicate: () =>
+      fixture((response) => {
+        response.strengths[0].transcriptRefs = ["writer-a:1", "writer-a:1"];
+      }),
+    evidence_count_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].evidence = [];
+      }),
+    evidence_not_object: () =>
+      fixture((response) => {
+        (response.strengths[0] as { evidence: unknown[] }).evidence = [null];
+      }),
+    evidence_unknown_field: () =>
+      fixture((response) => {
+        Object.assign(response.strengths[0].evidence[0], {
+          providerNote: "private",
+        });
+      }),
+    evidence_turn_ref_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].evidence[0].turnRef = " ";
+      }),
+    evidence_turn_ref_duplicate: () =>
+      fixture((response) => {
+        response.strengths[0].evidence = [
+          response.strengths[0].evidence[0],
+          response.strengths[0].evidence[0],
+        ];
+      }),
+    evidence_turn_ref_not_found: () =>
+      fixture((response) => {
+        response.strengths[0].transcriptRefs = ["writer-a:missing"];
+        response.strengths[0].evidence[0].turnRef = "writer-a:missing";
+      }),
+    evidence_turn_ref_wrong_speaker: () =>
+      fixture(
+        (response) => {
+          response.strengths[0].transcriptRefs = ["writer-a:interviewer"];
+          response.strengths[0].evidence[0] = {
+            turnRef: "writer-a:interviewer",
+            quote: "define a decision threshold",
+          };
+        },
+        {
+          transcript: [
+            ...transcript,
+            {
+              eventId: "writer-a:interviewer",
+              speaker: "interviewer",
+              text: "Please define a decision threshold before continuing.",
+            },
+          ],
+        }
+      ),
+    evidence_quote_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].evidence[0].quote = " ";
+      }),
+    evidence_quote_not_grounded: () =>
+      fixture((response) => {
+        response.strengths[0].evidence[0].quote =
+          "provider invented this private evidence";
+      }),
+    evidence_quote_insufficient: () =>
+      fixture((response) => {
+        response.strengths[0].evidence[0].quote = "I";
+      }),
+    evidence_reference_set_mismatch: () =>
+      fixture((response) => {
+        response.strengths[0].transcriptRefs = ["writer-a:2"];
+      }),
+    evidence_reused_across_findings: () =>
+      fixture((response) => {
+        response.improvements[0].transcriptRefs = ["writer-a:1"];
+        response.improvements[0].evidence = [
+          {
+            turnRef: "writer-a:1",
+            quote: "working parents and measure weekly completed plans",
+          },
+        ];
+      }),
+    evidence_overlaps_across_findings: () =>
+      fixture(
+        (response) => {
+          response.strengths[0].evidence[0].quote = "working parents";
+          response.improvements[0].transcriptRefs = ["writer-a:1"];
+          response.improvements[0].evidence = [
+            { turnRef: "writer-a:1", quote: "working parents." },
+          ];
+        },
+        {
+          transcript: [
+            {
+              eventId: "writer-a:1",
+              speaker: "user",
+              text: "I would start with working parents.",
+            },
+          ],
+        }
+      ),
+    confidence_invalid: () =>
+      fixture((response) => {
+        response.strengths[0].confidence = Number.NaN;
+      }),
+    finding_exact_citation_unsupported: () =>
+      fixture(
+        (response) => {
+          response.strengths[0].observation =
+            "The answer states working parents test a concierge flow first.";
+          response.strengths[0].transcriptRefs = ["writer-a:1", "writer-a:3"];
+          response.strengths[0].evidence = [
+            { turnRef: "writer-a:1", quote: "working parents" },
+            { turnRef: "writer-a:3", quote: "test a concierge flow first" },
+          ];
+        },
+        {
+          transcript: [
+            ...transcript,
+            {
+              eventId: "writer-a:3",
+              speaker: "user",
+              text: "I would test a concierge flow first.",
+            },
+          ],
+        }
+      ),
+    finding_quantitative_claim_unsupported: () =>
+      fixture((response) => {
+        response.strengths[0].observation =
+          "The candidate interviewed twenty customers.";
+      }),
+    finding_absolute_claim_unsupported: () =>
+      fixture((response) => {
+        response.strengths[0].observation =
+          "The candidate considered every user segment.";
+      }),
+    finding_negative_claim_contradicted: () =>
+      fixture(
+        (response) => {
+          response.strengths[0].observation =
+            "The candidate did not define a retention metric.";
+          response.strengths[0].evidence[0].quote =
+            "defined a retention metric";
+        },
+        {
+          transcript: [
+            {
+              ...transcript[0],
+              text: "I defined a retention metric before launch.",
+            },
+            transcript[1],
+          ],
+        }
+      ),
+    finding_material_claim_unsupported: () =>
+      fixture((response) => {
+        response.strengths[0].observation =
+          "The answer established legal compliance and privacy safeguards.";
+      }),
+    finding_observable_claim_missing: () =>
+      fixture((response) => {
+        response.strengths[0].observation = "The answer is clear.";
+      }),
+    finding_observable_evidence_insufficient: () =>
+      fixture((response) => {
+        response.strengths[0].observation =
+          "The answer compares options and defines a threshold.";
+        response.strengths[0].evidence[0].quote = "working parents";
+      }),
+    finding_high_confidence_insufficient_evidence: () =>
+      fixture(
+        (response) => {
+          response.strengths[0].observation =
+            "The answer explicitly identifies security risk.";
+          response.strengths[0].evidence[0].quote = "security risk";
+          response.strengths[0].confidence = 1;
+        },
+        {
+          transcript: [
+            {
+              ...transcript[0],
+              text: "I prioritize enterprise users because security risk matters.",
+            },
+            transcript[1],
+          ],
+        }
+      ),
+    drills_invalid: () =>
+      fixture((response) => {
+        response.drills = [];
+      }),
+    summary_invalid: () =>
+      fixture((response) => {
+        response.summary = " ";
+      }),
+    summary_outcome_claim_disallowed: () =>
+      fixture((response) => {
+        response.summary = "This candidate should be hired immediately.";
+      }),
+    summary_absolute_claim_unsupported: () =>
+      fixture((response) => {
+        response.summary = "The response is flawless.";
+      }),
+    summary_quantitative_claim_unsupported: () =>
+      fixture((response) => {
+        response.summary = "The answer interviewed twenty customers.";
+      }),
+    summary_material_claim_unsupported: () =>
+      fixture((response) => {
+        response.summary =
+          "The answer established legal compliance and privacy safeguards.";
+      }),
+    summary_observable_support_insufficient: () =>
+      fixture((response) => {
+        response.summary = "The answer invents blockchain moons.";
+      }),
+  } satisfies Record<ParserOwnedCode, () => Fixture>;
+
+  assert.deepEqual(
+    new Set([...Object.keys(parserFixtures), ...adapterOwnedCodes]).size,
+    FEEDBACK_V2_REJECTION_CODES.length
   );
-  assertRejection("evidence_quote_not_grounded", (response) => {
-    response.strengths[0].evidence[0].quote =
-      "provider invented this private evidence";
-  });
-  assertRejection("evidence_reference_set_mismatch", (response) => {
-    response.strengths[0].transcriptRefs = ["writer-a:2"];
-  });
-  assertRejection("evidence_reused_across_findings", (response) => {
-    response.improvements[0].transcriptRefs = ["writer-a:1"];
-    response.improvements[0].evidence = [
-      {
-        turnRef: "writer-a:1",
-        quote: "working parents and measure weekly completed plans",
-      },
-    ];
-  });
-  assertRejection("findings_count_invalid", (response) => {
-    response.strengths = [];
-  });
-  assertRejection("evidence_count_invalid", (response) => {
-    response.strengths[0].evidence = [];
-  });
-  assertRejection("drills_invalid", (response) => {
-    response.drills = [];
-  });
+
+  for (const [expected, createFixture] of Object.entries(parserFixtures) as [
+    ParserOwnedCode,
+    () => Fixture,
+  ][]) {
+    const { value, options } = createFixture();
+    let caught: unknown;
+    try {
+      parseFeedbackV2(value, options);
+    } catch (error) {
+      caught = error;
+    }
+    assert.ok(caught instanceof FeedbackV2ParseError, expected);
+    assert.equal(caught.code, expected, expected);
+  }
 });
 
 test("rejects incomplete findings instead of inferring missing fields", () => {

@@ -5,17 +5,17 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  FeedbackV2ParseError,
   type FeedbackV2RejectionCode,
   type FeedbackV2Result,
 } from "@meelni/core";
-
-import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 import {
   FeedbackProviderInvocationError,
   getAuthenticatedFeedbackRejectionCode,
   normalizeFeedbackV2Recommendations,
   parseFeedbackProviderEvaluation,
 } from "./scorer";
+import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
 function resultWithRecommendations(drills: string[]): FeedbackV2Result {
   const finding = {
@@ -158,14 +158,17 @@ test("provider parser authenticates only content-free invariant classifications"
     value: unknown,
     expected: FeedbackV2RejectionCode
   ) => {
-    assert.throws(
-      () => parse(value),
-      (error: unknown) =>
-        error instanceof FeedbackProviderInvocationError &&
-        error.code === "evaluation_provider_returned_invalid_feedback" &&
-        error.cause === undefined &&
-        getAuthenticatedFeedbackRejectionCode(error) === expected
-    );
+    let caught: unknown;
+    try {
+      parse(value);
+    } catch (error) {
+      caught = error;
+    }
+    assert.ok(caught instanceof FeedbackProviderInvocationError);
+    assert.equal(caught.code, "evaluation_provider_returned_invalid_feedback");
+    assert.equal(caught.cause, undefined);
+    assert.equal(getAuthenticatedFeedbackRejectionCode(caught), expected);
+    return caught;
   };
 
   expectRejection(
@@ -176,6 +179,53 @@ test("provider parser authenticates only content-free invariant classifications"
     { ...providerValue, drills: ["Do ten reps focused on metrics."] },
     "practice_recommendation_normalization_failed"
   );
+
+  for (const { value, secret } of [
+    {
+      secret: "proxied-provider-content-must-not-leak",
+      value: new Proxy(providerValue, {
+        ownKeys() {
+          throw new Error("proxied-provider-content-must-not-leak");
+        },
+      }),
+    },
+    {
+      secret: "unrecognized-provider-rejection-must-not-leak",
+      value: new Proxy(providerValue, {
+        ownKeys() {
+          throw new FeedbackV2ParseError(
+            "unrecognized-provider-rejection-must-not-leak" as FeedbackV2RejectionCode,
+            "unrecognized-provider-rejection-must-not-leak"
+          );
+        },
+      }),
+    },
+    {
+      secret: "proxied-diagnostic-access-must-not-leak",
+      value: new Proxy(providerValue, {
+        ownKeys() {
+          throw new Proxy(
+            new FeedbackV2ParseError(
+              "response_unknown_field",
+              "safe synthetic parser failure"
+            ),
+            {
+              get(target, property, receiver) {
+                if (property === "code") {
+                  throw new Error("proxied-diagnostic-access-must-not-leak");
+                }
+                return Reflect.get(target, property, receiver);
+              },
+            }
+          );
+        },
+      }),
+    },
+  ]) {
+    const error = expectRejection(value, "parser_internal_failure");
+    assert.equal(error.message.includes(secret), false);
+    assert.equal(JSON.stringify(error).includes(secret), false);
+  }
 
   const forged = new FeedbackProviderInvocationError(
     "evaluation_provider_returned_invalid_feedback",

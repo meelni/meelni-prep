@@ -1,34 +1,36 @@
-import OpenAI from "openai";
 import {
-  FeedbackV2ParseError,
-  parseFeedbackV2,
-  prepareFeedbackTranscript,
   type FeedbackEvaluationState,
   type FeedbackTranscriptTurn,
+  FeedbackV2ParseError,
   type FeedbackV2RejectionCode,
   type FeedbackV2Result,
+  isFeedbackV2RejectionCode,
+  parseFeedbackV2,
+  prepareFeedbackTranscript,
 } from "@meelni/core";
+import OpenAI from "openai";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { normalizePracticeRecommendations } from "@/lib/product-language";
+import { getFeedbackEvaluationModel } from "./model-config";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import {
   projectEvaluationTranscriptAliases,
   restoreCanonicalTranscriptIds,
 } from "./transcript-aliases";
-import { getFeedbackEvaluationModel } from "./model-config";
-import { normalizePracticeRecommendations } from "@/lib/product-language";
-import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
   "feedback_configuration_missing_openai_key";
 export const FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY =
   "feedback_configuration_invalid_openai_key";
 export const FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
+
 import {
   CALIBRATION_MAX_COMPLETION_TOKENS,
   CALIBRATION_MAX_SDK_RETRIES,
   CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
-  CALIBRATION_SERVICE_TIER,
   CALIBRATION_PRICING_CONTRACT,
   CALIBRATION_REQUEST_TIMEOUT_MS,
+  CALIBRATION_SERVICE_TIER,
 } from "./calibration-budget";
 
 export interface FeedbackProviderUsage {
@@ -100,6 +102,20 @@ function createInvalidFeedbackProviderError(
   );
   feedbackRejectionCodesByError.set(error, feedbackRejectionCode);
   return error;
+}
+
+function classifyFeedbackParserFailure(
+  error: unknown
+): FeedbackV2RejectionCode {
+  try {
+    if (!(error instanceof FeedbackV2ParseError)) {
+      return "parser_internal_failure";
+    }
+    const code: unknown = error.code;
+    return isFeedbackV2RejectionCode(code) ? code : "parser_internal_failure";
+  } catch {
+    return "parser_internal_failure";
+  }
 }
 
 /**
@@ -260,9 +276,7 @@ export function parseFeedbackProviderEvaluation(input: {
       input.usage,
       input.observedModel,
       input.observedServiceTier,
-      error instanceof FeedbackV2ParseError
-        ? error.code
-        : "parser_internal_failure"
+      classifyFeedbackParserFailure(error)
     );
   }
 
