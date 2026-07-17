@@ -65,19 +65,23 @@ if [[ "$target_url" != "wss://$canonical_project_host" ]] || \
         next
       }
       section == "project" && $0 ~ /^[[:space:]]*subdomain[[:space:]]*=/ {
-        sub(/^.*=[[:space:]]*"/, "")
-        sub(/"[[:space:]]*$/, "")
         project_count += 1
-        project_value = $0
+        line = $0
+        if (line !~ /^[[:space:]]*subdomain[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/) invalid = 1
+        sub(/^[[:space:]]*subdomain[[:space:]]*=[[:space:]]*"/, "", line)
+        sub(/"[[:space:]]*$/, "", line)
+        project_value = line
       }
       section == "agent" && $0 ~ /^[[:space:]]*id[[:space:]]*=/ {
-        sub(/^.*=[[:space:]]*"/, "")
-        sub(/"[[:space:]]*$/, "")
         agent_count += 1
-        agent_value = $0
+        line = $0
+        if (line !~ /^[[:space:]]*id[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*$/) invalid = 1
+        sub(/^[[:space:]]*id[[:space:]]*=[[:space:]]*"/, "", line)
+        sub(/"[[:space:]]*$/, "", line)
+        agent_value = line
       }
       END {
-        exit !(project_count == 1 && agent_count == 1 &&
+        exit !(invalid != 1 && project_count == 1 && agent_count == 1 &&
           project_value == expected_subdomain && agent_value == expected_agent_id)
       }
     ' "$config_snapshot"; then

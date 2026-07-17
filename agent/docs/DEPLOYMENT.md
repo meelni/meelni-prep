@@ -118,9 +118,9 @@ lk agent status
 
 ## Rollback
 
-```bash
-lk agent rollback
-```
+No approved target-bound repository rollback adapter exists yet. Preserve the
+candidate and target identity and require a separately reviewed,
+owner-authorized rollback action.
 
 ## Environment Variables
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   consumeProductionActionAuthorization,
   sha256,
 } from "../lib/operations/production-action-authorization.mjs";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -22,6 +25,7 @@ async function main() {
   if (!targetFingerprint) throw new Error("target_fingerprint_required");
   const result = await consumeProductionActionAuthorization({
     authorizationPath: process.env.MEELNI_PRODUCTION_ACTION_AUTHORIZATION,
+    repoRoot,
     expected: {
       action: args.action,
       provider: args.provider,

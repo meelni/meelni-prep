@@ -1184,25 +1184,18 @@ cat Dockerfile.main | grep COPY
 **Issue: Update secrets**
 
 ```bash
-# Update environment variables
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key \
-  --secrets DEEPGRAM_API_KEY=new-key
+# Production secret changes require a reviewed, target-bound repository adapter.
 ```
 
 #### Rollback
 
-```bash
-# Rollback to previous version
-lk agent rollback
-```
+No approved target-bound repository rollback adapter exists yet. Do not use a
+raw provider mutation.
 
 #### Delete Agent
 
-```bash
-# Remove agent from LiveKit Cloud
-lk agent delete
-```
+No approved target-bound repository deletion adapter exists yet. Deletion must
+be separately reviewed and owner-authorized.
 
 #### Critical Configuration Requirements
 

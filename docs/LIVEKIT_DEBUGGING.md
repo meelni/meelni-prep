@@ -424,10 +424,8 @@ DEEPGRAM_API_KEY=your_deepgram_key
 # Check what secrets are configured
 lk agent status
 
-# Update secrets if needed
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key \
-  --secrets DEEPGRAM_API_KEY=new-key
+# Production secret changes require a separately reviewed, target-bound adapter.
+# Do not mutate agent secrets with the raw provider CLI.
 ```
 
 ---
@@ -567,15 +565,8 @@ lk agent status
 # Deploy the canonical Preview interview target
 ../agent/interview/deploy.sh preview
 
-# Rollback to previous version
-lk agent rollback
-
-# Update secrets
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key
-
-# Delete agent
-lk agent delete
+# Rollback, secret rotation, and deletion are Production mutations. No approved
+# repository adapters exist for them yet; do not use raw provider commands.
 ```
 
 ### Switching Between Agents

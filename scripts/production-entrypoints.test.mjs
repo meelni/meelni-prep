@@ -30,6 +30,22 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     productionConfigPath,
     '[project]\nsubdomain = "meelni-ek4vaisp"\n[agent]\nid = "CA_yawKG67rCMG4"\n'
   );
+  const commentConfusedInterviewConfigPath = join(
+    directory,
+    "comment-confused-interview.toml"
+  );
+  await writeFile(
+    commentConfusedInterviewConfigPath,
+    '[project]\nsubdomain = "meelni-ek4vaisp" # = "meelni-preview-dk7443ua"\n[agent]\nid = "wrong" # = "CA_ZbGxFjfEYwsD"\n'
+  );
+  const commentConfusedDemoConfigPath = join(
+    directory,
+    "comment-confused-demo.toml"
+  );
+  await writeFile(
+    commentConfusedDemoConfigPath,
+    '[project]\nsubdomain = "wrong" # = "meelni-ek4vaisp"\n[agent]\nid = "wrong" # = "CA_t3sKQEihMQ7x"\n'
+  );
   const fakeLk = join(fakeBin, "lk");
   await writeFile(fakeLk, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LK_LOG"\n');
   await chmod(fakeLk, 0o755);
@@ -46,7 +62,11 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     const preview = spawnSync(
       join(repoRoot, "agent/interview/deploy.sh"),
       ["preview"],
-      { cwd: repoRoot, env: baseEnv, encoding: "utf8" }
+      {
+        cwd: join(repoRoot, "agent/interview"),
+        env: baseEnv,
+        encoding: "utf8",
+      }
     );
     assert.equal(preview.status, 0, preview.stderr);
     const callsAfterPreview = (await readFile(logPath, "utf8"))
@@ -56,6 +76,10 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
 
     for (const mutation of [
       { MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: productionConfigPath },
+      {
+        MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:
+          commentConfusedInterviewConfigPath,
+      },
       { MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4" },
       { MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud" },
     ]) {
@@ -80,7 +104,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       join(repoRoot, "agent/demo/deploy.sh"),
       ["preview"],
       {
-        cwd: repoRoot,
+        cwd: join(repoRoot, "agent/demo"),
         encoding: "utf8",
         env: {
           ...baseEnv,
@@ -92,6 +116,30 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.notEqual(confusedDemo.status, 0);
     assert.match(confusedDemo.stderr, /has not been provisioned/);
+    assert.equal(
+      (await readFile(logPath, "utf8")).trim().split("\n").length,
+      1
+    );
+
+    const confusedProductionDemo = spawnSync(
+      join(repoRoot, "agent/demo/deploy.sh"),
+      ["production"],
+      {
+        cwd: join(repoRoot, "agent/demo"),
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG: commentConfusedDemoConfigPath,
+          MEELNI_LIVEKIT_PRODUCTION_DEMO_AGENT_ID: "CA_t3sKQEihMQ7x",
+          MEELNI_PRODUCTION_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
+        },
+      }
+    );
+    assert.notEqual(confusedProductionDemo.status, 0);
+    assert.match(
+      confusedProductionDemo.stderr,
+      /canonical production demo target/
+    );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
       1
@@ -121,7 +169,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       join(repoRoot, "agent/interview/deploy.sh"),
       ["production"],
       {
-        cwd: repoRoot,
+        cwd: join(repoRoot, "agent/interview"),
         encoding: "utf8",
         env: {
           ...baseEnv,
@@ -148,6 +196,16 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
 });
 
 test("repository-owned Production entrypoints stay in the reviewed inventory", async () => {
+  for (const retiredPath of [
+    "scripts/test-stripe-automated.sh",
+    "scripts/test-stripe-simple.sh",
+    "scripts/test-stripe-flow.sh",
+  ]) {
+    await assert.rejects(readFile(join(repoRoot, retiredPath), "utf8"), {
+      code: "ENOENT",
+    });
+  }
+
   const expectations = new Map([
     [
       "scripts/setup-stripe-credit-catalog.mjs",
@@ -179,6 +237,19 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
     const source = await readFile(join(repoRoot, path), "utf8");
     for (const token of required) assert.match(source, new RegExp(token));
   }
+
+  const authorizationConsumer = await readFile(
+    join(repoRoot, "scripts/consume-production-action-authorization.mjs"),
+    "utf8"
+  );
+  assert.match(
+    authorizationConsumer,
+    /const repoRoot = resolve\(dirname\(fileURLToPath\(import\.meta\.url\)\), "\.\."\)/
+  );
+  assert.match(
+    authorizationConsumer,
+    /consumeProductionActionAuthorization\(\{[\s\S]*?repoRoot,/
+  );
 
   for (const path of [
     "scripts/apply-rls-policies.ts",
@@ -242,9 +313,32 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
     const source = await readFile(path, "utf8");
     assert.doesNotMatch(
       source,
-      /\blk\s+agent\s+(?:create|deploy)\b/i,
+      /\blk\s+agent\s+(?:create|deploy|rollback|delete|update-secrets)\b/i,
       `${path} must point operators to the target-bound wrapper`
     );
+    assert.doesNotMatch(
+      source,
+      /(?:^|\n)[ \t]*(?:npx[ \t]+)?drizzle-kit[ \t]+(?:studio|push|migrate)\b/im,
+      `${path} must route database commands through the guarded npm wrapper`
+    );
+    assert.doesNotMatch(
+      source,
+      /(?:update|apply|create|edit)[^\n]*(?:RLS|polic(?:y|ies)|schema)[^\n]*Supabase (?:dashboard|SQL Editor)/i,
+      `${path} must not instruct direct provider schema or policy mutation`
+    );
+  }
+
+  for (const path of [
+    ".claude/agents/developer.md",
+    "app/api/questions/DEPLOYMENT.md",
+  ]) {
+    const source = await readFile(join(repoRoot, path), "utf8");
+    assert.doesNotMatch(
+      source,
+      /Supabase SQL Editor|INSERT INTO interview_question|drizzle-kit push|db:push/i,
+      `${path} must not instruct direct database mutation`
+    );
+    assert.match(source, /npm run db:migrate/);
   }
 
   const connectionSkill = await readFile(
