@@ -170,7 +170,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
     ),
     finding(
       3,
-      "have not set a measurable outcome, guardrail, or rollback condition",
+      "I would call the launch successful if it ships",
       "leadership",
       "Leaves the release without measurable control points.",
       "Set a success metric, relevance guardrail, and rollback condition."
@@ -211,7 +211,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
   "execution:05:pricing-rollout": candidate(
     finding(
       1,
-      "independent gates",
+      "separate catalog correctness, entitlement enforcement, billing recovery, and customer communication into independent gates",
       "structure",
       "Separates the rollout into independently verifiable gates.",
       "Keep gate evidence and ordering explicit in the rollout plan."
@@ -234,7 +234,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
     ),
     finding(
       2,
-      "reversible actions",
+      "gives reviewers context and reversible actions rather than autonomous permanent enforcement",
       "leadership",
       "Chooses reversibility but does not specify escalation ownership for severe cases.",
       "Assign escalation ownership and a deadline for irreversible decisions."
@@ -243,14 +243,14 @@ export const SCORED_ADJUDICATIONS: Readonly<
   "execution:07:warehouse-pilot": candidate(
     finding(
       1,
-      "define a manual fallback before the pilot",
+      "choose one warehouse with stable scanning behavior",
       "structure",
       "Includes a fallback in the pilot design before launch.",
       "Test the fallback and document when it takes over."
     ),
     finding(
       1,
-      "choose one warehouse with stable scanning behavior and define a manual fallback before the pilot",
+      "define a manual fallback before the pilot",
       "leadership",
       "Defines a bounded pilot and fallback but does not name the local accountable owner.",
       "Name the warehouse owner and decision authority for pausing the pilot."
@@ -515,7 +515,7 @@ export const SCORED_ADJUDICATIONS: Readonly<
   "behavioral:08:ethical-tradeoff": candidate(
     finding(
       2,
-      "transparent alternative",
+      "a transparent alternative that tested value reminders",
       "leadership",
       "Proposed a concrete ethical alternative rather than only objecting.",
       "Keep the alternative and the decision principle explicit."

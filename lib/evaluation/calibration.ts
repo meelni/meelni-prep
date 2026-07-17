@@ -780,7 +780,7 @@ export function createDeterministicCalibrationEvaluator(
     }
     const midpoint = (dimension: FeedbackDimension) => {
       const band = fixture.scoreBands![dimension];
-      return Math.round((band.minimum + band.maximum) / 2);
+      return band.minimum;
     };
     const scores: FeedbackV2Scores = {
       structure: midpoint("structure"),
@@ -805,10 +805,9 @@ export function createDeterministicCalibrationEvaluator(
         strengths: [fixtureItem(strength)],
         improvements: [fixtureItem(improvement)],
         drills: [
-          "Practice one answer with an explicit decision and guardrail.",
+          "Focused practice: state an explicit decision and guardrail.",
         ],
-        summary:
-          "Deterministic harness output for a fully synthetic PM transcript.",
+        summary: "Focused practice can build on the cited evidence.",
       },
       {
         transcript: fixture.transcript,
@@ -977,10 +976,10 @@ function fixtureItem(
 ) {
   return {
     dimension: anchor.dimension,
-    observation: anchor.observation,
+    observation: anchor.quote,
     transcriptRefs: [anchor.turnRef],
     evidence: [{ turnRef: anchor.turnRef, quote: anchor.quote }],
-    nextStep: anchor.nextStep,
+    nextStep: "Focused practice: state an explicit decision and guardrail.",
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     confidence: 0.9,
   };
