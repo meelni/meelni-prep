@@ -4,33 +4,35 @@
 
 <!-- migration-journal:start -->
 
-| Index | Journal tag                           |
-| ----: | ------------------------------------- |
-|     0 | `0000_many_nocturne`                  |
-|     1 | `0001_panoramic_otto_octavius`        |
-|     2 | `0002_relaunch_reconciliation`        |
-|     3 | `0003_durable_account_deletion`       |
-|     4 | `0004_stripe_deletion_privacy`        |
-|     5 | `0005_multi_subject_account_deletion` |
-|     6 | `0006_interview_session_lifecycle`    |
-|     7 | `0007_atomic_session_completion`      |
-|     8 | `0008_deadline_room_cleanup_ack`      |
-|     9 | `0009_interview_session_reconnect`    |
-|    10 | `0010_reconnect_cutoff_owner`         |
-|    11 | `0011_transcript_ingest`              |
-|    12 | `0012_transcript_privacy_integrity`   |
-|    13 | `0013_runtime_settlement`             |
-|    14 | `0014_stable_start_usable_credit`     |
-|    15 | `0015_provider_credit_recovery`       |
-|    16 | `0016_billing_truth`                  |
-|    17 | `0017_webhook_convergence`            |
-|    18 | `0018_invoice_status_convergence`     |
+| Index | Journal tag                              |
+| ----: | ---------------------------------------- |
+|     0 | `0000_many_nocturne`                     |
+|     1 | `0001_panoramic_otto_octavius`           |
+|     2 | `0002_relaunch_reconciliation`           |
+|     3 | `0003_durable_account_deletion`          |
+|     4 | `0004_stripe_deletion_privacy`           |
+|     5 | `0005_multi_subject_account_deletion`    |
+|     6 | `0006_interview_session_lifecycle`       |
+|     7 | `0007_atomic_session_completion`         |
+|     8 | `0008_deadline_room_cleanup_ack`         |
+|     9 | `0009_interview_session_reconnect`       |
+|    10 | `0010_reconnect_cutoff_owner`            |
+|    11 | `0011_transcript_ingest`                 |
+|    12 | `0012_transcript_privacy_integrity`      |
+|    13 | `0013_runtime_settlement`                |
+|    14 | `0014_stable_start_usable_credit`        |
+|    15 | `0015_provider_credit_recovery`          |
+|    16 | `0016_billing_truth`                     |
+|    17 | `0017_webhook_convergence`               |
+|    18 | `0018_invoice_status_convergence`        |
 |    19 | `0019_subscription_resource_convergence` |
-|    20 | `0020_durable_livekit_deletion`       |
+|    20 | `0020_durable_livekit_deletion`          |
+|    21 | `0021_feedback_v2`                       |
+|    22 | `0022_server_owned_billing_privileges`   |
 
 <!-- migration-journal:end -->
 
-This twenty-one-entry inventory is generated from the same ordered contract as
+This twenty-three-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -238,3 +240,12 @@ resurrect a superseded subscription generation.
 targets on the durable account-deletion request. Account deletion can therefore
 immediately fence access while provider cleanup remains retryable and
 idempotent across process restarts.
+
+## Feedback v2 evidence contract
+
+`0021_feedback_v2` additively versions generated feedback with the schema,
+prompt, model, rubric, and evaluation-state tuple required by the grounded
+feedback contract. Existing legacy rows remain readable with a fully absent v2
+tuple; new v2 rows must store the complete internally consistent tuple. The
+migration does not rewrite historical feedback or infer evidence that was not
+previously persisted.
