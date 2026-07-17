@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { config } from "dotenv";
@@ -9,6 +10,12 @@ import {
   canonicalEnvironmentForEnvFile,
   getSupabaseEnvironmentIdentityPolicy,
 } from "./supabase-environment-guard.mjs";
+import {
+  canonicalJson,
+  consumeProductionActionAuthorization,
+  PRODUCTION_ACTIONS,
+  sha256,
+} from "../lib/operations/production-action-authorization.mjs";
 
 export function getDatabaseCommandPolicy({
   command,
@@ -74,28 +81,47 @@ export function getDatabaseCommandPolicy({
       productionProjectRef,
       vercelEnvironment,
     });
+    if (
+      command === "studio" &&
+      identityPolicy.allowed &&
+      identityPolicy.reason === "verified_production"
+    ) {
+      return {
+        allowed: false,
+        reason:
+          "Production Studio is forbidden; use an audited maintenance workflow",
+      };
+    }
     return identityPolicy;
   }
 
   return { allowed: true, reason: "local" };
 }
 
-function main() {
-  const command = process.argv[2];
+export async function runDatabaseCommand({
+  argv = process.argv.slice(2),
+  env = process.env,
+  cwd = process.cwd(),
+  authorizeProductionAction = consumeProductionActionAuthorization,
+  productionConfigurationSha256 = databaseMigrationConfigurationSha256,
+  spawn = spawnSync,
+} = {}) {
+  const command = argv[0];
   if (!command || !["migrate", "push", "studio"].includes(command)) {
     throw new Error("Expected migrate, push, or studio database command");
   }
 
-  const explicitEnvFile = process.env.MEELNI_ENV_FILE;
-  const allowRemoteMigration =
-    process.env.MEELNI_ALLOW_REMOTE_MIGRATION === "1";
-  const allowRemoteStudio = process.env.MEELNI_ALLOW_REMOTE_STUDIO === "1";
+  const explicitEnvFile = env.MEELNI_ENV_FILE;
+  const allowRemoteMigration = env.MEELNI_ALLOW_REMOTE_MIGRATION === "1";
+  const allowRemoteStudio = env.MEELNI_ALLOW_REMOTE_STUDIO === "1";
   const envFile = explicitEnvFile || ".env.local";
   // An explicitly selected environment must win over inherited shell state;
   // otherwise a Production command could silently target Preview (or reverse).
   const loaded = config({
-    path: resolve(process.cwd(), envFile),
+    path: resolve(cwd, envFile),
     override: Boolean(explicitEnvFile),
+    processEnv: env,
+    quiet: true,
   });
   if (explicitEnvFile) {
     if (loaded.error) {
@@ -107,57 +133,114 @@ function main() {
     if (!selectedDatabaseUrl) {
       throw new Error(`Selected env file has no DATABASE_URL: ${envFile}`);
     }
-    process.env.DATABASE_URL = selectedDatabaseUrl;
+    env.DATABASE_URL = selectedDatabaseUrl;
   }
 
   const policy = getDatabaseCommandPolicy({
     command,
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl: env.DATABASE_URL,
     envFile: explicitEnvFile,
     allowRemoteMigration,
     allowRemoteStudio,
     environment: explicitEnvFile
       ? loaded.parsed?.MEELNI_ENV_PULL_ENVIRONMENT
-      : process.env.MEELNI_ENV_PULL_ENVIRONMENT,
+      : env.MEELNI_ENV_PULL_ENVIRONMENT,
     expectedEnvironment: explicitEnvFile
-      ? canonicalEnvironmentForEnvFile(explicitEnvFile)
+      ? canonicalEnvironmentForEnvFile(explicitEnvFile, cwd)
       : undefined,
     productionProjectRef: explicitEnvFile
       ? loaded.parsed?.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF
-      : process.env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+      : env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
     vercelEnvironment: explicitEnvFile
       ? loaded.parsed?.VERCEL_ENV
-      : process.env.VERCEL_ENV,
+      : env.VERCEL_ENV,
   });
   if (!policy.allowed) throw new Error(policy.reason);
 
+  if (command === "migrate" && policy.reason === "verified_production") {
+    await authorizeProductionAction({
+      authorizationPath: env.MEELNI_PRODUCTION_ACTION_AUTHORIZATION,
+      repoRoot: cwd,
+      expected: {
+        action: PRODUCTION_ACTIONS.PRODUCTION_DATABASE_MIGRATE,
+        provider: "supabase",
+        configurationSha256: productionConfigurationSha256(cwd),
+        targetFingerprint: databaseTargetSha256(env.DATABASE_URL),
+      },
+    });
+  }
+
   console.info(`Database environment identity: ${policy.reason}`);
   console.info(
-    `Database target fingerprint: ${databaseTargetFingerprint(process.env.DATABASE_URL)}`
+    `Database target fingerprint: ${databaseTargetFingerprint(env.DATABASE_URL)}`
   );
 
-  const result = spawnSync("npx", ["drizzle-kit", command], {
-    cwd: process.cwd(),
-    env: process.env,
+  const result = spawn("npx", ["drizzle-kit", command], {
+    cwd,
+    env,
     stdio: "inherit",
   });
   if (result.error) throw result.error;
-  process.exit(result.status ?? 1);
+  return result.status ?? 1;
 }
 
 export function databaseTargetFingerprint(databaseUrl) {
   const parsed = new URL(databaseUrl);
-  const target = `${parsed.hostname}:${parsed.port || "5432"}${parsed.pathname}`;
+  const target = `${parsed.username}@${parsed.hostname}:${parsed.port || "5432"}${parsed.pathname}`;
   return createHash("sha256").update(target).digest("hex").slice(0, 12);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (error) {
-    console.error(
-      error instanceof Error ? error.message : "Database command failed"
-    );
-    process.exit(1);
+export function databaseTargetSha256(databaseUrl) {
+  const parsed = new URL(databaseUrl);
+  const target = `${parsed.username}@${parsed.hostname}:${parsed.port || "5432"}${parsed.pathname}`;
+  return sha256(`postgresql-target:${target}`);
+}
+
+export function databaseMigrationConfigurationSha256(repoRoot = process.cwd()) {
+  const migrationRoot = resolve(repoRoot, "lib/db/migrations");
+  const files = collectMigrationFiles(migrationRoot).map((path) => ({
+    path: relative(repoRoot, path),
+    sha256: sha256(readFileSync(path)),
+  }));
+  return sha256(
+    canonicalJson({
+      drizzleConfigSha256: sha256(
+        readFileSync(resolve(repoRoot, "drizzle.config.ts"))
+      ),
+      files,
+    })
+  );
+}
+
+function collectMigrationFiles(directory) {
+  const files = [];
+  for (const name of readdirSync(directory).sort()) {
+    const path = resolve(directory, name);
+    const stats = lstatSync(path);
+    if (stats.isSymbolicLink()) {
+      throw new Error("Migration configuration cannot contain symlinks");
+    }
+    if (stats.isDirectory()) {
+      files.push(...collectMigrationFiles(path));
+    } else if (
+      stats.isFile() &&
+      (path.endsWith(".sql") || path.endsWith("/_journal.json"))
+    ) {
+      files.push(path);
+    }
   }
+  return files;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  runDatabaseCommand()
+    .then((status) => {
+      process.exitCode = status;
+    })
+    .catch((error) => {
+      console.error(
+        error instanceof Error ? error.message : "Database command failed"
+      );
+      process.exitCode = 1;
+    });
 }

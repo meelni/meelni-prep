@@ -7,6 +7,10 @@
  *   tsx scripts/test-feedback-polling.ts
  */
 
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import { db } from "../lib/db";
 import { feedback, interviewSession, appUser } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -56,9 +60,17 @@ async function cleanupTestData(userId: string) {
   console.log("\nCleaning up test data...");
 
   // Delete feedback (cascade will handle session_id foreign key)
-  await db.delete(feedback).where(eq(feedback.sessionId,
-    db.select({ id: interviewSession.id }).from(interviewSession).where(eq(interviewSession.userId, userId))
-  ));
+  await db
+    .delete(feedback)
+    .where(
+      eq(
+        feedback.sessionId,
+        db
+          .select({ id: interviewSession.id })
+          .from(interviewSession)
+          .where(eq(interviewSession.userId, userId))
+      )
+    );
 
   // Delete sessions
   await db.delete(interviewSession).where(eq(interviewSession.userId, userId));
@@ -285,7 +297,9 @@ async function testFailedStatus(sessionId: string) {
 }
 
 async function testStatusTransitions(sessionId: string) {
-  console.log("\nTest 6: Status Transitions (pending → processing → completed)");
+  console.log(
+    "\nTest 6: Status Transitions (pending → processing → completed)"
+  );
 
   try {
     // Create new feedback record for transition test

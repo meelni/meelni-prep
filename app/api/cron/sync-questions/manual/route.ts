@@ -10,5 +10,6 @@ export const maxDuration = 300;
  */
 export const POST = createManualQuestionSyncHandler({
   getSecret: () => process.env.QUESTION_SYNC_OPERATOR_SECRET,
+  getEnvironment: () => process.env.VERCEL_ENV,
   run: runQuestionSyncWorkflow,
 });

@@ -129,6 +129,28 @@ test("authorized operators can request only live sync or dryRun", async () => {
   }
 });
 
+test("Production manual live sync is fenced to the owner-authorized CLI", async () => {
+  const calls: QuestionSyncWorkflowInput[] = [];
+  const handler = createManualQuestionSyncHandler({
+    ...routeDependencies(OPERATOR_SECRET, calls),
+    getEnvironment: () => "production",
+  });
+
+  const denied = await handler(request("POST", OPERATOR_SECRET));
+  assert.equal(denied.status, 403);
+  assert.equal(
+    (await denied.json()).error.code,
+    "production_question_sync_cli_required"
+  );
+  assert.deepEqual(calls, []);
+
+  const dryRun = await handler(
+    request("POST", OPERATOR_SECRET, JSON.stringify({ dryRun: true }))
+  );
+  assert.equal(dryRun.status, 200);
+  assert.deepEqual(calls, [{ trigger: "manual", dryRun: true }]);
+});
+
 test("manual sync rejects malformed and unsupported options", async () => {
   for (const body of [
     "{",

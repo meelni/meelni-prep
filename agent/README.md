@@ -141,15 +141,22 @@ Both agents are deployed to LiveKit Cloud.
 
 ```bash
 cd demo
-./deploy.sh
+./deploy.sh preview # or production
 ```
 
 **Deploy Interview Agent:**
 
 ```bash
 cd interview
-./deploy.sh
+./deploy.sh preview # or production
 ```
+
+Each target uses an explicit external config, URL anchor, and agent ID. A
+Production deploy additionally consumes a signed exact-action artifact before
+`lk` can run. Preview does not require owner Production authorization. No
+owner public key is enrolled yet, so Production deploys intentionally fail
+closed; see
+[Production action authorization](../docs/operations/production-action-authorization.md).
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
 

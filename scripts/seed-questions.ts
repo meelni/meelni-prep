@@ -1,3 +1,7 @@
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import { db } from "@/lib/db";
 import { interviewQuestion } from "@/lib/db/schema";
 

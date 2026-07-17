@@ -7,6 +7,7 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 import { existsSync } from "fs";
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
 
 async function main() {
   // Load environment variables FIRST
@@ -33,6 +34,8 @@ async function main() {
     console.error("Please check your .env file contains DATABASE_URL");
     process.exit(1);
   }
+
+  assertNonProductionScriptEnvironment();
 
   // Get sessionId from command line
   const sessionId = process.argv[2];

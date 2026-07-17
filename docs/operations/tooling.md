@@ -181,6 +181,13 @@ Passing technical gates alone does not authorize that change. Rollback changes
 the Statsig gate and this fallback together so a Statsig outage cannot invert
 the intended product state.
 
+The controlled `relaunch-default-on` workflow remains unsupported until its
+dedicated Statsig/Vercel provider adapter exists; the repository exposes no
+executable default-on command. Do not change the Statsig global gate or
+`MEELNI_REACTIVATION_DEFAULT` to true directly. Unlike other Production action
+artifacts, default-on must contain the owner's explicit `GO` bound to the exact
+candidate. Default-off and emergency disable remain available without GO.
+
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
 ## Local Inngest Feedback
