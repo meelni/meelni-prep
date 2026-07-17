@@ -1,11 +1,16 @@
 import OpenAI from "openai";
 import {
   parseFeedbackV2,
+  prepareFeedbackTranscript,
   type FeedbackEvaluationState,
   type FeedbackTranscriptTurn,
   type FeedbackV2Result,
 } from "@meelni/core";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import {
+  projectEvaluationTranscriptAliases,
+  restoreCanonicalTranscriptIds,
+} from "./transcript-aliases";
 import { getFeedbackEvaluationModel } from "./model-config";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
@@ -26,10 +31,17 @@ export async function generateFeedback(
   transcript: FeedbackTranscriptTurn[],
   evaluationState: FeedbackEvaluationState
 ): Promise<FeedbackV2Result> {
-  if (transcript.length === 0) {
-    throw new Error("Cannot generate feedback for empty canonical transcript");
+  const prepared = prepareFeedbackTranscript(transcript);
+  if (!prepared.eligible || prepared.transcript.length === 0) {
+    throw new Error(
+      prepared.reasons[0] ||
+        "Cannot generate feedback without trustworthy user transcript evidence"
+    );
   }
 
+  const aliasProjection = projectEvaluationTranscriptAliases(
+    prepared.transcript
+  );
   const modelVersion = getFeedbackEvaluationModel();
   try {
     const completion = await getOpenAI().chat.completions.create({
@@ -38,7 +50,11 @@ export async function generateFeedback(
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
         {
           role: "user",
-          content: getEvaluationPrompt(roundType, transcript, evaluationState),
+          content: getEvaluationPrompt(
+            roundType,
+            aliasProjection.transcript,
+            evaluationState
+          ),
         },
       ],
       temperature: 0.2,
@@ -58,11 +74,13 @@ export async function generateFeedback(
     }
 
     const result = parseFeedbackV2(unknownResponse, {
-      transcript,
+      transcript: aliasProjection.transcript,
       evaluationState,
       modelVersion,
     });
-    return normalizeFeedbackV2Recommendations(result);
+    return normalizeFeedbackV2Recommendations(
+      restoreCanonicalTranscriptIds(result, aliasProjection.canonicalIdByAlias)
+    );
   } catch (error) {
     const code = getEvaluationFailureCode(error);
     console.error("[Feedback Evaluation] generation_failed", {

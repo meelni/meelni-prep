@@ -3,6 +3,8 @@ export * from "./billing-catalog";
 export * from "./entitlements";
 export * from "./evaluation";
 export * from "./feedback-v2";
+export * from "./feedback-transcript";
+export * from "./feedback-eligibility";
 export * from "./question";
 export * from "./question-taxonomy";
 export * from "./interview-launch";

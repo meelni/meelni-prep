@@ -12,6 +12,11 @@ export type FeedbackGenerationEligibility =
   | { disposition: "committed_ineligible"; tier: StoredCompletionTier }
   | { disposition: "legacy_requires_validation"; tier: null };
 
+export interface FeedbackLateValidationSkip {
+  status: "skipped";
+  statusReason: string;
+}
+
 export function resolveFeedbackGenerationEligibility(
   tier: StoredCompletionTier
 ): FeedbackGenerationEligibility {
@@ -25,4 +30,10 @@ export function resolveFeedbackGenerationEligibility(
     return { disposition: "legacy_requires_validation", tier };
   }
   return { disposition: "committed_ineligible", tier };
+}
+
+export function resolveFeedbackLateValidationSkip(
+  reason: string
+): FeedbackLateValidationSkip {
+  return { status: "skipped", statusReason: reason };
 }
