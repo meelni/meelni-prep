@@ -93,22 +93,22 @@ function FeedbackReviewShell({
   return (
     <div
       className={cn(
-        "bg-dashboard-canvas text-dashboard-foreground flex min-h-screen [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a]",
+        "bg-background text-foreground flex min-h-screen",
         className
       )}
       {...props}
     >
       <main className="min-w-0 flex-1 p-3">
-        <section className="border-dashboard-panel-border bg-dashboard-panel flex min-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[10px] border">
-          <header className="border-dashboard-panel-border flex h-10 shrink-0 items-center justify-between gap-4 border-b bg-transparent px-6 sm:px-8">
-            <p className="text-dashboard-muted truncate text-xs font-bold tracking-[0.28em] uppercase">
+        <section className="border-border bg-card flex min-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[10px] border shadow-sm">
+          <header className="border-border flex min-h-10 shrink-0 items-center justify-between gap-3 border-b bg-transparent px-4 py-2 sm:px-8">
+            <p className="text-muted-foreground truncate text-xs font-bold tracking-[0.24em] uppercase sm:tracking-[0.28em]">
               {label}
             </p>
             {action && <div className="shrink-0">{action}</div>}
           </header>
           <div
             className={cn(
-              "min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6",
+              "min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-6",
               bodyClassName
             )}
           >
@@ -121,12 +121,12 @@ function FeedbackReviewShell({
               {(title || description) && (
                 <div className="space-y-2">
                   {title && (
-                    <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight sm:text-4xl">
+                    <h1 className="font-display text-foreground text-3xl font-light tracking-tight sm:text-4xl">
                       {title}
                     </h1>
                   )}
                   {description && (
-                    <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
+                    <p className="text-muted-foreground max-w-2xl text-sm leading-6">
                       {description}
                     </p>
                   )}
@@ -156,7 +156,7 @@ function FeedbackStatusPage({
   return (
     <FeedbackReviewShell
       className={cn(
-        "from-dashboard-canvas via-dashboard-canvas bg-gradient-to-br",
+        "from-background via-background bg-gradient-to-br",
         statusPageBackgroundClasses[tone],
         className
       )}
@@ -303,7 +303,7 @@ function FeedbackSectionCard({
     >
       <div
         className={cn(
-          "flex items-start justify-between gap-4 p-6 pb-4",
+          "flex items-start justify-between gap-3 p-4 pb-3 sm:gap-4 sm:p-6 sm:pb-4",
           headerClassName
         )}
       >
@@ -327,7 +327,9 @@ function FeedbackSectionCard({
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className={cn("px-6 pb-6", contentClassName)}>{children}</div>
+      <div className={cn("px-4 pb-4 sm:px-6 sm:pb-6", contentClassName)}>
+        {children}
+      </div>
     </AppSurface>
   );
 }
