@@ -47,18 +47,20 @@ const roundCases: Array<{
     roundType: "product_sense",
     weakestDimension: "insight",
     weakText:
-      "I would design for everyone because all consumers probably share the same problem.",
-    weakQuote: "all consumers probably share the same problem",
+      "I did not identify a specific audience or a specific user need before choosing the product direction.",
+    weakQuote:
+      "did not identify a specific audience or a specific user need before choosing the product direction",
     observation:
-      "The answer does not ground its audience choice in a specific user need.",
+      "The answer does not identify a specific audience or a specific user need.",
     nextStep: "Choose one user and name the unmet need before ideating.",
   },
   {
     roundType: "execution",
     weakestDimension: "structure",
     weakText:
-      "I would track activation, retention, revenue, latency, and satisfaction without choosing a primary decision metric.",
-    weakQuote: "without choosing a primary decision metric",
+      "My metric list lacks a primary outcome and a decision hierarchy, so I have not chosen which signal should drive the decision.",
+    weakQuote:
+      "metric list lacks a primary outcome and a decision hierarchy",
     observation:
       "The metric list lacks a primary outcome and decision hierarchy.",
     nextStep:
@@ -68,8 +70,8 @@ const roundCases: Array<{
     roundType: "behavioral",
     weakestDimension: "leadership",
     weakText:
-      "The team made the decision and then the launch moved forward, but I have not explained my own action.",
-    weakQuote: "I have not explained my own action",
+      "The team made the decision and the launch moved forward, but the story does not identify my ownership or influence.",
+    weakQuote: "story does not identify my ownership or influence",
     observation:
       "The story does not identify the candidate's ownership or influence.",
     nextStep: "State the decision you owned and the measurable result.",
@@ -78,8 +80,9 @@ const roundCases: Array<{
     roundType: "strategy",
     weakestDimension: "insight",
     weakText:
-      "I would enter the market because it is large, without comparing competitive advantage or an exit trigger.",
-    weakQuote: "without comparing competitive advantage or an exit trigger",
+      "My recommendation lacks differentiated market evidence and a reversal condition.",
+    weakQuote:
+      "recommendation lacks differentiated market evidence and a reversal condition",
     observation:
       "The recommendation lacks differentiated market evidence and a reversal condition.",
     nextStep:
@@ -139,7 +142,7 @@ export function createDrillRecommendationGoldenFixtures(): DrillRecommendationGo
           },
         ],
         drills: ["Provider text is not used as the deterministic drill ID."],
-        summary: "Fixture feedback limited to exact transcript evidence.",
+        summary: `The answer states a clear recommendation. ${fixture.observation}`,
       },
       expected: {
         drillId: [
