@@ -3,7 +3,7 @@
 ## Intent
 
 - User request: prove PM feedback quality against an adjudicated gold set before relaunch.
-- Product/user outcome: feedback evidence, completion state, score agreement, and repeated-run stability have an honest launch gate.
+- Product/user outcome: feedback evidence, completion state, score agreement, and repeated-run stability have an honest calibration-evidence gate.
 - Why now: SAV-196 made transcript evidence fail closed and SAV-197 made generation retry-safe; neither proves live model quality.
 
 ## Slice

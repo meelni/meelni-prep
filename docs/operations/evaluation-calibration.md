@@ -24,7 +24,8 @@ npm run calibration:self-test -- --output /tmp/meelni-calibration-self-test.json
 ```
 
 These modes make no model or database calls. A green deterministic self-test
-proves only the harness; its live-provider and launch gates remain pending.
+proves only the harness; its live-provider and calibration-evidence gates
+remain pending.
 
 ## Future synthetic-output semantic review
 
@@ -309,12 +310,20 @@ Spend approval does not approve the candidate gold set. The acknowledgement is
 deliberately exact so an ambient boolean cannot accidentally enable paid
 calibration.
 
-The live CLI exits zero only when the combined `launchAcceptance` gate is
-`passed`. A provider-quality pass still exits nonzero when adjudication approval
-is missing, stale, incomplete, or contains `changes_required` decisions.
+The live CLI exits zero only when `calibrationEvidenceAcceptance` is `passed` in
+the current `evaluation-calibration-report.v8` report. A zero exit means only
+that the complete calibration evidence contract passed; it is not the human
+product owner's launch decision. A provider-quality pass still exits nonzero
+when adjudication approval is missing, stale, incomplete, or contains
+`changes_required` decisions.
 Review the report's model and all five version fields before accepting it as
-evidence. Store approved launch evidence in the release record without adding
-secrets or provider responses containing sensitive data.
+evidence. Store approved calibration evidence in the release record without
+adding secrets or provider responses containing sensitive data.
+
+The committed v7 receipts remain byte-for-byte immutable. Their historical
+`gate.launchAcceptance` values have the same technical state interpretation as
+v8 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
+Do not rewrite or regenerate those historical files during a v8 run.
 
 ## Review checklist
 
@@ -331,8 +340,9 @@ secrets or provider responses containing sensitive data.
   reservation, it records exact actual cost and `spendCapBreached: true` before
   stopping. It has `completed_plan` only after all 64 planned calls reconcile
   successfully.
-- The cost report uses `evaluation-calibration-cost-report.v5`, the report uses
-  `evaluation-calibration-report.v7`, and the fixed run, authorization ID, and
+- The cost report uses `evaluation-calibration-cost-report.v5`, the current
+  report uses `evaluation-calibration-report.v8`, and the fixed run,
+  authorization ID, and
   authorization hash match the committed spend-authorization manifest.
 - The activated plan reports exactly 64 calls and at most $3 worst-case, the
   activation commit remains the protected ref head, and each reservation has
@@ -352,8 +362,9 @@ secrets or provider responses containing sensitive data.
 - Maximum repeated-run score range is at most 1.
 - Every output model identity matches the configured expected model and the
   observed identities are reviewed.
-- Report versions match the code intended for launch.
-- `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
+- Report versions match the candidate being evaluated.
+- `calibrationEvidenceAcceptance` is `passed`; a deterministic `passed` state
+  is not enough, and this field never authorizes launch.
 - Adjudication acceptance records completed product-owner/PM signoff; candidate
   status is never treated as ground truth.
 - Candidate and corpus hashes match the separately stored approval artifact,
@@ -361,9 +372,11 @@ secrets or provider responses containing sensitive data.
 - The report contains no prompt text, transcript text, provider body, secret,
   or Production/customer-data payload.
 
-If a live run fails or crashes, keep the launch gate closed. Inspect available
-case/run/dimension failure records. For invalid-feedback failures, use only the
-closed `feedbackRejectionCode` to identify the failed invariant. Do not add raw
+If a live run fails or crashes, keep calibration evidence acceptance failed or
+pending and retain a `not ready` launch-readiness recommendation. Inspect
+available case/run/dimension failure records. For invalid-feedback failures,
+use only the closed `feedbackRejectionCode` to identify the failed invariant.
+Do not add raw
 provider output, parser messages or causes, transcript text, evidence text,
 unknown keys, object paths, or customer data to a report, log, PR, or ticket. A
 `parser_internal_failure` requires a provider-free parser investigation before
