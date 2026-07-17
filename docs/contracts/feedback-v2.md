@@ -452,5 +452,10 @@ recommendations, never a v2 score object. Existing completed legacy feedback
 remains readable without reinterpretation. These deterministic controls do not
 claim exhaustive adversarial coverage or hiring calibration.
 
+Only parsed v2 results may enter the
+[deterministic drill recommendation contract](./drill-recommendations.md).
+Insufficient, skipped, abandoned, failed, legacy, or malformed feedback cannot
+receive a score-derived fallback recommendation.
+
 Persistence, event fencing, retries, and insights handoff follow the
 [feedback generation contract](./feedback-generation.md).
