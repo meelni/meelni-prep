@@ -109,6 +109,29 @@ test("accepts ordinary domain reasoning and concise declarative PM answers", () 
   }
 });
 
+test("accepts coherent calibration answers across ordinary clause shapes", () => {
+  const cases = [
+    "They need a psychologically safe prompt tied to a real upcoming situation rather than more vocabulary cards.",
+    "The product should help them describe symptoms safely without encouraging repairs that require a professional.",
+    "I would measure correctly routed requests and treat unsafe self-repair attempts as a stopping guardrail.",
+    "The first job is confirming the next action in plain language, with escalation back to the care team when uncertain.",
+    "If the evidence contradicted the plan, I would narrow scope and record which assumption changed.",
+    "For Caregiver planning, I would first define the intended user outcome. After that I would brainstorm features for everyone instead of choosing a user segment.",
+    "Existing customers keep their current access until migration evidence and support playbooks are ready.",
+    "I would distinguish institutional buyers from individual teachers because procurement and adoption move on different clocks.",
+    "The strategy should concentrate one category and geography rather than subsidize broad but unusable inventory.",
+    "In the Influence without authority example, I owned one part of a team problem and needed to align two stakeholders with different priorities.",
+    "The team completed the work with a better relationship, but the result is only loosely measured and my reflection could be more specific.",
+    "I modeled one problem framing, reviewed drafts with questions instead of edits, and gave them ownership of the next executive review.",
+    "They led the review successfully and later taught the method to another teammate; I learned to transfer judgment rather than templates.",
+    "Leadership chose the transparent version, which improved retained renewals without more complaints; I learned to make ethical costs explicit in the decision.",
+  ] as const;
+
+  for (const text of cases) {
+    assert.equal(hasSubstantiveCandidateResponseSignal(text), true, text);
+  }
+});
+
 test("accepts complete PM answers with ordinary release, success, and rollout clauses", () => {
   const cases = [
     "The first release solves missed appointment coordination for working parents while preserving manual confirmation for clinics.",

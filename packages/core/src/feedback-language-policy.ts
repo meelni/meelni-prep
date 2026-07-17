@@ -777,10 +777,16 @@ const ENGLISH_CLAUSE_ADVERBS = new Set([
   "first",
   "manually",
   "often",
+  "still",
   "then",
   "usually",
 ]);
 const ENGLISH_BOUNDED_INTRANSITIVE_GERUNDS = new Set(["prioritizing"]);
+const ENGLISH_BOUNDED_INTRANSITIVE_PREDICATES = new Set([
+  "changed",
+  "holds",
+  "matters",
+]);
 const ENGLISH_OBJECT_GROUNDING_CONNECTORS = new Set([
   "across",
   "by",
@@ -909,6 +915,7 @@ const ENGLISH_BASE_AGREEMENT_AUXILIARIES = new Set([
 const ENGLISH_COMMON_IRREGULAR_PAST_PREDICATES = new Set([
   "became",
   "brought",
+  "chose",
   "drove",
   "found",
   "gave",
@@ -989,21 +996,39 @@ const ENGLISH_POSTNOMINAL_ADJECTIVES = new Set([
   "faster",
   "higher",
   "lower",
+  "next",
   "simpler",
   "slower",
   "unfinished",
+  "uncertain",
   "worse",
+]);
+const ENGLISH_ADJECTIVE_SUFFIX_NOUN_EXCEPTIONS = new Set([
+  "category",
+  "goal",
+  "inventory",
+  "segment",
 ]);
 const ENGLISH_POSTNOMINAL_ADJECTIVE_SUFFIX =
   /(?:able|al|ant|ary|ent|ful|ible|ic|ive|less|ly|ory|ous)$/u;
 const ENGLISH_CONTENT_PREDICATE =
-  /^(?:align(?:ed|ing)?|analy[sz](?:e|ed|ing)|ask(?:ed|ing|s)?|assess(?:ed|ing|es)?|build(?:ing|s)?|built|caus(?:e|ed|es|ing)|cho(?:ose|oses|osing|se)|commit(?:s|ted|ting)?|compar(?:e|ed|es|ing)|consider(?:ed|ing|s)?|consum(?:e|ed|es|ing)|creat(?:e|ed|es|ing)|defin(?:e|ed|es|ing)|delay(?:ed|ing|s)?|design(?:ed|ing|s)?|destroy(?:ed|ing|s)?|discover(?:ed|ing|s)?|disrupt(?:ed|ing|s)?|evaluat(?:e|ed|es|ing)|fac(?:e|ed|es|ing)|find|finds|finding|focus(?:ed|es|ing)?|get|gets|got|happen(?:ed|ing|s)?|identif(?:y|ied|ies|ying)|investigat(?:e|ed|es|ing)|interview(?:ed|ing|s)?|learn(?:ed|ing|s|t)?|los(?:e|es|ing)|lost|measur(?:e|ed|es|ing)|notif(?:y|ied|ies|ying)|observ(?:e|ed|es|ing)|prevent(?:ed|ing|s)?|prioriti[sz](?:e|ed|es|ing)|rank(?:ed|ing|s)?|receiv(?:e|ed|es|ing)|reconcil(?:e|ed|es|ing)|research(?:ed|ing|es)?|sequenc(?:e|ed|es|ing)|ship(?:ped|ping|s)?|speak(?:ing|s)?|spoke|start(?:ed|ing|s)?|take|takes|taking|talk(?:ed|ing|s)?|test(?:ed|ing|s)?|uncover(?:ed|ing|s)?|understand(?:ing|s)?|understood|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)|wait(?:ed|ing|s)?|wast(?:e|ed|es|ing))$/u;
+  /^(?:align(?:ed|ing)?|analy[sz](?:e|ed|ing)|ask(?:ed|ing|s)?|assess(?:ed|ing|es)?|build(?:ing|s)?|built|caus(?:e|ed|es|ing)|cho(?:ose|oses|osing|se)|commit(?:s|ted|ting)?|compar(?:e|ed|es|ing)|consider(?:ed|ing|s)?|consum(?:e|ed|es|ing)|creat(?:e|ed|es|ing)|defin(?:e|ed|es|ing)|delay(?:ed|ing|s)?|design(?:ed|ing|s)?|destroy(?:ed|ing|s)?|discover(?:ed|ing|s)?|disrupt(?:ed|ing|s)?|evaluat(?:e|ed|es|ing)|fac(?:e|ed|es|ing)|find|finds|finding|focus(?:ed|es|ing)?|get|gets|got|happen(?:ed|ing|s)?|identif(?:y|ied|ies|ying)|investigat(?:e|ed|es|ing)|interview(?:ed|ing|s)?|learn(?:ed|ing|s|t)?|los(?:e|es|ing)|lost|measur(?:e|ed|es|ing)|mov(?:e|ed|es|ing)|notif(?:y|ied|ies|ying)|observ(?:e|ed|es|ing)|prevent(?:ed|ing|s)?|prioriti[sz](?:e|ed|es|ing)|prov(?:e|ed|es|ing)|rank(?:ed|ing|s)?|receiv(?:e|ed|es|ing)|reconcil(?:e|ed|es|ing)|research(?:ed|ing|es)?|sequenc(?:e|ed|es|ing)|ship(?:ped|ping|s)?|speak(?:ing|s)?|spoke|start(?:ed|ing|s)?|take|takes|taking|talk(?:ed|ing|s)?|test(?:ed|ing|s)?|uncover(?:ed|ing|s)?|understand(?:ing|s)?|understood|us(?:e|ed|es|ing)|validat(?:e|ed|es|ing)|wait(?:ed|ing|s)?|wast(?:e|ed|es|ing))$/u;
 const ENGLISH_DECLARATIVE_PREDICATE =
-  /^(?:abandon(?:ed|ing|s)?|approv(?:e|ed|es|ing)|belong(?:ed|ing|s)?|block(?:ed|ing|s)?|bought|buy|buying|buys|confus(?:e|ed|es|ing)|consist(?:ed|ing|s)?|contain(?:ed|ing|s)?|depend(?:ed|ing|s)?|discourag(?:e|ed|es|ing)|drive|drives|driven|driving|enable(?:d|s)?|extend(?:ed|ing|s)?|feel|feels|felt|frustrat(?:e|ed|es|ing)|generate(?:d|s)?|handl(?:e|ed|es|ing)|have|has|had|help(?:ed|ing|s)?|improv(?:e|ed|es|ing)|includ(?:e|ed|es|ing)|increas(?:e|ed|es|ing)|juggl(?:e|ed|es|ing)|lead|leads|led|leading|leave|leaves|left|leaving|lie|lies|lay|lain|lying|make|makes|made|making|need(?:ed|ing|s)?|prefer(?:red|ring|s)?|preserv(?:e|ed|es|ing)|reduc(?:e|ed|es|ing)|remain(?:ed|ing|s)?|requir(?:e|ed|es|ing)|result(?:ed|ing|s)?|review(?:ed|ing|s)?|send|sends|sending|sent|show(?:ed|ing|s|n)?|solv(?:e|ed|es|ing)|stem(?:med|ming|s)?|struggl(?:e|ed|es|ing)|support(?:ed|ing|s)?|surpris(?:e|ed|es|ing)|upload(?:ed|ing|s)?|visit(?:ed|ing|s)?|want(?:ed|ing|s)?|work(?:ed|ing|s)?)$/u;
+  /^(?:abandon(?:ed|ing|s)?|approv(?:e|ed|es|ing)|belong(?:ed|ing|s)?|block(?:ed|ing|s)?|bought|buy|buying|buys|confus(?:e|ed|es|ing)|consist(?:ed|ing|s)?|contain(?:ed|ing|s)?|depend(?:ed|ing|s)?|discourag(?:e|ed|es|ing)|disagree(?:d|ing|s)?|drive|drives|driven|driving|enable(?:d|s)?|extend(?:ed|ing|s)?|feel|feels|felt|frustrat(?:e|ed|es|ing)|generate(?:d|s)?|handl(?:e|ed|es|ing)|have|has|had|help(?:ed|ing|s)?|improv(?:e|ed|es|ing)|includ(?:e|ed|es|ing)|increas(?:e|ed|es|ing)|juggl(?:e|ed|es|ing)|lead|leads|led|leading|leave|leaves|left|leaving|lie|lies|lay|lain|lying|make|makes|made|making|need(?:ed|ing|s)?|prefer(?:red|ring|s)?|preserv(?:e|ed|es|ing)|reduc(?:e|ed|es|ing)|remain(?:ed|ing|s)?|requir(?:e|ed|es|ing)|result(?:ed|ing|s)?|review(?:ed|ing|s)?|send|sends|sending|sent|show(?:ed|ing|s|n)?|solv(?:e|ed|es|ing)|stem(?:med|ming|s)?|struggl(?:e|ed|es|ing)|support(?:ed|ing|s)?|surpris(?:e|ed|es|ing)|upload(?:ed|ing|s)?|visit(?:ed|ing|s)?|want(?:ed|ing|s)?|work(?:ed|ing|s)?)$/u;
 const ENGLISH_DECLARATIVE_RELATIONSHIP_PREDICATE =
   /^(?:abandon(?:ed|ing|s)?|approv(?:e|ed|es|ing)|block(?:ed|ing|s)?|bought|buy|buying|buys|confus(?:e|ed|es|ing)|depend(?:ed|ing|s)?|discourag(?:e|ed|es|ing)|drive|drives|driven|driving|enable(?:d|s)?|extend(?:ed|ing|s)?|frustrat(?:e|ed|es|ing)|handl(?:e|ed|es|ing)|help(?:ed|ing|s)?|improv(?:e|ed|es|ing)|increas(?:e|ed|es|ing)|juggl(?:e|ed|es|ing)|lead|leads|led|leading|leave|leaves|left|leaving|lie|lies|lay|lain|lying|make|makes|made|making|need(?:ed|ing|s)?|prefer(?:red|ring|s)?|preserv(?:e|ed|es|ing)|reduc(?:e|ed|es|ing)|requir(?:e|ed|es|ing)|result(?:ed|ing|s)?|review(?:ed|ing|s)?|send|sends|sending|sent|solv(?:e|ed|es|ing)|stem(?:med|ming|s)?|struggl(?:e|ed|es|ing)|surpris(?:e|ed|es|ing)|upload(?:ed|ing|s)?|visit(?:ed|ing|s)?|want(?:ed|ing|s)?|work(?:ed|ing|s)?)$/u;
 const ENGLISH_BEHAVIORAL_PREPOSITIONAL_PREDICATE =
   /^(?:collaborat(?:e|ed|es|ing)|communicat(?:e|ed|es|ing)|listen(?:ed|ing|s)?|negotiat(?:e|ed|es|ing)|partner(?:ed|ing|s)?|respond(?:ed|ing|s)?)$/u;
+const ENGLISH_ADDITIONAL_CONTENT_PREDICATES = new Set([
+  "complete",
+  "completed",
+  "completes",
+  "completing",
+  "own",
+  "owned",
+  "owning",
+  "owns",
+]);
 
 interface SurfaceCoherenceAnalysis {
   normalized: string;
@@ -1326,6 +1351,7 @@ function isEnglishContentPredicate(word: string): boolean {
   return (
     SPACED_CONTENT_PREDICATES.has(word) ||
     EVIDENCE_REASONING_TERMS.has(word) ||
+    ENGLISH_ADDITIONAL_CONTENT_PREDICATES.has(word) ||
     ENGLISH_CONTENT_PREDICATE.test(word)
   );
 }
@@ -1382,8 +1408,8 @@ function hasPlausibleEnglishDeclarativePredicateUse(
   const following = words[predicateIndex + 1];
   const subjectWords = words.slice(0, predicateIndex);
   const hasLexicalSubject = subjectWords.some(isPotentialEnglishContentWord);
-  const hasPronounSubject = ENGLISH_SYNTACTIC_SUBJECT_PRONOUNS.has(
-    subjectWords[0]
+  const hasPronounSubject = subjectWords.some((word) =>
+    ENGLISH_SYNTACTIC_SUBJECT_PRONOUNS.has(word)
   );
   if ((!hasLexicalSubject && !hasPronounSubject) || following === undefined) {
     return false;
@@ -1524,7 +1550,22 @@ function hasEnglishDependentClause(
     (isLikelyEnglishFinitePredicate(words[0]) ||
       isEnglishDeclarativePredicate(words[0]))
   ) {
-    return words.slice(1).filter(isPotentialEnglishContentWord).length >= 2;
+    return words.slice(1).filter(isPotentialEnglishContentWord).length >= 1;
+  }
+  if (
+    ENGLISH_RELATIVE_MARKERS.has(marker) &&
+    words.length === 2 &&
+    isPotentialEnglishContentWord(words[0]) &&
+    ENGLISH_BOUNDED_INTRANSITIVE_PREDICATES.has(words[1])
+  ) {
+    return true;
+  }
+  if (
+    (marker === "if" || marker === "when") &&
+    words.length === 1 &&
+    isEnglishAdjectiveShaped(words[0])
+  ) {
+    return true;
   }
   if (marker === "then") {
     return words.slice(0, 3).some(isEnglishContentPredicate);
@@ -1575,6 +1616,31 @@ function hasEnglishDependentClause(
       hasCompleteEnglishPredicateComplement(mainWords, predicateIndex) &&
       hasEnglishDependentClause(words.slice(embeddedWhileIndex + 1), "while")
     );
+  }
+
+  const coordinatorIndexes = words.flatMap((word, index) =>
+    word === "and" || word === "but" ? [index] : []
+  );
+  const recognizedPredicateIndex = words.findIndex((word, index) => {
+    const hasBoundedCompoundSubject =
+      coordinatorIndexes.length === 1 &&
+      coordinatorIndexes[0] > 0 &&
+      coordinatorIndexes[0] < index - 1 &&
+      !words
+        .slice(0, coordinatorIndexes[0])
+        .some(isEnglishDeclarativePredicate) &&
+      !isEnglishAdjectiveShaped(words[index - 1]);
+    return (
+      index > 0 &&
+      isEnglishDeclarativePredicate(word) &&
+      hasPlausibleEnglishDeclarativePredicateUse(words, index) &&
+      hasEnglishSubjectPredicateAgreement(words, index) &&
+      (coordinatorIndexes.length === 0 || hasBoundedCompoundSubject) &&
+      hasCompleteEnglishPredicateComplement(words, index)
+    );
+  });
+  if (recognizedPredicateIndex > 0) {
+    return true;
   }
 
   const clauses = splitEnglishCoordinatedClauses(words);
@@ -1727,6 +1793,80 @@ function hasGroundedEnglishCoordinatedDeclarativeObject(
   );
 }
 
+function getEnglishComplementPredicateIndex(
+  words: readonly string[],
+  predicateIndex: number
+): number {
+  if (!SPACED_MODAL_MARKERS.has(words[predicateIndex])) {
+    return predicateIndex;
+  }
+  const lexicalPredicateOffset = words
+    .slice(predicateIndex + 1, predicateIndex + 4)
+    .findIndex(isPotentialEnglishContentWord);
+  return lexicalPredicateOffset < 0
+    ? predicateIndex
+    : predicateIndex + 1 + lexicalPredicateOffset;
+}
+
+function hasGroundedEnglishOrdinaryClause(words: readonly string[]): boolean {
+  const predicateIndex = getEnglishSentencePredicateIndex(words);
+  const complementPredicateIndex = getEnglishComplementPredicateIndex(
+    words,
+    predicateIndex
+  );
+  if (
+    predicateIndex < 1 ||
+    !hasEnglishMainClause(words) ||
+    !hasEnglishSubjectPredicateAgreement(words, predicateIndex) ||
+    !hasCompleteEnglishPredicateComplement(words, complementPredicateIndex)
+  ) {
+    return false;
+  }
+
+  const complement = words.slice(complementPredicateIndex + 1);
+  const hasComplementGrammar = complement.some(
+    (word) =>
+      ENGLISH_SURFACE_FUNCTION_WORDS.has(word) ||
+      ENGLISH_DETERMINERS.has(word) ||
+      ENGLISH_COORDINATING_CONJUNCTIONS.has(word) ||
+      ENGLISH_PREPOSITIONS.has(word)
+  );
+  return (
+    hasComplementGrammar &&
+    complement.filter(isPotentialEnglishContentWord).length >= 2
+  );
+}
+
+function hasEnglishSingleSentenceCoherence(
+  analysis: SurfaceCoherenceAnalysis
+): boolean {
+  const sentences = getEnglishSentenceWords(analysis);
+  if (sentences.length !== 1) return false;
+  const frontedContext = analysis.normalized.match(
+    /^(?:during|in)\b[^.!?]{3,100}?,\s*(.+)$/u
+  )?.[1];
+  const words = frontedContext
+    ? (frontedContext.match(/[a-z]+/gu) ?? [])
+    : sentences[0];
+  const relationshipIndexes = words.flatMap((word, index) =>
+    ENGLISH_RELATIONSHIP_MARKERS.has(word) ? [index] : []
+  );
+  const trailingRelationshipIndex = relationshipIndexes[0];
+  const hasBoundedTrailingEllipsis =
+    relationshipIndexes.length === 1 &&
+    trailingRelationshipIndex === words.length - 2 &&
+    (words[trailingRelationshipIndex] === "if" ||
+      words[trailingRelationshipIndex] === "when") &&
+    isEnglishAdjectiveShaped(words[words.length - 1]);
+  if (
+    (relationshipIndexes.length > 0 && !hasBoundedTrailingEllipsis) ||
+    words.length < 8
+  ) {
+    return false;
+  }
+  return hasGroundedEnglishOrdinaryClause(words);
+}
+
 function acceptsEnglishPrepositionalComplement(
   predicate: string,
   preposition: string
@@ -1737,8 +1877,20 @@ function acceptsEnglishPrepositionalComplement(
   if (/^communicat(?:e|ed|es|ing)$/u.test(predicate)) {
     return ["about", "to", "with"].includes(preposition);
   }
+  if (predicate === "come") {
+    return preposition === "from";
+  }
+  if (/^mov(?:e|ed|es|ing)$/u.test(predicate)) {
+    return preposition === "on" || preposition === "to";
+  }
+  if (/^disagree(?:d|ing|s)?$/u.test(predicate)) {
+    return preposition === "about" || preposition === "with";
+  }
   if (/^listen(?:ed|ing|s)?$/u.test(predicate)) {
     return preposition === "to";
+  }
+  if (/^learn(?:ed|ing|s|t)?$/u.test(predicate)) {
+    return preposition === "from" || preposition === "to";
   }
   if (/^negotiat(?:e|ed|es|ing)$/u.test(predicate)) {
     return ["for", "on", "over", "with"].includes(preposition);
@@ -1807,6 +1959,7 @@ function getEnglishSubjectAgreement(
     ofComplementIndex > 0
       ? subjectWords.slice(0, ofComplementIndex)
       : subjectWords;
+  if (headWords.includes("and")) return "base";
   const contentWords = headWords.filter(
     (word) => !ENGLISH_DETERMINERS.has(word)
   );
@@ -1849,7 +2002,9 @@ function hasEnglishSubjectPredicateAgreement(
   predicateIndex: number
 ): boolean {
   const subjectAgreement = getEnglishSubjectAgreement(
-    words.slice(0, predicateIndex)
+    words
+      .slice(0, predicateIndex)
+      .filter((word) => !ENGLISH_CLAUSE_ADVERBS.has(word))
   );
   if (!subjectAgreement) return false;
   const predicateAgreement = getEnglishPredicateAgreement(
@@ -1861,9 +2016,12 @@ function hasEnglishSubjectPredicateAgreement(
 }
 
 function isEnglishAdjectiveShaped(word: string): boolean {
+  if (!word) return false;
+  if (word.endsWith("ly")) return false;
   return (
     ENGLISH_POSTNOMINAL_ADJECTIVES.has(word) ||
-    ENGLISH_POSTNOMINAL_ADJECTIVE_SUFFIX.test(word)
+    (!ENGLISH_ADJECTIVE_SUFFIX_NOUN_EXCEPTIONS.has(word) &&
+      ENGLISH_POSTNOMINAL_ADJECTIVE_SUFFIX.test(word))
   );
 }
 
@@ -2039,9 +2197,17 @@ function hasSpacedStructuralCoherence(
   const hasContentConnector = englishWords.some((word) =>
     SPACED_CONTENT_CONNECTORS.has(word)
   );
-  const relationshipIndex = englishWords.findIndex(
-    (word, index) => index > 0 && ENGLISH_RELATIONSHIP_MARKERS.has(word)
-  );
+  const relationshipIndex = englishWords.findIndex((word, index) => {
+    if (index === 0 || !ENGLISH_RELATIONSHIP_MARKERS.has(word)) return false;
+    if (
+      (word === "after" || word === "before") &&
+      ENGLISH_DETERMINERS.has(englishWords[index + 1]) &&
+      getEnglishSentencePredicateIndex(englishWords.slice(index + 1)) < 0
+    ) {
+      return false;
+    }
+    return true;
+  });
   if (relationshipIndex > 0) {
     const marker = englishWords[relationshipIndex];
     const mainWords = englishWords.slice(0, relationshipIndex);
@@ -2119,15 +2285,23 @@ function hasEnglishMultiSentenceCoherence(
       ENGLISH_SURFACE_FUNCTION_WORDS.has(word)
     ).length;
     const predicateIndex = getEnglishSentencePredicateIndex(words);
+    const complementPredicateIndex = getEnglishComplementPredicateIndex(
+      words,
+      predicateIndex
+    );
     const hasRelationshipPredicate =
       predicateIndex >= 0 &&
       (isEnglishDeclarativeRelationshipPredicate(words[predicateIndex]) ||
+        (SPACED_MODAL_MARKERS.has(words[predicateIndex]) &&
+          words
+            .slice(predicateIndex + 1, predicateIndex + 4)
+            .some(isEnglishContentPredicate)) ||
         (!isEnglishDeclarativePredicate(words[predicateIndex]) &&
           isBoundedOrdinaryDirectObjectPredicate(words, predicateIndex)));
     if (
       predicateIndex < 0 ||
       (functionSignals < 1 && !hasRelationshipPredicate) ||
-      !hasCompleteEnglishPredicateComplement(words, predicateIndex)
+      !hasCompleteEnglishPredicateComplement(words, complementPredicateIndex)
     ) {
       return false;
     }
@@ -2356,7 +2530,10 @@ export function hasSubstantiveCandidateResponseSignal(text: string): boolean {
     return hasEnglishMultiSentenceCoherence(analysis);
   }
 
-  return hasSpacedStructuralCoherence(analysis, scaffold);
+  return (
+    hasSpacedStructuralCoherence(analysis, scaffold) ||
+    (!scaffold.multilingual && hasEnglishSingleSentenceCoherence(analysis))
+  );
 }
 
 export function isMinimallySubstantiveEvidenceQuote(
