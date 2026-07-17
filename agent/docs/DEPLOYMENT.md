@@ -10,13 +10,13 @@ This directory contains two separate LiveKit agents:
 ### Deploy Demo Agent
 
 ```bash
-./deploy-demo.sh
+./demo/deploy.sh preview # or production
 ```
 
 ### Deploy Main Interview Agent
 
 ```bash
-./deploy-main.sh
+./interview/deploy.sh preview # or production
 ```
 
 ## How It Works
@@ -25,7 +25,7 @@ Each agent has its own:
 
 - **Dockerfile**: `Dockerfile.demo` and `Dockerfile.main`
 - **Dockerignore**: `.dockerignore.demo` and `.dockerignore.main`
-- **Deployment Script**: `deploy-demo.sh` and `deploy-main.sh`
+- **Deployment Script**: `demo/deploy.sh` and `interview/deploy.sh`
 
 The deployment scripts:
 
@@ -45,25 +45,10 @@ dispatch names in app and agent environments.
 
 ## Manual Deployment
 
-If you prefer to deploy manually:
-
-### Demo Agent
-
-```bash
-cp .dockerignore.demo .dockerignore
-cp Dockerfile.demo Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
-
-### Main Interview Agent
-
-```bash
-cp .dockerignore.main .dockerignore
-cp Dockerfile.main Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
+Direct `lk agent deploy` is not an approved operator path. Use the target-bound
+wrappers above. Production consumes an exact signed owner authorization before
+`lk` can run; Preview remains available with its explicit external config,
+URL anchor, and agent ID.
 
 ## File Exclusions
 

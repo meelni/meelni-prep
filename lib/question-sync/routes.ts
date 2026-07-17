@@ -11,6 +11,7 @@ import type {
 
 interface QuestionSyncRouteDependencies {
   getSecret(): string | undefined;
+  getEnvironment?(): string | undefined;
   run(input: QuestionSyncWorkflowInput): Promise<QuestionSyncWorkflowResult>;
 }
 
@@ -45,6 +46,21 @@ export function createManualQuestionSyncHandler(
 
     const input = await parseManualQuestionSyncRequest(request);
     if (!input.valid) return input.response;
+    if (dependencies.getEnvironment?.() === "production" && !input.dryRun) {
+      return Response.json(
+        {
+          error: {
+            code: "production_question_sync_cli_required",
+            message:
+              "Production live sync requires the exact owner-authorized CLI workflow.",
+          },
+        },
+        {
+          status: 403,
+          headers: { "cache-control": "no-store" },
+        }
+      );
+    }
 
     const result = await dependencies.run({
       trigger: "manual",

@@ -141,8 +141,16 @@ deadline.
    direct/session connection:
 
    ```bash
+   export MEELNI_PRODUCTION_ACTION_AUTHORIZATION=/absolute/external/path/authorization.json
    MEELNI_ALLOW_REMOTE_MIGRATION=1 npm run db:migrate:production
    ```
+
+   The allow flag is necessary but insufficient. Production migration also
+   consumes one signed `production-database-migrate` artifact bound to the
+   exact Git candidate, migration-set hash, database target fingerprint, and
+   enrolled executor before Drizzle starts. No owner key is enrolled yet, so
+   this Production command currently fails closed. Preview migrations do not
+   require owner Production authorization.
 
    Preview rehearsal uses the distinct alias and applies the same explicit
    confirmation:

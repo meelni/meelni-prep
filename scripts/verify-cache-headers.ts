@@ -8,6 +8,10 @@
  *   tsx scripts/verify-cache-headers.ts
  */
 
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import { db } from "../lib/db";
 import { interviewSession, appUser } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
