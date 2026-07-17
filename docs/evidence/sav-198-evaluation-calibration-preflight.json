@@ -1,0 +1,102 @@
+{
+  "contractVersion": "evaluation-calibration-report.v7",
+  "generatedAt": "2026-07-17T00:49:46.854Z",
+  "execution": {
+    "kind": "preflight",
+    "modelVersion": null,
+    "repetitions": 0,
+    "customerDataUsed": false,
+    "paidProviderCalled": false,
+    "modelVersionBasis": "not_applicable",
+    "observedModelVersions": [],
+    "observedServiceTiers": [],
+    "cost": null
+  },
+  "versions": {
+    "goldSet": "pm-gold-set.v4",
+    "adjudication": "pm-gold-adjudication-candidates.v4",
+    "schema": "feedback.v2",
+    "prompt": "feedback.prompt.v2",
+    "rubric": "pm-feedback-rubric.v2",
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c"
+  },
+  "corpus": {
+    "totalCases": 40,
+    "scoredCases": 32,
+    "insufficientCases": 8,
+    "casesByRound": {
+      "product_sense": 10,
+      "execution": 10,
+      "strategy": 10,
+      "behavioral": 10
+    },
+    "scoredCasesByQuality": {
+      "weak": 8,
+      "average": 8,
+      "strong": 16
+    },
+    "pendingAdjudicationSignoffs": 32,
+    "insufficientFixturesRequireScoredAdjudicationApproval": false,
+    "expectedStateMismatches": 0,
+    "invalidEvidenceAnchors": 0
+  },
+  "metrics": {
+    "evidenceValidityRate": null,
+    "adjudicatedEvidenceMatchRate": null,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": null,
+    "scoreBandAgreementByDimension": {
+      "structure": null,
+      "clarity": null,
+      "insight": null,
+      "communication": null,
+      "leadership": null
+    },
+    "scoreBandAgreementByRound": {
+      "product_sense": null,
+      "execution": null,
+      "strategy": null,
+      "behavioral": null
+    },
+    "scoreBandAgreementByState": {
+      "full": null,
+      "partial": null
+    },
+    "maximumRepeatedRunScoreRange": null,
+    "modelVersionMatchRate": null,
+    "evaluatorCalls": 0,
+    "providerEvaluationCalls": 0
+  },
+  "adjudication": {
+    "approvalProvided": false,
+    "requiredScoredCases": 32,
+    "approvedCases": 0,
+    "changesRequiredCases": 0,
+    "reviewer": null
+  },
+  "thresholds": {
+    "evidenceValidityRate": 1,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 0.8,
+    "minimumDimensionScoreBandAgreementRate": 0.8,
+    "minimumRoundScoreBandAgreementRate": 0.75,
+    "minimumStateScoreBandAgreementRate": 0.75,
+    "maximumRepeatedRunScoreRange": 1,
+    "modelVersionMatchRate": 1,
+    "minimumProviderRuns": 2,
+    "maximumProviderRuns": 2,
+    "maximumProviderCalls": 96
+  },
+  "gate": {
+    "deterministicHarness": "not_run",
+    "adjudicationAcceptance": "pending_product_owner_pm_signoff",
+    "liveProviderAcceptance": "pending",
+    "launchAcceptance": "pending_adjudication_signoff"
+  },
+  "failures": [],
+  "blockers": [
+    "The agent-authored synthetic adjudication candidates require product-owner/PM review and signoff. Model runs cannot satisfy this gate.",
+    "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract."
+  ]
+}

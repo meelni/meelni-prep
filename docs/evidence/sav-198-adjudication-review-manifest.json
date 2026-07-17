@@ -1,0 +1,911 @@
+{
+  "contractVersion": "evaluation-adjudication-review.v2",
+  "goldSetVersion": "pm-gold-set.v4",
+  "adjudicationVersion": "pm-gold-adjudication-candidates.v4",
+  "provenance": "agent_authored_synthetic_candidate",
+  "approvalRequired": false,
+  "reviewStatus": "approved_via_product_owner_task_thread_delegation",
+  "delegatedReview": {
+    "delegationSource": "product_owner_task_thread",
+    "panelCount": 2,
+    "panelOutcome": "changes_required",
+    "correctionPolicy": "conservative_17_case_union",
+    "reviewRounds": [
+      {
+        "round": 1,
+        "correctionPolicy": "conservative_17_case_union",
+        "correctedCaseCount": 17
+      },
+      {
+        "round": 2,
+        "reviewedCandidateArtifactHash": "e02ec10f89b0bf83bdd5e1085f2b2250e4c3a79babd0e9f50b53db5b70e844f7",
+        "reviewedCorpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "panelOneChangesRequired": [
+          "product_sense:05:language-practice",
+          "strategy:02:regional-expansion",
+          "behavioral:02:failed-launch",
+          "behavioral:07:mentoring"
+        ],
+        "panelTwoChangesRequired": [
+          "product_sense:05:language-practice",
+          "strategy:02:regional-expansion",
+          "behavioral:07:mentoring"
+        ],
+        "correctionPolicy": "conservative_4_case_union"
+      }
+    ],
+    "decisions": [
+      {
+        "caseId": "product_sense:01:caregiver-planning",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "product_sense:02:accessible-transit",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "product_sense:03:teacher-feedback",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "product_sense:04:community-kitchens",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "product_sense:05:language-practice",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "product_sense:06:repair-guidance",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "product_sense:07:neighborhood-safety",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "product_sense:08:clinic-followup",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "execution:01:merchant-onboarding",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "execution:02:search-latency",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "execution:03:support-routing",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "execution:04:mobile-migration",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "execution:05:pricing-rollout",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "execution:06:moderation-queue",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "execution:07:warehouse-pilot",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "execution:08:incident-recovery",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "strategy:01:creator-market",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "strategy:02:regional-expansion",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "strategy:03:bundling",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "strategy:04:open-platform",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "strategy:05:education-entry",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "strategy:06:marketplace-liquidity",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "strategy:07:ai-positioning",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "strategy:08:portfolio-exit",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "behavioral:01:roadmap-conflict",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "behavioral:02:failed-launch",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "behavioral:03:influence-without-authority",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "behavioral:04:customer-escalation",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "behavioral:05:team-disagreement",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "behavioral:06:missed-goal",
+        "decision": "preserved_after_unanimous_panel_approval"
+      },
+      {
+        "caseId": "behavioral:07:mentoring",
+        "decision": "corrected_pending_independent_review"
+      },
+      {
+        "caseId": "behavioral:08:ethical-tradeoff",
+        "decision": "preserved_after_unanimous_panel_approval"
+      }
+    ]
+  },
+  "scoredCaseCount": 32,
+  "cases": [
+    {
+      "id": "product_sense:01:caregiver-planning",
+      "roundType": "product_sense",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Starts with the user outcome before ideation, providing a basic sequence for the response.",
+        "turnRef": "product_sense:01:caregiver-planning:user:1",
+        "quote": "define the intended user outcome",
+        "nextStep": "Make the outcome measurable and choose the priority user segment before ideating."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Keeps the audience broad instead of making a segment decision.",
+        "turnRef": "product_sense:01:caregiver-planning:user:1",
+        "quote": "brainstorm features for everyone",
+        "nextStep": "Choose one segment and explain why it should be served first."
+      }
+    },
+    {
+      "id": "product_sense:02:accessible-transit",
+      "roundType": "product_sense",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Begins with an intended user outcome before proposing accessibility features.",
+        "turnRef": "product_sense:02:accessible-transit:user:1",
+        "quote": "define the intended user outcome",
+        "nextStep": "Make the accessibility outcome measurable for one priority user segment."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Uses a vague preference question that will not reveal whether the problem was solved.",
+        "turnRef": "product_sense:02:accessible-transit:user:2",
+        "quote": "ask users whether they like it",
+        "nextStep": "Ask a behavior-based validation question tied to the intended outcome."
+      }
+    },
+    {
+      "id": "product_sense:03:teacher-feedback",
+      "roundType": "product_sense",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "clarity",
+        "kind": "strength",
+        "observation": "States a clear problem-discovery step before solution selection.",
+        "turnRef": "product_sense:03:teacher-feedback:user:1",
+        "quote": "confirm its main pain point",
+        "nextStep": "Name the user group and pain point in one precise sentence."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Acknowledges that the launch decision lacks a precise threshold.",
+        "turnRef": "product_sense:03:teacher-feedback:user:3",
+        "quote": "have not made the guardrail or launch threshold precise",
+        "nextStep": "Set a numeric launch threshold and one stopping guardrail."
+      }
+    },
+    {
+      "id": "product_sense:04:community-kitchens",
+      "roundType": "product_sense",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Makes an explicit initial user choice before selecting a solution.",
+        "turnRef": "product_sense:04:community-kitchens:user:1",
+        "quote": "choose one broad user group",
+        "nextStep": "Subsegment the broad group by the highest-cost unmet need."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Leaves the segmentation and alternative analysis too shallow to support the product choice.",
+        "turnRef": "product_sense:04:community-kitchens:user:2",
+        "quote": "segmentation and comparison with alternatives are still fairly surface level",
+        "nextStep": "Compare two segments and alternatives using explicit decision criteria."
+      }
+    },
+    {
+      "id": "product_sense:05:language-practice",
+      "roundType": "product_sense",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Identifies a specific audience and behavior gap.",
+        "turnRef": "product_sense:05:language-practice:user:1",
+        "quote": "adult language learners who understand lessons but avoid spontaneous conversation",
+        "nextStep": "Keep the behavioral segmentation and quantify when avoidance occurs."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Introduces psychological safety as a product need without explaining what design property would create it or how that safety would be validated.",
+        "turnRef": "product_sense:05:language-practice:user:2",
+        "quote": "psychologically safe prompt",
+        "nextStep": "Describe the prompt mechanics and how safety would be validated with learners."
+      }
+    },
+    {
+      "id": "product_sense:06:repair-guidance",
+      "roundType": "product_sense",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "clarity",
+        "kind": "strength",
+        "observation": "States a clear safety boundary for the product.",
+        "turnRef": "product_sense:06:repair-guidance:user:2",
+        "quote": "without encouraging repairs that require a professional",
+        "nextStep": "Keep the boundary explicit in the first solution description."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Defines a stop signal but not who reviews or acts on it.",
+        "turnRef": "product_sense:06:repair-guidance:user:3",
+        "quote": "unsafe self-repair attempts as a stopping guardrail",
+        "nextStep": "Name the accountable owner and response when the guardrail trips."
+      }
+    },
+    {
+      "id": "product_sense:07:neighborhood-safety",
+      "roundType": "product_sense",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Reframes safety around current, actionable route context.",
+        "turnRef": "product_sense:07:neighborhood-safety:user:2",
+        "quote": "current lighting and open businesses, not a generic crime score",
+        "nextStep": "Validate which contextual signals actually change route confidence."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Names a bias audit without ownership, cadence, or an action threshold.",
+        "turnRef": "product_sense:07:neighborhood-safety:user:3",
+        "quote": "auditing reports for bias",
+        "nextStep": "Assign an audit owner, cadence, and remediation trigger."
+      }
+    },
+    {
+      "id": "product_sense:08:clinic-followup",
+      "roundType": "product_sense",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "full",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Defines a focused first job for the experience.",
+        "turnRef": "product_sense:08:clinic-followup:user:2",
+        "quote": "confirming the next action in plain language",
+        "nextStep": "Keep this job first and sequence later capabilities behind it."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Names escalation but leaves uncertainty criteria and ownership undefined.",
+        "turnRef": "product_sense:08:clinic-followup:user:2",
+        "quote": "escalation back to the care team when uncertain",
+        "nextStep": "Define the uncertainty threshold and the care-team owner for escalation."
+      }
+    },
+    {
+      "id": "execution:01:merchant-onboarding",
+      "roundType": "execution",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Provides a minimal delivery goal before discussing work.",
+        "turnRef": "execution:01:merchant-onboarding:user:1",
+        "quote": "define a usable release as the delivery goal",
+        "nextStep": "Translate usable release into observable acceptance criteria."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Explicitly leaves delivery ownership and sequencing unresolved.",
+        "turnRef": "execution:01:merchant-onboarding:user:1",
+        "quote": "without an owner or ordered milestones",
+        "nextStep": "Assign owners and order milestones by risk and dependency."
+      }
+    },
+    {
+      "id": "execution:02:search-latency",
+      "roundType": "execution",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Provides a minimal delivery goal before discussing work.",
+        "turnRef": "execution:02:search-latency:user:1",
+        "quote": "define a usable release as the delivery goal",
+        "nextStep": "Define usable in latency and relevance terms."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Leaves the release without measurable control points.",
+        "turnRef": "execution:02:search-latency:user:3",
+        "quote": "I would call the launch successful if it ships",
+        "nextStep": "Set a success metric, relevance guardrail, and rollback condition."
+      }
+    },
+    {
+      "id": "execution:03:support-routing",
+      "roundType": "execution",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Breaks delivery into workstreams rather than one undifferentiated launch.",
+        "turnRef": "execution:03:support-routing:user:1",
+        "quote": "identify the main workstreams",
+        "nextStep": "Order the workstreams by dependency and customer risk."
+      },
+      "improvement": {
+        "dimension": "communication",
+        "kind": "improvement",
+        "observation": "Does not explain dependencies or rollback clearly enough for the team to act.",
+        "turnRef": "execution:03:support-routing:user:2",
+        "quote": "dependency analysis and rollback plan need more detail",
+        "nextStep": "State the critical dependency and rollback path explicitly."
+      }
+    },
+    {
+      "id": "execution:04:mobile-migration",
+      "roundType": "execution",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Identifies the main workstreams before prioritizing the migration plan.",
+        "turnRef": "execution:04:mobile-migration:user:1",
+        "quote": "identify the main workstreams",
+        "nextStep": "Order those workstreams by dependency and define acceptance criteria for each."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Mentions rollback but omits who makes the rollback decision and when.",
+        "turnRef": "execution:04:mobile-migration:user:2",
+        "quote": "rollback plan need more detail",
+        "nextStep": "Name the rollback decision owner and trigger."
+      }
+    },
+    {
+      "id": "execution:05:pricing-rollout",
+      "roundType": "execution",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Separates the rollout into independently verifiable gates.",
+        "turnRef": "execution:05:pricing-rollout:user:1",
+        "quote": "separate catalog correctness, entitlement enforcement, billing recovery, and customer communication into independent gates",
+        "nextStep": "Keep gate evidence and ordering explicit in the rollout plan."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Uses readiness language without an accountable approver or threshold.",
+        "turnRef": "execution:05:pricing-rollout:user:2",
+        "quote": "until migration evidence and support playbooks are ready",
+        "nextStep": "Name the approver and evidence threshold for advancing the cohort."
+      }
+    },
+    {
+      "id": "execution:06:moderation-queue",
+      "roundType": "execution",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Prioritizes the queue using severity and age.",
+        "turnRef": "execution:06:moderation-queue:user:1",
+        "quote": "oldest high-severity reports",
+        "nextStep": "Validate the severity-age rule against harm and reviewer capacity."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Chooses reversibility but does not specify escalation ownership for severe cases.",
+        "turnRef": "execution:06:moderation-queue:user:2",
+        "quote": "gives reviewers context and reversible actions rather than autonomous permanent enforcement",
+        "nextStep": "Assign escalation ownership and a deadline for irreversible decisions."
+      }
+    },
+    {
+      "id": "execution:07:warehouse-pilot",
+      "roundType": "execution",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Bounds the pilot to a warehouse with stable scanning behavior.",
+        "turnRef": "execution:07:warehouse-pilot:user:1",
+        "quote": "choose one warehouse with stable scanning behavior",
+        "nextStep": "Confirm the warehouse has stable scanning behavior before the pilot begins."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Defines a manual fallback but does not name the local accountable owner.",
+        "turnRef": "execution:07:warehouse-pilot:user:1",
+        "quote": "define a manual fallback before the pilot",
+        "nextStep": "Name the warehouse owner and decision authority for pausing the pilot."
+      }
+    },
+    {
+      "id": "execution:08:incident-recovery",
+      "roundType": "execution",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "full",
+      "strength": {
+        "dimension": "leadership",
+        "kind": "strength",
+        "observation": "Creates clear incident command ownership.",
+        "turnRef": "execution:08:incident-recovery:user:1",
+        "quote": "assign one incident commander",
+        "nextStep": "Keep command ownership and handoff rules explicit throughout recovery."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Proposes a test without identifying the failed assumption or how recurrence will be detected.",
+        "turnRef": "execution:08:incident-recovery:user:3",
+        "quote": "convert the failed assumption into an automated rollback test",
+        "nextStep": "Name the failed assumption and the signal the automated test must catch."
+      }
+    },
+    {
+      "id": "strategy:01:creator-market",
+      "roundType": "strategy",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Starts with a customer-need test before deciding whether to enter the market.",
+        "turnRef": "strategy:01:creator-market:user:1",
+        "quote": "test whether customers have an unmet need",
+        "nextStep": "Define the customer, the evidence threshold, and the next entry decision."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Bases entry on an unbounded possibility rather than a decision rule.",
+        "turnRef": "strategy:01:creator-market:user:3",
+        "quote": "growth seems possible",
+        "nextStep": "Set an entry threshold and evidence that would reverse the recommendation."
+      }
+    },
+    {
+      "id": "strategy:02:regional-expansion",
+      "roundType": "strategy",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Starts with a customer-need test before deciding whether to expand.",
+        "turnRef": "strategy:02:regional-expansion:user:1",
+        "quote": "test whether customers have an unmet need",
+        "nextStep": "Define the segment and evidence threshold, then compare market size, constraints, and alternatives."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Commits to imitation without comparing options.",
+        "turnRef": "strategy:02:regional-expansion:user:2",
+        "quote": "without comparing strategic alternatives",
+        "nextStep": "Compare build, partner, and no-entry options before recommending expansion."
+      }
+    },
+    {
+      "id": "strategy:03:bundling",
+      "roundType": "strategy",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Names three relevant strategic lenses.",
+        "turnRef": "strategy:03:bundling:user:1",
+        "quote": "compare customer demand, competitor strength, and our right to win",
+        "nextStep": "Quantify each lens before choosing a bundle strategy."
+      },
+      "improvement": {
+        "dimension": "communication",
+        "kind": "improvement",
+        "observation": "References two options without naming them, weakening the recommendation narrative.",
+        "turnRef": "strategy:03:bundling:user:2",
+        "quote": "two plausible options",
+        "nextStep": "Name both options and state why the preferred one wins."
+      }
+    },
+    {
+      "id": "strategy:04:open-platform",
+      "roundType": "strategy",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "clarity",
+        "kind": "strength",
+        "observation": "Makes a clear directional recommendation.",
+        "turnRef": "strategy:04:open-platform:user:2",
+        "quote": "favor the lower-investment entry",
+        "nextStep": "State the option, investment boundary, and expected advantage precisely."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Leaves the pilot without a go/no-go trigger.",
+        "turnRef": "strategy:04:open-platform:user:3",
+        "quote": "have not set a precise trigger for expansion or exit",
+        "nextStep": "Set expansion and exit thresholds with a decision owner."
+      }
+    },
+    {
+      "id": "strategy:05:education-entry",
+      "roundType": "strategy",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Separates buyer and user motions that operate differently.",
+        "turnRef": "strategy:05:education-entry:user:1",
+        "quote": "institutional buyers from individual teachers",
+        "nextStep": "Keep procurement and adoption evidence separate in the strategy."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Treats administrator evaluation as a buyer gate without defining evidence criteria or a go/no-go owner.",
+        "turnRef": "strategy:05:education-entry:user:2",
+        "quote": "an administrator can later evaluate",
+        "nextStep": "Name the required evidence, the decision owner, and the go/no-go rule."
+      }
+    },
+    {
+      "id": "strategy:06:marketplace-liquidity",
+      "roundType": "strategy",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Decomposes liquidity into distinct possible constraints.",
+        "turnRef": "strategy:06:marketplace-liquidity:user:1",
+        "quote": "buyer demand, qualified supply, matching, or trust",
+        "nextStep": "Diagnose one primary constraint per market before intervening."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Uses organic liquidity as a trigger without defining a measurable threshold.",
+        "turnRef": "strategy:06:marketplace-liquidity:user:3",
+        "quote": "once organic liquidity holds",
+        "nextStep": "Define repeat-match and subsidy thresholds that demonstrate organic liquidity."
+      }
+    },
+    {
+      "id": "strategy:07:ai-positioning",
+      "roundType": "strategy",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Anchors positioning in a costly customer decision rather than generic model access.",
+        "turnRef": "strategy:07:ai-positioning:user:1",
+        "quote": "costly customer decision the product can improve",
+        "nextStep": "Quantify the decision cost and the improvement target."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Preserves human review but leaves review ownership and escalation unspecified.",
+        "turnRef": "strategy:07:ai-positioning:user:3",
+        "quote": "human review remains required",
+        "nextStep": "Define reviewer authority and escalation for disputed outputs."
+      }
+    },
+    {
+      "id": "strategy:08:portfolio-exit",
+      "roundType": "strategy",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "full",
+      "strength": {
+        "dimension": "structure",
+        "kind": "strength",
+        "observation": "Defines a balanced set of exit criteria.",
+        "turnRef": "strategy:08:portfolio-exit:user:1",
+        "quote": "strategic fit, customer dependency, switching cost, and reinvestment return",
+        "nextStep": "Weight the criteria and show how they lead to the recommendation."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Names a deadline without assigning decision ownership or governance.",
+        "turnRef": "strategy:08:portfolio-exit:user:3",
+        "quote": "set a decision date",
+        "nextStep": "Name the decision owner and approval process for the exit date."
+      }
+    },
+    {
+      "id": "behavioral:01:roadmap-conflict",
+      "roundType": "behavioral",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "communication",
+        "kind": "strength",
+        "observation": "Uses a discussion and summary to make the stakeholder disagreement explicit.",
+        "turnRef": "behavioral:01:roadmap-conflict:user:2",
+        "quote": "scheduled one discussion and summarized the disagreement",
+        "nextStep": "Connect the summary to a recommendation and decision owner."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Did not convert the discussion into a decision.",
+        "turnRef": "behavioral:01:roadmap-conflict:user:2",
+        "quote": "did not drive a clear tradeoff or decision",
+        "nextStep": "State the tradeoff, recommendation, and decision owner."
+      }
+    },
+    {
+      "id": "behavioral:02:failed-launch",
+      "roundType": "behavioral",
+      "expectedQuality": "weak",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "communication",
+        "kind": "strength",
+        "observation": "Makes the disagreement explicit by summarizing it for the group.",
+        "turnRef": "behavioral:02:failed-launch:user:2",
+        "quote": "summarized the disagreement",
+        "nextStep": "Name each perspective and connect the summary to a recommendation and decision owner."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Provides no measurable outcome showing ownership or impact.",
+        "turnRef": "behavioral:02:failed-launch:user:3",
+        "quote": "do not have a concrete result",
+        "nextStep": "Quantify the result and state the action personally owned."
+      }
+    },
+    {
+      "id": "behavioral:03:influence-without-authority",
+      "roundType": "behavioral",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "communication",
+        "kind": "strength",
+        "observation": "Listened to stakeholders and proposed a concrete path forward.",
+        "turnRef": "behavioral:03:influence-without-authority:user:2",
+        "quote": "gathered their concerns, proposed a compromise",
+        "nextStep": "Keep the stakeholder concerns and proposal explicit."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Does not distinguish the candidate's influence from the group's work.",
+        "turnRef": "behavioral:03:influence-without-authority:user:2",
+        "quote": "personal influence are not fully clear",
+        "nextStep": "Explain the specific intervention that changed the decision."
+      }
+    },
+    {
+      "id": "behavioral:04:customer-escalation",
+      "roundType": "behavioral",
+      "expectedQuality": "average",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "clarity",
+        "kind": "strength",
+        "observation": "States a bounded personal responsibility.",
+        "turnRef": "behavioral:04:customer-escalation:user:1",
+        "quote": "owned one part of a team problem",
+        "nextStep": "Name the exact responsibility and customer outcome."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Leaves the impact too vague to assess ownership.",
+        "turnRef": "behavioral:04:customer-escalation:user:3",
+        "quote": "result is only loosely measured",
+        "nextStep": "Provide a concrete customer or operational result."
+      }
+    },
+    {
+      "id": "behavioral:05:team-disagreement",
+      "roundType": "behavioral",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "communication",
+        "kind": "strength",
+        "observation": "Turned disagreement into a shared, testable question.",
+        "turnRef": "behavioral:05:team-disagreement:user:2",
+        "quote": "asked each lead for the cheapest test",
+        "nextStep": "Keep the test request and decision criteria explicit."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Sponsors a concrete test but does not define its success threshold or decision owner.",
+        "turnRef": "behavioral:05:team-disagreement:user:2",
+        "quote": "sponsored a prototype with five target users",
+        "nextStep": "Define the prototype success threshold and who owns the resulting decision."
+      }
+    },
+    {
+      "id": "behavioral:06:missed-goal",
+      "roundType": "behavioral",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "insight",
+        "kind": "strength",
+        "observation": "Investigated the failed metric through customer evidence.",
+        "turnRef": "behavioral:06:missed-goal:user:2",
+        "quote": "interviewed inactive teams",
+        "nextStep": "Connect each finding to the roadmap change it justified."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Describes a roadmap change without explaining stakeholder alignment or decision authority.",
+        "turnRef": "behavioral:06:missed-goal:user:2",
+        "quote": "changed the roadmap",
+        "nextStep": "Explain how stakeholders were aligned and who approved the change."
+      }
+    },
+    {
+      "id": "behavioral:07:mentoring",
+      "roundType": "behavioral",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "partial",
+      "strength": {
+        "dimension": "communication",
+        "kind": "strength",
+        "observation": "Used questions to transfer judgment instead of taking over the work.",
+        "turnRef": "behavioral:07:mentoring:user:2",
+        "quote": "reviewed drafts with questions instead of edits",
+        "nextStep": "Keep the coaching method and expected learner decision explicit."
+      },
+      "improvement": {
+        "dimension": "leadership",
+        "kind": "improvement",
+        "observation": "Reports the review as successful without defining the criteria used to judge success.",
+        "turnRef": "behavioral:07:mentoring:user:3",
+        "quote": "led the review successfully",
+        "nextStep": "Define review success criteria and the threshold for mentor intervention."
+      }
+    },
+    {
+      "id": "behavioral:08:ethical-tradeoff",
+      "roundType": "behavioral",
+      "expectedQuality": "strong",
+      "expectedCompletionState": "full",
+      "strength": {
+        "dimension": "leadership",
+        "kind": "strength",
+        "observation": "Proposed a concrete ethical alternative rather than only objecting.",
+        "turnRef": "behavioral:08:ethical-tradeoff:user:2",
+        "quote": "a transparent alternative that tested value reminders",
+        "nextStep": "Keep the alternative and the decision principle explicit."
+      },
+      "improvement": {
+        "dimension": "insight",
+        "kind": "improvement",
+        "observation": "Reports an aggregate outcome without duration, segmentation, or a counterfactual.",
+        "turnRef": "behavioral:08:ethical-tradeoff:user:3",
+        "quote": "improved retained renewals without more complaints",
+        "nextStep": "Test whether the outcome persists by segment against a clear comparison."
+      }
+    }
+  ],
+  "approvalResolution": {
+    "contractVersion": "evaluation-adjudication-approval.v2",
+    "reviewedAt": "2026-07-17T00:37:53.000Z",
+    "reviewedHead": "b41925ad60f962c7c337d7a9f3e609226f597f20",
+    "reviewer": {
+      "identity": "product_owner_task_thread_delegation",
+      "role": "product_owner",
+      "identityType": "delegated_task_thread"
+    },
+    "reviewBasis": {
+      "candidateManifestVersion": "evaluation-adjudication-review.v2",
+      "independentExactHashReview": true,
+      "semanticAdjudicationOnly": true
+    },
+    "panelSignoffs": [
+      {
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_a",
+        "verdict": "approved",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      },
+      {
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_b",
+        "verdict": "approved",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      }
+    ],
+    "approvedCases": 32,
+    "changesRequiredCases": 0,
+    "scope": "semantic_adjudication_only"
+  }
+}

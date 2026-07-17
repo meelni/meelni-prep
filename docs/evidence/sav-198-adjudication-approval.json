@@ -1,0 +1,190 @@
+{
+  "contractVersion": "evaluation-adjudication-approval.v2",
+  "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+  "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+  "goldSetVersion": "pm-gold-set.v4",
+  "adjudicationVersion": "pm-gold-adjudication-candidates.v4",
+  "reviewer": {
+    "identity": "product_owner_task_thread_delegation",
+    "role": "product_owner",
+    "identityType": "delegated_task_thread"
+  },
+  "reviewBasis": {
+    "candidateManifestVersion": "evaluation-adjudication-review.v2",
+    "independentExactHashReview": true,
+    "semanticAdjudicationOnly": true
+  },
+  "delegatedAuthority": {
+    "source": "product_owner_task_thread",
+    "humanReviewerIdentity": null,
+    "reviewedHead": "b41925ad60f962c7c337d7a9f3e609226f597f20",
+    "roundHistory": [
+      {
+        "round": 1,
+        "outcome": "changes_required",
+        "correctedCaseCount": 17
+      },
+      {
+        "round": 2,
+        "outcome": "changes_required",
+        "correctedCaseCount": 4
+      },
+      {
+        "round": 3,
+        "outcome": "approved",
+        "correctedCaseCount": 0,
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c"
+      }
+    ],
+    "panels": [
+      {
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_a",
+        "verdict": "approved",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      },
+      {
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_b",
+        "verdict": "approved",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+        "approvedCases": 32,
+        "changesRequiredCases": 0
+      }
+    ]
+  },
+  "reviewedAt": "2026-07-17T00:37:53.000Z",
+  "decisions": [
+    {
+      "caseId": "product_sense:01:caregiver-planning",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:02:accessible-transit",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:03:teacher-feedback",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:04:community-kitchens",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:05:language-practice",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:06:repair-guidance",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:07:neighborhood-safety",
+      "decision": "approved"
+    },
+    {
+      "caseId": "product_sense:08:clinic-followup",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:01:merchant-onboarding",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:02:search-latency",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:03:support-routing",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:04:mobile-migration",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:05:pricing-rollout",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:06:moderation-queue",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:07:warehouse-pilot",
+      "decision": "approved"
+    },
+    {
+      "caseId": "execution:08:incident-recovery",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:01:creator-market",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:02:regional-expansion",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:03:bundling",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:04:open-platform",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:05:education-entry",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:06:marketplace-liquidity",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:07:ai-positioning",
+      "decision": "approved"
+    },
+    {
+      "caseId": "strategy:08:portfolio-exit",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:01:roadmap-conflict",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:02:failed-launch",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:03:influence-without-authority",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:04:customer-escalation",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:05:team-disagreement",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:06:missed-goal",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:07:mentoring",
+      "decision": "approved"
+    },
+    {
+      "caseId": "behavioral:08:ethical-tradeoff",
+      "decision": "approved"
+    }
+  ]
+}

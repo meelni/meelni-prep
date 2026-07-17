@@ -1,0 +1,106 @@
+{
+  "contractVersion": "evaluation-calibration-report.v7",
+  "generatedAt": "2026-07-17T00:49:49.299Z",
+  "execution": {
+    "kind": "deterministic_self_test",
+    "modelVersion": "deterministic-calibration-self-test.v1",
+    "repetitions": 2,
+    "customerDataUsed": false,
+    "paidProviderCalled": false,
+    "modelVersionBasis": "deterministic_identifier",
+    "observedModelVersions": ["deterministic-calibration-self-test.v1"],
+    "observedServiceTiers": [],
+    "cost": null
+  },
+  "versions": {
+    "goldSet": "pm-gold-set.v4",
+    "adjudication": "pm-gold-adjudication-candidates.v4",
+    "schema": "feedback.v2",
+    "prompt": "feedback.prompt.v2",
+    "rubric": "pm-feedback-rubric.v2",
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c"
+  },
+  "corpus": {
+    "totalCases": 40,
+    "scoredCases": 32,
+    "insufficientCases": 8,
+    "casesByRound": {
+      "product_sense": 10,
+      "execution": 10,
+      "strategy": 10,
+      "behavioral": 10
+    },
+    "scoredCasesByQuality": {
+      "weak": 8,
+      "average": 8,
+      "strong": 16
+    },
+    "pendingAdjudicationSignoffs": 0,
+    "insufficientFixturesRequireScoredAdjudicationApproval": false,
+    "expectedStateMismatches": 0,
+    "invalidEvidenceAnchors": 0
+  },
+  "metrics": {
+    "evidenceValidityRate": 1,
+    "adjudicatedEvidenceMatchRate": 1,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 1,
+    "scoreBandAgreementByDimension": {
+      "structure": 1,
+      "clarity": 1,
+      "insight": 1,
+      "communication": 1,
+      "leadership": 1
+    },
+    "scoreBandAgreementByRound": {
+      "product_sense": 1,
+      "execution": 1,
+      "strategy": 1,
+      "behavioral": 1
+    },
+    "scoreBandAgreementByState": {
+      "full": 1,
+      "partial": 1
+    },
+    "maximumRepeatedRunScoreRange": 0,
+    "modelVersionMatchRate": 1,
+    "evaluatorCalls": 64,
+    "providerEvaluationCalls": 0
+  },
+  "adjudication": {
+    "approvalProvided": true,
+    "requiredScoredCases": 32,
+    "approvedCases": 32,
+    "changesRequiredCases": 0,
+    "reviewer": {
+      "identity": "product_owner_task_thread_delegation",
+      "role": "product_owner",
+      "identityType": "delegated_task_thread",
+      "reviewedAt": "2026-07-17T00:37:53.000Z"
+    }
+  },
+  "thresholds": {
+    "evidenceValidityRate": 1,
+    "insufficientHandlingRate": 1,
+    "scoreBandAgreementRate": 0.8,
+    "minimumDimensionScoreBandAgreementRate": 0.8,
+    "minimumRoundScoreBandAgreementRate": 0.75,
+    "minimumStateScoreBandAgreementRate": 0.75,
+    "maximumRepeatedRunScoreRange": 1,
+    "modelVersionMatchRate": 1,
+    "minimumProviderRuns": 2,
+    "maximumProviderRuns": 2,
+    "maximumProviderCalls": 96
+  },
+  "gate": {
+    "deterministicHarness": "passed",
+    "adjudicationAcceptance": "passed",
+    "liveProviderAcceptance": "pending",
+    "launchAcceptance": "pending_live_provider_run"
+  },
+  "failures": [],
+  "blockers": [
+    "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract."
+  ]
+}
