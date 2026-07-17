@@ -96,6 +96,10 @@ Steps:
 3. Confirm `customer.subscription.created` or `customer.subscription.updated` processed.
 4. Confirm `invoice.payment_succeeded` processed.
 
+Repeat with the paid invoice delivered before
+`customer.subscription.created`, including a run where the durable customer
+mapping exists but the local subscription row does not yet exist.
+
 Expected:
 
 - Checkout Session mode is `subscription`.
@@ -103,6 +107,14 @@ Expected:
 - `subscription.status` is `active` or another mapped Stripe status.
 - One subscription renewal grant exists with `catalog_id = 'starter'`, `original_credits = 4`, source `subscription_renewal`.
 - Any eligible unused Starter credits are rolled over up to 4 credits with source `rollover`.
+- A valid `subscription_create` invoice establishes the same subscription and
+  customer-mapping state from an authoritative provider snapshot, then grants
+  once without waiting for a manual resend.
+- A `subscription_cycle` invoice never invents missing or unscoped local
+  subscription state. Missing, unrecognized-resource, customer, price, or plan
+  conflicts remain failed/retryable without payment or credit mutation. A
+  delayed invoice for an explicitly retired subscription may retain provider
+  payment truth but cannot grant credits or move the current subscription.
 
 Verification:
 
@@ -190,6 +202,11 @@ Expected:
 - Deliver a failed and successful event for one invoice in both orders; the
   final subscription is active with no grace date and payment history exposes
   only the successful attempt.
+- Deliver the initial successful invoice and subscription-created event in
+  both orders and concurrently. Every permutation must converge to one
+  subscription, one customer mapping, one succeeded payment, and one linked
+  credit grant. The later subscription-created reconciliation may enrich the
+  same resource but must not duplicate entitlement.
 
 Verification:
 
