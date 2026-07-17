@@ -77,6 +77,7 @@ async function waitForServer() {
 try {
   await waitForServer();
   const metadataImages = new Map();
+  const routesWithMetadataImages = new Set();
   const publicAssets = new Map();
   for (const route of [
     "/docs",
@@ -157,7 +158,11 @@ try {
     if (robotsResult.mode === "production" && noindex) {
       throw new Error(`${pathname} is unexpectedly noindex in Production.`);
     }
-    for (const imageUrl of extractMetadataImageUrls(html, baseUrl)) {
+    const routeMetadataImages = extractMetadataImageUrls(html, baseUrl);
+    if (routeMetadataImages.length > 0) {
+      routesWithMetadataImages.add(pathname);
+    }
+    for (const imageUrl of routeMetadataImages) {
       metadataImages.set(imageUrl, pathname);
     }
     for (const assetUrl of extractPublicAssetUrls(
@@ -195,11 +200,13 @@ try {
     }
   }
 
-  const exploreImages = [...metadataImages].filter(
-    ([, source]) => source === "/explore"
+  const routesMissingMetadataImages = sitemapResult.paths.filter(
+    (pathname) => !routesWithMetadataImages.has(pathname)
   );
-  if (exploreImages.length === 0) {
-    throw new Error("/explore is missing its social metadata image.");
+  if (routesMissingMetadataImages.length > 0) {
+    throw new Error(
+      `Indexed routes are missing social metadata images: ${routesMissingMetadataImages.join(", ")}`
+    );
   }
   const assetResult = await assertPublicAssetReferences(baseUrl, {
     metadataImages,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Company } from "./companies";
+import { selectPublishedCompanies, type Company } from "./companies";
 import { toPublicCompanyGuide } from "./public-company";
 
 test("public company projection excludes every volatile legacy field", () => {
@@ -19,7 +19,9 @@ test("public company projection excludes every volatile legacy field", () => {
     difficulty: sentinel,
     salaryLevels: [{ level: sentinel, totalComp: sentinel }],
     salaryNote: sentinel,
-    interviewStages: [{ stage: sentinel, duration: sentinel, description: sentinel }],
+    interviewStages: [
+      { stage: sentinel, duration: sentinel, description: sentinel },
+    ],
     roleOverview: sentinel,
     interviewTips: [sentinel],
     preparationSteps: [sentinel],
@@ -34,4 +36,14 @@ test("public company projection excludes every volatile legacy field", () => {
     "slug",
   ]);
   assert.equal(JSON.stringify(publicCompany).includes(sentinel), false);
+});
+
+test("public company selection excludes draft records", () => {
+  const published = {
+    slug: "published",
+    publicationStatus: "published",
+  } as Company;
+  const draft = { slug: "draft", publicationStatus: "draft" } as Company;
+
+  assert.deepEqual(selectPublishedCompanies([draft, published]), [published]);
 });
