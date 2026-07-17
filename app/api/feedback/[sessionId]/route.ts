@@ -1,101 +1,28 @@
 /**
- * Get Session Feedback API (with Polling Support)
- *
- * Retrieves the AI-generated feedback for an interview session, supporting
- * status polling. Returns feedback status (pending, processing,
- * completed, failed, skipped) with estimated time remaining for incomplete
- * feedback. Includes cache headers based on feedback status.
- *
- * @route GET /api/feedback/:sessionId
- * @access Protected (requires Supabase Auth JWT)
- * @authentication Bearer token in Authorization header
- *
- * @param {string} sessionId - UUID of the session (URL parameter)
- *
- * @response {Object} response - Feedback status and data
- * @response.status {string} - Feedback status (pending|processing|completed|failed|skipped)
- * @response.estimatedTimeRemaining {number} - Seconds remaining (if pending/processing)
- * @response.skipReason {string} - Reason for skipping (if skipped)
- * @response.error {string} - Error message (if failed)
- * @response.feedback {Object} - Complete feedback object (if completed)
- *
- * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {403} Forbidden - User does not own this session
- * @throws {404} Not Found - Session not found or feedback not initialized
- * @throws {500} Internal Server Error - Database query failed
- *
- * @example
- * // Request
- * GET /api/feedback/550e8400-e29b-41d4-a716-446655440000
- * Headers:
- *   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
- *
- * // Response (200 OK - Pending)
- * {
- *   "status": "pending",
- *   "estimatedTimeRemaining": 42
- * }
- * Cache-Control: no-cache
- *
- * // Response (200 OK - Processing)
- * {
- *   "status": "processing",
- *   "estimatedTimeRemaining": 25
- * }
- * Cache-Control: no-cache
- *
- * // Response (200 OK - Completed)
- * {
- *   "status": "completed",
- *   "feedback": {
- *     "id": "feedback-abc123",
- *     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
- *     "structureScore": 8,
- *     "clarityScore": 7,
- *     "insightScore": 9,
- *     "communicationScore": 8,
- *     "leadershipScore": 7,
- *     "overallScore": 7.8,
- *     "strengths": ["..."],
- *     "improvements": ["..."],
- *     "drills": ["..."],
- *     "summary": "...",
- *     "rubricVersion": "1.0.0",
- *     "createdAt": "2025-11-05T11:20:00Z"
- *   }
- * }
- * Cache-Control: public, max-age=3600
- *
- * // Response (200 OK - Skipped)
- * {
- *   "status": "skipped",
- *   "skipReason": "Session too short: 2 minutes < 5 minutes minimum"
- * }
- * Cache-Control: public, max-age=300
- *
- * // Response (200 OK - Failed)
- * {
- *   "status": "failed",
- *   "error": "GPT-4 API timeout"
- * }
- * Cache-Control: public, max-age=300
- *
- * // Error Response (404 Not Found)
- * {
- *   "error": "Session not found or access denied"
- * }
+ * Authenticated, owner-scoped feedback polling and recovery API.
+ * Completed rows cross the strict @meelni/core read boundary before response;
+ * lifecycle clients use only the top-level retryable field as recovery truth.
+ * See docs/api/feedback-polling-examples.md for the discriminated contract.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
-import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import {
+  getFeedbackBySessionId,
+  hasValidFeedbackLifecycleFields,
+} from "@/lib/db/feedback";
+import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
   isFeedbackGenerationLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
-import { isInterviewTerminalState } from "@meelni/core";
+import {
+  decodeFeedbackLifecycleResponse,
+  isInterviewTerminalState,
+  presentCompletedFeedback,
+} from "@meelni/core";
 import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
@@ -182,8 +109,24 @@ export async function GET(
       );
     }
 
+    if (!hasValidFeedbackLifecycleFields(feedbackRecord)) {
+      console.error("[feedback.integrity] invalid lifecycle fields", {
+        environment:
+          process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+        release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+        sessionId,
+      });
+      return NextResponse.json(
+        { error: "Invalid feedback state" },
+        {
+          status: 500,
+          headers: { "Cache-Control": "private, no-store" },
+        }
+      );
+    }
+
     // Build response based on status
-    const status = feedbackRecord.status || "pending";
+    const status = feedbackRecord.status;
 
     // Case 1: Pending - waiting to start processing
     if (status === "pending") {
@@ -249,35 +192,58 @@ export async function GET(
 
     // Case 3: Completed - return full feedback with cache
     if (status === "completed") {
+      const hasVersionedFeedback = [
+        feedbackRecord.schemaVersion,
+        feedbackRecord.promptVersion,
+        feedbackRecord.modelVersion,
+        feedbackRecord.evaluationState,
+      ].some((value) => value !== null);
+      const evidenceTurns = hasVersionedFeedback
+        ? await getFeedbackEvidenceTurns(sessionId)
+        : [];
+      const feedbackView = presentCompletedFeedback(
+        {
+          id: feedbackRecord.id,
+          sessionId: feedbackRecord.sessionId,
+          structureScore: feedbackRecord.structureScore,
+          clarityScore: feedbackRecord.clarityScore,
+          insightScore: feedbackRecord.insightScore,
+          communicationScore: feedbackRecord.communicationScore,
+          leadershipScore: feedbackRecord.leadershipScore,
+          overallScore: feedbackRecord.overallScore,
+          strengths: feedbackRecord.strengths,
+          improvements: feedbackRecord.improvements,
+          drills: feedbackRecord.drills,
+          summary: feedbackRecord.summary,
+          rubricVersion: feedbackRecord.rubricVersion,
+          schemaVersion: feedbackRecord.schemaVersion,
+          promptVersion: feedbackRecord.promptVersion,
+          modelVersion: feedbackRecord.modelVersion,
+          evaluationState: feedbackRecord.evaluationState,
+          createdAt: feedbackRecord.createdAt,
+        },
+        { evidenceTurns }
+      );
+      if (feedbackView.kind === "invalid") {
+        console.error("[feedback.integrity] incompatible completed feedback", {
+          environment:
+            process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+          release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+          sessionId,
+        });
+      }
       return NextResponse.json(
         {
           status: "completed",
-          feedback: {
-            id: feedbackRecord.id,
-            sessionId: feedbackRecord.sessionId,
-            structureScore: feedbackRecord.structureScore,
-            clarityScore: feedbackRecord.clarityScore,
-            insightScore: feedbackRecord.insightScore,
-            communicationScore: feedbackRecord.communicationScore,
-            leadershipScore: feedbackRecord.leadershipScore,
-            overallScore: feedbackRecord.overallScore
-              ? parseFloat(feedbackRecord.overallScore)
-              : null,
-            strengths: feedbackRecord.strengths as unknown[],
-            improvements: feedbackRecord.improvements as unknown[],
-            drills: feedbackRecord.drills as string[],
-            summary: feedbackRecord.summary,
-            rubricVersion: feedbackRecord.rubricVersion,
-            schemaVersion: feedbackRecord.schemaVersion,
-            promptVersion: feedbackRecord.promptVersion,
-            modelVersion: feedbackRecord.modelVersion,
-            evaluationState: feedbackRecord.evaluationState,
-            createdAt: feedbackRecord.createdAt,
-          },
+          retryable: false,
+          feedback: feedbackView,
         },
         {
           headers: {
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control":
+              feedbackView.kind === "invalid"
+                ? "private, no-store"
+                : "private, max-age=3600",
           },
         }
       );
@@ -287,24 +253,42 @@ export async function GET(
     // validator after terminalization because late transcript writes or a new
     // validator deployment cannot redefine the committed outcome.
     if (status === "skipped") {
-      return NextResponse.json(
-        {
-          status: "skipped",
-          skipReason:
-            "This interview did not contain enough trustworthy evidence for feedback.",
-          validation: {
-            tier: feedbackRecord.completionTier ?? "insufficient",
-            stats: feedbackRecord.completionStats,
-            reasons: [],
-            recommendations: feedbackRecord.completionRecommendations ?? [],
-          },
+      const candidate = {
+        status: "skipped",
+        retryable: false,
+        details: {
+          tier:
+            feedbackRecord.completionTier === "abandoned"
+              ? "abandoned"
+              : "insufficient",
+          ...(feedbackRecord.completionStats !== null
+            ? { stats: feedbackRecord.completionStats }
+            : {}),
+          reasons: [],
+          recommendations: feedbackRecord.completionRecommendations ?? [],
         },
-        {
-          headers: {
-            "Cache-Control": "private, max-age=300",
-          },
-        }
-      );
+      };
+      const skippedResponse = decodeFeedbackLifecycleResponse(candidate);
+      if (!skippedResponse || skippedResponse.status !== "skipped") {
+        console.error("[feedback.integrity] invalid skipped feedback", {
+          environment:
+            process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+          release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
+          sessionId,
+        });
+        return NextResponse.json(
+          { error: "Invalid feedback state" },
+          {
+            status: 500,
+            headers: { "Cache-Control": "private, no-store" },
+          }
+        );
+      }
+      return NextResponse.json(skippedResponse, {
+        headers: {
+          "Cache-Control": "private, max-age=300",
+        },
+      });
     }
 
     // Case 5: Failed - return error with short cache
@@ -320,7 +304,7 @@ export async function GET(
       return NextResponse.json(
         {
           status: "failed",
-          error: feedbackRecord.statusReason || "Feedback generation failed",
+          message: "Feedback could not be completed.",
           retryable,
         },
         {
