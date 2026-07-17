@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { config } from "dotenv";
+import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
 
 export interface ProductionActionAuthorizationInput {
   authorizationPath: string | undefined;
@@ -77,11 +78,23 @@ export async function authorizeProductionQuestionSync({
     throw new Error("question_sync_environment_conflict");
   }
 
-  const environment = marker ?? vercelEnvironment ?? "development";
-  if (dryRun || environment !== "production") return "not-required";
-
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error("question_sync_database_target_missing");
+  const environment = marker ?? vercelEnvironment;
+  const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl,
+    environment,
+    expectedEnvironment: environment,
+    productionProjectRef: env.MEELNI_PRODUCTION_SUPABASE_PROJECT_REF,
+    vercelEnvironment,
+  });
+  if (!identityPolicy.allowed) {
+    throw new Error("question_sync_database_identity_invalid");
+  }
+  if (dryRun || identityPolicy.environmentIdentity !== "production") {
+    return "not-required";
+  }
+
   let databaseTarget: string;
   try {
     const parsed = new URL(databaseUrl);
