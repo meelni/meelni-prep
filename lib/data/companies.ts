@@ -25,6 +25,7 @@ export interface SalaryLevel {
 
 export interface Company {
   slug: string;
+  publicationStatus: "draft" | "published";
   name: string;
   logo?: string;
   industry: string;
@@ -56,9 +57,10 @@ export interface Company {
   preparationSteps: string[];
 }
 
-export const companies: Company[] = [
+const companyRecords: Company[] = [
   {
     slug: "coinbase",
+    publicationStatus: "published",
     name: "Coinbase",
     industry: "Cryptocurrency / Fintech",
     description: "Product manager interviews at Coinbase are extremely competitive. You'll face in-depth and challenging questions over the course of at least seven different interview rounds.",
@@ -229,6 +231,7 @@ export const companies: Company[] = [
   },
   {
     slug: "spotify",
+    publicationStatus: "published",
     name: "Spotify",
     industry: "Music Streaming / Technology",
     description: "Spotify's PM interview process is unique and rigorous. As one of the world's most popular streaming platforms, they look for product managers who can drive innovation in audio content while maintaining their user-first culture.",
@@ -375,6 +378,7 @@ export const companies: Company[] = [
   },
   {
     slug: "stripe",
+    publicationStatus: "published",
     name: "Stripe",
     industry: "Fintech / Payments",
     description: "Don't underestimate the Stripe product manager interviews. The process is known to be quite rigorous, with challenging questions that are specific to the company. Expect interviewers to ask you behavioral, product sense, product execution, and technical questions. Be prepared to show off your systems thinking, user empathy, and technical curiosity.",
@@ -539,6 +543,7 @@ export const companies: Company[] = [
   },
   {
     slug: "netflix",
+    publicationStatus: "published",
     name: "Netflix",
     industry: "Entertainment / Streaming",
     description: "Netflix PM interviews are highly competitive and focus heavily on data-driven decision making, consumer insight, and innovation. As a global entertainment leader, Netflix looks for PMs who can balance creative vision with analytical rigor.",
@@ -684,6 +689,7 @@ export const companies: Company[] = [
   },
   {
     slug: "openai",
+    publicationStatus: "published",
     name: "OpenAI",
     industry: "Artificial Intelligence / Research",
     description: "OpenAI PM interviews are uniquely challenging, combining traditional product management skills with deep understanding of AI capabilities, safety considerations, and ethical implications. As a frontier AI company, OpenAI looks for PMs who can navigate unprecedented product challenges.",
@@ -822,6 +828,7 @@ export const companies: Company[] = [
   },
   {
     slug: "google",
+    publicationStatus: "published",
     name: "Google",
     industry: "Technology / Internet",
     description: "Google's PM interview process is one of the most rigorous in the industry. As one of the world's most influential technology companies, Google seeks product managers who can combine deep technical understanding with strategic thinking and user empathy at massive scale.",
@@ -969,6 +976,7 @@ export const companies: Company[] = [
   },
   {
     slug: "meta",
+    publicationStatus: "published",
     name: "Meta",
     industry: "Social Media / Technology",
     description: "Meta's PM interview process is known for its emphasis on product sense, execution, and leadership. With billions of users across Facebook, Instagram, WhatsApp, and emerging metaverse products, Meta seeks PMs who can drive impact at massive scale while navigating complex organizational dynamics.",
@@ -1137,6 +1145,16 @@ export const companies: Company[] = [
     ]
   }
 ];
+
+export function selectPublishedCompanies(
+  records: readonly Company[]
+): Company[] {
+  return records.filter(
+    (company) => company.publicationStatus === "published"
+  );
+}
+
+export const companies = selectPublishedCompanies(companyRecords);
 
 export function getCompanyBySlug(slug: string): Company | undefined {
   return companies.find(c => c.slug === slug);

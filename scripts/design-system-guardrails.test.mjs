@@ -2170,7 +2170,7 @@ test("explore question surfaces use shared form and action primitives", async ()
 
   const expectations = [
     {
-      file: "app/explore/page.tsx",
+      file: "app/explore/explore-client.tsx",
       requiredImports: [
         "@/components/ui/input",
         "@/components/ui/button",
@@ -2222,7 +2222,10 @@ test("explore question surfaces use shared form and action primitives", async ()
         violations.push(`${file}:${bannedPattern}`);
       }
     }
-    if (file === "app/explore/page.tsx" && !content.includes("top-header")) {
+    if (
+      file === "app/explore/explore-client.tsx" &&
+      !content.includes("top-header")
+    ) {
       violations.push(`${file}:top-header`);
     }
     if (
@@ -2245,7 +2248,7 @@ test("explore question surfaces use shared form and action primitives", async ()
       violations.push(`${file}:mobile-dialog-bounds`);
     }
     if (
-      file === "app/explore/page.tsx" &&
+      file === "app/explore/explore-client.tsx" &&
       (!content.includes('aria-label="Question pages"') ||
         !content.includes('aria-label="Loading questions"') ||
         !content.includes('className="min-h-11 pl-10"') ||
@@ -2254,13 +2257,13 @@ test("explore question surfaces use shared form and action primitives", async ()
       violations.push(`${file}:responsive-list-states`);
     }
     if (
-      file === "app/explore/page.tsx" &&
+      file === "app/explore/explore-client.tsx" &&
       !content.includes("publicAvailability.totalQuestions !== null")
     ) {
       violations.push(`${file}:truthful-structured-data-gate`);
     }
     if (
-      file === "app/explore/page.tsx" &&
+      file === "app/explore/explore-client.tsx" &&
       content.includes("query: debouncedSearchQuery")
     ) {
       violations.push(`${file}:raw-search-analytics`);

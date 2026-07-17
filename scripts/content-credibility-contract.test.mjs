@@ -92,11 +92,14 @@ test("company pages keep volatile legacy fields outside presentation", async () 
 
 test("Explore failures cannot emit exact-zero copy or schema", async () => {
   const page = await source("app/explore/page.tsx");
+  const client = await source("app/explore/explore-client.tsx");
 
-  assert.match(page, /resolvePublicQuestionAvailability/);
-  assert.match(page, /publicAvailability\.totalQuestions !== null/);
-  assert.match(page, /Questions are temporarily unavailable/);
-  assert.match(page, /setLoadState\("error"\)/);
+  assert.match(page, /dynamic = "force-dynamic"/);
+  assert.match(page, /loadPublicQuestionCorpus/);
+  assert.match(client, /resolvePublicQuestionAvailability/);
+  assert.match(client, /publicAvailability\.totalQuestions !== null/);
+  assert.match(client, /Questions are temporarily unavailable/);
+  assert.match(client, /setLoadState\("error"\)/);
 });
 
 test("unsupported company-process articles remain unpublished", async () => {
