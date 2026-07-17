@@ -7,6 +7,37 @@ vi.mock("@/lib/db/sessions", () => ({
 }));
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
+  hasValidFeedbackLifecycleFields: vi.fn((record: Record<string, unknown>) => {
+    const statuses = new Set([
+      "pending",
+      "processing",
+      "completed",
+      "failed",
+      "skipped",
+    ]);
+    const tiers = new Set([
+      null,
+      "full",
+      "partial",
+      "insufficient",
+      "abandoned",
+    ]);
+    const dispatchStatuses = new Set([
+      "not_required",
+      "pending",
+      "sending",
+      "sent",
+      "failed",
+    ]);
+    return (
+      statuses.has(record.status as string) &&
+      tiers.has(record.completionTier as string | null) &&
+      dispatchStatuses.has(record.dispatchStatus as string)
+    );
+  }),
+}));
+vi.mock("@/lib/db/transcripts", () => ({
+  getFeedbackEvidenceTurns: vi.fn(),
 }));
 vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
   recoverFeedbackGenerationWorkflow: vi.fn(),
@@ -16,6 +47,7 @@ import { NextRequest } from "next/server";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { createClient } from "@/lib/supabase/server";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 import { GET, POST } from "./route";
@@ -32,6 +64,20 @@ describe("/api/feedback/[sessionId]", () => {
       lifecycleState: "completed",
       terminalReason: "user_end",
     } as never);
+    vi.mocked(getFeedbackEvidenceTurns).mockResolvedValue([
+      {
+        eventId: "writer:1",
+        speaker: "user",
+        text: "I would focus on working parents first.",
+        contractVersion: 2,
+      },
+      {
+        eventId: "writer:2",
+        speaker: "user",
+        text: "First, I would define the goal; first, I would then prioritize.",
+        contractVersion: 2,
+      },
+    ] as never);
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -45,6 +91,24 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(404);
   });
+
+  it.each(["status", "completionTier", "dispatchStatus"])(
+    "fails closed for an invalid %s lifecycle value",
+    async (field) => {
+      vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+        feedbackRecord({ [field]: "unsupported" }) as never
+      );
+
+      const response = await GET(request(), PARAMS);
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid feedback state",
+      });
+      expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
+    }
+  );
 
   it("returns a typed recoverable state for terminal-without-feedback", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
@@ -457,7 +521,16 @@ describe("/api/feedback/[sessionId]", () => {
         status: "completed",
         dispatchStatus: "sent",
         dispatchedAt: new Date("2026-07-09T22:00:00.000Z"),
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
         overallScore: "8.0",
+        strengths: ["Clear answer"],
+        improvements: ["State the approach first"],
+        drills: [],
+        summary: "Historical summary",
       }) as never
     );
     const response = await GET(request(), PARAMS);
@@ -494,9 +567,23 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({
         status: "completed",
-        overallScore: "7.8",
+        structureScore: 8,
+        clarityScore: 7,
+        insightScore: 9,
+        communicationScore: 8,
+        leadershipScore: 7,
+        overallScore: "7.9",
         strengths: [finding],
-        improvements: [{ ...finding, dimension: "structure" }],
+        improvements: [
+          {
+            ...finding,
+            dimension: "structure",
+            transcriptRefs: ["writer:2"],
+            evidence: [{ turnRef: "writer:2", quote: "first, I would" }],
+          },
+        ],
+        drills: ["Practice a two-minute prioritization explanation."],
+        summary: "The answer was specific and can become more structured.",
         schemaVersion: "feedback.v2",
         promptVersion: "feedback.prompt.v2",
         modelVersion: "fixture-model-v1",
@@ -509,6 +596,7 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "completed",
       feedback: {
+        kind: "v2",
         strengths: [finding],
         schemaVersion: "feedback.v2",
         promptVersion: "feedback.prompt.v2",
@@ -565,6 +653,10 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
     },
     completionRecommendations: [],
     rubricVersion: "1.0.0",
+    schemaVersion: null,
+    promptVersion: null,
+    modelVersion: null,
+    evaluationState: null,
     createdAt: new Date("2026-07-09T22:00:00.000Z"),
     ...overrides,
   };

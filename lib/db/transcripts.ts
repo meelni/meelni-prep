@@ -17,6 +17,7 @@ import type {
 import {
   deriveInterviewDeadlineAt,
   isInterviewTerminalState,
+  MAX_CANONICAL_EVENT_ID_LENGTH,
   normalizeInterviewDurationMinutes,
 } from "@meelni/core";
 import {
@@ -33,6 +34,7 @@ export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
 export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
 const MAX_CANONICAL_TURNS_PER_SESSION = 1_000;
 const MAX_INTERRUPTION_MARKERS_PER_SESSION = 1_000;
+const MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
 
 export type PersistedTranscriptInterruptionMarker =
   typeof transcriptInterruptionMarker.$inferSelect;
@@ -892,6 +894,52 @@ export async function getSessionTranscript(sessionId: string) {
     .orderBy(...transcriptChronologicalOrder());
 
   return turns;
+}
+
+/**
+ * Return only the canonical user-turn fields required to verify persisted
+ * feedback evidence at the authenticated read boundary.
+ */
+export async function getFeedbackEvidenceTurns(sessionId: string) {
+  return buildFeedbackEvidenceTurnsQuery(db, sessionId);
+}
+
+export function buildFeedbackEvidenceTurnsQuery(
+  database: Pick<typeof db, "select">,
+  sessionId: string
+) {
+  return (
+    database
+      .select({
+        // Read one character beyond each contract limit so the core parser can
+        // reject oversized persisted values without first materializing them.
+        eventId: sql<
+          string | null
+        >`left(${transcriptTurn.eventId}, ${MAX_CANONICAL_EVENT_ID_LENGTH + 1})`,
+        speaker: transcriptTurn.speaker,
+        text: sql<
+          string | null
+        >`left(${transcriptTurn.text}, ${MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH + 1})`,
+        contractVersion: transcriptTurn.contractVersion,
+      })
+      .from(transcriptTurn)
+      .where(
+        and(
+          eq(transcriptTurn.sessionId, sessionId),
+          eq(transcriptTurn.speaker, "user")
+        )
+      )
+      .orderBy(
+        asc(transcriptTurn.startedAt),
+        asc(transcriptTurn.writerId),
+        asc(transcriptTurn.sequence),
+        asc(transcriptTurn.eventId),
+        asc(transcriptTurn.id)
+      )
+      // Likewise, fetch one row beyond the accepted session capacity so a
+      // corrupt legacy session fails closed with bounded database and app work.
+      .limit(MAX_CANONICAL_TURNS_PER_SESSION + 1)
+  );
 }
 
 /**

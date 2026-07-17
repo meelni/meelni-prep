@@ -59,7 +59,7 @@ const INJECTION_CLAUSE_PATTERNS = [
 const TRANSCRIPT_DELIMITER_PATTERN = /<\s*\/?\s*transcript_data\b[^>]*>/i;
 const STRUCTURAL_INJECTION_PATTERN =
   /^\s*(?:(?:\[|###\s*)(?:system|developer|assistant)(?:\]|\s*:)|<\s*\/?\s*(?:system|developer|assistant)\b[^>]*>|<\s*message\b[^>]*\brole\s*=\s*["']?(?:system|developer|assistant)["']?[^>]*>|<\s*role\s*>\s*(?:system|developer|assistant)\s*<\s*\/\s*role\s*>|\{?\s*["']?role["']?\s*[:=]\s*["']?(?:system|developer|assistant)["']?\b|\[TURN_ID\s*=)/i;
-const MAX_CANONICAL_EVENT_ID_LENGTH = 512;
+export const MAX_CANONICAL_EVENT_ID_LENGTH = 512;
 const MAX_REPLAY_TOKENS_PER_TURN = 1_024;
 const MAX_CROSS_EVENT_PREVIOUS_CANDIDATE_EVENTS = 2;
 const MAX_CROSS_EVENT_PREVIOUS_EVENT_TAIL_LENGTH = 512;
