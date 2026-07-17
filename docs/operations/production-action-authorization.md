@@ -5,11 +5,21 @@ setup, LiveKit Production deploys, Production database migrations, and manual
 Production question sync. Legacy database-mutating scripts reject Production
 and unmarked shared targets before their database adapter loads. Repository
 policy ignores every Vercel Git build except Preview, and the already-declared
-schedule is inert against Production until an owner-authorized activation path
-exists. Production promotion, live schedule activation, and relaunch default-on
+scheduled route is source-fenced for any future owner-authorized first
+activation. Production promotion, live schedule activation, and relaunch default-on
 remain unsupported rather than exposing an unguarded command. No owner public key is
 enrolled yet, so guarded Production paths intentionally fail closed. Preview,
 local development and ordinary customer/runtime actions are unchanged.
+
+Provider-state evidence recorded on 2026-07-17: the correct Vercel project,
+`meelni/meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), reported `live: false`;
+the current and recent Production deployment attempts were in `ERROR`. There
+was therefore no active Production deployment or cron to bootstrap before this
+repository policy began ignoring Production builds. This is time-sensitive
+external evidence, not a code invariant: recheck it before merging this guard
+or attempting first Production activation. If the project reports a live
+deployment, stop and design a separately owner-authorized fence-first rollout
+instead of merging both changes together.
 
 ## Ownership Boundary
 

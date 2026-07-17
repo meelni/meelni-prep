@@ -615,9 +615,9 @@ ALTER TABLE table_name ADD COLUMN new_column type;
 
 1. Update Drizzle schema
 2. Run `npm run db:generate`
-3. Review generated migration
+3. Add and review RLS enablement and policy SQL in the numbered migration
 4. Apply through the guarded `npm run db:migrate` wrapper; Production requires the owner artifact and Production runbook.
-5. Update RLS policies in Supabase dashboard
+5. Verify the reviewed migration locally or against an explicitly identified Preview target; never apply schema or policy changes directly in a provider dashboard.
 
 **Data Migration:**
 

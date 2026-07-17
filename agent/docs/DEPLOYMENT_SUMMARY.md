@@ -1,10 +1,12 @@
 # Deployment Summary - New Prompt System
+
 **Date**: 2025-11-08
 **Issue**: #76
 
 ## Deployed Agents
 
 ### 1. Main Interview Agent (CA_yawKG67rCMG4)
+
 - **Status**: ✅ Successfully deployed
 - **Version**: v20251108031453
 - **Deployed At**: 2025-11-08T03:15:48Z
@@ -17,6 +19,7 @@
   - Integration via `utils/prompt_builder.py`
 
 ### 2. Demo Agent (CA_Wp8bi3bRroE2)
+
 - **Status**: ⚠️ Not visible in current account
 - **Note**: Referenced in code but may be deployed to different account (Enterprise Account)
 - **Changes**: No changes needed - uses inline prompt system
@@ -25,6 +28,7 @@
 ## Files Deployed
 
 Main agent deployment includes:
+
 - `agent.py` - Main agent entrypoint with prompt builder integration
 - `config.py` - Configuration parsing
 - `prompts.py` - Enhanced modular prompt system
@@ -56,12 +60,9 @@ Main agent deployment includes:
 
 ## Rollback Procedure (if needed)
 
-```bash
-cd agent
-lk agent rollback
-```
-
-This will revert to previous version (v20251106062030) within seconds.
+No approved target-bound repository rollback adapter exists. Do not use a raw
+provider mutation; require a separately reviewed and owner-authorized rollback
+action for the exact target.
 
 ## Next Steps
 
@@ -71,5 +72,6 @@ This will revert to previous version (v20251106062030) within seconds.
 4. Gather user feedback on conversation quality
 
 ---
+
 **Deployment Engineer**: Claude Agent
 **Reference**: See `.claude/CLAUDE.md` for full deployment documentation

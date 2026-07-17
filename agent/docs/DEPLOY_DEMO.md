@@ -129,19 +129,16 @@ This does a **rolling deployment** - old instances stay active for up to 1 hour 
 
 ## Rollback
 
-If something goes wrong:
-
-```bash
-lk agent rollback
-```
+There is no approved repository-owned rollback adapter yet. Do not run a raw
+provider mutation against whichever LiveKit project happens to be active. Stop
+the rollout, preserve the target identity and candidate evidence, and add a
+reviewed, target-bound rollback action before attempting a Production rollback.
 
 ## Delete Demo Agent
 
-To remove the demo agent from LiveKit Cloud:
-
-```bash
-lk agent delete
-```
+There is no approved repository-owned deletion adapter. Treat agent deletion as
+a separately reviewed and owner-authorized Production action; do not delete an
+agent with the raw provider CLI.
 
 ## Troubleshooting
 
@@ -169,10 +166,8 @@ lk agent logs --log-type build
 
 ### Update secrets
 
-```bash
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key
-```
+No approved target-bound repository secret-rotation adapter exists. Do not
+mutate Production agent secrets with the raw provider CLI.
 
 ## Cost Considerations
 

@@ -456,29 +456,18 @@ lk agent logs
 **Issue: Update Secrets**
 
 ```bash
-# Update environment variables without redeploying
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key \
-  --secrets DEEPGRAM_API_KEY=new-key
+# Production secret changes require a reviewed, target-bound repository adapter.
 ```
 
 ### Rollback
 
-```bash
-# Rollback to previous version
-lk agent rollback
-
-# Old version will be redeployed immediately
-```
+No approved target-bound repository rollback adapter exists yet. Do not use a
+raw provider mutation.
 
 ### Delete Agent
 
-```bash
-# Remove agent from LiveKit Cloud
-lk agent delete
-
-# WARNING: This will terminate all active sessions!
-```
+No approved target-bound repository deletion adapter exists yet. Deletion must
+be separately reviewed and owner-authorized because it can terminate sessions.
 
 ### Cloud Configuration Limitations
 

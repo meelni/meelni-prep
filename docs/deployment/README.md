@@ -132,10 +132,9 @@ See **[LiveKit Debugging](../LIVEKIT_DEBUGGING.md)** for agent debugging workflo
 
 ### Agent Rollback
 
-```bash
-cd agent
-lk agent rollback
-```
+No target-bound repository rollback adapter exists. Preserve the candidate and
+target identity, stop further rollout work, and require a separately reviewed
+and owner-authorized rollback action before mutating a Production agent.
 
 ### Database Rollback
 
