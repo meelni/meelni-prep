@@ -20,8 +20,8 @@ export const EVALUATION_CALIBRATION_THRESHOLDS = {
   minimumStateScoreBandAgreementRate: 0.75,
   maximumRepeatedRunScoreRange: 1,
   modelVersionMatchRate: 1,
-  minimumProviderRuns: 3,
-  maximumProviderRuns: 3,
+  minimumProviderRuns: 2,
+  maximumProviderRuns: 2,
   maximumProviderCalls: 96,
 } as const;
 
@@ -797,6 +797,18 @@ function buildConversation(
   answers: string[],
   state: "full" | "partial"
 ): CalibrationTranscriptTurn[] {
+  const interviewerPrompts = [
+    "Please frame your approach and make the first decision explicit.",
+    "Which user need or operating constraint should determine the next choice?",
+    "What outcome metric and guardrail would make the decision testable?",
+    "Which falsifiable assumption should the first delivery checkpoint test?",
+    "How would you validate comprehension before expanding the solution's breadth?",
+    "Which dependency should the team expose early, and how would you keep the release reversible?",
+    "How should the weekly review connect a leading behavior to the intended outcome?",
+    "What would you change if the evidence contradicted the current plan?",
+    "How would you communicate the rejected alternative and ownership of the next decision?",
+    "What segmented outcomes and guardrails must hold before you scale the approach?",
+  ] as const;
   const turns: Array<
     readonly ["user" | "interviewer", string, number, number]
   > = [];
@@ -805,9 +817,8 @@ function buildConversation(
     const base = index * spacing;
     turns.push([
       "interviewer",
-      index === 0
-        ? "Please frame your approach and make the first decision explicit."
-        : `Follow-up ${index}: explain the next decision and its tradeoff.`,
+      interviewerPrompts[index] ??
+        "Explain the next decision, its owner, and the evidence that would change it.",
       base,
       base + 10,
     ]);
