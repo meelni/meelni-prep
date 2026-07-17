@@ -19,11 +19,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy shared modules (needed for imports)
 COPY shared/ ./shared/
 
-# Copy demo agent code
-COPY demo/agent.py .
+# Preserve the demo package so the bounded runtime contract is importable.
+COPY demo/ ./demo/
 
 # Download turn detector model weights (66 MB English model)
-RUN python agent.py download-files
+RUN python demo/agent.py download-files
 
 # LiveKit Cloud automatically provides these environment variables:
 # - LIVEKIT_URL
@@ -35,4 +35,4 @@ RUN python agent.py download-files
 # (CARTESIA_API_KEY not needed when using LiveKit Inference)
 
 # Run the demo agent
-CMD ["python", "agent.py", "start"]
+CMD ["python", "demo/agent.py", "start"]

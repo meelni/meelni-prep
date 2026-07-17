@@ -1,6 +1,6 @@
 """
 Meelni Demo Agent
-Quick 5-minute product demo for landing page visitors
+Two-minute voice preview for landing page visitors
 """
 
 import asyncio
@@ -26,6 +26,22 @@ from livekit.plugins.turn_detector.english import EnglishModel
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from demo.runtime import (
+    CONTROL_PUBLISH_TIMEOUT_SECONDS,
+    GREETING_TIMEOUT_SECONDS,
+    LOCAL_SESSION_CLOSE_TIMEOUT_SECONDS,
+    ROOM_CONNECT_TIMEOUT_SECONDS,
+    ROOM_DELETE_TIMEOUT_SECONDS,
+    SESSION_END_DELIVERY_GRACE_SECONDS,
+    SESSION_END_PUBLISH_TIMEOUT_SECONDS,
+    SESSION_START_TIMEOUT_SECONDS,
+    TAKEAWAY_TIMEOUT_SECONDS,
+    resolve_demo_deadline,
+    resolve_demo_participant_identity,
+    run_bounded,
+    stop_then_run_bounded,
+)
+from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.safe_logging import log_exception_class
 
 load_dotenv()
@@ -69,15 +85,15 @@ def build_demo_instructions(question: dict = None) -> str:
         Complete demo instructions string
     """
     # Base demo prompt - designed to feel spontaneous, not scripted
-    base_instructions = """You're Meelni, an AI interview coach conducting a 5-minute product sense demo.
+    base_instructions = """You're Meelni, an AI interview coach conducting a two-minute product sense voice preview.
 
 Your goal: Give them a taste of real interview practice with authentic product sense coaching.
 
 ## Opening (pick one spontaneously, don't script it):
-- "Hey—got a minute? Let's do a quick round."
+- "Hey—got a minute? Let's try a quick question."
 - "Alright, let's jump in. Ready?"
 - "Quick question for you."
-- "Want to try answering a real PM question?"
+- "Want to try answering a PM-style practice question?"
 - "Let's see what you've got."
 """
 
@@ -90,7 +106,7 @@ Your goal: Give them a taste of real interview practice with authentic product s
         if company:
             base_instructions += f"\nCompany context: {company}"
         base_instructions += f'\nAsk this question: "{question_text}"'
-        base_instructions += "\n\nIMPORTANT: Use this exact question after your opening. This is a real question from our question bank."
+        base_instructions += "\n\nIMPORTANT: Use this exact curated question after your opening."
     else:
         # Fallback to default demo questions if no question provided
         base_instructions += """
@@ -167,7 +183,7 @@ Give 2-3 specific observations tied to framework:
 
 ## Important:
 - NO emojis, asterisks, or markdown in speech
-- Keep total time under 5 minutes (you will receive automatic time warnings)
+- Keep total time under two minutes (you will receive an automatic wrap-up warning)
 - One question only—but be flexible if they have questions for you
 - Don't apologize or hedge
 - Handle interruptions smoothly
@@ -191,7 +207,7 @@ Give 2-3 specific observations tied to framework:
 
 [If user asks a follow-up question, engage naturally]
 
-[At 5 minutes]: "Alright, that's time. Nice work today."
+[At 2 minutes]: "Alright, that's time. Nice work today."
 """
 
     return base_instructions
@@ -202,7 +218,6 @@ class DemoAgent(Agent):
 
     def __init__(self, instructions: str) -> None:
         super().__init__(instructions=instructions)
-        self.start_time = None
         self.warning_sent = False
         self.ending_sent = False
         self.session_ended = False
@@ -213,192 +228,298 @@ def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
 
-async def monitor_session_time(ctx: JobContext, demo_agent: DemoAgent, session: AgentSession):
-    """
-    Background task to monitor session duration and inject time warnings.
+class RoomDeletionGuard:
+    """Delete a demo room at most once across deadline and final cleanup."""
 
-    Args:
-        ctx: Job context for room access
-        demo_agent: DemoAgent instance with time tracking state
-        session: AgentSession for sending messages
-    """
-    WARNING_TIME = 285  # 4 minutes 45 seconds
-    END_TIME = 300      # 5 minutes
-    CHECK_INTERVAL = 5  # Check every 5 seconds
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._deleted = False
 
-    logger.info("Time monitoring started for demo session")
+    async def delete(self, ctx: JobContext) -> None:
+        async with self._lock:
+            if self._deleted:
+                return
+            await ctx.delete_room()
+            self._deleted = True
 
+
+class LocalSessionStopGuard:
+    """Stop local model/audio work once, even if startup is still in flight."""
+
+    def __init__(self) -> None:
+        self._session = None
+        self._stopped = False
+        self._session_closed = False
+        self._lock = asyncio.Lock()
+        self._context_shutdown = False
+
+    async def attach(self, session: AgentSession) -> None:
+        async with self._lock:
+            self._session = session
+            if self._stopped:
+                await self._close_session()
+
+    async def stop(self) -> None:
+        async with self._lock:
+            self._stopped = True
+            if self._session is not None and not self._session_closed:
+                await self._close_session()
+
+    async def _close_session(self) -> None:
+        self._session.shutdown(drain=False)
+        try:
+            await asyncio.wait_for(
+                self._session.aclose(),
+                timeout=LOCAL_SESSION_CLOSE_TIMEOUT_SECONDS,
+            )
+            self._session_closed = True
+        except asyncio.TimeoutError:
+            logger.warning("Demo local session close exceeded its hard bound")
+        except Exception as error:
+            log_exception_class(
+                logger,
+                logging.WARNING,
+                "Demo local session close failed",
+                error,
+            )
+
+    def shutdown_context(self, ctx: JobContext, reason: str) -> None:
+        if self._context_shutdown:
+            return
+        self._context_shutdown = True
+        ctx.shutdown(reason)
+
+
+async def publish_demo_control(
+    ctx: JobContext,
+    payload: dict,
+    timeout_seconds: float = CONTROL_PUBLISH_TIMEOUT_SECONDS,
+) -> None:
+    await asyncio.wait_for(
+        ctx.room.local_participant.publish_data(
+            json.dumps(payload).encode("utf-8"),
+            topic="demo_control",
+        ),
+        timeout=timeout_seconds,
+    )
+
+
+async def wait_for_speech(handle, timeout_seconds: int) -> None:
     try:
-        while not demo_agent.session_ended:
-            await asyncio.sleep(CHECK_INTERVAL)
-
-            if demo_agent.start_time is None:
-                continue
-
-            elapsed = time.time() - demo_agent.start_time
-
-            # Send warning at 4:45 mark
-            if elapsed >= WARNING_TIME and not demo_agent.warning_sent:
-                demo_agent.warning_sent = True
-                logger.info(f"Demo session at {elapsed:.1f}s - sending warning message")
-
-                warning_msg = "We're running short on time. Let me give you some quick feedback."
-
-                # Send message via data channel to notify agent
-                await ctx.room.local_participant.publish_data(
-                    json.dumps({
-                        "type": "time_warning",
-                        "message": warning_msg,
-                        "elapsed": elapsed
-                    }).encode("utf-8"),
-                    topic="demo_control"
-                )
-
-            # End session at 5:00 mark
-            elif elapsed >= END_TIME and not demo_agent.ending_sent:
-                demo_agent.ending_sent = True
-                demo_agent.session_ended = True
-                logger.info(f"Demo session at {elapsed:.1f}s - sending ending message and terminating")
-
-                ending_msg = "Alright, that's time. Nice work today!"
-
-                # Send ending message via data channel
-                await ctx.room.local_participant.publish_data(
-                    json.dumps({
-                        "type": "session_end",
-                        "message": ending_msg,
-                        "elapsed": elapsed
-                    }).encode("utf-8"),
-                    topic="demo_control"
-                )
-
-                # Give a moment for the message to be delivered
-                await asyncio.sleep(2)
-
-                # Gracefully disconnect from the room
-                logger.info("Demo agent disconnecting from room")
-                await ctx.room.disconnect()
-                break
-
-    except asyncio.CancelledError:
-        logger.info("Time monitoring task cancelled")
+        await asyncio.wait_for(handle.wait_for_playout(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        handle.interrupt()
         raise
+
+
+async def deliver_evidence_based_takeaway(session: AgentSession) -> None:
+    handle = session.generate_reply(
+        instructions=(
+            "Give the participant one concise takeaway now. Base every observation "
+            "only on words the participant actually said in this room's conversation. "
+            "Name one evidenced strength and one evidenced improvement. If there is not "
+            "enough participant evidence, say that plainly and give one general next-step "
+            "tip without pretending they demonstrated anything. Do not invent quotes, "
+            "claims, or behavior. Finish in no more than three short sentences."
+        ),
+        allow_interruptions=False,
+    )
+    await wait_for_speech(handle, TAKEAWAY_TIMEOUT_SECONDS)
+
+
+async def monitor_session_time(
+    ctx: JobContext,
+    demo_agent: DemoAgent,
+    session: AgentSession,
+    deadline,
+):
+    """Generate a bounded, evidence-based takeaway before the hard deadline."""
+    try:
+        await asyncio.sleep(max(0, deadline.warning_at - time.monotonic()))
+        if demo_agent.session_ended:
+            return
+        demo_agent.warning_sent = True
+        logger.info("Demo takeaway window started")
+        try:
+            await publish_demo_control(ctx, {"type": "time_warning"})
+        except Exception as error:
+            log_exception_class(
+                logger, logging.WARNING, "Could not publish demo time warning", error
+            )
+        try:
+            await deliver_evidence_based_takeaway(session)
+        except asyncio.TimeoutError:
+            logger.warning("Demo takeaway exceeded its bounded delivery window")
+        except Exception as error:
+            log_exception_class(
+                logger, logging.ERROR, "Demo takeaway generation failed", error
+            )
+    except asyncio.CancelledError:
+        raise
+
+
+async def enforce_hard_deadline(
+    ctx: JobContext,
+    deadline,
+    deletion_guard: RoomDeletionGuard,
+    stop_guard: LocalSessionStopGuard,
+) -> None:
+    """Delete the room on a monotonic deadline, independent of speech work."""
+    # Begin the bounded control-message attempt early enough that neither its
+    # timeout nor the delivery grace can extend the provider-spend boundary.
+    notify_at = deadline.session_end_notify_at(
+        SESSION_END_DELIVERY_GRACE_SECONDS
+        + LOCAL_SESSION_CLOSE_TIMEOUT_SECONDS
+    )
+    await asyncio.sleep(max(0, notify_at - time.monotonic()))
+    logger.info("Demo hard-stop notification window started")
+    try:
+        await publish_demo_control(
+            ctx,
+            {"type": "session_end", "message": "That's the preview."},
+            timeout_seconds=SESSION_END_PUBLISH_TIMEOUT_SECONDS,
+        )
     except Exception as error:
         log_exception_class(
-            logger,
-            logging.ERROR,
-            "Demo time monitoring failed",
-            error,
+            logger, logging.WARNING, "Could not publish demo session end", error
         )
+    finally:
+        await stop_guard.stop()
+        await asyncio.sleep(max(0, deadline.ends_at - time.monotonic()))
+        logger.info("Deleting demo room at the hard deadline")
+        try:
+            await run_bounded(
+                lambda: deletion_guard.delete(ctx),
+                ROOM_DELETE_TIMEOUT_SECONDS,
+            )
+        finally:
+            stop_guard.shutdown_context(
+                ctx, "public voice preview hard deadline"
+            )
 
 
 async def entrypoint(ctx: JobContext):
     """Entrypoint for demo agent"""
 
-    logger.info(f"Demo agent starting for room: {ctx.room.name}")
+    logger.info("Demo agent starting")
 
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-
-    # NEW: Extract question from room metadata if provided
-    question = None
+    metadata = {}
     try:
         room_metadata = ctx.room.metadata or "{}"
-        if room_metadata and room_metadata != "{}":
-            metadata = json.loads(room_metadata)
-            question = metadata.get("question")
+        parsed_metadata = json.loads(room_metadata)
+        if isinstance(parsed_metadata, dict):
+            metadata = parsed_metadata
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Failed to parse demo metadata")
 
-            if question:
-                logger.info("Demo metadata includes a selected question")
-            else:
-                logger.info("No question provided - using default demo questions")
+    deadline = resolve_demo_deadline(
+        metadata,
+        wall_now=time.time(),
+        monotonic_now=time.monotonic(),
+    )
+    participant_identity = resolve_demo_participant_identity(metadata)
+    deletion_guard = RoomDeletionGuard()
+    stop_guard = LocalSessionStopGuard()
+    hard_deadline_task = asyncio.create_task(
+        enforce_hard_deadline(ctx, deadline, deletion_guard, stop_guard)
+    )
+    background_tasks = [hard_deadline_task]
+
+    try:
+        await run_bounded(
+            lambda: ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY),
+            ROOM_CONNECT_TIMEOUT_SECONDS,
+        )
+        if participant_identity is None:
+            logger.warning("Demo participant identity is unavailable")
+            return
+        participant = await wait_for_candidate_before_greeting(
+            wait_for_participant=ctx.wait_for_participant,
+            candidate_identity=participant_identity,
+            deadline_task=hard_deadline_task,
+        )
+        if participant is None:
+            return
+
+        question = metadata.get("question")
+        if question:
+            logger.info("Demo question context loaded")
         else:
-            logger.info("No metadata - using default demo questions")
-    except json.JSONDecodeError as error:
-        log_exception_class(
-            logger,
-            logging.WARNING,
-            "Demo metadata could not be parsed; using default questions",
-            error,
-        )
-    except Exception as error:
-        log_exception_class(
-            logger,
-            logging.ERROR,
-            "Demo question metadata could not be normalized; using defaults",
-            error,
-        )
+            logger.info("No question provided - using default demo questions")
 
-    # NEW: Build instructions with question
-    instructions = build_demo_instructions(question)
+        instructions = build_demo_instructions(question)
 
-    # Fixed configuration optimized for demos
-    stt_model = "deepgram/nova-3"
-    llm_model = "openai/gpt-4o"
-
-    # ElevenLabs voice via LiveKit Inference (no API key needed)
-    # Voice ID: cgSgspJ2msm6clMCkdW9
-    # Format: elevenlabs/model:voiceId
-    voice_id = "cgSgspJ2msm6clMCkdW9"
-    tts_model = f"elevenlabs/eleven_turbo_v2_5:{voice_id}"
-
-    logger.info(f"Demo Configuration - STT: {stt_model}, LLM: {llm_model}, TTS: {tts_model}")
-
-    # Create agent session with turn detection
-    session = AgentSession(
-        turn_detection=EnglishModel(),  # Context-aware turn detection
-        stt=stt_model,
-        llm=llm_model,
-        tts=tts_model,
-        vad=ctx.proc.userdata["vad"],
-    )
-
-    # NEW: Create DemoAgent instance with time tracking
-    demo_agent = DemoAgent(instructions=instructions)
-
-    # Initialize start time when agent is ready
-    demo_agent.start_time = time.time()
-    logger.info(f"Demo session timer started at {demo_agent.start_time}")
-
-    # Start background time monitoring task
-    monitoring_task = asyncio.create_task(
-        monitor_session_time(ctx, demo_agent, session)
-    )
-
-    # NEW: Pass demo_agent instance to session
-    await session.start(
-        agent=demo_agent,
-        room=ctx.room,
-        record=False,
-    )
-
-    logger.info("Demo agent started successfully")
-
-    # CRITICAL: Send initial greeting for demo
-    greeting = "Hey! Ready to try a quick PM question?"
-
-    try:
-        await session.say(greeting)
-        logger.info("Demo greeting sent")
-    except Exception as error:
-        log_exception_class(
-            logger,
-            logging.ERROR,
-            "Demo greeting delivery failed",
-            error,
+        stt_model = "deepgram/nova-3"
+        llm_model = "openai/gpt-4o"
+        voice_id = "cgSgspJ2msm6clMCkdW9"
+        tts_model = f"elevenlabs/eleven_turbo_v2_5:{voice_id}"
+        logger.info(
+            "Demo Configuration - STT: %s, LLM: %s, TTS: %s",
+            stt_model,
+            llm_model,
+            tts_model,
         )
 
-    # Wait for monitoring task to complete (when session ends)
-    try:
-        await monitoring_task
-    except asyncio.CancelledError:
-        logger.info("Monitoring task cancelled")
-    except Exception as error:
-        log_exception_class(
-            logger,
-            logging.ERROR,
-            "Demo monitoring task failed",
-            error,
+        session = AgentSession(
+            turn_detection=EnglishModel(),
+            stt=stt_model,
+            llm=llm_model,
+            tts=tts_model,
+            vad=ctx.proc.userdata["vad"],
         )
+        await stop_guard.attach(session)
+        demo_agent = DemoAgent(instructions=instructions)
+        monitoring_task = asyncio.create_task(
+            monitor_session_time(ctx, demo_agent, session, deadline)
+        )
+        background_tasks.append(monitoring_task)
+
+        await asyncio.wait_for(
+            session.start(agent=demo_agent, room=ctx.room, record=False),
+            timeout=SESSION_START_TIMEOUT_SECONDS,
+        )
+        logger.info("Demo agent started successfully")
+
+        await publish_demo_control(
+            ctx,
+            {
+                "type": "demo_ready",
+                "remaining_seconds": deadline.remaining_seconds(time.monotonic()),
+            },
+        )
+
+        greeting = "Hey! Ready to try a quick PM question?"
+        try:
+            await wait_for_speech(
+                session.say(greeting, allow_interruptions=True),
+                GREETING_TIMEOUT_SECONDS,
+            )
+            logger.info("Demo greeting sent")
+        except asyncio.TimeoutError:
+            logger.warning("Demo greeting exceeded its bounded delivery window")
+
+        await hard_deadline_task
+    finally:
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+        try:
+            await stop_then_run_bounded(
+                stop_guard.stop,
+                lambda: deletion_guard.delete(ctx),
+                ROOM_DELETE_TIMEOUT_SECONDS,
+            )
+        except Exception as error:
+            log_exception_class(
+                logger,
+                logging.ERROR,
+                "Failed to delete demo room during top-level cleanup",
+                error,
+            )
+        finally:
+            stop_guard.shutdown_context(ctx, "public voice preview cleanup")
 
 
 if __name__ == "__main__":

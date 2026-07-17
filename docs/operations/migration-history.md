@@ -30,12 +30,23 @@
 |    21 | `0021_feedback_v2`                       |
 |    22 | `0022_server_owned_billing_privileges`   |
 |    23 | `0023_explicit_analytics_consent`        |
+|    24 | `0024_public_demo_limits`                |
 
 <!-- migration-journal:end -->
 
-This twenty-four-entry inventory is generated from the same ordered contract as
+This twenty-five-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
+
+## Public voice preview limits
+
+Migration `0024_public_demo_limits` adds the shared Postgres authority for the
+anonymous two-minute voice preview. It stores only HMAC-derived IP/device
+identifiers, serializes global, IP, device, and signed-session admission, and
+reserves the single recovery token before signing. Identifier rows are created
+only for accepted reservations, so denied traffic cannot manufacture unbounded
+limiter rows. The service role is the only table/function caller, and expired
+pseudonymous data is eligible for pruning after 48 hours.
 
 ## Relaunch reconciliation
 
