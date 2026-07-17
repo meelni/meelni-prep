@@ -1,36 +1,5 @@
 {
   "version": 2,
   "repository": "meelni/meelni-prep",
-  "stacks": [
-    {
-      "pr": 268,
-      "parentPr": 266,
-      "headRef": "codex/sav-196-evaluation-validation",
-      "parentRef": "codex/sav-195-feedback-v2"
-    },
-    {
-      "pr": 272,
-      "parentPr": 268,
-      "headRef": "codex/sav-197-feedback-workflow",
-      "parentRef": "codex/sav-196-evaluation-validation"
-    },
-    {
-      "pr": 274,
-      "parentPr": 272,
-      "headRef": "codex/sav-198-evaluation-calibration",
-      "parentRef": "codex/sav-197-feedback-workflow"
-    },
-    {
-      "pr": 281,
-      "parentPr": 274,
-      "headRef": "codex/sav-201-deterministic-recommendations",
-      "parentRef": "codex/sav-198-evaluation-calibration"
-    },
-    {
-      "pr": 302,
-      "parentPr": 281,
-      "headRef": "codex/sav-226-provider-isolation",
-      "parentRef": "codex/sav-201-deterministic-recommendations"
-    }
-  ]
+  "stacks": []
 }
