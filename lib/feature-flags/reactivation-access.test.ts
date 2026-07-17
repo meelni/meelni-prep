@@ -76,6 +76,29 @@ test("reactivation access forwards immutable Preview rehearsal identity", async 
   });
 });
 
+test("public launch-state checks use a stable non-user identity", async () => {
+  const resolveGate = mock.fn<typeof resolveServerGate>(async () => ({
+    source: "statsig" as const,
+    value: false,
+  }));
+
+  await resolveReactivationAccess({
+    user: null,
+    resolveGate,
+    env: {
+      NODE_ENV: "production",
+      NEXT_PUBLIC_STATSIG_CLIENT_KEY: "client-production",
+      NEXT_PUBLIC_STATSIG_ENVIRONMENT: "production",
+      VERCEL_ENV: "production",
+    },
+  });
+
+  assert.equal(resolveGate.mock.calls.length, 1);
+  assert.deepEqual(resolveGate.mock.calls[0].arguments[0].user, {
+    userID: "public-launch-state",
+  });
+});
+
 test("development override controls the same server-side gate", async () => {
   const result = await resolveReactivationAccess({
     user,

@@ -5,7 +5,12 @@ const liveKitMocks = vi.hoisted(() => ({
   addGrant: vi.fn(),
   createDispatch: vi.fn(),
   createRoom: vi.fn(),
+  resolveReactivationAccess: vi.fn(),
   toJwt: vi.fn(),
+}));
+
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess: liveKitMocks.resolveReactivationAccess,
 }));
 
 vi.mock("livekit-server-sdk", () => ({
@@ -42,10 +47,43 @@ describe("POST /api/livekit/demo-token", () => {
     vi.stubEnv("LIVEKIT_URL", "wss://fixture-preview.livekit.cloud");
     liveKitMocks.createDispatch.mockResolvedValue({ id: "dispatch-fixture" });
     liveKitMocks.createRoom.mockResolvedValue({ name: "room-fixture" });
+    liveKitMocks.resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: true,
+    });
     liveKitMocks.toJwt.mockResolvedValue("token-fixture");
     vi.spyOn(Date, "now").mockReturnValue(1_782_600_000_000);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+
+  it("rejects a disabled relaunch before any LiveKit provider work", async () => {
+    liveKitMocks.resolveReactivationAccess.mockResolvedValue({
+      source: "configured-default",
+      value: false,
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/livekit/demo-token", {
+        method: "POST",
+        body: JSON.stringify({ participantName: "Preview Guest" }),
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "interview_practice_unavailable",
+      message: "Interview practice is not open yet.",
+      retryable: false,
+    });
+    expect(liveKitMocks.resolveReactivationAccess).toHaveBeenCalledWith({
+      user: null,
+      localOverride: undefined,
+    });
+    expect(liveKitMocks.createRoom).not.toHaveBeenCalled();
+    expect(liveKitMocks.createDispatch).not.toHaveBeenCalled();
+    expect(liveKitMocks.toJwt).not.toHaveBeenCalled();
   });
 
   afterEach(() => {
