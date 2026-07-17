@@ -8,7 +8,10 @@ import {
   type FeedbackV2Item,
   type FeedbackV2Scores,
 } from "./feedback-v2";
-import { prepareFeedbackTranscript } from "./feedback-transcript";
+import {
+  MAX_CANONICAL_EVENT_ID_LENGTH,
+  prepareFeedbackTranscript,
+} from "./feedback-transcript";
 
 export const LEGACY_FEEDBACK_RUBRIC_VERSION = "1.0.0" as const;
 
@@ -176,6 +179,7 @@ const DIMENSIONS = new Set<FeedbackDimension>([
 
 const FEEDBACK_READ_LIMITS = {
   identifier: 256,
+  evidenceTurnIdentifier: MAX_CANONICAL_EVENT_ID_LENGTH,
   modelVersion: 256,
   summary: 4_000,
   findingText: 2_000,
@@ -445,7 +449,7 @@ function isFeedbackFindingArray(value: unknown): value is FeedbackV2Item[] {
         isBoundedStringArray(
           entry.transcriptRefs,
           5,
-          FEEDBACK_READ_LIMITS.identifier,
+          FEEDBACK_READ_LIMITS.evidenceTurnIdentifier,
           1
         ) &&
         Array.isArray(entry.evidence) &&
@@ -456,7 +460,7 @@ function isFeedbackFindingArray(value: unknown): value is FeedbackV2Item[] {
             isRecord(evidence) &&
             isBoundedString(
               evidence.turnRef,
-              FEEDBACK_READ_LIMITS.identifier
+              FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
             ) &&
             isBoundedString(evidence.quote, FEEDBACK_READ_LIMITS.evidenceQuote)
         )
@@ -680,7 +684,7 @@ function parseV2Items(
       item.transcriptRefs,
       1,
       5,
-      FEEDBACK_READ_LIMITS.identifier
+      FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
     );
     if (new Set(transcriptRefs).size !== transcriptRefs.length) {
       throw new Error("duplicate transcript reference");
@@ -724,7 +728,7 @@ function parseEvidence(
     requireExactKeys(record, ["turnRef", "quote"]);
     const turnRef = requireBoundedString(
       record.turnRef,
-      FEEDBACK_READ_LIMITS.identifier
+      FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
     );
     if (seen.has(turnRef)) throw new Error("duplicate evidence reference");
     seen.add(turnRef);

@@ -58,4 +58,5 @@
 - Preserved the current SAV-201/SAV-202 focused-practice contracts; this slice neither ranks nor persists recommendations.
 - Automated validation passed: targeted core/database/API/UI tests, TypeScript checks, `npm run check:ci`, `npm run build`, and `npm run verify:agent`.
 - `npm run verify:agent` reported only four pre-existing lint warnings outside this change. The isolated worktree also lacked local Vercel secrets and the optional Python agent virtual environment, so authenticated browser/provider rehearsal was intentionally not run.
+- Independent review follow-up restored bounded GET polling during transcript settlement, aligned the read boundary with the canonical 512-character transcript event-ID contract, and made insufficient-evidence copy truthful for duration-only and turn-count-only outcomes.
 - No provider call, Production data access, migration, feature-flag change, customer-data use, or launch action occurred.

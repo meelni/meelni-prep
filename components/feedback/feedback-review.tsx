@@ -95,7 +95,11 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
         }
       }
 
-      if (response.status === "pending" || response.status === "processing") {
+      if (
+        response.status === "settling" ||
+        response.status === "pending" ||
+        response.status === "processing"
+      ) {
         schedulePoll();
       }
     };

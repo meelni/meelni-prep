@@ -67,3 +67,51 @@ test("unsupported lifecycle payloads render an explicit unavailable state", () =
   assert.match(html, /unsupported response/);
   assert.doesNotMatch(html, /Loading your saved feedback/);
 });
+
+for (const { name, stats } of [
+  {
+    name: "duration-only insufficiency",
+    stats: {
+      totalTurns: 6,
+      userTurns: 3,
+      totalWords: 180,
+      durationSeconds: 240,
+      substantiveResponses: 3,
+    },
+  },
+  {
+    name: "turn-count-only insufficiency",
+    stats: {
+      totalTurns: 4,
+      userTurns: 3,
+      totalWords: 180,
+      durationSeconds: 360,
+      substantiveResponses: 3,
+    },
+  },
+]) {
+  test(`uses threshold-neutral copy for ${name}`, () => {
+    const html = renderToStaticMarkup(
+      React.createElement(FeedbackLifecycleStatus, {
+        state: {
+          kind: "skipped-insufficient",
+          details: {
+            tier: "insufficient",
+            reasons: [],
+            recommendations: [],
+            stats,
+          },
+        },
+        recovering: false,
+        recoveryError: null,
+        onRecover() {},
+      })
+    );
+
+    assert.match(
+      html,
+      /The recorded interview did not meet the minimum evidence threshold for honest scores\./
+    );
+    assert.doesNotMatch(html, /not enough substantive answers/i);
+  });
+}

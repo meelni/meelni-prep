@@ -487,6 +487,10 @@ Every evidence reference must exist in that canonical set and every quote must
 remain an exact substring of the referenced candidate turn. A mismatch returns
 `invalid`; it is never downgraded into historical feedback.
 
+The read projection and presenter share the canonical 512-character transcript
+event-ID limit used at ingestion. A valid long event ID is therefore never
+truncated or reclassified as corrupt after immutable feedback has completed.
+
 The API emits a redacted integrity log for an invalid completed row. It contains
 only environment, release, and opaque session correlation—never findings,
 transcript text, user identity, or raw persisted payloads.

@@ -214,7 +214,7 @@ function SkippedStatus({
       description={
         abandoned
           ? "No recorded answer was available to evaluate."
-          : "We did not record enough substantive answers to produce honest scores."
+          : "The recorded interview did not meet the minimum evidence threshold for honest scores."
       }
       actions={
         <Button asChild>
