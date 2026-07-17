@@ -266,6 +266,10 @@ secrets or provider responses containing sensitive data.
   different returned tier stops after the first affected call.
 - Evidence validity, adjudicated evidence match, and insufficient handling are
   all 100%.
+- An adjudicated match may quote a wider exact span from the same user turn,
+  but it must preserve the complete approved anchor plus the approved finding
+  kind and dimension. Do not reinterpret another grounded phrase as an
+  automatic semantic match; follow the SAV-250 audit boundary.
 - Pooled and per-dimension score-band agreement are at least 80%; each round and
   completion state is at least 75%.
 - Maximum repeated-run score range is at most 1.
