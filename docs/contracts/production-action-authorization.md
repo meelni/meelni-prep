@@ -43,7 +43,11 @@ and `signature`. The payload contains exactly:
 - `ownerLaunchDecision`, which must be `null` for every action except
   `relaunch-default-on`.
 
-The signature is Ed25519 over the canonical JSON payload. The verifier accepts
+The signature is Ed25519 over the UTF-8 signing domain
+`meelni.production-action-authorization.v1`, one NUL byte, and the canonical
+JSON payload. This domain separation prevents a signature over identical JSON
+from being reused by another protocol or future contract version. The owner
+key is dedicated to this authorization domain. The verifier accepts
 only active public keys in `config/production-action-owner-keys.json`. The
 private key stays outside the repository and must never be pasted into chat,
 Linear, a PR, logs, or a provider environment.

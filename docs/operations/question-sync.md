@@ -21,7 +21,7 @@ Store values only in the deployment secret manager and a password manager approv
 
 ## Invocation
 
-Send credentials through environment variables so the literal value does not appear in the command. The scheduled route always performs a live sync:
+Send credentials through environment variables so the literal value does not appear in the command. The scheduled route performs a live sync only for an exact non-Production target; Production requests remain inert until owner-authorized activation exists:
 
 ```bash
 curl --fail-with-body \
@@ -85,20 +85,21 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 3. Deploy to Preview. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
 4. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive exact identity is reactivated.
 5. Generate new, independent Production credentials and run a Production dry
-   run. First schedule activation remains unsupported until the controlled
-   Vercel provider adapter is implemented; do not enable it through a direct
-   dashboard or CLI mutation.
+   run. `vercel.json` declares the trigger, but the Production route returns
+   `403 production_question_sync_activation_required` before the workflow.
+   Enable live scheduled mutation only after the controlled owner-authorized
+   adapter exists; do not bypass this through a direct dashboard or CLI mutation.
 6. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 
 Manual Production live sync is enforced through the exact owner-authorized CLI;
 the HTTP live mutation path returns
-`403 production_question_sync_cli_required`. First Production schedule
-activation remains unsupported until its provider adapter exists. The
-long-lived bearer secrets alone are not owner authorization. Routine scheduled
-sync after an explicitly authorized activation remains a runtime operation and
-will not require a new launch decision for every schedule tick.
+`403 production_question_sync_cli_required`. Production scheduled requests
+return `403 production_question_sync_activation_required`; a cron declaration
+and long-lived bearer secrets alone are not owner authorization. Routine
+scheduled sync after a future explicit activation remains a runtime operation
+and will not require a new launch decision for every schedule tick.
 
 ## Rollback and rotation
 

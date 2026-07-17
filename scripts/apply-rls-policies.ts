@@ -3,9 +3,10 @@ import { assertNonProductionScriptEnvironment } from "./non-production-script-gu
 
 assertNonProductionScriptEnvironment();
 
-import { db } from "@/lib/db";
 import fs from "fs";
 import path from "path";
+
+const { db } = await import("@/lib/db");
 
 async function applyRLSPolicies() {
   const migrationPath = path.join(

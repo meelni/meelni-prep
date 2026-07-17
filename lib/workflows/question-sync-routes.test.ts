@@ -5,6 +5,10 @@ import {
   createManualQuestionSyncHandler,
   createScheduledQuestionSyncHandler,
 } from "@/lib/question-sync/routes";
+import {
+  EXPECTED_PREVIEW_SUPABASE_PROJECT_REF,
+  EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF,
+} from "@/lib/supabase/supabase-jwt.mjs";
 import type {
   QuestionSyncWorkflowInput,
   QuestionSyncWorkflowResult,
@@ -13,6 +17,14 @@ import type {
 const CRON_SECRET = "cron-sync-fixture-abc123-".repeat(2);
 const OPERATOR_SECRET = "operator-sync-fixture-abc123-".repeat(2);
 const TRIGGERED_AT = "2026-07-10T12:00:00.000Z";
+const LOCAL_DATABASE_URL = "postgresql://localhost:5432/meelni";
+
+function sharedDatabaseUrl(projectRef: string): string {
+  const value = new URL("postgresql://localhost/postgres");
+  value.hostname = `db.${projectRef}.supabase.co`;
+  value.port = "5432";
+  return value.toString();
+}
 
 test("scheduled sync fails closed for missing and invalid CRON_SECRET config", async () => {
   for (const secret of [undefined, "", "short-secret", "a".repeat(64)]) {
@@ -71,6 +83,25 @@ test("scheduled sync runs the locked workflow with safe response headers", async
     totalProcessed: 3,
     errors: 0,
   });
+});
+
+test("Production scheduled sync is inert until owner-authorized activation exists", async () => {
+  const calls: QuestionSyncWorkflowInput[] = [];
+  const handler = createScheduledQuestionSyncHandler({
+    ...routeDependencies(CRON_SECRET, calls),
+    getDatabaseIdentity: () => ({
+      databaseUrl: sharedDatabaseUrl(EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF),
+      environmentMarker: "production",
+      vercelEnvironment: "production",
+    }),
+  });
+  const response = await handler(request("GET", CRON_SECRET));
+  assert.equal(response.status, 403);
+  assert.equal(
+    (await response.json()).error.code,
+    "production_question_sync_activation_required"
+  );
+  assert.deepEqual(calls, []);
 });
 
 test("ordinary authenticated users cannot invoke manual sync", async () => {
@@ -133,7 +164,11 @@ test("Production manual live sync is fenced to the owner-authorized CLI", async 
   const calls: QuestionSyncWorkflowInput[] = [];
   const handler = createManualQuestionSyncHandler({
     ...routeDependencies(OPERATOR_SECRET, calls),
-    getEnvironment: () => "production",
+    getDatabaseIdentity: () => ({
+      databaseUrl: sharedDatabaseUrl(EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF),
+      environmentMarker: "production",
+      vercelEnvironment: "production",
+    }),
   });
 
   const denied = await handler(request("POST", OPERATOR_SECRET));
@@ -149,6 +184,36 @@ test("Production manual live sync is fenced to the owner-authorized CLI", async 
   );
   assert.equal(dryRun.status, 200);
   assert.deepEqual(calls, [{ trigger: "manual", dryRun: true }]);
+});
+
+test("manual live sync fails closed for ambiguous and forged Preview identities", async () => {
+  for (const getDatabaseIdentity of [
+    undefined,
+    () => ({
+      databaseUrl: sharedDatabaseUrl(EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF),
+      environmentMarker: "preview",
+      vercelEnvironment: "preview",
+    }),
+    () => ({
+      databaseUrl: sharedDatabaseUrl(EXPECTED_PREVIEW_SUPABASE_PROJECT_REF),
+      environmentMarker: undefined,
+      vercelEnvironment: "preview",
+    }),
+    () => ({
+      databaseUrl: LOCAL_DATABASE_URL,
+      environmentMarker: "production",
+      vercelEnvironment: "production",
+    }),
+  ]) {
+    const calls: QuestionSyncWorkflowInput[] = [];
+    const handler = createManualQuestionSyncHandler({
+      ...routeDependencies(OPERATOR_SECRET, calls),
+      getDatabaseIdentity,
+    });
+    const response = await handler(request("POST", OPERATOR_SECRET));
+    assert.equal(response.status, 403);
+    assert.deepEqual(calls, []);
+  }
 });
 
 test("manual sync rejects malformed and unsupported options", async () => {
@@ -233,6 +298,11 @@ function routeDependencies(
 ) {
   return {
     getSecret: () => secret,
+    getDatabaseIdentity: () => ({
+      databaseUrl: LOCAL_DATABASE_URL,
+      environmentMarker: undefined,
+      vercelEnvironment: undefined,
+    }),
     run: async (input: QuestionSyncWorkflowInput) => {
       calls.push(input);
       return result;

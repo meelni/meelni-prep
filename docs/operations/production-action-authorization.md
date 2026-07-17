@@ -3,12 +3,13 @@
 Status: repository-owned executable paths are guarded for Stripe live-catalog
 setup, LiveKit Production deploys, Production database migrations, and manual
 Production question sync. Legacy database-mutating scripts reject Production
-and unmarked shared targets before their database adapter loads. Vercel
-Production promotion, first schedule activation, and relaunch default-on remain
-unsupported rather than exposing an unguarded command. No owner public key is
+and unmarked shared targets before their database adapter loads. Repository
+policy ignores every Vercel Git build except Preview, and the already-declared
+schedule is inert against Production until an owner-authorized activation path
+exists. Production promotion, live schedule activation, and relaunch default-on
+remain unsupported rather than exposing an unguarded command. No owner public key is
 enrolled yet, so guarded Production paths intentionally fail closed. Preview,
-local development, scheduled runtime sync after activation, and ordinary
-customer/runtime actions are unchanged.
+local development and ordinary customer/runtime actions are unchanged.
 
 ## Ownership Boundary
 
@@ -91,9 +92,9 @@ not permission to reintroduce the demo experience.
 
 SAV-254 follow-up remains for:
 
-1. adding controlled Vercel Production promotion, first question-sync schedule
-   activation, and relaunch default-on provider adapters; these actions are
-   unsupported until those adapters exist;
+1. adding controlled Vercel Production promotion, live question-sync schedule
+   activation, and relaunch default-on provider adapters; Git Production builds
+   are ignored and Production schedule requests are inert until those adapters exist;
 2. enrolling the owner's public key and executor only when the owner is
    available;
 3. adding central protected compare-and-swap consumption before claiming

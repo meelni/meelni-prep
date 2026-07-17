@@ -37,6 +37,7 @@ agent/
 ## ✅ Python Import Paths
 
 ### `/agent/demo/agent.py`
+
 ```python
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 ```
 
 ### `/agent/interview/agent.py`
+
 ```python
 import sys
 from pathlib import Path
@@ -60,6 +62,7 @@ from shared.utils.prompt_builder import build_agent_prompt
 ```
 
 ### `/agent/shared/utils/prompt_builder.py`
+
 ```python
 import sys
 from pathlib import Path
@@ -73,6 +76,7 @@ from prompts import get_prompt
 ```
 
 ### `/agent/scripts/test_prompts.py`
+
 ```python
 import sys
 from pathlib import Path
@@ -88,6 +92,7 @@ from shared.prompts import get_prompt
 ## ✅ Docker Configuration
 
 ### Demo Dockerfile (`/agent/demo/Dockerfile`)
+
 ```dockerfile
 # Build context: agent/ directory (parent of demo/)
 COPY requirements.txt .           # ✅ From agent/requirements.txt
@@ -96,6 +101,7 @@ COPY demo/agent.py .              # ✅ From agent/demo/agent.py
 ```
 
 ### Interview Dockerfile (`/agent/interview/Dockerfile`)
+
 ```dockerfile
 # Build context: agent/ directory (parent of interview/)
 COPY requirements.txt .           # ✅ From agent/requirements.txt
@@ -106,35 +112,39 @@ COPY interview/agent.py .         # ✅ From agent/interview/agent.py
 ## ✅ Deployment Scripts
 
 ### Demo Deploy (`/agent/demo/deploy.sh`)
+
 ```bash
-cd "$(dirname "$0")/.."  # Go to agent/ directory
-lk agent deploy --dockerfile demo/Dockerfile .
-# ✅ CORRECT: Builds from agent/ with demo/Dockerfile
+./demo/deploy.sh preview
+# ✅ CORRECT: validates the canonical Preview identity before deployment
 ```
 
 ### Interview Deploy (`/agent/interview/deploy.sh`)
+
 ```bash
-cd "$(dirname "$0")/.."  # Go to agent/ directory
-lk agent deploy --dockerfile interview/Dockerfile .
-# ✅ CORRECT: Builds from agent/ with interview/Dockerfile
+./interview/deploy.sh preview
+# ✅ CORRECT: validates the canonical Preview identity before deployment
 ```
 
 ## ✅ Documentation Updates
 
 ### `.claude/CLAUDE.md`
+
 - ✅ Updated `/agent/agent.py` → `/agent/interview/agent.py`
 - ✅ Updated `/agent/demo_agent.py` → `/agent/demo/agent.py`
 - ✅ Added references to agent READMEs
 - ✅ Updated development commands section
 
 ### `.claude/LIVEKIT.md`
+
 - ✅ Updated all references to `agent/agent.py` → `agent/interview/agent.py`
 - ✅ Updated all references to `agent/demo_agent.py` → `agent/demo/agent.py`
 
 ### Root `README.md`
+
 - ✅ No agent path references found (no changes needed)
 
 ### Agent Documentation
+
 - ✅ `agent/README.md` - Main overview with new structure
 - ✅ `agent/demo/README.md` - Demo agent specifics
 - ✅ `agent/interview/README.md` - Interview agent specifics
@@ -143,6 +153,7 @@ lk agent deploy --dockerfile interview/Dockerfile .
 ## ✅ Files Removed
 
 Old duplicate files successfully removed:
+
 - ✅ `agent.py` (root) → moved to `interview/agent.py`
 - ✅ `demo_agent.py` → moved to `demo/agent.py`
 - ✅ `config.py` → moved to `shared/config.py`
@@ -165,6 +176,7 @@ Old duplicate files successfully removed:
 ### Local Development Testing
 
 **Demo Agent:**
+
 ```bash
 cd agent/demo
 source ../venv/bin/activate
@@ -173,6 +185,7 @@ python agent.py dev
 ```
 
 **Interview Agent:**
+
 ```bash
 cd agent/interview
 source ../venv/bin/activate
@@ -181,6 +194,7 @@ python agent.py dev
 ```
 
 **Test Scripts:**
+
 ```bash
 cd agent/scripts
 source ../venv/bin/activate
@@ -193,6 +207,7 @@ python test_prompts.py
 **Note**: Deployment testing should be done carefully as it affects production.
 
 **Demo Agent:**
+
 ```bash
 cd agent/demo
 ./deploy.sh
@@ -201,6 +216,7 @@ cd agent/demo
 ```
 
 **Interview Agent:**
+
 ```bash
 cd agent/interview
 ./deploy.sh
@@ -211,16 +227,19 @@ cd agent/interview
 ## Potential Issues & Solutions
 
 ### Issue: Docker build can't find files
+
 **Symptom**: `COPY ../requirements.txt: no such file or directory`
 **Cause**: Deploy script not changing to parent directory
 **Solution**: ✅ Fixed - deploy scripts now `cd` to parent first
 
 ### Issue: Python import errors
+
 **Symptom**: `ModuleNotFoundError: No module named 'shared'`
 **Cause**: sys.path not including parent directory
 **Solution**: ✅ Fixed - all agent files include sys.path manipulation
 
 ### Issue: prompt_builder can't import prompts
+
 **Symptom**: `ModuleNotFoundError: No module named 'prompts'`
 **Cause**: prompt_builder.py using old import path
 **Solution**: ✅ Fixed - updated to reference parent (shared/) directory
@@ -228,12 +247,14 @@ cd agent/interview
 ## Git Commits
 
 **Commit 1**: Reorganize agent folder structure
+
 - Created new directory structure
 - Moved files to appropriate locations
 - Updated import paths
 - Created README files
 
 **Commit 2**: Fix import paths and Dockerfiles
+
 - Fixed Docker build context issues
 - Corrected deploy scripts
 - Updated prompt_builder imports

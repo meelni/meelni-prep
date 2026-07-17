@@ -69,8 +69,8 @@ npm run build
 ### Step 3: Push Schema to Database
 
 ```bash
-# Push schema changes to Supabase
-npx drizzle-kit push
+# Apply the reviewed migration through the guarded wrapper
+npm run db:migrate
 ```
 
 ### Step 4: Verify Table Creation

@@ -13,10 +13,13 @@ import { assertNonProductionScriptEnvironment } from "./non-production-script-gu
 
 assertNonProductionScriptEnvironment();
 
-import { db } from "../lib/db";
-import { interviewSession, transcriptTurn, feedback } from "../lib/db/schema";
-import { inngest } from "../lib/inngest/client";
 import { eq } from "drizzle-orm";
+
+const { db } = await import("../lib/db");
+const { interviewSession, transcriptTurn, feedback } = await import(
+  "../lib/db/schema"
+);
+const { inngest } = await import("../lib/inngest/client");
 
 // Fake transcript data (realistic product sense interview)
 const FAKE_TRANSCRIPT = [
