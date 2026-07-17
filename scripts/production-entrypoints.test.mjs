@@ -25,6 +25,11 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     configPath,
     '[project]\nsubdomain = "meelni-preview-dk7443ua"\n[agent]\nid = "CA_ZbGxFjfEYwsD"\n'
   );
+  const previewDemoConfigPath = join(directory, "preview-demo.toml");
+  await writeFile(
+    previewDemoConfigPath,
+    '[project]\nsubdomain = "meelni-preview-dk7443ua"\n[agent]\nid = "CA_M5XTD4CMyXk3"\n'
+  );
   const productionConfigPath = join(directory, "production.toml");
   await writeFile(
     productionConfigPath,
@@ -56,6 +61,8 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     LK_LOG: logPath,
     MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: configPath,
     MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID: "CA_ZbGxFjfEYwsD",
+    MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG: previewDemoConfigPath,
+    MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID: "CA_M5XTD4CMyXk3",
     MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-preview-dk7443ua.livekit.cloud",
   };
   try {
@@ -73,6 +80,21 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       .trim()
       .split("\n");
     assert.equal(callsAfterPreview.length, 1);
+
+    const previewDemo = spawnSync(
+      join(repoRoot, "agent/demo/deploy.sh"),
+      ["preview"],
+      {
+        cwd: join(repoRoot, "agent/demo"),
+        env: baseEnv,
+        encoding: "utf8",
+      }
+    );
+    assert.equal(previewDemo.status, 0, previewDemo.stderr);
+    assert.equal(
+      (await readFile(logPath, "utf8")).trim().split("\n").length,
+      2
+    );
 
     for (const mutation of [
       { MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: productionConfigPath },
@@ -96,7 +118,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       assert.match(confused.stderr, /canonical preview interview target/);
       assert.equal(
         (await readFile(logPath, "utf8")).trim().split("\n").length,
-        1
+        2
       );
     }
 
@@ -115,10 +137,10 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       }
     );
     assert.notEqual(confusedDemo.status, 0);
-    assert.match(confusedDemo.stderr, /has not been provisioned/);
+    assert.match(confusedDemo.stderr, /canonical preview demo target/);
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      1
+      2
     );
 
     const confusedProductionDemo = spawnSync(
@@ -142,7 +164,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      1
+      2
     );
 
     const linkedConfig = join(directory, "linked.toml");
@@ -162,7 +184,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     assert.notEqual(linked.status, 0);
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      1
+      2
     );
 
     const production = spawnSync(
@@ -187,7 +209,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      1
+      2
     );
     assert.doesNotMatch(production.stderr, /meelni-ek4vaisp|CA_yawKG67rCMG4/);
   } finally {
