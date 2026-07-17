@@ -27,6 +27,11 @@ import {
   SAV_198_SPEND_AUTHORIZATION,
   buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
+import {
+  FeedbackProviderInvocationError,
+  parseFeedbackProviderEvaluation,
+} from "./scorer";
+import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
@@ -449,6 +454,114 @@ test("provider-error tier identity and known usage survive sanitization", async 
     JSON.stringify(report).includes("sanitized_provider_failure"),
     false
   );
+});
+
+test("invalid feedback reports one authenticated invariant while preserving exact known cost", async () => {
+  const secret = "private-provider-output-must-never-survive";
+  const usage = {
+    inputTokens: 100,
+    cachedInputTokens: 0,
+    outputTokens: 100,
+    totalTokens: 200,
+  };
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      const projection = projectEvaluationTranscriptAliases(
+        input.fixture.transcript
+      );
+      return parseFeedbackProviderEvaluation({
+        value: { [secret]: secret },
+        transcript: projection.transcript,
+        canonicalIdByAlias: projection.canonicalIdByAlias,
+        evaluationState: input.evaluationState,
+        observedModel: LIVE_MODEL,
+        observedServiceTier: "default",
+        usage,
+      });
+    },
+  });
+
+  assert.deepEqual(report.failures[0], {
+    caseId: "product_sense:01:caregiver-planning",
+    runIndex: 0,
+    code: "evaluation_provider_returned_invalid_feedback",
+    feedbackRejectionCode: "response_unknown_field",
+  });
+  assert.equal(report.execution.cost?.attemptedCalls, 1);
+  assert.equal(report.execution.cost?.completedCalls, 0);
+  assert.equal(report.execution.cost?.stopReason, "provider_failure");
+  assert.equal(report.execution.cost?.reconciledActualCostUsd, 0.001125);
+  assert.equal(report.execution.cost?.unreconciledReservedCostUsd, 0);
+  assert.deepEqual(report.execution.cost?.observedUsage, usage);
+  assert.equal(JSON.stringify(report).includes(secret), false);
+});
+
+test("forged, mutable, and provider-controlled diagnostics fail closed without content", async () => {
+  const secret = "provider-controlled-diagnostic-secret";
+  const usage = {
+    inputTokens: 100,
+    cachedInputTokens: 0,
+    outputTokens: 100,
+    totalTokens: 200,
+  };
+  const forged = new FeedbackProviderInvocationError(
+    "evaluation_provider_returned_invalid_feedback",
+    usage,
+    LIVE_MODEL,
+    "default"
+  );
+  assert.throws(
+    () =>
+      Object.defineProperty(forged, "feedbackRejectionCode", {
+        value: "evidence_quote_not_grounded",
+      }),
+    TypeError
+  );
+  const forgedReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw forged;
+    },
+  });
+  assert.deepEqual(forgedReport.failures[0], {
+    caseId: "product_sense:01:caregiver-planning",
+    runIndex: 0,
+    code: "evaluation_provider_returned_invalid_feedback",
+    feedbackRejectionCode: "parser_internal_failure",
+  });
+
+  Object.defineProperty(forged, "code", {
+    configurable: true,
+    value: secret,
+  });
+  const mutatedReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw forged;
+    },
+  });
+  assert.equal(mutatedReport.failures[0]?.code, "evaluation_failed");
+  assert.equal(mutatedReport.failures[0]?.feedbackRejectionCode, undefined);
+  assert.equal(JSON.stringify(mutatedReport).includes(secret), false);
 });
 
 test("run budget rejects a repetition typo before the evaluator can be called", async () => {

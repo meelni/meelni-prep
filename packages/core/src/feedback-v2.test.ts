@@ -5,10 +5,14 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  FEEDBACK_V2_REJECTION_CODES,
+  FEEDBACK_V2_REJECTION_TAXONOMY_VERSION,
   FeedbackV2ParseError,
   isFeedbackV2Item,
   projectFeedbackItems,
   parseFeedbackV2,
+  type FeedbackTranscriptTurn,
+  type FeedbackV2RejectionCode,
 } from "./feedback-v2";
 
 const transcript = [
@@ -230,6 +234,99 @@ test("accepts an explicitly matching partial evaluation state", () => {
     modelVersion: "gpt-test-1",
   });
   assert.equal(result.evaluationState, "partial");
+});
+
+test("classifies synthetic feedback mutations with the closed content-free rejection taxonomy", () => {
+  assert.equal(
+    FEEDBACK_V2_REJECTION_TAXONOMY_VERSION,
+    "feedback-v2-rejection.v1"
+  );
+  assert.equal(
+    new Set(FEEDBACK_V2_REJECTION_CODES).size,
+    FEEDBACK_V2_REJECTION_CODES.length
+  );
+
+  const assertRejection = (
+    expected: FeedbackV2RejectionCode,
+    mutate: (response: ReturnType<typeof validResponse>) => void,
+    mutatedTranscript: FeedbackTranscriptTurn[] = transcript
+  ) => {
+    const response = structuredClone(validResponse());
+    mutate(response);
+    assert.throws(
+      () =>
+        parseFeedbackV2(response, {
+          transcript: mutatedTranscript,
+          evaluationState: "full",
+          modelVersion: "gpt-test-1",
+        }),
+      (error: unknown) =>
+        error instanceof FeedbackV2ParseError && error.code === expected,
+      expected
+    );
+  };
+
+  assertRejection("schema_version_mismatch", (response) => {
+    response.schemaVersion =
+      "feedback.future" as typeof FEEDBACK_SCHEMA_VERSION;
+  });
+  assertRejection("prompt_version_mismatch", (response) => {
+    response.promptVersion = "prompt.future" as typeof FEEDBACK_PROMPT_VERSION;
+  });
+  assertRejection("rubric_version_mismatch", (response) => {
+    response.rubricVersion = "rubric.future" as typeof FEEDBACK_RUBRIC_VERSION;
+  });
+  assertRejection("evaluation_state_mismatch", (response) => {
+    response.evaluationState = "partial";
+  });
+  assertRejection("score_invalid", (response) => {
+    response.scores.structure = 10.5;
+  });
+  assertRejection("exceptional_score_insufficient_evidence", (response) => {
+    response.scores.structure = 9;
+  });
+  assertRejection(
+    "evidence_turn_ref_wrong_speaker",
+    (response) => {
+      response.strengths[0].transcriptRefs = ["writer-a:3"];
+      response.strengths[0].evidence = [
+        { turnRef: "writer-a:3", quote: "define a decision threshold" },
+      ];
+    },
+    [
+      ...transcript,
+      {
+        eventId: "writer-a:3",
+        speaker: "interviewer" as const,
+        text: "Please define a decision threshold before continuing.",
+      },
+    ]
+  );
+  assertRejection("evidence_quote_not_grounded", (response) => {
+    response.strengths[0].evidence[0].quote =
+      "provider invented this private evidence";
+  });
+  assertRejection("evidence_reference_set_mismatch", (response) => {
+    response.strengths[0].transcriptRefs = ["writer-a:2"];
+  });
+  assertRejection("evidence_reused_across_findings", (response) => {
+    response.improvements[0].transcriptRefs = ["writer-a:1"];
+    response.improvements[0].evidence = [
+      {
+        turnRef: "writer-a:1",
+        quote: "working parents and measure weekly completed plans",
+      },
+    ];
+  });
+  assertRejection("findings_count_invalid", (response) => {
+    response.strengths = [];
+  });
+  assertRejection("evidence_count_invalid", (response) => {
+    response.strengths[0].evidence = [];
+  });
+  assertRejection("drills_invalid", (response) => {
+    response.drills = [];
+  });
 });
 
 test("rejects incomplete findings instead of inferring missing fields", () => {
