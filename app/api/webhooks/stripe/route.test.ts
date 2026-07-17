@@ -8,8 +8,15 @@ const state = vi.hoisted(() => ({
   subscriptionWrites: [] as Array<Record<string, unknown>>,
   mappingWrites: [] as Array<Record<string, unknown>>,
   grantCalls: [] as Array<Record<string, unknown>>,
+  renewalCalls: [] as Array<Record<string, unknown>>,
+  invoiceLineListCalls: [] as Array<{
+    invoiceId: string;
+    params: Record<string, unknown>;
+  }>,
+  invoiceLinePages: [] as Array<Record<string, unknown>>,
   transactionUpdateResults: [] as boolean[],
   selectResponses: [] as Array<Array<Record<string, unknown>>>,
+  transactionSelectResponses: [] as Array<Array<Record<string, unknown>>>,
   lastSelectResponse: [] as Array<Record<string, unknown>>,
   tombstoneFingerprints: new Set<string>(),
   checkoutSession: {} as Record<string, unknown>,
@@ -18,6 +25,7 @@ const state = vi.hoisted(() => ({
   deletedCustomerIds: [] as string[],
   signatureCalls: 0,
   currentEvent: null as Record<string, unknown> | null,
+  subscriptionRetrieveResult: null as Record<string, unknown> | null,
 }));
 
 vi.mock("stripe", () => ({
@@ -31,6 +39,9 @@ vi.mock("stripe", () => ({
     };
     subscriptions = {
       retrieve: vi.fn(async () => {
+        if (state.subscriptionRetrieveResult) {
+          return state.subscriptionRetrieveResult;
+        }
         const data = state.currentEvent?.data as
           | { object?: Record<string, unknown> }
           | undefined;
@@ -40,6 +51,16 @@ vi.mock("stripe", () => ({
     };
     invoicePayments = {
       list: vi.fn(async () => ({ data: [] })),
+    };
+    invoices = {
+      listLineItems: vi.fn(
+        async (invoiceId: string, params: Record<string, unknown>) => {
+          state.invoiceLineListCalls.push({ invoiceId, params });
+          const page = state.invoiceLinePages.shift();
+          if (!page) throw new Error("missing invoice line page fixture");
+          return page;
+        }
+      ),
     };
     checkout = {
       sessions: {
@@ -142,18 +163,20 @@ vi.mock("@/lib/db", () => ({
                     ? [{ id: "billing-user" }]
                     : selectCount === 2
                       ? []
-                      : state.selectResponses.length > 0
-                        ? (state.selectResponses.shift() ?? [])
-                        : selectCount >= 4
-                          ? [
-                              {
-                                status: "active",
-                                stripeSubscriptionId: "sub_route_test",
-                                version: 1,
-                                lastEventTimestamp: null,
-                              },
-                            ]
-                          : state.lastSelectResponse;
+                      : state.transactionSelectResponses.length > 0
+                        ? (state.transactionSelectResponses.shift() ?? [])
+                        : state.selectResponses.length > 0
+                          ? (state.selectResponses.shift() ?? [])
+                          : selectCount >= 4
+                            ? [
+                                {
+                                  status: "active",
+                                  stripeSubscriptionId: "sub_route_test",
+                                  version: 1,
+                                  lastEventTimestamp: null,
+                                },
+                              ]
+                            : state.lastSelectResponse;
                 return Object.assign(Promise.resolve(response), {
                   for: async () => response,
                 });
@@ -214,9 +237,10 @@ vi.mock("@/lib/billing/credits", () => ({
       state.grantCalls.push(input);
       return { grant: { id: "grant_route" } };
     }),
-    renewSubscriptionCredits: vi.fn(async () => ({
-      grant: { id: "grant_renewal_route" },
-    })),
+    renewSubscriptionCredits: vi.fn(async (input: Record<string, unknown>) => {
+      state.renewalCalls.push(input);
+      return { grant: { id: "grant_renewal_route" } };
+    }),
   })),
 }));
 
@@ -286,18 +310,24 @@ describe("POST /api/webhooks/stripe", () => {
     state.subscriptionWrites.length = 0;
     state.mappingWrites.length = 0;
     state.grantCalls.length = 0;
+    state.renewalCalls.length = 0;
+    state.invoiceLineListCalls.length = 0;
+    state.invoiceLinePages.length = 0;
     state.transactionUpdateResults.length = 0;
     state.selectResponses.length = 0;
+    state.transactionSelectResponses.length = 0;
     state.lastSelectResponse = [];
     state.tombstoneFingerprints.clear();
     state.ownershipClaims.length = 0;
     state.deletedCustomerIds.length = 0;
     state.signatureCalls = 0;
     state.currentEvent = null;
+    state.subscriptionRetrieveResult = null;
     vi.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = "sk_test_route";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_route";
     process.env.STRIPE_STARTER_MONTHLY_PRICE_ID = "price_starter_route";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro_route";
     process.env.STRIPE_INTERVIEW_PASS_PRICE_ID = "price_pass_route";
     state.checkoutSession = authoritativeCheckoutSession();
     state.retrieveCheckoutSession.mockImplementation(async () =>
@@ -542,6 +572,136 @@ describe("POST /api/webhooks/stripe", () => {
       ).toHaveLength(1);
     }
   );
+
+  it("uses the recurring line service period when the invoice period is zero-length", async () => {
+    const periodStart = 1_783_932_163;
+    const periodEnd = periodStart + 2_592_000;
+    const succeeded = succeededInvoiceEvent(
+      "evt_invoice_modern_period",
+      periodStart
+    );
+    succeeded.data.object.period_end = periodStart;
+    (succeeded.data.object.lines.data as Array<Record<string, unknown>>)[0] = {
+      id: "il_modern_period",
+      parent: {
+        type: "subscription_item_details",
+        subscription_item_details: {
+          proration: false,
+          subscription: "sub_route_test",
+          subscription_item: "si_route_test",
+        },
+      },
+      period: { start: periodStart, end: periodEnd },
+      pricing: { price_details: { price: "price_starter_route" } },
+      subscription: "sub_route_test",
+    };
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [invoiceSubscriptionRow(periodStart)],
+      [invoiceFirstPersistedPayment()]
+    );
+
+    expect((await POST(request(succeeded))).status).toBe(200);
+    expect(state.renewalCalls).toHaveLength(1);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        creditGrantId: "grant_renewal_route",
+        periodStart: new Date(periodStart * 1_000),
+        periodEnd: new Date(periodEnd * 1_000),
+      })
+    );
+  });
+
+  it("bootstraps a subscription-create invoice before subscription.created and grants exactly once", async () => {
+    const periodStart = 1_783_932_163;
+    const created = invoiceFirstSucceededEvent(
+      "evt_invoice_first_create",
+      periodStart
+    );
+    state.subscriptionRetrieveResult =
+      invoiceFirstProviderSubscription(periodStart);
+    const mapping = invoiceFirstMapping();
+    const bootstrapped = invoiceFirstSubscriptionRow(periodStart);
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [],
+      [],
+      [mapping],
+      [bootstrapped],
+      [invoiceFirstPersistedPayment()]
+    );
+
+    expect((await POST(request(created))).status).toBe(200);
+    expect(state.mappingWrites).toContainEqual(
+      expect.objectContaining(mapping)
+    );
+    expect(state.subscriptionWrites).toContainEqual(
+      expect.objectContaining({
+        userId: "invoice_user",
+        stripeCustomerId: "cus_invoice_first",
+        stripeSubscriptionId: "sub_route_test",
+        stripePriceId: "price_starter_route",
+      })
+    );
+    expect(state.renewalCalls).toHaveLength(1);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        creditGrantId: "grant_renewal_route",
+        stripeInvoiceId: "in_failed",
+      })
+    );
+
+    const replay = await POST(request(created));
+    expect(await replay.json()).toEqual({
+      received: true,
+      status: "already_processed",
+    });
+    expect(state.renewalCalls).toHaveLength(1);
+  });
+
+  it("fails closed before payment when a subscription-cycle has no local state", async () => {
+    const cycle = succeededInvoiceEvent(
+      "evt_invoice_cycle_missing_state",
+      1_783_932_163
+    );
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push([]);
+
+    const response = await POST(request(cycle));
+    expect(response.status).toBe(500);
+    expect(state.logs[0]).toMatchObject({
+      status: "failed",
+      lastError: "billing_subscription_state_missing",
+      payload: "{}",
+    });
+    expect(state.renewalCalls).toHaveLength(0);
+    expect(state.payments).toHaveLength(0);
+  });
+
+  it("records payment but grants no credits for a recognized retired subscription", async () => {
+    const periodStart = 1_783_932_163;
+    const retired = succeededInvoiceEvent(
+      "evt_invoice_retired_resource",
+      periodStart
+    );
+    setInvoiceSubscriptionIdentity(retired, "sub_retired");
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [
+        invoiceSubscriptionRow(periodStart, {
+          stripeSubscriptionId: "sub_current",
+          retiredStripeSubscriptionIds: ["sub_retired"],
+        }),
+      ],
+      [invoiceFirstPersistedPayment(undefined, null)]
+    );
+
+    expect((await POST(request(retired))).status).toBe(200);
+    expect(state.renewalCalls).toHaveLength(0);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({ creditGrantId: null, status: "succeeded" })
+    );
+  });
 
   it("rejects a declared oversized body before signature verification", async () => {
     const response = await POST(
@@ -1118,6 +1278,9 @@ function subscriptionRow(overrides: Record<string, unknown>) {
     userId: "subscription_user",
     version: 4,
     stripeSubscriptionId: "sub_current",
+    stripeCustomerId: "cus_invoice",
+    stripePriceId: "price_starter_route",
+    tier: "starter",
     status: "active",
     stripeResourceCreatedAt: new Date(900_000),
     stripeResourceCreatedEventTimestamp: new Date(900_000),
@@ -1265,13 +1428,17 @@ function failedInvoiceEvent(
   };
 }
 
-function invoiceSubscriptionRow(periodStart: number) {
+function invoiceSubscriptionRow(
+  periodStart: number,
+  overrides: Record<string, unknown> = {}
+) {
   return subscriptionRow({
     userId: "invoice_user",
     stripeSubscriptionId: "sub_route_test",
     currentPeriodStart: new Date(periodStart * 1000),
     currentPeriodEnd: new Date((periodStart + 2_592_000) * 1000),
     lastEventTimestamp: new Date((periodStart - 1) * 1000),
+    ...overrides,
   });
 }
 
@@ -1283,6 +1450,7 @@ function succeededInvoiceEvent(id: string, created: number) {
     data: {
       object: {
         ...payload.data.object,
+        customer: "cus_invoice",
         amount_paid: 900,
         hosted_invoice_url: "https://invoice.example.invalid/receipt",
         payments: {
@@ -1298,5 +1466,149 @@ function succeededInvoiceEvent(id: string, created: number) {
         },
       },
     },
+  };
+}
+
+function invoiceFirstSucceededEvent(
+  id: string,
+  periodStart: number,
+  userId = "invoice_user"
+) {
+  const invoice = succeededInvoiceEvent(id, periodStart);
+  const object = invoice.data.object as unknown as Record<string, unknown>;
+  object.customer = "cus_invoice_first";
+  object.metadata = userId === "invoice_user" ? {} : { userId };
+  object.billing_reason = "subscription_create";
+  object.lines = {
+    data: [
+      {
+        id: "il_invoice_first",
+        parent: {
+          type: "subscription_item_details",
+          subscription_item_details: {
+            proration: false,
+            subscription: "sub_route_test",
+            subscription_item: "si_invoice_first",
+          },
+        },
+        period: {
+          start: periodStart,
+          end: periodStart + 2_592_000,
+        },
+        pricing: { price_details: { price: "price_starter_route" } },
+        subscription: "sub_route_test",
+      },
+    ],
+  };
+  return invoice;
+}
+
+function setInvoiceSubscriptionIdentity(
+  invoice: ReturnType<typeof succeededInvoiceEvent>,
+  subscriptionId: string
+) {
+  const object = invoice.data.object as unknown as {
+    parent: { subscription_details: { subscription: string } };
+    lines: {
+      data: Array<{
+        parent?: {
+          subscription_item_details?: { subscription?: string };
+        };
+        period?: { end: number; start: number };
+        subscription?: string;
+      }>;
+    };
+    periodEnd?: number;
+    periodStart?: number;
+    period_end: number;
+    period_start: number;
+  };
+  object.parent.subscription_details.subscription = subscriptionId;
+  for (const line of object.lines.data) {
+    line.subscription = subscriptionId;
+    line.period ??= {
+      start: object.period_start,
+      end: object.period_end,
+    };
+    if (line.parent?.subscription_item_details) {
+      line.parent.subscription_item_details.subscription = subscriptionId;
+    }
+  }
+}
+
+function invoiceFirstProviderSubscription(
+  periodStart: number,
+  userId = "invoice_user"
+) {
+  return {
+    id: "sub_route_test",
+    object: "subscription",
+    created: periodStart - 10,
+    customer: "cus_invoice_first",
+    metadata: { userId },
+    status: "active",
+    items: {
+      data: [
+        {
+          id: "si_invoice_first",
+          subscription: "sub_route_test",
+          quantity: 1,
+          current_period_start: periodStart,
+          current_period_end: periodStart + 2_592_000,
+          price: {
+            id: "price_starter_route",
+            recurring: { interval: "month" },
+          },
+        },
+      ],
+      has_more: false,
+    },
+    trial_end: null,
+    canceled_at: null,
+    cancel_at_period_end: false,
+  };
+}
+
+function invoiceFirstMapping(userId = "invoice_user") {
+  return {
+    stripeCustomerId: "cus_invoice_first",
+    stripeSubscriptionId: "sub_route_test",
+    userId,
+  };
+}
+
+function invoiceFirstSubscriptionRow(
+  periodStart: number,
+  userId = "invoice_user",
+  overrides: Record<string, unknown> = {}
+) {
+  return subscriptionRow({
+    userId,
+    tier: "starter",
+    stripeCustomerId: "cus_invoice_first",
+    stripeSubscriptionId: "sub_route_test",
+    stripePriceId: "price_starter_route",
+    currentPeriodStart: new Date(periodStart * 1_000),
+    currentPeriodEnd: new Date((periodStart + 2_592_000) * 1_000),
+    lastEventTimestamp: new Date(periodStart * 1_000),
+    lastEventPriority: 20,
+    ...overrides,
+  });
+}
+
+function invoiceFirstPersistedPayment(
+  userId = "invoice_user",
+  creditGrantId: string | null = "grant_renewal_route"
+) {
+  return {
+    userId,
+    stripePaymentIntentId: "pi_invoice",
+    stripeInvoiceId: "in_failed",
+    stripeChargeId: "ch_invoice",
+    creditGrantId,
+    catalogId: "starter",
+    amountInCents: 900,
+    currency: "usd",
+    status: "succeeded",
   };
 }
