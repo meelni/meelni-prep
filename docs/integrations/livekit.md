@@ -69,6 +69,14 @@ npm run typecheck
 
 - Keep explicit dispatch. Demo and full interview agents should not compete for
   the same room jobs.
+- Keep `LIVEKIT_DEMO_AGENT_NAME` distinct from
+  `LIVEKIT_INTERVIEW_AGENT_NAME`. The public demo route fails closed before
+  room creation when either name is absent or both names resolve to one
+  dispatch. It remains a real demo route; missing provider capacity is not
+  represented as a provider-free `404`.
+- Preview provider identity and rehearsal readiness are source-owned by
+  `lib/deployment/provider-identities.ts` and the
+  [deployment preflight contract](../contracts/deployment-preflight.md).
 - Keep browser participant grants minimal: room join, publish, subscribe.
 - Do not expose model/provider strings as end-user controls unless product
   strategy accepts it.

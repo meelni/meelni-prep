@@ -341,4 +341,5 @@ Never point this command at Preview or Production; the guard intentionally
 rejects non-loopback databases.
 
 The read-only deployment preflight and rollout sequence are documented in
-[Database Migrations](./database-migrations.md).
+[Deployment Preflight](./deployment-preflight.md). Database migration authority
+remains separately documented in [Database Migrations](./database-migrations.md).

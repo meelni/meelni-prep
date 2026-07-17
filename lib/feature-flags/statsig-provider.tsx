@@ -14,7 +14,11 @@ import { StatsigSessionReplayPlugin } from "@statsig/session-replay";
 import { StatsigAutoCapturePlugin } from "@statsig/web-analytics";
 import { useAuth } from "@/app/providers/auth-provider";
 import { getOrCreateStatsigAnonymousId } from "./anonymous-id";
-import { buildStatsigUser, getStatsigConfig } from "./config";
+import {
+  buildStatsigUser,
+  getStatsigConfig,
+  localFeatureFlagOverridesEnabled,
+} from "./config";
 import {
   applyFeatureFlagOverride,
   readFeatureFlagOverrides,
@@ -52,6 +56,7 @@ const statsigConfig = getStatsigConfig({
   NEXT_PUBLIC_STATSIG_ENVIRONMENT: process.env.NEXT_PUBLIC_STATSIG_ENVIRONMENT,
   VERCEL_ENV: process.env.VERCEL_ENV,
 });
+const allowLocalOverrides = localFeatureFlagOverridesEnabled();
 
 interface StatsigProviderProps {
   children: React.ReactNode;
@@ -75,7 +80,9 @@ export function StatsigProvider({
 
   useEffect(() => {
     setAnonymousId(getOrCreateStatsigAnonymousId());
-    setLocalOverrides(readFeatureFlagOverrides(window.localStorage));
+    if (allowLocalOverrides) {
+      setLocalOverrides(readFeatureFlagOverrides(window.localStorage));
+    }
   }, []);
 
   const statsigUser = useMemo(() => {

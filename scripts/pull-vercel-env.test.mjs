@@ -22,8 +22,8 @@ import {
   validateTarget,
 } from "./pull-vercel-env.mjs";
 
-const previewRef = "previewprojectref123";
-const productionRef = "productionproject123";
+const previewRef = "kxpvidtxznllfosfemdl";
+const productionRef = "rarrrwkjuhfyfatcmrkw";
 
 test("normalizeEnvValue only strips matched quote pairs", () => {
   assert.equal(
@@ -149,6 +149,25 @@ test("an absent pulled credential is not resurrected from the previous file", ()
   assert.equal(readEnvValue(env, "RESEND_API_KEY"), undefined);
 });
 
+test("blank server-owned runtime config is not restored from a stale local file", () => {
+  const env = buildRefreshedEnv({
+    defaults: {},
+    environment: "preview",
+    previousText: scopedEnv(previewRef, {
+      MEELNI_INTERVIEW_LLM_MODEL: "stale/operator-model",
+    }),
+    pulledText: scopedEnv(previewRef, {
+      MEELNI_INTERVIEW_LLM_MODEL: '""',
+    }),
+  });
+
+  assert.equal(readEnvValue(env, "MEELNI_INTERVIEW_LLM_MODEL"), "");
+  assert.throws(
+    () => validateRefreshedEnv(env, "preview"),
+    /MEELNI_INTERVIEW_LLM_MODEL/
+  );
+});
+
 test("public defaults fill blanks but never overwrite scoped values", () => {
   const env = buildRefreshedEnv({
     defaults: {
@@ -196,7 +215,7 @@ test("database and public Supabase project mismatch is rejected", () => {
 test("Preview rejects the declared Production Supabase project", () => {
   assert.throws(
     () => validateRefreshedEnv(scopedEnv(productionRef), "preview"),
-    /Preview database target matches the declared Production Supabase project/
+    /Preview database target does not match the canonical Preview Supabase project/
   );
 });
 
@@ -344,7 +363,7 @@ test("Preview identity failure keeps the prior target byte-for-byte", async (t) 
       root,
       target: ".env.local",
     }),
-    /Preview database target matches the declared Production Supabase project/
+    /Preview database target does not match the canonical Preview Supabase project/
   );
   assert.equal(await readFile(target, "utf8"), previous);
 });
@@ -693,8 +712,16 @@ function scopedEnv(ref, overrides = {}, environment = "preview") {
       DATABASE_URL: databaseUrl(ref, "secret"),
       LIVEKIT_API_KEY: "livekit-api-key",
       LIVEKIT_API_SECRET: "livekit-api-secret",
+      MEELNI_INTERVIEW_LLM_MODEL: "openai/gpt-4.1-mini",
+      MEELNI_INTERVIEW_STT_MODEL: "deepgram/nova-3",
+      MEELNI_INTERVIEW_TTS_EMOTION: "professional",
+      MEELNI_INTERVIEW_TTS_MODEL:
+        "cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+      MEELNI_INTERVIEW_TTS_SPEED: "1.0",
+      MEELNI_INTERVIEW_TTS_VOLUME: "1.0",
+      MEELNI_INTERVIEW_VOICE: "cgSgspJ2msm6clMCkdW9",
       MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
-      NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni.livekit.cloud",
+      NEXT_PUBLIC_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anonJwt(ref),
       NEXT_PUBLIC_SUPABASE_URL: `https://${ref}.supabase.co`,
       OPENAI_API_KEY: "openai-api-key",

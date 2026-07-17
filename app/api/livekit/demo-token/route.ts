@@ -70,9 +70,29 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 
 export async function POST(req: NextRequest) {
   try {
+    const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const access = await resolveReactivationAccess({
+      user: null,
+      localOverride: req.cookies.get(
+        `meelni_feature_flag_${encodeURIComponent(gateName)}`
+      )?.value,
+    });
+    if (!access.value) {
+      return NextResponse.json(
+        {
+          error: "interview_practice_unavailable",
+          message: "Interview practice is not open yet.",
+          retryable: false,
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { participantName } = body;
 
@@ -85,6 +105,7 @@ export async function POST(req: NextRequest) {
 
     const livekitEnv = getLiveKitEnvironment(process.env);
     const demoAgentName = getLiveKitAgentName("demo", process.env);
+    const interviewAgentName = getLiveKitAgentName("interview", process.env);
 
     if (!livekitEnv.ok) {
       console.error(
@@ -97,10 +118,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!demoAgentName.ok) {
+    if (
+      !demoAgentName.ok ||
+      !interviewAgentName.ok ||
+      demoAgentName.data === interviewAgentName.data
+    ) {
       console.error(
-        "LiveKit demo configuration error:",
-        demoAgentName.error.message
+        "LiveKit demo configuration error: a distinct demo dispatch is required"
       );
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },

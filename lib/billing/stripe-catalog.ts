@@ -9,7 +9,7 @@ export type StripeCheckoutCatalogId = Extract<
 
 export type StripeCheckoutMode = "payment" | "subscription";
 
-const PRICE_ENV_BY_CATALOG_ID = {
+export const PRICE_ENV_BY_CATALOG_ID = {
   interview_pass: "STRIPE_INTERVIEW_PASS_PRICE_ID",
   starter: "STRIPE_STARTER_MONTHLY_PRICE_ID",
   pro: "STRIPE_PRO_MONTHLY_PRICE_ID",
