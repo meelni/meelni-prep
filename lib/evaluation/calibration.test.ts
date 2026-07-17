@@ -8,24 +8,24 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
+  type CalibrationEvaluator,
   createDeterministicCalibrationEvaluator,
   matchesAdjudicatedEvidence,
   runEvaluationCalibration,
-  type CalibrationEvaluator,
 } from "./calibration";
 import { getEvaluationAdjudicationHashes } from "./calibration-approval";
 import {
   CALIBRATION_PRICING_CONTRACT,
   CALIBRATION_PRICING_REVIEW_TTL_MS,
-  CalibrationSpendGuard,
-  createEmptyCalibrationSpendState,
   type CalibrationPersistedSpendState,
+  CalibrationSpendGuard,
   type CalibrationSpendPersistence,
+  createEmptyCalibrationSpendState,
 } from "./calibration-budget";
 import {
+  buildCalibrationActivatedPlan,
   SAV_198_APPROVED_RUN_ID,
   SAV_198_SPEND_AUTHORIZATION,
-  buildCalibrationActivatedPlan,
 } from "./calibration-run-ledger";
 import {
   FeedbackProviderInvocationError,
@@ -542,6 +542,44 @@ test("forged, mutable, and provider-controlled diagnostics fail closed without c
     code: "evaluation_provider_returned_invalid_feedback",
     feedbackRejectionCode: "parser_internal_failure",
   });
+
+  const proxiedReport = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      const projection = projectEvaluationTranscriptAliases(
+        input.fixture.transcript
+      );
+      let authenticatedError: unknown;
+      try {
+        parseFeedbackProviderEvaluation({
+          value: { [secret]: secret },
+          transcript: projection.transcript,
+          canonicalIdByAlias: projection.canonicalIdByAlias,
+          evaluationState: input.evaluationState,
+          observedModel: LIVE_MODEL,
+          observedServiceTier: "default",
+          usage,
+        });
+      } catch (error) {
+        authenticatedError = error;
+      }
+      assert.ok(authenticatedError instanceof FeedbackProviderInvocationError);
+      throw new Proxy(authenticatedError, {});
+    },
+  });
+  assert.deepEqual(proxiedReport.failures[0], {
+    caseId: "product_sense:01:caregiver-planning",
+    runIndex: 0,
+    code: "evaluation_provider_returned_invalid_feedback",
+    feedbackRejectionCode: "parser_internal_failure",
+  });
+  assert.equal(JSON.stringify(proxiedReport).includes(secret), false);
 
   Object.defineProperty(forged, "code", {
     configurable: true,

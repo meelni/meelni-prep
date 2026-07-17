@@ -45,17 +45,14 @@ The closed codes identify only the failed invariant:
   `finding_absolute_claim_unsupported`,
   `finding_negative_claim_contradicted`,
   `finding_material_claim_unsupported`,
-  `finding_directional_claim_unsupported`,
   `finding_observable_claim_missing`,
   `finding_observable_evidence_insufficient`,
-  `finding_observable_source_insufficient`, and
-  `finding_high_confidence_insufficient_evidence`;
+  and `finding_high_confidence_insufficient_evidence`;
 - terminal customer copy: `drills_invalid`,
   `practice_recommendation_normalization_failed`, `summary_invalid`,
   `summary_outcome_claim_disallowed`, `summary_absolute_claim_unsupported`,
   `summary_quantitative_claim_unsupported`,
   `summary_material_claim_unsupported`,
-  `summary_directional_claim_unsupported`, and
   `summary_observable_support_insufficient`;
 - fail-closed fallback: `parser_internal_failure`.
 
@@ -66,6 +63,13 @@ repair or acceptance. The provider adapter authenticates the code with a
 module-private error association and exposes a non-configurable, non-enumerable
 accessor. Constructing or mutating an exported provider error cannot mint a
 trusted classification.
+
+Directional metric anchors are material claim anchors, so unsupported
+directional findings and summaries use the corresponding
+`*_material_claim_unsupported` code. A separate directional code would be
+unreachable after the material-claim check. Likewise, exact evidence is first
+normalized to a canonical transcript turn, so observable evidence support also
+proves source support; there is no separate source-only rejection code.
 
 ## Versions and evaluation state
 
