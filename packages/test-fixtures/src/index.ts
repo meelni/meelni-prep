@@ -17,6 +17,8 @@ export * from "./session-lifecycle";
 export * from "./dashboard-progress";
 export * from "./account-privacy";
 export * from "./feedback-v2";
+export * from "./drill-recommendation";
+export * from "./focused-practice-plan";
 export * from "./evaluation-validation";
 export * from "./feedback-generation";
 export * from "./evaluation-calibration";
