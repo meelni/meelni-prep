@@ -176,8 +176,10 @@ start and reconnect-token issuance use the signed-in Statsig user. Disabled
 access is rejected before any session/credit mutation or participant-token
 issuance. `MEELNI_REACTIVATION_DEFAULT` is the explicit provider-outage
 fallback: keep it `false` before relaunch and change it to `true` only as part of
-the rehearsed launch flip. Rollback changes the Statsig gate and this fallback
-together so a Statsig outage cannot invert the intended product state.
+the separately authorized launch flip after the product owner's explicit GO.
+Passing technical gates alone does not authorize that change. Rollback changes
+the Statsig gate and this fallback together so a Statsig outage cannot invert
+the intended product state.
 
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
