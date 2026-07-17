@@ -23,5 +23,6 @@ Good candidates:
 - [paid one-time Stripe Checkout fulfillment and replay behavior](./stripe-checkout-fulfillment.md);
 - [deployment provider and rehearsal authority](./deployment-preflight.md);
 - [public Terms and Privacy engineering-draft truth and indexing gates](./public-legal-draft.md);
+- [explicit optional-analytics consent, provider lifecycle, and payload boundaries](./analytics-consent.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.

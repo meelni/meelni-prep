@@ -38,9 +38,9 @@ export async function resolveReactivationAccess(input: {
     ...buildServerGateDeploymentContext(env, config.environmentTier),
     user: input.user
       ? buildStatsigUser({
-          anonymousId: `authenticated:${input.user.id}`,
-          user: input.user,
+          anonymousId: "authenticated-launch-state",
+          loggedIn: true,
         })
-      : { userID: "public-launch-state" },
+      : buildStatsigUser({ anonymousId: "public-launch-state" }),
   });
 }

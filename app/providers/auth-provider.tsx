@@ -49,15 +49,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!active) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-
-      if (nextSession?.user) {
-        const provider = nextSession.user.app_metadata.provider;
-        analytics.identify(nextSession.user.id, {
-          email_domain: nextSession.user.email?.split("@")[1],
-          signup_method: provider === "google" ? "google" : "email",
-          created_at: nextSession.user.created_at,
-        });
-      }
     };
     // Get initial session
     const getInitialSession = async () => {
@@ -95,13 +86,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const provider = session.user.app_metadata.provider;
         const method = provider === "google" ? "google" : "email";
 
-        // Identify user
-        analytics.identify(session.user.id, {
-          email_domain: session.user.email?.split("@")[1],
-          signup_method: method,
-          created_at: session.user.created_at,
-        });
-
         // Check if new user (created_at === last_sign_in_at within 5 seconds)
         const createdAt = new Date(session.user.created_at).getTime();
         const lastSignIn = session.user.last_sign_in_at
@@ -118,7 +102,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             method,
           });
         }
-
       } else if (event === "SIGNED_OUT") {
         scrubRetiredTranscriptBrowserStorage();
         analytics.track("auth_signout_completed", {});

@@ -7,8 +7,20 @@
 
 import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
-import { useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from "react";
+import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { clientConfig } from "./config";
+import { setAnalyticsCaptureAllowed } from "./analytics-service";
+import { withdrawPostHogConsent } from "./posthog-consent";
+import { sanitizePostHogCaptureEnvelope } from "./posthog-envelope";
+
+const PostHogRuntimeContext = createContext(false);
 
 /**
  * Initialize PostHog client
@@ -40,10 +52,11 @@ function initializePostHog() {
     ip: !clientConfig.privacy.anonymizeIp,
 
     // Session Recording
-    disable_session_recording: !clientConfig.sessionRecording.enabled,
+    // Keep replay disabled even if a future config change accidentally enables
+    // sampling; live voice/interview transcripts must never enter recordings.
+    disable_session_recording: true,
     session_recording: {
       maskAllInputs: clientConfig.sessionRecording.maskTextInputs,
-      maskTextSelector: clientConfig.sessionRecording.maskAllText ? "*" : null,
       recordCrossOriginIframes: false,
     },
 
@@ -58,13 +71,19 @@ function initializePostHog() {
     disable_external_dependency_loading: true,
 
     // Advanced options
-    opt_out_capturing_by_default: false, // Don't opt out by default
+    opt_out_capturing_by_default: true,
+    opt_out_persistence_by_default: true,
+    save_campaign_params: false,
+    save_referrer: false,
+    custom_campaign_params: [],
+    before_send: (event) =>
+      sanitizePostHogCaptureEnvelope(event, window.location.origin),
     advanced_disable_decide: false, // Keep feature flags enabled
 
     // Performance
     loaded: (ph) => {
       if (clientConfig.debug) {
-        console.log("[Analytics] PostHog loaded", ph);
+        console.log("[Analytics] PostHog loaded");
       }
     },
   });
@@ -80,14 +99,47 @@ function initializePostHog() {
  * Wraps app to provide PostHog context
  */
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  const { decision, resolved } = useAnalyticsConsent();
+  const [runtimeReady, setRuntimeReady] = useState(false);
+
+  useLayoutEffect(() => {
+    setAnalyticsCaptureAllowed(resolved && decision === "accepted");
+  }, [decision, resolved]);
+
   useEffect(() => {
+    if (!resolved || decision !== "accepted") {
+      setAnalyticsCaptureAllowed(false);
+      setRuntimeReady(false);
+      if (posthog.__loaded) {
+        withdrawPostHogConsent(posthog);
+      }
+      return;
+    }
     initializePostHog();
-  }, []);
+    if (posthog.__loaded) {
+      posthog.opt_in_capturing();
+      setRuntimeReady(true);
+    }
+  }, [decision, resolved]);
 
   // If analytics disabled, just render children
   if (!clientConfig.enabled) {
-    return <>{children}</>;
+    return (
+      <PostHogRuntimeContext.Provider value={false}>
+        {children}
+      </PostHogRuntimeContext.Provider>
+    );
   }
 
-  return <PHProvider client={posthog}>{children}</PHProvider>;
+  return (
+    <PHProvider client={posthog}>
+      <PostHogRuntimeContext.Provider value={runtimeReady}>
+        {children}
+      </PostHogRuntimeContext.Provider>
+    </PHProvider>
+  );
+}
+
+export function usePostHogRuntimeReady(): boolean {
+  return useContext(PostHogRuntimeContext);
 }

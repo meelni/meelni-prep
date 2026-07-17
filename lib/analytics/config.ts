@@ -73,8 +73,10 @@ export function getAnalyticsConfig(): AnalyticsConfig {
     enabled: !!apiKey && !isTest,
     debug: isDevelopment,
     sessionRecording: {
-      enabled: true,
-      sampleRate: isProduction ? 0.3 : 1.0, // 30% in prod, 100% in dev
+      // Replay remains disabled for the relaunch. Route-level masking is not a
+      // sufficient boundary for live interview audio and transcript content.
+      enabled: false,
+      sampleRate: 0,
       maskTextInputs: true,
       maskAllText: true,
       maskEmails: true,

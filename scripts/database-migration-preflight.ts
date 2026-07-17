@@ -7,6 +7,7 @@ import postgres from "postgres";
 
 import { inspectDatabaseBootstrapState } from "./database-bootstrap-preflight.mjs";
 import {
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
@@ -129,10 +130,11 @@ async function run(url: string, environmentIdentity: string) {
       if (
         ![
           2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+          24,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation through 23 server-owned-billing-privilege migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 24 explicit-analytics-consent migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -483,7 +485,9 @@ async function run(url: string, environmentIdentity: string) {
                                           ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
                                           : migrations.length === 22
                                             ? FEEDBACK_V2_SCHEMA_FINGERPRINT
-                                            : SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT;
+                                            : migrations.length === 23
+                                              ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+                                              : ANALYTICS_CONSENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -561,43 +565,45 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 23
-            ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-            : migrations.length === 22
-              ? FEEDBACK_V2_SCHEMA_FINGERPRINT
-              : migrations.length === 21
-                ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
-                : migrations.length === 20
-                  ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-                  : migrations.length === 19
-                    ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
-                    : migrations.length === 18
-                      ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
-                      : migrations.length === 17
-                        ? BILLING_TRUTH_SCHEMA_FINGERPRINT
-                        : migrations.length === 16
-                          ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-                          : migrations.length === 15
-                            ? STABLE_START_SCHEMA_FINGERPRINT
-                            : migrations.length === 14
-                              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                              : migrations.length === 13
-                                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                                : migrations.length === 12
-                                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                                  : migrations.length === 11
-                                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                                    : migrations.length === 10
-                                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                                      : migrations.length === 9
-                                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                                        : migrations.length === 8
-                                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                                          : migrations.length === 7
-                                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                                            : migrations.length === 6
-                                              ? RELAUNCH_SCHEMA_FINGERPRINT
-                                              : "pending",
+          migrations.length === 24
+            ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+            : migrations.length === 23
+              ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+              : migrations.length === 22
+                ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                : migrations.length === 21
+                  ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                  : migrations.length === 20
+                    ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+                    : migrations.length === 19
+                      ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
+                      : migrations.length === 18
+                        ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+                        : migrations.length === 17
+                          ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                          : migrations.length === 16
+                            ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                            : migrations.length === 15
+                              ? STABLE_START_SCHEMA_FINGERPRINT
+                              : migrations.length === 14
+                                ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                                : migrations.length === 13
+                                  ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                                  : migrations.length === 12
+                                    ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                                    : migrations.length === 11
+                                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                                      : migrations.length === 10
+                                        ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                                        : migrations.length === 9
+                                          ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                                          : migrations.length === 8
+                                            ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                            : migrations.length === 7
+                                              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                              : migrations.length === 6
+                                                ? RELAUNCH_SCHEMA_FINGERPRINT
+                                                : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
