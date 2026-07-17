@@ -44,7 +44,7 @@ void main().catch((error) => {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const executionKind = modeToExecutionKind(args.mode);
-  const repetitions = args.repetitions ?? 3;
+  const repetitions = args.repetitions ?? 2;
   if (executionKind !== "preflight") {
     validateCalibrationRunBudget(repetitions);
   }

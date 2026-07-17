@@ -42,6 +42,9 @@ import {
   SAV_198_GENESIS_DATE,
   SAV_198_GITHUB_ACTIVATION_ACTOR_ID,
   SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN,
+  SAV_198_GITHUB_OWNER,
+  SAV_198_GITHUB_OWNER_ID,
+  SAV_198_GITHUB_REPOSITORY,
   SAV_198_GITHUB_REPOSITORY_ID,
   SAV_198_GIT_LEDGER_REF,
   SAV_198_IMMUTABLE_RULESET_NAME,
@@ -60,7 +63,7 @@ import {
   type GitHubRuleset,
 } from "./calibration-run-ledger";
 
-const NOW = new Date("2026-07-12T09:00:00.000Z");
+const NOW = new Date("2026-07-17T00:00:00.000Z");
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.deepEqual(
@@ -80,12 +83,12 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
     authorization: SAV_198_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: CALIBRATION_PRICING_CONTRACT.model,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
   });
   assert.equal(plan.runId, SAV_198_APPROVED_RUN_ID);
-  assert.equal(plan.plannedCalls, 96);
-  assert.equal(plan.calls.length, CALIBRATION_MAX_PROVIDER_CALLS);
+  assert.equal(plan.plannedCalls, 64);
+  assert.equal(plan.calls.length, 64);
   assert.equal(
     plan.plannedWorstCaseNanoUsd,
     SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD
@@ -95,7 +98,7 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(plan.corpusHash.length, 64);
   assert.equal(plan.approvalHash.length, 64);
   assert.equal(plan.pricingHash.length, 64);
-  assert.equal(new Set(plan.calls.map(({ callKey }) => callKey)).size, 96);
+  assert.equal(new Set(plan.calls.map(({ callKey }) => callKey)).size, 64);
   assert.equal(deterministicGenesisOid(), SAV_198_GENESIS_COMMIT_OID);
 });
 
@@ -111,7 +114,7 @@ test("delegated product owner accepts the exact conservative rebased plan within
     acceptance.acceptedPlan.plannedWorstCaseNanoUsd,
     SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD
   );
-  assert.equal(acceptance.acceptedPlan.plannedWorstCaseUsd, 2.7544875);
+  assert.equal(acceptance.acceptedPlan.plannedWorstCaseUsd, 2.052925);
   assert.equal(acceptance.authorityScope.providerCallsExecuted, false);
   assert.equal(acceptance.authorityScope.ledgerActivated, false);
   assert.equal(acceptance.authorityScope.launchAuthorized, false);
@@ -122,6 +125,8 @@ test("canonical repository and activation actor identities are immutable", async
     (state: FakeGitHubState) => (state.repository.id += 1),
     (state: FakeGitHubState) =>
       (state.repository.fullName = "attacker/meelni-prep"),
+    (state: FakeGitHubState) => (state.repository.owner.id += 1),
+    (state: FakeGitHubState) => (state.repository.owner.login = "not-meelni"),
     (state: FakeGitHubState) => (state.viewer.id += 1),
     (state: FakeGitHubState) => (state.viewer.login = "not-saviii"),
   ]) {
@@ -284,10 +289,10 @@ test("direct GitHub transport ignores PATH and accepts only canonical API data",
         });
         return jsonResponse({
           id: SAV_198_GITHUB_REPOSITORY_ID,
-          full_name: "saviii/meelni-prep",
+          full_name: `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}`,
           owner: {
-            id: SAV_198_GITHUB_ACTIVATION_ACTOR_ID,
-            login: SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN,
+            id: SAV_198_GITHUB_OWNER_ID,
+            login: SAV_198_GITHUB_OWNER,
           },
           private: true,
         });
@@ -301,7 +306,7 @@ test("direct GitHub transport ignores PATH and accepts only canonical API data",
   );
   assert.deepEqual(requests, [
     {
-      path: "/repos/saviii/meelni-prep",
+      path: `/repos/${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}`,
       authorization: "Bearer test-github-token",
     },
   ]);
@@ -775,7 +780,7 @@ function activationOptions(
     authorization: SAV_198_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: CALIBRATION_PRICING_CONTRACT.model,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     activationId,
   };
@@ -785,10 +790,10 @@ function createCanonicalState(): FakeGitHubState {
   return {
     repository: {
       id: SAV_198_GITHUB_REPOSITORY_ID,
-      fullName: "saviii/meelni-prep",
+      fullName: `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}`,
       owner: {
-        id: SAV_198_GITHUB_ACTIVATION_ACTOR_ID,
-        login: SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN,
+        id: SAV_198_GITHUB_OWNER_ID,
+        login: SAV_198_GITHUB_OWNER,
       },
       private: true,
     },
@@ -805,7 +810,7 @@ function createCanonicalState(): FakeGitHubState {
 
 function canonicalRulesets(): GitHubRuleset[] {
   const base = {
-    source: "saviii/meelni-prep",
+    source: `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}`,
     sourceType: "Repository",
     target: "branch",
     enforcement: "active",
@@ -945,7 +950,8 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
     }) {
       if (
         input.method === "GET" &&
-        input.path === "/repos/saviii/meelni-prep"
+        input.path ===
+          `/repos/${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}`
       ) {
         return jsonResponse({
           id: state.repository.id,

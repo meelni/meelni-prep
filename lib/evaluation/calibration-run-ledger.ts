@@ -32,9 +32,10 @@ import {
 export const SAV_198_APPROVED_RUN_ID = "sav-198-authorized-paid-calibration.v1";
 export const SAV_198_AUTHORIZATION_ID =
   "sav-198-user-authorization-2026-07-12.v1";
-export const SAV_198_GITHUB_OWNER = "saviii";
+export const SAV_198_GITHUB_OWNER = "meelni";
 export const SAV_198_GITHUB_REPOSITORY = "meelni-prep";
 export const SAV_198_GITHUB_REPOSITORY_ID = 1_089_904_588;
+export const SAV_198_GITHUB_OWNER_ID = 302_571_838;
 export const SAV_198_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
 export const SAV_198_GITHUB_ACTIVATION_ACTOR_ID = 24_397_508;
 export const SAV_198_GIT_LEDGER_BRANCH =
@@ -59,6 +60,8 @@ const GITHUB_API_PORT = 443;
 const GITHUB_API_TIMEOUT_MS = 10_000;
 const GITHUB_API_MAX_RESPONSE_BYTES = 1_048_576;
 const GITHUB_USER_AGENT = "meelni-sav-198-calibration-authority";
+const SAV_198_GITHUB_REPOSITORY_API_PATH =
+  `/repos/${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}` as const;
 const COMMIT_IDENTITY = {
   name: "Meelni Calibration Authorization",
   email: "calibration-ledger@meelni.invalid",
@@ -94,10 +97,10 @@ export const SAV_198_SPEND_AUTHORIZATION: CalibrationSpendAuthorization = {
   productionDataAllowed: false,
 };
 
-export const SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD = 2_754_487_500;
+export const SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD = 2_052_925_000;
 export const SAV_198_REBASED_PLAN_HASH =
-  "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1";
-export const SAV_198_REBASED_PLAN_ACCEPTED_AT = "2026-07-13T04:21:30.000Z";
+  "53e88d34564efe1a869acf6a3464ee024b7e298955ac2b17be89510b75250fa0";
+export const SAV_198_REBASED_PLAN_ACCEPTED_AT = "2026-07-17T00:45:00.000Z";
 
 export interface CalibrationActivatedPlanCall {
   callKey: string;
@@ -120,7 +123,7 @@ export interface CalibrationActivatedPlan {
   endpoint: typeof CALIBRATION_PRICING_CONTRACT.endpoint;
   serviceTier: typeof CALIBRATION_PRICING_CONTRACT.serviceTier;
   pricingHash: string;
-  repetitions: 3;
+  repetitions: 2;
   plannedCalls: number;
   plannedWorstCaseNanoUsd: number;
   calls: CalibrationActivatedPlanCall[];
@@ -134,11 +137,11 @@ export function buildSAV198RebasedPlanAcceptance(
     authorization: SAV_198_SPEND_AUTHORIZATION,
     adjudicationApproval,
     model: CALIBRATION_PRICING_CONTRACT.model,
-    repetitions: 3,
+    repetitions: 2,
     now: new Date(SAV_198_REBASED_PLAN_ACCEPTED_AT),
   });
   if (
-    plan.plannedCalls !== 96 ||
+    plan.plannedCalls !== 64 ||
     plan.plannedWorstCaseNanoUsd !== SAV_198_REBASED_PLAN_WORST_CASE_NANO_USD ||
     plan.planHash !== SAV_198_REBASED_PLAN_HASH
   ) {
@@ -346,7 +349,7 @@ export function buildCalibrationActivatedPlan(input: {
   if (input.model !== CALIBRATION_PRICING_CONTRACT.model) {
     throw new Error("calibration_git_activation_model_mismatch");
   }
-  if (input.repetitions !== 3) {
+  if (input.repetitions !== 2) {
     throw new Error("calibration_git_activation_repetitions_mismatch");
   }
   validateCalibrationPricingFreshness(input.now);
@@ -408,7 +411,7 @@ export function buildCalibrationActivatedPlan(input: {
     endpoint: CALIBRATION_PRICING_CONTRACT.endpoint,
     serviceTier: CALIBRATION_PRICING_CONTRACT.serviceTier,
     pricingHash,
-    repetitions: 3 as const,
+    repetitions: 2 as const,
     plannedCalls: calls.length,
     plannedWorstCaseNanoUsd,
     calls,
@@ -536,7 +539,7 @@ async function assertCanonicalGitHubAuthority(
     repository.id !== SAV_198_GITHUB_REPOSITORY_ID ||
     repository.fullName !==
       `${SAV_198_GITHUB_OWNER}/${SAV_198_GITHUB_REPOSITORY}` ||
-    repository.owner.id !== SAV_198_GITHUB_ACTIVATION_ACTOR_ID ||
+    repository.owner.id !== SAV_198_GITHUB_OWNER_ID ||
     repository.owner.login !== SAV_198_GITHUB_OWNER ||
     repository.private !== true
   ) {
@@ -722,7 +725,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   }
 
   async getRepository(): Promise<GitHubRepositoryIdentity> {
-    const response = await this.api("GET", "/repos/saviii/meelni-prep");
+    const response = await this.api("GET", SAV_198_GITHUB_REPOSITORY_API_PATH);
     const record = requireRecord(response, "repository");
     const owner = requireRecord(record.owner, "repository.owner");
     return {
@@ -747,7 +750,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   async getRulesets(): Promise<GitHubRuleset[]> {
     const listed = await this.api(
       "GET",
-      "/repos/saviii/meelni-prep/rulesets?includes_parents=true&targets=branch&per_page=100"
+      `${SAV_198_GITHUB_REPOSITORY_API_PATH}/rulesets?includes_parents=true&targets=branch&per_page=100`
     );
     if (!Array.isArray(listed)) {
       throw new Error("calibration_github_rulesets_invalid");
@@ -766,7 +769,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
         parseGitHubRuleset(
           await this.api(
             "GET",
-            `/repos/saviii/meelni-prep/rulesets/${id}?includes_parents=true`
+            `${SAV_198_GITHUB_REPOSITORY_API_PATH}/rulesets/${id}?includes_parents=true`
           )
         )
       );
@@ -778,7 +781,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     const branch = encodeURIComponent(SAV_198_GIT_LEDGER_BRANCH);
     const response = await this.api(
       "GET",
-      `/repos/saviii/meelni-prep/rules/branches/${branch}`
+      `${SAV_198_GITHUB_REPOSITORY_API_PATH}/rules/branches/${branch}`
     );
     if (!Array.isArray(response)) {
       throw new Error("calibration_github_effective_rules_invalid");
@@ -792,7 +795,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     const record = requireRecord(
       await this.api(
         "GET",
-        `/repos/saviii/meelni-prep/git/ref/${SAV_198_GIT_LEDGER_API_REF}`
+        `${SAV_198_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_198_GIT_LEDGER_API_REF}`
       ),
       "ref"
     );
@@ -808,7 +811,10 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
 
   async getCommit(sha: string): Promise<GitHubCommit> {
     return parseGitHubCommit(
-      await this.api("GET", `/repos/saviii/meelni-prep/git/commits/${sha}`)
+      await this.api(
+        "GET",
+        `${SAV_198_GITHUB_REPOSITORY_API_PATH}/git/commits/${sha}`
+      )
     );
   }
 
@@ -819,13 +825,17 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     date: string;
   }): Promise<GitHubCommit> {
     return parseGitHubCommit(
-      await this.api("POST", "/repos/saviii/meelni-prep/git/commits", {
-        message: input.message,
-        tree: input.treeSha,
-        parents: input.parents,
-        author: { ...COMMIT_IDENTITY, date: input.date },
-        committer: { ...COMMIT_IDENTITY, date: input.date },
-      })
+      await this.api(
+        "POST",
+        `${SAV_198_GITHUB_REPOSITORY_API_PATH}/git/commits`,
+        {
+          message: input.message,
+          tree: input.treeSha,
+          parents: input.parents,
+          author: { ...COMMIT_IDENTITY, date: input.date },
+          committer: { ...COMMIT_IDENTITY, date: input.date },
+        }
+      )
     );
   }
 
@@ -833,7 +843,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     const record = requireRecord(
       await this.api(
         "PATCH",
-        `/repos/saviii/meelni-prep/git/refs/${SAV_198_GIT_LEDGER_API_REF}`,
+        `${SAV_198_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_198_GIT_LEDGER_API_REF}`,
         input
       ),
       "updatedRef"

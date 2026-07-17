@@ -62,10 +62,11 @@ preflight requires all eight to skip evaluation and make zero provider calls.
 
 Do not run this step without explicit authorization for provider spend and
 confirmation that the intended model/configuration is the one being evaluated.
-The approved run evaluates 32 scored synthetic transcripts three times, for up
-to 96 model calls. The eight insufficient transcripts are expected to make zero
-model calls. Three repetitions, 96 calls, and $3 total estimated committed
-spend are hard maximums. The runner stops before any call whose worst-case
+The accepted plan evaluates 32 scored synthetic transcripts twice, for exactly
+64 planned model calls. The eight insufficient transcripts are expected to make
+zero model calls. The existing authorization remains capped at 96 physical
+attempts and $3 total estimated committed spend, but it does not expand the
+accepted 64-call plan. The runner stops before any call whose worst-case
 reservation could exceed the remaining spend cap.
 
 The explicit SAV-198 spend approval is committed as
@@ -86,7 +87,7 @@ attested runtime environment. That exact snapshot is bound to the repository's
 reviewed `evaluation-calibration-pricing.v1` contract; a moving alias or any
 other model fails before call one. The pricing contract was
 re-verified against the official OpenAI GPT-5.1 model page at
-`2026-07-12T06:28:08.000Z` and uses Standard rates of $1.25/M uncached input,
+`2026-07-16T23:54:50.000Z` and uses Standard rates of $1.25/M uncached input,
 $0.125/M cached input, and $10/M output tokens. The review is valid for only 24
 hours. Refresh the reviewed timestamp in code only after rechecking the official
 page; stale or future-dated reviews fail before call one. A pricing change
@@ -127,12 +128,13 @@ npm run calibration:plan-acceptance -- \
   --output docs/evidence/sav-198-rebased-plan-acceptance.json
 ```
 
-The expected plan is 96 physical calls, 2,754,487,500 nano-USD ($2.7544875)
-worst case, and hash
-`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
-Treat any other value as stale or mismatched. This acceptance is within the
-existing $3 authorization and does not activate the ledger or authorize a
-provider call.
+The expected plan is 64 physical calls (two symmetric runs for each of 32
+scored fixtures), 2,052,925,000 nano-USD ($2.052925) worst case, and hash
+`53e88d34564efe1a869acf6a3464ee024b7e298955ac2b17be89510b75250fa0`.
+The former 96-call plan exceeds the $3 reservation under the current feedback
+prompt and is not authorized. Treat any other value as stale or mismatched.
+This acceptance remains within the existing $3 authorization and does not
+activate the ledger or authorize a provider call.
 
 ### Durable single-run GitHub activation
 
@@ -160,7 +162,8 @@ After both rulesets are active, create the initial commit through GitHub REST
 with these exact immutable fields:
 
 ```text
-repository: saviii/meelni-prep (1089904588)
+repository: meelni/meelni-prep (1089904588)
+organization owner: meelni (302571838)
 tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
@@ -249,12 +252,12 @@ secrets or provider responses containing sensitive data.
   calls or 96 physical HTTP attempts. It ordinarily remains at or below $3
   estimated committed spend; if valid provider usage unexpectedly exceeds its
   reservation, it records exact actual cost and `spendCapBreached: true` before
-  stopping. It has `completed_plan` only after all 96 calls reconcile
+  stopping. It has `completed_plan` only after all 64 planned calls reconcile
   successfully.
 - The cost report uses `evaluation-calibration-cost-report.v5`, the report uses
   `evaluation-calibration-report.v7`, and the fixed run, authorization ID, and
   authorization hash match the committed spend-authorization manifest.
-- The activated plan reports 96 or fewer calls and at most $3 worst-case, the
+- The activated plan reports exactly 64 calls and at most $3 worst-case, the
   activation commit remains the protected ref head, and each reservation has
   exactly one successful physical-dispatch boundary. A second or concurrent
   boundary attempt is counted, rejected before transport, and does not increase
