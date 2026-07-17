@@ -19,6 +19,7 @@ Good candidates:
 - [service health and readiness](./service-health.md);
 - [selected-question authentication intent](./auth-question-intent.md);
 - [account export, recent-auth deletion, and retention boundaries](./account-privacy.md);
+- [subscription entitlement convergence across Stripe webhook delivery order](./subscription-entitlement.md);
 - [paid one-time Stripe Checkout fulfillment and replay behavior](./stripe-checkout-fulfillment.md);
 - [deployment provider and rehearsal authority](./deployment-preflight.md);
 - [public Terms and Privacy engineering-draft truth and indexing gates](./public-legal-draft.md);
