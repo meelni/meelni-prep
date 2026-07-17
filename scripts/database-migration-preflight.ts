@@ -5,12 +5,15 @@ import { resolve } from "node:path";
 import { config } from "dotenv";
 import postgres from "postgres";
 
+import { inspectDatabaseBootstrapState } from "./database-bootstrap-preflight.mjs";
 import {
   ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
+  FEEDBACK_V2_SCHEMA_FINGERPRINT,
+  SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   getStableStartDatabaseSchemaContract,
@@ -100,6 +103,19 @@ async function run(url: string, environmentIdentity: string) {
     const result = await sql.begin(async (tx) => {
       await tx.unsafe("SET TRANSACTION READ ONLY");
 
+      const bootstrapState = await inspectDatabaseBootstrapState(tx);
+      if (bootstrapState.status === "ready_for_clean_bootstrap") {
+        return {
+          status: bootstrapState.status,
+          connectionMode: "direct_or_session",
+          environmentIdentity,
+          migrationCount: 0,
+          startingContract: "pristine",
+          schemaContract: "pending",
+          lifecycleBackfill: { phase: "not_ready", counts: [] },
+        };
+      }
+
       const migrations = await tx<
         {
           hash: string;
@@ -112,11 +128,11 @@ async function run(url: string, environmentIdentity: string) {
       `;
       if (
         ![
-          2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+          2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation, 6 relaunch, 7 lifecycle, 8 atomic-completion, 9 deadline-cleanup, 10 reconnect, 11 DB-time reconnect, 12 transcript-ingest, 13 transcript-privacy, 14 runtime-settlement, 15 stable-start, 16 credit-recovery, 17 billing-truth, 18 webhook-convergence, 19 invoice-convergence, 20 subscription-resource-convergence, or 21 durable-LiveKit-deletion migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 23 server-owned-billing-privilege migrations; found ${migrations.length}`
         );
       }
       migrations.forEach((migration, index) => {
@@ -198,6 +214,8 @@ async function run(url: string, environmentIdentity: string) {
           legacy_premium_trials: number;
           unsafe_policies: number;
           unique_contracts: number;
+          server_owned_billing_client_privileges: number;
+          server_owned_billing_service_privileges: number;
         }[]
       >`
         SELECT
@@ -232,7 +250,29 @@ async function run(url: string, environmentIdentity: string) {
                 'user_achievement_user_achievement_idx',
                 'bookmarked_question_user_question_idx',
                 'practice_set_question_set_question_idx'
-              )) AS unique_contracts
+              )) AS unique_contracts,
+          (SELECT count(*)::int
+            FROM information_schema.table_privileges
+            WHERE table_schema = 'public'
+              AND table_name IN (
+                'billing_adjustment',
+                'billing_payment_state',
+                'credit_rollover_lot',
+                'credit_rollover_lot_allocation'
+              )
+              AND grantee IN ('PUBLIC', 'anon', 'authenticated'))
+            AS server_owned_billing_client_privileges,
+          (SELECT count(*)::int
+            FROM information_schema.table_privileges
+            WHERE table_schema = 'public'
+              AND table_name IN (
+                'billing_adjustment',
+                'billing_payment_state',
+                'credit_rollover_lot',
+                'credit_rollover_lot_allocation'
+              )
+              AND grantee = 'service_role')
+            AS server_owned_billing_service_privileges
       `;
 
       if (!summaryBase) {
@@ -326,7 +366,9 @@ async function run(url: string, environmentIdentity: string) {
         | "webhook_convergence"
         | "invoice_convergence"
         | "subscription_resource_convergence"
-        | "durable_livekit_deletion";
+        | "durable_livekit_deletion"
+        | "feedback_v2"
+        | "server_owned_billing_privileges";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -372,8 +414,12 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "invoice_convergence";
       } else if (migrations.length === 20) {
         startingContract = "subscription_resource_convergence";
-      } else {
+      } else if (migrations.length === 21) {
         startingContract = "durable_livekit_deletion";
+      } else if (migrations.length === 22) {
+        startingContract = "feedback_v2";
+      } else {
+        startingContract = "server_owned_billing_privileges";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
@@ -388,7 +434,10 @@ async function run(url: string, environmentIdentity: string) {
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
           summary.unsafe_policies !== 0 ||
-          summary.unique_contracts !== 3
+          summary.unique_contracts !== 3 ||
+          (migrations.length >= 23 &&
+            (summary.server_owned_billing_client_privileges !== 0 ||
+              summary.server_owned_billing_service_privileges !== 28))
         ) {
           throw new Error(
             "Reconciled database does not satisfy the launch schema contract"
@@ -430,7 +479,11 @@ async function run(url: string, environmentIdentity: string) {
                                       ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
                                       : migrations.length === 20
                                         ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-                                        : DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT;
+                                        : migrations.length === 21
+                                          ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                                          : migrations.length === 22
+                                            ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                                            : SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -508,39 +561,43 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 21
-            ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
-            : migrations.length === 20
-              ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-              : migrations.length === 19
-                ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
-                : migrations.length === 18
-                  ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
-                  : migrations.length === 17
-                    ? BILLING_TRUTH_SCHEMA_FINGERPRINT
-                    : migrations.length === 16
-                      ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
-                      : migrations.length === 15
-                        ? STABLE_START_SCHEMA_FINGERPRINT
-                        : migrations.length === 14
-                          ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
-                          : migrations.length === 13
-                            ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
-                            : migrations.length === 12
-                              ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
-                              : migrations.length === 11
-                                ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                                : migrations.length === 10
-                                  ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                                  : migrations.length === 9
-                                    ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                                    : migrations.length === 8
-                                      ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                                      : migrations.length === 7
-                                        ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                                        : migrations.length === 6
-                                          ? RELAUNCH_SCHEMA_FINGERPRINT
-                                          : "pending",
+          migrations.length === 23
+            ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+            : migrations.length === 22
+              ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+              : migrations.length === 21
+                ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                : migrations.length === 20
+                  ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+                  : migrations.length === 19
+                    ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
+                    : migrations.length === 18
+                      ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+                      : migrations.length === 17
+                        ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                        : migrations.length === 16
+                          ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                          : migrations.length === 15
+                            ? STABLE_START_SCHEMA_FINGERPRINT
+                            : migrations.length === 14
+                              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                              : migrations.length === 13
+                                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                                : migrations.length === 12
+                                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                                  : migrations.length === 11
+                                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                                    : migrations.length === 10
+                                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                                      : migrations.length === 9
+                                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                                        : migrations.length === 8
+                                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                          : migrations.length === 7
+                                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                            : migrations.length === 6
+                                              ? RELAUNCH_SCHEMA_FINGERPRINT
+                                              : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }
@@ -559,15 +616,26 @@ async function run(url: string, environmentIdentity: string) {
     });
 
     console.log(JSON.stringify(result, null, 2));
-    if (
-      process.env.MEELNI_LAUNCH_STRICT === "1" &&
-      (!result.stableStartLaunchReady ||
+    if (process.env.MEELNI_LAUNCH_STRICT === "1") {
+      if (!("stableStartLaunchReady" in result)) {
+        throw new Error(
+          "Clean database bootstrap is not launch ready; apply the canonical migration chain and rerun preflight"
+        );
+      }
+      if (result.migrationCount !== expected.length) {
+        throw new Error(
+          `Strict launch preflight requires the exact latest migration count ${expected.length}; found ${result.migrationCount}`
+        );
+      }
+      if (
+        !result.stableStartLaunchReady ||
         (result.migrationCount >= 14 && !result.creditRecoveryLaunchReady) ||
-        (result.migrationCount >= 15 && !result.billingAdjustmentLaunchReady))
-    ) {
-      throw new Error(
-        "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity, creditRecoveryIntegrity, and billingAdjustmentIntegrity"
-      );
+        (result.migrationCount >= 15 && !result.billingAdjustmentLaunchReady)
+      ) {
+        throw new Error(
+          "Interview credit launch readiness checks are not clean; inspect stableStartIntegrity, creditRecoveryIntegrity, and billingAdjustmentIntegrity"
+        );
+      }
     }
   } finally {
     await sql.end();

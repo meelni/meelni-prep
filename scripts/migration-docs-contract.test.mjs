@@ -49,17 +49,19 @@ test("migration operations docs match the ordered Drizzle journal", async () => 
   const journalTags = entries.map((entry) => entry.tag);
 
   assert.deepEqual(documentedTags, journalTags);
-  assert.equal(entries.length, 21);
-  assert.equal(entries.at(-1).tag, "0020_durable_livekit_deletion");
-  assert.match(runbook, /twenty-one-entry schema\s+preflight/);
-  assert.match(
-    runbook,
-    /through\s+`0020_durable_livekit_deletion`/
-  );
+  assert.equal(entries.length, 23);
+  assert.equal(entries.at(-1).tag, "0022_server_owned_billing_privileges");
+  assert.match(history, /twenty-three-entry inventory/);
+  assert.match(runbook, /twenty-three-entry schema\s+preflight/);
+  assert.match(runbook, /through\s+`0022_server_owned_billing_privileges`/);
   assert.match(runbook, /isolated `meelni-preview` Supabase project/);
   assert.match(
     await readFile("docs/operations/database-migrations.md", "utf8"),
-    /twenty-one\s+ledger entries, 30 RLS-enabled tables/i
+    /twenty-three\s+ledger entries, 30 RLS-enabled tables/i
+  );
+  assert.match(
+    await readFile("docs/operations/database-migrations.md", "utf8"),
+    /strict preflight[\s\S]*migrationCount: 23[\s\S]*90ac6ee5a1b9e26b0de15bbbeef4019bb54233247397ea976a8a8f4b095fe185/i
   );
 
   assert.match(history, /`transcript_runtime_writer` registry/);

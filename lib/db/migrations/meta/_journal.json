@@ -148,6 +148,20 @@
       "when": 1783901277855,
       "tag": "0020_durable_livekit_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783905733599,
+      "tag": "0021_feedback_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783936979855,
+      "tag": "0022_server_owned_billing_privileges",
+      "breakpoints": true
     }
   ]
 }

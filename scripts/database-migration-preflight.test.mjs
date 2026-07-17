@@ -5,7 +5,89 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import {
+  classifyDatabaseBootstrapCatalog,
+  inspectDatabaseBootstrapState,
+} from "./database-bootstrap-preflight.mjs";
+
 const productionRef = "productionproject123";
+
+test("classifies an absent ledger and exactly empty public schema as a clean bootstrap", async () => {
+  const result = await inspectDatabaseBootstrapState(
+    catalogTransaction({
+      migration_ledger_present: false,
+      public_application_relations: 0,
+      public_application_objects: 0,
+    })
+  );
+
+  assert.deepEqual(result, { status: "ready_for_clean_bootstrap" });
+});
+
+test("blocks a partial public schema when the ledger is absent", async () => {
+  await assert.rejects(
+    inspectDatabaseBootstrapState(
+      catalogTransaction({
+        migration_ledger_present: false,
+        public_application_relations: 1,
+        public_application_objects: 2,
+      })
+    ),
+    /public application schema is not empty/
+  );
+});
+
+test("blocks an unexpected non-relation public object when the ledger is absent", () => {
+  assert.throws(
+    () =>
+      classifyDatabaseBootstrapCatalog({
+        migration_ledger_present: false,
+        public_application_relations: 0,
+        public_application_objects: 1,
+      }),
+    /public application schema is not empty/
+  );
+});
+
+test("keeps a present ledger on the normal migration preflight path", async () => {
+  const result = await inspectDatabaseBootstrapState(
+    catalogTransaction({
+      migration_ledger_present: true,
+      public_application_relations: 29,
+      public_application_objects: 120,
+    })
+  );
+
+  assert.deepEqual(result, { status: "ledger_present" });
+});
+
+test("fails closed when the bootstrap catalog query fails or is ambiguous", async () => {
+  await assert.rejects(
+    inspectDatabaseBootstrapState(async () => {
+      throw new Error("provider detail must not escape");
+    }),
+    new Error("Database preflight could not inspect bootstrap catalog")
+  );
+  await assert.rejects(
+    inspectDatabaseBootstrapState(catalogTransaction({})),
+    new Error("Database preflight could not inspect bootstrap catalog")
+  );
+  await assert.rejects(
+    inspectDatabaseBootstrapState(async () => [
+      {
+        migration_ledger_present: false,
+        public_application_relations: 0,
+        public_application_objects: 0,
+      },
+      {
+        migration_ledger_present: true,
+        public_application_relations: 1,
+        public_application_objects: 1,
+      },
+    ]),
+    new Error("Database preflight could not inspect bootstrap catalog")
+  );
+});
 
 test("Preview preflight rejects a Production-marked canonical env file before connecting", async () => {
   const directory = await mkdtemp(join(tmpdir(), "meelni-preflight-identity-"));
@@ -49,4 +131,8 @@ test("Preview preflight rejects a Production-marked canonical env file before co
 
 function databaseUrl(ref) {
   return `postgresql://postgres.${ref}:secret@aws-0-us-west-1.pooler.supabase.com:5432/postgres`;
+}
+
+function catalogTransaction(row) {
+  return async () => [row];
 }
