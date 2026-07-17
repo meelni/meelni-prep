@@ -3,12 +3,6 @@
   "repository": "meelni/meelni-prep",
   "stacks": [
     {
-      "pr": 272,
-      "parentPr": 268,
-      "headRef": "codex/sav-197-feedback-workflow",
-      "parentRef": "codex/sav-196-evaluation-validation"
-    },
-    {
       "pr": 274,
       "parentPr": 272,
       "headRef": "codex/sav-198-evaluation-calibration",
