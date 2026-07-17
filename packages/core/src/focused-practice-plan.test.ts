@@ -12,6 +12,7 @@ import {
   DRILL_RECOMMENDATION_CONTRACT_VERSION,
   DRILL_TEMPLATE_VERSION,
   type DrillEvidenceGap,
+  type DrillRecommendation,
   type RecommendedDrill,
 } from "./drill-recommendation";
 import type { FeedbackDimension } from "./evaluation";
