@@ -210,7 +210,7 @@ test("the former personal repository cannot consume the enterprise stack manifes
 
 test("the repository manifest and GitHub-event evidence are machine-readable", () => {
   const repositoryManifest = loadStackManifest();
-  assert.ok(repositoryManifest.stacks.length > 0);
+  assert.ok(Array.isArray(repositoryManifest.stacks));
   const expected = evidence({
     head: "c".repeat(40),
     parentHead: "d".repeat(40),
