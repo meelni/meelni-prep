@@ -7,6 +7,15 @@
 // Event Names
 // =============================================================================
 
+export const LEGACY_INTERVIEW_LAUNCH_EVENTS = {
+  new_interview_launcher_viewed: "new_rep_launcher_viewed",
+  new_interview_recommendation_accepted: "new_rep_recommendation_accepted",
+  new_interview_recommendation_changed: "new_rep_recommendation_changed",
+  new_interview_start_attempted: "new_rep_start_attempted",
+  new_interview_start_succeeded: "new_rep_start_succeeded",
+  new_interview_start_failed: "new_rep_start_failed",
+} as const;
+
 /**
  * All trackable events in the application
  * Add new events here to maintain type safety
@@ -19,6 +28,13 @@ export type AnalyticsEvent =
   | "demo_modal_closed"
   | "demo_completed"
   | "demo_mic_toggled"
+  | "explore_page_viewed"
+  | "explore_cta_clicked"
+  | "explore_cta_dismissed"
+  | "explore_search"
+  | "explore_filter_type"
+  | "explore_question_clicked"
+  | "explore_page_changed"
   // Auth Events
   | "auth_signup_started"
   | "auth_signup_completed"
@@ -117,6 +133,20 @@ interface LandingPageProperties {
     new_state: "muted" | "unmuted";
     time_in_demo_seconds: number;
   };
+}
+
+interface ExploreProperties {
+  explore_page_viewed: { total_questions: number };
+  explore_cta_clicked: { cta_position: number };
+  explore_cta_dismissed: { cta_position: number };
+  explore_search: { results_count: number };
+  explore_filter_type: { filter_type: string; results_count: number };
+  explore_question_clicked: {
+    question_type: string;
+    company: string | null;
+    page: number;
+  };
+  explore_page_changed: { page: number; total_pages: number };
 }
 
 /**
@@ -423,6 +453,7 @@ interface PerformanceProperties {
  * Maps each event to its required properties
  */
 export type EventProperties = LandingPageProperties &
+  ExploreProperties &
   AuthProperties &
   SetupProperties &
   InterviewProperties &

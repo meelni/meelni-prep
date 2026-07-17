@@ -53,7 +53,11 @@ test("the durable contract preserves owner approval and indexing gates", () => {
   assert.match(contract, /accountable owner and legal approval/i);
   assert.match(contract, /tests.*cannot approve these decisions/is);
   assert.match(contract, /Internal implementation review inventory/i);
-  assert.match(contract, /tracks until the browser user declines/i);
+  assert.match(
+    contract,
+    /do not initialize until a\s+current explicit acceptance/i
+  );
+  assert.match(contract, /autocapture and session replay are disabled/i);
   assert.match(contract, /initial background enqueue can fail/i);
   assert.match(contract, /must not\s+be copied onto the public holding pages/i);
 });
