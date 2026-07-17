@@ -91,14 +91,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
-import { validateSessionCompleteness } from "@/lib/evaluation/session-validator";
+import {
+  isFeedbackGenerationLeaseExpired,
+  isFeedbackGenerationRetryable,
+} from "@/lib/db/feedback-generation-state";
 import { isInterviewTerminalState } from "@meelni/core";
 import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
 } from "@/lib/db/session-deadlines";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
 // Estimated total processing time (seconds)
 const ESTIMATED_PROCESSING_TIME = 45;
@@ -135,8 +138,28 @@ export async function GET(
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
+    if (
+      session &&
+      hasInterviewDeadlineRoomCleanupClaim(session) &&
+      !isInterviewDeadlineRoomCleanupAcknowledged(session)
+    ) {
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable: false,
+          message:
+            "The interview is saved and its room is still being closed safely.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     if (!feedbackRecord) {
-      if (session && isInterviewTerminalState(session.lifecycleState)) {
+      if (
+        session &&
+        (session.lifecycleState === "ending" ||
+          isInterviewTerminalState(session.lifecycleState))
+      ) {
         return NextResponse.json(
           {
             status: "missing",
@@ -159,37 +182,25 @@ export async function GET(
       );
     }
 
-    if (
-      session &&
-      hasInterviewDeadlineRoomCleanupClaim(session) &&
-      !isInterviewDeadlineRoomCleanupAcknowledged(session)
-    ) {
-      return NextResponse.json(
-        {
-          status: "settling",
-          retryable: false,
-          message:
-            "The interview is saved and its room is still being closed safely.",
-        },
-        { headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-
     // Build response based on status
     const status = feedbackRecord.status || "pending";
 
     // Case 1: Pending - waiting to start processing
     if (status === "pending") {
+      const retryable =
+        feedbackRecord.completionTier !== null &&
+        isFeedbackDispatchRetryable({
+          status: feedbackRecord.dispatchStatus,
+          claimedAt: feedbackRecord.dispatchClaimedAt,
+        });
       return NextResponse.json(
         {
           status: "pending",
+          retryable,
           estimatedTimeRemaining: ESTIMATED_PROCESSING_TIME,
           dispatch: {
             status: feedbackRecord.dispatchStatus,
-            retryable: isFeedbackDispatchRetryable({
-              status: feedbackRecord.dispatchStatus,
-              claimedAt: feedbackRecord.dispatchClaimedAt,
-            }),
+            retryable,
           },
         },
         {
@@ -219,6 +230,13 @@ export async function GET(
       return NextResponse.json(
         {
           status: "processing",
+          retryable:
+            feedbackRecord.dispatchStatus !== "not_required" &&
+            feedbackRecord.dispatchEventId !== null &&
+            isFeedbackGenerationLeaseExpired({
+              status,
+              processingStartedAt: feedbackRecord.processingStartedAt,
+            }),
           estimatedTimeRemaining,
         },
         {
@@ -265,21 +283,20 @@ export async function GET(
       );
     }
 
-    // Case 4: Skipped - return skip reason with validation data
+    // Case 4: Skipped - return immutable completion evidence. Do not rerun the
+    // validator after terminalization because late transcript writes or a new
+    // validator deployment cannot redefine the committed outcome.
     if (status === "skipped") {
-      // Fetch validation data for edge case components
-      const validation = await validateSessionCompleteness(sessionId);
-
       return NextResponse.json(
         {
           status: "skipped",
           skipReason:
-            feedbackRecord.statusReason || "Feedback generation was skipped",
+            "This interview did not contain enough trustworthy evidence for feedback.",
           validation: {
-            tier: validation.tier,
-            stats: validation.stats,
-            reasons: validation.reasons,
-            recommendations: validation.recommendations,
+            tier: feedbackRecord.completionTier ?? "insufficient",
+            stats: feedbackRecord.completionStats,
+            reasons: [],
+            recommendations: feedbackRecord.completionRecommendations ?? [],
           },
         },
         {
@@ -293,12 +310,13 @@ export async function GET(
     // Case 5: Failed - return error with short cache
     if (status === "failed") {
       const retryable =
+        feedbackRecord.completionTier !== null &&
         feedbackRecord.dispatchStatus !== "not_required" &&
-        (feedbackRecord.dispatchStatus === "sent" ||
-          isFeedbackDispatchRetryable({
-            status: feedbackRecord.dispatchStatus,
-            claimedAt: feedbackRecord.dispatchClaimedAt,
-          }));
+        feedbackRecord.dispatchEventId !== null &&
+        isFeedbackGenerationRetryable({
+          status,
+          processingStartedAt: feedbackRecord.processingStartedAt,
+        });
       return NextResponse.json(
         {
           status: "failed",
@@ -345,33 +363,17 @@ export async function POST(
     }
 
     const { sessionId } = await params;
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    const result = await recoverFeedbackGenerationWorkflow({
+      sessionId,
+      userId: user.id,
+    });
+    if (!result.ok && result.reason === "not_found") {
       return NextResponse.json(
         { error: "Session not found or access denied" },
         { status: 404 }
       );
     }
-
-    const session = await getSessionById(sessionId);
-    if (
-      !session ||
-      (session.lifecycleState !== "ending" &&
-        !isInterviewTerminalState(session.lifecycleState))
-    ) {
-      return NextResponse.json(
-        {
-          error: "session_not_ended",
-          message: "End the interview before queueing feedback.",
-        },
-        { status: 409 }
-      );
-    }
-
-    if (
-      hasInterviewDeadlineRoomCleanupClaim(session) &&
-      !isInterviewDeadlineRoomCleanupAcknowledged(session)
-    ) {
+    if (!result.ok && result.reason === "deadline_settlement_pending") {
       return NextResponse.json(
         {
           error: "deadline_settlement_pending",
@@ -384,36 +386,22 @@ export async function POST(
         }
       );
     }
-
-    const result = await endInterviewSessionWorkflow({
-      sessionId,
-      actor: { type: "user", userId: user.id },
-      requestedTerminalReason: "user_end",
-    });
     if (!result.ok) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "session_not_ended",
+          message: "End the interview before queueing feedback.",
+        },
+        { status: 409 }
+      );
     }
-
-    const dispatchStatus =
-      result.dispatch?.dispatch?.status ??
-      result.completion.feedback.dispatchStatus;
-    const feedbackStatus =
-      result.completion.feedback.status === "failed" && result.dispatch?.ok
-        ? "pending"
-        : result.completion.feedback.status;
-    const retryable =
-      (feedbackStatus === "pending" || feedbackStatus === "failed") &&
-      isFeedbackDispatchRetryable({
-        status: dispatchStatus,
-        claimedAt:
-          result.dispatch?.dispatch?.claimedAt ??
-          result.completion.feedback.dispatchClaimedAt,
-      });
     return NextResponse.json(
       {
-        status: feedbackStatus,
-        feedbackId: result.completion.feedback.id,
-        dispatch: { status: dispatchStatus, retryable },
+        status: result.status,
+        retryable: result.retryable,
+        dispatch: result.dispatch
+          ? { status: result.dispatch.status, retryable: result.retryable }
+          : null,
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
