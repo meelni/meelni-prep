@@ -3,12 +3,6 @@
   "repository": "meelni/meelni-prep",
   "stacks": [
     {
-      "pr": 274,
-      "parentPr": 272,
-      "headRef": "codex/sav-198-evaluation-calibration",
-      "parentRef": "codex/sav-197-feedback-workflow"
-    },
-    {
       "pr": 281,
       "parentPr": 274,
       "headRef": "codex/sav-201-deterministic-recommendations",
