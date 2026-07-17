@@ -804,9 +804,7 @@ export function createDeterministicCalibrationEvaluator(
         scores,
         strengths: [fixtureItem(strength)],
         improvements: [fixtureItem(improvement)],
-        drills: [
-          "Focused practice: state an explicit decision and guardrail.",
-        ],
+        drills: ["Focused practice: state an explicit decision and guardrail."],
         summary: "Focused practice can build on the cited evidence.",
       },
       {
@@ -1010,7 +1008,8 @@ function reparseEvaluation(
   );
 }
 
-function matchesAdjudicatedEvidence(
+/** @internal Exported so the identity gates can be mutation-tested directly. */
+export function matchesAdjudicatedEvidence(
   output: FeedbackV2Result,
   fixture: EvaluationCalibrationCase
 ): boolean {
@@ -1029,7 +1028,7 @@ function matchesAdjudicatedEvidence(
         item.evidence.some(
           (evidence) =>
             evidence.turnRef === anchor.turnRef &&
-            evidence.quote === anchor.quote
+            evidence.quote.includes(anchor.quote)
         )
     )
   );

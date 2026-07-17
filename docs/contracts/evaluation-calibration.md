@@ -121,6 +121,17 @@ citing some valid but irrelevant transcript text. Per-dimension floors prevent
 a scorer from sacrificing one entire rubric dimension while passing the pooled
 80% boundary. Round and completion-state floors expose localized regressions.
 
+Anchor agreement requires the same finding kind, rubric dimension, and user
+turn reference. The returned exact transcript quote may be wider than the
+approved quote, but it must contain the complete approved anchor. A different
+grounded phrase, a shorter fragment that omits any part of the anchor, another
+kind, another dimension, or another turn does not match. This remains a
+canonical regression gate rather than proof that the approved pair exhausts
+every semantically legitimate finding. The provider-free SAV-250 audit in
+`docs/evidence/sav-250-adjudicated-evidence-anchor-audit.md` found defensible
+alternative feedback in every scored transcript; arbitrary alternatives remain
+review-required instead of being accepted as “any grounded quote.”
+
 Every out-of-band score records case, run, dimension, actual score, and expected
 band. Every unstable dimension records case, run, dimension, actual score, and
 observed range. Model mismatches record both configured expectation and observed
