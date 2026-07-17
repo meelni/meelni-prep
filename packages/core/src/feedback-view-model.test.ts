@@ -183,6 +183,46 @@ test("rejects persisted v2 evidence that is not grounded in canonical user turns
   );
 });
 
+test("preserves canonical evidence event IDs through the 512-character contract", () => {
+  const eventId = `writer:${"e".repeat(505)}`;
+  assert.equal(eventId.length, 512);
+  const longIdFinding = {
+    ...finding,
+    transcriptRefs: [eventId],
+    evidence: [{ turnRef: eventId, quote: "working parents" }],
+  };
+  const presented = present(
+    completed({
+      strengths: [longIdFinding],
+      improvements: [
+        {
+          ...longIdFinding,
+          dimension: "structure",
+          observation: "The answer can state the approach more explicitly.",
+          evidence: [{ turnRef: eventId, quote: "focus on" }],
+        },
+      ],
+    }),
+    [
+      {
+        eventId,
+        speaker: "user",
+        text: "I would focus on working parents first.",
+        contractVersion: 2,
+      },
+    ]
+  );
+
+  assert.equal(presented.kind, "v2");
+  assert.ok(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: presented,
+    })
+  );
+});
+
 test("keeps valid evidence readable when an unrelated semantic replay is excluded", () => {
   const result = present(completed(), [
     ...evidenceTurns,

@@ -36,8 +36,51 @@ describe("feedback transcript read states", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("continues bounded GET polling while settling without starting recovery", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          throw new Error("Settling must never trigger recovery");
+        }
+        feedbackGetAttempts += 1;
+        return feedbackGetAttempts === 1
+          ? Response.json({
+              status: "settling",
+              retryable: false,
+              message: "The interview is saved while its room closes safely.",
+            })
+          : completedFeedbackResponse();
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await act(async () => undefined);
+
+    expect(screen.getByText("Saving your interview")).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(1);
+    expect(feedbackPostAttempts).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(screen.getByText("Synthetic fixture summary")).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(2);
+    expect(feedbackPostAttempts).toBe(0);
   });
 
   it("distinguishes a failed transcript read from a successful empty transcript and supports retry", async () => {

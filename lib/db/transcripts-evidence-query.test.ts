@@ -14,7 +14,7 @@ test("feedback evidence query bounds rows and oversized persisted fields", async
   assert.match(query.sql, /left\("event_id", \$1\)/);
   assert.match(query.sql, /left\("text", \$2\)/);
   assert.match(query.sql, /limit \$5$/);
-  assert.deepEqual(query.params, [257, 20_001, "session-x", "user", 1_001]);
+  assert.deepEqual(query.params, [513, 20_001, "session-x", "user", 1_001]);
 
   await client.end();
 });

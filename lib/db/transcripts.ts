@@ -17,6 +17,7 @@ import type {
 import {
   deriveInterviewDeadlineAt,
   isInterviewTerminalState,
+  MAX_CANONICAL_EVENT_ID_LENGTH,
   normalizeInterviewDurationMinutes,
 } from "@meelni/core";
 import {
@@ -33,7 +34,6 @@ export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
 export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
 const MAX_CANONICAL_TURNS_PER_SESSION = 1_000;
 const MAX_INTERRUPTION_MARKERS_PER_SESSION = 1_000;
-const MAX_FEEDBACK_EVIDENCE_EVENT_ID_LENGTH = 256;
 const MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
 
 export type PersistedTranscriptInterruptionMarker =
@@ -915,7 +915,7 @@ export function buildFeedbackEvidenceTurnsQuery(
         // reject oversized persisted values without first materializing them.
         eventId: sql<
           string | null
-        >`left(${transcriptTurn.eventId}, ${MAX_FEEDBACK_EVIDENCE_EVENT_ID_LENGTH + 1})`,
+        >`left(${transcriptTurn.eventId}, ${MAX_CANONICAL_EVENT_ID_LENGTH + 1})`,
         speaker: transcriptTurn.speaker,
         text: sql<
           string | null
