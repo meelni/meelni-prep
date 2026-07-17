@@ -10,6 +10,11 @@ import { db } from "@/lib/db";
 import { transcriptTurn } from "@/lib/db/schema";
 import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
 import { eq } from "drizzle-orm";
+import {
+  FEEDBACK_ELIGIBILITY_POLICY,
+  hasSubstantiveCandidateResponseSignal,
+  prepareFeedbackTranscript,
+} from "@meelni/core";
 
 /**
  * Session validation tiers based on completeness
@@ -61,20 +66,9 @@ export interface SessionValidation {
  * Minimum thresholds for validation tiers
  */
 const THRESHOLDS = {
-  FULL: {
-    minTurns: 20,
-    minDurationMinutes: 20,
-    minSubstantiveResponses: 5,
-  },
-  PARTIAL: {
-    minTurns: 5,
-    minDurationMinutes: 5,
-    minSubstantiveResponses: 3,
-  },
-  MINIMUM: {
-    minTurns: 5,
-    minDurationMinutes: 5,
-  },
+  FULL: FEEDBACK_ELIGIBILITY_POLICY.full,
+  PARTIAL: FEEDBACK_ELIGIBILITY_POLICY.partial,
+  MINIMUM: FEEDBACK_ELIGIBILITY_POLICY.partial,
 } as const;
 
 /**
@@ -98,7 +92,7 @@ export async function calculateSessionStats(
     orderBy: transcriptChronologicalOrder(),
   });
 
-  return calculateSessionStatsFromTurns(turns);
+  return calculateValidatedSessionFromTurns(turns).stats;
 }
 
 export function calculateSessionStatsFromTurns(
@@ -115,15 +109,18 @@ export function calculateSessionStatsFromTurns(
   // Calculate total words (approximate from text length)
   const totalWords = turns.reduce((sum, turn) => {
     if (!turn.text) return sum;
-    const words = turn.text.trim().split(/\s+/).length;
-    return sum + words;
+    return sum + tokenizeWords(turn.text).length;
   }, 0);
 
   const startTimes = turns.flatMap((turn) =>
-    turn.startedAt ? [turn.startedAt.getTime()] : []
+    turn.startedAt && Number.isFinite(turn.startedAt.getTime())
+      ? [turn.startedAt.getTime()]
+      : []
   );
   const endTimes = turns.flatMap((turn) =>
-    turn.endedAt ? [turn.endedAt.getTime()] : []
+    turn.endedAt && Number.isFinite(turn.endedAt.getTime())
+      ? [turn.endedAt.getTime()]
+      : []
   );
   const durationSeconds =
     startTimes.length > 0 && endTimes.length > 0
@@ -133,11 +130,10 @@ export function calculateSessionStatsFromTurns(
         )
       : 0;
 
-  // Count substantive responses (user turns with >10 words)
+  // Count responses with enough length and lexical variety for honest scoring.
   const substantiveResponses = turns.filter((turn) => {
     if (turn.speaker !== "user" || !turn.text) return false;
-    const wordCount = turn.text.trim().split(/\s+/).length;
-    return wordCount > 10;
+    return isSubstantiveUserResponse(turn.text);
   }).length;
 
   return {
@@ -147,6 +143,56 @@ export function calculateSessionStatsFromTurns(
     durationSeconds,
     substantiveResponses,
   };
+}
+
+const FILLER_WORDS = new Set([
+  "actually",
+  "ah",
+  "anyway",
+  "basically",
+  "er",
+  "first",
+  "hmm",
+  "honestly",
+  "like",
+  "literally",
+  "maybe",
+  "no",
+  "okay",
+  "perhaps",
+  "possibly",
+  "probably",
+  "right",
+  "second",
+  "so",
+  "third",
+  "totally",
+  "uh",
+  "um",
+  "whatever",
+  "well",
+  "yeah",
+  "yes",
+]);
+
+function isSubstantiveUserResponse(text: string): boolean {
+  const words = tokenizeWords(text).map((word) =>
+    word.toLocaleLowerCase("en-US")
+  );
+  if (words.length <= 10) return false;
+  const uniqueWords = new Set(words);
+  const contentWords = new Set(words.filter((word) => !FILLER_WORDS.has(word)));
+  const alphabeticCharacters = (text.match(/\p{L}/gu) ?? []).length;
+  return (
+    uniqueWords.size / words.length >= 0.35 &&
+    contentWords.size >= 6 &&
+    alphabeticCharacters >= 30 &&
+    hasSubstantiveCandidateResponseSignal(text)
+  );
+}
+
+function tokenizeWords(text: string): string[] {
+  return text.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu) ?? [];
 }
 
 /**
@@ -172,10 +218,89 @@ export function calculateSessionStatsFromTurns(
 export async function validateSessionCompleteness(
   sessionId: string
 ): Promise<SessionValidation> {
-  // Calculate session statistics
-  const stats = await calculateSessionStats(sessionId);
+  const turns = await db.query.transcriptTurn.findMany({
+    where: eq(transcriptTurn.sessionId, sessionId),
+    orderBy: transcriptChronologicalOrder(),
+  });
 
-  return validateSessionStats(stats);
+  return calculateValidatedSessionFromTurns(turns);
+}
+
+/**
+ * Prepare the exact transcript set used for feedback before calculating its
+ * tier. Persisted rows expose canonical fields; callers without those fields
+ * retain the legacy statistics path for compatibility.
+ */
+export function calculateValidatedSessionFromTurns(
+  turns: Array<{
+    speaker: string;
+    text: string | null;
+    startedAt: Date | null;
+    endedAt: Date | null;
+    eventId?: string | null;
+    contractVersion?: number | null;
+  }>
+): SessionValidation {
+  const hasCanonicalFields = turns.some(
+    (turn) => turn.contractVersion === 2 || turn.eventId != null
+  );
+  if (!hasCanonicalFields) {
+    return validateSessionStats(calculateSessionStatsFromTurns(turns));
+  }
+
+  const hasInvalidTiming = turns.some(
+    (turn) =>
+      !turn.startedAt ||
+      !turn.endedAt ||
+      !Number.isFinite(turn.startedAt.getTime()) ||
+      !Number.isFinite(turn.endedAt.getTime()) ||
+      turn.endedAt <= turn.startedAt
+  );
+
+  const prepared = prepareFeedbackTranscript(
+    turns.map((turn) => ({
+      eventId: turn.eventId ?? null,
+      speaker: turn.speaker,
+      text: turn.text,
+      contractVersion: turn.contractVersion ?? null,
+    })),
+    { requireContractV2: true }
+  );
+  const byEventId = new Map(
+    turns.flatMap((turn) =>
+      turn.eventId ? [[turn.eventId, turn] as const] : []
+    )
+  );
+  const stats = calculateSessionStatsFromTurns(
+    prepared.transcript.map((turn) => {
+      const source = byEventId.get(turn.eventId);
+      return {
+        speaker: turn.speaker,
+        text: turn.text,
+        startedAt: source?.startedAt ?? null,
+        endedAt: source?.endedAt ?? null,
+      };
+    })
+  );
+  const thresholdValidation = validateSessionStats(stats);
+  if (prepared.eligible && !hasInvalidTiming) return thresholdValidation;
+
+  return {
+    tier: turns.length === 0 ? SessionTier.ABANDONED : SessionTier.INSUFFICIENT,
+    isValid: false,
+    stats,
+    reasons: [
+      ...prepared.reasons,
+      ...(hasInvalidTiming ? ["Transcript timing data is corrupted"] : []),
+      ...thresholdValidation.reasons,
+    ],
+    recommendations: [
+      ...new Set([
+        "Start a new interview so we can record enough trustworthy evidence",
+        ...thresholdValidation.recommendations,
+      ]),
+    ],
+  };
 }
 
 export function validateSessionStats(stats: SessionStats): SessionValidation {
@@ -234,7 +359,7 @@ export function validateSessionStats(stats: SessionStats): SessionValidation {
   // If insufficient, return early
   if (reasons.length > 0) {
     recommendations.unshift(
-      "Aim for at least 10 minutes and 5 substantive exchanges for feedback"
+      `Aim for at least ${THRESHOLDS.PARTIAL.minDurationMinutes} minutes, ${THRESHOLDS.PARTIAL.minTurns} conversation turns, and ${THRESHOLDS.PARTIAL.minSubstantiveResponses} detailed answers for feedback`
     );
 
     return {
@@ -262,7 +387,7 @@ export function validateSessionStats(stats: SessionStats): SessionValidation {
     recommendations:
       tier === SessionTier.PARTIAL
         ? [
-            "For comprehensive feedback, aim for 20+ minutes and 20+ exchanges",
+            `For comprehensive feedback, aim for ${THRESHOLDS.FULL.minDurationMinutes}+ minutes, ${THRESHOLDS.FULL.minTurns}+ conversation turns, and ${THRESHOLDS.FULL.minSubstantiveResponses}+ detailed answers`,
             "This session qualifies for basic feedback",
           ]
         : ["Excellent session length - you'll receive detailed feedback"],

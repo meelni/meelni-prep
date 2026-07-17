@@ -11,6 +11,7 @@ import {
   FeedbackStatusPage,
 } from "@/components/feedback/feedback-surface";
 import { Button } from "@/components/ui/button";
+import { FEEDBACK_ELIGIBILITY_POLICY } from "@meelni/core";
 
 interface FeedbackInsufficientProps {
   /** Session statistics */
@@ -46,8 +47,8 @@ export function FeedbackInsufficient({
     <FeedbackStatusPage
       tone="warning"
       icon={<AlertCircle className="h-8 w-8" />}
-      title="Session Too Short for Feedback"
-      description="We need more data to provide meaningful feedback"
+      title="Not enough reliable evidence for feedback"
+      description="We only score sessions with enough trustworthy user speech."
       actions={
         <>
           <Button
@@ -81,21 +82,21 @@ export function FeedbackInsufficient({
               icon={<Clock className="h-5 w-5" />}
               label="Duration"
               value={`${durationMin} min`}
-              helper="(need 10+ min)"
+              helper={`(need ${FEEDBACK_ELIGIBILITY_POLICY.partial.minDurationMinutes}+ min)`}
               tone="warning"
             />
             <FeedbackMetricCard
               icon={<MessageSquare className="h-5 w-5" />}
-              label="Exchanges"
+              label="Conversation turns"
               value={`${stats.totalTurns} turns`}
-              helper="(need 10+ turns)"
+              helper={`(need ${FEEDBACK_ELIGIBILITY_POLICY.partial.minTurns}+ turns)`}
               tone="warning"
             />
             <FeedbackMetricCard
               icon={<TrendingUp className="h-5 w-5" />}
               label="Detailed Answers"
               value={stats.substantiveResponses}
-              helper="(need 3+)"
+              helper={`(need ${FEEDBACK_ELIGIBILITY_POLICY.partial.minSubstantiveResponses}+)`}
               tone="warning"
             />
           </div>

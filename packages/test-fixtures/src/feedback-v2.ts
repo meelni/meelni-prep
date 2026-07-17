@@ -26,28 +26,30 @@ const roundEvidence: Record<
 > = {
   product_sense: {
     text: "I will focus on new parents, map their late-night support needs, and measure weekly successful connections.",
-    quote: "focus on new parents",
+    quote: "focus on new parents, map their late-night support needs",
     dimension: "insight",
     observation: "The answer chooses a specific user and need.",
   },
   execution: {
     text: "The north-star metric is retained weekly creators, with publishing latency as a guardrail.",
-    quote: "retained weekly creators",
+    quote:
+      "north-star metric is retained weekly creators, with publishing latency as a guardrail",
     dimension: "structure",
     observation: "The answer separates an outcome metric from a guardrail.",
   },
   behavioral: {
     text: "I aligned design and engineering on the decision, documented the trade-off, and reduced launch delay by two weeks.",
-    quote: "reduced launch delay by two weeks",
+    quote: "documented the trade-off, and reduced launch delay by two weeks",
     dimension: "leadership",
-    observation: "The story names ownership and a measurable result.",
+    observation:
+      "The story documents a trade-off and a measurable two-week result.",
   },
   strategy: {
     text: "I would enter the mid-market first because distribution is reachable and the incumbent underserves integrations.",
-    quote: "enter the mid-market first",
+    quote: "enter the mid-market first because distribution is reachable",
     dimension: "insight",
     observation:
-      "The recommendation connects a segment choice to market evidence.",
+      "The recommendation connects the mid-market entry choice to reachable distribution.",
   },
 };
 

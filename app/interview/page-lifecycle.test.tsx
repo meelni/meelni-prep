@@ -214,7 +214,7 @@ describe("active interview page lifecycle", () => {
 
     render(<InterviewPageContent />);
     expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
-    expect(mocks.onTranscriptUpdate).not.toBeNull();
+    await waitFor(() => expect(mocks.onTranscriptUpdate).not.toBeNull());
 
     await mocks.onTranscriptUpdate?.({
       persistable: true,
