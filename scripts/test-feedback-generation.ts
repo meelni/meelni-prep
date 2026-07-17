@@ -9,10 +9,17 @@
  * (Environment variables loaded automatically via tsx --env-file flag)
  */
 
-import { db } from "../lib/db";
-import { interviewSession, transcriptTurn, feedback } from "../lib/db/schema";
-import { inngest } from "../lib/inngest/client";
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import { eq } from "drizzle-orm";
+
+const { db } = await import("../lib/db");
+const { interviewSession, transcriptTurn, feedback } = await import(
+  "../lib/db/schema"
+);
+const { inngest } = await import("../lib/inngest/client");
 
 // Fake transcript data (realistic product sense interview)
 const FAKE_TRANSCRIPT = [
@@ -124,7 +131,7 @@ async function main() {
   // Get a test user (assumes you have at least one user in the database)
   console.log("1️⃣  Finding test user...");
   const users = await db.query.appUser.findMany({ limit: 1 });
-  
+
   if (users.length === 0) {
     console.error("❌ No users found in database. Please sign up first.");
     process.exit(1);
@@ -181,7 +188,9 @@ async function main() {
       endedAt: new Date(),
       status: "completed",
       totalTurns: FAKE_TRANSCRIPT.length,
-      durationSeconds: Math.floor((currentTime.getTime() - new Date(session.startedAt!).getTime()) / 1000),
+      durationSeconds: Math.floor(
+        (currentTime.getTime() - new Date(session.startedAt!).getTime()) / 1000
+      ),
     })
     .where(eq(interviewSession.id, session.id));
 
@@ -215,10 +224,14 @@ async function main() {
 
   console.log("🎉 Test Complete!\n");
   console.log("Next steps:");
-  console.log(`1. Check Inngest Dev Server (http://localhost:8288) for function execution`);
+  console.log(
+    `1. Check Inngest Dev Server (http://localhost:8288) for function execution`
+  );
   console.log(`2. Watch the terminal for logs`);
   console.log(`3. Check feedback status: GET /api/feedback/${session.id}`);
-  console.log(`4. View feedback page: http://localhost:3000/feedback/${session.id}\n`);
+  console.log(
+    `4. View feedback page: http://localhost:3000/feedback/${session.id}\n`
+  );
   console.log(`Session ID: ${session.id}`);
 }
 

@@ -43,10 +43,16 @@ npm run check:ci
 npm run build
 ```
 
-Merge the reviewed change through Git and promote the resulting Vercel
-deployment from the `meelni/meelni` project. The retired local deployment
-script and bare `vercel --prod` path are not approved because they did not prove
-the linked project/account before mutating Production.
+Merge the reviewed change through Git and verify the resulting Preview in the
+`meelni/meelni` project. Repository policy ignores Production Git builds. The
+retired local deployment script and bare Production CLI path are not approved
+because they do not prove owner authorization before mutating Production.
+
+Production promotion remains unsupported until SAV-254 adds the controlled
+wrapper for `vercel-production-promote`. A checklist pass or readiness
+recommendation is insufficient. Promotion will require a signed exact-candidate
+Production action artifact; relaunch default-on is a separate action that also
+requires the product owner's explicit GO for that candidate.
 
 ### Step 4: Configure Environment Variables
 
@@ -94,12 +100,13 @@ See [Environment Variables Reference](./environment-variables.md) for the comple
 2. Set **Site URL**: `https://your-project.vercel.app`
 3. Add **Redirect URLs**: `https://your-project.vercel.app/**`
 
-### Step 6: Redeploy with Environment Variables
+### Step 6: Rebuild Preview with Environment Variables
 
-Redeploy or promote the reviewed commit from the Vercel `meelni/meelni`
-dashboard after confirming the Production environment variable names and
-targets. Keep the relaunch feature flag off until post-deployment verification
-passes.
+Redeploy the reviewed commit to Preview and verify the intended Preview
+environment variable names and targets. Do not promote or redeploy to
+Production from the dashboard: Production promotion remains unsupported until
+an identity-bound, owner-authorized repository adapter is implemented and
+reviewed. Keep the relaunch feature flag off.
 
 ## Post-Deployment Verification
 
@@ -192,14 +199,15 @@ npx vercel@55.0.0 env ls
 
 ### Frontend Changes
 
-Merge through the reviewed Git workflow, then verify or promote the resulting
-deployment in the `meelni/meelni` Vercel project.
+Merge through the reviewed Git workflow, then verify the resulting Preview
+deployment in the `meelni/meelni` Vercel project. Repository policy ignores
+Production Git builds until the owner-authorized promotion adapter exists.
 
 ### Agent Changes
 
 ```bash
 cd agent
-lk agent deploy
+./interview/deploy.sh preview
 ```
 
 See `agent/DEPLOYMENT.md` for details.
@@ -227,10 +235,9 @@ Never run `drizzle-kit push` against Preview or Production.
 
 ### Rollback Agents
 
-```bash
-cd agent
-lk agent rollback
-```
+Do not use a raw provider rollback command. No target-bound repository rollback
+adapter exists yet; add and review one, with separate owner authorization for
+the exact Production target and candidate.
 
 ### Rollback Database
 

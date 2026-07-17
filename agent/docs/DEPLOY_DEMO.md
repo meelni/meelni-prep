@@ -35,13 +35,12 @@ cp Dockerfile.demo Dockerfile
 # Make sure you're in the agent directory
 cd agent
 
-# Create and deploy the demo agent
-lk agent create \
-  --secrets-file .env.demo \
-  .
+# Retired: provision the Preview demo identity through the reviewed LiveKit
+# isolation workstream before using ./demo/deploy.sh preview.
 ```
 
 This will:
+
 1. Upload your demo agent code
 2. Build a Docker image
 3. Deploy it to LiveKit Cloud
@@ -75,11 +74,11 @@ Update `/app/api/livekit/demo-token/route.ts` to use the Cloud agent ID:
 // After creating the room, dispatch the Cloud agent
 const DEMO_AGENT_ID = "CA_xxxxxxxxxxxx"; // Your Cloud agent ID
 
-await fetch(`${livekit_url.replace('wss://', 'https://')}/agent/dispatch`, {
-  method: 'POST',
+await fetch(`${livekit_url.replace("wss://", "https://")}/agent/dispatch`, {
+  method: "POST",
   headers: {
-    'Authorization': `Bearer ${apiKey}:${apiSecret}`,
-    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}:${apiSecret}`,
+    "Content-Type": "application/json",
   },
   body: JSON.stringify({
     room: roomName,
@@ -97,16 +96,19 @@ await fetch(`${livekit_url.replace('wss://', 'https://')}/agent/dispatch`, {
 ## Monitoring
 
 ### View agent status
+
 ```bash
 lk agent status
 ```
 
 ### View logs
+
 ```bash
 lk agent logs
 ```
 
 ### List all agents
+
 ```bash
 lk agent list
 ```
@@ -119,62 +121,65 @@ When you make changes to `demo_agent.py`:
 # Make sure Dockerfile exists (or copy from Dockerfile.demo)
 cp Dockerfile.demo Dockerfile
 
-# Deploy new version
-lk agent deploy .
+# Deploy the reviewed Preview target
+./demo/deploy.sh preview
 ```
 
 This does a **rolling deployment** - old instances stay active for up to 1 hour to complete sessions.
 
 ## Rollback
 
-If something goes wrong:
-
-```bash
-lk agent rollback
-```
+There is no approved repository-owned rollback adapter yet. Do not run a raw
+provider mutation against whichever LiveKit project happens to be active. Stop
+the rollout, preserve the target identity and candidate evidence, and add a
+reviewed, target-bound rollback action before attempting a Production rollback.
 
 ## Delete Demo Agent
 
-To remove the demo agent from LiveKit Cloud:
-
-```bash
-lk agent delete
-```
+There is no approved repository-owned deletion adapter. Treat agent deletion as
+a separately reviewed and owner-authorized Production action; do not delete an
+agent with the raw provider CLI.
 
 ## Troubleshooting
 
 ### "No Dockerfile found"
+
 ```bash
 cp Dockerfile.demo Dockerfile
 ```
 
 ### "Agent not joining rooms"
+
 Check the logs:
+
 ```bash
 lk agent logs --log-type deploy
 ```
 
 ### "Build failed"
+
 Check build logs:
+
 ```bash
 lk agent logs --log-type build
 ```
 
 ### Update secrets
-```bash
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key
-```
+
+No approved target-bound repository secret-rotation adapter exists. Do not
+mutate Production agent secrets with the raw provider CLI.
 
 ## Cost Considerations
 
 **LiveKit Cloud Agent Hosting**:
+
 - Free tier: Limited hours/month
 - Paid tier: ~$0.10/hour per replica
 - Auto-scales based on demand
 - Can scale to zero on certain plans
 
 **Self-Hosted vs Cloud**:
+
 - **Self-hosted**: Free (your infrastructure), manual scaling
 - **Cloud**: Paid, auto-scaling, no infrastructure management
 
@@ -199,6 +204,7 @@ Agent instance scales down after session
 ```
 
 **Benefits**:
+
 - No local agent needed for demos
 - Automatic scaling
 - No competition with self-hosted agents

@@ -20,7 +20,7 @@ Three comprehensive test suites were created and executed:
 
 ```
 ✅ Test 1: shared.config imported successfully
-✅ Test 2: shared.prompts imported successfully  
+✅ Test 2: shared.prompts imported successfully
 ✅ Test 3: shared.utils.prompt_builder imported successfully
 ✅ Test 4: build_agent_prompt() function works (3970 chars)
 ✅ Test 5: get_prompt() function works (3145 chars)
@@ -29,6 +29,7 @@ Result: ALL TESTS PASSED ✅
 ```
 
 **What This Tests:**
+
 - All shared modules can be imported from agent root
 - Prompt generation functions work correctly
 - No circular import issues
@@ -46,6 +47,7 @@ Result: DEMO AGENT TEST PASSED ✅
 ```
 
 **What This Tests:**
+
 - Demo agent file structure is correct
 - Demo agent doesn't depend on shared modules (by design)
 - Demo agent has proper path setup for future extensibility
@@ -72,6 +74,7 @@ Result: INTERVIEW AGENT TEST PASSED ✅
 ```
 
 **What This Tests:**
+
 - Interview agent can import all required shared modules
 - Dynamic prompt generation works with question bank integration
 - File structure matches expected patterns
@@ -133,8 +136,9 @@ cd agent/demo
 ```
 
 **Expected Behavior:**
+
 1. Script changes to parent directory (`agent/`)
-2. Builds with: `lk agent deploy --dockerfile demo/Dockerfile .`
+2. Builds only through the target-bound `demo/deploy.sh preview|production` wrapper.
 3. Build context: `agent/` directory
 4. Copies: `requirements.txt`, `shared/`, `demo/agent.py`
 5. Deploys to LiveKit Cloud (Agent ID: CA_Wp8bi3bRroE2)
@@ -149,8 +153,9 @@ cd agent/interview
 ```
 
 **Expected Behavior:**
+
 1. Script changes to parent directory (`agent/`)
-2. Builds with: `lk agent deploy --dockerfile interview/Dockerfile .`
+2. Builds only through the target-bound `interview/deploy.sh preview|production` wrapper.
 3. Build context: `agent/` directory
 4. Copies: `requirements.txt`, `shared/`, `interview/agent.py`
 5. Deploys to LiveKit Cloud (Agent ID: CA_yawKG67rCMG4)
@@ -187,12 +192,12 @@ python agent.py dev
 
 ## Test Execution Summary
 
-| Test Suite | Tests Run | Passed | Failed | Status |
-|------------|-----------|--------|--------|--------|
-| `test_imports.py` | 5 | 5 | 0 | ✅ PASS |
-| `test_demo_agent.py` | 3 | 3 | 0 | ✅ PASS |
-| `test_interview_agent.py` | 5 | 5 | 0 | ✅ PASS |
-| **TOTAL** | **13** | **13** | **0** | **✅ ALL PASS** |
+| Test Suite                | Tests Run | Passed | Failed | Status          |
+| ------------------------- | --------- | ------ | ------ | --------------- |
+| `test_imports.py`         | 5         | 5      | 0      | ✅ PASS         |
+| `test_demo_agent.py`      | 3         | 3      | 0      | ✅ PASS         |
+| `test_interview_agent.py` | 5         | 5      | 0      | ✅ PASS         |
+| **TOTAL**                 | **13**    | **13** | **0**  | **✅ ALL PASS** |
 
 ---
 
@@ -201,7 +206,7 @@ python agent.py dev
 1. **3318498** - Reorganize agent folder structure
 2. **d5daff2** - Fix import paths and Dockerfiles
 3. **c8cbabd** - Add verification checklist
-4. **191cc53** - Fix critical import error in shared/__init__.py
+4. **191cc53** - Fix critical import error in shared/**init**.py
 5. **f1c73df** - Add individual agent import tests
 
 ---
@@ -211,7 +216,7 @@ python agent.py dev
 ### Recommended Actions
 
 1. ✅ **All tests passing** - No blockers for merge
-2. ⚠️  **Docker build not tested** - Docker daemon wasn't running
+2. ⚠️ **Docker build not tested** - Docker daemon wasn't running
    - All file paths verified manually
    - Build commands verified correct
    - Recommend testing actual Docker build before deploying
@@ -219,7 +224,7 @@ python agent.py dev
 3. **Ready for:**
    - ✅ Local development (both agents)
    - ✅ Code review
-   - ⚠️  Production deployment (test Docker builds first)
+   - ⚠️ Production deployment (test Docker builds first)
 
 ### Before Production Deployment
 
@@ -243,4 +248,4 @@ docker build -f interview/Dockerfile -t meelni-interview:test .
 
 **Final Status**: ✅ **READY FOR MERGE**
 
-*Pending: Docker build verification when daemon available*
+_Pending: Docker build verification when daemon available_
