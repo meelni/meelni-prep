@@ -9,6 +9,68 @@ evidence. `packages/core/src/feedback-v2.ts` owns the types, exact object shape,
 canonical score calculation, and strict parser. Provider adapters receive
 unknown JSON and may persist it only after this parser accepts it.
 
+Rejected writes use the closed `feedback-v2-rejection.v1` taxonomy exported by
+`@meelni/core`. A `FeedbackV2ParseError` contains one allowlisted invariant code
+and a local developer message. Provider adapters may propagate only the code;
+they must not retain or log the rejected response, evidence text, transcript
+text, unknown field names, object paths, or the parser error as a cause.
+
+## Rejection taxonomy
+
+The closed codes identify only the failed invariant:
+
+- envelope and identity: `response_not_object`, `response_unknown_field`,
+  `schema_version_mismatch`, `prompt_version_mismatch`,
+  `rubric_version_mismatch`, `evaluation_state_mismatch`, and
+  `model_version_invalid`;
+- canonical input: `canonical_transcript_empty`,
+  `canonical_transcript_turn_invalid`, and
+  `canonical_transcript_duplicate_event_id`;
+- scores and finding shape: `scores_not_object`, `scores_unknown_field`,
+  `score_invalid`, `exceptional_score_insufficient_evidence`,
+  `findings_count_invalid`, `finding_not_object`, `finding_unknown_field`,
+  `finding_dimension_invalid`, `finding_rubric_version_mismatch`,
+  `finding_text_invalid`, `transcript_refs_invalid`,
+  `transcript_refs_duplicate`, and `confidence_invalid`;
+- evidence identity and ownership: `evidence_count_invalid`,
+  `evidence_not_object`, `evidence_unknown_field`,
+  `evidence_turn_ref_invalid`, `evidence_turn_ref_duplicate`,
+  `evidence_turn_ref_not_found`, `evidence_turn_ref_wrong_speaker`,
+  `evidence_quote_invalid`, `evidence_quote_not_grounded`,
+  `evidence_quote_insufficient`, `evidence_reference_set_mismatch`,
+  `evidence_reused_across_findings`, and
+  `evidence_overlaps_across_findings`;
+- finding grounding: `finding_exact_citation_unsupported`,
+  `finding_quantitative_claim_unsupported`,
+  `finding_absolute_claim_unsupported`,
+  `finding_negative_claim_contradicted`,
+  `finding_material_claim_unsupported`,
+  `finding_observable_claim_missing`,
+  `finding_observable_evidence_insufficient`,
+  and `finding_high_confidence_insufficient_evidence`;
+- terminal customer copy: `drills_invalid`,
+  `practice_recommendation_normalization_failed`, `summary_invalid`,
+  `summary_outcome_claim_disallowed`, `summary_absolute_claim_unsupported`,
+  `summary_quantitative_claim_unsupported`,
+  `summary_material_claim_unsupported`,
+  `summary_observable_support_insufficient`;
+- fail-closed fallback: `parser_internal_failure`.
+
+Unknown, absent, forged, mutable, or proxied diagnostic values normalize to
+`parser_internal_failure` at the report boundary. The fallback means parsing
+failed without a trustworthy invariant classification; it never permits output
+repair or acceptance. The provider adapter authenticates the code with a
+module-private error association and exposes a non-configurable, non-enumerable
+accessor. Constructing or mutating an exported provider error cannot mint a
+trusted classification.
+
+Directional metric anchors are material claim anchors, so unsupported
+directional findings and summaries use the corresponding
+`*_material_claim_unsupported` code. A separate directional code would be
+unreachable after the material-claim check. Likewise, exact evidence is first
+normalized to a canonical transcript turn, so observable evidence support also
+proves source support; there is no separate source-only rejection code.
+
 ## Versions and evaluation state
 
 Every v2 result stores:
