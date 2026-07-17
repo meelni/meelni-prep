@@ -1,11 +1,11 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { FeedbackLoading } from "../components/feedback-loading";
+import { FeedbackReview } from "@/components/feedback/feedback-review";
 
 export default function FeedbackLoadingPage() {
   const params = useParams();
   const sessionId = params.sessionId as string;
 
-  return <FeedbackLoading sessionId={sessionId} />;
+  return <FeedbackReview sessionId={sessionId} />;
 }
