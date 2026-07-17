@@ -220,7 +220,7 @@ test("delegated PM corrections preserve exact source evidence and dimensions", (
       improvement: [
         "leadership",
         1,
-        "choose one warehouse with stable scanning behavior and define a manual fallback before the pilot",
+        "define a manual fallback before the pilot",
       ],
     },
     "strategy:01:creator-market": {

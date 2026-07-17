@@ -29,7 +29,7 @@ import {
 
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
 const LIVE_MODEL = CALIBRATION_PRICING_CONTRACT.model;
-const NOW = new Date("2026-07-12T07:00:00.000Z");
+const NOW = new Date(CALIBRATION_PRICING_CONTRACT.reviewedAt);
 test("calibration preflight validates 40 synthetic cases without claiming readiness", async () => {
   const report = await runEvaluationCalibration({
     executionKind: "preflight",
@@ -70,7 +70,7 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
     executionKind: "deterministic_self_test",
     evaluator: createDeterministicCalibrationEvaluator(SELF_TEST_MODEL),
     modelVersion: SELF_TEST_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
   });
 
@@ -87,7 +87,7 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
   });
   assert.equal(report.metrics.modelVersionMatchRate, 1);
   assert.equal(report.metrics.maximumRepeatedRunScoreRange, 0);
-  assert.equal(report.metrics.evaluatorCalls, 96);
+  assert.equal(report.metrics.evaluatorCalls, 64);
   assert.equal(report.metrics.providerEvaluationCalls, 0);
   assert.equal(report.execution.paidProviderCalled, false);
   assert.deepEqual(report.execution.observedModelVersions, [SELF_TEST_MODEL]);
@@ -102,11 +102,11 @@ test("calibration fails a live report when repeated scores are unstable", async 
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     evaluator: withProviderUsage(async (input) => {
       const output = await baseline(input);
-      return input.runIndex === 2
+      return input.runIndex === 1
         ? {
             ...output,
             scores: { ...output.scores, structure: 0 },
@@ -129,7 +129,7 @@ test("calibration fails a live report when repeated scores are unstable", async 
       (failure) =>
         failure.code === "unstable_dimension_score" &&
         failure.dimension === "structure" &&
-        failure.runIndex === 2 &&
+        failure.runIndex === 1 &&
         failure.observedScoreRange !== undefined
     )
   );
@@ -140,7 +140,7 @@ test("a constant-high scorer fails the varied corpus instead of gaming a pooled 
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     evaluator: withProviderUsage(async (input) =>
       withScores(await baseline(input), {
@@ -178,7 +178,7 @@ test("a completely broken leadership scorer cannot pass at the pooled 80 percent
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     evaluator: withProviderUsage(async (input) => {
       const output = await baseline(input);
@@ -200,7 +200,7 @@ test("model provenance mismatch stops after the first otherwise valid output", a
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     evaluator: withProviderUsage(baseline),
     spendGuard: liveGuard(),
@@ -229,7 +229,7 @@ test("a failed response from an unexpected model preserves identity and known co
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
@@ -268,7 +268,7 @@ test("missing or mismatched service tier stops after one reconciled call", async
     const report = await runEvaluationCalibration({
       executionKind: "live_provider",
       modelVersion: LIVE_MODEL,
-      repetitions: 3,
+      repetitions: 2,
       now: NOW,
       adjudicationApproval: approvalFixture(),
       spendGuard: liveGuard(),
@@ -302,7 +302,7 @@ test("provider-error tier identity and known usage survive sanitization", async 
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
     modelVersion: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
@@ -350,7 +350,7 @@ test("run budget rejects a repetition typo before the evaluator can be called", 
       spendGuard: liveGuard(),
       adjudicationApproval: approvalFixture(),
     }),
-    /must be exactly 3/
+    /must be exactly 2/
   );
   assert.equal(evaluatorCalls, 0);
 });
@@ -366,7 +366,7 @@ test("a stale pricing review blocks the run even with a previously created guard
     runEvaluationCalibration({
       executionKind: "live_provider",
       modelVersion: LIVE_MODEL,
-      repetitions: 3,
+      repetitions: 2,
       now: staleNow,
       evaluator: async () => {
         evaluatorCalls += 1;
@@ -385,7 +385,7 @@ test("approved adjudication without a live run remains pending live calibration"
     executionKind: "deterministic_self_test",
     evaluator: createDeterministicCalibrationEvaluator(SELF_TEST_MODEL),
     modelVersion: SELF_TEST_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     adjudicationApproval: approvalFixture(),
   });
@@ -404,7 +404,7 @@ test("a pending adjudication decision blocks paid evaluation before call one", a
         throw new Error("must not run");
       },
       modelVersion: LIVE_MODEL,
-      repetitions: 3,
+      repetitions: 2,
       now: NOW,
       adjudicationApproval: approvalFixture(
         "product_sense:01:caregiver-planning"
@@ -423,7 +423,7 @@ test("approved adjudication and live-pass satisfy the combined gate", async () =
       createDeterministicCalibrationEvaluator(model)
     ),
     modelVersion: model,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
     adjudicationApproval: approvalFixture(),
     spendGuard: liveGuard(),
@@ -431,11 +431,11 @@ test("approved adjudication and live-pass satisfy the combined gate", async () =
   assert.equal(report.gate.adjudicationAcceptance, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "passed");
   assert.equal(report.gate.launchAcceptance, "passed");
-  assert.equal(report.execution.cost?.attemptedCalls, 96);
+  assert.equal(report.execution.cost?.attemptedCalls, 64);
   assert.equal(report.execution.cost?.authorizedRunId, SAV_198_APPROVED_RUN_ID);
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
-  assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 96);
-  assert.equal(report.execution.cost?.completedCalls, 96);
+  assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 64);
+  assert.equal(report.execution.cost?.completedCalls, 64);
   assert.equal(report.execution.cost?.stopReason, "completed_plan");
   assert.ok(report.execution.cost!.estimatedCommittedCostUsd < 3);
   const serialized = JSON.stringify(report);
@@ -472,7 +472,7 @@ function liveGuard(): CalibrationSpendGuard {
     authorization: SAV_198_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
-    repetitions: 3,
+    repetitions: 2,
     now: NOW,
   });
   let spend = createEmptyCalibrationSpendState();

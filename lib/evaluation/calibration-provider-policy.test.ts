@@ -134,7 +134,7 @@ test("concurrent guarded fetch re-entry dispatches exactly once", async () => {
   )!;
   const guard = new CalibrationSpendGuard(
     CALIBRATION_PRICING_CONTRACT.model,
-    new Date("2026-07-12T07:00:00.000Z")
+    new Date("2026-07-17T00:00:00.000Z")
   );
   const reservation = guard.reserve(fixture)!;
   let dispatches = 0;

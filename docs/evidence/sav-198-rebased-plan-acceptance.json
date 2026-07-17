@@ -3,7 +3,7 @@
   "decision": "accepted",
   "decisionSource": "product_owner_task_thread_delegation",
   "humanReviewerIdentity": null,
-  "acceptedAt": "2026-07-13T04:21:30.000Z",
+  "acceptedAt": "2026-07-17T00:45:00.000Z",
   "acceptanceBasis": "conservative_rebased_exact_plan_within_existing_authorization",
   "existingAuthorization": {
     "authorizationId": "sav-198-user-authorization-2026-07-12.v1",
@@ -14,18 +14,18 @@
     "authorizationChanged": false
   },
   "acceptedPlan": {
-    "planHash": "c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1",
-    "plannedCalls": 96,
-    "plannedWorstCaseNanoUsd": 2754487500,
-    "plannedWorstCaseUsd": 2.7544875,
-    "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
-    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
-    "approvalHash": "78cd5e73f6c9ee869ea5c2686fd28269c8c6c80041602a5715518a5ed2451ec9",
+    "planHash": "53e88d34564efe1a869acf6a3464ee024b7e298955ac2b17be89510b75250fa0",
+    "plannedCalls": 64,
+    "plannedWorstCaseNanoUsd": 2052925000,
+    "plannedWorstCaseUsd": 2.052925,
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+    "approvalHash": "adba410cd2e2b434d772a6e2434fd3c74ca4a02931e29469e4cb32ef880e8b9c",
     "model": "gpt-5.1-2025-11-13",
     "endpoint": "https://api.openai.com/v1",
     "serviceTier": "default",
-    "repetitions": 3,
-    "pricingHash": "6a31e91d4b47e3aa57c794adab0bc29410ea62dcfb9587cbca10066670a0f568"
+    "repetitions": 2,
+    "pricingHash": "0ad17961bf588b986c4d93699435ff99923e4a8d237dfe36af73f8d69d6fbda4"
   },
   "unchangedControls": {
     "model": true,

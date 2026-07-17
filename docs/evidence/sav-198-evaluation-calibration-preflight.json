@@ -1,6 +1,6 @@
 {
   "contractVersion": "evaluation-calibration-report.v7",
-  "generatedAt": "2026-07-13T04:07:10.453Z",
+  "generatedAt": "2026-07-17T00:49:46.854Z",
   "execution": {
     "kind": "preflight",
     "modelVersion": null,
@@ -18,8 +18,8 @@
     "schema": "feedback.v2",
     "prompt": "feedback.prompt.v2",
     "rubric": "pm-feedback-rubric.v2",
-    "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
-    "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe"
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c"
   },
   "corpus": {
     "totalCases": 40,
@@ -36,7 +36,7 @@
       "average": 8,
       "strong": 16
     },
-    "pendingAdjudicationSignoffs": 0,
+    "pendingAdjudicationSignoffs": 32,
     "insufficientFixturesRequireScoredAdjudicationApproval": false,
     "expectedStateMismatches": 0,
     "invalidEvidenceAnchors": 0
@@ -69,16 +69,11 @@
     "providerEvaluationCalls": 0
   },
   "adjudication": {
-    "approvalProvided": true,
+    "approvalProvided": false,
     "requiredScoredCases": 32,
-    "approvedCases": 32,
+    "approvedCases": 0,
     "changesRequiredCases": 0,
-    "reviewer": {
-      "identity": "product_owner_task_thread_delegation",
-      "role": "product_owner",
-      "identityType": "delegated_task_thread",
-      "reviewedAt": "2026-07-13T04:03:34.000Z"
-    }
+    "reviewer": null
   },
   "thresholds": {
     "evidenceValidityRate": 1,
@@ -89,18 +84,19 @@
     "minimumStateScoreBandAgreementRate": 0.75,
     "maximumRepeatedRunScoreRange": 1,
     "modelVersionMatchRate": 1,
-    "minimumProviderRuns": 3,
-    "maximumProviderRuns": 3,
+    "minimumProviderRuns": 2,
+    "maximumProviderRuns": 2,
     "maximumProviderCalls": 96
   },
   "gate": {
     "deterministicHarness": "not_run",
-    "adjudicationAcceptance": "passed",
+    "adjudicationAcceptance": "pending_product_owner_pm_signoff",
     "liveProviderAcceptance": "pending",
-    "launchAcceptance": "pending_live_provider_run"
+    "launchAcceptance": "pending_adjudication_signoff"
   },
   "failures": [],
   "blockers": [
+    "The agent-authored synthetic adjudication candidates require product-owner/PM review and signoff. Model runs cannot satisfy this gate.",
     "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract."
   ]
 }

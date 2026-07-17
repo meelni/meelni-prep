@@ -111,7 +111,7 @@ The acceptance thresholds are:
 | Each completion state inside its bands          |    at least 75% |
 | Repeated-run range for every dimension          | at most 1 point |
 | Evaluator model identity matches expectation    |            100% |
-| Repetitions per scored case                     |       exactly 3 |
+| Repetitions per scored case                     |       exactly 2 |
 | Maximum provider calls                          |              96 |
 | Maximum cumulative paid-run spend               |           $3.00 |
 
@@ -131,7 +131,7 @@ For live runs, `execution.modelVersion` must be the pinned snapshot
 `evaluation-calibration-pricing.v1` binds that model to
 `https://api.openai.com/v1`, the explicit `default` service tier, zero SDK
 retries, and redirect rejection. It records the Standard pricing re-verified
-against the official model page at `2026-07-12T06:28:08.000Z`: $1.25 per
+against the official model page at `2026-07-16T23:54:50.000Z`: $1.25 per
 million uncached input tokens, $0.125 per million cached input tokens, and $10
 per million output tokens. The review expires after 24 hours; future-dated or
 stale review timestamps fail before call one.
@@ -172,13 +172,17 @@ includes valid usage, the report preserves its identity and token totals,
 reconciles known cost, and then stops. Only absent or invalid usage retains an
 unresolved worst-case reservation.
 
-The accepted rebased plan contains exactly 96 calls with a deterministic
-worst-case reservation of 2,754,487,500 nano-USD ($2.7544875), below the
-unchanged $3 hard cap. Its exact plan hash is
-`c70ac55143d952c08aa85cefcbb11a27b3d037b78133957f6cd13a45492b86a1`.
+The accepted rebased plan contains exactly 64 calls: two symmetric runs for
+each of the 32 scored fixtures. Its deterministic worst-case reservation is
+2,052,925,000 nano-USD ($2.052925), below the unchanged $3 hard cap. The
+current feedback prompt makes the former 96-call reservation exceed $3, so it
+is not authorized. The exact accepted plan hash is
+`53e88d34564efe1a869acf6a3464ee024b7e298955ac2b17be89510b75250fa0`.
 The product owner's task-thread delegation accepts this conservative rebased
-value under the existing authorization; it does not change the model, fixture
-set, call limit, spend cap, or one-run scope.
+value under the existing authorization. The exact synthetic fixture and
+evidence-anchor hashes were re-adjudicated by two independent delegated panels;
+the model, fixture provenance policy, maximum call authorization, spend cap,
+and one-run scope remain unchanged.
 
 ## Paid-run authorization and ledger contract
 
@@ -192,7 +196,8 @@ This spend authorization is independent of, and does not replace, the semantic
 adjudication approval described below.
 
 The durable authority is the protected payload-free Git ref in the fixed
-private GitHub repository `saviii/meelni-prep` (repository ID `1089904588`):
+private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
+organization owner ID `302571838`):
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1`. Before call
 one, the CLI requires that ref to point to deterministic genesis commit
 `5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a`, whose zero-parent tree is empty
@@ -229,7 +234,9 @@ argv, logs, reports, environment files, or temporary regular files.
 Before activation and every HTTP dispatch it requires two exact active
 repository rulesets: deletion/non-fast-forward with no bypass actors, and
 creation/update restriction whose sole bypass actor is `saviii` user ID
-`24397508`. GitHub's effective branch rules must expose all four restrictions.
+`24397508`. Repository ownership remains separately bound to the `meelni`
+organization and owner ID `302571838`. GitHub's effective branch rules must
+expose all four restrictions.
 Missing protection or a missing/deleted ref is an operational launch blocker.
 The activation tree and local report/cache
 contain no prompt, transcript, provider body, API key, or customer/Production
@@ -279,7 +286,7 @@ non-live report only to `pending_live_provider_run`; a passing live run is still
 required. A live execution that misses any threshold must fail rather than
 downgrade itself to a self-test.
 
-The evaluated modes accept exactly three repetitions. The run budget is
+The evaluated modes accept exactly two repetitions. The run budget is
 validated before evaluator work and rejects any plan above 96 calls. Live mode
 also requires a validated, all-approved adjudication artifact before call one;
 spend authorization does not substitute for PM/product-owner adjudication.

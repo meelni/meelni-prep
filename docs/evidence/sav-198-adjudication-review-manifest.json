@@ -383,7 +383,7 @@
         "kind": "improvement",
         "observation": "Leaves the release without measurable control points.",
         "turnRef": "execution:02:search-latency:user:3",
-        "quote": "have not set a measurable outcome, guardrail, or rollback condition",
+        "quote": "I would call the launch successful if it ships",
         "nextStep": "Set a success metric, relevance guardrail, and rollback condition."
       }
     },
@@ -441,7 +441,7 @@
         "kind": "strength",
         "observation": "Separates the rollout into independently verifiable gates.",
         "turnRef": "execution:05:pricing-rollout:user:1",
-        "quote": "independent gates",
+        "quote": "separate catalog correctness, entitlement enforcement, billing recovery, and customer communication into independent gates",
         "nextStep": "Keep gate evidence and ordering explicit in the rollout plan."
       },
       "improvement": {
@@ -471,7 +471,7 @@
         "kind": "improvement",
         "observation": "Chooses reversibility but does not specify escalation ownership for severe cases.",
         "turnRef": "execution:06:moderation-queue:user:2",
-        "quote": "reversible actions",
+        "quote": "gives reviewers context and reversible actions rather than autonomous permanent enforcement",
         "nextStep": "Assign escalation ownership and a deadline for irreversible decisions."
       }
     },
@@ -483,17 +483,17 @@
       "strength": {
         "dimension": "structure",
         "kind": "strength",
-        "observation": "Includes a fallback in the pilot design before launch.",
+        "observation": "Bounds the pilot to a warehouse with stable scanning behavior.",
         "turnRef": "execution:07:warehouse-pilot:user:1",
-        "quote": "define a manual fallback before the pilot",
-        "nextStep": "Test the fallback and document when it takes over."
+        "quote": "choose one warehouse with stable scanning behavior",
+        "nextStep": "Confirm the warehouse has stable scanning behavior before the pilot begins."
       },
       "improvement": {
         "dimension": "leadership",
         "kind": "improvement",
-        "observation": "Defines a bounded pilot and fallback but does not name the local accountable owner.",
+        "observation": "Defines a manual fallback but does not name the local accountable owner.",
         "turnRef": "execution:07:warehouse-pilot:user:1",
-        "quote": "choose one warehouse with stable scanning behavior and define a manual fallback before the pilot",
+        "quote": "define a manual fallback before the pilot",
         "nextStep": "Name the warehouse owner and decision authority for pausing the pilot."
       }
     },
@@ -859,7 +859,7 @@
         "kind": "strength",
         "observation": "Proposed a concrete ethical alternative rather than only objecting.",
         "turnRef": "behavioral:08:ethical-tradeoff:user:2",
-        "quote": "transparent alternative",
+        "quote": "a transparent alternative that tested value reminders",
         "nextStep": "Keep the alternative and the decision principle explicit."
       },
       "improvement": {
@@ -874,8 +874,8 @@
   ],
   "approvalResolution": {
     "contractVersion": "evaluation-adjudication-approval.v2",
-    "reviewedAt": "2026-07-13T04:03:34.000Z",
-    "reviewedHead": "adefa38e07b95b82b02da492309dc9e71e8d22b3",
+    "reviewedAt": "2026-07-17T00:37:53.000Z",
+    "reviewedHead": "b41925ad60f962c7c337d7a9f3e609226f597f20",
     "reviewer": {
       "identity": "product_owner_task_thread_delegation",
       "role": "product_owner",
@@ -888,18 +888,18 @@
     },
     "panelSignoffs": [
       {
-        "taskPath": "/root/audit_pr298",
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_a",
         "verdict": "approved",
-        "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
-        "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
         "approvedCases": 32,
         "changesRequiredCases": 0
       },
       {
-        "taskPath": "/root/sav198_cost_guard",
+        "taskPath": "/root/resolve_pr274_calibration/calibration_prompt_review_b",
         "verdict": "approved",
-        "candidateArtifactHash": "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e",
-        "corpusHash": "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe",
+        "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+        "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
         "approvedCases": 32,
         "changesRequiredCases": 0
       }

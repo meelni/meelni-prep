@@ -1,6 +1,7 @@
 import type { EvaluationCalibrationCase } from "@meelni/test-fixtures";
 
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
 export const CALIBRATION_MAX_PROVIDER_CALLS = 96;
 export const CALIBRATION_MAX_SPEND_NANO_USD = 3_000_000_000;
@@ -29,7 +30,7 @@ export interface CalibrationPricingContract {
   maximumSdkRetries: 0;
   redirectPolicy: "error";
   requestTimeoutMs: 300_000;
-  reviewedAt: "2026-07-12T06:28:08.000Z";
+  reviewedAt: "2026-07-16T23:54:50.000Z";
   reviewTtlHours: 24;
   source: "https://developers.openai.com/api/docs/models/gpt-5.1";
   nanoUsdPerMillionTokens: {
@@ -48,7 +49,7 @@ export const CALIBRATION_PRICING_CONTRACT: CalibrationPricingContract = {
   maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
   redirectPolicy: "error",
   requestTimeoutMs: CALIBRATION_REQUEST_TIMEOUT_MS,
-  reviewedAt: "2026-07-12T06:28:08.000Z",
+  reviewedAt: "2026-07-16T23:54:50.000Z",
   reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
   nanoUsdPerMillionTokens: {
@@ -570,7 +571,7 @@ export function calibrationInputTokenCeiling(
   }
   const userPrompt = getEvaluationPrompt(
     fixture.roundType,
-    fixture.transcript,
+    projectEvaluationTranscriptAliases(fixture.transcript).transcript,
     state
   );
   // A tokenizer cannot emit more non-empty tokens than the UTF-8 byte count of

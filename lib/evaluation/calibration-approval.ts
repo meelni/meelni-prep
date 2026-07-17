@@ -280,9 +280,9 @@ export function parseEvaluationAdjudicationApproval(
 export function buildDelegatedEvaluationAdjudicationApproval(): EvaluationAdjudicationApproval {
   const hashes = getEvaluationAdjudicationHashes();
   const expectedCandidateHash =
-    "5b8005149cc0f63673c33305c44dce0ec05fda2be1d3bb3722d26eb175beb15e";
+    "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317";
   const expectedCorpusHash =
-    "4778053ee573c9828a5b324958eca1972df03f1886684cb77fd4bc4da482e2fe";
+    "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c";
   if (
     hashes.candidateArtifactHash !== expectedCandidateHash ||
     hashes.corpusHash !== expectedCorpusHash
@@ -304,11 +304,11 @@ export function buildDelegatedEvaluationAdjudicationApproval(): EvaluationAdjudi
       independentExactHashReview: true,
       semanticAdjudicationOnly: true,
     },
-    reviewedAt: "2026-07-13T04:03:34.000Z",
+    reviewedAt: "2026-07-17T00:37:53.000Z",
     delegatedAuthority: {
       source: "product_owner_task_thread",
       humanReviewerIdentity: null,
-      reviewedHead: "adefa38e07b95b82b02da492309dc9e71e8d22b3",
+      reviewedHead: "b41925ad60f962c7c337d7a9f3e609226f597f20",
       roundHistory: [
         { round: 1, outcome: "changes_required", correctedCaseCount: 17 },
         { round: 2, outcome: "changes_required", correctedCaseCount: 4 },
@@ -319,15 +319,16 @@ export function buildDelegatedEvaluationAdjudicationApproval(): EvaluationAdjudi
           ...hashes,
         },
       ],
-      panels: ["/root/audit_pr298", "/root/sav198_cost_guard"].map(
-        (taskPath) => ({
-          taskPath,
-          verdict: "approved",
-          ...hashes,
-          approvedCases: 32,
-          changesRequiredCases: 0,
-        })
-      ),
+      panels: [
+        "/root/resolve_pr274_calibration/calibration_prompt_review_a",
+        "/root/resolve_pr274_calibration/calibration_prompt_review_b",
+      ].map((taskPath) => ({
+        taskPath,
+        verdict: "approved",
+        ...hashes,
+        approvedCases: 32,
+        changesRequiredCases: 0,
+      })),
     },
     decisions: evaluationCalibrationCases
       .filter(({ expectedQuality }) => expectedQuality !== null)
