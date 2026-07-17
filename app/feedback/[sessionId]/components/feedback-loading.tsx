@@ -83,15 +83,37 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
   const [, setPollCount] = useState(0);
   const recoveryCoordinator = useRef(createFeedbackRecoveryCoordinator());
   const pollBudget = useRef(createFeedbackPollBudget(MAX_POLLS));
-  const pollInFlight = useRef(false);
+  const pollInFlight = useRef<number | null>(null);
+  const sessionGeneration = useRef(0);
+
+  useEffect(() => {
+    sessionGeneration.current += 1;
+    recoveryCoordinator.current = createFeedbackRecoveryCoordinator();
+    pollBudget.current = createFeedbackPollBudget(MAX_POLLS);
+    pollInFlight.current = null;
+    setProgress(0);
+    setCurrentStage(0);
+    setMessageIndex(0);
+    setStatus("pending");
+    setError(null);
+    setRetryMode(null);
+    setIsRetrying(false);
+    setPollCount(0);
+
+    return () => {
+      sessionGeneration.current += 1;
+    };
+  }, [sessionId]);
 
   // Polling effect - useCallback without dependencies that change on every poll
   const pollFeedback = useCallback(async () => {
-    if (pollInFlight.current) return;
-    pollInFlight.current = true;
+    const generation = sessionGeneration.current;
+    if (pollInFlight.current === generation) return;
+    pollInFlight.current = generation;
     try {
       const res = await fetch(`/api/feedback/${sessionId}`);
       const data = (await res.json()) as FeedbackStatusResponse;
+      if (generation !== sessionGeneration.current) return;
 
       if (!res.ok) {
         throw new Error(
@@ -104,6 +126,7 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           const recovery = await recoveryCoordinator.current.attempt(data, () =>
             requestFeedbackRecovery(sessionId)
           );
+          if (generation !== sessionGeneration.current) return;
           if (recovery.disposition === "recovered") {
             pollBudget.current.reset();
             setPollCount(0);
@@ -221,7 +244,9 @@ export function FeedbackLoading({ sessionId }: FeedbackLoadingProps) {
           : "Could not check feedback status. Please try again."
       );
     } finally {
-      pollInFlight.current = false;
+      if (pollInFlight.current === generation) {
+        pollInFlight.current = null;
+      }
     }
   }, [sessionId, router]);
 

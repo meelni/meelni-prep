@@ -187,10 +187,12 @@ export async function GET(
 
     // Case 1: Pending - waiting to start processing
     if (status === "pending") {
-      const retryable = isFeedbackDispatchRetryable({
-        status: feedbackRecord.dispatchStatus,
-        claimedAt: feedbackRecord.dispatchClaimedAt,
-      });
+      const retryable =
+        feedbackRecord.completionTier !== null &&
+        isFeedbackDispatchRetryable({
+          status: feedbackRecord.dispatchStatus,
+          claimedAt: feedbackRecord.dispatchClaimedAt,
+        });
       return NextResponse.json(
         {
           status: "pending",
@@ -308,6 +310,7 @@ export async function GET(
     // Case 5: Failed - return error with short cache
     if (status === "failed") {
       const retryable =
+        feedbackRecord.completionTier !== null &&
         feedbackRecord.dispatchStatus !== "not_required" &&
         feedbackRecord.dispatchEventId !== null &&
         isFeedbackGenerationRetryable({

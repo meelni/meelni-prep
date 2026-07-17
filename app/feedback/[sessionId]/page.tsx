@@ -198,6 +198,11 @@ export default function FeedbackPage() {
   const recoveryCoordinator = useRef(createFeedbackRecoveryCoordinator());
   const pollBudget = useRef(createFeedbackPollBudget(MAX_FEEDBACK_POLLS));
 
+  useEffect(() => {
+    recoveryCoordinator.current = createFeedbackRecoveryCoordinator();
+    pollBudget.current = createFeedbackPollBudget(MAX_FEEDBACK_POLLS);
+  }, [sessionId]);
+
   const retryFeedback = async () => {
     setRetrying(true);
     setRetryError(null);
