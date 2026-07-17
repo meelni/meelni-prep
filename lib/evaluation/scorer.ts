@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import {
+  FeedbackV2ParseError,
   parseFeedbackV2,
   prepareFeedbackTranscript,
   type FeedbackEvaluationState,
   type FeedbackTranscriptTurn,
+  type FeedbackV2RejectionCode,
   type FeedbackV2Result,
 } from "@meelni/core";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
@@ -42,17 +44,62 @@ export interface FeedbackProviderResult {
   observedServiceTier: string | null;
 }
 
+export const FEEDBACK_PROVIDER_FAILURE_CODES = [
+  "evaluation_provider_returned_no_content",
+  "evaluation_provider_returned_invalid_json",
+  "evaluation_provider_returned_invalid_feedback",
+  "evaluation_provider_usage_missing",
+  "evaluation_provider_invocation_failed",
+] as const;
+
+export type FeedbackProviderFailureCode =
+  (typeof FEEDBACK_PROVIDER_FAILURE_CODES)[number];
+
+const feedbackRejectionCodesByError = new WeakMap<
+  FeedbackProviderInvocationError,
+  FeedbackV2RejectionCode
+>();
+
 export class FeedbackProviderInvocationError extends Error {
+  declare readonly feedbackRejectionCode: FeedbackV2RejectionCode | undefined;
+
   constructor(
-    message: string,
+    readonly code: FeedbackProviderFailureCode,
     readonly usage?: FeedbackProviderUsage,
     readonly observedModel?: string,
     readonly observedServiceTier?: string | null,
     options?: ErrorOptions
   ) {
-    super(message, options);
+    super(code, options);
     this.name = "FeedbackProviderInvocationError";
+    Object.defineProperty(this, "feedbackRejectionCode", {
+      configurable: false,
+      enumerable: false,
+      get: () => feedbackRejectionCodesByError.get(this),
+    });
   }
+}
+
+export function getAuthenticatedFeedbackRejectionCode(
+  error: FeedbackProviderInvocationError
+): FeedbackV2RejectionCode | undefined {
+  return feedbackRejectionCodesByError.get(error);
+}
+
+function createInvalidFeedbackProviderError(
+  usage: FeedbackProviderUsage,
+  observedModel: string,
+  observedServiceTier: string | null,
+  feedbackRejectionCode: FeedbackV2RejectionCode
+): FeedbackProviderInvocationError {
+  const error = new FeedbackProviderInvocationError(
+    "evaluation_provider_returned_invalid_feedback",
+    usage,
+    observedModel,
+    observedServiceTier
+  );
+  feedbackRejectionCodesByError.set(error, feedbackRejectionCode);
+  return error;
 }
 
 /**
@@ -171,31 +218,15 @@ export async function generateFeedbackWithUsage(
 
     // Preserve the model identity reported by the provider, which may resolve a
     // configured alias to a dated snapshot.
-    try {
-      const parsed = parseFeedbackV2(unknownResponse, {
-        transcript: aliasProjection.transcript,
-        evaluationState,
-        modelVersion: completion.model,
-      });
-      return {
-        evaluation: normalizeFeedbackV2Recommendations(
-          restoreCanonicalTranscriptIds(
-            parsed,
-            aliasProjection.canonicalIdByAlias
-          )
-        ),
-        usage,
-        observedServiceTier,
-      };
-    } catch (error) {
-      throw new FeedbackProviderInvocationError(
-        "evaluation_provider_returned_invalid_feedback",
-        usage,
-        completion.model,
-        observedServiceTier,
-        { cause: error }
-      );
-    }
+    return parseFeedbackProviderEvaluation({
+      value: unknownResponse,
+      transcript: aliasProjection.transcript,
+      canonicalIdByAlias: aliasProjection.canonicalIdByAlias,
+      evaluationState,
+      observedModel: completion.model,
+      observedServiceTier,
+      usage,
+    });
   } catch (error) {
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
@@ -204,6 +235,61 @@ export async function generateFeedbackWithUsage(
       undefined,
       undefined,
       { cause: error }
+    );
+  }
+}
+
+export function parseFeedbackProviderEvaluation(input: {
+  value: unknown;
+  transcript: FeedbackTranscriptTurn[];
+  canonicalIdByAlias: ReadonlyMap<string, string>;
+  evaluationState: FeedbackEvaluationState;
+  observedModel: string;
+  observedServiceTier: string | null;
+  usage: FeedbackProviderUsage;
+}): FeedbackProviderResult {
+  let parsed: FeedbackV2Result;
+  try {
+    parsed = parseFeedbackV2(input.value, {
+      transcript: input.transcript,
+      evaluationState: input.evaluationState,
+      modelVersion: input.observedModel,
+    });
+  } catch (error) {
+    throw createInvalidFeedbackProviderError(
+      input.usage,
+      input.observedModel,
+      input.observedServiceTier,
+      error instanceof FeedbackV2ParseError
+        ? error.code
+        : "parser_internal_failure"
+    );
+  }
+
+  let canonical: FeedbackV2Result;
+  try {
+    canonical = restoreCanonicalTranscriptIds(parsed, input.canonicalIdByAlias);
+  } catch {
+    throw createInvalidFeedbackProviderError(
+      input.usage,
+      input.observedModel,
+      input.observedServiceTier,
+      "parser_internal_failure"
+    );
+  }
+
+  try {
+    return {
+      evaluation: normalizeFeedbackV2Recommendations(canonical),
+      usage: input.usage,
+      observedServiceTier: input.observedServiceTier,
+    };
+  } catch {
+    throw createInvalidFeedbackProviderError(
+      input.usage,
+      input.observedModel,
+      input.observedServiceTier,
+      "practice_recommendation_normalization_failed"
     );
   }
 }
