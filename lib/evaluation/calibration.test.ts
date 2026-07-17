@@ -9,6 +9,7 @@ import {
 
 import {
   createDeterministicCalibrationEvaluator,
+  matchesAdjudicatedEvidence,
   runEvaluationCalibration,
   type CalibrationEvaluator,
 } from "./calibration";
@@ -95,6 +96,121 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
   assert.equal(report.gate.liveProviderAcceptance, "pending");
   assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
   assert.equal(report.failures.length, 0);
+});
+
+test("adjudicated evidence accepts a wider exact quote only when it preserves the complete anchor", async () => {
+  const baseline = createDeterministicCalibrationEvaluator(SELF_TEST_MODEL);
+  const target = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:02:accessible-transit"
+  )!;
+  const targetTurn = target.transcript.find(
+    ({ eventId }) => eventId === target.evidenceAnchors[0].turnRef
+  )!;
+  const report = await runEvaluationCalibration({
+    executionKind: "deterministic_self_test",
+    modelVersion: SELF_TEST_MODEL,
+    repetitions: 2,
+    now: NOW,
+    evaluator: async (input) => {
+      const output = await baseline(input);
+      if (input.fixture.id !== target.id || input.runIndex !== 0) return output;
+      return {
+        ...output,
+        strengths: output.strengths.map((item, index) =>
+          index === 0
+            ? {
+                ...item,
+                evidence: [{ ...item.evidence[0], quote: targetTurn.text }],
+              }
+            : item
+        ),
+      };
+    },
+  });
+
+  assert.equal(report.metrics.evidenceValidityRate, 1);
+  assert.equal(report.metrics.adjudicatedEvidenceMatchRate, 1);
+  assert.equal(
+    report.failures.some(
+      ({ code }) => code === "adjudicated_evidence_not_matched"
+    ),
+    false
+  );
+});
+
+test("adjudicated evidence identity gates fail closed under quote, kind, dimension, and turn mutations", async () => {
+  const fixture = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:01:caregiver-planning"
+  )!;
+  const output = await createDeterministicCalibrationEvaluator(SELF_TEST_MODEL)(
+    {
+      fixture,
+      evaluationState: fixture.expectedCompletionState as "full" | "partial",
+      runIndex: 0,
+    }
+  );
+  const strength = output.strengths[0];
+  const canonicalAnchor = fixture.evidenceAnchors.find(
+    ({ kind }) => kind === "strength"
+  )!;
+  const anotherUserTurn = fixture.transcript.find(
+    ({ eventId, speaker }) =>
+      speaker === "user" && eventId !== canonicalAnchor.turnRef
+  )!;
+
+  const mutations: Array<[string, FeedbackV2Result]> = [
+    [
+      "quote omits part of the canonical anchor",
+      {
+        ...output,
+        strengths: [
+          {
+            ...strength,
+            evidence: [
+              {
+                ...strength.evidence[0],
+                quote: "the intended user outcome",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    [
+      "finding kind changes",
+      {
+        ...output,
+        strengths: [],
+        improvements: [...output.improvements, strength],
+      },
+    ],
+    [
+      "rubric dimension changes",
+      {
+        ...output,
+        strengths: [{ ...strength, dimension: "clarity" }],
+      },
+    ],
+    [
+      "user turn changes",
+      {
+        ...output,
+        strengths: [
+          {
+            ...strength,
+            evidence: [
+              { ...strength.evidence[0], turnRef: anotherUserTurn.eventId },
+            ],
+          },
+        ],
+      },
+    ],
+  ];
+
+  assert.equal(matchesAdjudicatedEvidence(output, fixture), true);
+  for (const [label, mutation] of mutations) {
+    assert.equal(matchesAdjudicatedEvidence(mutation, fixture), false, label);
+  }
 });
 
 test("calibration fails a live report when repeated scores are unstable", async () => {

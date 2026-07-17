@@ -9,6 +9,18 @@ record only sanitized case-level diagnostics plus aggregate call/cost
 accounting. Spend authorization does not satisfy the separately required PM or
 product-owner adjudication approval.
 
+`sav-250-adjudicated-evidence-anchor-audit.md` records the provider-free review
+of all 32 scored cases and 64 canonical anchors. It finds every canonical pair
+plausible but non-exhaustive, corrects only whole-anchor quote-span brittleness,
+and preserves fail-closed treatment for arbitrary alternative evidence. It
+does not reinterpret the discarded SAV-248 response, alter historical reports,
+authorize spend, or grant launch acceptance.
+
+`sav-250-agent-panel-signoffs.json` binds two independent provider-free agent
+reviews to the exact candidate commit, candidate/corpus hashes, and audit-file
+hash. It records no human approval, spend authority, provider call, Production
+data use, v3 authority, or launch decision.
+
 `sav-198-paid-run-authorization.json` records the explicit product-owner spend
 boundary for one fixed aggregate paid run: at most 96 provider calls/physical
 attempts and $3, using synthetic or separately approved fixtures only. It is
