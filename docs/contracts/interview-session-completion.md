@@ -99,6 +99,8 @@ under the owner/session/reservation/grant lock order. See
 - The feedback worker may change feedback status and result fields. It must not write session lifecycle or legacy session status.
 - New completed feedback uses the strict, evidence-grounded
   [feedback v2 contract](./feedback-v2.md). Legacy v1 feedback remains readable.
+- Worker claims, terminal writes, retries, and stale-event behavior follow the
+  [feedback generation contract](./feedback-generation.md).
 
 ## Dispatch Outbox
 
