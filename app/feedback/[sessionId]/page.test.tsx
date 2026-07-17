@@ -36,8 +36,51 @@ describe("feedback transcript read states", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("continues bounded GET polling while settling without starting recovery", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          throw new Error("Settling must never trigger recovery");
+        }
+        feedbackGetAttempts += 1;
+        return feedbackGetAttempts === 1
+          ? Response.json({
+              status: "settling",
+              retryable: false,
+              message: "The interview is saved while its room closes safely.",
+            })
+          : completedFeedbackResponse();
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await act(async () => undefined);
+
+    expect(screen.getByText("Saving your interview")).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(1);
+    expect(feedbackPostAttempts).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(screen.getByText("Synthetic fixture summary")).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(2);
+    expect(feedbackPostAttempts).toBe(0);
   });
 
   it("distinguishes a failed transcript read from a successful empty transcript and supports retry", async () => {
@@ -66,13 +109,13 @@ describe("feedback transcript read states", () => {
     const failure = await screen.findByRole("alert");
     expect(failure).toHaveTextContent("Transcript could not be loaded");
     expect(
-      screen.queryByText("No transcript available for this session")
+      screen.queryByText("No transcript is available for this interview.")
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry transcript" }));
 
     expect(
-      await screen.findByText("No transcript available for this session")
+      await screen.findByText("No transcript is available for this interview.")
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(transcriptAttempts).toBe(2);
@@ -101,7 +144,7 @@ describe("feedback transcript read states", () => {
       "Loading transcript"
     );
     expect(
-      screen.queryByText("No transcript available for this session")
+      screen.queryByText("No transcript is available for this interview.")
     ).not.toBeInTheDocument();
     expect(resolveTranscript).toBeDefined();
 
@@ -223,23 +266,43 @@ function completedFeedbackResponse(
 ) {
   return Response.json({
     status: "completed",
+    retryable: false,
     feedback: {
+      kind: "v2",
       id: "feedback-1",
       sessionId,
-      structureScore: 8,
-      clarityScore: 8,
-      insightScore: 8,
-      communicationScore: 8,
-      leadershipScore: 8,
-      overallScore: 8,
-      strengths: [],
-      improvements: [],
-      drills: [],
+      scores: {
+        structure: 8,
+        clarity: 8,
+        insight: 8,
+        communication: 8,
+        leadership: 8,
+        overall: 8,
+      },
+      strengths: [feedbackFinding("insight", "turn-1")],
+      improvements: [feedbackFinding("structure", "turn-2")],
       summary,
-      rubricVersion: "test",
+      rubricVersion: "pm-feedback-rubric.v2",
+      schemaVersion: "feedback.v2",
+      promptVersion: "feedback.prompt.v2",
+      modelVersion: "synthetic-fixture-model",
+      evaluationState: "full",
       createdAt: "2099-07-15T21:00:00.000Z",
+      nextPracticeRecommendation: null,
     },
   });
+}
+
+function feedbackFinding(dimension: "insight" | "structure", turnRef: string) {
+  return {
+    dimension,
+    observation: `Synthetic ${dimension} observation`,
+    transcriptRefs: [turnRef],
+    evidence: [{ turnRef, quote: `Synthetic ${dimension} evidence` }],
+    nextStep: `Synthetic ${dimension} next action`,
+    rubricVersion: "pm-feedback-rubric.v2",
+    confidence: 0.8,
+  };
 }
 
 function transcriptResponse(sessionId: string, text: string) {

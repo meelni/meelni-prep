@@ -517,3 +517,54 @@ receive a score-derived fallback recommendation.
 
 Persistence, event fencing, retries, and insights handoff follow the
 [feedback generation contract](./feedback-generation.md).
+
+## Read and presentation boundary
+
+Persisted completed rows are untrusted input when read back. The canonical
+presenter in `packages/core/src/feedback-view-model.ts` produces exactly one of:
+
+- validated `v2`, with the exact supported version tuple, complete scores, an
+  overall score that matches the canonical v2 weighting, and findings whose
+  event IDs and exact quotes resolve against current canonical persisted user
+  turns for the same owner-scoped session;
+- validated `legacy`, with a completely absent v2 tuple, explicitly bounded
+  historical strings, complete in-range scores, and an explicit historical
+  feedback label;
+- `invalid`, which contains no scores or findings and is shown as unavailable.
+
+The read boundary accepts only the exact historical `1.0.0` rubric marker.
+Unknown historical rubric versions fail closed. Legacy feedback preserves its
+separately stored overall score; it is not reweighted using v2 rules and is
+never described as transcript-grounded.
+
+For v2, the authenticated API loads only canonical candidate-turn fields needed
+for verification: event ID, speaker, text, and transcript contract version. The
+presenter repeats the transcript-integrity checks at read time, rejects missing,
+duplicate, non-v2, non-user, or unsafe turns, and excludes semantic replays.
+Every evidence reference must exist in that canonical set and every quote must
+remain an exact substring of the referenced candidate turn. A mismatch returns
+`invalid`; it is never downgraded into historical feedback.
+
+The read projection and presenter share the canonical 512-character transcript
+event-ID limit used at ingestion. A valid long event ID is therefore never
+truncated or reclassified as corrupt after immutable feedback has completed.
+
+The API emits a redacted integrity log for an invalid completed row. It contains
+only environment, release, and opaque session correlation—never findings,
+transcript text, user identity, or raw persisted payloads.
+
+V2 findings render in this order: observation, every transcript evidence
+excerpt, then one specific next action. Confidence is described as evidence
+strength, not interview readiness: `0.8–1` is strong, `0.6–0.79` is moderate,
+and values below `0.6` are limited evidence.
+
+Stored model-authored exercise strings are validated as persisted input but do
+not cross the customer/API read boundary. Deterministic focused-practice work
+owned by SAV-201/SAV-202 uses its separate typed contracts; this presenter does
+not rank or persist recommendations.
+
+Persisted text, JSON, lifecycle enums, and canonical evidence turns use bounded
+database projections. The query reads one character or row beyond each accepted
+limit so oversize data can fail closed without unbounded materialization. JSON
+is decoded only after that projection, and malformed data never reaches the
+customer response as personalized feedback.

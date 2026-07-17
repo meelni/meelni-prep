@@ -94,20 +94,27 @@ test("poll budget is finite and reset only starts a new bounded window", () => {
   assert.equal(budget.consume(), true);
 });
 
-test("both feedback clients bind top-level retry truth to the shared gate", async () => {
+test("both feedback routes use one lifecycle and recovery controller", async () => {
+  const source = await readFile(
+    "components/feedback/feedback-review.tsx",
+    "utf8"
+  );
+  assert.match(source, /response\.retryable === true/);
+  assert.match(source, /recoveryCoordinator\.current\.attempt/);
+  assert.match(source, /createFeedbackPollBudget/);
+  assert.match(source, /toFeedbackViewState/);
+  assert.match(
+    source,
+    /recoveryCoordinator\.current = createFeedbackRecoveryCoordinator\(\)/
+  );
+  assert.match(source, /pollBudget\.current = createFeedbackPollBudget\(/);
+  assert.doesNotMatch(source, /dispatch\??\.retryable/);
+
   for (const file of [
     "app/feedback/[sessionId]/page.tsx",
-    "app/feedback/[sessionId]/components/feedback-loading.tsx",
+    "app/feedback/[sessionId]/loading/page.tsx",
   ]) {
-    const source = await readFile(file, "utf8");
-    assert.match(source, /data\.retryable === true/);
-    assert.match(source, /recoveryCoordinator\.current\.attempt/);
-    assert.match(source, /createFeedbackPollBudget/);
-    assert.match(
-      source,
-      /recoveryCoordinator\.current = createFeedbackRecoveryCoordinator\(\)/
-    );
-    assert.match(source, /pollBudget\.current = createFeedbackPollBudget\(/);
-    assert.doesNotMatch(source, /dispatch\??\.retryable/);
+    const routeSource = await readFile(file, "utf8");
+    assert.match(routeSource, /FeedbackReview/);
   }
 });
