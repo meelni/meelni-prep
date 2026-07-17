@@ -191,6 +191,20 @@ npx inngest-cli@latest dev
 
 The app explicitly uses Inngest dev mode outside `NODE_ENV=production`, so copied Vercel metadata in `.env.local` does not require `INNGEST_EVENT_KEY` for local event sends. Feedback evaluation still requires a nonblank `OPENAI_API_KEY` in `.env.local`.
 
+## Evaluation Calibration
+
+The PM feedback gold-set preflight and deterministic harness are local and
+provider-free:
+
+```bash
+npm run calibration:preflight
+npm run calibration:self-test
+```
+
+They intentionally leave launch acceptance pending. The paid live-provider
+mode requires a separate exact acknowledgement and is documented in the
+[Evaluation Calibration Runbook](./evaluation-calibration.md).
+
 ## Validation
 
 Use targeted validation while the monorepo migration is in progress:

@@ -130,6 +130,8 @@ Canonical target:
 - Authenticated operator account: `saviii`
 - Enterprise Cloud organization: `meelni`
 - App repo: `meelni/meelni-prep`
+- Repository ID: `1089904588`
+- Canonical owner ID: `302571838`
 - Local remote: `https://github.com/meelni/meelni-prep.git`
 
 Install, authenticate, and upgrade:
@@ -191,6 +193,20 @@ Production guardrails:
 - Confirm the current branch, diff, and intended remote before pushing or opening a PR.
 - Do not print or document the keyring token reported by `gh auth status`.
 - Do not change repository settings, protections, secrets, or Actions variables without explicit scope from the user.
+- SAV-198 paid calibration never trusts the local remote. Its one-time authority
+  is hard-bound to GitHub.com, repository `meelni/meelni-prep`/`1089904588`,
+  organization owner `meelni`/`302571838`, authorized actor `saviii`/`24397508`,
+  and the exact protected ledger ref and genesis OID.
+  Follow `docs/operations/evaluation-calibration.md` for the two-ruleset and
+  deterministic seed gate. Do not create the real ref or rulesets during tests.
+- SAV-198 paid calibration must be launched directly with
+  `./scripts/run-evaluation-calibration-live.sh`, never through npm or a Node
+  process that inherits credentials. The launcher derives the GitHub token from
+  the fixed GitHub CLI after a credential-free readiness handshake and reads
+  the OpenAI key from the macOS Keychain service
+  `meelni-calibration-openai`. Ambient `GITHUB_TOKEN`,
+  `OPENAI_API_KEY`, xtrace, preload, proxy, and TLS override state are rejected
+  or stripped before Node starts.
 
 ## LiveKit
 

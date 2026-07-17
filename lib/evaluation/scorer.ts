@@ -20,6 +20,40 @@ export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
 export const FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY =
   "feedback_configuration_invalid_openai_key";
 export const FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
+import {
+  CALIBRATION_MAX_COMPLETION_TOKENS,
+  CALIBRATION_MAX_SDK_RETRIES,
+  CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
+  CALIBRATION_SERVICE_TIER,
+  CALIBRATION_PRICING_CONTRACT,
+  CALIBRATION_REQUEST_TIMEOUT_MS,
+} from "./calibration-budget";
+
+export interface FeedbackProviderUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface FeedbackProviderResult {
+  evaluation: FeedbackV2Result;
+  usage: FeedbackProviderUsage;
+  observedServiceTier: string | null;
+}
+
+export class FeedbackProviderInvocationError extends Error {
+  constructor(
+    message: string,
+    readonly usage?: FeedbackProviderUsage,
+    readonly observedModel?: string,
+    readonly observedServiceTier?: string | null,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = "FeedbackProviderInvocationError";
+  }
+}
 
 /**
  * Call the configured evaluation model and accept only strict, transcript-
@@ -31,6 +65,31 @@ export async function generateFeedback(
   transcript: FeedbackTranscriptTurn[],
   evaluationState: FeedbackEvaluationState
 ): Promise<FeedbackV2Result> {
+  try {
+    return (
+      await generateFeedbackWithUsage(roundType, transcript, evaluationState)
+    ).evaluation;
+  } catch (error) {
+    const code = getEvaluationFailureCode(error);
+    console.error("[Feedback Evaluation] generation_failed", {
+      code,
+      ...toSafeErrorLog(error),
+    });
+    throw new Error(code);
+  }
+}
+
+export async function generateFeedbackWithUsage(
+  roundType: string,
+  transcript: FeedbackTranscriptTurn[],
+  evaluationState: FeedbackEvaluationState,
+  options: {
+    maxCompletionTokens?: number;
+    calibrationPaidMode?: boolean;
+    beforePhysicalRequest?: () => void | Promise<void>;
+    calibrationCredentials?: { openaiApiKey: string };
+  } = {}
+): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
   if (!prepared.eligible || prepared.transcript.length === 0) {
     throw new Error(
@@ -43,52 +102,139 @@ export async function generateFeedback(
     prepared.transcript
   );
   const modelVersion = getFeedbackEvaluationModel();
+  if (options.calibrationPaidMode) {
+    assertCalibrationProviderRequestPolicy(
+      modelVersion,
+      options.maxCompletionTokens,
+      options.beforePhysicalRequest
+    );
+  }
   try {
-    const completion = await getOpenAI().chat.completions.create({
+    const client = options.calibrationPaidMode
+      ? createCalibrationOpenAIClient(
+          { OPENAI_API_KEY: options.calibrationCredentials?.openaiApiKey },
+          options.beforePhysicalRequest!
+        )
+      : getOpenAI();
+    const userPrompt = getEvaluationPrompt(
+      roundType,
+      aliasProjection.transcript,
+      evaluationState
+    );
+    const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
         { role: "system", content: EVALUATION_SYSTEM_PROMPT },
         {
           role: "user",
-          content: getEvaluationPrompt(
-            roundType,
-            aliasProjection.transcript,
-            evaluationState
-          ),
+          content: userPrompt,
         },
       ],
       temperature: 0.2,
       response_format: { type: "json_object" },
+      ...(options.calibrationPaidMode
+        ? getCalibrationProviderRequestFields()
+        : options.maxCompletionTokens === undefined
+          ? {}
+          : { max_completion_tokens: options.maxCompletionTokens }),
     });
 
+    const observedServiceTier = completion.service_tier ?? null;
+    const usage = parseProviderUsage(
+      completion.usage,
+      completion.model,
+      observedServiceTier
+    );
+
     const responseText = completion.choices[0]?.message.content;
-    if (!responseText) throw new Error("Evaluation model returned no content");
+    if (!responseText) {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_no_content",
+        usage,
+        completion.model,
+        observedServiceTier
+      );
+    }
 
     let unknownResponse: unknown;
     try {
       unknownResponse = JSON.parse(responseText);
     } catch (error) {
-      throw new Error("Evaluation model returned invalid JSON", {
-        cause: error,
-      });
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_invalid_json",
+        usage,
+        completion.model,
+        observedServiceTier,
+        { cause: error }
+      );
     }
 
-    const result = parseFeedbackV2(unknownResponse, {
-      transcript: aliasProjection.transcript,
-      evaluationState,
-      modelVersion,
-    });
-    return normalizeFeedbackV2Recommendations(
-      restoreCanonicalTranscriptIds(result, aliasProjection.canonicalIdByAlias)
-    );
+    // Preserve the model identity reported by the provider, which may resolve a
+    // configured alias to a dated snapshot.
+    try {
+      const parsed = parseFeedbackV2(unknownResponse, {
+        transcript: aliasProjection.transcript,
+        evaluationState,
+        modelVersion: completion.model,
+      });
+      return {
+        evaluation: normalizeFeedbackV2Recommendations(
+          restoreCanonicalTranscriptIds(
+            parsed,
+            aliasProjection.canonicalIdByAlias
+          )
+        ),
+        usage,
+        observedServiceTier,
+      };
+    } catch (error) {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_invalid_feedback",
+        usage,
+        completion.model,
+        observedServiceTier,
+        { cause: error }
+      );
+    }
   } catch (error) {
-    const code = getEvaluationFailureCode(error);
-    console.error("[Feedback Evaluation] generation_failed", {
-      code,
-      ...toSafeErrorLog(error),
-    });
-    throw new Error(code);
+    if (error instanceof FeedbackProviderInvocationError) throw error;
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_invocation_failed",
+      undefined,
+      undefined,
+      undefined,
+      { cause: error }
+    );
   }
+}
+
+function parseProviderUsage(
+  usage:
+    | {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        prompt_tokens_details?: { cached_tokens?: number } | null;
+      }
+    | null
+    | undefined,
+  observedModel: string,
+  observedServiceTier: string | null
+): FeedbackProviderUsage {
+  if (!usage) {
+    throw new FeedbackProviderInvocationError(
+      "evaluation_provider_usage_missing",
+      undefined,
+      observedModel,
+      observedServiceTier
+    );
+  }
+  return {
+    inputTokens: usage.prompt_tokens ?? Number.NaN,
+    cachedInputTokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? Number.NaN,
+    totalTokens: usage.total_tokens ?? Number.NaN,
+  };
 }
 
 export function normalizeFeedbackV2Recommendations(
@@ -105,17 +251,19 @@ export function normalizeFeedbackV2Recommendations(
 }
 
 export function getEvaluationFailureCode(error: unknown): string {
-  if (
-    error instanceof Error &&
-    error.message === "OPENAI_API_KEY environment variable is required"
-  ) {
-    return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+  let current = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      current instanceof Error &&
+      current.message === "OPENAI_API_KEY environment variable is required"
+    ) {
+      return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+    }
+    if (isInvalidOpenAIKeyError(current)) {
+      return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
+    }
+    current = current instanceof Error ? current.cause : undefined;
   }
-
-  if (isInvalidOpenAIKeyError(error)) {
-    return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
-  }
-
   return FEEDBACK_GENERATION_FAILED;
 }
 
@@ -132,10 +280,89 @@ function isInvalidOpenAIKeyError(error: unknown): boolean {
     safeFields.name === "AuthenticationError"
   );
 }
+
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
   return new OpenAI({ apiKey });
+}
+
+export type CalibrationOpenAIEnvironment = Record<
+  string,
+  string | undefined
+> & {
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+};
+
+export function assertCalibrationOpenAIEnvironment(
+  env: CalibrationOpenAIEnvironment = process.env
+): void {
+  if (env.OPENAI_BASE_URL !== undefined) {
+    throw new Error("calibration_rejects_ambient_openai_base_url");
+  }
+}
+
+export function assertCalibrationProviderRequestPolicy(
+  model: string,
+  maxCompletionTokens: number | undefined,
+  beforePhysicalRequest: (() => void | Promise<void>) | undefined
+): void {
+  if (
+    model !== CALIBRATION_PRICING_CONTRACT.model ||
+    maxCompletionTokens !== CALIBRATION_MAX_COMPLETION_TOKENS ||
+    typeof beforePhysicalRequest !== "function"
+  ) {
+    throw new Error("calibration_provider_request_policy_mismatch");
+  }
+}
+
+export function getCalibrationProviderRequestFields(): {
+  max_completion_tokens: 2_000;
+  service_tier: "default";
+} {
+  return {
+    max_completion_tokens: CALIBRATION_MAX_COMPLETION_TOKENS,
+    service_tier: CALIBRATION_SERVICE_TIER,
+  };
+}
+
+export function createCalibrationOpenAIClient(
+  env: CalibrationOpenAIEnvironment = process.env,
+  beforePhysicalRequest: () => void | Promise<void> = () => {
+    throw new Error("calibration_transport_authorization_missing");
+  },
+  fetchImplementation: typeof fetch = globalThis.fetch
+): OpenAI {
+  assertCalibrationOpenAIEnvironment(env);
+  const apiKey = env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for an authorized live run");
+  }
+  return new OpenAI({
+    apiKey,
+    baseURL: CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
+    maxRetries: CALIBRATION_MAX_SDK_RETRIES,
+    timeout: CALIBRATION_REQUEST_TIMEOUT_MS,
+    fetchOptions: { redirect: "error" },
+    fetch: createGuardedCalibrationFetch(
+      beforePhysicalRequest,
+      fetchImplementation
+    ),
+  });
+}
+
+export function createGuardedCalibrationFetch(
+  beforePhysicalRequest: () => void | Promise<void>,
+  fetchImplementation: typeof fetch = globalThis.fetch
+): typeof fetch {
+  if (typeof beforePhysicalRequest !== "function") {
+    throw new Error("calibration_transport_authorization_missing");
+  }
+  return async (input, init) => {
+    await beforePhysicalRequest();
+    return fetchImplementation(input, { ...init, redirect: "error" });
+  };
 }
