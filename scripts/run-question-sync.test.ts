@@ -1,11 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  EXPECTED_PREVIEW_SUPABASE_PROJECT_REF,
+  EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF,
+} from "../lib/supabase/supabase-jwt.mjs";
 import { authorizeProductionQuestionSync } from "./run-question-sync";
 import type { ProductionActionAuthorizationInput } from "./run-question-sync";
 
-const PRODUCTION_DATABASE =
-  "postgresql://postgres.production@production.example.test:5432/postgres";
+function databaseUrl(projectRef: string): string {
+  const value = new URL("postgresql://localhost/postgres");
+  value.hostname = `db.${projectRef}.supabase.co`;
+  value.port = "5432";
+  return value.toString();
+}
+
+const PRODUCTION_DATABASE = databaseUrl(
+  EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF
+);
+const PREVIEW_DATABASE = databaseUrl(EXPECTED_PREVIEW_SUPABASE_PROJECT_REF);
+const CANONICAL_PRODUCTION_IDENTITY = {
+  MEELNI_PRODUCTION_SUPABASE_PROJECT_REF:
+    EXPECTED_PRODUCTION_SUPABASE_PROJECT_REF,
+};
 
 test("Preview and dry-run question sync do not require Production authorization", async () => {
   let calls = 0;
@@ -19,6 +36,8 @@ test("Preview and dry-run question sync do not require Production authorization"
       env: {
         VERCEL_ENV: "preview",
         MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+        DATABASE_URL: PREVIEW_DATABASE,
+        ...CANONICAL_PRODUCTION_IDENTITY,
       },
       authorize,
     }),
@@ -29,7 +48,9 @@ test("Preview and dry-run question sync do not require Production authorization"
       dryRun: true,
       env: {
         VERCEL_ENV: "production",
+        MEELNI_ENV_PULL_ENVIRONMENT: "production",
         DATABASE_URL: PRODUCTION_DATABASE,
+        ...CANONICAL_PRODUCTION_IDENTITY,
       },
       authorize,
     }),
@@ -44,6 +65,7 @@ test("Production live question sync binds exact source and database scope", asyn
     VERCEL_ENV: "production",
     MEELNI_ENV_PULL_ENVIRONMENT: "production",
     DATABASE_URL: PRODUCTION_DATABASE,
+    ...CANONICAL_PRODUCTION_IDENTITY,
     GOOGLE_SHEET_ID: "approved-sheet",
     GOOGLE_SHEET_NAME: "approved-tab",
     MEELNI_PRODUCTION_ACTION_AUTHORIZATION: "/private/authorization.json",
@@ -94,9 +116,36 @@ test("Production question sync rejects ambient conflicts before authorization", 
       VERCEL_ENV: "production",
       MEELNI_ENV_PULL_ENVIRONMENT: "preview",
       DATABASE_URL: PRODUCTION_DATABASE,
+      ...CANONICAL_PRODUCTION_IDENTITY,
     },
     { VERCEL_ENV: "production" },
-    { VERCEL_ENV: "prod", DATABASE_URL: PRODUCTION_DATABASE },
+    {
+      VERCEL_ENV: "prod",
+      DATABASE_URL: PRODUCTION_DATABASE,
+      ...CANONICAL_PRODUCTION_IDENTITY,
+    },
+    {
+      DATABASE_URL: PRODUCTION_DATABASE,
+      ...CANONICAL_PRODUCTION_IDENTITY,
+    },
+    {
+      VERCEL_ENV: "preview",
+      MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+      DATABASE_URL: PRODUCTION_DATABASE,
+      ...CANONICAL_PRODUCTION_IDENTITY,
+    },
+    {
+      VERCEL_ENV: "production",
+      MEELNI_ENV_PULL_ENVIRONMENT: "production",
+      DATABASE_URL: PREVIEW_DATABASE,
+      ...CANONICAL_PRODUCTION_IDENTITY,
+    },
+    {
+      VERCEL_ENV: "production",
+      MEELNI_ENV_PULL_ENVIRONMENT: "production",
+      DATABASE_URL: PRODUCTION_DATABASE,
+      MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: "forgedproductionref",
+    },
   ]) {
     await assert.rejects(
       authorizeProductionQuestionSync({
