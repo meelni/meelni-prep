@@ -2,8 +2,8 @@ import { assertNonProductionScriptEnvironment } from "./non-production-script-gu
 
 assertNonProductionScriptEnvironment();
 
-import { db } from "@/lib/db";
-import { interviewQuestion } from "@/lib/db/schema";
+const { db } = await import("@/lib/db");
+const { interviewQuestion } = await import("@/lib/db/schema");
 
 const sampleQuestions = [
   {

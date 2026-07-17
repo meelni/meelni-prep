@@ -495,7 +495,7 @@ export default async function NewFeaturePage() {
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.plugins import deepgram, openai, cartesia, silero
 
-AGENT_ID = "CA_xxxxxxxxxxxxx"  # From lk agent create
+AGENT_ID = "CA_xxxxxxxxxxxxx"  # From the reviewed LiveKit provisioning workstream
 
 INSTRUCTIONS = """
 You are Meelni, an AI interview coach.

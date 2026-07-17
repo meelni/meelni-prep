@@ -10,6 +10,10 @@ export const maxDuration = 300;
  */
 export const POST = createManualQuestionSyncHandler({
   getSecret: () => process.env.QUESTION_SYNC_OPERATOR_SECRET,
-  getEnvironment: () => process.env.VERCEL_ENV,
+  getDatabaseIdentity: () => ({
+    databaseUrl: process.env.DATABASE_URL,
+    environmentMarker: process.env.MEELNI_ENV_PULL_ENVIRONMENT,
+    vercelEnvironment: process.env.VERCEL_ENV,
+  }),
   run: runQuestionSyncWorkflow,
 });

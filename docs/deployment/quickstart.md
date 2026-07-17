@@ -43,10 +43,10 @@ npm run check:ci
 npm run build
 ```
 
-Merge the reviewed change through Git and promote the resulting Vercel
-deployment from the `meelni/meelni` project. The retired local deployment
-script and bare `vercel --prod` path are not approved because they did not prove
-the linked project/account before mutating Production.
+Merge the reviewed change through Git and verify the resulting Preview in the
+`meelni/meelni` project. Repository policy ignores Production Git builds. The
+retired local deployment script and bare Production CLI path are not approved
+because they do not prove owner authorization before mutating Production.
 
 Production promotion remains unsupported until SAV-254 adds the controlled
 wrapper for `vercel-production-promote`. A checklist pass or readiness
@@ -198,14 +198,15 @@ npx vercel@55.0.0 env ls
 
 ### Frontend Changes
 
-Merge through the reviewed Git workflow, then verify or promote the resulting
-deployment in the `meelni/meelni` Vercel project.
+Merge through the reviewed Git workflow, then verify the resulting Preview
+deployment in the `meelni/meelni` Vercel project. Repository policy ignores
+Production Git builds until the owner-authorized promotion adapter exists.
 
 ### Agent Changes
 
 ```bash
 cd agent
-lk agent deploy
+./interview/deploy.sh preview
 ```
 
 See `agent/DEPLOYMENT.md` for details.

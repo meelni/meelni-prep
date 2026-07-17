@@ -71,15 +71,15 @@ Before deploying, ensure you have:
    - [ ] Verify all API keys are set
    - [ ] Test database connection strings
 
-3. **Frontend Deployment (Vercel)**
+3. **Frontend Preview Deployment (Vercel)**
    - [ ] Connect GitHub repository to Vercel
    - [ ] Configure build settings (auto-detected for Next.js)
-   - [ ] Deploy to production
-   - [ ] Verify deployment URL
+   - [ ] Verify the Preview deployment URL
+   - [ ] Keep Production promotion disabled until the owner-authorized adapter exists
 
 4. **Agent Deployment (LiveKit Cloud)**
-   - [ ] Deploy demo agent: `cd agent && lk agent deploy -f Dockerfile.demo`
-   - [ ] Deploy main interview agent: `cd agent && lk agent deploy -f Dockerfile.main`
+   - [ ] Deploy demo agent through `agent/demo/deploy.sh preview|production`
+   - [ ] Deploy main interview agent through `agent/interview/deploy.sh preview|production`
    - [ ] Verify agents are running: `lk agent status`
    - [ ] Test agent dispatch
 
@@ -93,8 +93,8 @@ Before deploying, ensure you have:
 
 ### Updating Deployment
 
-- **Frontend**: Push to main branch (auto-deploys on Vercel)
-- **Agents**: `cd agent && lk agent deploy`
+- **Frontend**: Preview deploys remain automatic; repository policy ignores Production Git builds until an owner-authorized promotion path exists.
+- **Agents**: use the target-bound scripts in `agent/demo` and `agent/interview`; Production requires an owner artifact.
 - **Database Schema**: follow the guarded migration runbook and verify with
   `npm run db:preflight:production`
 

@@ -7,11 +7,15 @@ case "$environment" in
     config_path="${MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG:-}"
     expected_agent_id="${MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID:-}"
     target_url="${MEELNI_PREVIEW_LIVEKIT_URL:-}"
+    canonical_project_host="meelni-preview-dk7443ua.livekit.cloud"
+    canonical_agent_id=""
     ;;
   production)
     config_path="${MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG:-}"
     expected_agent_id="${MEELNI_LIVEKIT_PRODUCTION_DEMO_AGENT_ID:-}"
     target_url="${MEELNI_PRODUCTION_LIVEKIT_URL:-}"
+    canonical_project_host="meelni-ek4vaisp.livekit.cloud"
+    canonical_agent_id="CA_t3sKQEihMQ7x"
     ;;
   *) echo "Usage: ./deploy.sh preview|production" >&2; exit 1 ;;
 esac
@@ -44,6 +48,42 @@ cleanup() {
   rm -rf "$snapshot_dir"
 }
 trap cleanup EXIT
+
+if [[ -z "$canonical_agent_id" ]]; then
+  echo "The canonical Preview demo deployment identity has not been provisioned." >&2
+  exit 1
+fi
+canonical_subdomain="${canonical_project_host%.livekit.cloud}"
+if [[ "$target_url" != "wss://$canonical_project_host" ]] || \
+  [[ "$expected_agent_id" != "$canonical_agent_id" ]] || \
+  ! /usr/bin/awk \
+    -v expected_subdomain="$canonical_subdomain" \
+    -v expected_agent_id="$canonical_agent_id" '
+      /^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
+        section=$0
+        gsub(/[[:space:]\[\]]/, "", section)
+        next
+      }
+      section == "project" && $0 ~ /^[[:space:]]*subdomain[[:space:]]*=/ {
+        sub(/^.*=[[:space:]]*"/, "")
+        sub(/"[[:space:]]*$/, "")
+        project_count += 1
+        project_value = $0
+      }
+      section == "agent" && $0 ~ /^[[:space:]]*id[[:space:]]*=/ {
+        sub(/^.*=[[:space:]]*"/, "")
+        sub(/"[[:space:]]*$/, "")
+        agent_count += 1
+        agent_value = $0
+      }
+      END {
+        exit !(project_count == 1 && agent_count == 1 &&
+          project_value == expected_subdomain && agent_value == expected_agent_id)
+      }
+    ' "$config_snapshot"; then
+  echo "LiveKit deployment identity does not match the canonical $environment demo target." >&2
+  exit 1
+fi
 
 if [[ "$environment" == "production" ]]; then
   readonly production_node="/usr/local/bin/node"

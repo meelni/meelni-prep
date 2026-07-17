@@ -31,7 +31,7 @@ The deployment scripts:
 
 1. Copy the correct `.dockerignore` file to `.dockerignore`
 2. Copy the correct `Dockerfile` to `Dockerfile`
-3. Run `lk agent deploy .`
+3. Invoke the LiveKit CLI only through the target-bound wrapper.
 4. Clean up temporary `Dockerfile`
 
 ## Dispatch Names
@@ -45,7 +45,7 @@ dispatch names in app and agent environments.
 
 ## Manual Deployment
 
-Direct `lk agent deploy` is not an approved operator path. Use the target-bound
+The raw LiveKit deployment command is not an approved operator path. Use the target-bound
 wrappers above. Production consumes an exact signed owner authorization before
 `lk` can run; Preview remains available with its explicit external config,
 URL anchor, and agent ID.
