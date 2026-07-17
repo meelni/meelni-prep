@@ -210,9 +210,9 @@ npm run calibration:preflight
 npm run calibration:self-test
 ```
 
-They intentionally leave launch acceptance pending. The paid live-provider
-mode requires a separate exact acknowledgement and is documented in the
-[Evaluation Calibration Runbook](./evaluation-calibration.md).
+They intentionally leave calibration-evidence acceptance pending. The paid
+live-provider mode requires a separate exact acknowledgement and is documented
+in the [Evaluation Calibration Runbook](./evaluation-calibration.md).
 
 ## Validation
 

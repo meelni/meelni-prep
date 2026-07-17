@@ -68,7 +68,12 @@ test("calibration preflight validates 40 synthetic cases without claiming readin
     report.gate.adjudicationAcceptance,
     "pending_product_owner_pm_signoff"
   );
-  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
+  assert.equal(
+    report.gate.calibrationEvidenceAcceptance,
+    "pending_adjudication_signoff"
+  );
+  assert.equal(report.contractVersion, "evaluation-calibration-report.v8");
+  assert.equal("launchAcceptance" in report.gate, false);
 });
 
 test("deterministic self-test proves the harness but keeps live acceptance pending", async () => {
@@ -99,7 +104,10 @@ test("deterministic self-test proves the harness but keeps live acceptance pendi
   assert.deepEqual(report.execution.observedModelVersions, [SELF_TEST_MODEL]);
   assert.equal(report.gate.deterministicHarness, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "pending");
-  assert.equal(report.gate.launchAcceptance, "pending_adjudication_signoff");
+  assert.equal(
+    report.gate.calibrationEvidenceAcceptance,
+    "pending_adjudication_signoff"
+  );
   assert.equal(report.failures.length, 0);
 });
 
@@ -244,7 +252,7 @@ test("calibration fails a live report when repeated scores are unstable", async 
       report.metrics.maximumRepeatedRunScoreRange > 1
   );
   assert.equal(report.gate.liveProviderAcceptance, "failed");
-  assert.equal(report.gate.launchAcceptance, "failed");
+  assert.equal(report.gate.calibrationEvidenceAcceptance, "failed");
   assert.ok(
     report.failures.some(
       (failure) =>
@@ -658,7 +666,10 @@ test("approved adjudication without a live run remains pending live calibration"
   });
   assert.equal(report.gate.adjudicationAcceptance, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "pending");
-  assert.equal(report.gate.launchAcceptance, "pending_live_provider_run");
+  assert.equal(
+    report.gate.calibrationEvidenceAcceptance,
+    "pending_live_provider_run"
+  );
 });
 
 test("a pending adjudication decision blocks paid evaluation before call one", async () => {
@@ -682,7 +693,7 @@ test("a pending adjudication decision blocks paid evaluation before call one", a
   assert.equal(evaluatorCalls, 0);
 });
 
-test("approved adjudication and live-pass satisfy the combined gate", async () => {
+test("approved adjudication and live pass satisfy calibration evidence acceptance", async () => {
   const model = LIVE_MODEL;
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
@@ -697,7 +708,7 @@ test("approved adjudication and live-pass satisfy the combined gate", async () =
   });
   assert.equal(report.gate.adjudicationAcceptance, "passed");
   assert.equal(report.gate.liveProviderAcceptance, "passed");
-  assert.equal(report.gate.launchAcceptance, "passed");
+  assert.equal(report.gate.calibrationEvidenceAcceptance, "passed");
   assert.equal(report.execution.cost?.attemptedCalls, 64);
   assert.equal(report.execution.cost?.authorizedRunId, SAV_198_APPROVED_RUN_ID);
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
