@@ -67,6 +67,16 @@ import {
   getStripePriceIdForCatalogId,
 } from "@/lib/billing/stripe-catalog";
 import {
+  getStripeInvoiceSubscriptionId,
+  loadCompleteStripeInvoiceLines,
+  selectPaidSubscriptionServicePeriod,
+  selectUniqueSupportedStripeInvoicePriceId,
+} from "@/lib/billing/stripe-invoice-service-period";
+import {
+  deriveInvoiceFirstSubscriptionBootstrap,
+  type InvoiceFirstSubscriptionBootstrap,
+} from "@/lib/billing/stripe-invoice-first-subscription";
+import {
   fulfillInterviewPassCheckout,
   isCheckoutFulfillmentError,
   isCheckoutPaymentEventType,
@@ -359,7 +369,7 @@ export async function POST(req: NextRequest) {
           break;
 
         case "invoice.payment_succeeded":
-          await handlePaymentSucceeded(event);
+          await handlePaymentSucceeded(event, stripe);
           break;
 
         case "invoice.payment_failed":
@@ -880,80 +890,344 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
  *
  * Records successful payment in payment_history
  */
-async function handlePaymentSucceeded(event: Stripe.Event) {
+async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = getStripeCustomerId(invoice.customer);
+  const recurringPriceIds = [
+    getStripePriceIdForCatalogId("starter"),
+    getStripePriceIdForCatalogId("pro"),
+  ] as const;
+  const entitlementInvoice = isSubscriptionRenewalBillingReason(
+    invoice.billing_reason
+  );
+  const invoiceLines = entitlementInvoice
+    ? await loadCompleteStripeInvoiceLines(stripe, invoice)
+    : invoice.lines.data;
+  const paidServicePeriod = entitlementInvoice
+    ? selectPaidSubscriptionServicePeriod(
+        invoice,
+        recurringPriceIds,
+        invoiceLines
+      )
+    : null;
+  if (entitlementInvoice && !paidServicePeriod) {
+    throw new Error("stripe_invoice_service_period_invalid");
+  }
+  const paymentPriceId =
+    paidServicePeriod?.priceId ??
+    selectUniqueSupportedStripeInvoicePriceId(invoiceLines, recurringPriceIds);
+  const catalogId = paymentPriceId
+    ? getStripeCatalogIdForPrice(paymentPriceId)
+    : null;
+  const invoiceSubscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  let bootstrap: InvoiceFirstSubscriptionBootstrap | null = null;
+  if (invoice.billing_reason === "subscription_create") {
+    if (!paidServicePeriod || !invoiceSubscriptionId) {
+      throw new Error("stripe_invoice_subscription_bootstrap_evidence_invalid");
+    }
+    bootstrap = deriveInvoiceFirstSubscriptionBootstrap({
+      invoice,
+      paidServicePeriod,
+      supportedPrices: new Map([
+        [recurringPriceIds[0], "starter"],
+        [recurringPriceIds[1], "pro"],
+      ]),
+      subscription: await retrieveAuthoritativeSubscription(
+        stripe.subscriptions,
+        invoiceSubscriptionId
+      ),
+      subscriptionId: invoiceSubscriptionId,
+    });
+    if (
+      catalogId !== bootstrap.catalogId ||
+      customerId !== bootstrap.customerId
+    ) {
+      throw new Error("stripe_invoice_subscription_bootstrap_evidence_invalid");
+    }
+  }
+  const ownerHint = bootstrap?.userId ?? invoice.metadata?.userId;
   const userId = customerId
-    ? await getUserIdFromStripe(customerId, invoice.metadata?.userId)
-    : invoice.metadata?.userId;
-
+    ? await getUserIdFromStripe(customerId, ownerHint)
+    : ownerHint;
   if (!userId) {
+    if (entitlementInvoice) {
+      throw new Error("stripe_customer_owner_not_found");
+    }
     console.warn("Missing userId in invoice metadata");
     return;
   }
+  if (bootstrap && bootstrap.userId !== userId) {
+    throw stripeSubjectOwnerMismatch();
+  }
 
-  const catalogId = getStripeCatalogIdForPrice(getInvoicePriceId(invoice));
   const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
-  const invoicePeriodStart = providerTimestamp(invoice.period_start);
-  const invoicePeriodEnd = providerTimestamp(invoice.period_end);
+  const invoiceCursor = stripeSubscriptionEventCursor(event);
+  const invoicePeriodStart =
+    paidServicePeriod?.periodStart ?? providerTimestamp(invoice.period_start);
+  const invoicePeriodEnd =
+    paidServicePeriod?.periodEnd ?? providerTimestamp(invoice.period_end);
   let postCommitEffects: SubscriptionRenewalPostCommitEffects | null = null;
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
-    const [currentSub] = await tx
+    let [currentSub] = await tx
       .select()
       .from(subscription)
       .where(eq(subscription.userId, userId))
       .limit(1)
       .for("update");
     const observedAt = await getBillingDatabaseTime(tx);
-    let creditGrantId: string | null = null;
-    const result = await applyCurrentSubscriptionInvoice({
-      current: currentSub ?? null,
-      incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
-      eventTimestamp,
-      billingReason: invoice.billing_reason,
-      invoicePeriodStart,
-      invoicePeriodEnd,
-      invoiceId: invoice.id,
-      catalogId,
-      userId,
-      ledger: createCreditLedgerService({
-        store: createDrizzleCreditLedgerStoreForLockedTransaction(tx, userId),
-        now: () => observedAt,
-      }),
-      onCreditGrant: (grantId) => {
-        creditGrantId = grantId;
-      },
-      applySubscriptionState: async () => {
-        // Older invoice events remain recorded in payment history but cannot
-        // reach this state or entitlement mutation.
-        const updated = await tx
-          .update(subscription)
+
+    if (bootstrap) {
+      if (
+        currentSub &&
+        !currentSub.stripeSubscriptionId &&
+        currentSub.status !== "canceled"
+      ) {
+        throw new Error("billing_subscription_unscoped_state_conflict");
+      }
+      const [mappingBefore] = await tx
+        .select()
+        .from(stripeCustomerMapping)
+        .where(eq(stripeCustomerMapping.stripeCustomerId, bootstrap.customerId))
+        .limit(1)
+        .for("update");
+      if (
+        mappingBefore &&
+        (mappingBefore.userId !== userId ||
+          (mappingBefore.stripeSubscriptionId &&
+            mappingBefore.stripeSubscriptionId !== bootstrap.subscriptionId))
+      ) {
+        throw new Error("billing_subscription_mapping_conflict");
+      }
+      if (!mappingBefore) {
+        await tx
+          .insert(stripeCustomerMapping)
+          .values({
+            stripeCustomerId: bootstrap.customerId,
+            stripeSubscriptionId: bootstrap.subscriptionId,
+            userId,
+          })
+          .onConflictDoNothing({
+            target: stripeCustomerMapping.stripeCustomerId,
+          });
+      } else if (!mappingBefore.stripeSubscriptionId) {
+        await tx
+          .update(stripeCustomerMapping)
           .set({
-            status: "active",
-            gracePeriodEnd: null,
-            lastEventTimestamp: monotonicStripeEventTimestamp(
-              currentSub!.lastEventTimestamp,
-              eventTimestamp
-            ),
-            currentPeriodStart: invoicePeriodStart,
-            currentPeriodEnd: invoicePeriodEnd,
-            version: currentSub!.version + 1,
+            stripeSubscriptionId: bootstrap.subscriptionId,
             updatedAt: observedAt,
           })
           .where(
             and(
-              eq(subscription.userId, userId),
-              eq(subscription.version, currentSub!.version)
+              eq(stripeCustomerMapping.stripeCustomerId, bootstrap.customerId),
+              eq(stripeCustomerMapping.userId, userId)
             )
-          )
-          .returning({ id: subscription.id });
-        if (updated.length !== 1) {
-          throw new Error("billing_subscription_version_conflict");
+          );
+      }
+      const [mappingAfter] = await tx
+        .select()
+        .from(stripeCustomerMapping)
+        .where(eq(stripeCustomerMapping.stripeCustomerId, bootstrap.customerId))
+        .limit(1)
+        .for("update");
+      if (
+        !mappingAfter ||
+        mappingAfter.userId !== userId ||
+        mappingAfter.stripeSubscriptionId !== bootstrap.subscriptionId
+      ) {
+        throw new Error("billing_subscription_mapping_conflict");
+      }
+
+      if (
+        currentSub?.stripeSubscriptionId &&
+        currentSub.stripeSubscriptionId !== bootstrap.subscriptionId
+      ) {
+        throw new Error("billing_subscription_resource_conflict");
+      }
+      if (
+        currentSub?.stripeCustomerId &&
+        currentSub.stripeCustomerId !== bootstrap.customerId
+      ) {
+        throw new Error("billing_subscription_customer_conflict");
+      }
+      if (
+        currentSub?.stripePriceId &&
+        currentSub.stripePriceId !== bootstrap.priceId
+      ) {
+        throw new Error("billing_subscription_price_conflict");
+      }
+
+      if (
+        currentSub?.stripeSubscriptionId === bootstrap.subscriptionId &&
+        (currentSub.status === "canceled" ||
+          currentSub.tier !== bootstrap.catalogId ||
+          currentSub.stripeCustomerId !== bootstrap.customerId ||
+          currentSub.stripePriceId !== bootstrap.priceId ||
+          currentSub.currentPeriodStart?.getTime() !==
+            bootstrap.currentPeriodStart.getTime() ||
+          currentSub.currentPeriodEnd?.getTime() !==
+            bootstrap.currentPeriodEnd.getTime())
+      ) {
+        throw new Error("billing_subscription_bootstrap_conflict");
+      }
+
+      if (!currentSub?.stripeSubscriptionId) {
+        const bootstrapState = {
+          tier: bootstrap.catalogId,
+          status: bootstrap.status,
+          billingCycle: bootstrap.billingCycle,
+          stripeCustomerId: bootstrap.customerId,
+          stripeSubscriptionId: bootstrap.subscriptionId,
+          stripePriceId: bootstrap.priceId,
+          stripeResourceCreatedAt: bootstrap.resourceCreatedAt,
+          stripeResourceCreatedEventTimestamp: null,
+          stripeResourceCreatedEventId: null,
+          currentPeriodStart: bootstrap.currentPeriodStart,
+          currentPeriodEnd: bootstrap.currentPeriodEnd,
+          trialEnd: bootstrap.trialEnd,
+          canceledAt: bootstrap.canceledAt,
+          cancelAtPeriodEnd: bootstrap.cancelAtPeriodEnd,
+          lastEventTimestamp: invoiceCursor.createdAt,
+          lastEventPriority: invoiceCursor.priority,
+          lastEventId: invoiceCursor.eventId,
+          updatedAt: observedAt,
+        };
+        if (!currentSub) {
+          await tx.insert(subscription).values({ userId, ...bootstrapState });
+        } else {
+          const updated = await tx
+            .update(subscription)
+            .set({ ...bootstrapState, version: currentSub.version + 1 })
+            .where(
+              and(
+                eq(subscription.userId, userId),
+                eq(subscription.version, currentSub.version)
+              )
+            )
+            .returning({ id: subscription.id });
+          if (updated.length !== 1) {
+            throw new Error("billing_subscription_version_conflict");
+          }
         }
-      },
-    });
+        [currentSub] = await tx
+          .select()
+          .from(subscription)
+          .where(eq(subscription.userId, userId))
+          .limit(1)
+          .for("update");
+        if (
+          !currentSub ||
+          currentSub.stripeSubscriptionId !== bootstrap.subscriptionId ||
+          currentSub.stripeCustomerId !== bootstrap.customerId ||
+          currentSub.stripePriceId !== bootstrap.priceId
+        ) {
+          throw new Error("billing_subscription_bootstrap_conflict");
+        }
+      }
+    }
+
+    let cycleDisposition: "current" | "retired" | null = null;
+    if (invoice.billing_reason === "subscription_cycle") {
+      if (!currentSub) {
+        throw new Error("billing_subscription_state_missing");
+      }
+      if (!currentSub.stripeSubscriptionId) {
+        throw new Error("billing_subscription_unscoped_state_conflict");
+      }
+      if (currentSub.stripeSubscriptionId === invoiceSubscriptionId) {
+        if (
+          !customerId ||
+          currentSub.stripeCustomerId !== customerId ||
+          !paymentPriceId ||
+          currentSub.stripePriceId !== paymentPriceId ||
+          !catalogId ||
+          currentSub.tier !== catalogId
+        ) {
+          throw new Error("billing_subscription_cycle_binding_conflict");
+        }
+        cycleDisposition = "current";
+      } else if (
+        invoiceSubscriptionId &&
+        currentSub.retiredStripeSubscriptionIds.includes(invoiceSubscriptionId)
+      ) {
+        cycleDisposition = "retired";
+      } else {
+        throw new Error("billing_subscription_resource_conflict");
+      }
+    }
+
+    let creditGrantId: string | null = null;
+    const result =
+      paidServicePeriod && catalogId
+        ? await applyCurrentSubscriptionInvoice({
+            current: currentSub ?? null,
+            incomingStripeSubscriptionId: invoiceSubscriptionId,
+            eventTimestamp,
+            billingReason: invoice.billing_reason,
+            invoicePeriodStart,
+            invoicePeriodEnd,
+            invoiceId: invoice.id,
+            catalogId,
+            userId,
+            ledger: createCreditLedgerService({
+              store: createDrizzleCreditLedgerStoreForLockedTransaction(
+                tx,
+                userId
+              ),
+              now: () => observedAt,
+            }),
+            onCreditGrant: (grantId) => {
+              creditGrantId = grantId;
+            },
+            applySubscriptionState: async () => {
+              // Older invoice events remain recorded in payment history but
+              // cannot reach this state or entitlement mutation.
+              const updated = await tx
+                .update(subscription)
+                .set({
+                  status: "active",
+                  gracePeriodEnd: null,
+                  lastEventTimestamp: monotonicStripeEventTimestamp(
+                    currentSub!.lastEventTimestamp,
+                    eventTimestamp
+                  ),
+                  currentPeriodStart: invoicePeriodStart,
+                  currentPeriodEnd: invoicePeriodEnd,
+                  version: currentSub!.version + 1,
+                  updatedAt: observedAt,
+                })
+                .where(
+                  and(
+                    eq(subscription.userId, userId),
+                    eq(subscription.version, currentSub!.version)
+                  )
+                )
+                .returning({ id: subscription.id });
+              if (updated.length !== 1) {
+                throw new Error("billing_subscription_version_conflict");
+              }
+            },
+          })
+        : { status: "skipped" as const, postCommitEffects: null };
+    if (bootstrap && result.status !== "applied") {
+      throw new Error("billing_subscription_create_entitlement_not_applied");
+    }
+    if (
+      cycleDisposition === "current" &&
+      result.status !== "applied" &&
+      currentSub!.status !== "canceled" &&
+      !isHistoricalSubscriptionCycle(
+        currentSub!,
+        invoicePeriodStart,
+        invoicePeriodEnd
+      )
+    ) {
+      throw new Error("billing_subscription_cycle_entitlement_not_applied");
+    }
+    if (cycleDisposition === "retired" && result.status !== "skipped") {
+      throw new Error("billing_subscription_retired_invoice_applied");
+    }
     // Provider correlation is resolved before the transaction; payment truth,
     // entitlement truth, and subscription state commit atomically here.
     await tx
@@ -970,15 +1244,11 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
         currency: invoice.currency,
         status: "succeeded",
         tier: catalogId,
-        periodStart: invoice.period_start
-          ? new Date(invoice.period_start * 1000)
-          : null,
-        periodEnd: invoice.period_end
-          ? new Date(invoice.period_end * 1000)
-          : null,
+        periodStart: invoicePeriodStart,
+        periodEnd: invoicePeriodEnd,
         receiptUrl: invoice.hosted_invoice_url,
       })
-      .onConflictDoNothing({ target: paymentHistory.stripeEventId });
+      .onConflictDoNothing();
 
     const persisted = await tx
       .select()
@@ -1099,7 +1369,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
         currentStripeSubscriptionId: currentSub.stripeSubscriptionId,
         event: "invoice_failed",
         eventTimestamp,
-        incomingStripeSubscriptionId: getInvoiceSubscriptionId(invoice),
+        incomingStripeSubscriptionId: getStripeInvoiceSubscriptionId(invoice),
         lastEventTimestamp: currentSub.lastEventTimestamp,
       })
     ) {
@@ -1289,7 +1559,16 @@ function getStripeCustomerId(
 }
 
 function getInvoicePriceId(invoice: Stripe.Invoice): string | undefined {
-  return invoice.lines.data[0]?.pricing?.price_details?.price;
+  const line = invoice.lines.data[0] as Stripe.InvoiceLineItem & {
+    price?: string | Stripe.Price | null;
+  };
+  const modernPriceId = line?.pricing?.price_details?.price;
+  const legacyPrice = line?.price;
+  const legacyPriceId =
+    typeof legacyPrice === "string" ? legacyPrice : legacyPrice?.id;
+  return modernPriceId && legacyPriceId && modernPriceId !== legacyPriceId
+    ? undefined
+    : (modernPriceId ?? legacyPriceId);
 }
 
 function getExpandableId(value: { id: string } | string | null | undefined) {
@@ -1432,7 +1711,7 @@ async function reconcileStripeEventForDeletedAccount(
 
   if (event.type === "invoice.payment_succeeded") {
     const invoice = event.data.object as Stripe.Invoice;
-    const subscriptionId = getInvoiceSubscriptionId(invoice);
+    const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
     const customerId = getStripeCustomerId(invoice.customer);
     const initialSubjects = await recordAndRedactLateSubjects(
       userId,
@@ -1555,8 +1834,27 @@ async function cancelDeletedSubscription(
   }
 }
 
-function getInvoiceSubscriptionId(invoice: Stripe.Invoice) {
-  return getProviderId(invoice.parent?.subscription_details?.subscription);
+function isSubscriptionRenewalBillingReason(reason: string | null): boolean {
+  return reason === "subscription_create" || reason === "subscription_cycle";
+}
+
+function isHistoricalSubscriptionCycle(
+  current: {
+    currentPeriodEnd: Date | null;
+    currentPeriodStart: Date | null;
+  },
+  invoicePeriodStart: Date | null,
+  invoicePeriodEnd: Date | null
+): boolean {
+  return Boolean(
+    current.currentPeriodStart &&
+      current.currentPeriodEnd &&
+      current.currentPeriodStart < current.currentPeriodEnd &&
+      invoicePeriodStart &&
+      invoicePeriodEnd &&
+      invoicePeriodStart < invoicePeriodEnd &&
+      invoicePeriodEnd <= current.currentPeriodStart
+  );
 }
 
 function providerTimestamp(value: number | null | undefined): Date | null {
