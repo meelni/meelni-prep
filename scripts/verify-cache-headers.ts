@@ -8,9 +8,14 @@
  *   tsx scripts/verify-cache-headers.ts
  */
 
-import { db } from "../lib/db";
-import { interviewSession, appUser } from "../lib/db/schema";
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import { eq } from "drizzle-orm";
+
+const { db } = await import("../lib/db");
+const { interviewSession, appUser } = await import("../lib/db/schema");
 
 interface CacheTestResult {
   status: string;

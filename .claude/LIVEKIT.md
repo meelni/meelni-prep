@@ -36,6 +36,7 @@
 LiveKit Agents is a framework for building programmable, server-side participants that join LiveKit rooms. Our agent acts as an AI interviewer that conducts voice-based PM interviews.
 
 **Key Capabilities**:
+
 - Real-time voice conversation (STT → LLM → TTS)
 - Automatic job dispatch from LiveKit Cloud
 - Multi-session handling without restarts
@@ -96,6 +97,7 @@ if __name__ == "__main__":
 ```
 
 **Responsibilities**:
+
 - Register with LiveKit Cloud via WebSocket
 - Maintain persistent connection
 - Receive job dispatch requests
@@ -107,6 +109,7 @@ if __name__ == "__main__":
 **Created for each room session**
 
 **Lifecycle**:
+
 1. Spawned when job request arrives
 2. Connects to LiveKit room as participant
 3. Initializes AgentSession (STT/LLM/TTS pipeline)
@@ -115,6 +118,7 @@ if __name__ == "__main__":
 6. Exits when user disconnects or room closes
 
 **Key Code Pattern**:
+
 ```python
 async def entrypoint(ctx: JobContext):
     # Extract room metadata (interview config)
@@ -155,6 +159,7 @@ def prewarm(proc: JobProcess):
 ### Startup Sequence
 
 1. **Worker Registration**
+
    ```
    INFO - starting worker {"version": "1.2.18"}
    INFO - registered worker {"id": "AW_xyz123", "url": "wss://..."}
@@ -196,6 +201,7 @@ def prewarm(proc: JobProcess):
 ### Running the Agent
 
 **Development Mode (with file watching)**:
+
 ```bash
 cd agent
 source venv/bin/activate
@@ -203,11 +209,13 @@ python agent.py dev
 ```
 
 **Development Mode (without file watching)** - **RECOMMENDED for testing multiple sessions**:
+
 ```bash
 python agent.py dev --no-watch
 ```
 
 **Production Mode**:
+
 ```bash
 python agent.py start
 ```
@@ -217,6 +225,7 @@ python agent.py start
 **Problem**: Dev mode's auto-reload mechanism tries to **resume old jobs** after file changes, preventing the worker from accepting new job dispatches for different rooms.
 
 **Solution**: Use `--no-watch` flag when:
+
 - Testing multiple sequential sessions
 - Different rooms/sessions without restarting worker
 - Want fresh job dispatch for each new room
@@ -226,12 +235,14 @@ python agent.py start
 ### Making Code Changes (Self-Hosted Agents)
 
 **With auto-reload (default `dev` mode)**:
+
 - Worker detects file changes
 - Attempts to preserve active jobs
 - Restarts with new code
 - **Problem**: Can cause issues with multiple sessions (see below)
 
 **Without auto-reload (`--no-watch`)**:
+
 - Worker does NOT reload on file changes
 - Must manually kill and restart worker
 - **Benefit**: Clean job dispatch for every new session
@@ -267,6 +278,7 @@ lk cloud auth
 ### First-Time Deployment
 
 **Step 1: Prepare Environment File**
+
 ```bash
 cd agent
 
@@ -280,12 +292,14 @@ EOF
 ```
 
 **Step 2: Ensure Dockerfile Exists**
+
 ```bash
 # Copy Dockerfile.demo to Dockerfile (CLI expects this name)
 cp Dockerfile.demo Dockerfile
 ```
 
 **Dockerfile.demo Structure**:
+
 ```dockerfile
 FROM python:3.12-slim
 WORKDIR /app
@@ -305,9 +319,10 @@ CMD ["python", "demo_agent.py", "start"]
 ```
 
 **Step 3: Deploy Agent**
+
 ```bash
 # Create and deploy new agent (first time)
-lk agent create --secrets-file .env.demo .
+# Retired: provision through the reviewed LiveKit isolation workstream.
 
 # Output will include agent ID (e.g., CA_Wp8bi3bRroE2)
 # This is automatically saved to livekit.toml
@@ -329,19 +344,22 @@ if __name__ == "__main__":
 ```
 
 **Why this is critical**:
+
 - Without `agent_name`, the agent will NOT receive explicit dispatches
 - Setting `agent_name` **disables automatic dispatch** entirely
 - The agent will ONLY join rooms when dispatched via `AgentDispatchClient`
 
 **Step 5: Redeploy with Agent Name**
+
 ```bash
 # Deploy updated agent with agent_name configured
-lk agent deploy .
+./interview/deploy.sh preview
 
 # Wait for deployment to complete (~30-60 seconds)
 ```
 
 **Step 6: Update Frontend with Agent ID**
+
 ```typescript
 // Update /app/api/livekit/demo-token/route.ts
 const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2"; // Your agent ID from Step 3
@@ -356,12 +374,13 @@ cd agent
 cp Dockerfile.demo Dockerfile
 
 # Deploy new version (rolling deployment)
-lk agent deploy .
+./interview/deploy.sh preview
 
 # Old instances stay active up to 1 hour to complete sessions
 ```
 
 **Rolling Deployment Behavior**:
+
 - New instances start with updated code
 - Old instances continue serving active sessions
 - Old instances drain and shut down after sessions complete (max 1 hour)
@@ -387,6 +406,7 @@ lk agent list
 ```
 
 **Key Log Messages**:
+
 - `"Agent deployed successfully"` - Deployment complete
 - `"Image built"` - Docker build succeeded
 - `"Scaling up"` - New instances starting
@@ -395,6 +415,7 @@ lk agent list
 ### Troubleshooting Cloud Deployment
 
 **Issue: Build Failed**
+
 ```bash
 # View build logs
 lk agent logs --log-type=build
@@ -406,6 +427,7 @@ lk agent logs --log-type=build
 ```
 
 **Issue: Agent Not Receiving Dispatches**
+
 ```bash
 # Check: Is agent_name set in WorkerOptions?
 grep -A5 "WorkerOptions" demo_agent.py
@@ -420,6 +442,7 @@ lk agent status
 ```
 
 **Issue: Runtime Errors**
+
 ```bash
 # View runtime logs
 lk agent logs
@@ -431,39 +454,31 @@ lk agent logs
 ```
 
 **Issue: Update Secrets**
+
 ```bash
-# Update environment variables without redeploying
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key \
-  --secrets DEEPGRAM_API_KEY=new-key
+# Production secret changes require a reviewed, target-bound repository adapter.
 ```
 
 ### Rollback
 
-```bash
-# Rollback to previous version
-lk agent rollback
-
-# Old version will be redeployed immediately
-```
+No approved target-bound repository rollback adapter exists yet. Do not use a
+raw provider mutation.
 
 ### Delete Agent
 
-```bash
-# Remove agent from LiveKit Cloud
-lk agent delete
-
-# WARNING: This will terminate all active sessions!
-```
+No approved target-bound repository deletion adapter exists yet. Deletion must
+be separately reviewed and owner-authorized because it can terminate sessions.
 
 ### Cloud Configuration Limitations
 
 **DO NOT USE** (not supported on LiveKit Cloud):
+
 - `load_threshold` - Reverted to default (0.7)
 - `num_idle_processes` - Managed by Cloud
 - `request_fnc` - Custom request handling not supported
 
 **ONLY USE**:
+
 - `entrypoint_fnc` - Your agent entrypoint
 - `prewarm_fnc` - Prewarm function for VAD
 - `agent_name` - Agent ID for explicit dispatch (REQUIRED)
@@ -474,17 +489,20 @@ Cloud agents are managed by LiveKit's orchestration system, which needs full con
 ### Cost Considerations
 
 **LiveKit Cloud Agent Hosting**:
+
 - Charges per active agent instance hour
 - Auto-scales based on demand (0 to N instances)
 - Scales to zero when no sessions active (no idle cost)
 - Cold start: ~2-3 seconds (first dispatch after scale-to-zero)
 
 **Demo Use Case** (60-second sessions):
+
 - Agent only active during demo (~1 minute)
 - Most cost-effective for sporadic, short-duration usage
 - No 24/7 server costs vs self-hosted
 
 **Production Considerations**:
+
 - For high-volume (>100 concurrent sessions), self-hosting may be cheaper
 - For predictable load, self-hosted with reserved instances may be more economical
 - For sporadic load, Cloud auto-scaling is most cost-effective
@@ -498,11 +516,13 @@ Cloud agents are managed by LiveKit's orchestration system, which needs full con
 ### Why Use Explicit Dispatch?
 
 **Problems with Automatic Dispatch**:
+
 - Multiple agents compete for job requests (first-available wins)
 - Can't control which agent type handles which room
 - Self-hosted and Cloud agents may conflict
 
 **Benefits of Explicit Dispatch**:
+
 - Route demo rooms to demo agent, interview rooms to main agent
 - Support multiple agent types (different prompts, models, capabilities)
 - Predictable agent assignment (no competition)
@@ -511,11 +531,13 @@ Cloud agents are managed by LiveKit's orchestration system, which needs full con
 ### How It Works
 
 **Traditional Automatic Dispatch**:
+
 ```
 User joins room → LiveKit Cloud picks any available agent → Agent joins
 ```
 
 **Explicit Dispatch**:
+
 ```
 Backend creates room → Backend dispatches specific agent → Agent joins
 ```
@@ -537,6 +559,7 @@ if __name__ == "__main__":
 ```
 
 **Key Behavior**:
+
 - Setting `agent_name` **disables automatic dispatch**
 - Agent will NOT join rooms unless explicitly dispatched
 - `agent_name` must match deployed agent ID from `livekit.toml`
@@ -608,6 +631,7 @@ async def entrypoint(ctx: JobContext):
 ### Multiple Agent Types
 
 **Example Architecture**:
+
 ```typescript
 // Demo modal
 const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2";
@@ -619,6 +643,7 @@ await dispatchClient.createDispatch(interviewRoomName, INTERVIEW_AGENT_ID);
 ```
 
 **Agent Routing by Room Name Pattern**:
+
 ```python
 # Alternative: Agents can filter rooms by name pattern
 async def request_fnc(ctx: JobRequest) -> bool:
@@ -631,18 +656,21 @@ async def request_fnc(ctx: JobRequest) -> bool:
 ### Debugging Explicit Dispatch
 
 **Check 1: Agent has `agent_name` configured**
+
 ```bash
 grep -A5 "WorkerOptions" demo_agent.py
 # Should see: agent_name="CA_Wp8bi3bRroE2"
 ```
 
 **Check 2: Frontend uses correct agent ID**
+
 ```bash
 grep "DEMO_AGENT_ID" app/api/livekit/demo-token/route.ts
 # Should match agent_name from agent code
 ```
 
 **Check 3: Dispatch succeeded**
+
 ```typescript
 // Check API response
 const dispatch = await dispatchClient.createDispatch(roomName, agentId);
@@ -651,6 +679,7 @@ console.log("Dispatch:", dispatch);
 ```
 
 **Check 4: Agent received dispatch**
+
 ```bash
 lk agent logs
 # Should see: "received job request" with matching room name
@@ -659,14 +688,17 @@ lk agent logs
 ### Common Pitfalls
 
 **Pitfall 1: Missing `agent_name`**
+
 - Symptom: Agent joins random rooms automatically
 - Fix: Add `agent_name` to WorkerOptions
 
 **Pitfall 2: Agent ID mismatch**
+
 - Symptom: Dispatch succeeds but agent doesn't join
 - Fix: Ensure `agent_name` matches `DEMO_AGENT_ID` exactly
 
 **Pitfall 3: Multiple self-hosted agents competing**
+
 - Symptom: First session works, subsequent sessions fail
 - Fix: Either stop self-hosted agents OR configure them with `agent_name`
 
@@ -757,6 +789,7 @@ lk agent logs
 ### Key Components
 
 **1. DemoModal Component** (`/components/demo-modal.tsx`)
+
 ```typescript
 export function DemoModal({ isOpen, onClose }: DemoModalProps) {
   const [token, setToken] = useState<string | null>(null);
@@ -787,6 +820,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
 ```
 
 **2. Demo Token API** (`/app/api/livekit/demo-token/route.ts`)
+
 ```typescript
 export async function POST(request: Request) {
   const { participantName } = await request.json();
@@ -802,11 +836,17 @@ export async function POST(request: Request) {
   });
 
   // Dispatch Cloud agent
-  const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
+  const dispatchClient = new AgentDispatchClient(
+    livekit_url,
+    apiKey,
+    apiSecret
+  );
   await dispatchClient.createDispatch(roomName, "CA_Wp8bi3bRroE2");
 
   // Generate token
-  const token = new AccessToken(apiKey, apiSecret, { identity: participantName });
+  const token = new AccessToken(apiKey, apiSecret, {
+    identity: participantName,
+  });
   token.addGrant({ roomJoin: true, room: roomName });
 
   return Response.json({ token: token.toJwt(), url: livekit_url, roomName });
@@ -814,6 +854,7 @@ export async function POST(request: Request) {
 ```
 
 **3. Demo Agent** (`/agent/demo/agent.py`)
+
 ```python
 DEMO_AGENT_INSTRUCTIONS = """You are Meelni, an AI interview coach giving a 60-second product demo.
 
@@ -843,6 +884,7 @@ if __name__ == "__main__":
 **Example**: `demo-1699234567890-a3x9k2`
 
 **Benefits**:
+
 - Guaranteed uniqueness (timestamp + random)
 - Easy to identify demo rooms in analytics
 - Can filter/query by prefix (`demo-*`)
@@ -851,11 +893,13 @@ if __name__ == "__main__":
 ### Auto-Cleanup
 
 **Configuration**:
+
 ```typescript
-emptyTimeout: 120  // Room deleted 2 minutes after last participant leaves
+emptyTimeout: 120; // Room deleted 2 minutes after last participant leaves
 ```
 
 **Behavior**:
+
 - User leaves → room empty → 2-minute countdown starts
 - After 2 minutes → room deleted from LiveKit Cloud
 - No manual cleanup needed
@@ -886,6 +930,7 @@ lk agent status
 ```
 
 **Key Metrics to Track**:
+
 - Demo completion rate (% who finish 60 seconds)
 - Conversion rate (% who click "Start Full Interview")
 - Cold start latency (time to agent first speech)
@@ -898,6 +943,7 @@ lk agent status
 ### Issue 1: Worker Only Handles One Session, Then Stops Receiving Jobs
 
 **Symptoms**:
+
 - First session works perfectly
 - Second session gets stuck on "connecting..."
 - No "received job request" in agent logs
@@ -907,11 +953,13 @@ lk agent status
 Dev mode's auto-reload mechanism tries to resume the old job after file changes, blocking new job dispatches.
 
 **Solution**:
+
 ```bash
 python agent.py dev --no-watch
 ```
 
 **Details**:
+
 - When files change, `WatchServer` captures "active" jobs to preserve them during reload
 - Even if the original room is gone, the reloaded job blocks the worker's capacity
 - With `--no-watch`, no auto-reload occurs, so each new room gets a fresh job dispatch
@@ -923,6 +971,7 @@ python agent.py dev --no-watch
 ### Issue 2: Cloud Agent Not Receiving Explicit Dispatches
 
 **Symptoms**:
+
 - AgentDispatchClient.createDispatch() succeeds
 - Dispatch ID returned successfully
 - But Cloud agent never joins the room
@@ -932,6 +981,7 @@ python agent.py dev --no-watch
 Missing `agent_name` in WorkerOptions. Without this parameter, the agent uses automatic dispatch mode and **ignores explicit dispatches**.
 
 **Solution**:
+
 ```python
 # CRITICAL: Add agent_name to WorkerOptions
 if __name__ == "__main__":
@@ -945,6 +995,7 @@ if __name__ == "__main__":
 ```
 
 **Verification**:
+
 ```bash
 # Check agent configuration
 grep -A5 "WorkerOptions" agent/demo/agent.py
@@ -960,16 +1011,18 @@ lk agent logs
 ```
 
 **Important Notes**:
+
 - `agent_name` must EXACTLY match the agent ID in `livekit.toml`
 - Setting `agent_name` **disables automatic dispatch**
 - The agent will ONLY respond to explicit dispatches via AgentDispatchClient
-- After adding `agent_name`, redeploy with `lk agent deploy .`
+- After adding `agent_name`, redeploy through the target-bound Preview wrapper.
 
 ---
 
 ### Issue 3: Custom `load_threshold` Ignored on LiveKit Cloud
 
 **Symptoms**:
+
 - Set `load_threshold=0.9` in `WorkerOptions`
 - Worker still seems unavailable after handling jobs
 
@@ -977,10 +1030,12 @@ lk agent logs
 When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `load_threshold` settings are **overridden and reverted to defaults**.
 
 **Default Values**:
+
 - **Dev mode**: `load_threshold = math.inf` (disabled)
 - **Production mode**: `load_threshold = 0.7`
 
 **Solution**:
+
 - In dev mode, load threshold is disabled anyway (shouldn't be an issue)
 - In production, you cannot customize `load_threshold` on LiveKit Cloud
 - Consider self-hosted LiveKit server if you need custom load settings
@@ -992,6 +1047,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
 ### Issue 3: Agent Doesn't Join Room
 
 **Symptoms**:
+
 - Frontend creates room successfully
 - Token generation works
 - Agent receives job request
@@ -1000,6 +1056,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
 **Possible Causes**:
 
 1. **Token mismatch**: Room name in token doesn't match actual room
+
    ```typescript
    // Check: app/api/livekit/token/route.ts
    const token = new AccessToken(apiKey, apiSecret, {
@@ -1009,6 +1066,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
    ```
 
 2. **Metadata parsing error**: Agent crashes when parsing room metadata
+
    ```python
    # Check: agent/interview/agent.py
    metadata = json.loads(ctx.room.metadata or "{}")
@@ -1026,6 +1084,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
 ### Issue 4: Voice Pipeline Not Working
 
 **Symptoms**:
+
 - Agent joins room
 - User can see agent participant
 - But no audio or transcription
@@ -1033,6 +1092,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
 **Debug Steps**:
 
 1. **Check model configuration**:
+
    ```python
    logger.info(f"STT Model: {stt_model}")
    logger.info(f"LLM Model: {llm_model}")
@@ -1040,6 +1100,7 @@ When using LiveKit Cloud (detected via `_worker_token`), custom `load_fnc` and `
    ```
 
 2. **Verify API keys**:
+
    ```bash
    # Agent needs these in .env
    OPENAI_API_KEY=sk-...
@@ -1086,16 +1147,19 @@ AgentSession(
 ### Model Format Strings
 
 **STT (Speech-to-Text)**:
+
 - `"deepgram"` - uses default Nova-2 model
 - `"deepgram/nova-2"` - explicit Nova-2
 - `"deepgram/nova-3"` - upgraded model (recommended)
 
 **LLM (Language Model)**:
+
 - `"openai/gpt-4o-mini"` - cost-effective, fast
 - `"openai/gpt-4.1-mini"` - better reasoning (recommended)
 - `"openai/gpt-4-turbo"` - highest quality, higher cost
 
 **TTS (Text-to-Speech)**:
+
 - `"cartesia"` - uses default voice
 - `"cartesia/sonic-3:<voice_id>"` - specific voice with Sonic 3 model
 - Example: `"cartesia/sonic-3:6ccbfb76-1fc6-48f7-b71d-91ac6298247b"` (Tessa voice)
@@ -1133,6 +1197,7 @@ User hears agent
 **Implementation**: Silero VAD (loaded in prewarm)
 
 **Benefits**:
+
 - Enables barge-in (agent stops speaking when user interrupts)
 - Reduces false transcriptions from background noise
 - On-device processing (no API cost)
@@ -1140,6 +1205,7 @@ User hears agent
 ### Interruption Handling
 
 **Built-in Barge-In**:
+
 - VAD detects user speech while agent is speaking
 - Agent immediately stops TTS playback
 - User's new input is processed
@@ -1182,6 +1248,7 @@ Makes debugging much easier when sessions fail.
 ### 4. Monitor Worker Logs
 
 **Key log messages**:
+
 - `"received job request"` - New session starting
 - `"process initialized"` - Job subprocess ready
 - `"Voice agent started successfully"` - AgentSession running

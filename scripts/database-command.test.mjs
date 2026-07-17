@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { getDatabaseCommandPolicy } from "./database-command.mjs";
+import {
+  databaseTargetSha256,
+  getDatabaseCommandPolicy,
+  runDatabaseCommand,
+} from "./database-command.mjs";
 
 const local = "postgresql://postgres:postgres@127.0.0.1:5432/meelni_test";
 const previewRef = "kxpvidtxznllfosfemdl";
@@ -21,6 +25,13 @@ test("database commands allow normal local development", () => {
       true
     );
   }
+});
+
+test("database authorization target distinguishes Supabase project usernames", () => {
+  assert.notEqual(
+    databaseTargetSha256(databaseUrl(previewRef, 5432)),
+    databaseTargetSha256(databaseUrl(productionRef, 5432))
+  );
 });
 
 test("database commands never allow schema push against shared targets", () => {
@@ -91,6 +102,31 @@ test("migrations allow explicitly selected session pooler connections", () => {
   });
   assert.equal(productionPolicy.allowed, true);
   assert.equal(productionPolicy.reason, "verified_production");
+});
+
+test("Production Studio is forbidden even with the remote Studio opt-in", () => {
+  const policy = getDatabaseCommandPolicy({
+    command: "studio",
+    databaseUrl: databaseUrl(productionRef, 5432),
+    envFile: ".env.production.local",
+    allowRemoteStudio: true,
+    environment: "production",
+    expectedEnvironment: "production",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(policy.allowed, false);
+  assert.match(policy.reason, /Production Studio is forbidden/);
+
+  const previewPolicy = getDatabaseCommandPolicy({
+    command: "studio",
+    databaseUrl: databaseUrl(previewRef, 5432),
+    envFile: ".env.local",
+    allowRemoteStudio: true,
+    environment: "preview",
+    expectedEnvironment: "preview",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(previewPolicy.allowed, true);
 });
 
 test("remote migrations fail closed on missing or mismatched environment identity", () => {
@@ -288,6 +324,73 @@ test("a selected env file cannot persist remote migration authorization", async 
     );
     assert.equal(result.status, 1);
     assert.match(result.stderr, /MEELNI_ALLOW_REMOTE_MIGRATION=1/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Production migration requires exact owner authorization before spawn", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "meelni-db-owner-auth-"));
+  const envFile = join(directory, ".env.production.local");
+  const productionUrl = databaseUrl(productionRef, 5432);
+  await writeFile(
+    envFile,
+    [
+      `DATABASE_URL=${productionUrl}`,
+      "MEELNI_ENV_PULL_ENVIRONMENT=production",
+      `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF=${productionRef}`,
+      "VERCEL_ENV=production",
+      "",
+    ].join("\n")
+  );
+  let spawned = false;
+  try {
+    await assert.rejects(
+      runDatabaseCommand({
+        argv: ["migrate"],
+        cwd: directory,
+        env: {
+          MEELNI_ALLOW_REMOTE_MIGRATION: "1",
+          MEELNI_ENV_FILE: ".env.production.local",
+        },
+        authorizeProductionAction: async () => {
+          throw new Error("authorization_required");
+        },
+        productionConfigurationSha256: () => "d".repeat(64),
+        spawn: () => {
+          spawned = true;
+          return { status: 0 };
+        },
+      }),
+      /authorization_required/
+    );
+    assert.equal(spawned, false);
+
+    let authorizationInput;
+    const status = await runDatabaseCommand({
+      argv: ["migrate"],
+      cwd: directory,
+      env: {
+        MEELNI_ALLOW_REMOTE_MIGRATION: "1",
+        MEELNI_ENV_FILE: ".env.production.local",
+      },
+      authorizeProductionAction: async (input) => {
+        authorizationInput = input;
+      },
+      productionConfigurationSha256: () => "d".repeat(64),
+      spawn: () => {
+        spawned = true;
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+    assert.equal(spawned, true);
+    assert.deepEqual(authorizationInput.expected, {
+      action: "production-database-migrate",
+      provider: "supabase",
+      configurationSha256: "d".repeat(64),
+      targetFingerprint: databaseTargetSha256(productionUrl),
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

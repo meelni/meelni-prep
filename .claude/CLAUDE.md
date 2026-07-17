@@ -11,6 +11,7 @@
 ## Document Purpose
 
 This is a **quick reference guide** for developers and AI agents. It provides:
+
 - Code style and conventions
 - File boundaries and responsibilities
 - Development commands and workflows
@@ -25,6 +26,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 **Finding Information Fast**:
 
 ### Core Documentation (`.claude/`)
+
 - **Current System State** → `.claude/CLAUDE.md` (this file)
 - **Product Requirements** → `.claude/PRD.md`
 - **LiveKit Patterns** → `.claude/LIVEKIT.md`
@@ -36,12 +38,14 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Ralph (Autonomous Agent)** → `.claude/RALPH.md` (automated development loop)
 
 ### Sprint Documentation (`.claude/sprints/`)
+
 - **Active Sprints** → `.claude/sprints/` (current feature development)
 - **Archived Sprints** → `.claude/archive/sprints/` (completed features)
 - **Sprint Template** → `docs/templates/SPRINT_TEMPLATE/` (template for new sprints)
 - **Quick Start Guide** → `docs/templates/SPRINT_TEMPLATE/QUICK_START_FOR_AGENTS.md`
 
 ### Technical Documentation (`docs/`)
+
 - **Documentation Hub** → `docs/README.md` (start here for all documentation)
 - **Architecture Decisions** → `docs/architecture/adrs/` (26+ ADRs extracted from CLAUDE.md)
 - **API Specifications** → `docs/api/`
@@ -53,6 +57,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Documentation Templates** → `docs/templates/`
 
 ### Quick Links by Task
+
 - **Setting up dev environment** → `docs/development/setup.md`
 - **Deploying to production** → `docs/deployment/quickstart.md`
 - **Security setup (RLS + passwords)** → `docs/security/QUICK_START_SECURITY_FIX.md` (5 minutes)
@@ -68,6 +73,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Testing guidelines** → `docs/development/testing.md`
 
 ### Historical Context
+
 - **Implementation logs** → `archive/2025-11/` (completed feature summaries)
 - **Obsolete documentation** → `.conductor/archive/documentation/` (archived)
 
@@ -78,6 +84,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 ## Tech Stack
 
 ### Frontend
+
 - **Framework**: Next.js 14+ (App Router)
 - **UI Library**: React
 - **Styling**: Tailwind CSS v4
@@ -89,6 +96,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Real-time UI**: @livekit/components-react
 
 ### Backend
+
 - **Runtime**: Node.js (Next.js API routes)
 - **Database**: PostgreSQL (via Supabase)
 - **ORM**: Drizzle ORM
@@ -97,6 +105,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **SDK**: livekit-server-sdk (token generation)
 
 ### Real-time & AI
+
 - **WebRTC**: LiveKit Cloud (audio/video + Agents framework)
 - **ASR**: Deepgram Nova-3 (via LiveKit Inference) - upgraded from Nova-2
 - **TTS**: ElevenLabs Eleven Turbo v2.5 (via LiveKit Inference) - natural, professional voice
@@ -106,6 +115,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **VAD**: Silero (livekit-plugins-silero)
 
 ### Infrastructure & Services
+
 - **Hosting**: Vercel (Next.js)
 - **Agent Hosting**:
   - **Demo Agent**: LiveKit Cloud (deployed, agent ID: CA_Wp8bi3bRroE2)
@@ -195,6 +205,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 **Status**: Established patterns from Phase 0 & 0.5.
 
 ### Naming Conventions
+
 - React components: PascalCase (e.g., `InterviewPage.tsx`)
 - API routes: kebab-case folders (e.g., `app/api/livekit/token/route.ts`)
 - Database tables: snake_case (e.g., `app_user`, `interview_session`)
@@ -202,6 +213,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - CSS classes: kebab-case with BEM-style modifiers when needed
 
 ### File Organization
+
 - Server components by default in Next.js App Router
 - "use client" directive for client components using LiveKit hooks or Framer Motion
 - Colocate related files (e.g., `/interview/page.tsx` for interview UI)
@@ -209,12 +221,14 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - Shared utilities in `/lib/` (animations, utils, db)
 
 ### TypeScript Guidelines
+
 - Strict mode enabled in tsconfig.json
 - Type all function parameters and return values
 - Use Zod for runtime validation (planned)
 - Prefer interfaces for props, types for unions/utility types
 
 ### Design System Conventions
+
 - **Colors**: Use RGB format in CSS variables for opacity control (e.g., `rgb(var(--primary) / 0.5)`)
 - **Spacing**: Use Tailwind spacing scale (0.25rem increments)
 - **Typography**: Application-scale sizing (text-sm to text-5xl for UI, avoid 6xl+)
@@ -223,8 +237,8 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Hover Effects**: Subtle scale transforms (1.005x, not 1.02x+) for professional feel
 - **Gradients**: Use gradient utilities (`.gradient-text`, `.gradient-bg`) for consistency
 
-
 ### Typography Standards
+
 - **Primary Font**: Public Sans (variable weight, UI text)
 - **Display Font**: Everett (headings, branding)
 - **Scale**: Application-scale (text-sm to text-5xl for UI, avoid 6xl+)
@@ -232,6 +246,7 @@ This is a **quick reference guide** for developers and AI agents. It provides:
 - **Migration Note**: Changed from Geist Sans (Next.js default) to Public Sans/Everett for better aesthetics
 
 **Font Loading**:
+
 - Public Sans: `next/font/google` with variable weight (automatic optimization)
 - Everett: Local files in `/public/fonts/everett/` (WOFF2 format)
 - CSS Variables: `--font-sans` (Public Sans), `--font-display` (Everett)
@@ -248,22 +263,26 @@ All architecture decision records (ADRs) have been extracted to individual files
 ### Quick Reference: Key ADRs
 
 #### Core Infrastructure
+
 - [ADR-003: Tech Stack Finalization](../docs/architecture/adrs/ADR-003-tech-stack-finalization.md) - Next.js, Supabase, Drizzle, LiveKit
 - [ADR-006: Database Schema Deployed](../docs/architecture/adrs/ADR-006-database-schema-deployed.md) - Supabase schema
 - [ADR-007: LiveKit Voice Interview Integration](../docs/architecture/adrs/ADR-007-livekit-voice-interview.md) - Real-time voice pipeline
 
 #### Authentication
+
 - [ADR-020: Google OAuth Authentication](../docs/architecture/adrs/ADR-020-google-oauth-authentication.md) - OAuth implementation
 - [ADR-021: Tactical Dashboard UI Migration](../docs/architecture/adrs/ADR-021-tactical-dashboard-ui.md) - Dashboard redesign
 - [ADR-026: Email/Password Authentication](../docs/architecture/adrs/ADR-026-email-password-authentication.md) - Traditional auth
 
 #### Agent System
+
 - [ADR-018: Demo Modal with LiveKit Cloud Agent](../docs/architecture/adrs/ADR-018-demo-modal-livekit-cloud.md) - Demo agent strategy
 - [ADR-019: Explicit Agent Dispatch Pattern](../docs/architecture/adrs/ADR-019-explicit-agent-dispatch.md) - Agent control mechanism
 - [ADR-022: Main Interview Agent Deployed to Cloud](../docs/architecture/adrs/ADR-022-main-interview-agent-cloud.md) - Production agent
 - [ADR-023: Enhanced Prompt System](../docs/architecture/adrs/ADR-023-enhanced-prompt-system.md) - Difficulty-aware coaching
 
 #### Voice & UI
+
 - [ADR-015: Model Upgrade](../docs/architecture/adrs/ADR-015-model-upgrade.md) - Deepgram Nova-3, GPT-4.1-mini, Cartesia Sonic 3
 - [ADR-016: Cartesia Voice Library](../docs/architecture/adrs/ADR-016-cartesia-voice-tessa.md) - Tessa voice selection
 - [ADR-025: Agent State Debouncing](../docs/architecture/adrs/ADR-025-agent-state-debouncing.md) - UI flickering fix
@@ -273,13 +292,16 @@ All architecture decision records (ADRs) have been extracted to individual files
 **Creating New ADRs**: See [`docs/templates/ADR_TEMPLATE.md`](../docs/templates/ADR_TEMPLATE.md) for the standard template.
 
 ---
+
 ---
 
 ## File Boundaries & Responsibilities
 
 ### `/agent/interview/agent.py`
+
 **Purpose**: Main interview agent - conducts full voice interviews
 **Key Responsibilities**:
+
 - Define `InterviewAgent` class with PM interviewer instructions
 - Prewarm Silero VAD model for voice activity detection
 - Entrypoint function: connect to LiveKit room, start AgentSession
@@ -288,6 +310,7 @@ All architecture decision records (ADRs) have been extracted to individual files
 - Real-time transcript saving to Supabase
 
 **Critical Code Pattern**:
+
 ```python
 # Current configuration (as of 2025-11-18)
 stt_model = config.get("stt_model", "deepgram/nova-3")
@@ -310,22 +333,27 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 **Note**: See `agent/interview/README.md` for detailed documentation.
 
 ### `/app/api/livekit/token/route.ts`
+
 **Purpose**: Generate LiveKit access tokens for room authentication
 **Input**: `{ roomName, participantName }`
 **Output**: `{ token, url }`
 **Security**: Uses LIVEKIT_API_KEY and LIVEKIT_API_SECRET
 
 ### `/app/interview/page.tsx`
+
 **Purpose**: Interview session UI where users connect to LiveKit rooms
 **Key Features**:
+
 - Creates unique room ID
 - Fetches LiveKit token from API
 - Uses `@livekit/components-react` for connection
 - Displays agent join status and conversation UI
 
 ### `/app/interview/components/audio-visualizer.tsx`
+
 **Purpose**: Audio visualizer for main interview page with Orb component
 **Key Features**:
+
 - Real-time audio volume detection for user and agent
 - Agent state management with 700ms debounce grace period
 - Smooth state transitions without flickering during natural pauses
@@ -333,16 +361,20 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Integrates with Orb component for visual feedback
 
 ### `/lib/db/schema.ts`
+
 **Purpose**: Drizzle ORM schema definition
 **Tables**:
+
 - `appUser`: User accounts
 - `interviewSession`: Interview metadata
 - `transcriptTurn`: Turn-by-turn conversation data
 - `feedback`: Scored feedback and rubrics
 
 ### `/components/ui/button.tsx`
+
 **Purpose**: Reusable button component with variants
 **Key Features**:
+
 - CVA (class-variance-authority) for variant management
 - Variants: primary, secondary, glow, ghost, outline
 - Sizes: sm, md, lg
@@ -350,46 +382,66 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Framer Motion integration support
 
 ### `/components/ui/card.tsx`
+
 **Purpose**: Card component for content containers
 **Key Features**:
+
 - Consistent padding and border radius
 - Surface color with subtle borders
 - Hover states and transitions
 
 ### `/components/ui/badge.tsx`
+
 **Purpose**: Badge component for labels and status indicators
 **Key Features**:
+
 - Multiple variants (default, success, warning, info)
 - Compact sizing for inline use
 
 ### `/lib/animations.ts`
+
 **Purpose**: Centralized Framer Motion animation presets
 **Exports**:
+
 - `fadeInUp`: Fade and slide up animation
 - `staggerContainer`: Container for staggered children
 - `selectionSpring`: Spring animation for selections (scale + opacity)
 - `pageTransition`: Page-level transition settings
-**Usage**: Import and apply to motion components for consistent animations
+  **Usage**: Import and apply to motion components for consistent animations
 
 ### `/app/setup/page.tsx`
+
 **Purpose**: Interview configuration and setup flow
 **Key Features**:
+
 - Interview type selection (Product Sense, Analytical, Leadership, Strategy)
 - Mode selection (Mock Interview, Practice, Learning)
 - Optimal defaults configuration (hidden from user)
 - Progressive disclosure UX with visual feedback
 - Navigates to `/interview` with query parameters
-**Configuration Passed**:
+  **Configuration Passed**:
+
 ```typescript
 {
-  role, mode, interview_type, voice, skill_level,
-  speed, emotion, volume, tts_model, stt_model, llm_model
+  (role,
+    mode,
+    interview_type,
+    voice,
+    skill_level,
+    speed,
+    emotion,
+    volume,
+    tts_model,
+    stt_model,
+    llm_model);
 }
 ```
 
 ### `/app/globals.css`
+
 **Purpose**: Global styles and design system tokens
 **Key Features**:
+
 - RGB-based color variables for better opacity control
 - Light and dark mode support
 - Design tokens: colors, spacing, typography, radius, timing
@@ -398,62 +450,78 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Animation utilities
 
 ### `/lib/config.tsx`
+
 **Purpose**: Centralized site configuration
 **Exports**:
+
 - `siteConfig`: Object containing all copy for landing page
   - Hero section (title, description, CTA)
   - Features list (6 features with icons)
   - Footer links and branding
-**Usage**: Import in landing page sections for consistency
+    **Usage**: Import in landing page sections for consistency
 
 ### `/components/aurora-text.tsx`
+
 **Purpose**: Animated gradient text component
 **Key Features**:
+
 - Multi-color gradient animation
 - Configurable colors and speed
 - Uses aurora keyframes from globals.css
 
 ### `/components/section.tsx`
+
 **Purpose**: Reusable section wrapper for landing page
 **Key Features**:
+
 - Consistent spacing and layout
 - Optional title, subtitle, description
 - Alignment control (left, center, right)
 - Gradient background overlay
 
 ### `/components/sections/hero.tsx`
+
 **Purpose**: Hero section for landing page
 **Key Features**:
+
 - Animated pill badge ("New" label)
 - Aurora gradient animated title
 - Staggered fade-in animations
 - CTA button linking to /setup
 
 ### `/components/sections/features.tsx`
+
 **Purpose**: Features grid section
 **Key Features**:
+
 - 6-card grid layout (responsive)
 - Icons from Lucide React
 - Staggered scroll animations
 - Hover effects
 
 ### `/components/sections/header.tsx`
+
 **Purpose**: Sticky header with navigation
 **Key Features**:
+
 - Sticky positioning with backdrop blur
 - Brand logo with gradient icon
 - CTA button
 
 ### `/components/sections/footer.tsx`
+
 **Purpose**: Footer with links and contact info
 **Key Features**:
+
 - 3-column grid layout (responsive)
 - Brand, Links, Contact sections
 - Copyright notice
 
 ### `/agent/demo/agent.py`
+
 **Purpose**: Demo agent for landing page 5-minute demos
 **Key Responsibilities**:
+
 - Define `DemoAgent` class with 5-minute demo prompt and time tracking
 - Configure for LiveKit Cloud deployment
 - Set `agent_name="CA_Wp8bi3bRroE2"` for explicit dispatch
@@ -461,6 +529,7 @@ await session.start(agent=InterviewAgent(instructions=instructions), room=ctx.ro
 - Uses GPT-4o (faster for demos) and ElevenLabs voice
 
 **Critical Configuration**:
+
 ```python
 def build_demo_instructions(question: dict = None) -> str:
     """Build demo instructions with optional question from question bank"""
@@ -488,6 +557,7 @@ if __name__ == "__main__":
 ```
 
 **Deployment**:
+
 - Deploy from `agent/demo/` directory
 - Run `./deploy.sh` which builds from parent context
 - Agent ID: `CA_Wp8bi3bRroE2`
@@ -495,11 +565,13 @@ if __name__ == "__main__":
 **Note**: See `agent/demo/README.md` for detailed documentation.
 
 ### `/app/api/livekit/demo-token/route.ts`
+
 **Purpose**: Generate tokens and dispatch Cloud agent for demo sessions
 **Input**: `{ participantName: string }`
 **Output**: `{ token: string, url: string, roomName: string }`
 
 **Key Responsibilities**:
+
 1. Generate unique room name: `demo-{timestamp}-{random}`
 2. Create room with metadata and auto-cleanup settings
 3. Dispatch Cloud agent using AgentDispatchClient
@@ -507,6 +579,7 @@ if __name__ == "__main__":
 5. Return credentials for LiveKit connection
 
 **Critical Code Pattern**:
+
 ```typescript
 import { AgentDispatchClient } from "livekit-server-sdk";
 
@@ -526,8 +599,10 @@ await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
 ```
 
 ### `/components/demo-modal.tsx`
+
 **Purpose**: Modal UI for demo voice conversation with audio visualizer
 **Key Features**:
+
 - Full-screen modal with backdrop blur
 - LiveKit room connection with `useVoiceAssistant` hook
 - BarVisualizer for real-time audio visualization
@@ -538,6 +613,7 @@ await dispatchClient.createDispatch(roomName, DEMO_AGENT_ID);
 - "Start Full Interview" button to redirect to /setup
 
 **Key Components**:
+
 ```typescript
 <LiveKitRoom
   token={token}
@@ -563,14 +639,17 @@ function DemoControls() {
 ```
 
 **State Management**:
+
 - Fetches token on mount via `/api/livekit/demo-token`
 - Manages connection status (idle, connecting, connected)
 - Handles mic muting/unmuting via LocalAudioTrack
 - Displays agent state from useVoiceAssistant hook
 
 ### `/app/providers/auth-provider.tsx` (NEWLY ADDED)
+
 **Purpose**: React Context provider for authentication state management
 **Key Responsibilities**:
+
 - Manage user session state with Supabase Auth
 - Provide `useAuth()` hook for accessing user, session, isLoading
 - Implement `signInWithGoogle()` and `signOut()` methods
@@ -578,6 +657,7 @@ function DemoControls() {
 - Handle initial session fetch on mount
 
 **Critical Code Pattern**:
+
 ```typescript
 export function AuthProvider({ children }) {
   const [user, setUser] = useState<User | null>(null);
@@ -598,8 +678,10 @@ export function AuthProvider({ children }) {
 ```
 
 ### `/app/auth/signin/page.tsx` (NEWLY ADDED)
+
 **Purpose**: Google OAuth sign-in page with polished UI
 **Key Features**:
+
 - Beautiful glass morphism design matching app aesthetic
 - "Continue with Google" button with OAuth flow
 - Auto-redirect if already authenticated
@@ -608,17 +690,21 @@ export function AuthProvider({ children }) {
 - Back to home link
 
 ### `/app/auth/callback/route.ts` (NEWLY ADDED)
+
 **Purpose**: OAuth callback handler for code exchange
 **Input**: `code` query parameter from Google OAuth redirect
 **Output**: Redirect to `/dashboard` or `/auth/signin?error=auth_failed`
 **Key Responsibilities**:
+
 - Exchange authorization code for Supabase session
 - Handle errors gracefully
 - Redirect to dashboard on success
 
 ### `/app/dashboard/page.tsx` (NEWLY ADDED)
+
 **Purpose**: Dashboard landing page for authenticated users
 **Key Features**:
+
 - Personalized welcome message with user's first name
 - "Start Mock Interview" CTA button → routes to `/setup`
 - Sign out functionality
@@ -627,23 +713,28 @@ export function AuthProvider({ children }) {
 - Loading state with spinner
 
 ### `/middleware.ts` (NEWLY ADDED)
+
 **Purpose**: Next.js middleware for route protection
 **Protected Routes**: `/dashboard`, `/setup`, `/interview`
 **Key Responsibilities**:
+
 - Check Supabase session for authentication
 - Redirect unauthenticated users to `/auth/signin`
 - Preserve redirect URL in query parameter
 - Allow public routes to pass through
 
 **Critical Code Pattern**:
+
 ```typescript
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const protectedRoutes = ["/dashboard", "/setup", "/interview"];
 
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+  if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
     if (!session) {
       const redirectUrl = new URL("/auth/signin", request.url);
@@ -657,8 +748,10 @@ export async function middleware(request: NextRequest) {
 ```
 
 ### `/components/dashboard/layout/sidebar.tsx` (NEWLY ADDED)
+
 **Purpose**: Collapsible sidebar navigation for dashboard
 **Key Features**:
+
 - 5 navigation sections (Overview, History, Analytics, Feedback, Settings)
 - Active section highlighting with purple-blue accent
 - Status box showing session stats (total sessions, minutes, avg score)
@@ -668,6 +761,7 @@ export async function middleware(request: NextRequest) {
 - Lucide React icons for each section
 
 **Critical Code Pattern**:
+
 ```typescript
 const navigationItems = [
   { id: "overview", icon: Monitor, label: "Overview" },
@@ -681,8 +775,10 @@ const navigationItems = [
 ```
 
 ### `/components/dashboard/layout/toolbar.tsx` (NEWLY ADDED)
+
 **Purpose**: Top toolbar with breadcrumb navigation and user actions
 **Key Features**:
+
 - Breadcrumb format: "DASHBOARD / SECTION NAME"
 - User name from Google profile (no avatar per user preference)
 - Last update timestamp
@@ -692,16 +788,20 @@ const navigationItems = [
 - Uses `useAuth()` hook for user context
 
 **Critical Code Pattern**:
+
 ```typescript
 const { user, signOut } = useAuth();
-const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+const displayName =
+  user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
 
 // Breadcrumb: DASHBOARD / {activeSection.toUpperCase()}
 ```
 
 ### `/components/dashboard/layout/dashboard-layout.tsx` (NEWLY ADDED)
+
 **Purpose**: Main layout wrapper combining sidebar and toolbar
 **Key Responsibilities**:
+
 - Manage sidebar collapse state
 - Render mobile overlay with backdrop blur when sidebar open
 - Coordinate between Sidebar and Toolbar components
@@ -709,6 +809,7 @@ const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0]
 - Responsive layout with proper spacing
 
 **Critical Code Pattern**:
+
 ```typescript
 export function DashboardLayout({
   children,
@@ -734,8 +835,10 @@ export function DashboardLayout({
 ```
 
 ### `/components/dashboard/sections/overview.tsx` (NEWLY ADDED)
+
 **Purpose**: Main overview section with stats, charts, and activity log
 **Key Features**:
+
 - Migrated from old dashboard page
 - StatsCards component for quick metrics
 - ScoreChart component for performance over time
@@ -745,6 +848,7 @@ export function DashboardLayout({
 - Responsive grid layout
 
 **Critical Code Pattern**:
+
 ```typescript
 export function OverviewSection({
   sessions,
@@ -760,27 +864,35 @@ export function OverviewSection({
 ```
 
 ### `/components/dashboard/sections/history.tsx` (NEWLY ADDED)
+
 **Purpose**: Full interview history section with tactical styling
 **Key Features**:
+
 - Reuses existing SessionList component
 - Tactical-inspired header with description
 - "Coming Soon" placeholder for filters (planned)
 
 ### `/components/dashboard/sections/analytics.tsx` (NEWLY ADDED)
+
 **Purpose**: Analytics placeholder section
 **Key Features**:
+
 - "Coming Soon" card with chart icon
 - Description: "Advanced analytics and performance insights are currently in development"
 
 ### `/components/dashboard/sections/feedback.tsx` (NEWLY ADDED)
+
 **Purpose**: Feedback & insights placeholder section
 **Key Features**:
+
 - "Coming Soon" card with lightbulb icon
 - Description: "AI-powered feedback and coaching insights are currently in development"
 
 ### `/components/dashboard/sections/settings.tsx` (NEWLY ADDED)
+
 **Purpose**: Settings placeholder section
 **Key Features**:
+
 - "Coming Soon" card with gear icon
 - Description: "User settings and preferences are currently in development"
 
@@ -789,17 +901,20 @@ export function OverviewSection({
 ## Important Constraints
 
 ### Performance Requirements
+
 - **Latency P95**: ≤ 1.2s per turn (end-to-end)
 - **Session completion rate**: ≥ 75%
 - **Weekly return rate**: ≥ 40%
 - **Current Performance**: Not yet measured (Phase 0 functional testing only)
 
 ### Data & Privacy
+
 - Explicit consent for audio/video recording (not yet implemented)
 - PII redaction from transcripts (not yet implemented)
 - EU data residency toggle (post-MVP)
 
 ### Cost Constraints
+
 - Cache evaluation results
 - Compress transcripts
 - On-device VAD where possible (using Silero VAD ✅)
@@ -815,6 +930,7 @@ export function OverviewSection({
 ## Development Commands
 
 ### Frontend (Next.js)
+
 ```bash
 # Development server
 npm run dev              # Start Next.js dev server on http://localhost:3000
@@ -830,6 +946,7 @@ npx prettier --write .   # Format all files
 ```
 
 ### Agent (Python)
+
 ```bash
 # Setup (one-time)
 cd agent
@@ -845,22 +962,28 @@ python agent.py dev      # Start demo agent in dev mode
 cd interview
 python agent.py dev      # Start interview agent in dev mode
 
-# Production Deployment
-cd demo && ./deploy.sh       # Deploy demo agent to LiveKit Cloud
-cd interview && ./deploy.sh  # Deploy interview agent to LiveKit Cloud
+# Preview deployment (canonical external config required)
+cd demo && ./deploy.sh preview
+cd interview && ./deploy.sh preview
+
+# Production requires an external owner-signed authorization artifact
+cd demo && ./deploy.sh production
+cd interview && ./deploy.sh production
 ```
 
 ### Database
+
 ```bash
-# Push schema to Supabase
-npx drizzle-kit push     # Push current schema (no migration files)
+# Local/Preview schema commands go through the guarded wrapper
+npm run db:push
 
 # Generate migrations (future)
-npx drizzle-kit generate # Generate migration files
-npx drizzle-kit migrate  # Run migrations
+npm run db:generate
+npm run db:migrate
 ```
 
 ### Git
+
 ```bash
 # Commit with Claude co-author
 git commit -m "Your message
@@ -873,6 +996,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### LiveKit Cloud Agent Deployment
 
 #### Prerequisites
+
 ```bash
 # Install LiveKit CLI
 brew install livekit-cli  # macOS
@@ -882,9 +1006,17 @@ brew install livekit-cli  # macOS
 lk cloud auth
 ```
 
-#### First-Time Deployment
+#### Deployment policy
+
+Provider creation and raw LiveKit deployment commands are not approved agent
+paths. Use `agent/demo/deploy.sh preview|production` or
+`agent/interview/deploy.sh preview|production`. Production requires the exact
+owner-signed artifact documented in `docs/operations/production-action-authorization.md`.
+
+The following historical first-time procedure is retired; do not execute it.
 
 **Step 1: Prepare Environment File**
+
 ```bash
 cd agent
 
@@ -898,21 +1030,24 @@ EOF
 ```
 
 **Step 2: Ensure Dockerfile Exists**
+
 ```bash
 # Copy Dockerfile.demo to Dockerfile (CLI expects this name)
 cp Dockerfile.demo Dockerfile
 ```
 
 **Step 3: Deploy Agent**
+
 ```bash
 # Create and deploy new agent (first time)
-lk agent create --secrets-file .env.demo .
+# Retired: provision through the reviewed LiveKit isolation workstream.
 
 # Output will include agent ID (e.g., CA_Wp8bi3bRroE2)
 # This is automatically saved to livekit.toml
 ```
 
 **Step 4: Configure Agent Name for Explicit Dispatch**
+
 ```python
 # CRITICAL: Update demo_agent.py to include agent_name
 if __name__ == "__main__":
@@ -926,14 +1061,15 @@ if __name__ == "__main__":
 ```
 
 **Step 5: Redeploy with Agent Name**
+
 ```bash
-# Deploy updated agent with agent_name configured
-lk agent deploy .
+# Use: ./demo/deploy.sh preview
 
 # Wait for deployment to complete (~30-60 seconds)
 ```
 
 **Step 6: Update Frontend with Agent ID**
+
 ```typescript
 // Update /app/api/livekit/demo-token/route.ts
 const DEMO_AGENT_ID = "CA_Wp8bi3bRroE2"; // Your agent ID from Step 3
@@ -947,8 +1083,7 @@ cd agent
 # Ensure Dockerfile exists
 cp Dockerfile.demo Dockerfile
 
-# Deploy new version (rolling deployment)
-lk agent deploy .
+# Use: ./demo/deploy.sh preview
 
 # Old instances stay active up to 1 hour to complete sessions
 ```
@@ -975,6 +1110,7 @@ lk agent list
 #### Troubleshooting
 
 **Issue: Agent not receiving dispatches**
+
 ```bash
 # Check: Is agent_name set in WorkerOptions?
 grep -A5 "WorkerOptions" demo_agent.py
@@ -989,6 +1125,7 @@ lk agent status
 ```
 
 **Issue: Build failed**
+
 ```bash
 # View build logs
 lk agent logs --log-type=build
@@ -1000,6 +1137,7 @@ lk agent logs --log-type=build
 ```
 
 **Issue: Runtime errors**
+
 ```bash
 # View runtime logs
 lk agent logs
@@ -1013,6 +1151,7 @@ lk agent logs
 ```
 
 **Issue: Agent joins but doesn't speak**
+
 ```bash
 # Check runtime logs for TTS errors
 lk agent logs
@@ -1030,6 +1169,7 @@ grep -A5 "tts=" agent.py
 ```
 
 **Issue: ModuleNotFoundError in Cloud deployment**
+
 ```bash
 # Check build logs
 lk agent logs --log-type=build
@@ -1042,41 +1182,38 @@ cat Dockerfile.main | grep COPY
 ```
 
 **Issue: Update secrets**
+
 ```bash
-# Update environment variables
-lk agent update-secrets \
-  --secrets OPENAI_API_KEY=sk-new-key \
-  --secrets DEEPGRAM_API_KEY=new-key
+# Production secret changes require a reviewed, target-bound repository adapter.
 ```
 
 #### Rollback
 
-```bash
-# Rollback to previous version
-lk agent rollback
-```
+No approved target-bound repository rollback adapter exists yet. Do not use a
+raw provider mutation.
 
 #### Delete Agent
 
-```bash
-# Remove agent from LiveKit Cloud
-lk agent delete
-```
+No approved target-bound repository deletion adapter exists yet. Deletion must
+be separately reviewed and owner-authorized.
 
 #### Critical Configuration Requirements
 
 **MUST HAVE**:
+
 1. **`agent_name` in WorkerOptions**: Required for explicit dispatch via AgentDispatchClient
 2. **Matching agent ID in frontend**: DEMO_AGENT_ID must match agent_name
 3. **Dockerfile named exactly `Dockerfile`**: CLI requires this name
 4. **Secrets file with required keys**: OPENAI_API_KEY, DEEPGRAM_API_KEY
 
 **DO NOT USE** (Cloud limitations):
+
 - `load_threshold` - Not supported on Cloud
 - `num_idle_processes` - Not supported on Cloud
 - `request_fnc` - Not supported on Cloud
 
 **ONLY USE**:
+
 - `entrypoint_fnc` - Your agent entrypoint
 - `prewarm_fnc` - Prewarm function for VAD
 - `agent_name` - Agent ID for explicit dispatch
@@ -1084,12 +1221,14 @@ lk agent delete
 #### Cost Considerations
 
 **LiveKit Cloud Agent Hosting**:
+
 - Auto-scales based on demand
 - Charges per active agent instance hour
 - Scales to zero when no sessions active
 - Cold start: ~2-3 seconds
 
 **Demo Use Case** (60-second sessions):
+
 - Agent only active during demo
 - Most cost-effective for sporadic usage
 - No 24/7 server costs vs self-hosted
@@ -1099,6 +1238,7 @@ lk agent delete
 ## API Endpoints
 
 ### Implemented
+
 - ✅ `POST /api/livekit/token` - Generate LiveKit access token (main interview)
   - Input: `{ roomName: string, participantName: string }`
   - Output: `{ token: string, url: string }`
@@ -1113,22 +1253,25 @@ lk agent delete
 ### Planned (see PRD Section 12)
 
 #### Auth
+
 - `POST /api/auth/callback`
 
 #### Session
+
 - `POST /api/interview/start` → `{ sessionId, token, persona, roundType }`
 - `POST /api/interview/end` → `{ sessionId }` (triggers evaluation job)
 
 #### Evaluation
+
 - `POST /api/eval/{{sessionId}}` → generates scores & feedback (idempotent)
 - `GET /api/feedback/{{sessionId}}`
 
 #### Dashboard
+
 - `GET /api/metrics/summary` → per-user aggregates
 - `GET /api/history` → session list + key scores
 
 ---
-
 
 ---
 
@@ -1137,10 +1280,12 @@ lk agent delete
 ### Authentication Methods
 
 Meelni supports two authentication methods:
+
 1. **Email/Password** - Traditional authentication with email verification
 2. **Google OAuth** - Quick sign-in with Google account
 
 ### Email/Password Flow
+
 ```
 User clicks "Sign Up" → /auth/signup
   ↓
@@ -1154,6 +1299,7 @@ User clicks verification link → Account activated
 ```
 
 **Password Reset Flow**:
+
 ```
 /auth/signin → Click "Forgot password?"
   ↓
@@ -1169,6 +1315,7 @@ Enter new password → Account password updated
 ```
 
 ### Google OAuth Flow
+
 ```
 User clicks "Start A Mock" → /dashboard (middleware check)
   ↓ (not authenticated)
@@ -1180,6 +1327,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 ```
 
 **Key Files**:
+
 - `middleware.ts`: Route protection (checks Supabase session on `/dashboard`, `/setup`, `/interview`)
 - `app/providers/auth-provider.tsx`: Session management (React Context, `useAuth()` hook)
 - `app/auth/signin/page.tsx`: Sign-in UI with email/password and Google OAuth
@@ -1189,6 +1337,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 - `app/auth/callback/route.ts`: OAuth callback handler (exchanges code for session)
 
 **Session Management**:
+
 - Supabase Auth handles OAuth tokens, email verification, and session refresh
 - Session stored in HTTP-only cookies (secure)
 - Middleware runs on edge runtime (fast auth checks)
@@ -1199,6 +1348,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
   - `signOut()`
 
 **Security Notes**:
+
 - Middleware protects `/dashboard`, `/setup`, `/interview` routes
 - Unauthenticated users redirected to `/auth/signin` with redirect URL preserved
 - Email verification required for email/password sign-ups
@@ -1207,6 +1357,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 - Demo modal remains auth-free (no friction for trying the product)
 
 **User Flow (Email/Password)**:
+
 1. New user: "Sign up" → `/auth/signup`
 2. Enter email + password → Supabase sends verification email
 3. Click verification link → Account activated
@@ -1214,6 +1365,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 5. Forgot password? → `/auth/forgot-password` → Reset link sent → `/auth/reset-password`
 
 **User Flow (Google OAuth)**:
+
 1. Landing page: "Start A Mock" button → `/dashboard`
 2. Middleware detects no session → `/auth/signin?redirectTo=/dashboard`
 3. User clicks "Continue with Google" → Google OAuth consent
@@ -1223,6 +1375,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 7. Dashboard shows personalized welcome with user's first name
 
 **Related ADRs**:
+
 - See ADR-020 (Google OAuth Authentication Implementation)
 - See ADR-026 (Email/Password Authentication Implementation)
 
@@ -1233,12 +1386,14 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 ### Core Tables
 
 #### `app_user`
+
 - `id` uuid (primary key)
 - `email` text (unique, not null)
 - `name` text
 - `created_at` timestamptz
 
 #### `interview_session`
+
 - `id` uuid (primary key)
 - `user_id` uuid (foreign key → app_user)
 - `role` text (default 'pm')
@@ -1249,6 +1404,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 - `ended_at` timestamptz
 
 #### `transcript_turn`
+
 - `id` uuid (primary key)
 - `session_id` uuid (foreign key → interview_session)
 - `speaker` text (check: user, interviewer)
@@ -1260,6 +1416,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 - `section` text
 
 #### `feedback`
+
 - `id` uuid (primary key)
 - `session_id` uuid (foreign key → interview_session, unique)
 - `structure_score` int
@@ -1274,7 +1431,7 @@ User clicks "Start A Mock" → /dashboard (middleware check)
 - `summary` text
 - `created_at` timestamptz
 
-**Migration Strategy**: Using `drizzle-kit push` for schema sync (no migration files yet)
+**Migration Strategy**: Canonical numbered migrations are applied through the guarded npm database wrappers; Production requires exact owner authorization.
 
 ---
 
@@ -1329,6 +1486,7 @@ RESEND_API_KEY=
 ## Documentation Standards
 
 ### Code Comments
+
 - Use docstrings for Python classes and functions
 - JSDoc comments for complex TypeScript functions
 - Inline comments for non-obvious logic
@@ -1340,11 +1498,13 @@ RESEND_API_KEY=
   ```
 
 ### README Files
+
 - Project README at root with setup instructions
 - Component READMEs for complex subsystems
 - Keep READMEs up to date with actual setup steps
 
 ### API Documentation
+
 - Document API routes with input/output schemas
 - Use comments in route handlers for clarity
 - Consider OpenAPI/Swagger for later phases
@@ -1358,11 +1518,13 @@ RESEND_API_KEY=
 **CRITICAL: Always check if sprint already exists first!**
 
 **Use the slash command** (recommended - handles duplicates automatically):
+
 ```
 /new-sprint [feature-name]
 ```
 
 The command will:
+
 - Check if sprint already exists (active or archived)
 - If exists: Alert you and ask what to do (resume or create new)
 - If doesn't exist: Create sprint folder at `.claude/sprints/[feature-name-YYYY-MM]/`
@@ -1371,6 +1533,7 @@ The command will:
 - Add entry to sprint index
 
 **Or manually** (must check for duplicates yourself):
+
 ```bash
 # 1. Check for existing sprints FIRST
 ls -la .claude/sprints/
@@ -1386,6 +1549,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 #### Daily Documentation Requirements
 
 **EVERY DAY** you work on a feature:
+
 1. Update `PROGRESS.md` with daily entry (what done, what next, blockers)
 2. Check off completed tasks in README checklist
 3. Log decisions in `DECISIONS.md` when making important choices
@@ -1414,12 +1578,14 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 #### Where Documentation Goes
 
 **Sprint folder** (temporary, during development):
+
 - Daily progress logs
 - Work-in-progress decisions
 - Test results during development
 - Planning notes
 
 **docs/ folder** (permanent, forever):
+
 - Architecture Decision Records (ADRs)
 - API documentation
 - Feature guides
@@ -1437,21 +1603,25 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 **Status**: Not yet implemented.
 
 ### Unit Tests
+
 - Framework: Vitest (likely)
 - Test utilities, API routes, database operations
 - Target: >80% coverage for core logic
 
 ### Integration Tests
+
 - Test LiveKit token generation
 - Test database operations with test DB
 - Test API endpoint flows
 
 ### E2E Tests
+
 - Framework: Playwright (likely)
 - Test interview flow end-to-end
 - Test user authentication and session persistence
 
 ### Manual Testing (Phase 0)
+
 - ✅ LiveKit connection and token generation
 - ✅ Agent joins room automatically
 - ✅ Voice conversation: User speaks → Agent responds
@@ -1463,16 +1633,19 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ## Git Workflow
 
 ### Branch Naming
+
 - Use descriptive, concrete names (<30 characters)
 - No prefixes (e.g., `feature/`, `fix/`)
 - Examples: `add-user-auth`, `fix-session-latency`
 
 ### Commit Messages
+
 - Clear, concise descriptions
 - Include context and rationale when needed
 - Co-authored with Claude when applicable
 
 ### PR Process
+
 - TBD (single developer for MVP)
 
 ---
@@ -1480,6 +1653,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ## Known Issues & Technical Debt
 
 ### Resolved Issues (Phase 0, 0.5, 0.7, 1.0)
+
 - ✅ SSL Certificate Error: Python 3.12 on macOS needed certificate installation
 - ✅ LiveKit Components Styles: Removed unused import
 - ✅ VoiceAssistant API: Switched to AgentSession pattern
@@ -1501,6 +1675,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 - ✅ Agent State Flickering: Fixed with debounced state transitions (600-700ms grace period)
 
 ### Current Technical Debt
+
 - ✅ ~~No session persistence~~ → **DONE** - Transcripts save in real-time during interviews
 - ✅ ~~No authentication~~ → **DONE** - Google OAuth + Email/Password fully integrated
 - ✅ ~~No feedback/scoring engine~~ → **DONE** - GPT-4 Turbo evaluation implemented
@@ -1508,6 +1683,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 - ✅ ~~No RLS policies~~ → **DONE** - 38 policies enforcing user data isolation across 13 tables (deployed 2025-11-18)
 
 **Remaining Minor Items**:
+
 - ⏳ Enable leaked password protection in Supabase Auth (5-min manual step)
 - Add feedback UI in dashboard to display evaluation results
 - Consider implementing real-time nudges during interviews (optional)
@@ -1518,6 +1694,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ## Future Considerations
 
 ### Phase 1 (Complete) ✅
+
 - ✅ Session persistence: Real-time transcript saving
 - ✅ Feedback/scoring engine: GPT-4 Turbo evaluation with rubrics
 - ✅ User authentication: Google OAuth with Supabase Auth
@@ -1526,6 +1703,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 - ✅ RLS policies: Database-level security
 
 ### Phase 2 (Production Polish)
+
 - Feedback display UI in dashboard
 - Interview history with detailed scores
 - Performance analytics visualization
@@ -1534,6 +1712,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 - Production deployment to Vercel + Supabase
 
 ### Phase 2+
+
 - Custom company-specific interview loops
 - Enterprise coach dashboards
 - Coding/whiteboard IDE integration
@@ -1543,6 +1722,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 ## Questions & Open Items
 
 ### Resolved ✅
+
 1. ~~**ORM Choice**: Prisma vs Drizzle vs raw SQL?~~ → **RESOLVED**: Drizzle (ADR-003)
 2. ~~**Auth Provider**: Clerk vs NextAuth?~~ → **RESOLVED**: Supabase Auth (ADR-003)
 3. ~~**TTS Provider**: Cartesia vs PlayHT?~~ → **RESOLVED**: Cartesia (ADR-007)
@@ -1550,6 +1730,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 5. ~~**Monorepo Structure**: Single repo vs separate agent repo?~~ → **RESOLVED**: Monorepo with `/agent` dir (ADR-007)
 
 ### Open Questions
+
 1. **Agent Hosting**: Railway vs Render vs Fly.io? (evaluate pricing/DX for production deployment)
 2. **TypeScript Config**: Any additional strict mode settings needed?
 3. **Testing Framework**: Vitest for unit tests + Playwright for E2E?

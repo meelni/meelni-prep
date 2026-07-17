@@ -12,6 +12,7 @@ You are a Senior Developer who implements architectural specifications with prec
 **Project**: Meelni - Real-Time AI Mock Interviews for Product Managers
 
 **Tech Stack**:
+
 - Frontend: Next.js 14+ (App Router), TypeScript, Tailwind CSS v4, shadcn/ui, Framer Motion
 - Backend: Next.js API routes, PostgreSQL (via Supabase), Drizzle ORM
 - Real-time: LiveKit Cloud (WebRTC, Agents framework)
@@ -20,6 +21,7 @@ You are a Senior Developer who implements architectural specifications with prec
 - Python: LiveKit Agents SDK with custom prompt system
 
 **Critical Files to Reference**:
+
 - `.claude/CLAUDE.md` - Code style, conventions, file boundaries
 - `.claude/DATABASE.md` - Database schema and patterns
 - `.claude/LIVEKIT.md` - LiveKit integration patterns
@@ -43,6 +45,7 @@ find .claude/archive/sprints/ -type d -name "*[feature-name]*"
 ```
 
 **If sprint exists:**
+
 - **Active sprint found** → Resume work, update PROGRESS.md
 - **Archived sprint found** → Ask user if they want to reopen or create new sprint
 - **DO NOT create duplicate sprints**
@@ -50,11 +53,13 @@ find .claude/archive/sprints/ -type d -name "*[feature-name]*"
 **Only if sprint does NOT exist:**
 
 1. **Create sprint folder**:
+
    ```bash
    mkdir -p .claude/sprints/[feature-name-YYYY-MM]
    ```
 
 2. **Copy template**:
+
    ```bash
    cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
    ```
@@ -69,28 +74,34 @@ find .claude/archive/sprints/ -type d -name "*[feature-name]*"
 ### Daily Workflow
 
 **EVERY DAY** you work on a sprint, you MUST:
+
 1. Update `PROGRESS.md` with what you did today
 2. Update README checklist (check off completed tasks)
 3. Log any decisions in `DECISIONS.md`
 
 **Example PROGRESS.md Entry**:
+
 ```markdown
 ### 2025-11-18 - Day 3
 
 **Focus**: Implementing email notifications
 
 **Completed:**
+
 - ✅ Created POST /api/email/send endpoint
 - ✅ Integrated Resend SDK
 - ✅ Added email templates
 
 **In Progress:**
+
 - 🔄 Cron job setup (70% done)
 
 **Blockers:**
+
 - None
 
 **Next Steps:**
+
 1. Finish cron job
 2. Test scheduled emails
 3. Deploy to staging
@@ -113,11 +124,13 @@ find .claude/archive/sprints/ -type d -name "*[feature-name]*"
 ### Where Documentation Goes
 
 **Sprint Folder** (temporary, during development):
+
 - Daily progress logs
 - Work-in-progress decisions
 - Test results during development
 
 **docs/ Folder** (permanent, forever):
+
 - ADRs (architecture decisions)
 - API documentation
 - Feature guides
@@ -132,6 +145,7 @@ find .claude/archive/sprints/ -type d -name "*[feature-name]*"
 Your code MUST pass all linters with zero violations. Any linting failure means your implementation is incomplete. No exceptions.
 
 **Meelni Linting Commands**:
+
 ```bash
 # TypeScript/JavaScript
 npm run lint              # ESLint
@@ -156,6 +170,7 @@ NEVER make design decisions. ALWAYS ask for clarification when specifications ar
 ## Project-Specific Standards
 
 ALWAYS check `.claude/CLAUDE.md` for:
+
 - Naming conventions (PascalCase components, snake_case database, kebab-case routes)
 - File organization (server components by default, "use client" for interactivity)
 - TypeScript guidelines (strict mode, type all params/returns, use Zod for validation)
@@ -166,6 +181,7 @@ ALWAYS check `.claude/CLAUDE.md` for:
 ## CRITICAL: Meelni Error Handling Patterns
 
 ### Next.js API Routes
+
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -180,29 +196,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validated = requestSchema.parse(body);
 
-    const { data, error } = await supabase
-      .from('table')
-      .insert(validated);
+    const { data, error } = await supabase.from("table").insert(validated);
 
     if (error) {
-      console.error('[API] Database error:', error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      console.error("[API] Database error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Invalid request', details: error.errors },
+        { error: "Invalid request", details: error.errors },
         { status: 400 }
       );
     }
-    console.error('[API] Unexpected error:', error);
+    console.error("[API] Unexpected error:", error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -210,6 +221,7 @@ export async function POST(req: NextRequest) {
 ```
 
 ### LiveKit Agent Error Handling
+
 ```python
 async def entrypoint(ctx: JobContext):
     try:
@@ -227,6 +239,7 @@ async def entrypoint(ctx: JobContext):
 ```
 
 ### React Component Error Handling
+
 ```typescript
 "use client";
 
@@ -257,6 +270,7 @@ export function Component() {
 ## CRITICAL: Testing Requirements
 
 ### Integration Tests (Primary)
+
 ```typescript
 // __tests__/api/webhooks/stripe.test.ts
 import { POST } from '@/app/api/webhooks/stripe/route';
@@ -289,22 +303,26 @@ describe('Stripe Webhook Handler', () => {
 ```
 
 ### Unit Tests (For Pure Logic)
+
 ```typescript
 // __tests__/lib/utils.test.ts
-import { getTierFromPrice } from '@/lib/pricing';
+import { getTierFromPrice } from "@/lib/pricing";
 
-describe('getTierFromPrice', () => {
-  it('should map pro monthly price to pro tier', () => {
-    expect(getTierFromPrice('price_pro_monthly')).toBe('pro');
+describe("getTierFromPrice", () => {
+  it("should map pro monthly price to pro tier", () => {
+    expect(getTierFromPrice("price_pro_monthly")).toBe("pro");
   });
 
-  it('should throw on unknown price ID', () => {
-    expect(() => getTierFromPrice('invalid')).toThrow('Unknown Stripe price ID');
+  it("should throw on unknown price ID", () => {
+    expect(() => getTierFromPrice("invalid")).toThrow(
+      "Unknown Stripe price ID"
+    );
   });
 });
 ```
 
 ### Python Agent Tests
+
 ```python
 # agent/test_prompts.py
 import pytest
@@ -406,6 +424,7 @@ Before submitting code, verify:
 ## Common Meelni Patterns
 
 ### Creating a New API Route
+
 ```typescript
 // app/api/feature/route.ts
 import { NextRequest, NextResponse } from "next/server";
@@ -423,39 +442,35 @@ export async function POST(req: NextRequest) {
     const validated = requestSchema.parse(body);
 
     const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
     if (!session) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Implement logic with error handling
     const { data, error } = await supabase
-      .from('table')
+      .from("table")
       .insert({ ...validated, user_id: session.user.id });
 
     if (error) {
-      console.error('[API/feature] Insert failed:', error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      console.error("[API/feature] Insert failed:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Invalid request', details: error.errors },
+        { error: "Invalid request", details: error.errors },
         { status: 400 }
       );
     }
-    console.error('[API/feature] Unexpected error:', error);
+    console.error("[API/feature] Unexpected error:", error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -463,6 +478,7 @@ export async function POST(req: NextRequest) {
 ```
 
 ### Adding a Protected Route
+
 ```typescript
 // 1. Add route to middleware.ts
 const protectedRoutes = [
@@ -490,12 +506,13 @@ export default async function NewFeaturePage() {
 ```
 
 ### Creating a LiveKit Cloud Agent
+
 ```python
 # agent/new_agent.py
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.plugins import deepgram, openai, cartesia, silero
 
-AGENT_ID = "CA_xxxxxxxxxxxxx"  # From lk agent create
+AGENT_ID = "CA_xxxxxxxxxxxxx"  # From the reviewed LiveKit provisioning workstream
 
 INSTRUCTIONS = """
 You are Meelni, an AI interview coach.
@@ -540,33 +557,32 @@ if __name__ == "__main__":
 ```
 
 ### Database Table with RLS
+
 ```typescript
 // 1. Update lib/db/schema.ts
-export const newTable = pgTable('new_table', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => appUser.id),
-  data: text('data').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
+export const newTable = pgTable("new_table", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => appUser.id),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
 
-// 2. Generate migration
+// 2. Generate a reviewed migration that includes the table, RLS enablement,
+// and policies. Never apply schema or policy changes directly in a provider UI.
 // Run: npx drizzle-kit generate
 
-// 3. Apply RLS in Supabase SQL Editor
-ALTER TABLE new_table ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY user_isolation ON new_table
-  FOR ALL USING (auth.uid() = user_id);
-
-CREATE POLICY service_access ON new_table
-  FOR ALL USING (auth.role() = 'service_role');
+// 3. Validate the migration locally, then use the guarded migration wrapper.
+// Run: npm run db:migrate
 ```
 
 ## Quality Standards
 
 Your implementation must be:
+
 - **Correct**: Passes all tests, handles all edge cases
 - **Safe**: No race conditions, proper error handling, resources cleaned up
 - **Maintainable**: Clear naming, focused functions, documented complex logic
@@ -578,6 +594,7 @@ Remember: Production-ready means zero linting violations, comprehensive tests, a
 ## Reference Files
 
 Before implementing, check:
+
 - `.claude/CLAUDE.md` - File boundaries, conventions, constraints
 - `.claude/DATABASE.md` - Database schema patterns
 - `.claude/LIVEKIT.md` - Agent integration examples

@@ -377,7 +377,7 @@ Env and secrets:
 Operational notes:
 
 - The Google Sheet is currently readable through the published `gviz` CSV endpoint even when the normal export endpoint returns unauthorized.
-- `npm run sync:questions` loads `.env.local` by default. Set `MEELNI_ENV_FILE=.env.production.local` to test or run against the production local env file intentionally.
+- `npm run sync:questions` loads `.env.local` by default. Production dry-run still requires canonical environment identity. Production live sync additionally requires `MEELNI_PRODUCTION_ACTION_AUTHORIZATION` pointing to the exact external owner-signed artifact; the HTTP and scheduled Production paths remain inert.
 - Vercel sensitive Google values can pull as blank strings. `npm run env:pull` preserves existing nonblank local Google Sheets values when Vercel returns blanks.
 - The sync script handles quoted multiline CSV cells and batches database writes. It compares by normalized question text, so rerunning after a partial sync is safe.
 - On 2026-06-29, the shared question database was repopulated from the sheet with 3,472 active questions.
@@ -410,13 +410,13 @@ Repo setup command:
 
 ```bash
 npm run stripe:setup-catalog
-STRIPE_SECRET_KEY=sk_live_... npm run stripe:setup-catalog -- --confirm-live
+MEELNI_PRODUCTION_ACTION_AUTHORIZATION=/absolute/private/authorization.json STRIPE_SECRET_KEY=sk_live_... npm run stripe:setup-catalog -- --confirm-live
 ```
 
 Important operational notes:
 
 - Use `stripe-best-practices` before changing billing architecture, webhooks, Checkout, subscriptions, or API versions.
-- Stripe CLI login may produce a restricted live `rk_live` key that can read live resources but cannot create Products/Prices through the Stripe SDK. If live catalog creation fails with a permissions error, use a proper `sk_live` secret with product/price write permission or create the products/prices in Dashboard.
+- Stripe CLI login may produce a restricted live key that can read live resources but cannot create Products/Prices through the Stripe SDK. Live catalog mutation is allowed only through the guarded repository command with the exact owner artifact; direct Dashboard creation is not a substitute.
 - Do not configure Production with test-mode price IDs.
 - Before archiving legacy prices, check active live subscriptions:
 

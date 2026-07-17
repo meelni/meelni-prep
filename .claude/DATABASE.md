@@ -4,6 +4,7 @@
 **Status**: Placeholder (to be populated in Phase 1)
 
 ## Purpose
+
 Document database schema, migrations, RLS policies, and data access patterns.
 
 ## Current Schema
@@ -17,16 +18,15 @@ See `lib/db/schema.ts` for the complete schema definition. Key tables:
 
 ## Migration Strategy
 
-Currently using `drizzle-kit push` for schema synchronization (no migration files).
-
-**Planned**: Generate proper migrations when implementing:
-- RLS policies
-- Indexes for performance
-- Additional tables (user_settings, analytics, etc.)
+Canonical numbered migrations in `lib/db/migrations` are authoritative. Use
+the guarded `npm run db:*` commands. Direct Drizzle mutation commands are not
+approved; Production migration additionally requires the external owner-signed
+authorization artifact.
 
 ## RLS Policies (Planned)
 
 Row Level Security policies to implement:
+
 - Users can only read/write their own sessions
 - Users can only read/write their own feedback
 - Transcript data restricted to session owner
@@ -34,6 +34,7 @@ Row Level Security policies to implement:
 ## Query Patterns (Planned)
 
 Best practices for:
+
 - Fetching user's interview history
 - Aggregating performance metrics
 - Real-time transcript writes during sessions

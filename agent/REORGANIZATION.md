@@ -39,6 +39,7 @@ agent/
 ```
 
 **Problems**:
+
 - ❌ Confusing: Which Dockerfile for which agent?
 - ❌ Hard to deploy: Multiple `.dockerignore` files, need to copy before deploying
 - ❌ Cluttered: Documentation, scripts, and code all mixed together
@@ -83,6 +84,7 @@ agent/
 ```
 
 **Benefits**:
+
 - ✅ **Clear separation**: Each agent has its own directory
 - ✅ **Easy deployment**: Just `cd demo && ./deploy.sh` or `cd interview && ./deploy.sh`
 - ✅ **Self-contained**: Each agent folder has everything it needs
@@ -93,6 +95,7 @@ agent/
 ## File Changes
 
 ### New Files Created
+
 - `demo/README.md` - Demo agent documentation
 - `interview/README.md` - Interview agent documentation
 - `shared/` - Shared code directory structure
@@ -100,6 +103,7 @@ agent/
 - `scripts/` - Scripts directory
 
 ### Files Moved
+
 - `demo_agent.py` → `demo/agent.py`
 - `agent.py` → `interview/agent.py`
 - `Dockerfile.demo` → `demo/Dockerfile`
@@ -111,6 +115,7 @@ agent/
 - Test scripts → `scripts/`
 
 ### Files Deleted
+
 - `Dockerfile` (root, ambiguous)
 - `Dockerfile.backup`
 - `.dockerignore.demo` (now in `demo/.dockerignore`)
@@ -120,6 +125,7 @@ agent/
 - `livekit.demo.toml` (now `demo/livekit.toml`)
 
 ### Files Updated
+
 - All agent files: Updated imports to reference `shared/` modules
 - All Dockerfiles: Updated to copy from `../shared/`
 - All scripts: Updated import paths
@@ -130,12 +136,14 @@ agent/
 ### For Local Development
 
 **Before**:
+
 ```bash
 python agent.py dev              # Which agent?
 python demo_agent.py dev         # Demo agent
 ```
 
 **After**:
+
 ```bash
 cd demo
 python agent.py dev              # Clear: demo agent
@@ -147,15 +155,14 @@ python agent.py dev              # Clear: interview agent
 ### For Deployment
 
 **Before**:
+
 ```bash
 # Confusing process with file copying
-cp .dockerignore.demo .dockerignore
-cp Dockerfile.demo Dockerfile
-lk agent deploy .
-rm Dockerfile  # Cleanup
+./demo/deploy.sh preview
 ```
 
 **After**:
+
 ```bash
 # Clear and simple
 cd demo
@@ -171,6 +178,7 @@ cd interview
 **Before**: Search through root `agent/` directory for scattered docs
 
 **After**:
+
 - Agent-specific docs: Check `demo/README.md` or `interview/README.md`
 - Deployment docs: Check `docs/`
 - General overview: Check root `README.md`
@@ -182,12 +190,14 @@ cd interview
 All Python files updated to reference `shared/` modules:
 
 **Before**:
+
 ```python
 from config import parse_room_metadata
 from utils.prompt_builder import build_agent_prompt
 ```
 
 **After**:
+
 ```python
 import sys
 from pathlib import Path
@@ -204,6 +214,7 @@ from shared.utils.prompt_builder import build_agent_prompt
 Dockerfiles now reference shared modules:
 
 **Before**:
+
 ```dockerfile
 COPY agent.py .
 COPY prompts.py .
@@ -212,6 +223,7 @@ COPY utils/ ./utils/
 ```
 
 **After**:
+
 ```dockerfile
 # Copy requirements from parent directory
 COPY ../requirements.txt .
@@ -228,6 +240,7 @@ COPY agent.py .
 ### To Test Locally
 
 1. **Demo Agent**:
+
    ```bash
    cd demo
    source ../venv/bin/activate
@@ -235,6 +248,7 @@ COPY agent.py .
    ```
 
 2. **Interview Agent**:
+
    ```bash
    cd interview
    source ../venv/bin/activate
@@ -252,6 +266,7 @@ COPY agent.py .
 ### To Test Deployment
 
 1. Deploy demo agent:
+
    ```bash
    cd demo
    ./deploy.sh

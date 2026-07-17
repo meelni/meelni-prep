@@ -1,5 +1,9 @@
-import { db } from "@/lib/db";
-import { interviewQuestion } from "@/lib/db/schema";
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
+const { db } = await import("@/lib/db");
+const { interviewQuestion } = await import("@/lib/db/schema");
 
 const sampleQuestions = [
   {

@@ -10,13 +10,13 @@ This directory contains two separate LiveKit agents:
 ### Deploy Demo Agent
 
 ```bash
-./deploy-demo.sh
+./demo/deploy.sh preview # or production
 ```
 
 ### Deploy Main Interview Agent
 
 ```bash
-./deploy-main.sh
+./interview/deploy.sh preview # or production
 ```
 
 ## How It Works
@@ -25,13 +25,13 @@ Each agent has its own:
 
 - **Dockerfile**: `Dockerfile.demo` and `Dockerfile.main`
 - **Dockerignore**: `.dockerignore.demo` and `.dockerignore.main`
-- **Deployment Script**: `deploy-demo.sh` and `deploy-main.sh`
+- **Deployment Script**: `demo/deploy.sh` and `interview/deploy.sh`
 
 The deployment scripts:
 
 1. Copy the correct `.dockerignore` file to `.dockerignore`
 2. Copy the correct `Dockerfile` to `Dockerfile`
-3. Run `lk agent deploy .`
+3. Invoke the LiveKit CLI only through the target-bound wrapper.
 4. Clean up temporary `Dockerfile`
 
 ## Dispatch Names
@@ -45,25 +45,10 @@ dispatch names in app and agent environments.
 
 ## Manual Deployment
 
-If you prefer to deploy manually:
-
-### Demo Agent
-
-```bash
-cp .dockerignore.demo .dockerignore
-cp Dockerfile.demo Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
-
-### Main Interview Agent
-
-```bash
-cp .dockerignore.main .dockerignore
-cp Dockerfile.main Dockerfile
-lk agent deploy .
-rm Dockerfile
-```
+The raw LiveKit deployment command is not an approved operator path. Use the target-bound
+wrappers above. Production consumes an exact signed owner authorization before
+`lk` can run; Preview remains available with its explicit external config,
+URL anchor, and agent ID.
 
 ## File Exclusions
 
@@ -133,9 +118,9 @@ lk agent status
 
 ## Rollback
 
-```bash
-lk agent rollback
-```
+No approved target-bound repository rollback adapter exists yet. Preserve the
+candidate and target identity and require a separately reviewed,
+owner-authorized rollback action.
 
 ## Environment Variables
 

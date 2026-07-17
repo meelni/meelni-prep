@@ -1,7 +1,12 @@
 import { sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { assertNonProductionScriptEnvironment } from "./non-production-script-guard";
+
+assertNonProductionScriptEnvironment();
+
 import fs from "fs";
 import path from "path";
+
+const { db } = await import("@/lib/db");
 
 async function applyRLSPolicies() {
   const migrationPath = path.join(
@@ -30,9 +35,15 @@ async function applyRLSPolicies() {
 
     console.log("✅ RLS policies applied successfully!");
     console.log("\nApplied policies:");
-    console.log("- Enabled RLS on 5 tables: subscription, usage_record, payment_history, stripe_event_log, stripe_customer_mapping");
-    console.log("- Created user isolation policies for subscription, usage_record, payment_history");
-    console.log("- Created service-role-only policies for stripe_event_log, stripe_customer_mapping");
+    console.log(
+      "- Enabled RLS on 5 tables: subscription, usage_record, payment_history, stripe_event_log, stripe_customer_mapping"
+    );
+    console.log(
+      "- Created user isolation policies for subscription, usage_record, payment_history"
+    );
+    console.log(
+      "- Created service-role-only policies for stripe_event_log, stripe_customer_mapping"
+    );
   } catch (error) {
     console.error("❌ Error applying RLS policies:", error);
     throw error;
