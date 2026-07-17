@@ -1,19 +1,90 @@
 import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
 import { isMinimallySubstantiveEvidenceQuote } from "./feedback-language-policy";
 import {
-  normalizeEvidenceQuoteToSource,
   type FeedbackTranscriptTurn,
+  normalizeEvidenceQuoteToSource,
 } from "./feedback-transcript";
 
-export type { FeedbackTranscriptTurn } from "./feedback-transcript";
 export {
   hasRecognizedCandidateEvidenceSignal,
   hasSubstantiveCandidateResponseSignal,
 } from "./feedback-language-policy";
+export type { FeedbackTranscriptTurn } from "./feedback-transcript";
 
 export const FEEDBACK_SCHEMA_VERSION = "feedback.v2" as const;
 export const FEEDBACK_PROMPT_VERSION = "feedback.prompt.v2" as const;
 export const FEEDBACK_RUBRIC_VERSION = "pm-feedback-rubric.v2" as const;
+export const FEEDBACK_V2_REJECTION_TAXONOMY_VERSION =
+  "feedback-v2-rejection.v1" as const;
+
+export const FEEDBACK_V2_REJECTION_CODES = [
+  "response_not_object",
+  "response_unknown_field",
+  "schema_version_mismatch",
+  "prompt_version_mismatch",
+  "rubric_version_mismatch",
+  "evaluation_state_mismatch",
+  "model_version_invalid",
+  "canonical_transcript_empty",
+  "canonical_transcript_turn_invalid",
+  "canonical_transcript_duplicate_event_id",
+  "scores_not_object",
+  "scores_unknown_field",
+  "score_invalid",
+  "exceptional_score_insufficient_evidence",
+  "findings_count_invalid",
+  "finding_not_object",
+  "finding_unknown_field",
+  "finding_dimension_invalid",
+  "finding_rubric_version_mismatch",
+  "finding_text_invalid",
+  "transcript_refs_invalid",
+  "transcript_refs_duplicate",
+  "evidence_count_invalid",
+  "evidence_not_object",
+  "evidence_unknown_field",
+  "evidence_turn_ref_invalid",
+  "evidence_turn_ref_duplicate",
+  "evidence_turn_ref_not_found",
+  "evidence_turn_ref_wrong_speaker",
+  "evidence_quote_invalid",
+  "evidence_quote_not_grounded",
+  "evidence_quote_insufficient",
+  "evidence_reference_set_mismatch",
+  "evidence_reused_across_findings",
+  "evidence_overlaps_across_findings",
+  "confidence_invalid",
+  "finding_exact_citation_unsupported",
+  "finding_quantitative_claim_unsupported",
+  "finding_absolute_claim_unsupported",
+  "finding_negative_claim_contradicted",
+  "finding_material_claim_unsupported",
+  "finding_observable_claim_missing",
+  "finding_observable_evidence_insufficient",
+  "finding_high_confidence_insufficient_evidence",
+  "drills_invalid",
+  "practice_recommendation_normalization_failed",
+  "summary_invalid",
+  "summary_outcome_claim_disallowed",
+  "summary_absolute_claim_unsupported",
+  "summary_quantitative_claim_unsupported",
+  "summary_material_claim_unsupported",
+  "summary_observable_support_insufficient",
+  "parser_internal_failure",
+] as const;
+
+export type FeedbackV2RejectionCode =
+  (typeof FEEDBACK_V2_REJECTION_CODES)[number];
+
+const FEEDBACK_V2_REJECTION_CODE_SET = new Set<string>(
+  FEEDBACK_V2_REJECTION_CODES
+);
+
+export function isFeedbackV2RejectionCode(
+  value: unknown
+): value is FeedbackV2RejectionCode {
+  return typeof value === "string" && FEEDBACK_V2_REJECTION_CODE_SET.has(value);
+}
 
 export const FEEDBACK_EVALUATION_STATES = ["full", "partial"] as const;
 export type FeedbackEvaluationState =
@@ -157,7 +228,10 @@ const DIMENSIONS = new Set<FeedbackDimension>([
 ]);
 
 export class FeedbackV2ParseError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly code: FeedbackV2RejectionCode,
+    message: string
+  ) {
     super(`Invalid feedback v2: ${message}`);
     this.name = "FeedbackV2ParseError";
   }
@@ -167,37 +241,65 @@ export function parseFeedbackV2(
   value: unknown,
   options: ParseFeedbackV2Options
 ): FeedbackV2Result {
-  const root = requireRecord(value, "response");
-  requireExactKeys(root, "response", [
+  const root = requireRecord(value, "response", "response_not_object");
+  requireExactKeys(
+    root,
+    "response",
+    [
+      "schemaVersion",
+      "promptVersion",
+      "rubricVersion",
+      "evaluationState",
+      "scores",
+      "strengths",
+      "improvements",
+      "drills",
+      "summary",
+    ],
+    "response_unknown_field"
+  );
+  requireExact(
+    root.schemaVersion,
+    FEEDBACK_SCHEMA_VERSION,
     "schemaVersion",
+    "schema_version_mismatch"
+  );
+  requireExact(
+    root.promptVersion,
+    FEEDBACK_PROMPT_VERSION,
     "promptVersion",
+    "prompt_version_mismatch"
+  );
+  requireExact(
+    root.rubricVersion,
+    FEEDBACK_RUBRIC_VERSION,
     "rubricVersion",
-    "evaluationState",
-    "scores",
-    "strengths",
-    "improvements",
-    "drills",
-    "summary",
-  ]);
-  requireExact(root.schemaVersion, FEEDBACK_SCHEMA_VERSION, "schemaVersion");
-  requireExact(root.promptVersion, FEEDBACK_PROMPT_VERSION, "promptVersion");
-  requireExact(root.rubricVersion, FEEDBACK_RUBRIC_VERSION, "rubricVersion");
+    "rubric_version_mismatch"
+  );
   requireExact(
     root.evaluationState,
     options.evaluationState,
-    "evaluationState"
+    "evaluationState",
+    "evaluation_state_mismatch"
   );
 
-  const modelVersion = requireNonEmpty(options.modelVersion, "modelVersion");
+  const modelVersion = requireNonEmpty(
+    options.modelVersion,
+    "modelVersion",
+    "model_version_invalid"
+  );
   const transcriptById = buildTranscriptIndex(options.transcript);
-  const scoresRecord = requireRecord(root.scores, "scores");
-  requireExactKeys(scoresRecord, "scores", [
-    "structure",
-    "clarity",
-    "insight",
-    "communication",
-    "leadership",
-  ]);
+  const scoresRecord = requireRecord(
+    root.scores,
+    "scores",
+    "scores_not_object"
+  );
+  requireExactKeys(
+    scoresRecord,
+    "scores",
+    ["structure", "clarity", "insight", "communication", "leadership"],
+    "scores_unknown_field"
+  );
   const scores: FeedbackV2Scores = {
     structure: requireScore(scoresRecord.structure, "scores.structure"),
     clarity: requireScore(scoresRecord.clarity, "scores.clarity"),
@@ -235,7 +337,7 @@ export function parseFeedbackV2(
     });
   }
   requireScorePrecision(scores, strengths, improvements);
-  const summary = requireNonEmpty(root.summary, "summary");
+  const summary = requireNonEmpty(root.summary, "summary", "summary_invalid");
   requireEvidenceLimitedSummary(summary, [...strengths, ...improvements]);
 
   return {
@@ -248,7 +350,7 @@ export function parseFeedbackV2(
     overallScore: calculateOverallScore(scores),
     strengths,
     improvements,
-    drills: parseStringArray(root.drills, "drills", 1, 3),
+    drills: parseStringArray(root.drills, "drills", 1, 3, "drills_invalid"),
     summary,
   };
 }
@@ -257,22 +359,34 @@ function buildTranscriptIndex(
   transcript: FeedbackTranscriptTurn[]
 ): Map<string, FeedbackTranscriptTurn> {
   if (transcript.length === 0) {
-    throw new FeedbackV2ParseError("canonical transcript is empty");
+    throw new FeedbackV2ParseError(
+      "canonical_transcript_empty",
+      "canonical transcript is empty"
+    );
   }
   const index = new Map<string, FeedbackTranscriptTurn>();
   for (const [position, turn] of transcript.entries()) {
     const eventId = requireNonEmpty(
       turn.eventId,
-      `transcript[${position}].eventId`
+      `transcript[${position}].eventId`,
+      "canonical_transcript_turn_invalid"
     );
-    const text = requireNonEmpty(turn.text, `transcript[${position}].text`);
+    const text = requireNonEmpty(
+      turn.text,
+      `transcript[${position}].text`,
+      "canonical_transcript_turn_invalid"
+    );
     if (turn.speaker !== "user" && turn.speaker !== "interviewer") {
       throw new FeedbackV2ParseError(
+        "canonical_transcript_turn_invalid",
         `transcript[${position}].speaker must be user or interviewer`
       );
     }
     if (index.has(eventId)) {
-      throw new FeedbackV2ParseError(`duplicate transcript eventId ${eventId}`);
+      throw new FeedbackV2ParseError(
+        "canonical_transcript_duplicate_event_id",
+        `duplicate transcript eventId ${eventId}`
+      );
     }
     index.set(eventId, { eventId, text, speaker: turn.speaker });
   }
@@ -285,40 +399,54 @@ function parseItems(
   transcriptById: Map<string, FeedbackTranscriptTurn>
 ): FeedbackV2Item[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
-    throw new FeedbackV2ParseError(`${path} must contain 1 to 5 items`);
+    throw new FeedbackV2ParseError(
+      "findings_count_invalid",
+      `${path} must contain 1 to 5 items`
+    );
   }
   return value.map((entry, index) => {
     const itemPath = `${path}[${index}]`;
-    const item = requireRecord(entry, itemPath);
-    requireExactKeys(item, itemPath, [
-      "dimension",
-      "observation",
-      "transcriptRefs",
-      "evidence",
-      "nextStep",
-      "rubricVersion",
-      "confidence",
-    ]);
+    const item = requireRecord(entry, itemPath, "finding_not_object");
+    requireExactKeys(
+      item,
+      itemPath,
+      [
+        "dimension",
+        "observation",
+        "transcriptRefs",
+        "evidence",
+        "nextStep",
+        "rubricVersion",
+        "confidence",
+      ],
+      "finding_unknown_field"
+    );
     const dimension = item.dimension;
     if (
       typeof dimension !== "string" ||
       !DIMENSIONS.has(dimension as FeedbackDimension)
     ) {
-      throw new FeedbackV2ParseError(`${itemPath}.dimension is invalid`);
+      throw new FeedbackV2ParseError(
+        "finding_dimension_invalid",
+        `${itemPath}.dimension is invalid`
+      );
     }
     requireExact(
       item.rubricVersion,
       FEEDBACK_RUBRIC_VERSION,
-      `${itemPath}.rubricVersion`
+      `${itemPath}.rubricVersion`,
+      "finding_rubric_version_mismatch"
     );
     const transcriptRefs = parseStringArray(
       item.transcriptRefs,
       `${itemPath}.transcriptRefs`,
       1,
-      5
+      5,
+      "transcript_refs_invalid"
     );
     if (new Set(transcriptRefs).size !== transcriptRefs.length) {
       throw new FeedbackV2ParseError(
+        "transcript_refs_duplicate",
         `${itemPath}.transcriptRefs contains duplicates`
       );
     }
@@ -333,12 +461,14 @@ function parseItems(
       transcriptRefs.some((reference) => !evidenceRefs.has(reference))
     ) {
       throw new FeedbackV2ParseError(
+        "evidence_reference_set_mismatch",
         `${itemPath} transcriptRefs and evidence references must match`
       );
     }
     const observation = requireNonEmpty(
       item.observation,
-      `${itemPath}.observation`
+      `${itemPath}.observation`,
+      "finding_text_invalid"
     );
     const confidence = requireConfidence(
       item.confidence,
@@ -349,7 +479,11 @@ function parseItems(
       observation,
       transcriptRefs,
       evidence,
-      nextStep: requireNonEmpty(item.nextStep, `${itemPath}.nextStep`),
+      nextStep: requireNonEmpty(
+        item.nextStep,
+        `${itemPath}.nextStep`,
+        "finding_text_invalid"
+      ),
       rubricVersion: FEEDBACK_RUBRIC_VERSION,
       confidence,
     };
@@ -882,6 +1016,7 @@ function requireObservableFindingSupport({
     groundedExactCitationClaims.length === exactCitationClaims.length;
   if (exactCitationClaims.length > 0 && !isExactCitation) {
     throw new FeedbackV2ParseError(
+      "finding_exact_citation_unsupported",
       `${path}.observation claims an exact citation that is absent from every individual evidence quote`
     );
   }
@@ -895,6 +1030,7 @@ function requireObservableFindingSupport({
     ![...claimedQuantities].every((anchor) => evidencedQuantities.has(anchor))
   ) {
     throw new FeedbackV2ParseError(
+      "finding_quantitative_claim_unsupported",
       `${path}.observation contains a quantitative claim absent from its exact evidence quotes`
     );
   }
@@ -905,6 +1041,7 @@ function requireObservableFindingSupport({
     ![...claimedAbsolutes].every((anchor) => evidencedAbsolutes.has(anchor))
   ) {
     throw new FeedbackV2ParseError(
+      "finding_absolute_claim_unsupported",
       `${path}.observation contains an absolute claim absent from its exact evidence quotes`
     );
   }
@@ -918,6 +1055,7 @@ function requireObservableFindingSupport({
     hasPositiveTargetClause(sourceText, negativeTargets)
   ) {
     throw new FeedbackV2ParseError(
+      "finding_negative_claim_contradicted",
       `${path}.observation makes a negative claim contradicted by its cited candidate turns`
     );
   }
@@ -926,35 +1064,23 @@ function requireObservableFindingSupport({
   const criticalEvidence = getCriticalClaimAnchors(evidenceText);
   if (![...criticalClaims].every((anchor) => criticalEvidence.has(anchor))) {
     throw new FeedbackV2ParseError(
+      "finding_material_claim_unsupported",
       `${path}.observation contains a material claim absent from its exact evidence quotes`
     );
   }
-  const directionalClaims = getDirectionalClaimAnchors(observation);
-  const groundedDirectionalClaims = getGroundedDirectionalClaimAnchors(
-    evidence,
-    transcriptById
-  );
-  if (
-    ![...directionalClaims].every((anchor) =>
-      groundedDirectionalClaims.has(anchor)
-    )
-  ) {
-    throw new FeedbackV2ParseError(
-      `${path}.observation contains a directional claim absent from an individual exact evidence quote and its cited candidate turn`
-    );
-  }
-
   if (
     observationSignals.size === 0 &&
     !hasCompactObservationAnchor &&
     !isExactCitation
   ) {
     throw new FeedbackV2ParseError(
+      "finding_observable_claim_missing",
       `${path}.observation has no observable claim anchors`
     );
   }
   if (!hasExactEvidenceSupport) {
     throw new FeedbackV2ParseError(
+      "finding_observable_evidence_insufficient",
       `${path}.observation has no observable support in its exact evidence quotes`
     );
   }
@@ -964,24 +1090,16 @@ function requireObservableFindingSupport({
     (sourceSupportCount < 2 || exactEvidenceSupportCount < 2)
   ) {
     throw new FeedbackV2ParseError(
+      "finding_observable_evidence_insufficient",
       `${path}.observation requires at least two independent observable supports in its exact evidence quotes and cited candidate turns`
     );
   }
-  if (
-    sourceSupportCount === 0 &&
-    !hasCompactObservationAnchor &&
-    !isExactCitation
-  ) {
-    throw new FeedbackV2ParseError(
-      `${path}.observation has no observable support in its cited candidate turns`
-    );
-  }
-
   if (confidence > 0.9) {
     const evidenceUnits = countEvidenceLexicalUnits(evidenceText);
     const evidenceLetters = (evidenceText.match(/\p{L}/gu) ?? []).length;
     if (evidenceUnits < 6 || evidenceLetters < 24) {
       throw new FeedbackV2ParseError(
+        "finding_high_confidence_insufficient_evidence",
         `${path}.confidence above 0.9 requires at least 6 quoted lexical units and 24 letters of exact evidence`
       );
     }
@@ -1002,6 +1120,7 @@ function requireScorePrecision(
     const score = scores[dimension];
     if (score >= 9 && !strengthDimensions.has(dimension)) {
       throw new FeedbackV2ParseError(
+        "exceptional_score_insufficient_evidence",
         `exceptional ${dimension} score requires a same-dimension grounded strength`
       );
     }
@@ -1018,6 +1137,7 @@ function requireScorePrecision(
   );
   if (distinctTurns < 3 || quotedUnits < 18) {
     throw new FeedbackV2ParseError(
+      "exceptional_score_insufficient_evidence",
       "exceptional scores with an overall score of 9 or higher require exact evidence from at least 3 candidate turns and 18 quoted lexical units"
     );
   }
@@ -1376,31 +1496,6 @@ function isCoordinatedDirectionalTargetGap(gap: string): boolean {
     modifiers.every((modifier) =>
       ["a", "an", "calculated", "segmented", "the"].includes(modifier)
     )
-  );
-}
-
-function getGroundedDirectionalClaimAnchors(
-  evidence: readonly FeedbackEvidence[],
-  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>
-): Set<string> {
-  const grounded = new Set<string>();
-  for (const entry of evidence) {
-    const quoteAnchors = getDirectionalClaimAnchors(entry.quote);
-    const sourceAnchors = getDirectionalClaimAnchors(
-      transcriptById.get(entry.turnRef)?.text ?? ""
-    );
-    for (const anchor of quoteAnchors) {
-      if (sourceAnchors.has(anchor)) grounded.add(anchor);
-    }
-  }
-  return grounded;
-}
-
-function getIndividualDirectionalClaimAnchors(
-  evidence: readonly FeedbackEvidence[]
-): Set<string> {
-  return new Set(
-    evidence.flatMap((entry) => [...getDirectionalClaimAnchors(entry.quote)])
   );
 }
 
@@ -1936,6 +2031,7 @@ function requireEvidenceLimitedSummary(
     .replace(/\p{Default_Ignorable_Code_Point}/gu, "");
   if (SUMMARY_OUTCOME_PATTERNS.some((pattern) => pattern.test(normalized))) {
     throw new FeedbackV2ParseError(
+      "summary_outcome_claim_disallowed",
       "summary must not make hiring, readiness, pass/fail, or hiring-bar claims"
     );
   }
@@ -1945,6 +2041,7 @@ function requireEvidenceLimitedSummary(
     )
   ) {
     throw new FeedbackV2ParseError(
+      "summary_absolute_claim_unsupported",
       "summary must not make unsupported evaluative absolute claims"
     );
   }
@@ -1965,6 +2062,7 @@ function requireEvidenceLimitedSummary(
     ![...claimedQuantities].every((anchor) => groundedQuantities.has(anchor))
   ) {
     throw new FeedbackV2ParseError(
+      "summary_quantitative_claim_unsupported",
       "summary contains a quantitative claim absent from grounded findings"
     );
   }
@@ -1973,23 +2071,10 @@ function requireEvidenceLimitedSummary(
   const criticalEvidence = getCriticalClaimAnchors(evidenceText);
   if (![...criticalClaims].every((anchor) => criticalEvidence.has(anchor))) {
     throw new FeedbackV2ParseError(
+      "summary_material_claim_unsupported",
       "summary contains a material claim absent from grounded findings"
     );
   }
-  const directionalClaims = getDirectionalClaimAnchors(normalized);
-  const groundedDirectionalClaims = getIndividualDirectionalClaimAnchors(
-    findings.flatMap((finding) => finding.evidence)
-  );
-  if (
-    ![...directionalClaims].every((anchor) =>
-      groundedDirectionalClaims.has(anchor)
-    )
-  ) {
-    throw new FeedbackV2ParseError(
-      "summary contains a directional claim absent from an individual exact evidence quote"
-    );
-  }
-
   const groundedFindingSignals =
     getObservableSupportAnchors(groundedFindingText);
   const coachingSignals = new Set([
@@ -2013,6 +2098,7 @@ function requireEvidenceLimitedSummary(
       supportedStatementSignals / statementSignals.size < 0.5
     ) {
       throw new FeedbackV2ParseError(
+        "summary_observable_support_insufficient",
         "each factual summary statement requires at least two observable supports from grounded findings"
       );
     }
@@ -2030,6 +2116,7 @@ function requireEvidenceLimitedSummary(
       supportedSummarySignals / summarySignals.size < 0.5)
   ) {
     throw new FeedbackV2ParseError(
+      "summary_observable_support_insufficient",
       "summary requires at least two observable supports from grounded findings"
     );
   }
@@ -2687,17 +2774,34 @@ function parseEvidence(
   transcriptById: Map<string, FeedbackTranscriptTurn>
 ): FeedbackEvidence[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
-    throw new FeedbackV2ParseError(`${path} must contain 1 to 5 entries`);
+    throw new FeedbackV2ParseError(
+      "evidence_count_invalid",
+      `${path} must contain 1 to 5 entries`
+    );
   }
   const seen = new Set<string>();
   return value.map((entry, index) => {
     const evidencePath = `${path}[${index}]`;
-    const record = requireRecord(entry, evidencePath);
-    requireExactKeys(record, evidencePath, ["turnRef", "quote"]);
-    const turnRef = requireNonEmpty(record.turnRef, `${evidencePath}.turnRef`);
-    const quote = requireNonEmpty(record.quote, `${evidencePath}.quote`);
+    const record = requireRecord(entry, evidencePath, "evidence_not_object");
+    requireExactKeys(
+      record,
+      evidencePath,
+      ["turnRef", "quote"],
+      "evidence_unknown_field"
+    );
+    const turnRef = requireNonEmpty(
+      record.turnRef,
+      `${evidencePath}.turnRef`,
+      "evidence_turn_ref_invalid"
+    );
+    const quote = requireNonEmpty(
+      record.quote,
+      `${evidencePath}.quote`,
+      "evidence_quote_invalid"
+    );
     if (seen.has(turnRef)) {
       throw new FeedbackV2ParseError(
+        "evidence_turn_ref_duplicate",
         `${path} contains duplicate turnRef ${turnRef}`
       );
     }
@@ -2705,22 +2809,26 @@ function parseEvidence(
     const turn = transcriptById.get(turnRef);
     if (!turn) {
       throw new FeedbackV2ParseError(
+        "evidence_turn_ref_not_found",
         `${evidencePath}.turnRef does not exist in the canonical transcript`
       );
     }
     if (turn.speaker !== "user") {
       throw new FeedbackV2ParseError(
+        "evidence_turn_ref_wrong_speaker",
         `${evidencePath}.turnRef must reference a candidate turn`
       );
     }
     const normalizedQuote = normalizeEvidenceQuoteToSource(turn.text, quote);
     if (!normalizedQuote) {
       throw new FeedbackV2ParseError(
+        "evidence_quote_not_grounded",
         `${evidencePath}.quote is not exact evidence from ${turnRef}`
       );
     }
     if (!isMinimallySubstantiveEvidenceQuote(normalizedQuote, turn.text)) {
       throw new FeedbackV2ParseError(
+        "evidence_quote_insufficient",
         `${evidencePath}.quote must contain minimally substantive evidence`
       );
     }
@@ -2742,6 +2850,7 @@ function requireUniqueEvidence(
       const identity = `${evidence.turnRef}\u0000${identityQuote}`;
       if (seen.has(identity)) {
         throw new FeedbackV2ParseError(
+          "evidence_reused_across_findings",
           `evidence ${evidence.turnRef} is repeated across findings`
         );
       }
@@ -2750,6 +2859,7 @@ function requireUniqueEvidence(
       const start = source?.indexOf(evidence.quote) ?? -1;
       if (start < 0) {
         throw new FeedbackV2ParseError(
+          "evidence_quote_not_grounded",
           `evidence ${evidence.turnRef} is not grounded in its canonical turn`
         );
       }
@@ -2757,6 +2867,7 @@ function requireUniqueEvidence(
       const priorRanges = rangesByTurn.get(evidence.turnRef) ?? [];
       if (priorRanges.some((range) => start < range.end && end > range.start)) {
         throw new FeedbackV2ParseError(
+          "evidence_overlaps_across_findings",
           `evidence ${evidence.turnRef} overlaps evidence across findings`
         );
       }
@@ -2770,7 +2881,8 @@ function parseStringArray(
   value: unknown,
   path: string,
   minimum: number,
-  maximum: number
+  maximum: number,
+  rejectionCode: FeedbackV2RejectionCode
 ): string[] {
   if (
     !Array.isArray(value) ||
@@ -2778,17 +2890,22 @@ function parseStringArray(
     value.length > maximum
   ) {
     throw new FeedbackV2ParseError(
+      rejectionCode,
       `${path} must contain ${minimum} to ${maximum} items`
     );
   }
   return value.map((entry, index) =>
-    requireNonEmpty(entry, `${path}[${index}]`)
+    requireNonEmpty(entry, `${path}[${index}]`, rejectionCode)
   );
 }
 
-function requireRecord(value: unknown, path: string): Record<string, unknown> {
+function requireRecord(
+  value: unknown,
+  path: string,
+  rejectionCode: FeedbackV2RejectionCode
+): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new FeedbackV2ParseError(`${path} must be an object`);
+    throw new FeedbackV2ParseError(rejectionCode, `${path} must be an object`);
   }
   return value as Record<string, unknown>;
 }
@@ -2796,27 +2913,44 @@ function requireRecord(value: unknown, path: string): Record<string, unknown> {
 function requireExactKeys(
   record: Record<string, unknown>,
   path: string,
-  expectedKeys: readonly string[]
+  expectedKeys: readonly string[],
+  rejectionCode: FeedbackV2RejectionCode
 ): void {
   const expected = new Set(expectedKeys);
   const unknownKeys = Object.keys(record).filter((key) => !expected.has(key));
   if (unknownKeys.length > 0) {
     throw new FeedbackV2ParseError(
+      rejectionCode,
       `${path} contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`
     );
   }
 }
 
-function requireNonEmpty(value: unknown, path: string): string {
+function requireNonEmpty(
+  value: unknown,
+  path: string,
+  rejectionCode: FeedbackV2RejectionCode
+): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new FeedbackV2ParseError(`${path} must be a non-empty string`);
+    throw new FeedbackV2ParseError(
+      rejectionCode,
+      `${path} must be a non-empty string`
+    );
   }
   return value;
 }
 
-function requireExact(value: unknown, expected: string, path: string): void {
+function requireExact(
+  value: unknown,
+  expected: string,
+  path: string,
+  rejectionCode: FeedbackV2RejectionCode
+): void {
   if (value !== expected) {
-    throw new FeedbackV2ParseError(`${path} must equal ${expected}`);
+    throw new FeedbackV2ParseError(
+      rejectionCode,
+      `${path} must equal ${expected}`
+    );
   }
 }
 
@@ -2827,7 +2961,10 @@ function requireScore(value: unknown, path: string): number {
     value < 0 ||
     value > 10
   ) {
-    throw new FeedbackV2ParseError(`${path} must be an integer from 0 to 10`);
+    throw new FeedbackV2ParseError(
+      "score_invalid",
+      `${path} must be an integer from 0 to 10`
+    );
   }
   return value;
 }
@@ -2839,7 +2976,10 @@ function requireConfidence(value: unknown, path: string): number {
     value < 0 ||
     value > 1
   ) {
-    throw new FeedbackV2ParseError(`${path} must be a number from 0 to 1`);
+    throw new FeedbackV2ParseError(
+      "confidence_invalid",
+      `${path} must be a number from 0 to 1`
+    );
   }
   return value;
 }

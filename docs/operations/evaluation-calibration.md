@@ -285,6 +285,11 @@ secrets or provider responses containing sensitive data.
   or Production/customer-data payload.
 
 If a live run fails or crashes, keep the launch gate closed. Inspect available
-case/run/dimension failure records, update the evaluator or adjudication
-deliberately, and obtain a separate new authorization before any paid retry.
+case/run/dimension failure records. For invalid-feedback failures, use only the
+closed `feedbackRejectionCode` to identify the failed invariant. Do not add raw
+provider output, parser messages or causes, transcript text, evidence text,
+unknown keys, object paths, or customer data to a report, log, PR, or ticket. A
+`parser_internal_failure` requires a provider-free parser investigation before
+any new authorization. Update the evaluator or adjudication deliberately, and
+obtain a separate new authorization before any paid retry.
 The activated SAV-198 run never resumes.

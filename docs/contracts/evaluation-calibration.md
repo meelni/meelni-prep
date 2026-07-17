@@ -95,6 +95,20 @@ Reports contain aggregate metrics, case IDs, version identifiers, and failure
 codes only. They never contain prompts, transcript text, provider response
 content, API keys, or provider error bodies.
 
+An `evaluation_provider_returned_invalid_feedback` failure additionally carries
+`feedbackRejectionCode`, a member of the closed
+`feedback-v2-rejection.v1` taxonomy. It identifies only the violated invariant;
+the report never receives the parser message, object path, unknown key,
+provider response, or parser cause. Missing, forged, mutable, proxied, or
+unrecognized classifications normalize to `parser_internal_failure`.
+
+The provider adapter authenticates the classification with a module-private
+error-to-code association. The report boundary reads that association directly
+instead of trusting public property access. Runtime error logs retain only the
+existing sanitized provider failure identity and safe metadata. A rejection
+code never changes provider usage, observed model/service-tier reconciliation,
+exact known cost, or the fail-closed stop reason.
+
 Evaluator calls and paid-provider calls are separate metrics. A deterministic
 self-test reports its local evaluator invocations but must always report zero
 provider calls.

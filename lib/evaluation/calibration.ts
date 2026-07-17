@@ -2,10 +2,12 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  isFeedbackV2RejectionCode,
   parseFeedbackV2,
   prepareFeedbackTranscript,
   type FeedbackDimension,
   type FeedbackEvaluationState,
+  type FeedbackV2RejectionCode,
   type FeedbackV2Result,
   type FeedbackV2Scores,
 } from "@meelni/core";
@@ -42,6 +44,10 @@ import {
   type CalibrationCostReport,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
+import {
+  FeedbackProviderInvocationError,
+  getAuthenticatedFeedbackRejectionCode,
+} from "./scorer";
 
 export type CalibrationExecutionKind =
   | "preflight"
@@ -86,6 +92,7 @@ export interface CalibrationFailure {
   observedScoreRange?: number;
   observedModelVersion?: string;
   expectedModelVersion?: string;
+  feedbackRejectionCode?: FeedbackV2RejectionCode;
 }
 
 export interface EvaluationCalibrationReport {
@@ -430,11 +437,11 @@ export async function runEvaluationCalibration(
             continue;
           }
           caseOutputs.push({ runIndex, evaluation: result.evaluation });
-        } catch {
+        } catch (error) {
           failures.push({
             caseId: fixture.id,
             runIndex,
-            code: "evaluation_failed",
+            ...getSanitizedEvaluationFailure(error, options.executionKind),
           });
         }
         if (
@@ -1095,4 +1102,36 @@ function getObservedServiceTierFromError(
   const value = (error as { observedServiceTier?: unknown })
     .observedServiceTier;
   return value === null || typeof value === "string" ? value : undefined;
+}
+
+function getSanitizedEvaluationFailure(
+  error: unknown,
+  executionKind: CalibrationExecutionKind
+): Pick<CalibrationFailure, "code" | "feedbackRejectionCode"> {
+  if (
+    executionKind !== "live_provider" ||
+    !(error instanceof FeedbackProviderInvocationError)
+  ) {
+    return { code: "evaluation_failed" };
+  }
+
+  const code: unknown = error.code;
+  switch (code) {
+    case "evaluation_provider_returned_no_content":
+    case "evaluation_provider_returned_invalid_json":
+    case "evaluation_provider_usage_missing":
+    case "evaluation_provider_invocation_failed":
+      return { code };
+    case "evaluation_provider_returned_invalid_feedback": {
+      const authenticatedCode = getAuthenticatedFeedbackRejectionCode(error);
+      return {
+        code,
+        feedbackRejectionCode: isFeedbackV2RejectionCode(authenticatedCode)
+          ? authenticatedCode
+          : "parser_internal_failure",
+      };
+    }
+    default:
+      return { code: "evaluation_failed" };
+  }
 }
