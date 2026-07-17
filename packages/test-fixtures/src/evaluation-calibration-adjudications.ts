@@ -245,14 +245,14 @@ export const SCORED_ADJUDICATIONS: Readonly<
       1,
       "choose one warehouse with stable scanning behavior",
       "structure",
-      "Includes a fallback in the pilot design before launch.",
-      "Test the fallback and document when it takes over."
+      "Bounds the pilot to a warehouse with stable scanning behavior.",
+      "Confirm the warehouse has stable scanning behavior before the pilot begins."
     ),
     finding(
       1,
       "define a manual fallback before the pilot",
       "leadership",
-      "Defines a bounded pilot and fallback but does not name the local accountable owner.",
+      "Defines a manual fallback but does not name the local accountable owner.",
       "Name the warehouse owner and decision authority for pausing the pilot."
     )
   ),
