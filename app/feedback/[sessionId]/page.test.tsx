@@ -66,13 +66,13 @@ describe("feedback transcript read states", () => {
     const failure = await screen.findByRole("alert");
     expect(failure).toHaveTextContent("Transcript could not be loaded");
     expect(
-      screen.queryByText("No transcript available for this session")
+      screen.queryByText("No transcript is available for this interview.")
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry transcript" }));
 
     expect(
-      await screen.findByText("No transcript available for this session")
+      await screen.findByText("No transcript is available for this interview.")
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(transcriptAttempts).toBe(2);
@@ -101,7 +101,7 @@ describe("feedback transcript read states", () => {
       "Loading transcript"
     );
     expect(
-      screen.queryByText("No transcript available for this session")
+      screen.queryByText("No transcript is available for this interview.")
     ).not.toBeInTheDocument();
     expect(resolveTranscript).toBeDefined();
 
@@ -223,23 +223,43 @@ function completedFeedbackResponse(
 ) {
   return Response.json({
     status: "completed",
+    retryable: false,
     feedback: {
+      kind: "v2",
       id: "feedback-1",
       sessionId,
-      structureScore: 8,
-      clarityScore: 8,
-      insightScore: 8,
-      communicationScore: 8,
-      leadershipScore: 8,
-      overallScore: 8,
-      strengths: [],
-      improvements: [],
-      drills: [],
+      scores: {
+        structure: 8,
+        clarity: 8,
+        insight: 8,
+        communication: 8,
+        leadership: 8,
+        overall: 8,
+      },
+      strengths: [feedbackFinding("insight", "turn-1")],
+      improvements: [feedbackFinding("structure", "turn-2")],
       summary,
-      rubricVersion: "test",
+      rubricVersion: "pm-feedback-rubric.v2",
+      schemaVersion: "feedback.v2",
+      promptVersion: "feedback.prompt.v2",
+      modelVersion: "synthetic-fixture-model",
+      evaluationState: "full",
       createdAt: "2099-07-15T21:00:00.000Z",
+      nextPracticeRecommendation: null,
     },
   });
+}
+
+function feedbackFinding(dimension: "insight" | "structure", turnRef: string) {
+  return {
+    dimension,
+    observation: `Synthetic ${dimension} observation`,
+    transcriptRefs: [turnRef],
+    evidence: [{ turnRef, quote: `Synthetic ${dimension} evidence` }],
+    nextStep: `Synthetic ${dimension} next action`,
+    rubricVersion: "pm-feedback-rubric.v2",
+    confidence: 0.8,
+  };
 }
 
 function transcriptResponse(sessionId: string, text: string) {
