@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildStatsigUser, getStatsigConfig } from "./config";
+import {
+  buildStatsigUser,
+  getStatsigConfig,
+  localFeatureFlagOverridesEnabled,
+} from "./config";
 
 describe("Statsig feature flag config", () => {
+  it("permits local gate overrides only in development", () => {
+    expect(localFeatureFlagOverridesEnabled("development")).toBe(true);
+    expect(localFeatureFlagOverridesEnabled("production")).toBe(false);
+    expect(localFeatureFlagOverridesEnabled("test")).toBe(false);
+  });
   it("disables Statsig when the public client key is missing", () => {
     const config = getStatsigConfig({
       NODE_ENV: "production",

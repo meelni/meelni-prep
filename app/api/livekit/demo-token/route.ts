@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
 
     const livekitEnv = getLiveKitEnvironment(process.env);
     const demoAgentName = getLiveKitAgentName("demo", process.env);
+    const interviewAgentName = getLiveKitAgentName("interview", process.env);
 
     if (!livekitEnv.ok) {
       console.error(
@@ -97,10 +98,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!demoAgentName.ok) {
+    if (
+      !demoAgentName.ok ||
+      !interviewAgentName.ok ||
+      demoAgentName.data === interviewAgentName.data
+    ) {
       console.error(
-        "LiveKit demo configuration error:",
-        demoAgentName.error.message
+        "LiveKit demo configuration error: a distinct demo dispatch is required"
       );
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },

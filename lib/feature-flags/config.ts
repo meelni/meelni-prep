@@ -25,6 +25,12 @@ export interface StatsigConfig {
   environmentTier?: string;
 }
 
+export function localFeatureFlagOverridesEnabled(
+  nodeEnv = process.env.NODE_ENV
+): boolean {
+  return nodeEnv === "development";
+}
+
 export function getStatsigConfig(env: StatsigEnv = process.env): StatsigConfig {
   const clientKey = env.NEXT_PUBLIC_STATSIG_CLIENT_KEY?.trim() ?? "";
   const nodeEnv = env.NODE_ENV ?? "development";
@@ -63,7 +69,8 @@ export function buildStatsigUser({
   }
 
   const emailDomain = user.email?.split("@")[1]?.toLowerCase();
-  const signupMethod = user.app_metadata?.provider === "google" ? "google" : "email";
+  const signupMethod =
+    user.app_metadata?.provider === "google" ? "google" : "email";
 
   return {
     userID: user.id,

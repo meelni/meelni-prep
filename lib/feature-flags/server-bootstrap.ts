@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { getStatsigConfig } from "./config";
+import { buildServerGateDeploymentContext } from "./server-deployment-context";
 import { FEATURE_GATES } from "./gates";
 import { resolveServerGate } from "./server-resolver";
 
@@ -37,6 +38,10 @@ export const getFeatureFlagBootstrap = cache(
             clientKey: config.clientKey,
             fallbackValue,
             gateName,
+            ...buildServerGateDeploymentContext(
+              process.env,
+              config.environmentTier
+            ),
             user: { userID: "public-launch-state" },
           });
 

@@ -258,6 +258,59 @@ export function findMissingRequiredEnv(
   return missing;
 }
 
+const SUPABASE_PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/;
+
+export function inferSupabaseProjectRef(
+  value: string | undefined
+): string | undefined {
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return undefined;
+    return url.hostname.match(
+      new RegExp(
+        `^(${SUPABASE_PROJECT_REF_PATTERN.source.slice(1, -1)})\\.supabase\\.co$`
+      )
+    )?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+export function inferSupabaseDatabaseProjectRef(
+  value: string | undefined
+): string | undefined {
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(value);
+    if (!["postgres:", "postgresql:"].includes(url.protocol)) return undefined;
+
+    const direct = url.hostname.match(
+      new RegExp(
+        `^db\\.(${SUPABASE_PROJECT_REF_PATTERN.source.slice(1, -1)})\\.supabase\\.co$`
+      )
+    );
+    if (direct) return direct[1];
+
+    if (!/^[a-z0-9-]+\.pooler\.supabase\.com$/.test(url.hostname)) {
+      return undefined;
+    }
+    return decodeURIComponent(url.username).match(
+      new RegExp(
+        `^postgres\\.(${SUPABASE_PROJECT_REF_PATTERN.source.slice(1, -1)})$`
+      )
+    )?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+export function isSupabaseProjectRef(value: string | undefined): boolean {
+  return SUPABASE_PROJECT_REF_PATTERN.test(value ?? "");
+}
+
 function env(
   name: string,
   description: string,

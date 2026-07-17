@@ -7,8 +7,8 @@ import {
   isLoopbackDatabaseUrl,
 } from "./supabase-environment-guard.mjs";
 
-const previewRef = "previewprojectref123";
-const productionRef = "productionproject123";
+const previewRef = "kxpvidtxznllfosfemdl";
+const productionRef = "rarrrwkjuhfyfatcmrkw";
 
 test("loopback database workflows do not require shared environment identity", () => {
   for (const databaseUrl of [
@@ -24,7 +24,7 @@ test("loopback database workflows do not require shared environment identity", (
   }
 });
 
-test("Preview must differ from the declared Production Supabase project", () => {
+test("Preview must match the canonical Preview Supabase project", () => {
   assert.equal(
     getSupabaseEnvironmentIdentityPolicy({
       databaseUrl: databaseUrl(previewRef),
@@ -42,7 +42,16 @@ test("Preview must differ from the declared Production Supabase project", () => 
     productionProjectRef: productionRef,
   });
   assert.equal(policy.allowed, false);
-  assert.match(policy.reason, /Preview database target matches/);
+  assert.match(policy.reason, /does not match the canonical Preview/);
+
+  const unrelated = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: databaseUrl("unrelatedproject1234"),
+    environment: "preview",
+    expectedEnvironment: "preview",
+    productionProjectRef: productionRef,
+  });
+  assert.equal(unrelated.allowed, false);
+  assert.match(unrelated.reason, /does not match the canonical Preview/);
 });
 
 test("Production must match the declared Production Supabase project", () => {
@@ -64,6 +73,15 @@ test("Production must match the declared Production Supabase project", () => {
   });
   assert.equal(policy.allowed, false);
   assert.match(policy.reason, /Production database target does not match/);
+
+  const selfAttested = getSupabaseEnvironmentIdentityPolicy({
+    databaseUrl: databaseUrl("unrelatedproject1234"),
+    environment: "production",
+    expectedEnvironment: "production",
+    productionProjectRef: "unrelatedproject1234",
+  });
+  assert.equal(selfAttested.allowed, false);
+  assert.match(selfAttested.reason, /does not match the canonical Production/);
 });
 
 test("remote targets fail closed without valid environment identity metadata", () => {
