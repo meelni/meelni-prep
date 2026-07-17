@@ -509,11 +509,11 @@ test("rejects a shared demo and interview dispatch name", async () => {
   );
 });
 
-test("keeps the verified Preview identity fail-closed until demo is provisioned", async () => {
+test("accepts the exact committed Preview interview and demo dispatch identity", async () => {
   const result = await runDeploymentPreflight({
     env: {
       ...validEnvironment("preview"),
-      LIVEKIT_DEMO_AGENT_NAME: "meelni-preview-demo",
+      LIVEKIT_DEMO_AGENT_NAME: PREVIEW_LIVEKIT_IDENTITY.demoAgentName,
       LIVEKIT_INTERVIEW_AGENT_NAME: PREVIEW_LIVEKIT_IDENTITY.interviewAgentName,
       LIVEKIT_URL: `wss://${PREVIEW_LIVEKIT_IDENTITY.projectHost}`,
       NEXT_PUBLIC_LIVEKIT_URL: `wss://${PREVIEW_LIVEKIT_IDENTITY.projectHost}`,
@@ -525,11 +525,8 @@ test("keeps the verified Preview identity fail-closed until demo is provisioned"
     target: "preview",
   });
 
-  assert.equal(result.ok, false);
-  assert.deepEqual(
-    result.failures.map((failure) => failure.check),
-    ["LIVEKIT_DEMO_AGENT_NAME"]
-  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.failures, []);
 });
 
 test("rejects Preview Supabase configuration that resolves to Production", async () => {
@@ -695,6 +692,32 @@ test("rejects cross-target Inngest signing keys", async () => {
       target
     );
   }
+});
+
+test("accepts the shared Inngest branch key for Preview only", async () => {
+  const branchKey = "signkey-branch-0123456789abcdef";
+  const preview = await runDeploymentPreflight({
+    env: { ...validEnvironment("preview"), INNGEST_SIGNING_KEY: branchKey },
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    previewLiveKitIdentity: testPreviewLiveKitIdentity,
+    stripeCatalogReader: validStripeReader(false),
+    target: "preview",
+  });
+  assert.equal(preview.ok, true);
+
+  const production = await runDeploymentPreflight({
+    env: { ...validEnvironment("production"), INNGEST_SIGNING_KEY: branchKey },
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(true),
+    target: "production",
+  });
+  assert.equal(production.ok, false);
+  assert.deepEqual(
+    production.failures.map((failure) => failure.check),
+    ["inngest.signing_key_target"]
+  );
 });
 
 test("locks deployment to target-specific owner-controlled relaunch states", async () => {
