@@ -8,7 +8,7 @@ export function getCalibrationCliExitCode(
   report: EvaluationCalibrationReport
 ): 0 | 1 {
   if (executionKind === "live_provider") {
-    return report.gate.launchAcceptance === "passed" ? 0 : 1;
+    return report.gate.calibrationEvidenceAcceptance === "passed" ? 0 : 1;
   }
   if (executionKind === "deterministic_self_test") {
     return report.gate.deterministicHarness === "passed" ? 0 : 1;
