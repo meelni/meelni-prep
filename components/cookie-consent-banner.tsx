@@ -30,7 +30,7 @@ export function CookieConsentBanner() {
           </p>
           <Link
             href="/privacy"
-            className="text-primary text-xs underline-offset-4 hover:underline"
+            className="text-primary inline-flex min-h-11 items-center text-xs underline-offset-4 hover:underline"
           >
             Read the privacy draft
           </Link>
@@ -45,6 +45,7 @@ export function CookieConsentBanner() {
             type="button"
             size="sm"
             variant="outline"
+            className="min-h-11"
             disabled={saving}
             onClick={() => void setConsent("declined", "banner")}
           >
@@ -53,6 +54,7 @@ export function CookieConsentBanner() {
           <Button
             type="button"
             size="sm"
+            className="min-h-11"
             disabled={saving}
             onClick={() => void setConsent("accepted", "banner")}
           >

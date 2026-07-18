@@ -8,6 +8,7 @@ import {
   ANONYMOUS_CONSENT_SUBJECT,
   parseAnalyticsConsentCookie,
   resolveTrustedAnalyticsConsent,
+  shouldRetryAccountConsentSync,
   type AnalyticsConsentSnapshot,
 } from "@/lib/analytics/consent-contract";
 import { createAnalyticsPseudonym } from "@/lib/analytics/pseudonym";
@@ -16,6 +17,7 @@ import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { createClient } from "@/lib/supabase/server";
 
 export interface TrustedAnalyticsConsentState {
+  accountSyncPending: boolean;
   accountSynchronized: boolean;
   analyticsPseudonym: string | null;
   consent: AnalyticsConsentSnapshot;
@@ -54,6 +56,7 @@ export async function resolveTrustedAnalyticsConsentState(
     if (!user) {
       const browser = parseAnalyticsConsentCookie(browserCookieValue);
       return {
+        accountSyncPending: false,
         accountSynchronized: false,
         analyticsPseudonym: null,
         consent: resolveTrustedAnalyticsConsent(
@@ -70,10 +73,15 @@ export async function resolveTrustedAnalyticsConsentState(
     const account = await readUserAnalyticsConsent(user.id);
     const browser = parseAnalyticsConsentCookie(browserCookieValue);
     const consent = resolveTrustedAnalyticsConsent(browser, account, "account");
+    const accountSynchronized =
+      consent.decision === account.decision &&
+      consent.decidedAt === account.decidedAt;
     return {
-      accountSynchronized:
-        consent.decision === account.decision &&
-        consent.decidedAt === account.decidedAt,
+      accountSyncPending: shouldRetryAccountConsentSync(
+        consent,
+        accountSynchronized
+      ),
+      accountSynchronized,
       analyticsPseudonym: createAnalyticsPseudonym(user.id),
       consent,
       resolved: true,
@@ -85,6 +93,7 @@ export async function resolveTrustedAnalyticsConsentState(
       ...toSafeErrorLog(error),
     });
     return {
+      accountSyncPending: false,
       accountSynchronized: false,
       analyticsPseudonym: null,
       consent: UNDECIDED_ANALYTICS_CONSENT,

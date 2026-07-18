@@ -58,11 +58,13 @@ const AnalyticsConsentContext = createContext<
 
 export function AnalyticsConsentProvider({
   children,
+  initialAccountSyncPending = false,
   initialAnalyticsPseudonym = null,
   initialConsent = UNDECIDED_ANALYTICS_CONSENT,
   initialResolvedForSubject = null,
 }: {
   children: React.ReactNode;
+  initialAccountSyncPending?: boolean;
   initialAnalyticsPseudonym?: string | null;
   initialConsent?: AnalyticsConsentSnapshot;
   initialResolvedForSubject?: string | null;
@@ -81,7 +83,9 @@ export function AnalyticsConsentProvider({
   const [analyticsPseudonym, setAnalyticsPseudonym] = useState(
     initialAnalyticsPseudonym
   );
-  const [accountSyncPending, setAccountSyncPending] = useState(false);
+  const [accountSyncPending, setAccountSyncPending] = useState(
+    initialAccountSyncPending
+  );
   const [savingDecision, setSavingDecision] =
     useState<ConsentWriteDecision | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +99,9 @@ export function AnalyticsConsentProvider({
   }, []);
 
   useEffect(() => {
+    // Auth hydration temporarily has no trusted subject. Preserve the server-
+    // resolved state until auth resolves to an actual account or anonymous.
+    if (currentSubject === null) return;
     if (
       previousSubjectRef.current !== null &&
       previousSubjectRef.current !== currentSubject

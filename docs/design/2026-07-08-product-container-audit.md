@@ -93,8 +93,13 @@ Use for legacy links only.
 
 Current routes:
 
-- `/setup`: redirects to `/dashboard/new-interview` and should not regain a standalone setup UI.
-- `/dashboard/new-rep`: preserves query context and redirects to `/dashboard/new-interview`.
+- `/setup`: returns a pre-middleware Next HTTP 308 to
+  `/dashboard/new-interview` and should not regain a standalone setup UI.
+- `/dashboard/new-rep`: returns the same permanent HTTP redirect while
+  preserving every query key/value and the order of repeated values. Next may
+  normalize equivalent encoding and ordering between different keys. Both
+  route pages retain server-only redirect fallbacks; neither path depends on
+  hydration in the deployed app.
 
 ### Public And Content Pages
 

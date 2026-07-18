@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -7,6 +7,16 @@ const ROOTS = ["app", "components", "lib"];
 const EXTENSIONS = new Set([".css", ".ts", ".tsx"]);
 const INVALID_TOKEN_WRAPPER =
   /(?:hsl|rgb|rgba)\(\s*var\(--[a-z0-9-]+\)\s*(?:(?:\/|,)[^)]*)?\)/g;
+
+async function fileExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 function isTestSourceFile(file) {
   return (
@@ -64,6 +74,42 @@ test("design tokens are not wrapped in legacy hsl()/rgb() color functions", asyn
   }
 
   assert.deepEqual(violations, []);
+});
+
+test("analytics privacy actions preserve the 44px touch-target contract", async () => {
+  const banner = await readFile("components/cookie-consent-banner.tsx", "utf8");
+  const settings = await readFile(
+    "components/dashboard/sections/settings.tsx",
+    "utf8"
+  );
+
+  for (const label of [
+    "Read the privacy draft",
+    "Decline",
+    "Allow analytics",
+  ]) {
+    const labelIndex = banner.indexOf(label);
+    assert.notEqual(labelIndex, -1, `missing consent banner action: ${label}`);
+    assert.match(
+      banner.slice(Math.max(0, labelIndex - 500), labelIndex + 100),
+      /min-h-11/,
+      `${label} must retain a 44px minimum target`
+    );
+  }
+
+  for (const label of ["Retry account sync", "Turn off", '"Allow"']) {
+    const labelIndex = settings.lastIndexOf(label);
+    assert.notEqual(
+      labelIndex,
+      -1,
+      `missing privacy settings action: ${label}`
+    );
+    assert.match(
+      settings.slice(Math.max(0, labelIndex - 500), labelIndex + 100),
+      /min-h-11/,
+      `${label} must retain a 44px minimum target`
+    );
+  }
 });
 
 test("ui source tree does not keep tracked backup files", async () => {
@@ -528,11 +574,11 @@ test("authenticated product routes follow the product container taxonomy", async
     "app/dashboard/new-interview/page.tsx",
     "utf8"
   );
-  const launchRedirect = await readFile(
-    "app/setup/interview-launch-redirect.tsx",
+  const interviewPage = await readFile("app/interview/page.tsx", "utf8");
+  const interviewRoomSurface = await readFile(
+    "app/interview/components/interview-room-surface.tsx",
     "utf8"
   );
-  const interviewPage = await readFile("app/interview/page.tsx", "utf8");
   const feedbackResultPage = await readFile(
     "app/feedback/[sessionId]/page.tsx",
     "utf8"
@@ -568,26 +614,29 @@ test("authenticated product routes follow the product container taxonomy", async
     }
   }
 
-  if (!setupPage.includes("InterviewLaunchRedirect")) {
-    violations.push("app/setup/page.tsx:interview-launch-redirect");
+  if (
+    !setupPage.includes("permanentRedirect(") ||
+    !setupPage.includes("buildNewInterviewHrefFromPageSearchParams")
+  ) {
+    violations.push("app/setup/page.tsx:http-interview-launch-redirect");
   }
   if (setupPage.includes("SetupContent")) {
     violations.push("app/setup/page.tsx:standalone-setup-content");
   }
-  if (!newRepPage.includes("InterviewLaunchRedirect")) {
-    violations.push("app/dashboard/new-rep/page.tsx:interview-launch-redirect");
+  if (
+    !newRepPage.includes("permanentRedirect(") ||
+    !newRepPage.includes("buildNewInterviewHrefFromPageSearchParams")
+  ) {
+    violations.push(
+      "app/dashboard/new-rep/page.tsx:http-interview-launch-redirect"
+    );
   }
   if (!newInterviewPage.includes("SetupContent")) {
     violations.push("app/dashboard/new-interview/page.tsx:SetupContent");
   }
-  if (
-    !launchRedirect.includes("buildNewInterviewHref(searchParams.toString())")
-  ) {
-    violations.push(
-      "app/setup/interview-launch-redirect.tsx:query-preservation"
-    );
+  if (await fileExists("app/setup/interview-launch-redirect.tsx")) {
+    violations.push("app/setup/interview-launch-redirect.tsx:client-fallback");
   }
-
   for (const file of dashboardSections) {
     const content = await readFile(file, "utf8");
     if (!content.includes("DashboardPage")) {
@@ -617,11 +666,18 @@ test("authenticated product routes follow the product container taxonomy", async
   for (const required of [
     "LiveKitRoomWrapper",
     "InterviewRoomContent",
+    "InterviewRoomSurface",
     "StatusPill",
-    "AppSurfaceHeader",
   ]) {
     if (!interviewPage.includes(required)) {
       violations.push(`app/interview/page.tsx:${required}`);
+    }
+  }
+  for (const required of ["AppSurfaceHeader", "StatusPill"]) {
+    if (!interviewRoomSurface.includes(required)) {
+      violations.push(
+        `app/interview/components/interview-room-surface.tsx:${required}`
+      );
     }
   }
 

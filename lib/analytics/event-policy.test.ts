@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  hasAnalyticsEventPolicy,
   sanitizeAnalyticsEventProperties,
   toSafeAnalyticsErrorCode,
 } from "./event-policy";
@@ -53,5 +54,23 @@ test("legacy launcher aliases preserve the canonical minimized payload", () => {
   assert.deepEqual(
     sanitizeAnalyticsEventProperties("new_rep_start_failed", properties),
     sanitizeAnalyticsEventProperties("new_interview_start_failed", properties)
+  );
+});
+
+test("current deadline and INP observability survive the privacy allowlist", () => {
+  assert.equal(hasAnalyticsEventPolicy("interview_deadline_reached"), true);
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("interview_deadline_reached", {
+      session_id: "private-session",
+      interview_type: "product_sense",
+    }),
+    { interview_type: "product_sense" }
+  );
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("page_performance", {
+      page: "/feedback/private-session?token=secret",
+      inp: 147,
+    }),
+    { page: "/feedback/:sessionId", inp: 147 }
   );
 });

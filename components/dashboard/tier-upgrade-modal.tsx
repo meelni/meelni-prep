@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -15,13 +15,7 @@ import {
   DashboardActionCard,
   DashboardSectionCard,
 } from "@/components/dashboard/dashboard-surface";
-import {
-  Lock,
-  Sparkles,
-  MessageSquare,
-  TrendingUp,
-  Zap,
-} from "lucide-react";
+import { Lock, Sparkles, MessageSquare, TrendingUp, Zap } from "lucide-react";
 import { INTERVIEW_TYPE_LABELS, type RoundType } from "@meelni/core";
 import { track, AnalyticsEvents } from "@/lib/analytics";
 import { getPublicPricingPlans } from "@/lib/billing/catalog-presentation";
@@ -32,6 +26,7 @@ interface TierUpgradeModalProps {
   requestedType: RoundType;
   currentTier: string;
   message: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 export function TierUpgradeModal({
@@ -40,9 +35,12 @@ export function TierUpgradeModal({
   requestedType,
   currentTier,
   message,
+  returnFocusRef,
 }: TierUpgradeModalProps) {
   const router = useRouter();
-  const purchasePlans = getPublicPricingPlans().filter((plan) => plan.canPurchase);
+  const purchasePlans = getPublicPricingPlans().filter(
+    (plan) => plan.canPurchase
+  );
 
   // Track when modal is viewed
   useEffect(() => {
@@ -105,8 +103,15 @@ export function TierUpgradeModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDismiss}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusRef?.current) return;
+          event.preventDefault();
+          returnFocusRef.current.focus();
+        }}
+        className="max-w-2xl"
+      >
+        <DialogHeader className="pr-12">
           <div className="mb-2 flex items-center gap-3">
             <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-full">
               <Lock className="text-primary h-6 w-6" />
@@ -197,7 +202,7 @@ export function TierUpgradeModal({
           </div>
         </div>
 
-        <DialogFooter className="flex-col gap-3 sm:flex-row">
+        <DialogFooter className="flex-col gap-3 sm:flex-row [&_button]:min-h-11">
           <Button
             variant="outline"
             onClick={handleDismiss}
