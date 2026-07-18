@@ -22,6 +22,7 @@ DECLARE
   runtime_ledger_rows integer;
   runtime_ledger_hash text;
   reconciliation_attempted boolean := false;
+  original_search_path text := pg_catalog.current_setting('search_path');
 BEGIN
   PERFORM pg_catalog.set_config('search_path', 'pg_catalog, public', true);
   PERFORM pg_catalog.pg_advisory_xact_lock(664882365002400013::bigint);
@@ -829,5 +830,6 @@ BEGIN
       AND column_name = 'writer_generation'
   ) INTO has_marker_generation;
   END LOOP;
+  PERFORM pg_catalog.set_config('search_path', original_search_path, true);
 END
 $runtime_settlement_reconciliation$;
