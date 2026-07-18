@@ -1,5 +1,36 @@
 {
   "version": 2,
   "repository": "meelni/meelni-prep",
-  "stacks": []
+  "stacks": [
+    {
+      "pr": 327,
+      "parentPr": 326,
+      "headRef": "codex/sav-252-private-calibration-capture",
+      "parentRef": "codex/sav-251-semantic-adjudication"
+    },
+    {
+      "pr": 328,
+      "parentPr": 327,
+      "headRef": "codex/sav-255-calibration-evidence-terminology",
+      "parentRef": "codex/sav-252-private-calibration-capture"
+    },
+    {
+      "pr": 325,
+      "parentPr": 324,
+      "headRef": "codex/sav-226-preview-isolation-reconvergence",
+      "parentRef": "codex/sav-180-consent-reconvergence"
+    },
+    {
+      "pr": 330,
+      "parentPr": 325,
+      "headRef": "codex/sav-178-public-demo-security-reconvergence",
+      "parentRef": "codex/sav-226-preview-isolation-reconvergence"
+    },
+    {
+      "pr": 332,
+      "parentPr": 324,
+      "headRef": "codex/sav-211-feedback-accessibility-reconvergence",
+      "parentRef": "codex/sav-180-consent-reconvergence"
+    }
+  ]
 }
