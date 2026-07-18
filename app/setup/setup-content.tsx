@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
@@ -57,6 +57,7 @@ export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const shouldReduceMotion = useReducedMotion();
   const launchContext = useMemo(
     () => parseInterviewLaunchContext(searchParams),
     [searchParams]
@@ -489,7 +490,7 @@ export function SetupContent() {
     <div className="bg-dashboard-panel text-dashboard-foreground min-h-full">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-5 sm:p-8">
         <motion.div
-          initial="initial"
+          initial={shouldReduceMotion ? false : "initial"}
           animate="animate"
           variants={staggerContainer}
           className="space-y-6"
@@ -566,14 +567,23 @@ export function SetupContent() {
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill tone="primary">
+                  <StatusPill
+                    tone="primary"
+                    className="text-dashboard-foreground"
+                  >
                     <Sparkles className="h-3.5 w-3.5" />
                     Recommended
                   </StatusPill>
-                  <StatusPill tone="muted">
+                  <StatusPill
+                    tone="muted"
+                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground"
+                  >
                     {recommendation.durationMinutes} min
                   </StatusPill>
-                  <StatusPill tone="muted">
+                  <StatusPill
+                    tone="muted"
+                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground"
+                  >
                     {recommendation.creditCost} credit
                   </StatusPill>
                 </div>
@@ -619,7 +629,7 @@ export function SetupContent() {
                     properties
                   );
                 }}
-                className="w-full shrink-0 sm:w-fit"
+                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground w-full shrink-0 bg-transparent sm:w-fit"
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Use recommendation
@@ -700,9 +710,10 @@ export function SetupContent() {
             />
           </motion.section>
 
-          <motion.div
+          <motion.section
+            aria-label="Interview summary"
             variants={fadeInUp}
-            className="border-dashboard-panel-border bg-dashboard-panel/95 sticky bottom-0 -mx-5 border-t p-5 backdrop-blur sm:-mx-8 sm:px-8"
+            className="border-dashboard-panel-border bg-dashboard-panel -mx-5 border-t p-5 sm:sticky sm:bottom-0 sm:-mx-8 sm:px-8"
           >
             <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
@@ -727,7 +738,7 @@ export function SetupContent() {
                   (questionIdParam !== null &&
                     questionIntentState.status !== "ready")
                 }
-                className="text-primary-foreground w-full sm:w-auto"
+                className="text-primary-foreground min-h-11 w-full sm:w-auto"
               >
                 {isCreatingSession ? (
                   <>
@@ -742,7 +753,7 @@ export function SetupContent() {
                 )}
               </Button>
             </div>
-          </motion.div>
+          </motion.section>
         </motion.div>
       </main>
 

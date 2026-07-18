@@ -87,16 +87,11 @@ export function Header() {
           {/* Desktop Navigation */}
           {reactivationEnabled && (
             <nav className="hidden items-center gap-8 lg:flex">
-              {navLinks.map((link, index) => {
+              {navLinks.map((link) => {
                 const isActive = activeSection === link.href.slice(1);
                 const isExternalRoute = link.href.startsWith("/");
                 return (
-                  <motion.div
-                    key={link.name}
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
-                  >
+                  <div key={link.name}>
                     {isExternalRoute ? (
                       <Link
                         href={link.href}
@@ -126,7 +121,7 @@ export function Header() {
                         />
                       </a>
                     )}
-                  </motion.div>
+                  </div>
                 );
               })}
             </nav>

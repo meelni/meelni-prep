@@ -386,7 +386,9 @@ function AccountPane({
         <div className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <div className="border-primary/40 bg-primary/10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
-              <span className="text-primary text-sm font-bold">{initials}</span>
+              <span className="text-dashboard-foreground text-sm font-bold">
+                {initials}
+              </span>
             </div>
             <div className="min-w-0">
               <p className="text-dashboard-foreground truncate text-sm font-bold">

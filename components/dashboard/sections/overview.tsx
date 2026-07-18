@@ -108,7 +108,7 @@ export const OverviewSection = memo(function OverviewSection({
               </p>
               <div className="text-dashboard-muted mt-5 font-mono text-5xl leading-none font-semibold sm:text-6xl">
                 {summary.progress.score?.toFixed(1) ?? "—"}
-                <span className="text-dashboard-muted/60">/10</span>
+                <span className="text-dashboard-muted">/10</span>
               </div>
               <div className="bg-dashboard-muted/15 mt-5 h-2 overflow-hidden rounded-full">
                 {summary.progress.score !== null && (
@@ -197,7 +197,12 @@ export const OverviewSection = memo(function OverviewSection({
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
                 Recent interviews
               </p>
-              <Button asChild variant="link" size="sm" className="h-auto p-0">
+              <Button
+                asChild
+                variant="link"
+                size="sm"
+                className="text-dashboard-foreground h-auto p-0 hover:text-white"
+              >
                 <Link href="/dashboard/history">All</Link>
               </Button>
             </div>
@@ -292,7 +297,9 @@ function InfoPanel({
         <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
           {eyebrow}
         </p>
-        <span className="text-primary text-xs font-semibold">{meta}</span>
+        <span className="text-dashboard-foreground text-xs font-semibold">
+          {meta}
+        </span>
       </div>
       <div className="mt-5 flex items-end gap-4">
         <span className="text-dashboard-foreground font-mono text-5xl leading-none font-semibold">

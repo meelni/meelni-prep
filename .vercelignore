@@ -23,6 +23,11 @@ __tests__/
 *.test.tsx
 *.spec.ts
 *.spec.tsx
+/playwright.config.ts
+/scripts/verify-browser-fixture-boundary.mjs
+/tests/browser/
+playwright-report/
+test-results/
 
 # Workspace packages required by the root Next.js app
 !packages/
