@@ -8,11 +8,23 @@ import {
 } from "lucide-react";
 
 export interface DashboardNavigationItem {
-  id: string;
+  id: DashboardNavigationSection;
   icon: LucideIcon;
   label: string;
   href: string;
 }
+
+export type DashboardNavigationSection =
+  | "overview"
+  | "history"
+  | "questions"
+  | "analytics"
+  | "settings";
+
+export type DashboardActiveSection =
+  | DashboardNavigationSection
+  | "new-interview"
+  | null;
 
 export const DASHBOARD_NAVIGATION_ITEMS: readonly DashboardNavigationItem[] = [
   {
@@ -46,3 +58,15 @@ export const DASHBOARD_NAVIGATION_ITEMS: readonly DashboardNavigationItem[] = [
     href: "/dashboard/settings",
   },
 ];
+
+export function getDashboardActiveSectionFromPath(
+  path: string
+): DashboardActiveSection {
+  if (path === "/dashboard" || path === "/dashboard/") return "overview";
+  if (path.startsWith("/dashboard/new-interview")) return "new-interview";
+  if (path.startsWith("/dashboard/history")) return "history";
+  if (path.startsWith("/dashboard/questions")) return "questions";
+  if (path.startsWith("/dashboard/analytics")) return "analytics";
+  if (path.startsWith("/dashboard/settings")) return "settings";
+  return null;
+}

@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DemoModal } from "./demo-modal";
+import { Hero } from "./sections/hero";
 
 vi.mock("@livekit/components-react", () => ({
   LiveKitRoom: ({ children }: { children: React.ReactNode }) => (
@@ -26,6 +27,12 @@ vi.mock("livekit-client", () => ({
 }));
 
 vi.mock("@/components/ui/orb", () => ({ Orb: () => <div /> }));
+vi.mock("@/components/ui/animated-bars", () => ({
+  AnimatedBars: () => <div aria-hidden="true" />,
+}));
+vi.mock("@/components/ui/checkered-background", () => ({
+  default: () => <div aria-hidden="true" />,
+}));
 vi.mock("@/lib/analytics/analytics-service", () => ({
   analytics: { track: vi.fn() },
 }));
@@ -80,5 +87,27 @@ describe("DemoModal", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(trigger).toHaveFocus();
+  });
+
+  it("restores focus to the production hero voice-demo trigger", async () => {
+    const user = userEvent.setup();
+    render(<Hero />);
+
+    const primaryLink = screen.getByRole("link", {
+      name: "Start a mock interview",
+    });
+    const demoTrigger = screen.getByRole("button", {
+      name: "Try voice demo",
+    });
+
+    await user.click(demoTrigger);
+    expect(
+      await screen.findByRole("dialog", { name: "Meelni voice demo" })
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(demoTrigger).toHaveFocus();
+    expect(primaryLink).not.toHaveFocus();
   });
 });

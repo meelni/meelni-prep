@@ -7,10 +7,13 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { DashboardUser } from "./dashboard-layout";
-import { DASHBOARD_NAVIGATION_ITEMS } from "./dashboard-navigation";
+import {
+  type DashboardActiveSection,
+  DASHBOARD_NAVIGATION_ITEMS,
+} from "./dashboard-navigation";
 
 interface SidebarProps {
-  activeSection: string;
+  activeSection: DashboardActiveSection;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
   totalSessions?: number;
@@ -130,6 +133,9 @@ export function Sidebar({
           >
             <Link
               href="/dashboard/new-interview"
+              aria-current={
+                activeSection === "new-interview" ? "page" : undefined
+              }
               aria-label={collapsed ? "Start a new mock interview" : undefined}
               title={collapsed ? "New Mock Interview" : undefined}
             >

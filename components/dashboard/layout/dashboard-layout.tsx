@@ -2,14 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Mic } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { DASHBOARD_NAVIGATION_ITEMS } from "./dashboard-navigation";
+import {
+  type DashboardActiveSection,
+  DASHBOARD_NAVIGATION_ITEMS,
+} from "./dashboard-navigation";
 import { Sidebar } from "./sidebar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  activeSection: string;
+  activeSection: DashboardActiveSection;
   totalSessions?: number;
   totalMinutes?: number;
   avgScore?: number;
@@ -130,6 +134,26 @@ export function DashboardLayout({
 
       <nav aria-label="Workspace" className={DASHBOARD_MOBILE_NAV_CLASS_NAME}>
         <div className="flex min-w-max gap-1 py-0.5">
+          <Link
+            ref={
+              activeSection === "new-interview"
+                ? activeMobileLinkRef
+                : undefined
+            }
+            href="/dashboard/new-interview"
+            aria-current={
+              activeSection === "new-interview" ? "page" : undefined
+            }
+            className={cn(
+              "focus-visible:ring-ring flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+              activeSection === "new-interview"
+                ? "bg-primary text-primary-foreground"
+                : "bg-primary/90 text-primary-foreground hover:bg-primary"
+            )}
+          >
+            <Mic className="h-4 w-4" aria-hidden="true" />
+            <span>New Mock Interview</span>
+          </Link>
           {DASHBOARD_NAVIGATION_ITEMS.map((item) => {
             const selected = activeSection === item.id;
 

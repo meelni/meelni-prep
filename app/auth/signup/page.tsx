@@ -24,6 +24,8 @@ import {
   parseAuthHandoffContext,
 } from "@/lib/auth/auth-handoff";
 
+type SignUpInputName = "password" | "confirmPassword";
+
 function SignUpContent() {
   const {
     signUpWithEmail,
@@ -36,6 +38,7 @@ function SignUpContent() {
   const [errorSource, setErrorSource] = useState<"email" | "google" | null>(
     null
   );
+  const [invalidInputs, setInvalidInputs] = useState<SignUpInputName[]>([]);
   const [success, setSuccess] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +64,7 @@ function SignUpContent() {
     setIsSigningUp(true);
     setError(null);
     setErrorSource(null);
+    setInvalidInputs([]);
 
     try {
       await signInWithGoogle(authHandoff);
@@ -77,11 +81,13 @@ function SignUpContent() {
     setIsSigningUp(true);
     setError(null);
     setErrorSource(null);
+    setInvalidInputs([]);
     setSuccess(false);
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       setErrorSource("email");
+      setInvalidInputs(["password", "confirmPassword"]);
       setIsSigningUp(false);
       return;
     }
@@ -89,6 +95,7 @@ function SignUpContent() {
     if (password.length < 8) {
       setError("Password must be at least 8 characters long");
       setErrorSource("email");
+      setInvalidInputs(["password"]);
       setIsSigningUp(false);
       return;
     }
@@ -171,6 +178,12 @@ function SignUpContent() {
                 <Input
                   id="password"
                   type="password"
+                  aria-invalid={invalidInputs.includes("password") || undefined}
+                  aria-describedby={
+                    invalidInputs.includes("password")
+                      ? "signup-email-error"
+                      : undefined
+                  }
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Create a password (min. 8 characters)"
@@ -186,6 +199,14 @@ function SignUpContent() {
                 <Input
                   id="confirmPassword"
                   type="password"
+                  aria-invalid={
+                    invalidInputs.includes("confirmPassword") || undefined
+                  }
+                  aria-describedby={
+                    invalidInputs.includes("confirmPassword")
+                      ? "signup-email-error"
+                      : undefined
+                  }
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Confirm your password"

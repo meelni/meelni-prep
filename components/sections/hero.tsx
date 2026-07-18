@@ -41,7 +41,6 @@ function HeroCTA({ onDemoClick, demoTriggerRef }: HeroCTAProps) {
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
         <Button
-          ref={demoTriggerRef}
           asChild
           size="lg"
           className="h-12 w-full rounded-lg px-5 sm:w-auto"
@@ -52,6 +51,7 @@ function HeroCTA({ onDemoClick, demoTriggerRef }: HeroCTAProps) {
           </Link>
         </Button>
         <Button
+          ref={demoTriggerRef}
           type="button"
           onClick={onDemoClick}
           variant="outline"

@@ -147,6 +147,68 @@ describe("rendered auth intent and recovery", () => {
     expect(screen.queryByText(/you agree/i)).toBeNull();
   });
 
+  it("associates a password mismatch with both affected password inputs", async () => {
+    const user = userEvent.setup();
+    render(<SignUpPage />);
+
+    await user.type(screen.getByLabelText("Email"), "pm@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse");
+    await user.type(
+      screen.getByLabelText("Confirm Password"),
+      "different-horse"
+    );
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Passwords do not match");
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Confirm Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Confirm Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("associates a minimum-length error with the password input only", async () => {
+    const user = userEvent.setup();
+    render(<SignUpPage />);
+
+    await user.type(screen.getByLabelText("Email"), "pm@example.com");
+    await user.type(screen.getByLabelText("Password"), "short");
+    await user.type(screen.getByLabelText("Confirm Password"), "short");
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Password must be at least 8 characters long"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Confirm Password")).not.toHaveAttribute(
+      "aria-invalid"
+    );
+    expect(screen.getByLabelText("Confirm Password")).not.toHaveAttribute(
+      "aria-describedby"
+    );
+  });
+
   it("returns to the selected question after a successful password update", async () => {
     vi.useFakeTimers();
     mocks.updateUser.mockResolvedValueOnce({ error: null });

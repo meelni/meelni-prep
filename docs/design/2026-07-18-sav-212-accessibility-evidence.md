@@ -22,7 +22,7 @@ paused experience and all Production configuration were left unchanged.
   and deterministic focus restoration.
 - Signup exposes truthful Terms and Privacy draft links without claiming
   agreement, and validation errors are adjacent, assertive, and referenced by
-  their affected controls.
+  each affected password input with `aria-invalid` and `aria-describedby`.
 - Auth, settings, drawer, interview-ending, and error-recovery actions meet the
   critical touch-target and visible-focus contract.
 - Status and error changes are announced without adding new analytics or
@@ -33,13 +33,13 @@ paused experience and all Production configuration were left unchanged.
 
 All commands ran with the repository-pinned Node 22.22 runtime.
 
-| Check | Result |
-| --- | --- |
-| `npm run test:auth-ui` | Pass: 15 Node UI tests and 29 Vitest tests |
-| `npm run test:deploy-preflight` | Pass: 29 deployment-preflight and 8 provider-client tests |
-| `npm run check:ci` | Pass: security scan reported 0 findings; lint retained four pre-existing warnings outside this slice and no errors |
-| `npm run build` | Pass: 65 pages and 78 routes; public source/build verification passed |
-| `git diff --check` | Pass |
+| Check                           | Result                                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `npm run test:auth-ui`          | Pass: 16 Node UI tests and 32 Vitest tests                                                                         |
+| `npm run test:deploy-preflight` | Pass: 29 deployment-preflight and 8 provider-client tests                                                          |
+| `npm run check:ci`              | Pass: security scan reported 0 findings; lint retained four pre-existing warnings outside this slice and no errors |
+| `npm run build`                 | Pass: 65 pages and 78 routes; public source/build verification passed                                              |
+| `git diff --check`              | Pass                                                                                                               |
 
 The LiveKit SDK compatibility repair in `scripts/deployment-preflight.ts`
 removes an obsolete constructor argument exposed by the approved SDK upgrade;
@@ -57,7 +57,8 @@ with Preview environment values and synthetic form data.
 - Sign Up was 308 x 44px, Continue with Google was 308 x 56px, and the Terms,
   Privacy, and Sign in actions were each 44px tall.
 - Submitting mismatched synthetic passwords rendered `Passwords do not match`
-  as an alert referenced by the form through `aria-describedby`.
+  as an alert referenced by both Password and Confirm Password through
+  `aria-describedby`; both inputs exposed `aria-invalid="true"`.
 - Keyboard focus advanced from Sign Up to Continue with Google and displayed a
   visible focus ring fully inside the viewport.
 - Evidence: `sav212-local/signup-390-error.jpg` in the local design evidence

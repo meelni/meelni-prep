@@ -11,6 +11,16 @@ import {
   getInitialSidebarCollapsed,
   getSidebarCollapsedForViewport,
 } from "./dashboard-layout";
+import { getDashboardActiveSectionFromPath } from "./dashboard-navigation";
+
+function getMobileWorkspaceNavigation(html: string) {
+  const navigation = html.match(
+    /<nav aria-label="Workspace" class="[^"]*md:hidden[^"]*">[\s\S]*?<\/nav>/
+  );
+
+  assert.ok(navigation, "expected the visible-at-mobile workspace navigation");
+  return navigation[0];
+}
 
 test("dashboard shell keeps the sidebar on the same canvas color", () => {
   const html = renderToStaticMarkup(
@@ -57,13 +67,17 @@ test("dashboard shell provides a horizontally scrollable mobile workspace naviga
       <div>Analytics</div>
     </DashboardLayout>
   );
+  const mobileNavigation = getMobileWorkspaceNavigation(html);
 
   assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /overflow-x-auto/);
   assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /md:hidden/);
-  assert.match(html, /href="\/dashboard\/history"/);
-  assert.match(html, /href="\/dashboard\/questions"/);
-  assert.match(html, /aria-current="page"[^>]*><svg[^>]*>[\s\S]*Analytics/);
-  assert.match(html, /min-h-11/);
+  assert.match(mobileNavigation, /href="\/dashboard\/history"/);
+  assert.match(mobileNavigation, /href="\/dashboard\/questions"/);
+  assert.match(
+    mobileNavigation,
+    /aria-current="page"[^>]*><svg[^>]*>[\s\S]*Analytics/
+  );
+  assert.match(mobileNavigation, /min-h-11/);
 });
 
 test("dashboard shell keeps scrolling inside the content container", () => {
@@ -90,10 +104,37 @@ test("dashboard shell owns the global new mock interview action", () => {
       <div>Question bank</div>
     </DashboardLayout>
   );
+  const mobileNavigation = getMobileWorkspaceNavigation(html);
 
-  assert.match(html, /href="\/dashboard\/new-interview"/);
-  assert.match(html, />New Mock Interview</);
-  assert.doesNotMatch(html, />New rep</i);
+  assert.match(mobileNavigation, /href="\/dashboard\/new-interview"/);
+  assert.match(mobileNavigation, />New Mock Interview</);
+  assert.match(mobileNavigation, /min-h-11/);
+  assert.doesNotMatch(mobileNavigation, />New rep</i);
+});
+
+test("new mock interview is current without marking Overview current", () => {
+  const html = renderToStaticMarkup(
+    <DashboardLayout
+      activeSection="new-interview"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>Interview setup</div>
+    </DashboardLayout>
+  );
+  const mobileNavigation = getMobileWorkspaceNavigation(html);
+
+  assert.match(
+    mobileNavigation,
+    /<a aria-current="page"[^>]*href="\/dashboard\/new-interview"/
+  );
+  assert.doesNotMatch(
+    mobileNavigation,
+    /<a(?=[^>]*href="\/dashboard")(?=[^>]*aria-current="page")[^>]*>/
+  );
+  assert.equal(
+    getDashboardActiveSectionFromPath("/dashboard/new-interview"),
+    "new-interview"
+  );
 });
 
 test("dashboard content panel does not add a black frame or shadow around pages", () => {
