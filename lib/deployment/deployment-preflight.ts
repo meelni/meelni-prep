@@ -644,12 +644,12 @@ function validateInngestEnvironment({
     failures,
     ok:
       !signingKey ||
-      /^signkey-(?:prod|production|preview|test)-[a-f0-9]{16,}$/i.test(
+      /^signkey-(?:branch|prod|production|preview|test)-[a-f0-9]{16,}$/i.test(
         signingKey
       ),
   });
   const signingEnvironment = signingKey
-    ? /^signkey-(prod|production|preview|test)-/i
+    ? /^signkey-(branch|prod|production|preview|test)-/i
         .exec(signingKey)?.[1]
         ?.toLowerCase()
     : undefined;
@@ -659,6 +659,7 @@ function validateInngestEnvironment({
       signingEnvironment !== "prod" &&
       signingEnvironment !== "production") ||
       (target === "preview" &&
+        signingEnvironment !== "branch" &&
         signingEnvironment !== "preview" &&
         signingEnvironment !== "test"))
   ) {
