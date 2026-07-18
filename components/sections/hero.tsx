@@ -9,7 +9,7 @@ import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
 import { ArrowRight, Mic } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -28,9 +28,10 @@ function HeroTitles() {
 
 interface HeroCTAProps {
   onDemoClick: () => void;
+  demoTriggerRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-function HeroCTA({ onDemoClick }: HeroCTAProps) {
+function HeroCTA({ onDemoClick, demoTriggerRef }: HeroCTAProps) {
   return (
     <div className="relative mt-8">
       <motion.div
@@ -50,6 +51,7 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
           </Link>
         </Button>
         <Button
+          ref={demoTriggerRef}
           type="button"
           onClick={onDemoClick}
           variant="outline"
@@ -66,6 +68,7 @@ function HeroCTA({ onDemoClick }: HeroCTAProps) {
 
 export function Hero() {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const demoTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
@@ -99,7 +102,10 @@ export function Hero() {
         <div className="relative z-10 mx-auto grid w-full max-w-[1216px] grid-cols-1 items-center gap-10 px-6 pt-12 pb-10 lg:min-h-[560px] lg:grid-cols-2 lg:px-8 lg:pt-16">
           <div className="flex flex-col items-start justify-center lg:col-span-1">
             <HeroTitles />
-            <HeroCTA onDemoClick={() => setIsDemoModalOpen(true)} />
+            <HeroCTA
+              demoTriggerRef={demoTriggerRef}
+              onDemoClick={() => setIsDemoModalOpen(true)}
+            />
           </div>
           <div className="relative hidden h-[420px] items-center justify-center lg:flex">
             <motion.div
@@ -119,6 +125,7 @@ export function Hero() {
       <DemoModal
         isOpen={isDemoModalOpen}
         onClose={() => setIsDemoModalOpen(false)}
+        returnFocusRef={demoTriggerRef}
       />
     </>
   );

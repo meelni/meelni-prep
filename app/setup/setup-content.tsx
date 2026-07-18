@@ -169,6 +169,7 @@ export function SetupContent() {
 
   // Tier upgrade modal state
   const [showTierUpgradeModal, setShowTierUpgradeModal] = useState(false);
+  const startInterviewButtonRef = useRef<HTMLButtonElement>(null);
   const [tierUpgradeInfo, setTierUpgradeInfo] = useState<{
     requestedType: RoundType;
     currentTier: string;
@@ -717,6 +718,7 @@ export function SetupContent() {
                 <InterviewDataDisclosure />
               </div>
               <Button
+                ref={startInterviewButtonRef}
                 onClick={handleStartInterview}
                 disabled={
                   isCreatingSession ||
@@ -752,6 +754,7 @@ export function SetupContent() {
           requestedType={tierUpgradeInfo.requestedType}
           currentTier={tierUpgradeInfo.currentTier}
           message={tierUpgradeInfo.message}
+          returnFocusRef={startInterviewButtonRef}
         />
       )}
 
@@ -763,6 +766,7 @@ export function SetupContent() {
           currentUsage={quotaInfo.currentUsage}
           limit={quotaInfo.limit}
           resetDate={quotaInfo.resetDate}
+          returnFocusRef={startInterviewButtonRef}
         />
       )}
     </div>
