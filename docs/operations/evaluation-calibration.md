@@ -24,7 +24,8 @@ npm run calibration:self-test -- --output /tmp/meelni-calibration-self-test.json
 ```
 
 These modes make no model or database calls. A green deterministic self-test
-proves only the harness; its live-provider and launch gates remain pending.
+proves only the harness; its live-provider and calibration-evidence gates
+remain pending.
 
 ## Future synthetic-output semantic review
 
@@ -50,6 +51,58 @@ terminal rejection evidence for that response set.
 This review is not wired into the paid launcher. It grants no provider access
 or spend authority. A future live run requires a distinct reviewed plan and
 owner authorization after this gate is operationally integrated.
+
+### Provider-free capture and retention
+
+Use `calibration-semantic-capture.ts` only from a trusted local operator or
+orchestrator boundary. Initialize a new absolute capture directory; the
+workflow creates it as `0700`, stores its private manifest and every exact
+response byte sequence as `0600`, and generates random opaque case/output IDs.
+The canonical parent must already exist and must not be inside a Git worktree,
+including through a symlink.
+The private manifest binds the approved plan, corpus, prompt, response schema,
+model, run, and complete hashed case/run inventory. Finalization requires one
+and only one byte-exact output for every expected case/run and rechecks every
+file hash before review and publication. The issued process capability also
+anchors the directory device/inode, randomized case/output identities, every
+captured response hash, lifecycle state, and the finalized response-set and
+review-input hashes; a self-consistent rewritten manifest is not authority.
+
+Run two actual, distinct agent review tasks against the same finalized private
+capture. The orchestrator—not either reviewer artifact—constructs one
+content-free execution receipt for each completed task and then a separate
+trusted-execution authority. The constructor is a trust-boundary formatter and
+hash binder, not cryptographic proof that a task ran; the operator must verify
+the canonical task path and execution event before calling it. Never construct
+authority from panel-authored JSON or invent a human reviewer identity.
+
+`completePrivateSemanticReview` delegates decisions to the SAV-251 validator.
+It writes only a sanitized, content-free public report. It first publishes a
+truthful report with `rawCaptureDeleted: false`; only then does it delete the
+private directory and atomically replace the report with
+`rawCaptureDeleted: true`. A publication failure therefore preserves the raw
+capture. A validation failure publishes nothing and retains the capture for
+bounded investigation or explicit cleanup. Call
+`cleanupPrivateSemanticCapture` when aborting, and remove any retained capture
+no later than its private `retentionExpiresAt`. Public report paths inside the
+private capture are forbidden, including paths whose existing parent resolves
+through a symlink into that directory.
+
+The issued capture handle is an opaque, module-authenticated, same-process
+capability. Reconstructed, spread, serialized, or post-restart handles are not
+accepted. The process running this workflow must either complete or explicitly
+clean up before exit. An operator/watchdog in that same process must schedule
+`purgeExpiredPrivateSemanticCapture`; expiry blocks capture, finalization, and
+completion, while authenticated cleanup/purge remains available even when the
+private manifest is corrupt. Cleanup and purge refuse to delete if the issued
+directory path now resolves to a different device/inode. This flow does not
+claim crash-surviving automatic deletion. A future restart-capable workflow
+would require a separate durable authenticated capability design, not a plain
+serialized handle.
+
+This flow is synthetic-only and provider-free. It must not receive Production
+or customer data, call a model, reuse the consumed v2 authority, or imply a v3
+plan, spend authorization, provider acceptance, or launch approval.
 
 Review the agent-authored candidate adjudications separately:
 
@@ -257,12 +310,20 @@ Spend approval does not approve the candidate gold set. The acknowledgement is
 deliberately exact so an ambient boolean cannot accidentally enable paid
 calibration.
 
-The live CLI exits zero only when the combined `launchAcceptance` gate is
-`passed`. A provider-quality pass still exits nonzero when adjudication approval
-is missing, stale, incomplete, or contains `changes_required` decisions.
+The live CLI exits zero only when `calibrationEvidenceAcceptance` is `passed` in
+the current `evaluation-calibration-report.v8` report. A zero exit means only
+that the complete calibration evidence contract passed; it is not the human
+product owner's launch decision. A provider-quality pass still exits nonzero
+when adjudication approval is missing, stale, incomplete, or contains
+`changes_required` decisions.
 Review the report's model and all five version fields before accepting it as
-evidence. Store approved launch evidence in the release record without adding
-secrets or provider responses containing sensitive data.
+evidence. Store approved calibration evidence in the release record without
+adding secrets or provider responses containing sensitive data.
+
+The committed v7 receipts remain byte-for-byte immutable. Their historical
+`gate.launchAcceptance` values have the same technical state interpretation as
+v8 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
+Do not rewrite or regenerate those historical files during a v8 run.
 
 ## Review checklist
 
@@ -279,8 +340,9 @@ secrets or provider responses containing sensitive data.
   reservation, it records exact actual cost and `spendCapBreached: true` before
   stopping. It has `completed_plan` only after all 64 planned calls reconcile
   successfully.
-- The cost report uses `evaluation-calibration-cost-report.v5`, the report uses
-  `evaluation-calibration-report.v7`, and the fixed run, authorization ID, and
+- The cost report uses `evaluation-calibration-cost-report.v5`, the current
+  report uses `evaluation-calibration-report.v8`, and the fixed run,
+  authorization ID, and
   authorization hash match the committed spend-authorization manifest.
 - The activated plan reports exactly 64 calls and at most $3 worst-case, the
   activation commit remains the protected ref head, and each reservation has
@@ -300,8 +362,9 @@ secrets or provider responses containing sensitive data.
 - Maximum repeated-run score range is at most 1.
 - Every output model identity matches the configured expected model and the
   observed identities are reviewed.
-- Report versions match the code intended for launch.
-- `launchAcceptance` is `passed`; a deterministic `passed` state is not enough.
+- Report versions match the candidate being evaluated.
+- `calibrationEvidenceAcceptance` is `passed`; a deterministic `passed` state
+  is not enough, and this field never authorizes launch.
 - Adjudication acceptance records completed product-owner/PM signoff; candidate
   status is never treated as ground truth.
 - Candidate and corpus hashes match the separately stored approval artifact,
@@ -309,9 +372,11 @@ secrets or provider responses containing sensitive data.
 - The report contains no prompt text, transcript text, provider body, secret,
   or Production/customer-data payload.
 
-If a live run fails or crashes, keep the launch gate closed. Inspect available
-case/run/dimension failure records. For invalid-feedback failures, use only the
-closed `feedbackRejectionCode` to identify the failed invariant. Do not add raw
+If a live run fails or crashes, keep calibration evidence acceptance failed or
+pending and retain a `not ready` launch-readiness recommendation. Inspect
+available case/run/dimension failure records. For invalid-feedback failures,
+use only the closed `feedbackRejectionCode` to identify the failed invariant.
+Do not add raw
 provider output, parser messages or causes, transcript text, evidence text,
 unknown keys, object paths, or customer data to a report, log, PR, or ticket. A
 `parser_internal_failure` requires a provider-free parser investigation before
