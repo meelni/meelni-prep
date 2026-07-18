@@ -54,6 +54,35 @@ for (const surface of BROWSER_QA_SURFACES) {
       page,
       mobile: testInfo.project.name.startsWith("mobile"),
     });
+    if (
+      surface.id === "new-interview" &&
+      testInfo.project.name.startsWith("mobile")
+    ) {
+      await page.evaluate(async () => {
+        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      const selectedDifficulty = page.getByRole("button", {
+        name: /IC PM 2-4 years experience/,
+      });
+      const summary = page.getByRole("region", {
+        name: "Interview summary",
+      });
+      const [selectedDifficultyBox, summaryBox] = await Promise.all([
+        selectedDifficulty.boundingBox(),
+        summary.boundingBox(),
+      ]);
+      expect(selectedDifficultyBox).not.toBeNull();
+      expect(summaryBox).not.toBeNull();
+      expect(
+        summaryBox!.y,
+        "mobile interview summary must not overlap the selected difficulty"
+      ).toBeGreaterThanOrEqual(
+        selectedDifficultyBox!.y + selectedDifficultyBox!.height - 1
+      );
+    }
     const accessibility = await assertCriticalAccessibility(
       page,
       testInfo,
