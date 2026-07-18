@@ -7,8 +7,16 @@ const triggerBlock = workflow.slice(
   workflow.indexOf("on:"),
   workflow.indexOf("permissions:")
 );
+const pullRequestTrigger = triggerBlock.slice(
+  triggerBlock.indexOf("  pull_request:"),
+  triggerBlock.indexOf("  push:")
+);
+const mainPushTrigger = triggerBlock.slice(
+  triggerBlock.indexOf("  push:"),
+  triggerBlock.indexOf("  workflow_dispatch:")
+);
 
-test("hosted Validate runs only for merge-ready PRs, main, or manual dispatch", () => {
+test("hosted Validate runs for merge-ready PRs, eligible main pushes, or manual dispatch", () => {
   assert.match(triggerBlock, /pull_request:\n\s+types:/);
   for (const event of [
     "opened",
@@ -20,7 +28,7 @@ test("hosted Validate runs only for merge-ready PRs, main, or manual dispatch", 
   ]) {
     assert.match(triggerBlock, new RegExp(`\\b${event}\\b`));
   }
-  assert.match(triggerBlock, /push:\n\s+branches: \[main\]/);
+  assert.match(mainPushTrigger, /push:\n\s+branches: \[main\]/);
   assert.match(triggerBlock, /workflow_dispatch:/);
   assert.match(
     workflow,
@@ -52,6 +60,17 @@ test("cost control preserves exact-head cancellation and the complete validation
 test("feature branches cannot reintroduce a duplicate push-triggered Validate run", () => {
   assert.equal(triggerBlock.match(/^  push:$/gm)?.length, 1);
   assert.doesNotMatch(triggerBlock, /branches:\s*\[[^\]]*(?:\*\*|codex\/)/);
+});
+
+test("registry-only main pushes skip the redundant full run without filtering PR validation", () => {
+  assert.doesNotMatch(pullRequestTrigger, /\bpaths(?:-ignore)?:/);
+  assert.match(mainPushTrigger, /^    paths-ignore:$/m);
+  assert.deepEqual(
+    [...mainPushTrigger.matchAll(/^      - "([^"]+)"$/gm)].map(
+      ([, path]) => path
+    ),
+    [".github/stacked-prs.json"]
+  );
 });
 
 test("draft and closed lifecycle events cannot publish the required Validate context", () => {
