@@ -174,6 +174,13 @@ tracked, staged, or untracked worktree change. This direct content check also
 rejects changes hidden by Git `assume-unchanged` or `skip-worktree` flags.
 Launcher owner/mode checks do not satisfy this source-binding requirement.
 
+Local calibration bundle construction and verification first run
+`npm run runtime:check`, which requires the exact version in `.node-version`
+(`22.22.0`). This prevents a wrong host runtime from producing or verifying a
+bundle and then failing later inside security attestation. The package engine
+remains `22.x` for supported Vercel patch updates; it does not replace the
+privileged launcher's independently reviewed binary digest and signature pin.
+
 The live child does not execute through `tsx` or import from mutable
 `node_modules`. `npm run calibration:build-runtime` reproducibly bundles the
 complete 358-input runtime into
