@@ -79,6 +79,7 @@ from demo.runtime import (
     resolve_demo_deadline,
     resolve_demo_participant_identity,
     resolve_demo_timing,
+    run_optional,
     stop_then_run_bounded,
 )
 from shared.transcript_events import (
@@ -167,6 +168,16 @@ class RuntimeContractTests(unittest.TestCase):
             events,
             ["local_stop_started", "local_stop_finished", "delete_started"],
         )
+
+    def test_public_demo_optional_control_failure_does_not_escape(self):
+        async def succeeds():
+            return None
+
+        async def fails():
+            raise RuntimeError("data channel unavailable")
+
+        self.assertTrue(asyncio.run(run_optional(succeeds)))
+        self.assertFalse(asyncio.run(run_optional(fails)))
 
     def test_public_demo_source_arms_deadline_and_waits_for_exact_participant(self):
         source = (Path(__file__).parent / "demo" / "agent.py").read_text()
