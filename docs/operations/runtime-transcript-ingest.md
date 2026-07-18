@@ -68,7 +68,7 @@ Loopback HTTP is accepted only for local development.
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0023_explicit_analytics_consent` and require the twenty-four-entry schema
+   `0024_runtime_settlement_reconciliation` and require the twenty-five-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime with the same environment's `LIVEKIT_API_SECRET`.
@@ -99,7 +99,7 @@ Loopback HTTP is accepted only for local development.
 
 The isolated `meelni-preview` Supabase project now has a distinct project
 identity and is connected to `meelni/meelni-prep`. Isolation is only the safety
-prerequisite: the twenty-four-entry migration preflight, application deployment,
+prerequisite: the twenty-five-entry migration preflight, application deployment,
 matching LiveKit runtime configuration, and this end-to-end rehearsal still
 need recorded Preview evidence before the relaunch gate can change.
 

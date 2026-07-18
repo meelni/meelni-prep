@@ -30,10 +30,11 @@
 |    21 | `0021_feedback_v2`                       |
 |    22 | `0022_server_owned_billing_privileges`   |
 |    23 | `0023_explicit_analytics_consent`        |
+|    24 | `0024_runtime_settlement_reconciliation` |
 
 <!-- migration-journal:end -->
 
-This twenty-four-entry inventory is generated from the same ordered contract as
+This twenty-five-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -250,3 +251,26 @@ feedback contract. Existing legacy rows remain readable with a fully absent v2
 tuple; new v2 rows must store the complete internally consistent tuple. The
 migration does not rewrite historical feedback or infer evidence that was not
 previously persisted.
+
+## Server-owned billing privileges
+
+`0022_server_owned_billing_privileges` removes all browser-role table grants
+from the four billing provenance tables while retaining the complete
+`service_role` privilege set. Billing state remains server-owned even when RLS
+policies change later.
+
+## Explicit analytics consent
+
+`0023_explicit_analytics_consent` adds the versioned tri-state analytics consent
+record. Existing users remain undecided, which fails closed; the migration does
+not opt anyone into browser analytics.
+
+## Runtime-settlement forward reconciliation
+
+`0024_runtime_settlement_reconciliation` recognizes only the exact canonical
+runtime-settlement shape or the exact historical Preview-only shape recorded by
+the legacy `0013_runtime_settlement` hash. It never rewrites the Drizzle ledger.
+The historical path is allowed only when settlement rows, canonical version-2
+turns, and interruption markers are all empty. It then recreates the canonical
+writer-generation contract while preserving generic historical transcript
+rows. Any mixed, nonempty, or unknown shape aborts atomically.

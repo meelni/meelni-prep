@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Forward Runtime-Settlement Reconciliation](2026-07-17-forward-runtime-settlement-reconciliation.md): Preserve the historical ledger, recognize only the exact legacy Preview lineage, and converge through a fail-closed forward migration with no inferred writer evidence.
 - [Explicit Analytics Consent](2026-07-17-explicit-analytics-consent.md): Optional browser analytics use one versioned tri-state opt-in; undecided/declined states fail closed, replay/autocapture stay disabled, and the operational server relaunch gate remains consent-independent with logging disabled.
 - [Human-Owned Launch Decision](2026-07-13-human-owned-launch-decision.md): Only the human product owner makes the final launch GO/NO-GO; agents and automated gates provide evidence and a readiness recommendation, and Production/default-on action requires explicit owner authorization.
 - [Dynamic Stacked Parent Resolution](2026-07-12-dynamic-stacked-parent-resolution.md): Store immutable PR/ref identities, resolve current heads in trusted CI, and keep dependent-child topology failures off a valid parent's stable context.
