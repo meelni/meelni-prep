@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createQuestionSyncTransactionBegin,
   QuestionSyncLockUnavailableError,
   runQuestionSyncTransaction,
   type QuestionSyncTransactionScope,
 } from "./question-sync-lock";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import * as schema from "@/lib/db/schema";
 import type { StoredQuestionSyncQuestion } from "@/lib/question-sync/source";
 import type { QuestionSyncStore } from "@/lib/question-sync/store";
 import { mutatePreparedQuestionSync } from "@/lib/question-sync/mutation";
@@ -81,6 +84,39 @@ test("pre-lock transaction failures map to lock unavailable", async () => {
     ),
     QuestionSyncLockUnavailableError
   );
+});
+
+test("the Drizzle transaction owns both the advisory lock and sync store", async () => {
+  const store = memoryStore([]);
+  const transaction = {
+    execute: async () => [{ acquired: true }],
+  };
+  let storeDatabase: unknown;
+  let transactionCalls = 0;
+
+  const database = {
+    transaction: async (
+      callback: (value: typeof transaction) => Promise<unknown>
+    ) => {
+      transactionCalls++;
+      return callback(transaction);
+    },
+  } as unknown as PostgresJsDatabase<typeof schema>;
+
+  const result = await runQuestionSyncTransaction(
+    createQuestionSyncTransactionBegin(database, (value) => {
+      storeDatabase = value;
+      return store;
+    }),
+    async (transactionStore) => {
+      assert.equal(transactionStore, store);
+      return "done";
+    }
+  );
+
+  assert.deepEqual(result, { acquired: true, value: "done" });
+  assert.equal(transactionCalls, 1);
+  assert.equal(storeDatabase, transaction);
 });
 
 function transactionalBegin(
