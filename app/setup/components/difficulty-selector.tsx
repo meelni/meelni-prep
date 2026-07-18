@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { BookOpen, BriefcaseBusiness, Compass } from "lucide-react";
 import {
   SelectableCard,
@@ -25,18 +25,22 @@ export function DifficultySelector({
   selected,
   onSelect,
 }: DifficultySelectorProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold">Difficulty Level</h3>
-        <p className="text-muted-foreground text-sm">
+        <h3 className="text-dashboard-foreground text-lg font-semibold">
+          Difficulty Level
+        </h3>
+        <p className="text-dashboard-muted text-sm">
           Choose how challenging you want the interview to be
         </p>
       </div>
 
       <motion.div
         variants={staggerContainer}
-        initial="initial"
+        initial={shouldReduceMotion ? false : "initial"}
         animate="animate"
         className="grid gap-3 md:grid-cols-3"
       >
@@ -54,7 +58,7 @@ export function DifficultySelector({
               >
                 <SelectableCard
                   selected={isSelected}
-                  className="p-5 hover:scale-[1.01]"
+                  className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/10 bg-transparent p-5 hover:scale-[1.01]"
                   onClick={() => onSelect(difficulty)}
                 >
                   {/* Semantic selection background */}
@@ -84,16 +88,18 @@ export function DifficultySelector({
                     </div>
 
                     {/* Title */}
-                    <h4 className="mt-3 font-semibold">{config.label}</h4>
+                    <h4 className="text-dashboard-foreground mt-3 font-semibold">
+                      {config.label}
+                    </h4>
 
                     {/* Description - fixed min-height for consistency */}
-                    <p className="text-muted-foreground mt-2 min-h-10 text-xs leading-relaxed">
+                    <p className="text-dashboard-muted mt-2 min-h-10 text-xs leading-relaxed">
                       {config.description}
                     </p>
 
                     {/* Subtitle */}
                     {config.subtitle && (
-                      <p className="text-muted-foreground/80 mt-2 flex-1 text-xs leading-relaxed">
+                      <p className="text-dashboard-muted mt-2 flex-1 text-xs leading-relaxed">
                         {config.subtitle}
                       </p>
                     )}
