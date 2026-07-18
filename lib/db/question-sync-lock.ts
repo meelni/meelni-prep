@@ -1,4 +1,8 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
+import {
+  drizzle,
+  type PostgresJsDatabase,
+} from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/lib/db/schema";
 import {
@@ -68,23 +72,35 @@ export async function withQuestionSyncLock<T>(
     idle_timeout: 20,
     connect_timeout: 10,
   });
+  const database = drizzle(client, { schema });
 
   try {
     return await runQuestionSyncTransaction(
-      (callback) =>
-        client.begin(async (transaction) => {
-          const [lock] = await transaction<{ acquired: boolean }[]>`
-            SELECT pg_try_advisory_xact_lock(${QUESTION_SYNC_ADVISORY_LOCK_KEY}) AS acquired
-          `;
-
-          return callback({
-            tryAcquireLock: async () => lock?.acquired === true,
-            store: createQuestionSyncStore(drizzle(transaction, { schema })),
-          });
-        }) as Promise<QuestionSyncLockResult<T>>,
+      createQuestionSyncTransactionBegin(database),
       run
     );
   } finally {
     await client.end({ timeout: 5 }).catch(() => undefined);
   }
+}
+
+export function createQuestionSyncTransactionBegin(
+  database: PostgresJsDatabase<typeof schema>,
+  createStore: typeof createQuestionSyncStore = createQuestionSyncStore
+) {
+  return async <T>(
+    callback: (
+      scope: QuestionSyncTransactionScope
+    ) => Promise<QuestionSyncLockResult<T>>
+  ): Promise<QuestionSyncLockResult<T>> =>
+    database.transaction(async (transaction) => {
+      const [lock] = await transaction.execute<{ acquired: boolean }>(sql`
+        SELECT pg_try_advisory_xact_lock(${QUESTION_SYNC_ADVISORY_LOCK_KEY}) AS acquired
+      `);
+
+      return callback({
+        tryAcquireLock: async () => lock?.acquired === true,
+        store: createStore(transaction),
+      });
+    });
 }
