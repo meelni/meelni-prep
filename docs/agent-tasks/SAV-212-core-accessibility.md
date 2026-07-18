@@ -23,8 +23,7 @@
 - Project: Meelni.
 - Parent slice issue: SAV-170.
 - Child deliverable issue: SAV-212.
-- Current Linear state: In Progress; move to In Review after the draft PR is
-  opened with exact-head evidence.
+- Current Linear state: In Review in draft PR #342.
 
 ## Scope
 
