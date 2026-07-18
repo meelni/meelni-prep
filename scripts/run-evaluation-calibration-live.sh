@@ -198,8 +198,8 @@ if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_overr
     test_runtime=$(/bin/realpath "$test_runtime") || fail "calibration_live_launcher_test_runtime_invalid"
     attest_file "$test_runtime"
   fi
+  [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 fi
-[ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 
 reviewed_source_commit=""
 if [ "$test_mode" != "1" ]; then
@@ -220,6 +220,7 @@ if [ "$test_mode" != "1" ]; then
   attest_reviewed_file "$MANIFEST" "docs/evidence/sav-248-v3-runtime-manifest.json" "$reviewed_source_commit"
   attest_reviewed_file "$RUNTIME" "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$PACKAGE_LOCK" "package-lock.json" "$reviewed_source_commit"
+  [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
   GH_BIN=$(/bin/realpath "$GH_BIN") || fail "calibration_live_launcher_gh_missing"
   attest_node_binary "$NODE_BIN"
   attest_sha256_file "$GH_BIN" "$GH_SHA256"
