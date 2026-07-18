@@ -22,7 +22,7 @@ MANIFEST=$(/bin/realpath "$SCRIPT_DIR/../docs/evidence/sav-248-v3-runtime-manife
 PACKAGE_LOCK=$(/bin/realpath "$SCRIPT_DIR/../package-lock.json")
 SOURCE_REPOSITORY_ROOT=$(/bin/realpath "$SCRIPT_DIR/..")
 READY="MEELNI_CALIBRATION_READY_V1"
-GH_BIN=$(/bin/realpath "/opt/homebrew/bin/gh")
+GH_BIN="/opt/homebrew/bin/gh"
 GH_SHA256="02d2d4a85241c6a8c0b77ebb1ec76fc723caf7fb128e00915b306b968847cba1"
 SECURITY_BIN="/usr/bin/security"
 SAFE_PATH="/opt/homebrew/bin:/usr/bin:/bin"
@@ -203,6 +203,7 @@ fi
 
 reviewed_source_commit=""
 if [ "$test_mode" != "1" ]; then
+  GH_BIN=$(/bin/realpath "$GH_BIN") || fail "calibration_live_launcher_gh_missing"
   reviewed_source_commit=${MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT-}
   unset MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT
   [ "${#reviewed_source_commit}" -eq 40 ] || \
