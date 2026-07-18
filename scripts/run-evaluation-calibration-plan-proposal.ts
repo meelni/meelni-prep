@@ -1,13 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { buildSAV198RebasedPlanAcceptance } from "@/lib/evaluation/calibration-run-ledger";
+import { buildSAV248V3PlanProposal } from "@/lib/evaluation/calibration-run-ledger";
 
 void main().catch((error) => {
   console.error(
     JSON.stringify({
       status: "blocked",
-      error: error instanceof Error ? error.message : "acceptance_failed",
+      error: error instanceof Error ? error.message : "proposal_failed",
     })
   );
   process.exitCode = 1;
@@ -30,7 +30,7 @@ async function main() {
   const adjudicationApproval = JSON.parse(
     await readFile(resolve(process.cwd(), approval), "utf8")
   );
-  const serialized = `${JSON.stringify(buildSAV198RebasedPlanAcceptance(adjudicationApproval), null, 2)}\n`;
+  const serialized = `${JSON.stringify(buildSAV248V3PlanProposal(adjudicationApproval), null, 2)}\n`;
   const target = resolve(process.cwd(), output);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, serialized, { encoding: "utf8", mode: 0o600 });
