@@ -430,6 +430,7 @@ interface PerformanceProperties {
     page: string;
     lcp?: number; // Largest Contentful Paint (ms)
     fid?: number; // First Input Delay (ms)
+    inp?: number; // Interaction to Next Paint (ms)
     cls?: number; // Cumulative Layout Shift (score)
     ttfb?: number; // Time to First Byte (ms)
     fcp?: number; // First Contentful Paint (ms)

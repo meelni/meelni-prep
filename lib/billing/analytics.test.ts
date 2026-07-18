@@ -5,7 +5,32 @@ import {
   buildBillingAnalyticsProperties,
   buildBillingPaymentAdjustedAnalytics,
   deliverBillingAnalytics,
+  trackBillingCreditGranted,
 } from "./analytics";
+
+test("billing analytics entry points expose awaitable delivery", async () => {
+  const serverKey = process.env.POSTHOG_SERVER_KEY;
+  const publicKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const pseudonymKey = process.env.ANALYTICS_PSEUDONYM_KEY;
+  delete process.env.POSTHOG_SERVER_KEY;
+  delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  delete process.env.ANALYTICS_PSEUDONYM_KEY;
+  try {
+    const delivery = trackBillingCreditGranted({
+      userId: "raw-user",
+      credits: 1,
+    });
+    assert.equal(typeof delivery.then, "function");
+    await delivery;
+  } finally {
+    if (serverKey !== undefined) process.env.POSTHOG_SERVER_KEY = serverKey;
+    if (publicKey !== undefined)
+      process.env.NEXT_PUBLIC_POSTHOG_KEY = publicKey;
+    if (pseudonymKey !== undefined) {
+      process.env.ANALYTICS_PSEUDONYM_KEY = pseudonymKey;
+    }
+  }
+});
 
 test("settlement analytics exclude provider and internal correlation identifiers", () => {
   const rawUserId = "550e8400-e29b-41d4-a716-446655440000";

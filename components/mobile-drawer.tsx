@@ -22,8 +22,11 @@ export function MobileDrawer() {
 
   return (
     <Drawer>
-      <DrawerTrigger aria-label="Open navigation menu">
-        <Menu className="h-6 w-6" />
+      <DrawerTrigger
+        aria-label="Open navigation menu"
+        className="focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+      >
+        <Menu className="h-6 w-6" aria-hidden="true" />
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader className="px-6">
@@ -40,8 +43,17 @@ export function MobileDrawer() {
         <DrawerFooter className="space-y-3">
           {isLoading ? (
             // Loading state
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="text-primary h-6 w-6 animate-spin" />
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex items-center justify-center py-4"
+            >
+              <Loader2
+                className="text-primary h-6 w-6 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <span className="sr-only">Loading navigation</span>
             </div>
           ) : user ? (
             // Logged in: Show greeting + Dashboard button
@@ -58,7 +70,7 @@ export function MobileDrawer() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-primary-foreground rounded-lg"
+                  "text-primary-foreground min-h-11 rounded-lg"
                 )}
               >
                 Go to Dashboard
@@ -71,7 +83,7 @@ export function MobileDrawer() {
                 href="/auth/signin"
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
-                  "rounded-lg"
+                  "min-h-11 rounded-lg"
                 )}
               >
                 Log In
@@ -80,7 +92,7 @@ export function MobileDrawer() {
                 href="/dashboard/new-interview"
                 className={cn(
                   buttonVariants({ variant: "default" }),
-                  "text-primary-foreground rounded-lg"
+                  "text-primary-foreground min-h-11 rounded-lg"
                 )}
               >
                 {siteConfig.cta}

@@ -15,12 +15,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ForgotPasswordPage from "./forgot-password/page";
 import ResetPasswordPage from "./reset-password/page";
 import SignInPage from "./signin/page";
+import SignUpPage from "./signup/page";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   resetPassword: vi.fn(),
   signInWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
+  signUpWithEmail: vi.fn(),
   updateUser: vi.fn(),
   searchParams: new URLSearchParams(),
 }));
@@ -36,6 +38,7 @@ vi.mock("@/app/providers/auth-provider", () => ({
     resetPassword: mocks.resetPassword,
     signInWithEmail: mocks.signInWithEmail,
     signInWithGoogle: mocks.signInWithGoogle,
+    signUpWithEmail: mocks.signUpWithEmail,
     user: null,
   }),
 }));
@@ -125,6 +128,85 @@ describe("rendered auth intent and recovery", () => {
         "/dashboard/new-interview?questionId=question-1&returnTo=%2Fexplore%3Fcompany%3DStripe",
       cancelTo: "/explore?company=Stripe",
     });
+  });
+
+  it("links signup to the clearly labeled legal drafts without claiming acceptance", () => {
+    render(<SignUpPage />);
+
+    expect(screen.getByRole("link", { name: "Terms draft" })).toHaveAttribute(
+      "href",
+      "/terms"
+    );
+    expect(screen.getByRole("link", { name: "Privacy draft" })).toHaveAttribute(
+      "href",
+      "/privacy"
+    );
+    expect(
+      screen.getByText(/Review the.*before creating an account/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/you agree/i)).toBeNull();
+  });
+
+  it("associates a password mismatch with both affected password inputs", async () => {
+    const user = userEvent.setup();
+    render(<SignUpPage />);
+
+    await user.type(screen.getByLabelText("Email"), "pm@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse");
+    await user.type(
+      screen.getByLabelText("Confirm Password"),
+      "different-horse"
+    );
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Passwords do not match");
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Confirm Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Confirm Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("associates a minimum-length error with the password input only", async () => {
+    const user = userEvent.setup();
+    render(<SignUpPage />);
+
+    await user.type(screen.getByLabelText("Email"), "pm@example.com");
+    await user.type(screen.getByLabelText("Password"), "short");
+    await user.type(screen.getByLabelText("Confirm Password"), "short");
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Password must be at least 8 characters long"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "aria-describedby",
+      alert.id
+    );
+    expect(screen.getByLabelText("Confirm Password")).not.toHaveAttribute(
+      "aria-invalid"
+    );
+    expect(screen.getByLabelText("Confirm Password")).not.toHaveAttribute(
+      "aria-describedby"
+    );
   });
 
   it("returns to the selected question after a successful password update", async () => {
