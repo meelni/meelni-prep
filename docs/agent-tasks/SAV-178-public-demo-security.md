@@ -21,7 +21,7 @@
 
 ## Scope
 
-- In scope: Canonical migration 0024 after the analytics-consent 0023 predecessor; shared Postgres rate limits; a zero-cost signed anonymous identity handshake; replay fencing; strict request-origin/empty-JSON policy; microphone-only LiveKit grants; cleanup on partial provider failure; awaited local close plus a monotonic two-minute hard stop; typed 429/recovery UI; privacy-minimized audit data; pruning; deployment-preflight enforcement for the dedicated public-demo HMAC secret; tests and rollout documentation.
+- In scope: Canonical migration 0025 after the runtime-settlement reconciliation 0024 predecessor; shared Postgres rate limits; a zero-cost signed anonymous identity handshake; replay fencing; strict request-origin/empty-JSON policy; microphone-only LiveKit grants; cleanup on partial provider failure; awaited local close plus a monotonic two-minute hard stop; typed 429/recovery UI; privacy-minimized audit data; pruning; deployment-preflight enforcement for the dedicated public-demo HMAC secret; tests and rollout documentation.
 - Out of scope: Applying the migration to Preview or Production, changing provider configuration, invoking LiveKit/model providers, enabling the relaunch flag, using customer data, or making the launch decision.
 - Assumptions: Historical PR #249 is an audit source only; the implementation is recovered selectively onto SAV-226's reviewed head, and migration number 0008 is not reused because canonical history now ends at 0022.
 
@@ -47,6 +47,6 @@
 ## Rollout
 
 - Risk level: High security and provider-cost impact; fail closed.
-- Backward compatibility: The public endpoint remains unavailable while the relaunch feature flag is off. Migration 0024 adds isolated pseudonymous tables/functions without altering authenticated interview data.
+- Backward compatibility: The public endpoint remains unavailable while the relaunch feature flag is off. Migration 0025 adds isolated pseudonymous tables/functions after the 0024 runtime-settlement reconciliation without altering authenticated interview data.
 - Metrics/events to watch: Typed denial reason/scope and retry bucket, provider start/failure/cleanup outcomes, global allowance, and cleanup health—never raw IPs, cookies, room names, questions, transcripts, or tokens.
-- Follow-up slice: Apply 0023 and then 0024 only through the reviewed migration workflow, complete isolated Preview rehearsals, finish SAV-180 consent evidence, and leave launch activation to the owner.
+- Follow-up slice: Apply 0023 and 0024 through the reviewed SAV-264 workflow, then apply 0025 through the reviewed SAV-178 workflow; complete isolated Preview rehearsals, finish SAV-180 consent evidence, and leave launch activation to the owner.

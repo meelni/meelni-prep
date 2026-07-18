@@ -1,3 +1,5 @@
+SET LOCAL search_path = public, pg_catalog;
+--> statement-breakpoint
 CREATE TABLE "public_demo_rate_limit" (
   "deployment_scope" text NOT NULL,
   "scope" text NOT NULL,
