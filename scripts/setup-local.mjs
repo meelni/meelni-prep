@@ -10,11 +10,18 @@ import {
   requiredEnvAlternativesStatus,
   requiredEnvStatus,
 } from "./local-env.mjs";
+import { assertPinnedNodeVersion } from "./node-version.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const npmCachePath = resolve(repoRoot, ".context/npm-cache");
 const envPath = resolve(repoRoot, ".env.local");
 
+try {
+  assertPinnedNodeVersion();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 mkdirSync(npmCachePath, { recursive: true });
 
 run("npm", ["install"], {
