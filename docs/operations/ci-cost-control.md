@@ -14,13 +14,20 @@ gate when a change becomes merge-ready.
   allocating a new Validate runner.
 - Closing a pull request also cancels any queued or running Validate work without
   publishing the required context.
-- Pushes to `main` and manual `workflow_dispatch` runs retain the complete gate.
+- Pushes to `main` retain the complete gate unless the stack registry is the
+  only changed path. Registry pull requests still run the complete gate before
+  merge, while their trusted default-branch publisher performs the required
+  post-merge topology and migration revalidation.
+- Manual `workflow_dispatch` runs retain the complete gate.
 - Concurrency cancellation stops superseded runs for the same pull request/ref.
 
-The trigger policy changes frequency, not coverage. Validate still installs a
-clean dependency graph, starts PostgreSQL, verifies clean and upgrade migration
-paths, runs repository skills and Node/Python contracts, executes the full
-quality/regression suite, and builds the production application.
+The trigger policy changes frequency without reducing merge-ready coverage.
+Validate still installs a clean dependency graph, starts PostgreSQL, verifies
+clean and upgrade migration paths, runs repository skills and Node/Python
+contracts, executes the full quality/regression suite, and builds the production
+application. The exact `.github/stacked-prs.json` exclusion applies only to the
+post-merge `main` push. A pull request changing that file remains unfiltered,
+and any `main` push containing another path still runs the complete gate.
 
 ## Agent workflow
 
@@ -83,7 +90,11 @@ merge-ready PR events and closes that can invalidate dependent evidence. Draft
 branch movement and base changes use one combined dependency audit; draft body
 and title edits allocate no runner. There is no unattended schedule. Manual and
 trusted-checker/default-branch full revalidation run topology and migration
-publication in one hosted job.
+publication in one hosted job. A `main` change to `.github/stacked-prs.json`
+continues to trigger `Relaunch Integration Gates`, which checks out trusted
+default-branch code and revalidates every open registered stack plus migration
+ownership. The CI path exclusion does not change publisher permissions,
+required contexts, or branch protection.
 
 ## Budget operations
 
@@ -96,4 +107,7 @@ it a code failure.
 
 Expected impact: removing duplicate feature-push runs cuts the common two-run
 pattern roughly in half. Suppressing full runs during iterative draft work saves
-additional minutes while retaining final independent proof.
+additional minutes while retaining final independent proof. Registry-only
+merges save one further full run, approximately nine minutes in the July 2026
+observations, while retaining their merge-ready Validate and trusted post-merge
+publication evidence.
