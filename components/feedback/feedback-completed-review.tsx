@@ -33,7 +33,10 @@ export function CompletedV2Review({
       action={<FeedbackDashboardLink />}
     >
       <div className="space-y-8">
-        <StatusPill tone={partial ? "warning" : "success"}>
+        <StatusPill
+          tone={partial ? "warning" : "success"}
+          className={!partial ? "text-foreground" : undefined}
+        >
           {partial ? "Partial recorded interview" : "Full recorded interview"}
         </StatusPill>
 

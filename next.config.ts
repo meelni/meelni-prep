@@ -18,6 +18,8 @@ const NOINDEX_ROUTE_SOURCES = [
   "/setup/:path*",
 ] as const;
 
+const isBrowserQaBuild = process.env.MEELNI_BROWSER_QA === "true";
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
   async redirects() {
@@ -61,7 +63,7 @@ const nextConfig: NextConfig = {
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
-              "upgrade-insecure-requests",
+              ...(isBrowserQaBuild ? [] : ["upgrade-insecure-requests"]),
             ].join("; "),
           },
           {
