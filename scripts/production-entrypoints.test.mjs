@@ -11,8 +11,9 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(import.meta.dirname, "..");
+const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 test("LiveKit Preview remains usable while Production denies before lk", async () => {
   const directory = await mkdtemp(join(tmpdir(), "meelni-livekit-guard-"));

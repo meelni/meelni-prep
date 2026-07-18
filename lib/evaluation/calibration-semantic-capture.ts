@@ -1,13 +1,19 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -130,6 +136,18 @@ export interface SemanticCapturePublicReport {
   };
 }
 
+export function resolvePrivateSemanticCaptureDirectory(
+  requestedPath: string
+): string {
+  const requestedDirectory = requireAbsolutePath(
+    requestedPath,
+    "capture directory"
+  );
+  const canonicalParent = realpathSync(dirname(requestedDirectory));
+  assertSemanticPathOutsideGitWorktree(canonicalParent);
+  return join(canonicalParent, basename(requestedDirectory));
+}
+
 export function initializePrivateSemanticCapture(input: {
   directory: string;
   runId: string;
@@ -141,13 +159,7 @@ export function initializePrivateSemanticCapture(input: {
   caseRuns: Array<{ caseRef: string; runIndex: number }>;
   retentionExpiresAt: string;
 }): PrivateSemanticCaptureHandle {
-  const requestedDirectory = requireAbsolutePath(
-    input.directory,
-    "capture directory"
-  );
-  const canonicalParent = realpathSync(dirname(requestedDirectory));
-  assertOutsideGitWorktree(canonicalParent);
-  const directory = join(canonicalParent, basename(requestedDirectory));
+  const directory = resolvePrivateSemanticCaptureDirectory(input.directory);
   const retentionExpiresAt = requireIsoTimestamp(
     input.retentionExpiresAt,
     "retentionExpiresAt"
@@ -372,9 +384,23 @@ export function buildTrustedSemanticExecutionAuthority(input: {
   return { ...body, authoritySha256: hashCanonical(body) };
 }
 
-export function completePrivateSemanticReview(input: {
+export function parseTrustedSemanticExecutionAuthority(
+  input: unknown,
+  reviewInputSha256: string
+): TrustedSemanticExecutionAuthority {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new Error("Invalid trusted semantic execution authority");
+  }
+  return parseTrustedExecutionAuthority(
+    input as TrustedSemanticExecutionAuthority,
+    reviewInputSha256
+  );
+}
+
+export function publishPrivateSemanticReviewBeforeTerminalReport(input: {
   capture: PrivateSemanticCaptureHandle;
   publicReportPath: string;
+  canonicalMismatchCaseRuns: Array<{ caseRef: string; runIndex: number }>;
   trustedExecutionAuthority: TrustedSemanticExecutionAuthority;
   panels: [
     { taskPath: string; decisions: SemanticAdjudicationDecision[] },
@@ -459,12 +485,11 @@ export function completePrivateSemanticReview(input: {
     },
     authority
   );
-  if (semanticAdjudication.gate !== "passed") {
-    throw new Error(
-      "Semantic review did not pass; no public report was written"
-    );
-  }
-
+  assertCanonicalMismatchAlternatives(
+    manifest,
+    input.canonicalMismatchCaseRuns,
+    semanticAdjudication.summary.reviewedLegitimateAlternativeOutputIds
+  );
   const report: SemanticCapturePublicReport = {
     contractVersion: "evaluation-output-semantic-capture-report.v1",
     syntheticOnly: true,
@@ -490,13 +515,44 @@ export function completePrivateSemanticReview(input: {
     input.capture.directory
   );
   writePublicReport(publicReportPath, report);
+  return report;
+}
+
+export function semanticAdjudicationReportSha256(
+  report: SemanticCapturePublicReport
+): string {
+  return hashCanonical(report.semanticAdjudication);
+}
+
+export function completePrivateSemanticReviewAfterTerminalReport(input: {
+  capture: PrivateSemanticCaptureHandle;
+  publicReportPath: string;
+  report: SemanticCapturePublicReport;
+  terminalReportPath: string;
+  terminalReportSha256: string;
+}): { report: SemanticCapturePublicReport; retentionReportUpdated: boolean } {
+  const publicReportPath = resolvePublicReportPath(
+    input.publicReportPath,
+    input.capture.directory
+  );
+  assertPublishedSemanticReport(publicReportPath, input.report);
+  assertTerminalCalibrationReport(
+    input.terminalReportPath,
+    input.terminalReportSha256
+  );
   cleanupPrivateSemanticCapture(input.capture);
   const completedReport: SemanticCapturePublicReport = {
-    ...report,
-    retention: { ...report.retention, rawCaptureDeleted: true },
+    ...input.report,
+    retention: { ...input.report.retention, rawCaptureDeleted: true },
   };
-  replacePublicReport(publicReportPath, completedReport);
-  return completedReport;
+  try {
+    replacePublicReport(publicReportPath, completedReport);
+    return { report: completedReport, retentionReportUpdated: true };
+  } catch {
+    // The terminal v9 report is already durable. Leaving the semantic report's
+    // deletion bit false is conservative and never overclaims cleanup.
+    return { report: input.report, retentionReportUpdated: false };
+  }
 }
 
 export function cleanupPrivateSemanticCapture(
@@ -708,6 +764,37 @@ function verifyRawOutputs(
     ) {
       throw new Error("Semantic capture response hash mismatch");
     }
+  }
+}
+
+function assertCanonicalMismatchAlternatives(
+  manifest: PrivateCaptureManifest,
+  canonicalMismatchCaseRuns: Array<{ caseRef: string; runIndex: number }>,
+  reviewedLegitimateAlternativeOutputIds: string[]
+): void {
+  const expected = canonicalMismatchCaseRuns.map(({ caseRef, runIndex }) => {
+    const caseRefSha256 = sha256(requireText(caseRef, "caseRef"));
+    requireRunIndex(runIndex);
+    const match = manifest.caseRuns.find(
+      (entry) =>
+        entry.caseRefSha256 === caseRefSha256 && entry.runIndex === runIndex
+    );
+    if (!match?.output) {
+      throw new Error(
+        "Semantic adjudication canonical mismatch has no captured output"
+      );
+    }
+    return match.output.sanitizedOutputId;
+  });
+  if (new Set(expected).size !== expected.length) {
+    throw new Error("Semantic adjudication canonical mismatches are duplicated");
+  }
+  const actual = [...reviewedLegitimateAlternativeOutputIds].sort();
+  expected.sort();
+  if (canonicalJson(actual) !== canonicalJson(expected)) {
+    throw new Error(
+      "Semantic adjudication legitimate alternatives do not match canonical mismatches"
+    );
   }
 }
 
@@ -958,10 +1045,22 @@ function writePublicReport(
   report: SemanticCapturePublicReport
 ): void {
   const path = requireAbsolutePath(pathInput, "public report path");
-  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, {
-    flag: "wx",
-    mode: 0o644,
-  });
+  const parent = dirname(path);
+  const temporary = join(
+    parent,
+    `.${basename(path)}.${randomBytes(16).toString("hex")}.tmp`
+  );
+  writeSyncedFile(temporary, `${JSON.stringify(report, null, 2)}\n`);
+  try {
+    linkSync(temporary, path);
+    unlinkSync(temporary);
+    syncDirectory(parent);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {}
+    throw error;
+  }
 }
 
 function replacePublicReport(
@@ -969,12 +1068,108 @@ function replacePublicReport(
   report: SemanticCapturePublicReport
 ): void {
   const path = requireAbsolutePath(pathInput, "public report path");
-  const temporary = `${path}.completed-${randomBytes(8).toString("hex")}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, {
-    flag: "wx",
-    mode: 0o644,
-  });
-  renameSync(temporary, path);
+  assertPrivateRegularFile(path);
+  const parent = dirname(path);
+  const temporary = join(
+    parent,
+    `.${basename(path)}.${randomBytes(16).toString("hex")}.tmp`
+  );
+  writeSyncedFile(temporary, `${JSON.stringify(report, null, 2)}\n`);
+  try {
+    renameSync(temporary, path);
+    syncDirectory(parent);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {}
+    throw error;
+  }
+}
+
+function assertPublishedSemanticReport(
+  path: string,
+  expected: SemanticCapturePublicReport
+): void {
+  assertPrivateRegularFile(path);
+  if (readFileSync(path, "utf8") !== `${JSON.stringify(expected, null, 2)}\n`) {
+    throw new Error("Semantic public report changed before terminal cleanup");
+  }
+}
+
+function assertTerminalCalibrationReport(pathInput: string, sha256: string): void {
+  const path = requireAbsolutePath(pathInput, "terminal report path");
+  if (!SHA256.test(sha256)) {
+    throw new Error("Terminal calibration report hash is invalid");
+  }
+  assertPrivateRegularFile(path);
+  const contents = readFileSync(path);
+  if (createHash("sha256").update(contents).digest("hex") !== sha256) {
+    throw new Error("Terminal calibration report hash mismatch");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents.toString("utf8"));
+  } catch {
+    throw new Error("Terminal calibration report is invalid JSON");
+  }
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    (parsed as { contractVersion?: unknown }).contractVersion !==
+      "evaluation-calibration-report.v9" ||
+    !["passed", "failed"].includes(
+      String(
+        (parsed as { semanticReview?: { status?: unknown } }).semanticReview
+          ?.status
+      )
+    ) ||
+    !["passed", "failed"].includes(
+      String(
+        (parsed as { gate?: { calibrationEvidenceAcceptance?: unknown } }).gate
+          ?.calibrationEvidenceAcceptance
+      )
+    )
+  ) {
+    throw new Error("Terminal calibration report is not terminal");
+  }
+}
+
+function assertPrivateRegularFile(path: string): void {
+  const stat = lstatSync(path);
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.uid !== process.getuid?.() ||
+    stat.nlink !== 1 ||
+    (stat.mode & 0o777) !== 0o600
+  ) {
+    throw new Error("Semantic report file is unsafe");
+  }
+}
+
+function writeSyncedFile(path: string, contents: string): void {
+  const fd = openSync(
+    path,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+    0o600
+  );
+  try {
+    writeFileSync(fd, contents, "utf8");
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  chmodSync(path, 0o600);
+}
+
+function syncDirectory(path: string): void {
+  const fd = openSync(path, constants.O_RDONLY);
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function resolvePublicReportPath(
@@ -1020,7 +1215,9 @@ function requireIssuedCaptureHandle(
   return issued;
 }
 
-function assertOutsideGitWorktree(startDirectory: string): void {
+export function assertSemanticPathOutsideGitWorktree(
+  startDirectory: string
+): void {
   let current = startDirectory;
   while (true) {
     if (existsSync(join(current, ".git"))) {

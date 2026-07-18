@@ -1,5 +1,10 @@
 # SAV-255 Calibration Evidence Acceptance
 
+Historical delivery note: SAV-255 introduced v8 and the evidence-only gate
+name. SAV-248 now emits v9 to add mandatory semantic-review finalization; the
+v8 statements below describe the completed SAV-255 slice, not the current
+writer contract.
+
 ## Intent
 
 - User request: remove automated launch-decision language from calibration.
@@ -54,18 +59,19 @@
 
 - Required commands: `npm run test:calibration`, application and test
   typechecks, scoped lint, Prettier check, and `git diff --check`.
-- Optional/manual checks: repository search separates current v8 terminology
-  from explicitly historical v7 references.
+- Optional/manual checks: repository search separates the historical v7/v8
+  terminology from the current v9 writer.
 - Fixtures or regression tests needed: byte hashes and interpretation of both
   committed v7 calibration reports, preservation of the hash-bound SAV-250
-  audit, and current v8 gate/CLI behavior.
+  audit, and the v8 gate/CLI behavior later preserved by v9.
 
 ## Rollout
 
 - Risk level: low, with a deliberate versioned contract break for current
   writers.
 - Backward compatibility: v7 evidence stays byte-for-byte immutable and is
-  interpreted as historical technical evidence only; current writers emit v8.
+  interpreted as historical technical evidence only; SAV-255 writers emitted
+  v8 and current SAV-248 writers emit v9.
 - Metrics/events to watch: none; this provider-free change creates no runtime
   product event.
 - Follow-up slice: none required for the rename itself.
