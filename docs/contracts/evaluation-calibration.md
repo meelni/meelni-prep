@@ -146,6 +146,17 @@ every semantically legitimate finding. The provider-free SAV-250 audit in
 alternative feedback in every scored transcript; arbitrary alternatives remain
 review-required instead of being accepted as “any grounded quote.”
 
+Any future attempt to accept non-canonical but potentially legitimate output
+must first satisfy `evaluation-output-semantic-adjudication.v1`, documented in
+`evaluation-output-semantic-adjudication.md`. That provider-free contract binds
+the exact run, corpus, prompt/schema, model, response set, and every response
+hash to two independent unanimous agent panels with null human identity. It
+forbids reviewer prose and fails closed on hash/coverage mutations,
+contradictory decisions, disagreement, and unreviewed alternatives. Its public
+report contains only hashes, closed decisions, aggregate counts, and opaque
+output IDs. It is not a v3 authorization and cannot reinterpret the terminal
+SAV-248 result.
+
 Every out-of-band score records case, run, dimension, actual score, and expected
 band. Every unstable dimension records case, run, dimension, actual score, and
 observed range. Model mismatches record both configured expectation and observed
