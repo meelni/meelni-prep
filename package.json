@@ -62,7 +62,7 @@
     "test:core": "tsx --test packages/core/src/*.test.ts",
     "test:integrations": "tsx --test packages/integrations/src/*.test.ts",
     "test:database-migrations": "tsx scripts/test-database-migrations.ts",
-    "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py",
+    "test:python-agent": "python3 -m unittest agent/test_runtime_contracts.py agent/test_livekit_preview_bootstrap.py",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
     "test:content": "tsx --test app/explore/explore-client.test.tsx app/opengraph-image.test.tsx lib/blog-data.test.ts lib/data/public-company.test.ts lib/explore/*.test.ts lib/seo/*.test.ts components/explore/structured-data.test.tsx && node --test scripts/content-credibility-contract.test.mjs",
