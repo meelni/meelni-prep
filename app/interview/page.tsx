@@ -17,15 +17,15 @@ import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
 import { ConnectionIndicator } from "./components/connection-indicator";
 import { NudgeOverlay, Nudge } from "@/components/interview/nudge-overlay";
+import { InterviewRoomSurface } from "./components/interview-room-surface";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { Loader2, AlertCircle, WifiOff } from "lucide-react";
+import { Loader2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AppSurface,
   AppSurfaceDescription,
-  AppSurfaceHeader,
   AppSurfaceTitle,
   StatusPill,
 } from "@/components/ui/app-surface";
@@ -124,6 +124,7 @@ export function InterviewPageContent() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const endSessionReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const endIntentRef = useRef(false);
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
@@ -1070,7 +1071,13 @@ export function InterviewPageContent() {
           });
         }}
         onEndSession={() => {
-          if (!deadlineReached) setShowEndModal(true);
+          if (!deadlineReached) {
+            endSessionReturnFocusRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            setShowEndModal(true);
+          }
         }}
       />
       <NudgeOverlay
@@ -1095,6 +1102,7 @@ export function InterviewPageContent() {
           setEndSessionError(null);
         }}
         onConfirm={handleEndSession}
+        returnFocusRef={endSessionReturnFocusRef}
       />
       {deadlineReached && <DeadlineReachedOverlay />}
       {!deadlineReached && disconnectTimedOut && (
@@ -1150,112 +1158,36 @@ function InterviewRoomContent({
     }
   }, [connectionReady, deadlineReached, isMuted, localParticipant]);
 
-  const roundLabel = session.config?.roundType
-    ? session.config.roundType
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (letter: string) => letter.toUpperCase())
-    : "PM Interview";
-
   return (
-    <div className="bg-background text-foreground min-h-screen">
-      <header className="bg-background/90 border-border sticky top-0 z-40 w-full border-b backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <StatusPill tone="primary" className="shrink-0">
-              {roundLabel}
-            </StatusPill>
-            <ConnectionIndicator />
-            {connectionStatus === "recovered" && (
-              <StatusPill tone="success" aria-live="polite">
-                Connection restored
-              </StatusPill>
-            )}
-          </div>
-          <TimerDisplay
-            deadlineAt={session.deadline_at}
-            onDeadlineReached={onDeadlineReached}
-          />
-        </div>
-      </header>
-
-      <main className="mx-auto grid min-h-[calc(100vh-3.5rem)] max-w-7xl grid-cols-1 gap-0 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
-        <section className="flex min-h-[620px] flex-col items-center justify-between py-6 lg:min-h-[calc(100vh-6rem)] lg:pr-6">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-8 text-center">
-            <div className="space-y-3">
-              <StatusPill tone={hintMode === "off" ? "muted" : "primary"}>
-                {hintMode === "off" ? "Real interview" : "Gentle hints on"}
-              </StatusPill>
-              <StatusPill tone="muted">
-                {agentState.charAt(0).toUpperCase() + agentState.slice(1)}
-              </StatusPill>
-              <h1 className="font-display text-2xl font-light tracking-tight sm:text-3xl">
-                {session.question?.text || "Your interviewer is ready."}
-              </h1>
-              {session.question?.company && (
-                <p className="text-muted-foreground text-sm">
-                  {session.question.company}
-                </p>
-              )}
-            </div>
-
-            <div className="h-[280px] w-full max-w-[520px] sm:h-[360px]">
-              <AudioVisualizer />
-            </div>
-          </div>
-
-          <div className="sticky bottom-4 z-30 mt-6">
-            {!deadlineReached && !recoveringConnection && connectionReady && (
-              <InterviewControls
-                isMuted={isMuted}
-                hintMode={hintMode}
-                onHintModeChange={onHintModeChange}
-                onToggleMute={onToggleMute}
-                onEndSession={onEndSession}
-              />
-            )}
-          </div>
-        </section>
-
-        <aside className="border-border bg-card flex min-h-[420px] flex-col overflow-hidden rounded-lg border lg:sticky lg:top-[4.5rem] lg:h-[calc(100vh-5.5rem)]">
-          <AppSurfaceHeader className="flex items-start justify-between gap-3">
-            <div>
-              <AppSurfaceTitle>Transcript</AppSurfaceTitle>
-              <AppSurfaceDescription>
-                {transcriptIntegrity === "healthy"
-                  ? "Conversation turns are saved as the room runs."
-                  : transcriptIntegrity === "retrying"
-                    ? "Checking that the latest turns are stored before the interview closes."
-                    : "Some recent turns could not be verified. Keep the room open and retry ending the interview in a moment."}
-              </AppSurfaceDescription>
-            </div>
-            {transcriptIntegrity !== "healthy" && (
-              <StatusPill
-                tone="warning"
-                className="shrink-0"
-                role={transcriptIntegrity === "retrying" ? "status" : "alert"}
-                aria-live={
-                  transcriptIntegrity === "retrying" ? "polite" : "assertive"
-                }
-                aria-atomic="true"
-              >
-                <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                {transcriptIntegrity === "retrying"
-                  ? "Verifying"
-                  : "Needs recovery"}
-                <span className="sr-only">
-                  {transcriptIntegrity === "retrying"
-                    ? ". Checking that the latest transcript turns are stored."
-                    : ". Some recent transcript turns could not be verified. Keep the room open and retry ending the interview in a moment."}
-                </span>
-              </StatusPill>
-            )}
-          </AppSurfaceHeader>
-          <div className="min-h-0 flex-1">
-            <TranscriptPanel turns={transcript} />
-          </div>
-        </aside>
-      </main>
-    </div>
+    <InterviewRoomSurface
+      agentState={agentState}
+      company={session.question?.company}
+      connectionIndicator={<ConnectionIndicator />}
+      connectionStatus={connectionStatus}
+      controls={
+        <InterviewControls
+          isMuted={isMuted}
+          hintMode={hintMode}
+          onHintModeChange={onHintModeChange}
+          onToggleMute={onToggleMute}
+          onEndSession={onEndSession}
+        />
+      }
+      deadlineReached={deadlineReached}
+      hintMode={hintMode}
+      mediaVisualizer={<AudioVisualizer />}
+      question={session.question?.text}
+      recoveringConnection={recoveringConnection}
+      roundType={session.config?.roundType}
+      timer={
+        <TimerDisplay
+          deadlineAt={session.deadline_at}
+          onDeadlineReached={onDeadlineReached}
+        />
+      }
+      transcriptIntegrity={transcriptIntegrity}
+      transcriptPanel={<TranscriptPanel turns={transcript} />}
+    />
   );
 }
 

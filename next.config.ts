@@ -18,8 +18,29 @@ const NOINDEX_ROUTE_SOURCES = [
   "/setup/:path*",
 ] as const;
 
+const isBrowserQaBuild = process.env.MEELNI_BROWSER_QA === "true";
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
+  turbopack: isBrowserQaBuild
+    ? {
+        root: process.env.MEELNI_BROWSER_QA_TURBOPACK_ROOT || process.cwd(),
+      }
+    : undefined,
+  async redirects() {
+    return [
+      {
+        source: "/setup",
+        destination: "/dashboard/new-interview",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/new-rep",
+        destination: "/dashboard/new-interview",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     const globalHeaders = [
       ...(process.env.VERCEL_ENV === "production"
@@ -47,7 +68,7 @@ const nextConfig: NextConfig = {
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
-              "upgrade-insecure-requests",
+              ...(isBrowserQaBuild ? [] : ["upgrade-insecure-requests"]),
             ].join("; "),
           },
           {

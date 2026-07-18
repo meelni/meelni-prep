@@ -5576,7 +5576,9 @@ async function verifyProviderCreditRecovery(
             },
             databases[0]!
           ),
-        (evidence) => trackedAfterRollback.push(evidence)
+        (evidence) => {
+          trackedAfterRollback.push(evidence);
+        }
       ),
       /forced_outer_commit_rollback/
     );

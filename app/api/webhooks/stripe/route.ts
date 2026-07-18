@@ -1273,7 +1273,7 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
     postCommitEffects = result.postCommitEffects;
   });
   if (postCommitEffects) {
-    emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
+    await emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
   }
 }
 

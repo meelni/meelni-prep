@@ -8,6 +8,7 @@ import {
   analyticsConsentSubjectKey,
   isConsentResolvedForSubject,
   shouldApplyConsentResponse,
+  shouldRetryAccountConsentSync,
   parseAnalyticsConsentCookie,
   resolveTrustedAnalyticsConsent,
   serializeAnalyticsConsentCookie,
@@ -36,6 +37,29 @@ test("stale GET and PUT responses cannot replace a newer choice or subject", () 
   assert.equal(shouldApplyConsentResponse(1, 2, "user-a", "user-a"), false);
   assert.equal(shouldApplyConsentResponse(2, 2, "user-a", "user-b"), false);
   assert.equal(shouldApplyConsentResponse(2, 2, "user-b", "user-b"), true);
+});
+
+test("only a real unsynchronized account choice exposes retry state", () => {
+  const declined = createAnalyticsConsentDecision(
+    "declined",
+    "settings",
+    "account",
+    new Date("2026-07-10T12:00:00.000Z")
+  );
+  const legacyDecline = createAnalyticsConsentDecision(
+    "declined",
+    "legacy_decline",
+    "account",
+    new Date("2026-07-10T12:00:00.000Z")
+  );
+
+  assert.equal(shouldRetryAccountConsentSync(declined, false), true);
+  assert.equal(shouldRetryAccountConsentSync(declined, true), false);
+  assert.equal(shouldRetryAccountConsentSync(legacyDecline, false), false);
+  assert.equal(
+    shouldRetryAccountConsentSync(UNDECIDED_ANALYTICS_CONSENT, false),
+    false
+  );
 });
 
 test("analytics consent cookie round-trips a current explicit decision", () => {
