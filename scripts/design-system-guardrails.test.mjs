@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -539,6 +539,10 @@ test("authenticated product routes follow the product container taxonomy", async
     "utf8"
   );
   const interviewPage = await readFile("app/interview/page.tsx", "utf8");
+  const interviewRoomSurface = await readFile(
+    "app/interview/components/interview-room-surface.tsx",
+    "utf8"
+  );
   const feedbackResultPage = await readFile(
     "app/feedback/[sessionId]/page.tsx",
     "utf8"
@@ -626,11 +630,18 @@ test("authenticated product routes follow the product container taxonomy", async
   for (const required of [
     "LiveKitRoomWrapper",
     "InterviewRoomContent",
+    "InterviewRoomSurface",
     "StatusPill",
-    "AppSurfaceHeader",
   ]) {
     if (!interviewPage.includes(required)) {
       violations.push(`app/interview/page.tsx:${required}`);
+    }
+  }
+  for (const required of ["AppSurfaceHeader", "StatusPill"]) {
+    if (!interviewRoomSurface.includes(required)) {
+      violations.push(
+        `app/interview/components/interview-room-surface.tsx:${required}`
+      );
     }
   }
 

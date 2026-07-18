@@ -40,7 +40,7 @@ function AuthShell({ children, backLabel, onBack }: AuthShellProps) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <div className="from-background via-background to-primary/5 flex min-h-screen items-center justify-center bg-gradient-to-br px-4 py-8">
+    <div className="bg-background flex min-h-screen items-center justify-center px-4 py-8">
       <motion.div
         initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
