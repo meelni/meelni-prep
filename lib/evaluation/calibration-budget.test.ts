@@ -10,6 +10,7 @@ import {
   CALIBRATION_PRICING_REVIEW_TTL_MS,
   CalibrationSpendGuard,
   calibrationInputTokenCeiling,
+  structuredCalibrationInputTokenCeiling,
   validateCalibrationPricingFreshness,
   type CalibrationProviderUsage,
 } from "./calibration-budget";
@@ -21,6 +22,15 @@ const SCORED_FIXTURE = evaluationCalibrationCases.find(
   ({ expectedCompletionState }) =>
     expectedCompletionState === "full" || expectedCompletionState === "partial"
 )!;
+
+test("strict response-schema bytes are included in every reservation ceiling", () => {
+  const state = SCORED_FIXTURE.expectedCompletionState;
+  assert.ok(state === "full" || state === "partial");
+  assert.ok(
+    structuredCalibrationInputTokenCeiling(SCORED_FIXTURE) >
+      calibrationInputTokenCeiling(SCORED_FIXTURE)
+  );
+});
 
 test("the exact $3 reservation boundary is allowed and another call is refused", () => {
   const guard = createGuard();
@@ -272,10 +282,10 @@ function fixtureWithInputTokenCeiling(target: number) {
   const userTurn = fixture.transcript.find(
     ({ speaker }) => speaker === "user"
   )!;
-  const current = calibrationInputTokenCeiling(fixture);
+  const current = structuredCalibrationInputTokenCeiling(fixture);
   assert.ok(target >= current);
   userTurn.text += "x".repeat(target - current);
-  assert.equal(calibrationInputTokenCeiling(fixture), target);
+  assert.equal(structuredCalibrationInputTokenCeiling(fixture), target);
   return fixture;
 }
 
