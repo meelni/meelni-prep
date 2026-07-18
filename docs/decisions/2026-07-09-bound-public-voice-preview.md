@@ -26,7 +26,7 @@ The preview is an activation surface: it should prove live PM interview practice
 
 ## Consequences
 
-- Database migration `0024_public_demo_limits` must land after `0023_explicit_analytics_consent` and before dependent web code. Historical migration number 0008 is permanently retired; it was removed during the authorized Production repair because its original PR never merged.
+- Database migration `0025_public_demo_limits` must land after `0024_runtime_settlement_reconciliation` and before dependent web code. Historical migration number 0008 is permanently retired; it was removed during the authorized Production repair because its original PR never merged.
 - Each environment needs an independent 32-byte base64url `DEMO_ABUSE_HMAC_SECRET` before the preview endpoint can start.
 - The relaunch feature flag remains default-off. Preview replay, limit, room deletion, and rollback checks are launch evidence, not reasons to bypass the broader readiness gate.
 - A verified Vercel WAF/bot rule is required launch evidence for denial traffic; Postgres remains the provider-spend authority.
