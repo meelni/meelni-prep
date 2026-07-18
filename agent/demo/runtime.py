@@ -40,7 +40,7 @@ class DemoDeadline:
 
 
 def parse_demo_room_metadata(room_metadata: object) -> dict:
-    """Parse the server-authored room metadata carried by the dispatched job."""
+    """Parse server-authored metadata after the LiveKit room is connected."""
     if not isinstance(room_metadata, str) or not room_metadata:
         return {}
     try:

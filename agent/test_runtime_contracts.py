@@ -119,7 +119,7 @@ class RuntimeContractTests(unittest.TestCase):
             500,
         )
 
-    def test_public_demo_parses_dispatched_job_room_metadata(self):
+    def test_public_demo_parses_connected_room_metadata(self):
         metadata = parse_demo_room_metadata(json.dumps({
             "duration_seconds": 120,
             "participant_identity": "demo-opaque",
@@ -171,13 +171,14 @@ class RuntimeContractTests(unittest.TestCase):
     def test_public_demo_source_arms_deadline_and_waits_for_exact_participant(self):
         source = (Path(__file__).parent / "demo" / "agent.py").read_text()
 
-        metadata = source.index("parse_demo_room_metadata(ctx.job.room.metadata)")
-        deadline = source.index("hard_deadline_task = asyncio.create_task(")
         connect = source.index("lambda: ctx.connect(")
+        metadata = source.index("parse_demo_room_metadata(ctx.room.metadata)")
+        deadline = source.index("hard_deadline_task = asyncio.create_task(")
         wait = source.index("participant = await wait_for_candidate_before_greeting(")
         session_start = source.index("session.start(agent=demo_agent")
+        self.assertLess(connect, metadata)
         self.assertLess(metadata, deadline)
-        self.assertLess(deadline, connect)
+        self.assertLess(deadline, wait)
         self.assertLess(wait, session_start)
         self.assertIn("candidate_identity=participant_identity", source)
         self.assertNotIn("exc_info=True", source)
