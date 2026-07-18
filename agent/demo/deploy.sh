@@ -8,7 +8,7 @@ case "$environment" in
     expected_agent_id="${MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID:-}"
     target_url="${MEELNI_PREVIEW_LIVEKIT_URL:-}"
     canonical_project_host="meelni-preview-dk7443ua.livekit.cloud"
-    canonical_agent_id=""
+    canonical_agent_id="CA_M5XTD4CMyXk3"
     ;;
   production)
     config_path="${MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG:-}"
@@ -49,10 +49,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -z "$canonical_agent_id" ]]; then
-  echo "The canonical Preview demo deployment identity has not been provisioned." >&2
-  exit 1
-fi
 canonical_subdomain="${canonical_project_host%.livekit.cloud}"
 if [[ "$target_url" != "wss://$canonical_project_host" ]] || \
   [[ "$expected_agent_id" != "$canonical_agent_id" ]] || \
