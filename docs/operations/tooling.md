@@ -2,6 +2,20 @@
 
 ## Local Setup
 
+Meelni local and calibration tooling requires the exact Node version recorded
+in `.node-version` (`22.22.0`). Select it before setup:
+
+```bash
+fnm install 22.22.0
+fnm use 22.22.0
+```
+
+`package.json` declares the supported deployment/runtime major as `22.x` so
+Vercel stays on Node 22 while receiving supported patch updates. Local setup,
+doctor, calibration bundle construction, and calibration verification are more
+strict: they require the exact reviewed `22.22.0` runtime. Setup checks this
+before dependency installation, env refresh, provider access, or Python setup.
+
 Run:
 
 ```bash
@@ -122,7 +136,10 @@ Run:
 npm run doctor
 ```
 
-The doctor checks Node, npm, dependencies, local env files, Python availability, Python agent environment, and Conductor configuration.
+The doctor checks the exact Node version, npm, dependencies, local env files,
+Python availability, Python agent environment, and Conductor configuration. A
+Node mismatch is a failure and prints the deterministic `fnm install`/`fnm use`
+recovery command while allowing the rest of the diagnostic report to finish.
 
 The doctor fails when required local runtime envs are missing or contain placeholder values such as `https://xxx.supabase.co`, `wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional: provider placeholders can otherwise look valid until login, LiveKit, or feedback generation fails at runtime.
 

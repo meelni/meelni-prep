@@ -49,7 +49,7 @@ User → Next.js UI → LiveKit Room → Python Agent
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22.22.0 and npm (`fnm install 22.22.0 && fnm use 22.22.0`)
 - Python 3.10+
 - Supabase account (database)
 - LiveKit Cloud account
@@ -63,6 +63,10 @@ Agent platforms that honor `conductor.json` run the maintained setup and run com
 npm run setup:local
 npm run dev:local
 ```
+
+The repository reads the exact local runtime from `.node-version`. Setup fails
+before installing dependencies or touching environment/provider state when the
+active Node process does not match it.
 
 `dev:local` starts Next.js, the local Inngest Dev Server, and the Python LiveKit agent when `agent/venv` exists.
 
