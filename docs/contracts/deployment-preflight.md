@@ -1,6 +1,6 @@
 # Deployment Preflight Contract
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 Owner: SAV-184
 
 Meelni Preview and Production builds must fail before deployment when launch-critical billing, feedback, database, or runtime configuration is incomplete, blank, mixed-mode, or points at the wrong provider identity. The preflight is read-only. It emits only check names, target names, and stable failure codes; it never prints configured values, provider payloads, price IDs, exception messages, or customer data.
@@ -39,7 +39,7 @@ The `build` command invokes preflight immediately before Next.js and derives the
 ### Inngest and feedback
 
 - `INNGEST_EVENT_KEY` is nonblank and non-placeholder.
-- `INNGEST_SIGNING_KEY` is valid-shaped and target-specific: Preview accepts only test/preview keys; Production accepts only prod/production keys.
+- `INNGEST_SIGNING_KEY` is valid-shaped and target-specific: Preview accepts Inngest's shared `signkey-branch-*` identity as well as legacy test/preview keys; Production accepts only prod/production keys. Inngest branch environments share one branch signing key and route events by the deployment's branch identity.
 - `OPENAI_API_KEY` is nonblank and key-shaped.
 - `OPENAI_FEEDBACK_MODEL` exactly matches the accepted `gpt-5.1` model, and a read-only model retrieval succeeds.
 
@@ -51,10 +51,10 @@ Inngest does not expose a safe read-only Event Key validation endpoint. An autho
 - Demo and interview dispatch names must be distinct. A shared name cannot satisfy demo readiness and fails before any room is created.
 - Public and server URLs match.
 - Production is pinned to `meelni-ek4vaisp.livekit.cloud` and exact source-owned runtime values `CA_yawKG67rCMG4` (interview) and `CA_t3sKQEihMQ7x` (demo). These values are verified Cloud deployment IDs and the currently expected dispatch names; a controlled provider rehearsal must still prove that each registered dispatch name is identical before launch readiness is claimed.
-- Preview is pinned to project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. The reviewed interview deployment is `CA_ZbGxFjfEYwsD`, dispatched as `meelni-preview-interview`.
+- Preview is pinned to project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. The reviewed interview deployment is `CA_ZbGxFjfEYwsD`, dispatched as `meelni-preview-interview`; the reviewed demo deployment is `CA_M5XTD4CMyXk3`, dispatched as `meelni-preview-demo`.
 - Preview agent identity is exact and source-owned; merely using any non-Production `*.livekit.cloud` host or any syntactically valid dispatch name is insufficient.
 - A read-only room-list request against a guaranteed nonexistent room verifies project access without reading active rooms.
-- Preview remains fail-closed until a separate demo agent is provisioned and its reviewed dispatch name completes the committed identity anchor. The current LiveKit plan permits one deployed agent, so the existing interview deployment is preserved and no Production identity may be substituted.
+- Preview requires these two distinct deployments and dispatch names; neither may be replaced with a Production identity or collapsed into a shared dispatch.
 
 ### Relaunch state
 
