@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   DASHBOARD_CONTENT_PANEL_CLASS_NAME,
+  DASHBOARD_MOBILE_NAV_CLASS_NAME,
   DASHBOARD_SIDEBAR_SHELL_CLASS_NAME,
   DashboardLayout,
   getInitialSidebarCollapsed,
@@ -45,6 +46,24 @@ test("dashboard shell wraps every section in the canonical content panel", () =>
 test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
   assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /hidden/);
   assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /md:block/);
+});
+
+test("dashboard shell provides a horizontally scrollable mobile workspace navigation", () => {
+  const html = renderToStaticMarkup(
+    <DashboardLayout
+      activeSection="analytics"
+      user={{ email: "savi@example.com" }}
+    >
+      <div>Analytics</div>
+    </DashboardLayout>
+  );
+
+  assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /overflow-x-auto/);
+  assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /md:hidden/);
+  assert.match(html, /href="\/dashboard\/history"/);
+  assert.match(html, /href="\/dashboard\/questions"/);
+  assert.match(html, /aria-current="page"[^>]*><svg[^>]*>[\s\S]*Analytics/);
+  assert.match(html, /min-h-11/);
 });
 
 test("dashboard shell keeps scrolling inside the content container", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -32,6 +33,9 @@ function SignUpContent() {
   } = useAuth();
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorSource, setErrorSource] = useState<"email" | "google" | null>(
+    null
+  );
   const [success, setSuccess] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,12 +60,14 @@ function SignUpContent() {
   const handleGoogleSignIn = async () => {
     setIsSigningUp(true);
     setError(null);
+    setErrorSource(null);
 
     try {
       await signInWithGoogle(authHandoff);
     } catch (err) {
       console.error("Sign in error:", err);
       setError("Failed to sign in. Please try again.");
+      setErrorSource("google");
       setIsSigningUp(false);
     }
   };
@@ -70,16 +76,19 @@ function SignUpContent() {
     event.preventDefault();
     setIsSigningUp(true);
     setError(null);
+    setErrorSource(null);
     setSuccess(false);
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
+      setErrorSource("email");
       setIsSigningUp(false);
       return;
     }
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters long");
+      setErrorSource("email");
       setIsSigningUp(false);
       return;
     }
@@ -95,6 +104,7 @@ function SignUpContent() {
           ? err.message
           : "Failed to sign up. Please try again.";
       setError(errorMessage);
+      setErrorSource("email");
       setIsSigningUp(false);
 
       analytics.track("auth_signup_failed", {
@@ -132,7 +142,13 @@ function SignUpContent() {
           </div>
         ) : (
           <>
-            <form onSubmit={handleEmailSignUp} className="space-y-4">
+            <form
+              onSubmit={handleEmailSignUp}
+              aria-describedby={
+                errorSource === "email" ? "signup-email-error" : undefined
+              }
+              className="space-y-4"
+            >
               <div>
                 <Label htmlFor="email" className="mb-2 block">
                   Email
@@ -185,7 +201,10 @@ function SignUpContent() {
               >
                 {isSigningUp ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
+                    <Loader2
+                      className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                     <span>Creating account...</span>
                   </span>
                 ) : (
@@ -193,6 +212,12 @@ function SignUpContent() {
                 )}
               </Button>
             </form>
+
+            {error && errorSource === "email" && (
+              <AuthMessage id="signup-email-error" tone="error">
+                {error}
+              </AuthMessage>
+            )}
 
             <AuthDivider />
 
@@ -202,9 +227,34 @@ function SignUpContent() {
               isLoading={isSigningUp}
               label="Continue with Google"
               loadingLabel="Signing up..."
+              ariaDescribedBy={
+                errorSource === "google" ? "signup-google-error" : undefined
+              }
             />
 
-            {error && <AuthMessage tone="error">{error}</AuthMessage>}
+            {error && errorSource === "google" && (
+              <AuthMessage id="signup-google-error" tone="error">
+                {error}
+              </AuthMessage>
+            )}
+
+            <p className="text-muted-foreground mt-5 text-center text-xs leading-5">
+              Review the{" "}
+              <Link
+                href="/terms"
+                className="text-foreground focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm px-1 underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+              >
+                Terms draft
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/privacy"
+                className="text-foreground focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm px-1 underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
+              >
+                Privacy draft
+              </Link>{" "}
+              before creating an account.
+            </p>
 
             <div className="text-muted-foreground mt-6 text-center text-sm">
               Already have an account?{" "}
@@ -214,7 +264,7 @@ function SignUpContent() {
                 onClick={() =>
                   router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
                 }
-                className="h-auto p-0 font-medium"
+                className="min-h-11 px-2 py-0 font-medium"
               >
                 Sign in
               </Button>

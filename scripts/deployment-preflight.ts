@@ -141,8 +141,7 @@ function createLiveKitProjectReader(
   const client = new RoomServiceClient(
     url.replace(/^wss:/, "https:"),
     apiKey,
-    apiSecret,
-    { failover: false, requestTimeout: 10 }
+    apiSecret
   );
   return {
     async verifyProjectAccess() {

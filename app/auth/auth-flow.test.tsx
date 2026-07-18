@@ -15,12 +15,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ForgotPasswordPage from "./forgot-password/page";
 import ResetPasswordPage from "./reset-password/page";
 import SignInPage from "./signin/page";
+import SignUpPage from "./signup/page";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   resetPassword: vi.fn(),
   signInWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
+  signUpWithEmail: vi.fn(),
   updateUser: vi.fn(),
   searchParams: new URLSearchParams(),
 }));
@@ -36,6 +38,7 @@ vi.mock("@/app/providers/auth-provider", () => ({
     resetPassword: mocks.resetPassword,
     signInWithEmail: mocks.signInWithEmail,
     signInWithGoogle: mocks.signInWithGoogle,
+    signUpWithEmail: mocks.signUpWithEmail,
     user: null,
   }),
 }));
@@ -125,6 +128,23 @@ describe("rendered auth intent and recovery", () => {
         "/dashboard/new-interview?questionId=question-1&returnTo=%2Fexplore%3Fcompany%3DStripe",
       cancelTo: "/explore?company=Stripe",
     });
+  });
+
+  it("links signup to the clearly labeled legal drafts without claiming acceptance", () => {
+    render(<SignUpPage />);
+
+    expect(screen.getByRole("link", { name: "Terms draft" })).toHaveAttribute(
+      "href",
+      "/terms"
+    );
+    expect(screen.getByRole("link", { name: "Privacy draft" })).toHaveAttribute(
+      "href",
+      "/privacy"
+    );
+    expect(
+      screen.getByText(/Review the.*before creating an account/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/you agree/i)).toBeNull();
   });
 
   it("returns to the selected question after a successful password update", async () => {

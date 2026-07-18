@@ -124,6 +124,7 @@ export function InterviewPageContent() {
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const endSessionReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const endIntentRef = useRef(false);
   const [endSessionError, setEndSessionError] = useState<string | null>(null);
@@ -1070,7 +1071,13 @@ export function InterviewPageContent() {
           });
         }}
         onEndSession={() => {
-          if (!deadlineReached) setShowEndModal(true);
+          if (!deadlineReached) {
+            endSessionReturnFocusRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            setShowEndModal(true);
+          }
         }}
       />
       <NudgeOverlay
@@ -1095,6 +1102,7 @@ export function InterviewPageContent() {
           setEndSessionError(null);
         }}
         onConfirm={handleEndSession}
+        returnFocusRef={endSessionReturnFocusRef}
       />
       {deadlineReached && <DeadlineReachedOverlay />}
       {!deadlineReached && disconnectTimedOut && (

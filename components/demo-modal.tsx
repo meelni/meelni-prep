@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -20,6 +19,12 @@ import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
 
 // Transcript message type
@@ -34,6 +39,7 @@ interface TranscriptMessage {
 interface DemoModalProps {
   isOpen: boolean;
   onClose: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 // Transcript Panel Component (Terminal-style design)
@@ -582,20 +588,29 @@ function DemoControls({
             <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-2xl sm:gap-4 sm:px-6 sm:py-4 md:px-8">
               {/* Mic button */}
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={toggleMute}
                 disabled={!isConnected || !localParticipant}
-                className={`relative rounded-xl p-4 shadow-lg transition-all duration-300 ${
+                aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                aria-pressed={isMuted}
+                className={`focus-visible:ring-primary relative min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none ${
                   isMuted
                     ? "bg-destructive/80 hover:bg-destructive"
                     : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 {isMuted ? (
-                  <MicOff className="text-primary-foreground h-5 w-5" />
+                  <MicOff
+                    className="text-primary-foreground h-5 w-5"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Mic className="text-primary-foreground h-5 w-5" />
+                  <Mic
+                    className="text-primary-foreground h-5 w-5"
+                    aria-hidden="true"
+                  />
                 )}
                 {!isMuted && isConnected && (
                   <div className="bg-success absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full" />
@@ -607,12 +622,17 @@ function DemoControls({
 
               {/* Close button */}
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl p-4 shadow-lg transition-all duration-300"
+                aria-label="Close voice demo"
+                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 focus-visible:ring-primary min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none"
               >
-                <X className="text-primary-foreground h-5 w-5" />
+                <X
+                  className="text-primary-foreground h-5 w-5"
+                  aria-hidden="true"
+                />
               </motion.button>
             </div>
           </motion.div>
@@ -632,7 +652,7 @@ function DemoControls({
   );
 }
 
-export function DemoModal({ isOpen, onClose }: DemoModalProps) {
+export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -642,17 +662,10 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
   const [userSpoke, setUserSpoke] = useState(false);
   const [demoCompleted, setDemoCompleted] = useState(false);
 
-  // Body scroll lock and start time tracking
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
+    if (isOpen && demoStartTime.current === undefined) {
       demoStartTime.current = Date.now();
-    } else {
-      document.body.style.overflow = "unset";
     }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
   }, [isOpen]);
 
   const fetchDemoToken = useCallback(async () => {
@@ -704,6 +717,7 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     setAgentJoined(false);
     setUserSpoke(false);
     setDemoCompleted(false);
+    demoStartTime.current = undefined;
     onClose();
   }, [agentJoined, demoCompleted, onClose, userSpoke]);
 
@@ -714,116 +728,98 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     }
   }, [fetchDemoToken, isOpen, token]);
 
-  // ESC key listener to close modal
-  useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && isOpen) {
-        handleClose();
-      }
-    };
+  return (
+    <MotionConfig reducedMotion="user">
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+      >
+        <DialogContent
+          aria-modal="true"
+          overlayClassName="z-[9999] bg-overlay/95"
+          closeClassName="z-[70] bg-primary-foreground/10 text-primary-foreground opacity-100 hover:bg-primary-foreground/20"
+          onCloseAutoFocus={(event) => {
+            if (!returnFocusRef?.current) return;
+            event.preventDefault();
+            returnFocusRef.current.focus();
+          }}
+          className="border-primary-foreground/10 from-overlay via-overlay to-primary/20 z-[10000] block h-[calc(100dvh_-_2rem)] max-h-[900px] max-w-[1600px] overflow-hidden rounded-2xl bg-gradient-to-br p-0 shadow-2xl"
+        >
+          <DialogTitle className="sr-only">Meelni voice demo</DialogTitle>
+          <DialogDescription className="sr-only">
+            Practice a short live PM interview question by voice.
+          </DialogDescription>
 
-    if (isOpen) {
-      window.addEventListener("keydown", handleEscKey);
-    }
-
-    return () => {
-      window.removeEventListener("keydown", handleEscKey);
-    };
-  }, [handleClose, isOpen]);
-
-  // Only render portal on client-side after mount
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Full-screen dark backdrop - blurs everything */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="bg-overlay/95 fixed inset-0 z-[9999] backdrop-blur-sm"
-          />
-
-          {/* Full-screen Modal Container (LiveKit style) */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-primary-foreground/5 border-primary-foreground/10 text-primary-foreground/60 absolute bottom-4 left-4 z-50 hidden items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl sm:bottom-6 sm:left-6 sm:flex"
           >
-            {/* Inner modal with border/frame */}
-            <div className="border-primary-foreground/10 from-overlay via-overlay to-primary/20 relative h-full max-h-[900px] w-full max-w-[1600px] overflow-hidden rounded-2xl border bg-gradient-to-br shadow-2xl">
-              {/* Keyboard shortcut hint - bottom left - Hidden on mobile */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="bg-primary-foreground/5 border-primary-foreground/10 text-primary-foreground/60 absolute bottom-4 left-4 z-50 hidden items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl sm:bottom-6 sm:left-6 sm:flex"
-              >
-                <kbd className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80 rounded border px-2 py-1 font-mono">
-                  ESC
-                </kbd>
-                <span>to close</span>
-              </motion.div>
-              {error ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="space-y-4 text-center">
-                    <div className="bg-destructive/20 mx-auto flex h-16 w-16 items-center justify-center rounded-full">
-                      <X className="text-destructive h-8 w-8" />
-                    </div>
-                    <p className="text-destructive font-medium">{error}</p>
-                    <Button
-                      type="button"
-                      onClick={fetchDemoToken}
-                      size="lg"
-                      className="rounded-xl font-semibold"
-                    >
-                      Try Again
-                    </Button>
-                  </div>
-                </div>
-              ) : isLoading || !token ? (
-                <div className="flex h-full flex-col items-center justify-center gap-6">
-                  <Loader2 className="text-primary h-12 w-12 animate-spin" />
-                  <p className="text-primary-foreground/80 font-medium">
-                    Connecting to Meelni...
-                  </p>
-                </div>
-              ) : (
-                <LiveKitRoom
-                  token={token}
-                  serverUrl={url}
-                  connect={true}
-                  audio={true}
-                  video={false}
-                  onDisconnected={handleClose}
-                  className="h-full w-full"
-                >
-                  <DemoControls
-                    onClose={handleClose}
-                    demoStartTime={demoStartTime}
-                    onAgentJoined={() => setAgentJoined(true)}
-                    onUserSpoke={() => setUserSpoke(true)}
-                    onDemoCompleted={() => setDemoCompleted(true)}
-                  />
-                  <RoomAudioRenderer />
-                </LiveKitRoom>
-              )}
-            </div>
+            <kbd className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80 rounded border px-2 py-1 font-mono">
+              ESC
+            </kbd>
+            <span>to close</span>
           </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+
+          {error ? (
+            <div className="flex h-full items-center justify-center p-6">
+              <div className="space-y-4 text-center">
+                <div className="bg-destructive/20 mx-auto flex h-16 w-16 items-center justify-center rounded-full">
+                  <X className="text-destructive h-8 w-8" aria-hidden="true" />
+                </div>
+                <p role="alert" className="text-destructive font-medium">
+                  {error}
+                </p>
+                <Button
+                  type="button"
+                  onClick={fetchDemoToken}
+                  size="lg"
+                  className="min-h-11 rounded-xl font-semibold"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          ) : isLoading || !token ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex h-full flex-col items-center justify-center gap-6 p-6"
+            >
+              <Loader2
+                className="text-primary h-12 w-12 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <p className="text-primary-foreground/80 font-medium">
+                Connecting to Meelni...
+              </p>
+            </div>
+          ) : (
+            <LiveKitRoom
+              token={token}
+              serverUrl={url}
+              connect={true}
+              audio={true}
+              video={false}
+              onDisconnected={handleClose}
+              className="h-full w-full"
+            >
+              <DemoControls
+                onClose={handleClose}
+                demoStartTime={demoStartTime}
+                onAgentJoined={() => setAgentJoined(true)}
+                onUserSpoke={() => setUserSpoke(true)}
+                onDemoCompleted={() => setDemoCompleted(true)}
+              />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
+          )}
+        </DialogContent>
+      </Dialog>
+    </MotionConfig>
   );
 }

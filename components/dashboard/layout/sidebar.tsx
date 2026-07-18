@@ -1,21 +1,13 @@
 "use client";
 
-import {
-  ChevronLeft,
-  Monitor,
-  History,
-  BarChart3,
-  Settings,
-  LogOut,
-  BookOpen,
-  Mic,
-} from "lucide-react";
+import { ChevronLeft, LogOut, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppSurface } from "@/components/ui/app-surface";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { DashboardUser } from "./dashboard-layout";
+import { DASHBOARD_NAVIGATION_ITEMS } from "./dashboard-navigation";
 
 interface SidebarProps {
   activeSection: string;
@@ -35,42 +27,6 @@ export function Sidebar({
   user,
   onSignOut,
 }: SidebarProps) {
-  const navigationItems = [
-    {
-      id: "overview",
-      icon: Monitor,
-      label: "Overview",
-      href: "/dashboard",
-    },
-    {
-      id: "history",
-      icon: History,
-      label: "Interview History",
-      href: "/dashboard/history",
-    },
-    {
-      id: "questions",
-      icon: BookOpen,
-      label: "Question Bank",
-      href: "/dashboard/questions",
-    },
-    {
-      id: "analytics",
-      icon: BarChart3,
-      label: "Analytics",
-      href: "/dashboard/analytics",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      href: "/dashboard/settings",
-    },
-  ];
-
-  // All navigation items are always visible - empty states handle no-data scenarios
-  const visibleNavItems = navigationItems;
-
   // Animation variants - width only for smooth collapse/expand
   const sidebarVariants = {
     expanded: {
@@ -131,7 +87,7 @@ export function Sidebar({
               Workspace
             </div>
           )}
-          {visibleNavItems.map((item) => (
+          {DASHBOARD_NAVIGATION_ITEMS.map((item) => (
             <Link
               key={item.id}
               href={item.href}

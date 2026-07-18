@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { KeyRound, Loader2, Mic } from "lucide-react";
 
 import { AppSurface } from "@/components/ui/app-surface";
@@ -37,27 +37,29 @@ function AuthInitializationStatus({
 }
 
 function AuthShell({ children, backLabel, onBack }: AuthShellProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <div className="from-background via-background to-primary/5 flex min-h-screen items-center justify-center bg-gradient-to-br px-4 py-8">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: shouldReduceMotion ? 0 : 0.5 }}
         className="w-full max-w-md"
       >
         {children}
         {backLabel && onBack && (
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={shouldReduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: shouldReduceMotion ? 0 : 0.3 }}
             className="mt-6 text-center"
           >
             <Button
               type="button"
               variant="link"
               onClick={onBack}
-              className="text-muted-foreground hover:text-foreground h-auto p-0 text-sm"
+              className="text-muted-foreground hover:text-foreground min-h-11 px-3 py-0 text-sm"
             >
               {backLabel}
             </Button>
@@ -82,6 +84,7 @@ function AuthCard({
   description,
 }: AuthCardProps) {
   const Icon = icon === "key" ? KeyRound : Mic;
+  const shouldReduceMotion = useReducedMotion();
 
   return (
     <AppSurface
@@ -91,9 +94,12 @@ function AuthCard({
     >
       <div className="mb-8 text-center">
         <motion.div
-          initial={{ scale: 0.8 }}
+          initial={shouldReduceMotion ? false : { scale: 0.8 }}
           animate={{ scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
+          transition={{
+            duration: shouldReduceMotion ? 0 : 0.5,
+            delay: shouldReduceMotion ? 0 : 0.1,
+          }}
           className="from-primary to-primary/80 mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br"
         >
           <Icon
@@ -126,19 +132,23 @@ function AuthDivider() {
 
 interface AuthMessageProps {
   children: React.ReactNode;
+  id?: string;
   title?: string;
   tone: "success" | "error";
 }
 
-function AuthMessage({ children, title, tone }: AuthMessageProps) {
+function AuthMessage({ children, id, title, tone }: AuthMessageProps) {
   const isSuccess = tone === "success";
+  const shouldReduceMotion = useReducedMotion();
 
   return (
     <motion.div
+      id={id}
       role={isSuccess ? "status" : "alert"}
       aria-live={isSuccess ? "polite" : "assertive"}
-      initial={{ opacity: 0, y: -10 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: shouldReduceMotion ? 0 : undefined }}
       className={cn(
         "mt-4 rounded-lg border px-4 py-3 text-sm",
         isSuccess
@@ -153,6 +163,7 @@ function AuthMessage({ children, title, tone }: AuthMessageProps) {
 }
 
 interface GoogleAuthButtonProps {
+  ariaDescribedBy?: string;
   disabled?: boolean;
   isLoading?: boolean;
   label: string;
@@ -161,28 +172,36 @@ interface GoogleAuthButtonProps {
 }
 
 function GoogleAuthButton({
+  ariaDescribedBy,
   disabled,
   isLoading,
   label,
   loadingLabel,
   onClick,
 }: GoogleAuthButtonProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={shouldReduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ delay: 0.3 }}
+      transition={{ delay: shouldReduceMotion ? 0 : 0.3 }}
     >
       <Button
         type="button"
         variant="outline"
         onClick={onClick}
         disabled={disabled}
+        aria-busy={isLoading || undefined}
+        aria-describedby={ariaDescribedBy}
         className="hover:border-primary/50 bg-background hover:bg-background/80 h-auto w-full overflow-hidden rounded-xl border-2 px-6 py-4 font-semibold"
       >
         <span className="relative z-10 flex items-center justify-center gap-3">
           {isLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2
+              className="h-5 w-5 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
           ) : (
             <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
               <path
