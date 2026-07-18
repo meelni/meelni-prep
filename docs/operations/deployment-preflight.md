@@ -1,7 +1,7 @@
 # Deployment Preflight Runbook
 
-Updated: 2026-07-15
-Status: Implemented locally; Preview rollout remains fail-closed pending isolated LiveKit provisioning
+Updated: 2026-07-17
+Status: Implemented locally; isolated LiveKit deployments are provisioned and Preview rollout verification remains
 Owner: SAV-184
 
 The deployment preflight validates launch-critical configuration without printing or changing provider values. Vercel runs it before every Preview or Production Next.js build. Provider checks are read-only; smoke events and billing mutations are separate, explicitly authorized rehearsals.
@@ -32,8 +32,8 @@ The commands load only their matching private env file. Never source both files,
 2. Confirm the canonical Vercel target is team `meelni`, project `meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), linked to `meelni/meelni-prep`. The build preflight verifies the project ID and Git owner/slug from Vercel system variables.
 3. For an authorized rehearsal only, add `MEELNI_REHEARSAL_COMMIT_SHA` to the Vercel Preview environment scoped to the reviewed PR branch, enter the exact 40-character head SHA, and redeploy that exact commit. Do not define this variable for all Preview branches. Every new commit requires a new value and redeployment. Vercel preflight rejects an anchor that differs from `VERCEL_GIT_COMMIT_SHA` or lacks `VERCEL_GIT_COMMIT_REF`.
 4. Pull Preview and run the target preflight. Preview Supabase must resolve exactly to `kxpvidtxznllfosfemdl`; Production must resolve exactly to `rarrrwkjuhfyfatcmrkw`.
-5. Use only LiveKit project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. Its interview deployment `CA_ZbGxFjfEYwsD` dispatches as `meelni-preview-interview`. Provision a separate Preview demo agent, add its exact dispatch name to `lib/deployment/provider-identities.ts`, and then set the matching Preview-only Vercel values. The current one-agent plan limit must be resolved without deleting the interview agent or borrowing a Production identity.
-6. Restore target-specific Inngest Event and Signing Keys from the canonical provider environment. Preview may not use a prod/production signing key.
+5. Use only LiveKit project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. Its interview deployment `CA_ZbGxFjfEYwsD` dispatches as `meelni-preview-interview`; its demo deployment `CA_M5XTD4CMyXk3` dispatches as `meelni-preview-demo`. Set those matching Preview-only Vercel values without borrowing a Production identity.
+6. Restore Inngest's shared Branch Environment Event and Signing Keys for Preview. A `signkey-branch-*` signing key is the canonical branch-environment identity; Vercel supplies the branch ref used for routing. Preview may not use a prod/production signing key.
 7. Confirm Stripe Preview uses test keys and Production uses live keys. Read-only preflight must resolve both to account `acct_1SSreECdoT5hfbsF` and the accepted catalog.
 8. Confirm `OPENAI_FEEDBACK_MODEL=gpt-5.1` and all server-owned interview runtime settings are explicit.
 9. Run `npm run check:ci`, `npm run build`, and the target preflight locally.
@@ -94,7 +94,7 @@ No Production smoke event, live Stripe transaction, live provider mutation, rela
 | Stripe catalog     | Correct the target price at source; price amount, cadence, interval count, usage type, and metadata must all match.                                                                                                                                                   |
 | Inngest            | Restore target-specific Event and Signing Keys; then record an authorized target smoke separately.                                                                                                                                                                    |
 | OpenAI/model       | Restore the credential and explicit accepted model. Do not depend on an application default.                                                                                                                                                                          |
-| LiveKit            | Correct URLs, credentials, and dispatch names. Preview remains blocked until its separate demo identity completes the committed anchor.                                                                                                                               |
+| LiveKit            | Correct URLs, credentials, and dispatch names. Keep the exact isolated Preview interview and demo identities committed together.                                                                                                                                    |
 | Statsig/relaunch   | Restore target tier and `/api/statsig`; use Preview `rehearsal` or Production `prelaunch`, always with fallback `false`. Preview also requires exact Vercel commit/ref plus current, matching Statsig authority whose total authorized lifetime is at most two hours. |
 | Provider outage    | Retry only after status/access is understood. Do not bypass or downgrade checks.                                                                                                                                                                                      |
 
@@ -111,7 +111,7 @@ authority updates.
 
 ## Current Blockers
 
-- The isolated Preview LiveKit project and interview agent are verified and committed, but the project currently allows only one deployed agent. A separate Preview demo agent/dispatch name is still required before the preflight can pass; do not delete the interview agent or reuse Production.
-- Existing Preview Vercel values must be replaced with the verified Preview host/credentials and dispatch names only after the demo identity is complete.
+- The isolated Preview project now contains the verified interview and demo deployments. The matching source identity and Preview-only Vercel values must be deployed together before hosted preflight can pass.
+- The one-time demo bootstrap completed with a private `complete` receipt. Do not rerun it or create another demo deployment while the recorded agent remains present.
 - The target-specific Inngest Event Key and provider smoke evidence must still be verified in the isolated Preview environment.
 - Production catalog/provider checks and any live-mode rehearsal remain gated by explicit owner authorization.
