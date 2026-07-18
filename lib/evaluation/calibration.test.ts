@@ -10,6 +10,8 @@ import {
 import {
   type CalibrationEvaluator,
   createDeterministicCalibrationEvaluator,
+  finalizeCalibrationReportWithSemanticReview,
+  finalizeCalibrationReportWithSemanticReviewFailure,
   matchesAdjudicatedEvidence,
   runEvaluationCalibration,
 } from "./calibration";
@@ -24,8 +26,8 @@ import {
 } from "./calibration-budget";
 import {
   buildCalibrationActivatedPlan,
-  SAV_198_APPROVED_RUN_ID,
-  SAV_198_SPEND_AUTHORIZATION,
+  SAV_248_V3_APPROVED_RUN_ID,
+  SAV_248_V3_SPEND_AUTHORIZATION,
 } from "./calibration-run-ledger";
 import {
   FeedbackProviderInvocationError,
@@ -72,7 +74,7 @@ test("calibration preflight validates 40 synthetic cases without claiming readin
     report.gate.calibrationEvidenceAcceptance,
     "pending_adjudication_signoff"
   );
-  assert.equal(report.contractVersion, "evaluation-calibration-report.v8");
+  assert.equal(report.contractVersion, "evaluation-calibration-report.v9");
   assert.equal("launchAcceptance" in report.gate, false);
 });
 
@@ -230,6 +232,7 @@ test("calibration fails a live report when repeated scores are unstable", async 
   const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -268,6 +271,7 @@ test("a constant-high scorer fails the varied corpus instead of gaming a pooled 
   const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -306,6 +310,7 @@ test("a completely broken leadership scorer cannot pass at the pooled 80 percent
   const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -328,6 +333,7 @@ test("model provenance mismatch stops after the first otherwise valid output", a
   );
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -357,6 +363,7 @@ test("model provenance mismatch stops after the first otherwise valid output", a
 test("a failed response from an unexpected model preserves identity and known cost", async () => {
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -396,6 +403,7 @@ test("missing or mismatched service tier stops after one reconciled call", async
     const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
     const report = await runEvaluationCalibration({
       executionKind: "live_provider",
+      captureRawSyntheticOutput: async () => undefined,
       modelVersion: LIVE_MODEL,
       repetitions: 2,
       now: NOW,
@@ -430,6 +438,7 @@ test("missing or mismatched service tier stops after one reconciled call", async
 test("provider-error tier identity and known usage survive sanitization", async () => {
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -474,6 +483,7 @@ test("invalid feedback reports one authenticated invariant while preserving exac
   };
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -534,6 +544,7 @@ test("forged, mutable, and provider-controlled diagnostics fail closed without c
   );
   const forgedReport = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -553,6 +564,7 @@ test("forged, mutable, and provider-controlled diagnostics fail closed without c
 
   const proxiedReport = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -595,6 +607,7 @@ test("forged, mutable, and provider-controlled diagnostics fail closed without c
   });
   const mutatedReport = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
     modelVersion: LIVE_MODEL,
     repetitions: 2,
     now: NOW,
@@ -615,6 +628,7 @@ test("run budget rejects a repetition typo before the evaluator can be called", 
   await assert.rejects(
     runEvaluationCalibration({
       executionKind: "live_provider",
+      captureRawSyntheticOutput: async () => undefined,
       modelVersion: LIVE_MODEL,
       repetitions: 4,
       now: NOW,
@@ -640,6 +654,7 @@ test("a stale pricing review blocks the run even with a previously created guard
   await assert.rejects(
     runEvaluationCalibration({
       executionKind: "live_provider",
+      captureRawSyntheticOutput: async () => undefined,
       modelVersion: LIVE_MODEL,
       repetitions: 2,
       now: staleNow,
@@ -677,6 +692,7 @@ test("a pending adjudication decision blocks paid evaluation before call one", a
   await assert.rejects(
     runEvaluationCalibration({
       executionKind: "live_provider",
+      captureRawSyntheticOutput: async () => undefined,
       evaluator: async () => {
         evaluatorCalls += 1;
         throw new Error("must not run");
@@ -693,10 +709,38 @@ test("a pending adjudication decision blocks paid evaluation before call one", a
   assert.equal(evaluatorCalls, 0);
 });
 
-test("approved adjudication and live pass satisfy calibration evidence acceptance", async () => {
+test("live calibration rejects a missing private semantic capture before call one", async () => {
+  let evaluatorCalls = 0;
+  await assert.rejects(
+    runEvaluationCalibration({
+      executionKind: "live_provider",
+      evaluator: async () => {
+        evaluatorCalls += 1;
+        throw new Error("must not run");
+      },
+      modelVersion: LIVE_MODEL,
+      repetitions: 2,
+      now: NOW,
+      adjudicationApproval: approvalFixture(),
+      spendGuard: liveGuard(),
+    }),
+    /requires_private_semantic_capture/
+  );
+  assert.equal(evaluatorCalls, 0);
+});
+
+test("approved live automation remains pending until semantic review passes", async () => {
   const model = LIVE_MODEL;
+  const captured = new Set<string>();
   const report = await runEvaluationCalibration({
     executionKind: "live_provider",
+    captureRawSyntheticOutput: async ({ fixture, runIndex, rawResponse }) => {
+      assert.equal(
+        Buffer.from(rawResponse).toString("utf8"),
+        `${fixture.id}:${runIndex}`
+      );
+      captured.add(`${fixture.id}:${runIndex}`);
+    },
     evaluator: withProviderUsage(
       createDeterministicCalibrationEvaluator(model)
     ),
@@ -707,20 +751,124 @@ test("approved adjudication and live pass satisfy calibration evidence acceptanc
     spendGuard: liveGuard(),
   });
   assert.equal(report.gate.adjudicationAcceptance, "passed");
-  assert.equal(report.gate.liveProviderAcceptance, "passed");
-  assert.equal(report.gate.calibrationEvidenceAcceptance, "passed");
+  assert.equal(report.gate.liveProviderAcceptance, "pending_semantic_review");
+  assert.equal(
+    report.gate.calibrationEvidenceAcceptance,
+    "pending_semantic_review"
+  );
+  assert.equal(report.semanticReview.status, "pending");
   assert.equal(report.execution.cost?.attemptedCalls, 64);
-  assert.equal(report.execution.cost?.authorizedRunId, SAV_198_APPROVED_RUN_ID);
+  assert.equal(
+    report.execution.cost?.authorizedRunId,
+    SAV_248_V3_APPROVED_RUN_ID
+  );
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 64);
   assert.equal(report.execution.cost?.completedCalls, 64);
   assert.equal(report.execution.cost?.stopReason, "completed_plan");
+  assert.equal(captured.size, 64);
   assert.ok(report.execution.cost!.estimatedCommittedCostUsd < 3);
   const serialized = JSON.stringify(report);
   const syntheticTranscriptText =
     evaluationCalibrationCases[0].transcript[0].text;
   assert.equal(serialized.includes(syntheticTranscriptText), false);
   assert.equal(serialized.includes("OPENAI_API_KEY"), false);
+
+  const finalized = finalizeCalibrationReportWithSemanticReview(report, {
+    gate: "passed",
+    semanticAdjudicationSha256: "a".repeat(64),
+    reviewedOutputCount: 64,
+    reviewedLegitimateAlternativeCount: 0,
+  });
+  assert.equal(finalized.gate.liveProviderAcceptance, "passed");
+  assert.equal(finalized.gate.calibrationEvidenceAcceptance, "passed");
+  assert.equal(finalized.semanticReview.status, "passed");
+  assert.equal(finalized.semanticReview.reviewedOutputCount, 64);
+  assert.equal(finalized.semanticReview.reviewedLegitimateAlternativeCount, 0);
+  assert.throws(
+    () =>
+      finalizeCalibrationReportWithSemanticReview(report, {
+        gate: "passed",
+        semanticAdjudicationSha256: "c".repeat(64),
+        reviewedOutputCount: 63,
+        reviewedLegitimateAlternativeCount: 0,
+      }),
+    /semantic_review_finalization_invalid/
+  );
+});
+
+test("valid non-canonical evidence is retained for semantic review instead of being rejected early", async () => {
+  const deterministic = createDeterministicCalibrationEvaluator(LIVE_MODEL);
+  const alternativeCaseId = "product_sense:01:caregiver-planning";
+  const alternativeEvaluator: CalibrationEvaluator = async (input) => {
+    const output = (await deterministic(input)) as FeedbackV2Result;
+    if (input.fixture.id !== alternativeCaseId) return output;
+    return {
+      ...output,
+      strengths: output.strengths.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              evidence: [
+                {
+                  ...item.evidence[0],
+                  quote: "the intended user outcome",
+                },
+              ],
+            }
+          : item
+      ),
+    };
+  };
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
+    evaluator: withProviderUsage(alternativeEvaluator),
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+  });
+
+  assert.equal(report.metrics.evidenceValidityRate, 1);
+  assert.equal(report.metrics.adjudicatedEvidenceMatchRate, 62 / 64);
+  assert.equal(report.semanticReview.status, "pending");
+  assert.equal(
+    report.gate.calibrationEvidenceAcceptance,
+    "pending_semantic_review"
+  );
+  assert.equal(
+    report.failures.filter(
+      ({ code }) => code === "adjudicated_evidence_not_matched"
+    ).length,
+    2
+  );
+
+  const finalized = finalizeCalibrationReportWithSemanticReview(report, {
+    gate: "passed",
+    semanticAdjudicationSha256: "b".repeat(64),
+    reviewedOutputCount: 64,
+    reviewedLegitimateAlternativeCount: 2,
+  });
+  assert.equal(finalized.gate.calibrationEvidenceAcceptance, "passed");
+  assert.equal(finalized.semanticReview.status, "passed");
+  assert.equal(finalized.semanticReview.reviewedLegitimateAlternativeCount, 2);
+  assert.throws(
+    () =>
+      finalizeCalibrationReportWithSemanticReview(report, {
+        gate: "passed",
+        semanticAdjudicationSha256: "c".repeat(64),
+        reviewedOutputCount: 64,
+        reviewedLegitimateAlternativeCount: 0,
+      }),
+    /semantic_review_finalization_invalid/
+  );
+
+  const failed = finalizeCalibrationReportWithSemanticReviewFailure(report);
+  assert.equal(failed.semanticReview.status, "failed");
+  assert.equal(failed.gate.calibrationEvidenceAcceptance, "failed");
+  assert.equal(failed.semanticReview.semanticAdjudicationSha256, null);
 });
 
 function withScores(output: FeedbackV2Result, scores: FeedbackV2Scores) {
@@ -732,6 +880,9 @@ function withProviderUsage(
 ): CalibrationEvaluator {
   return async (input) => {
     await input.beforePhysicalRequest?.();
+    await input.onRawSyntheticOutput?.(
+      Buffer.from(`${input.fixture.id}:${input.runIndex}`, "utf8")
+    );
     return {
       evaluation: (await evaluator(input)) as FeedbackV2Result,
       usage: {
@@ -747,7 +898,7 @@ function withProviderUsage(
 
 function liveGuard(): CalibrationSpendGuard {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_198_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V3_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
     repetitions: 2,
@@ -756,8 +907,8 @@ function liveGuard(): CalibrationSpendGuard {
   let spend = createEmptyCalibrationSpendState();
   const persistence: CalibrationSpendPersistence = {
     durable: true,
-    runId: SAV_198_APPROVED_RUN_ID,
-    authorizationId: SAV_198_SPEND_AUTHORIZATION.authorizationId,
+    runId: SAV_248_V3_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V3_SPEND_AUTHORIZATION.authorizationId,
     authorizationHash: plan.authorizationHash,
     activationCommit: "test-activation-commit",
     planHash: plan.planHash,
