@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildInterviewHrefWithoutQuestion,
   buildNewInterviewHref,
+  buildNewInterviewHrefFromPageSearchParams,
   buildQuestionInterviewHref,
   parseInterviewLaunchContext,
 } from "./interview-launch";
@@ -60,6 +61,18 @@ test("canonical href preserves the complete query string", () => {
   assert.equal(
     buildQuestionInterviewHref("question-1", "https://evil.example"),
     "/dashboard/new-interview?questionId=question-1"
+  );
+});
+
+test("server page redirects preserve repeated query values", () => {
+  assert.equal(
+    buildNewInterviewHrefFromPageSearchParams({
+      questionId: "question 1",
+      tag: ["first", "second"],
+      returnTo: "/explore?company=Stripe&page=2",
+      omitted: undefined,
+    }),
+    "/dashboard/new-interview?questionId=question+1&tag=first&tag=second&returnTo=%2Fexplore%3Fcompany%3DStripe%26page%3D2"
   );
 });
 
