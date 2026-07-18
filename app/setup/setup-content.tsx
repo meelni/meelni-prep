@@ -712,7 +712,7 @@ export function SetupContent() {
 
           <motion.div
             variants={fadeInUp}
-            className="border-dashboard-panel-border bg-dashboard-panel/95 sticky bottom-0 -mx-5 border-t p-5 backdrop-blur sm:-mx-8 sm:px-8"
+            className="border-dashboard-panel-border bg-dashboard-panel sticky bottom-0 -mx-5 border-t p-5 sm:-mx-8 sm:px-8"
           >
             <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
