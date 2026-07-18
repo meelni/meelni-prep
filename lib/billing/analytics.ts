@@ -28,41 +28,41 @@ export interface BillingCreditEventInput {
 }
 
 export function trackBillingCreditGranted(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_granted", input);
+  return trackBillingEvent("billing_credit_granted", input);
 }
 
 export function trackBillingCreditReserved(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_reserved", input);
+  return trackBillingEvent("billing_credit_reserved", input);
 }
 
 export function trackBillingCreditConsumed(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_consumed", input);
+  return trackBillingEvent("billing_credit_consumed", input);
 }
 
 export function trackBillingCreditReleased(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_released", input);
+  return trackBillingEvent("billing_credit_released", input);
 }
 
 export function trackBillingCreditRefunded(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_refunded", input);
+  return trackBillingEvent("billing_credit_refunded", input);
 }
 
 export function trackBillingCreditExpired(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_expired", input);
+  return trackBillingEvent("billing_credit_expired", input);
 }
 
 export function trackBillingCreditRolloverCreated(
   input: BillingCreditEventInput
 ) {
-  void trackBillingEvent("billing_credit_rollover_created", input);
+  return trackBillingEvent("billing_credit_rollover_created", input);
 }
 
 export function trackBillingNoCredits(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_no_credits", input);
+  return trackBillingEvent("billing_no_credits", input);
 }
 
 export function trackBillingPaymentAdjusted(input: BillingCreditEventInput) {
-  void trackBillingEvent("billing_credit_payment_adjusted", input);
+  return trackBillingEvent("billing_credit_payment_adjusted", input);
 }
 
 /**

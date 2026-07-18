@@ -98,6 +98,7 @@ describe("QuestionSignInModal", () => {
     await user.click(screen.getByRole("button", { name: "Choose question" }));
     const dialog = await screen.findByRole("dialog");
     const overlay = dialog.previousElementSibling;
+    const closeButton = screen.getByRole("button", { name: "Close" });
 
     expect(overlay).toHaveClass(
       "motion-reduce:animate-none",
@@ -106,7 +107,11 @@ describe("QuestionSignInModal", () => {
     expect(dialog).toHaveClass(
       "motion-reduce:animate-none",
       "motion-reduce:transition-none",
-      "motion-reduce:duration-0"
+      "motion-reduce:duration-0",
+      "max-h-[calc(100dvh_-_2rem)]",
+      "w-[calc(100%_-_2rem)]",
+      "overflow-y-auto"
     );
+    expect(closeButton).toHaveClass("h-11", "w-11");
   });
 });

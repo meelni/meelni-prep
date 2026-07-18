@@ -548,7 +548,7 @@ export function createCreditLedgerService({
           })
       );
 
-      trackBillingCreditGranted({
+      await trackBillingCreditGranted({
         userId: grant.userId,
         catalogId: grant.catalogId,
         creditSource: grant.source,
@@ -692,7 +692,7 @@ export function createCreditLedgerService({
       );
 
       for (const event of expired) {
-        trackBillingCreditExpired({
+        await trackBillingCreditExpired({
           userId,
           catalogId: event.grant.catalogId,
           creditSource: event.grant.source,
@@ -735,7 +735,7 @@ export function createCreditLedgerService({
         );
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
-          trackBillingNoCredits({
+          await trackBillingNoCredits({
             userId: input.userId,
             credits: requestedCredits,
             balanceAfter: error.availableCredits,
@@ -746,7 +746,7 @@ export function createCreditLedgerService({
         throw error;
       }
 
-      trackReservedCreditEvents(input, result);
+      await trackReservedCreditEvents(input, result);
 
       return {
         reservation: result.reservation,
@@ -916,7 +916,7 @@ export function createCreditLedgerService({
         }
       );
 
-      trackBillingPaymentAdjusted({
+      await trackBillingPaymentAdjusted({
         userId: input.userId,
         credits: outcome.adjustment.revokedCredits,
         reason: input.adjustmentType,
@@ -1029,7 +1029,7 @@ export function createCreditLedgerService({
         }
       );
 
-      trackBillingPaymentAdjusted({
+      await trackBillingPaymentAdjusted({
         userId: input.userId,
         credits: outcome.adjustment.revokedCredits,
         reason: `${input.adjustmentType}_reinstated`,
@@ -1174,11 +1174,11 @@ export function createCreditLedgerService({
   };
 }
 
-export function emitSubscriptionRenewalPostCommitEffects(
+export async function emitSubscriptionRenewalPostCommitEffects(
   effects: SubscriptionRenewalPostCommitEffects
-): void {
+): Promise<void> {
   if (effects.rolloverGrant) {
-    trackBillingCreditRolloverCreated({
+    await trackBillingCreditRolloverCreated({
       userId: effects.userId,
       catalogId: effects.catalogId,
       creditSource: "rollover",
@@ -1191,7 +1191,7 @@ export function emitSubscriptionRenewalPostCommitEffects(
       duplicate: effects.rolloverDuplicate,
     });
   }
-  trackBillingCreditGranted({
+  await trackBillingCreditGranted({
     userId: effects.renewalGrant.userId,
     catalogId: effects.renewalGrant.catalogId,
     creditSource: effects.renewalGrant.source,
@@ -3624,12 +3624,12 @@ export async function reserveCreditInTransaction({
   return { reservation, allocations, events };
 }
 
-export function trackReservedCreditEvents(
+export async function trackReservedCreditEvents(
   input: ReserveCreditInput,
   result: ReserveCreditTransactionResult
-): void {
+): Promise<void> {
   for (const event of result.events) {
-    trackBillingCreditReserved({
+    await trackBillingCreditReserved({
       userId: input.userId,
       catalogId: event.grant.catalogId,
       creditSource: event.grant.source,
@@ -3685,7 +3685,7 @@ async function completeReservation({
 
   if (!outcome.duplicate) {
     try {
-      const tracking = trackTerminalSettlement({
+      await trackTerminalSettlement({
         transactionType,
         userId: outcome.reservation.userId,
         catalogId: outcome.firstGrant?.catalogId,
@@ -3696,11 +3696,6 @@ async function completeReservation({
         reservationId: outcome.reservation.id,
         grantId: outcome.firstGrant?.id,
       });
-      if (tracking) {
-        void tracking.catch(() => {
-          console.error("billing_terminal_settlement_analytics_failed");
-        });
-      }
     } catch {
       console.error("billing_terminal_settlement_analytics_failed");
     }
@@ -4126,7 +4121,7 @@ function assertMakeGoodGrantMatches(
   }
 }
 
-export function trackCompletedReservationEvent({
+export async function trackCompletedReservationEvent({
   transactionType,
   userId,
   catalogId,
@@ -4136,7 +4131,7 @@ export function trackCompletedReservationEvent({
   sessionId,
   reservationId,
   grantId,
-}: CreditTerminalSettlementEvent) {
+}: CreditTerminalSettlementEvent): Promise<void> {
   const input = {
     userId,
     catalogId,
@@ -4151,11 +4146,11 @@ export function trackCompletedReservationEvent({
   };
 
   if (transactionType === "consume") {
-    trackBillingCreditConsumed(input);
+    await trackBillingCreditConsumed(input);
   } else if (transactionType === "release") {
-    trackBillingCreditReleased(input);
+    await trackBillingCreditReleased(input);
   } else if (transactionType === "refund") {
-    trackBillingCreditRefunded(input);
+    await trackBillingCreditRefunded(input);
   }
 }
 

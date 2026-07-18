@@ -129,7 +129,7 @@ function SignInContent() {
                     buildAuthPageHref(AUTH_FORGOT_PASSWORD_PATH, authHandoff)
                   )
                 }
-                className="h-auto p-0 text-xs"
+                className="min-h-11 px-2 py-0 text-xs"
               >
                 Forgot password?
               </Button>
@@ -152,7 +152,10 @@ function SignInContent() {
           >
             {isSigningIn ? (
               <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
+                <Loader2
+                  className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
                 <span>Signing in...</span>
               </span>
             ) : (
@@ -181,7 +184,7 @@ function SignInContent() {
             onClick={() =>
               router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff))
             }
-            className="h-auto p-0 font-medium"
+            className="min-h-11 px-2 py-0 font-medium"
           >
             Sign up
           </Button>

@@ -461,7 +461,11 @@ test("the retired launcher route exists only at its compatibility boundary", asy
     path.join(ROOT, LEGACY_ROUTE_FILE),
     "utf8"
   );
-  assert.match(compatibilityPage, /InterviewLaunchRedirect/);
+  assert.match(compatibilityPage, /permanentRedirect/);
+  assert.match(
+    compatibilityPage,
+    /buildNewInterviewHrefFromPageSearchParams/
+  );
 });
 
 test("canonical product guidance no longer defines Meelni as a gym", async () => {

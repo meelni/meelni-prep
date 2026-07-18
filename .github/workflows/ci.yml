@@ -95,7 +95,51 @@ jobs:
         run: npm run test:python-agent
 
       - name: Build production application
-        run: npm run build
+        run: npm run build:browser:qa
 
       - name: Crawl production public routes and links
         run: npm run verify:public-production
+
+      - id: playwright-version
+        name: Resolve pinned Playwright version
+        if: >-
+          github.event_name == 'pull_request' ||
+          github.event_name == 'workflow_dispatch'
+        run: |
+          version="$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - id: playwright-cache
+        name: Restore pinned Chromium
+        if: >-
+          github.event_name == 'pull_request' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Chromium runtime
+        if: >-
+          github.event_name == 'pull_request' ||
+          github.event_name == 'workflow_dispatch'
+        run: npm run test:browser:install
+
+      - id: browser_qa
+        name: Run representative browser QA
+        if: >-
+          github.event_name == 'pull_request' ||
+          github.event_name == 'workflow_dispatch'
+        run: npm run test:browser:qa
+
+      - name: Upload browser QA evidence
+        if: ${{ always() && steps.browser_qa.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-qa-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/browser-qa/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
