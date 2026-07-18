@@ -40,6 +40,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // Reproducible calibration artifact; lint its source and verify its hash.
+    "scripts/generated/**",
     "next-env.d.ts",
   ]),
 ]);
