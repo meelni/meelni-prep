@@ -12,7 +12,7 @@ import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { build, version as esbuildVersion } from "esbuild";
+import { assertPinnedNodeVersion } from "./node-version.mjs";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const bundlePath = "scripts/generated/run-evaluation-calibration.bundle.mjs";
@@ -32,6 +32,13 @@ const buildContract = Object.freeze({
   treeShaking: true,
 });
 
+try {
+  assertPinnedNodeVersion();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+const { build, version: esbuildVersion } = await import("esbuild");
 const packageLock = readFileSync(join(repositoryRoot, "package-lock.json"));
 const result = await build({
   absWorkingDir: repositoryRoot,
@@ -54,7 +61,8 @@ if (!output) throw new Error("calibration_runtime_build_output_missing");
 const outputMetadata = Object.values(result.metafile.outputs).find((value) =>
   value.entryPoint?.endsWith(buildContract.entryPoint)
 );
-if (!outputMetadata) throw new Error("calibration_runtime_build_metadata_missing");
+if (!outputMetadata)
+  throw new Error("calibration_runtime_build_metadata_missing");
 const externalImports = [
   ...new Set(
     outputMetadata.imports
