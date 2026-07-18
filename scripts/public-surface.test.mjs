@@ -12,12 +12,54 @@ import {
   assertPublicRobotsDocument,
   assertPublicSitemapDocument,
   assertPublicSourceSurface,
+  assertLegacyInterviewLaunchRedirects,
   crawlPublicSurface,
   extractInternalLinks,
   extractMetadataImageUrls,
   extractPublicAssetUrls,
   isForbiddenPublicRoute,
 } from "./public-surface.mjs";
+
+test("legacy launch aliases redirect permanently with exact query context", async () => {
+  const calls = [];
+  const result = await assertLegacyInterviewLaunchRedirects(
+    "https://www.meelni.com",
+    {
+      fetchImpl: async (url, options) => {
+        calls.push({ url: url.toString(), options });
+        return new Response(null, {
+          status: 308,
+          headers: {
+            location:
+              "/dashboard/new-interview?questionId=question+1&tag=first&tag=second&company=Stripe&space=hello%20world&encoded=%2F%3F%26&blank=&flag=&returnTo=%2Fexplore%3Fcompany%3DStripe%26page%3D2",
+          },
+        });
+      },
+    }
+  );
+
+  assert.deepEqual(result, { redirectsChecked: 2 });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(({ options }) => options.redirect === "manual"));
+  assert.match(calls[0].url, /tag=first&company=Stripe&tag=second/);
+  assert.match(calls[0].url, /space=hello\+world&encoded=%2f%3f%26/);
+});
+
+test("legacy launch aliases reject a missing repeated query value", async () => {
+  await assert.rejects(
+    assertLegacyInterviewLaunchRedirects("https://www.meelni.com", {
+      fetchImpl: async () =>
+        new Response(null, {
+          status: 308,
+          headers: {
+            location:
+              "/dashboard/new-interview?questionId=question+1&tag=first&company=Stripe&space=hello%20world&encoded=%2F%3F%26&blank=&flag=&returnTo=%2Fexplore%3Fcompany%3DStripe%26page%3D2",
+          },
+        }),
+    }),
+    /changed launch query values for tag/
+  );
+});
 
 test("robots documents accept fail-closed or crawlable Production policy only", () => {
   assert.deepEqual(

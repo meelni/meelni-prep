@@ -19,6 +19,11 @@ export interface InterviewLaunchContext {
 
 type SearchParamsReader = Pick<URLSearchParams, "get">;
 
+export type InterviewLaunchPageSearchParams = Record<
+  string,
+  string | string[] | undefined
+>;
+
 export function parseInterviewLaunchContext(
   searchParams: SearchParamsReader
 ): InterviewLaunchContext {
@@ -45,6 +50,22 @@ export function buildNewInterviewHref(
       : (searchParams?.toString() ?? "");
 
   return `${NEW_INTERVIEW_PATH}${query ? `?${query}` : ""}`;
+}
+
+export function buildNewInterviewHrefFromPageSearchParams(
+  searchParams: InterviewLaunchPageSearchParams
+): string {
+  const preserved = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) preserved.append(key, entry);
+    } else if (value !== undefined) {
+      preserved.append(key, value);
+    }
+  }
+
+  return buildNewInterviewHref(preserved);
 }
 
 export function buildQuestionInterviewHref(
