@@ -5,6 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDirectory = realpathSync(dirname(fileURLToPath(import.meta.url)));
+const sourceRepositoryRoot = realpathSync(
+  process.env.MEELNI_CALIBRATION_REPOSITORY_ROOT ||
+    join(scriptDirectory, "..")
+);
 const startupPath = attestFile(
   realpathSync(
     join(scriptDirectory, "../lib/evaluation/calibration-live-startup.mjs")
@@ -13,6 +17,7 @@ const startupPath = attestFile(
 const startup = await import(pathToFileURL(startupPath).href);
 const {
   assertCalibrationLiveStartupState,
+  assertCalibrationRuntimeArtifact,
   CALIBRATION_LIVE_BOOTSTRAP_READY,
   CALIBRATION_LIVE_RUNTIME_READY,
   CALIBRATION_LIVE_RUNTIME_EXEC_ARGV,
@@ -21,17 +26,9 @@ const {
 
 assertCalibrationLiveStartupState({ invocation: "bootstrap" });
 
-const status = createWriteStream(null, { fd: 3, autoClose: true });
-status.end(`${CALIBRATION_LIVE_BOOTSTRAP_READY}\n`);
-
-const { githubToken, openaiKey, acknowledgement } =
-  await readCalibrationLiveCredentials(process.stdin);
-
 const testRuntime = process.env.MEELNI_CALIBRATION_TEST_RUNTIME;
 const runtimePath = attestFile(
-  realpathSync(
-    testRuntime || join(scriptDirectory, "run-evaluation-calibration.ts")
-  )
+  realpathSync(testRuntime || assertCalibrationRuntimeArtifact())
 );
 let child;
 let exitPromise;
@@ -61,8 +58,8 @@ try {
     ],
     {
       env: {
+        MEELNI_CALIBRATION_REPOSITORY_ROOT: sourceRepositoryRoot,
         OPENAI_FEEDBACK_MODEL: "gpt-5.1-2025-11-13",
-        MEELNI_ALLOW_PAID_CALIBRATION: acknowledgement,
       },
       stdio: ["ignore", "inherit", "inherit", "pipe", "pipe"],
     }
@@ -75,6 +72,10 @@ try {
   if (runtimeReadiness !== CALIBRATION_LIVE_RUNTIME_READY) {
     throw new Error("calibration_live_runtime_handshake_invalid");
   }
+  const status = createWriteStream(null, { fd: 3, autoClose: true });
+  status.end(`${CALIBRATION_LIVE_BOOTSTRAP_READY}\n`);
+  const { githubToken, openaiKey, acknowledgement } =
+    await readCalibrationLiveCredentials(process.stdin);
   child.stdio[3].end(`${githubToken}\n${openaiKey}\n${acknowledgement}\n`);
   process.exitCode = await exitPromise;
 } finally {

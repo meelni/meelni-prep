@@ -79,6 +79,7 @@ module.exports = {
         "^\\.next/",
         "^out/",
         "^build/",
+        "^scripts/generated/",
         "^coverage/",
         "^agent/venv/",
         "^archive/",

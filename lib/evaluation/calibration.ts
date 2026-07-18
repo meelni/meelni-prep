@@ -59,6 +59,7 @@ export interface CalibrationEvaluatorInput {
   evaluationState: FeedbackEvaluationState;
   runIndex: number;
   beforePhysicalRequest?: () => void | Promise<void>;
+  onRawSyntheticOutput?: (rawResponse: Uint8Array) => void | Promise<void>;
 }
 
 export interface CalibrationEvaluatorResult {
@@ -79,6 +80,11 @@ export interface CalibrationRunOptions {
   now?: Date;
   adjudicationApproval?: unknown;
   spendGuard?: CalibrationSpendGuard;
+  captureRawSyntheticOutput?: (input: {
+    fixture: EvaluationCalibrationCase;
+    runIndex: number;
+    rawResponse: Uint8Array;
+  }) => void | Promise<void>;
 }
 
 export interface CalibrationFailure {
@@ -96,7 +102,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v8";
+  contractVersion: "evaluation-calibration-report.v9";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -160,15 +166,27 @@ export interface EvaluationCalibrationReport {
     };
   };
   thresholds: typeof EVALUATION_CALIBRATION_THRESHOLDS;
+  semanticReview: {
+    required: boolean;
+    status: "not_applicable" | "not_started" | "pending" | "passed" | "failed";
+    semanticAdjudicationSha256: string | null;
+    reviewedOutputCount: number | null;
+    reviewedLegitimateAlternativeCount: number | null;
+  };
   gate: {
     deterministicHarness: "passed" | "failed" | "not_run";
     adjudicationAcceptance: "passed" | "pending_product_owner_pm_signoff";
-    liveProviderAcceptance: "passed" | "failed" | "pending";
+    liveProviderAcceptance:
+      | "passed"
+      | "failed"
+      | "pending"
+      | "pending_semantic_review";
     calibrationEvidenceAcceptance:
       | "passed"
       | "failed"
       | "pending_live_provider_run"
-      | "pending_adjudication_signoff";
+      | "pending_adjudication_signoff"
+      | "pending_semantic_review";
   };
   failures: CalibrationFailure[];
   blockers: string[];
@@ -234,6 +252,12 @@ export async function runEvaluationCalibration(
     !options.spendGuard!.durable
   ) {
     throw new Error("live_calibration_requires_durable_spend_ledger");
+  }
+  if (
+    options.executionKind === "live_provider" &&
+    typeof options.captureRawSyntheticOutput !== "function"
+  ) {
+    throw new Error("live_calibration_requires_private_semantic_capture");
   }
   if (options.executionKind === "live_provider") {
     validateCalibrationPricingFreshness(now, options.spendGuard!.pricing);
@@ -348,6 +372,12 @@ export async function runEvaluationCalibration(
                     options.spendGuard!.assertPhysicalRequestAllowed(
                       reservation!
                     ),
+                  onRawSyntheticOutput: (rawResponse) =>
+                    options.captureRawSyntheticOutput!({
+                      fixture,
+                      runIndex,
+                      rawResponse,
+                    }),
                 });
                 const normalized = normalizeEvaluatorResult(raw);
                 observedModelVersions.add(normalized.evaluation.modelVersion);
@@ -628,10 +658,9 @@ export async function runEvaluationCalibration(
     invalidEvidenceAnchors === 0 &&
     metrics.insufficientHandlingRate ===
       EVALUATION_CALIBRATION_THRESHOLDS.insufficientHandlingRate;
-  const evaluatedThresholdsPassed =
+  const evaluatedThresholdsWithoutCanonicalPassed =
     metrics.evidenceValidityRate ===
       EVALUATION_CALIBRATION_THRESHOLDS.evidenceValidityRate &&
-    metrics.adjudicatedEvidenceMatchRate === 1 &&
     metrics.scoreBandAgreementRate !== null &&
     metrics.scoreBandAgreementRate >=
       EVALUATION_CALIBRATION_THRESHOLDS.scoreBandAgreementRate &&
@@ -652,6 +681,9 @@ export async function runEvaluationCalibration(
       EVALUATION_CALIBRATION_THRESHOLDS.maximumRepeatedRunScoreRange &&
     metrics.modelVersionMatchRate ===
       EVALUATION_CALIBRATION_THRESHOLDS.modelVersionMatchRate;
+  const evaluatedThresholdsPassed =
+    evaluatedThresholdsWithoutCanonicalPassed &&
+    metrics.adjudicatedEvidenceMatchRate === 1;
   const executionPassed = corpusPassed && evaluatedThresholdsPassed;
   const liveProvider = options.executionKind === "live_provider";
   const approvedCases =
@@ -663,9 +695,14 @@ export async function runEvaluationCalibration(
     ).length ?? 0;
   const pendingAdjudicationSignoffs = 32 - approvedCases;
   const adjudicationPassed = pendingAdjudicationSignoffs === 0;
+  const semanticReviewEligible =
+    liveProvider &&
+    corpusPassed &&
+    evaluatedThresholdsWithoutCanonicalPassed &&
+    adjudicationPassed;
 
   return {
-    contractVersion: "evaluation-calibration-report.v8",
+    contractVersion: "evaluation-calibration-report.v9",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,
@@ -734,6 +771,17 @@ export async function runEvaluationCalibration(
         : null,
     },
     thresholds: EVALUATION_CALIBRATION_THRESHOLDS,
+    semanticReview: {
+      required: liveProvider,
+      status: liveProvider
+        ? semanticReviewEligible
+          ? "pending"
+          : "not_started"
+        : "not_applicable",
+      semanticAdjudicationSha256: null,
+      reviewedOutputCount: null,
+      reviewedLegitimateAlternativeCount: null,
+    },
     gate: {
       deterministicHarness:
         options.executionKind === "deterministic_self_test"
@@ -745,17 +793,17 @@ export async function runEvaluationCalibration(
         ? "passed"
         : "pending_product_owner_pm_signoff",
       liveProviderAcceptance: liveProvider
-        ? executionPassed
-          ? "passed"
+        ? semanticReviewEligible
+          ? "pending_semantic_review"
           : "failed"
         : "pending",
       calibrationEvidenceAcceptance:
-        liveProvider && !executionPassed
+        liveProvider && !semanticReviewEligible
           ? "failed"
           : !adjudicationPassed
             ? "pending_adjudication_signoff"
             : liveProvider
-              ? "passed"
+              ? "pending_semantic_review"
               : "pending_live_provider_run",
     },
     failures,
@@ -766,14 +814,106 @@ export async function runEvaluationCalibration(
           ]
         : []),
       ...(liveProvider
-        ? executionPassed
-          ? []
+        ? semanticReviewEligible
+          ? [
+              "The automated live run is complete, but two-panel semantic review is still pending.",
+            ]
           : [
               "The live provider calibration did not meet every acceptance threshold.",
             ]
         : [
             "No authorized live provider calibration has been run. Deterministic evidence proves only the harness and candidate-set contract.",
           ]),
+    ],
+  };
+}
+
+export function finalizeCalibrationReportWithSemanticReview(
+  report: EvaluationCalibrationReport,
+  input: {
+    gate: "passed" | "failed";
+    semanticAdjudicationSha256: string;
+    reviewedOutputCount: number;
+    reviewedLegitimateAlternativeCount: number;
+  }
+): EvaluationCalibrationReport {
+  const expectedReviewedOutputCount =
+    report.corpus.scoredCases * report.execution.repetitions;
+  if (
+    report.execution.kind !== "live_provider" ||
+    report.semanticReview.status !== "pending" ||
+    report.gate.calibrationEvidenceAcceptance !== "pending_semantic_review" ||
+    !/^[a-f0-9]{64}$/.test(input.semanticAdjudicationSha256) ||
+    !Number.isInteger(input.reviewedOutputCount) ||
+    input.reviewedOutputCount !== expectedReviewedOutputCount ||
+    !Number.isInteger(input.reviewedLegitimateAlternativeCount) ||
+    input.reviewedLegitimateAlternativeCount < 0 ||
+    input.reviewedLegitimateAlternativeCount > input.reviewedOutputCount ||
+    input.reviewedLegitimateAlternativeCount !==
+      new Set(
+        report.failures
+          .filter(({ code }) => code === "adjudicated_evidence_not_matched")
+          .map(({ caseId, runIndex }) => `${caseId}:${runIndex ?? -1}`)
+      ).size
+  ) {
+    throw new Error("calibration_semantic_review_finalization_invalid");
+  }
+  const passed = input.gate === "passed";
+  const pendingBlocker =
+    "The automated live run is complete, but two-panel semantic review is still pending.";
+  return {
+    ...report,
+    semanticReview: {
+      required: true,
+      status: passed ? "passed" : "failed",
+      semanticAdjudicationSha256: input.semanticAdjudicationSha256,
+      reviewedOutputCount: input.reviewedOutputCount,
+      reviewedLegitimateAlternativeCount:
+        input.reviewedLegitimateAlternativeCount,
+    },
+    gate: {
+      ...report.gate,
+      liveProviderAcceptance: passed ? "passed" : "failed",
+      calibrationEvidenceAcceptance: passed ? "passed" : "failed",
+    },
+    blockers: [
+      ...report.blockers.filter((blocker) => blocker !== pendingBlocker),
+      ...(passed
+        ? []
+        : ["The two-panel semantic review rejected one or more outputs."]),
+    ],
+  };
+}
+
+export function finalizeCalibrationReportWithSemanticReviewFailure(
+  report: EvaluationCalibrationReport
+): EvaluationCalibrationReport {
+  if (
+    report.execution.kind !== "live_provider" ||
+    report.semanticReview.status !== "pending" ||
+    report.gate.calibrationEvidenceAcceptance !== "pending_semantic_review"
+  ) {
+    throw new Error("calibration_semantic_review_failure_finalization_invalid");
+  }
+  const pendingBlocker =
+    "The automated live run is complete, but two-panel semantic review is still pending.";
+  return {
+    ...report,
+    semanticReview: {
+      required: true,
+      status: "failed",
+      semanticAdjudicationSha256: null,
+      reviewedOutputCount: null,
+      reviewedLegitimateAlternativeCount: null,
+    },
+    gate: {
+      ...report.gate,
+      liveProviderAcceptance: "failed",
+      calibrationEvidenceAcceptance: "failed",
+    },
+    blockers: [
+      ...report.blockers.filter((blocker) => blocker !== pendingBlocker),
+      "The required two-panel semantic review did not complete with valid terminal evidence.",
     ],
   };
 }
