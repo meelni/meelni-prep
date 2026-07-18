@@ -21,7 +21,7 @@
 
 ## Scope
 
-- In scope: Canonical migration 0024 after the analytics-consent 0023 predecessor; shared Postgres rate limits; a zero-cost signed anonymous identity handshake; replay fencing; strict request-origin/empty-JSON policy; microphone-only LiveKit grants; cleanup on partial provider failure; awaited local close plus a monotonic two-minute hard stop; typed 429/recovery UI; privacy-minimized audit data; pruning; tests and rollout documentation.
+- In scope: Canonical migration 0024 after the analytics-consent 0023 predecessor; shared Postgres rate limits; a zero-cost signed anonymous identity handshake; replay fencing; strict request-origin/empty-JSON policy; microphone-only LiveKit grants; cleanup on partial provider failure; awaited local close plus a monotonic two-minute hard stop; typed 429/recovery UI; privacy-minimized audit data; pruning; deployment-preflight enforcement for the dedicated public-demo HMAC secret; tests and rollout documentation.
 - Out of scope: Applying the migration to Preview or Production, changing provider configuration, invoking LiveKit/model providers, enabling the relaunch flag, using customer data, or making the launch decision.
 - Assumptions: Historical PR #249 is an audit source only; the implementation is recovered selectively onto SAV-226's reviewed head, and migration number 0008 is not reused because canonical history now ends at 0022.
 
@@ -42,7 +42,7 @@
 
 - Required commands: Focused workflow/security/API/integration/Python tests, database migration verification, typechecks, lint, formatting, Semgrep, diff/credential scans, and a production build if local configuration permits.
 - Optional/manual checks: Isolated Preview limit/replay/cleanup/browser rehearsal only after SAV-226 provider isolation and explicit operational authorization.
-- Fixtures or regression tests needed: Concurrent reservation limits, replay/recovery fencing, spoofed-IP rejection, partial-room cleanup, grants/TTL, monotonic hard deadline, typed cooldown UI, and privacy-safe auditing.
+- Fixtures or regression tests needed: Concurrent reservation limits, replay/recovery fencing, spoofed-IP rejection, partial-room cleanup, grants/TTL, monotonic hard deadline, typed cooldown UI, privacy-safe auditing, and fail-closed deployment checks for missing or malformed public-demo HMAC configuration.
 
 ## Rollout
 

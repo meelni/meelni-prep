@@ -88,6 +88,7 @@ test("rejects missing, blank, quoted-empty, and placeholder provider values", as
       OPENAI_API_KEY: '""',
       OPENAI_FEEDBACK_MODEL: "your_model",
       LIVEKIT_API_SECRET: "changeme",
+      DEMO_ABUSE_HMAC_SECRET: undefined,
     },
     liveKitProjectReader: validLiveKitReader(),
     openAiModelReader: validOpenAiReader(),
@@ -106,7 +107,33 @@ test("rejects missing, blank, quoted-empty, and placeholder provider values", as
       "OPENAI_API_KEY",
       "OPENAI_FEEDBACK_MODEL",
       "LIVEKIT_API_SECRET",
+      "DEMO_ABUSE_HMAC_SECRET",
     ]
+  );
+});
+
+test("rejects malformed public demo HMAC secrets before provider reads", async () => {
+  let liveKitReads = 0;
+  const result = await runDeploymentPreflight({
+    env: {
+      ...validEnvironment("preview"),
+      DEMO_ABUSE_HMAC_SECRET: "not-a-32-byte-base64url-secret",
+    },
+    liveKitProjectReader: {
+      async verifyProjectAccess() {
+        liveKitReads += 1;
+      },
+    },
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(false),
+    target: "preview",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(liveKitReads, 0);
+  assert.deepEqual(
+    result.failures.map(({ check, code }) => ({ check, code })),
+    [{ check: "DEMO_ABUSE_HMAC_SECRET", code: "invalid_format" }]
   );
 });
 
@@ -902,6 +929,7 @@ function validEnvironment(
   const projectRef = target === "production" ? productionRef : previewRef;
   return {
     DATABASE_URL: `postgresql://postgres.${projectRef}:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres`,
+    DEMO_ABUSE_HMAC_SECRET: "d".repeat(43),
     INNGEST_EVENT_KEY: "inngest-event-key-valid",
     INNGEST_SIGNING_KEY: `signkey-${target === "production" ? "prod" : "test"}-0123456789abcdef`,
     LIVEKIT_API_KEY: "livekit-key-valid",
