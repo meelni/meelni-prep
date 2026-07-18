@@ -36,6 +36,7 @@ LIVEKIT_API_SECRET=...
 NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_INTERVIEW_AGENT_NAME=...
 LIVEKIT_DEMO_AGENT_NAME=...
+DEMO_ABUSE_HMAC_SECRET=...
 ```
 
 For LiveKit Cloud agents, also set provider secrets required by the selected
@@ -77,7 +78,8 @@ npm run typecheck
 - Preview provider identity and rehearsal readiness are source-owned by
   `lib/deployment/provider-identities.ts` and the
   [deployment preflight contract](../contracts/deployment-preflight.md).
-- Keep browser participant grants minimal: room join, publish, subscribe.
+- Keep public-preview browser grants microphone-only: room join, microphone
+  publication, subscription, and no data/camera/screen publication.
 - Do not expose model/provider strings as end-user controls unless product
   strategy accepts it.
 - Preserve correlation across session ID, room name, selected question,

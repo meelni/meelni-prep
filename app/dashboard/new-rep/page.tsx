@@ -1,20 +1,15 @@
-"use client";
+import { permanentRedirect } from "next/navigation";
+import {
+  buildNewInterviewHrefFromPageSearchParams,
+  type InterviewLaunchPageSearchParams,
+} from "@/lib/navigation/interview-launch";
 
-import { Suspense } from "react";
-import { InterviewLaunchRedirect } from "@/app/setup/interview-launch-redirect";
-
-export default function NewRepPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="text-dashboard-muted">
-            Opening New Mock Interview...
-          </div>
-        </div>
-      }
-    >
-      <InterviewLaunchRedirect />
-    </Suspense>
+export default async function NewRepPage({
+  searchParams,
+}: {
+  searchParams: Promise<InterviewLaunchPageSearchParams>;
+}) {
+  permanentRedirect(
+    buildNewInterviewHrefFromPageSearchParams(await searchParams)
   );
 }

@@ -64,13 +64,11 @@ test("reactivation access forwards immutable Preview rehearsal identity", async 
     rehearsalCommitSha: deploymentCommitSha,
     relaunchPhase: "rehearsal",
     user: {
-      userID: user.id,
+      userID: "authenticated-launch-state",
       custom: {
-        anonymous_id: `authenticated:${user.id}`,
-        created_at: undefined,
-        email_domain: undefined,
-        local_dev_id: `authenticated:${user.id}`,
-        signup_method: "email",
+        anonymous_id: "authenticated-launch-state",
+        local_dev_id: "authenticated-launch-state",
+        logged_in: true,
       },
     },
   });
@@ -96,6 +94,11 @@ test("public launch-state checks use a stable non-user identity", async () => {
   assert.equal(resolveGate.mock.calls.length, 1);
   assert.deepEqual(resolveGate.mock.calls[0].arguments[0].user, {
     userID: "public-launch-state",
+    custom: {
+      anonymous_id: "public-launch-state",
+      local_dev_id: "public-launch-state",
+      logged_in: false,
+    },
   });
 });
 

@@ -61,7 +61,7 @@ export function FeedbackFindingCard({
                 “{evidence.quote}”
               </blockquote>
               <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-muted-foreground text-xs">
+                <span className="text-foreground/75 text-xs">
                   Evidence from your recorded answer
                 </span>
                 {onEvidenceSelect && (
@@ -92,7 +92,7 @@ export function FeedbackFindingCard({
           <Target className="h-4 w-4" aria-hidden="true" />
           Next action
         </h3>
-        <p className="text-muted-foreground mt-2 text-sm leading-6 wrap-anywhere">
+        <p className="text-foreground/80 mt-2 text-sm leading-6 wrap-anywhere">
           {finding.nextStep}
         </p>
         {confidenceLabel === "Limited evidence" && (

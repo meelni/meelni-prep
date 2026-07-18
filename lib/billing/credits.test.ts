@@ -907,6 +907,35 @@ test("asynchronous analytics rejection is contained after settlement", async () 
   }
 });
 
+test("settlement does not return before asynchronous analytics delivery finishes", async () => {
+  let delivered = false;
+  const ledger = createCreditLedgerService({
+    store: createMemoryCreditLedgerStore(),
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+    trackTerminalSettlement: async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      delivered = true;
+    },
+  });
+  await ledger.grantCredits({
+    userId: "user-awaited-analytics",
+    catalogId: "trial",
+    source: "trial",
+    idempotencyKey: "trial:user-awaited-analytics",
+  });
+  await ledger.reserveCredit({
+    userId: "user-awaited-analytics",
+    reservationKey: "session:awaited-analytics",
+  });
+
+  await ledger.consumeReservation({
+    reservationKey: "session:awaited-analytics",
+    idempotencyKey: "consume:awaited-analytics",
+  });
+
+  assert.equal(delivered, true);
+});
+
 test("payment reversal revokes only the correlated grant and replays exactly", async () => {
   const store = createMemoryCreditLedgerStore();
   const ledger = createCreditLedgerService({

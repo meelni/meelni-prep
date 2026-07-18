@@ -62,27 +62,19 @@ describe("Statsig feature flag config", () => {
 });
 
 describe("Statsig user mapping", () => {
-  it("uses the Supabase user id and non-PII custom traits for signed-in users", () => {
+  it("uses only the analytics pseudonym and minimized traits for signed-in users", () => {
     const user = buildStatsigUser({
       anonymousId: "anon-123",
-      user: {
-        id: "user-123",
-        email: "pm@example.com",
-        created_at: "2026-06-01T12:00:00.000Z",
-        app_metadata: {
-          provider: "google",
-        },
-      },
+      analyticsPseudonym: "user_pseudonym",
+      loggedIn: true,
     });
 
     expect(user).toEqual({
-      userID: "user-123",
+      userID: "user_pseudonym",
       custom: {
         anonymous_id: "anon-123",
-        created_at: "2026-06-01T12:00:00.000Z",
-        email_domain: "example.com",
         local_dev_id: "anon-123",
-        signup_method: "google",
+        logged_in: true,
       },
     });
   });
@@ -90,7 +82,6 @@ describe("Statsig user mapping", () => {
   it("falls back to a stable anonymous id before login", () => {
     const user = buildStatsigUser({
       anonymousId: "anon-123",
-      user: null,
     });
 
     expect(user).toEqual({

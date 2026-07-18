@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -20,7 +19,18 @@ import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import {
+  interpretPublicDemoStartFailure,
+  requestPublicDemoStart,
+  type DemoStartError,
+} from "@/lib/demo/public-demo-client";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -34,6 +44,14 @@ interface TranscriptMessage {
 interface DemoModalProps {
   isOpen: boolean;
   onClose: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}
+
+function formatCooldown(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.ceil(minutes / 60)}h`;
 }
 
 // Transcript Panel Component (Terminal-style design)
@@ -51,7 +69,7 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
       {/* Terminal-style Header */}
       <div className="border-primary-foreground/10 border-b px-4 py-3">
         <span className="text-primary-foreground/60 font-mono text-xs">
-          transcript.log
+          Live transcript
         </span>
       </div>
 
@@ -81,7 +99,7 @@ function TranscriptPanel({ messages }: { messages: TranscriptMessage[] }) {
                     message.speaker === "user" ? "text-success" : "text-info"
                   } ${!message.isFinal ? "opacity-50" : ""}`}
                 >
-                  {message.speaker === "user" ? "user" : "agent"}
+                  {message.speaker === "user" ? "You" : "Meelni"}
                 </span>
                 <span
                   className={`flex-1 ${
@@ -111,12 +129,16 @@ function DemoControls({
   onAgentJoined,
   onUserSpoke,
   onDemoCompleted,
+  onRuntimeError,
+  durationSeconds,
 }: {
   onClose: () => void;
   demoStartTime: React.MutableRefObject<number | undefined>;
   onAgentJoined: () => void;
   onUserSpoke: () => void;
   onDemoCompleted: () => void;
+  onRuntimeError: (error: DemoStartError) => void;
+  durationSeconds: number;
 }) {
   const { state, audioTrack } = useVoiceAssistant();
   const connectionState = useConnectionState();
@@ -124,9 +146,17 @@ function DemoControls({
   const { localParticipant } = useLocalParticipant();
   const [isMuted, setIsMuted] = useState(false);
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
+  const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [agentReady, setAgentReady] = useState(false);
   const demoCompletedTracked = useRef(false);
+  const sessionEndedRef = useRef(false);
+  const agentSeenRef = useRef(false);
+  const completionHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    setTimeRemaining(durationSeconds);
+  }, [durationSeconds]);
 
   // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] =
@@ -134,15 +164,51 @@ function DemoControls({
   const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSpeakingTimeRef = useRef<number>(0);
 
-  // Track agent join
+  // Track agent arrival and treat an unexpected agent departure as terminal.
   useEffect(() => {
-    if (
-      connectionState === ConnectionState.Connected &&
-      room?.remoteParticipants.size > 0
-    ) {
+    const connected = connectionState === ConnectionState.Connected;
+    const remoteCount = room?.remoteParticipants.size ?? 0;
+    if (connected && remoteCount > 0) {
+      agentSeenRef.current = true;
       onAgentJoined();
     }
-  }, [connectionState, room?.remoteParticipants.size, onAgentJoined]);
+    if (
+      connected &&
+      agentSeenRef.current &&
+      remoteCount === 0 &&
+      !sessionEndedRef.current
+    ) {
+      onRuntimeError({
+        title: "The interviewer left the preview",
+        message: "The voice session ended before the preview was complete.",
+      });
+    }
+  }, [
+    connectionState,
+    onAgentJoined,
+    onRuntimeError,
+    room?.remoteParticipants.size,
+  ]);
+
+  // The ready control event, not transport connection alone, starts practice.
+  useEffect(() => {
+    if (
+      connectionState !== ConnectionState.Connected ||
+      agentReady ||
+      sessionEndedRef.current
+    ) {
+      return;
+    }
+    const watchdog = window.setTimeout(() => {
+      if (!sessionEndedRef.current) {
+        onRuntimeError({
+          title: "The interviewer didn't arrive",
+          message: "We couldn't start the voice preview within 20 seconds.",
+        });
+      }
+    }, 20_000);
+    return () => window.clearTimeout(watchdog);
+  }, [agentReady, connectionState, onRuntimeError]);
 
   // Sync mute state with local participant's microphone state
   useEffect(() => {
@@ -230,17 +296,12 @@ function DemoControls({
   useEffect(() => {
     const isConnected = connectionState === ConnectionState.Connected;
 
-    if (!isConnected || sessionEnded) return;
+    if (!isConnected || !agentReady || sessionEnded) return;
 
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
-          setSessionEnded(true);
           clearInterval(interval);
-          // Disconnect room after timeout
-          if (room) {
-            room.disconnect();
-          }
           return 0;
         }
         return prev - 1;
@@ -248,7 +309,7 @@ function DemoControls({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [connectionState, room, sessionEnded]);
+  }, [agentReady, connectionState, sessionEnded]);
 
   // Listen for transcription events
   useEffect(() => {
@@ -331,6 +392,51 @@ function DemoControls({
     };
   }, [room, onUserSpoke]);
 
+  // The agent is authoritative for normal completion and deletes the room at
+  // the hard cap. Preserve the completion state when that disconnect arrives.
+  useEffect(() => {
+    if (!room) return;
+    const handleData = (
+      payload: Uint8Array,
+      _participant: unknown,
+      _kind: unknown,
+      topic?: string
+    ) => {
+      if (topic !== "demo_control") return;
+      try {
+        const message = JSON.parse(new TextDecoder().decode(payload)) as {
+          type?: string;
+          remaining_seconds?: number;
+        };
+        if (message.type === "demo_ready") {
+          if (!demoStartTime.current) demoStartTime.current = Date.now();
+          const remaining = message.remaining_seconds;
+          if (typeof remaining === "number" && Number.isFinite(remaining)) {
+            setTimeRemaining(
+              Math.max(0, Math.min(durationSeconds, Math.ceil(remaining)))
+            );
+          }
+          setAgentReady(true);
+        }
+        if (message.type === "session_end") {
+          sessionEndedRef.current = true;
+          onDemoCompleted();
+          setSessionEnded(true);
+        }
+      } catch {
+        // Ignore malformed provider data; it is not trusted UI content.
+      }
+    };
+    room.on("dataReceived", handleData);
+    return () => {
+      room.off("dataReceived", handleData);
+    };
+  }, [demoStartTime, durationSeconds, onDemoCompleted, room]);
+
+  useEffect(() => {
+    if (sessionEnded) completionHeadingRef.current?.focus();
+  }, [sessionEnded]);
+
   const toggleMute = async () => {
     if (!localParticipant) return;
 
@@ -366,12 +472,13 @@ function DemoControls({
       analytics.track("demo_completed", {
         duration_seconds: Math.floor(duration),
         turn_count: turnCount,
-        converted_to_signup: false, // Will be updated if user clicks "Start Full Interview"
+        converted_to_signup: false,
       });
     }
   }, [sessionEnded, demoStartTime, messages, onDemoCompleted]);
 
   const isConnected = connectionState === ConnectionState.Connected;
+  const isReady = isConnected && agentReady;
   // Use debounced state for UI display to prevent flickering
   const agentState = debouncedAgentState;
 
@@ -391,18 +498,20 @@ function DemoControls({
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
-          className="absolute top-4 right-4 sm:top-8 sm:right-8 md:top-12 md:right-12"
+          className="absolute top-4 left-4 sm:top-8 sm:right-20 sm:left-auto md:top-12 md:right-24"
         >
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* 5-Minute Demo Badge */}
-            {!isConnected && !sessionEnded && (
+            {/* Preview duration badge */}
+            {!isReady && !sessionEnded && (
               <div className="bg-primary/10 border-primary/20 rounded-lg border px-2 py-1.5 backdrop-blur-xl sm:rounded-xl sm:px-4 sm:py-2">
-                <span className="text-label text-primary">5-MIN DEMO</span>
+                <span className="text-label text-primary">
+                  2-MIN VOICE PREVIEW
+                </span>
               </div>
             )}
 
             {/* Countdown Timer (when connected) */}
-            {isConnected && !sessionEnded && (
+            {isReady && !sessionEnded && (
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -449,37 +558,38 @@ function DemoControls({
                 exit={{ opacity: 0, scale: 0.9 }}
                 className="space-y-6 text-center"
               >
-                <div className="space-y-3">
-                  <h2 className="text-primary-foreground text-3xl font-semibold">
-                    Demo Complete!
+                <div role="status" aria-live="polite" className="space-y-3">
+                  <h2
+                    ref={completionHeadingRef}
+                    tabIndex={-1}
+                    className="text-primary-foreground text-3xl font-semibold outline-none"
+                  >
+                    That&apos;s the preview.
                   </h2>
                   <p className="text-primary-foreground/60 mx-auto max-w-lg text-base">
-                    Thank you for trying Meelni. Ready to practice with a full
-                    interview?
+                    A full mock interview adds realistic follow-ups, a
+                    transcript, and PM-calibrated feedback.
                   </p>
                 </div>
                 <Link
-                  href="/dashboard/new-interview"
+                  href="/dashboard/new-interview?source=voice_demo"
                   onClick={() => {
                     // Track conversion to signup
                     if (demoStartTime.current) {
-                      analytics.track("demo_completed", {
-                        duration_seconds: Math.floor(
-                          (Date.now() - demoStartTime.current) / 1000
-                        ),
-                        turn_count: messages.filter((msg) => msg.isFinal)
-                          .length,
-                        converted_to_signup: true,
+                      analytics.track("cta_clicked", {
+                        button_text: "Practice a full interview",
+                        location: "voice_preview_complete",
+                        destination: "/dashboard/new-interview",
                       });
                     }
                   }}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
                 >
-                  Start Full Interview
+                  Start a Mock Interview
                   <ArrowRight className="h-5 w-5" />
                 </Link>
               </motion.div>
-            ) : isConnected ? (
+            ) : isReady ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -526,8 +636,9 @@ function DemoControls({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
+              aria-live="polite"
             >
-              {!isConnected ? (
+              {!isReady ? (
                 <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
                   <Loader2 className="text-primary h-4 w-4 animate-spin" />
                   <span className="text-primary-foreground/70 text-sm font-medium">
@@ -582,22 +693,31 @@ function DemoControls({
             <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-2xl sm:gap-4 sm:px-6 sm:py-4 md:px-8">
               {/* Mic button */}
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={toggleMute}
-                disabled={!isConnected || !localParticipant}
-                className={`relative rounded-xl p-4 shadow-lg transition-all duration-300 ${
+                disabled={!isReady || !localParticipant}
+                aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                aria-pressed={isMuted}
+                className={`focus-visible:ring-primary relative min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none ${
                   isMuted
                     ? "bg-destructive/80 hover:bg-destructive"
                     : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 {isMuted ? (
-                  <MicOff className="text-primary-foreground h-5 w-5" />
+                  <MicOff
+                    className="text-primary-foreground h-5 w-5"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Mic className="text-primary-foreground h-5 w-5" />
+                  <Mic
+                    className="text-primary-foreground h-5 w-5"
+                    aria-hidden="true"
+                  />
                 )}
-                {!isMuted && isConnected && (
+                {!isMuted && isReady && (
                   <div className="bg-success absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full" />
                 )}
               </motion.button>
@@ -607,12 +727,17 @@ function DemoControls({
 
               {/* Close button */}
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 rounded-xl p-4 shadow-lg transition-all duration-300"
+                aria-label="End voice preview"
+                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 focus-visible:ring-primary min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none"
               >
-                <X className="text-primary-foreground h-5 w-5" />
+                <X
+                  className="text-primary-foreground h-5 w-5"
+                  aria-hidden="true"
+                />
               </motion.button>
             </div>
           </motion.div>
@@ -632,62 +757,114 @@ function DemoControls({
   );
 }
 
-export function DemoModal({ isOpen, onClose }: DemoModalProps) {
+export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const [durationSeconds, setDurationSeconds] = useState(120);
+  const [error, setError] = useState<DemoStartError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const modalOpenedAt = useRef<number | undefined>(undefined);
   const demoStartTime = useRef<number | undefined>(undefined);
   const [agentJoined, setAgentJoined] = useState(false);
   const [userSpoke, setUserSpoke] = useState(false);
   const [demoCompleted, setDemoCompleted] = useState(false);
+  const demoCompletedRef = useRef(false);
+  const errorHeadingRef = useRef<HTMLHeadingElement>(null);
+  const tokenRequestRef = useRef<AbortController | null>(null);
+  const openedRequestStartedRef = useRef(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
-  // Body scroll lock and start time tracking
+  useEffect(() => {
+    if (!error?.retryAt) {
+      setCooldownSeconds(0);
+      return;
+    }
+    const update = () =>
+      setCooldownSeconds(
+        Math.max(0, Math.ceil((error.retryAt! - Date.now()) / 1000))
+      );
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [error?.retryAt]);
+
+  useEffect(() => {
+    if (error) errorHeadingRef.current?.focus();
+  }, [error]);
+
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = "hidden";
-      demoStartTime.current = Date.now();
-    } else {
-      document.body.style.overflow = "unset";
+      modalOpenedAt.current = Date.now();
+      demoStartTime.current = undefined;
+      analytics.track("demo_modal_opened", { trigger_source: "landing_hero" });
     }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
   }, [isOpen]);
 
   const fetchDemoToken = useCallback(async () => {
+    if (tokenRequestRef.current || cooldownSeconds > 0) return;
+    const controller = new AbortController();
+    let requestTimedOut = false;
+    const requestTimeout = window.setTimeout(() => {
+      requestTimedOut = true;
+      controller.abort();
+    }, 15_000);
+    tokenRequestRef.current = controller;
     setIsLoading(true);
-    setError("");
+    setError(null);
 
     try {
-      const response = await fetch("/api/livekit/demo-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantName:
-            "demo-user-" + Math.random().toString(36).substring(7),
-        }),
+      const result = await requestPublicDemoStart({
+        signal: controller.signal,
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to get demo token");
+      if (!result.ok) {
+        setError(
+          interpretPublicDemoStartFailure({
+            status: result.status,
+            body: result.body,
+            retryAfterHeader: result.retryAfterHeader,
+          })
+        );
+        return;
       }
-
-      const data = await response.json();
-      setToken(data.token);
-      setUrl(data.url);
-    } catch (err) {
-      console.error("Demo token error:", err);
-      setError("Failed to start demo. Please try again.");
+      setToken(result.data.token);
+      setUrl(result.data.url);
+      setDurationSeconds(result.data.durationSeconds);
+    } catch {
+      if (controller.signal.aborted && !requestTimedOut) return;
+      setError({
+        title: requestTimedOut
+          ? "The voice preview took too long to start"
+          : "The voice preview is temporarily unavailable",
+        message: requestTimedOut
+          ? "We stopped waiting after 15 seconds. You can try again."
+          : "Your microphone is fine—we couldn't connect to the interviewer.",
+      });
     } finally {
+      window.clearTimeout(requestTimeout);
+      tokenRequestRef.current = null;
       setIsLoading(false);
     }
+  }, [cooldownSeconds]);
+
+  const handleRuntimeError = useCallback((nextError: DemoStartError) => {
+    setToken("");
+    setUrl("");
+    setError(nextError);
+  }, []);
+
+  const handleAgentJoined = useCallback(() => setAgentJoined(true), []);
+  const handleUserSpoke = useCallback(() => setUserSpoke(true), []);
+  const handleDemoCompleted = useCallback(() => {
+    demoCompletedRef.current = true;
+    setDemoCompleted(true);
   }, []);
 
   const handleClose = useCallback(() => {
+    tokenRequestRef.current?.abort();
+    tokenRequestRef.current = null;
     // Track demo close
-    if (demoStartTime.current) {
-      const duration = (Date.now() - demoStartTime.current) / 1000;
+    if (modalOpenedAt.current) {
+      const duration = (Date.now() - modalOpenedAt.current) / 1000;
 
       analytics.track("demo_modal_closed", {
         duration_seconds: Math.floor(duration),
@@ -700,130 +877,177 @@ export function DemoModal({ isOpen, onClose }: DemoModalProps) {
     // Reset state when closing
     setToken("");
     setUrl("");
-    setError("");
+    setError(null);
     setAgentJoined(false);
     setUserSpoke(false);
     setDemoCompleted(false);
+    modalOpenedAt.current = undefined;
+    demoStartTime.current = undefined;
+    demoCompletedRef.current = false;
+    openedRequestStartedRef.current = false;
     onClose();
   }, [agentJoined, demoCompleted, onClose, userSpoke]);
 
   // Fetch demo token when modal opens
   useEffect(() => {
-    if (isOpen && !token) {
+    if (isOpen && !token && !openedRequestStartedRef.current) {
+      openedRequestStartedRef.current = true;
       fetchDemoToken();
     }
   }, [fetchDemoToken, isOpen, token]);
 
-  // ESC key listener to close modal
-  useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && isOpen) {
-        handleClose();
-      }
-    };
-
-    if (isOpen) {
-      window.addEventListener("keydown", handleEscKey);
-    }
-
-    return () => {
-      window.removeEventListener("keydown", handleEscKey);
-    };
-  }, [handleClose, isOpen]);
-
-  // Only render portal on client-side after mount
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Full-screen dark backdrop - blurs everything */}
+  return (
+    <MotionConfig reducedMotion="user">
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+      >
+        <DialogContent
+          aria-modal="true"
+          overlayClassName="z-[9999] bg-overlay/95"
+          closeClassName="z-[70] bg-primary-foreground/10 text-primary-foreground opacity-100 hover:bg-primary-foreground/20"
+          onCloseAutoFocus={(event) => {
+            if (!returnFocusRef?.current) return;
+            event.preventDefault();
+            returnFocusRef.current.focus();
+          }}
+          className="border-primary-foreground/10 from-overlay via-overlay to-primary/20 z-[10000] block h-[calc(100dvh_-_2rem)] max-h-[900px] max-w-[1600px] overflow-hidden rounded-2xl bg-gradient-to-br p-0 shadow-2xl"
+        >
+          <DialogTitle className="sr-only">Meelni voice demo</DialogTitle>
+          <DialogDescription className="sr-only">
+            Answer one PM interview question out loud in a two-minute voice
+            preview. This preview is not saved.
+          </DialogDescription>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="bg-overlay/95 fixed inset-0 z-[9999] backdrop-blur-sm"
-          />
-
-          {/* Full-screen Modal Container (LiveKit style) */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-primary-foreground/5 border-primary-foreground/10 text-primary-foreground/60 absolute bottom-4 left-4 z-50 hidden items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl sm:bottom-6 sm:left-6 sm:flex"
           >
-            {/* Inner modal with border/frame */}
-            <div className="border-primary-foreground/10 from-overlay via-overlay to-primary/20 relative h-full max-h-[900px] w-full max-w-[1600px] overflow-hidden rounded-2xl border bg-gradient-to-br shadow-2xl">
-              {/* Keyboard shortcut hint - bottom left - Hidden on mobile */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="bg-primary-foreground/5 border-primary-foreground/10 text-primary-foreground/60 absolute bottom-4 left-4 z-50 hidden items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl sm:bottom-6 sm:left-6 sm:flex"
-              >
-                <kbd className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80 rounded border px-2 py-1 font-mono">
-                  ESC
-                </kbd>
-                <span>to close</span>
-              </motion.div>
-              {error ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="space-y-4 text-center">
-                    <div className="bg-destructive/20 mx-auto flex h-16 w-16 items-center justify-center rounded-full">
-                      <X className="text-destructive h-8 w-8" />
-                    </div>
-                    <p className="text-destructive font-medium">{error}</p>
+            <kbd className="bg-primary-foreground/10 border-primary-foreground/20 text-primary-foreground/80 rounded border px-2 py-1 font-mono">
+              ESC
+            </kbd>
+            <span>to close</span>
+          </motion.div>
+
+          {error ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="space-y-4 text-center">
+                <div className="bg-destructive/20 mx-auto flex h-16 w-16 items-center justify-center rounded-full">
+                  <X className="text-destructive h-8 w-8" aria-hidden="true" />
+                </div>
+                <div role="alert" className="space-y-2">
+                  <h3
+                    ref={errorHeadingRef}
+                    tabIndex={-1}
+                    className="text-primary-foreground text-xl font-semibold outline-none"
+                  >
+                    {error.title}
+                  </h3>
+                  <p className="text-primary-foreground/70 text-sm">
+                    {error.message}
+                  </p>
+                </div>
+                {!error.paused && cooldownSeconds > 0 && (
+                  <p className="text-primary-foreground/70 text-sm">
+                    Try again in {formatCooldown(cooldownSeconds)}. You can
+                    still start a full mock interview now.
+                  </p>
+                )}
+                {error.paused ? (
+                  <Button
+                    type="button"
+                    onClick={handleClose}
+                    size="lg"
+                    className="min-h-11 rounded-xl font-semibold"
+                  >
+                    Close
+                  </Button>
+                ) : (
+                  <div className="flex flex-col justify-center gap-3 sm:flex-row">
                     <Button
                       type="button"
                       onClick={fetchDemoToken}
+                      disabled={cooldownSeconds > 0 || isLoading}
                       size="lg"
-                      className="rounded-xl font-semibold"
+                      className="min-h-11 rounded-xl font-semibold"
                     >
-                      Try Again
+                      {cooldownSeconds > 0
+                        ? `Try again in ${formatCooldown(cooldownSeconds)}`
+                        : "Try Again"}
+                    </Button>
+                    <Button asChild variant="secondary" size="lg">
+                      <Link href="/dashboard/new-interview?source=voice_demo">
+                        Start a Mock Interview
+                      </Link>
                     </Button>
                   </div>
-                </div>
-              ) : isLoading || !token ? (
-                <div className="flex h-full flex-col items-center justify-center gap-6">
-                  <Loader2 className="text-primary h-12 w-12 animate-spin" />
-                  <p className="text-primary-foreground/80 font-medium">
-                    Connecting to Meelni...
-                  </p>
-                </div>
-              ) : (
-                <LiveKitRoom
-                  token={token}
-                  serverUrl={url}
-                  connect={true}
-                  audio={true}
-                  video={false}
-                  onDisconnected={handleClose}
-                  className="h-full w-full"
-                >
-                  <DemoControls
-                    onClose={handleClose}
-                    demoStartTime={demoStartTime}
-                    onAgentJoined={() => setAgentJoined(true)}
-                    onUserSpoke={() => setUserSpoke(true)}
-                    onDemoCompleted={() => setDemoCompleted(true)}
-                  />
-                  <RoomAudioRenderer />
-                </LiveKitRoom>
-              )}
+                )}
+              </div>
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+          ) : isLoading || !token ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+              className="flex h-full flex-col items-center justify-center gap-6"
+            >
+              <Loader2
+                className="text-primary h-12 w-12 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <p className="text-primary-foreground/80 font-medium">
+                Connecting to Meelni...
+              </p>
+            </div>
+          ) : (
+            <LiveKitRoom
+              token={token}
+              serverUrl={url}
+              connect={true}
+              audio={true}
+              video={false}
+              onDisconnected={() => {
+                if (!demoCompletedRef.current) {
+                  handleRuntimeError({
+                    title: "The connection dropped",
+                    message:
+                      "We didn't count this as a completed preview. You can try again.",
+                  });
+                }
+              }}
+              onError={() =>
+                handleRuntimeError({
+                  title: "The voice connection failed",
+                  message:
+                    "We couldn't keep the interviewer connected. You can try again.",
+                })
+              }
+              onMediaDeviceFailure={() =>
+                handleRuntimeError({
+                  title: "Microphone access is required",
+                  message:
+                    "Allow microphone access in your browser, then try the voice preview again.",
+                })
+              }
+              className="h-full w-full"
+            >
+              <DemoControls
+                onClose={handleClose}
+                demoStartTime={demoStartTime}
+                onAgentJoined={handleAgentJoined}
+                onUserSpoke={handleUserSpoke}
+                onDemoCompleted={handleDemoCompleted}
+                onRuntimeError={handleRuntimeError}
+                durationSeconds={durationSeconds}
+              />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
+          )}
+        </DialogContent>
+      </Dialog>
+    </MotionConfig>
   );
 }

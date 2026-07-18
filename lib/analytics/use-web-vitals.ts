@@ -1,141 +1,138 @@
-/**
- * Web Vitals Performance Tracking Hook
- * Tracks Core Web Vitals (LCP, FID, CLS, TTFB, FCP) for performance monitoring
- */
+"use client";
 
-'use client'
+import { useCallback, useEffect, useRef } from "react";
+import { useReportWebVitals } from "next/web-vitals";
 
-import { useEffect } from 'react'
-import { analytics } from './analytics-service'
+import { analytics } from "./analytics-service";
+import type { EventProperties } from "./types";
 
-export function useWebVitals(pageName: string) {
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined') return
+type PagePerformanceProperties = EventProperties["page_performance"];
+type WebVitalValues = Omit<PagePerformanceProperties, "page">;
+type SupportedWebVital = "CLS" | "FCP" | "FID" | "INP" | "LCP" | "TTFB";
+type WebVitalMetric = { name: string; value: number };
+type TimerHandle = unknown;
 
-    const vitalsUrl = 'https://unpkg.com/web-vitals@3/dist/web-vitals.iife.js'
+const SUPPORTED_WEB_VITALS: readonly SupportedWebVital[] = [
+  "CLS",
+  "FCP",
+  "FID",
+  "INP",
+  "LCP",
+  "TTFB",
+];
+const REQUIRED_PAGE_METRICS: readonly SupportedWebVital[] = [
+  "CLS",
+  "FCP",
+  "LCP",
+  "TTFB",
+];
+const REPORT_TIMEOUT_MS = 10_000;
 
-    // Load web-vitals library dynamically
-    const script = document.createElement('script')
-    script.src = vitalsUrl
-    script.async = true
-
-    let timeoutId: NodeJS.Timeout | null = null
-
-    script.onload = () => {
-      if (window.webVitals) {
-        const { onLCP, onFID, onCLS, onTTFB, onFCP } = window.webVitals
-
-        const vitalsData: {
-          lcp?: number
-          fid?: number
-          cls?: number
-          ttfb?: number
-          fcp?: number
-        } = {}
-
-        let reportedMetricsCount = 0
-        const totalMetrics = 5 // LCP, FID, CLS, TTFB, FCP
-        let hasReported = false // Prevent duplicate reports
-
-        // Track when all metrics are collected
-        const maybeReport = () => {
-          reportedMetricsCount++
-
-          // Report when we have all metrics, or after 10s timeout
-          if (reportedMetricsCount >= totalMetrics && !hasReported) {
-            reportVitals()
-          }
-        }
-
-        const reportVitals = () => {
-          if (hasReported) return // Prevent duplicate reports
-
-          hasReported = true
-
-          // Clear timeout if we're reporting early
-          if (timeoutId) {
-            clearTimeout(timeoutId)
-            timeoutId = null
-          }
-
-          analytics.track('page_performance', {
-            page: pageName,
-            ...vitalsData,
-          })
-        }
-
-        // Set timeout to report after 10s even if not all metrics available
-        timeoutId = setTimeout(() => {
-          if (reportedMetricsCount > 0 && !hasReported) {
-            reportVitals()
-          }
-        }, 10000)
-
-        // Track Largest Contentful Paint (LCP)
-        // Good: < 2.5s, Needs Improvement: 2.5-4s, Poor: > 4s
-        onLCP((metric) => {
-          vitalsData.lcp = Math.round(metric.value)
-          maybeReport()
-        })
-
-        // Track First Input Delay (FID)
-        // Good: < 100ms, Needs Improvement: 100-300ms, Poor: > 300ms
-        onFID((metric) => {
-          vitalsData.fid = Math.round(metric.value)
-          maybeReport()
-        })
-
-        // Track Cumulative Layout Shift (CLS)
-        // Good: < 0.1, Needs Improvement: 0.1-0.25, Poor: > 0.25
-        onCLS((metric) => {
-          vitalsData.cls = Math.round(metric.value * 1000) / 1000 // Round to 3 decimals
-          maybeReport()
-        })
-
-        // Track Time to First Byte (TTFB)
-        // Good: < 800ms, Needs Improvement: 800-1800ms, Poor: > 1800ms
-        onTTFB((metric) => {
-          vitalsData.ttfb = Math.round(metric.value)
-          maybeReport()
-        })
-
-        // Track First Contentful Paint (FCP)
-        // Good: < 1.8s, Needs Improvement: 1.8-3s, Poor: > 3s
-        onFCP((metric) => {
-          vitalsData.fcp = Math.round(metric.value)
-          maybeReport()
-        })
-      }
-    }
-
-    document.head.appendChild(script)
-
-    // Cleanup function to prevent memory leaks
-    return () => {
-      // Clear timeout to prevent memory leak
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-
-      // Remove script tag
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
-      }
-    }
-  }, [pageName])
+function isSupportedWebVital(name: string): name is SupportedWebVital {
+  return SUPPORTED_WEB_VITALS.includes(name as SupportedWebVital);
 }
 
-// TypeScript declarations for web-vitals library
-declare global {
-  interface Window {
-    webVitals?: {
-      onLCP: (callback: (metric: { value: number }) => void) => void
-      onFID: (callback: (metric: { value: number }) => void) => void
-      onCLS: (callback: (metric: { value: number }) => void) => void
-      onTTFB: (callback: (metric: { value: number }) => void) => void
-      onFCP: (callback: (metric: { value: number }) => void) => void
-    }
-  }
+export function normalizeWebVital(
+  name: SupportedWebVital,
+  value: number
+): WebVitalValues {
+  return {
+    [name.toLowerCase()]:
+      name === "CLS" ? Math.round(value * 1000) / 1000 : Math.round(value),
+  };
+}
+
+export function createWebVitalsReporter({
+  pageName,
+  emit,
+  schedule = (callback, delayMs) => window.setTimeout(callback, delayMs),
+  cancel = (handle) => window.clearTimeout(handle as number),
+  timeoutMs = REPORT_TIMEOUT_MS,
+}: {
+  pageName: string;
+  emit: (properties: PagePerformanceProperties) => void;
+  schedule?: (callback: () => void, delayMs: number) => TimerHandle;
+  cancel?: (handle: TimerHandle) => void;
+  timeoutMs?: number;
+}) {
+  const values: WebVitalValues = {};
+  const observedMetrics = new Set<SupportedWebVital>();
+  let timer: TimerHandle | null = null;
+  let closed = false;
+  let reported = false;
+
+  const clearReportTimer = () => {
+    if (timer === null) return;
+    cancel(timer);
+    timer = null;
+  };
+
+  const report = () => {
+    if (closed || reported || observedMetrics.size === 0) return;
+    reported = true;
+    clearReportTimer();
+    emit({ page: pageName, ...values });
+  };
+
+  const hasCompletePageMetrics = () =>
+    REQUIRED_PAGE_METRICS.every((name) => observedMetrics.has(name)) &&
+    (observedMetrics.has("INP") || observedMetrics.has("FID"));
+
+  return {
+    record(metric: WebVitalMetric) {
+      if (
+        closed ||
+        reported ||
+        !isSupportedWebVital(metric.name) ||
+        !Number.isFinite(metric.value)
+      ) {
+        return;
+      }
+
+      observedMetrics.add(metric.name);
+      Object.assign(values, normalizeWebVital(metric.name, metric.value));
+
+      if (hasCompletePageMetrics()) {
+        report();
+        return;
+      }
+
+      if (timer === null) timer = schedule(report, timeoutMs);
+    },
+    dispose() {
+      if (closed) return;
+      closed = true;
+      clearReportTimer();
+    },
+  };
+}
+
+export function useWebVitals(pageName: string) {
+  const reporterRef = useRef<ReturnType<typeof createWebVitalsReporter> | null>(
+    null
+  );
+  const createReporter = useCallback(
+    () =>
+      createWebVitalsReporter({
+        pageName,
+        emit: (properties) => analytics.track("page_performance", properties),
+      }),
+    [pageName]
+  );
+  const reportMetric = useCallback(
+    (metric: WebVitalMetric) => {
+      reporterRef.current ??= createReporter();
+      reporterRef.current.record(metric);
+    },
+    [createReporter]
+  );
+
+  useEffect(() => {
+    reporterRef.current = createReporter();
+    return () => {
+      reporterRef.current?.dispose();
+      reporterRef.current = null;
+    };
+  }, [createReporter]);
+  useReportWebVitals(reportMetric);
 }

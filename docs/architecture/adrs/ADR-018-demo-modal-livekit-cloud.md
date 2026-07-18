@@ -1,4 +1,5 @@
 ### ADR-018: Demo Modal with LiveKit Cloud Agent
+
 - **Date**: 2025-11-05
 - **Decision**: Implemented demo modal on landing page with separate LiveKit Cloud-deployed agent
 - **Rationale**:
@@ -22,12 +23,12 @@
       ↓
   Agent joins room (cold start ~2-3 seconds)
       ↓
-  60-second demo conversation
+  Server-bounded two-minute voice preview
       ↓
   Room auto-deletes after 2 minutes (emptyTimeout)
   ```
 - **Key Components**:
-  - **Demo Agent** (`/agent/demo_agent.py`): 60-second optimized prompt, separate from main agent
+  - **Demo Agent** (`/agent/demo/agent.py`): two-minute preview prompt and hard-stop runtime, separate from the main agent
   - **Demo Token API** (`/app/api/livekit/demo-token/route.ts`): Creates room + dispatches Cloud agent
   - **DemoModal** (`/components/demo-modal.tsx`): LiveKit audio visualizer UI with mic toggle
   - **Hero Integration** (`/components/sections/hero.tsx`): Modal trigger button
@@ -42,4 +43,3 @@
   - No competition with self-hosted agents (isolated dispatch)
   - Faster iteration: update demo agent without affecting production interviews
   - **Important**: Agent requires `agent_name` parameter to receive dispatches
-

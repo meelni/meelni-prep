@@ -102,7 +102,10 @@ function ForgotPasswordContent() {
               >
                 {isSubmitting ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
+                    <Loader2
+                      className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
                     <span>Sending reset link...</span>
                   </span>
                 ) : (
@@ -121,7 +124,7 @@ function ForgotPasswordContent() {
                 onClick={() =>
                   router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
                 }
-                className="h-auto p-0 font-medium"
+                className="min-h-11 px-2 py-0 font-medium"
               >
                 Sign in
               </Button>

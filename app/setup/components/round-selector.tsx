@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Users, Lightbulb, Target, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -38,6 +38,8 @@ export function RoundSelector({
   onLockedClick,
   disabled = false,
 }: RoundSelectorProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   // Get all interview types in original order
   const allRoundTypes = Object.keys(ROUND_TYPES) as RoundType[];
 
@@ -60,7 +62,7 @@ export function RoundSelector({
   return (
     <motion.div
       variants={staggerContainer}
-      initial="initial"
+      initial={shouldReduceMotion ? false : "initial"}
       animate="animate"
       className="grid gap-3 md:grid-cols-2"
     >
@@ -88,10 +90,10 @@ export function RoundSelector({
               disabled={disabled}
               className={
                 disabled
-                  ? "cursor-not-allowed opacity-60"
+                  ? "border-dashboard-panel-border text-dashboard-foreground cursor-not-allowed bg-transparent opacity-60"
                   : isLocked
-                    ? undefined
-                    : "hover:scale-[1.01]"
+                    ? "border-dashboard-panel-border text-dashboard-foreground bg-transparent"
+                    : "border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/10 bg-transparent hover:scale-[1.01]"
               }
               onClick={handleClick}
             >
@@ -109,15 +111,17 @@ export function RoundSelector({
                 </SelectableCardIcon>
 
                 {/* Title */}
-                <h3 className="mt-2 text-base font-semibold">{config.label}</h3>
+                <h3 className="text-dashboard-foreground mt-2 text-base font-semibold">
+                  {config.label}
+                </h3>
 
                 {/* Subtitle */}
-                <p className="text-foreground/80 mt-1 text-xs font-medium">
+                <p className="text-dashboard-foreground mt-1 text-xs font-medium">
                   {config.subtitle}
                 </p>
 
                 {/* Description - fixed min-height for consistency */}
-                <p className="text-muted-foreground mt-1.5 min-h-8 flex-1 text-xs leading-relaxed">
+                <p className="text-dashboard-muted mt-1.5 min-h-8 flex-1 text-xs leading-relaxed">
                   {config.description}
                 </p>
 

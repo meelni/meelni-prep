@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Clock } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { parseInterviewDeadlineAt } from "@meelni/core";
 import {
   formatInterviewTime,
@@ -18,6 +18,7 @@ export function TimerDisplay({
   deadlineAt,
   onDeadlineReached,
 }: TimerDisplayProps) {
+  const prefersReducedMotion = useReducedMotion();
   const parsedDeadline = useMemo(
     () => parseInterviewDeadlineAt(deadlineAt),
     [deadlineAt]
@@ -56,8 +57,8 @@ export function TimerDisplay({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={prefersReducedMotion ? false : { y: -10 }}
+      animate={{ y: 0 }}
       role="timer"
       aria-label={
         remainingSeconds === null

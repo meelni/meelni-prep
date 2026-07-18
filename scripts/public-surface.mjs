@@ -19,6 +19,8 @@ export const PUBLIC_CRAWL_SEEDS = [
 ];
 
 export const CANONICAL_ORIGIN = "https://www.meelni.com";
+const CANONICAL_INTERVIEW_LAUNCH_PATH = "/dashboard/new-interview";
+const LEGACY_INTERVIEW_LAUNCH_PATHS = ["/setup", "/dashboard/new-rep"];
 const CANONICAL_SITEMAP = `${CANONICAL_ORIGIN}/sitemap.xml`;
 const REQUIRED_PUBLIC_PATHS = INDEXABLE_PUBLIC_PATHS;
 const REQUIRED_PRIVATE_PATHS = [
@@ -507,6 +509,61 @@ export async function assertPublicAssetReferences(
     metadataImages: metadataImages.size,
     publicAssets: publicAssets.size,
   };
+}
+
+export async function assertLegacyInterviewLaunchRedirects(
+  baseUrl,
+  { fetchImpl = fetch } = {}
+) {
+  const query =
+    "questionId=question%201&tag=first&company=Stripe&tag=second&space=hello+world&encoded=%2f%3f%26&blank=&flag&returnTo=%2Fexplore%3Fcompany%3DStripe%26page%3D2";
+  const expectedParams = new URLSearchParams(query);
+  const expectedKeys = [...new Set(expectedParams.keys())].sort();
+  const origin = new URL(baseUrl).origin;
+
+  for (const pathname of LEGACY_INTERVIEW_LAUNCH_PATHS) {
+    const source = new URL(`${pathname}?${query}`, origin);
+    const response = await fetchImpl(source, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (response.status !== 308) {
+      throw new Error(
+        `${pathname} returned HTTP ${response.status}; expected permanent redirect 308.`
+      );
+    }
+
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new Error(`${pathname} redirect is missing Location.`);
+    }
+    const destination = new URL(location, source);
+    if (destination.origin !== origin) {
+      throw new Error(`${pathname} redirects outside ${origin}.`);
+    }
+    if (destination.pathname !== CANONICAL_INTERVIEW_LAUNCH_PATH) {
+      throw new Error(
+        `${pathname} redirects to ${destination.pathname}; expected ${CANONICAL_INTERVIEW_LAUNCH_PATH}.`
+      );
+    }
+    const destinationKeys = [
+      ...new Set(destination.searchParams.keys()),
+    ].sort();
+    if (JSON.stringify(destinationKeys) !== JSON.stringify(expectedKeys)) {
+      throw new Error(`${pathname} changed launch query parameter keys.`);
+    }
+    for (const key of expectedKeys) {
+      const expectedValues = expectedParams.getAll(key);
+      const destinationValues = destination.searchParams.getAll(key);
+      if (
+        JSON.stringify(destinationValues) !== JSON.stringify(expectedValues)
+      ) {
+        throw new Error(`${pathname} changed launch query values for ${key}.`);
+      }
+    }
+  }
+
+  return { redirectsChecked: LEGACY_INTERVIEW_LAUNCH_PATHS.length };
 }
 
 async function assertAssetResponse(fetchImpl, url, finalOrigin, label) {

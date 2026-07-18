@@ -102,6 +102,12 @@ const envVars: EnvVarConfig[] = [
     description: "PostHog host URL",
     pattern: /^https:\/\/.+/,
   },
+  {
+    name: "ANALYTICS_PSEUDONYM_KEY",
+    required: false,
+    description: "Server-only HMAC key for consented analytics identifiers",
+    pattern: /^.{32,}$/,
+  },
 
   // Application
   {
@@ -204,6 +210,15 @@ function validateEnvironment(): ValidationResult {
     ) {
       warnings.push(
         "⚠️  Using client PostHog key for server-side tracking. Set POSTHOG_SERVER_KEY for production."
+      );
+    }
+
+    if (
+      (process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY) &&
+      !process.env.ANALYTICS_PSEUDONYM_KEY
+    ) {
+      warnings.push(
+        "⚠️  Server-side analytics are disabled until ANALYTICS_PSEUDONYM_KEY is configured."
       );
     }
   }

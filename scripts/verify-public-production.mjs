@@ -8,6 +8,7 @@ import {
   assertPublicRobotsDocument,
   assertPublicSitemapDocument,
   assertPublicAssetReferences,
+  assertLegacyInterviewLaunchRedirects,
   crawlPublicSurface,
   extractCanonicalUrl,
   extractMetadataImageUrls,
@@ -110,6 +111,11 @@ try {
   }
   console.log(
     "Provider-independent API, protected, and checkout-result routes are noindex (5 checked)."
+  );
+
+  const legacyRedirects = await assertLegacyInterviewLaunchRedirects(baseUrl);
+  console.log(
+    `Legacy interview launch aliases preserve exact query context over permanent HTTP redirects (${legacyRedirects.redirectsChecked} checked).`
   );
 
   const robotsResponse = await fetch(`${baseUrl}/robots.txt`);
