@@ -8,13 +8,30 @@ import {
   requiredEnvAlternativesStatus,
   requiredEnvStatus,
 } from "./local-env.mjs";
+import {
+  evaluateNodeVersion,
+  nodeVersionRecoveryCommand,
+  readPinnedNodeVersion,
+} from "./node-version.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
 const packageJson = readJson("package.json");
 const conductorJson = readJson("conductor.json", { optional: true });
 
-check("Node", () => pass(`Node ${process.version} is available.`));
+check("Node", () => {
+  const requiredVersion = readPinnedNodeVersion(repoRoot);
+  const result = evaluateNodeVersion({
+    actualVersion: process.version,
+    requiredVersion,
+  });
+
+  return result.matches
+    ? pass(`Node ${result.actualVersion} matches required ${requiredVersion}.`)
+    : fail(
+        `Node ${result.actualVersion || "unknown"} does not match required ${requiredVersion}. Run \`${nodeVersionRecoveryCommand(requiredVersion)}\`, then retry.`
+      );
+});
 
 check("npm", () => {
   const version = execFileSync("npm", ["--version"], {
