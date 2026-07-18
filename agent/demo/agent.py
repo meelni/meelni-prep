@@ -39,6 +39,7 @@ from demo.runtime import (
     resolve_demo_deadline,
     resolve_demo_participant_identity,
     run_bounded,
+    run_optional,
     stop_then_run_bounded,
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
@@ -477,13 +478,19 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("Demo agent started successfully")
 
-        await publish_demo_control(
-            ctx,
-            {
-                "type": "demo_ready",
-                "remaining_seconds": deadline.remaining_seconds(time.monotonic()),
-            },
+        demo_ready_published = await run_optional(
+            lambda: publish_demo_control(
+                ctx,
+                {
+                    "type": "demo_ready",
+                    "remaining_seconds": deadline.remaining_seconds(
+                        time.monotonic()
+                    ),
+                },
+            )
         )
+        if not demo_ready_published:
+            logger.warning("Could not publish demo ready control message")
 
         greeting = "Hey! Ready to try a quick PM question?"
         try:

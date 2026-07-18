@@ -120,6 +120,15 @@ async def run_bounded(operation, timeout_seconds: float) -> None:
     await asyncio.wait_for(operation(), timeout=timeout_seconds)
 
 
+async def run_optional(operation) -> bool:
+    """Run a nonessential operation without letting its failure end the preview."""
+    try:
+        await operation()
+        return True
+    except Exception:
+        return False
+
+
 async def stop_then_run_bounded(stop, operation, timeout_seconds: float) -> None:
     """Await local model/audio closure before bounded provider cleanup."""
     await stop()
