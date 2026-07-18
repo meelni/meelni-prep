@@ -10,7 +10,7 @@ Python-based LiveKit Agents for conducting real-time AI mock interviews.
 
 ```
 agent/
-├── demo/                    # 5-minute demo agent for landing page
+├── demo/                    # Bounded voice-preview agent for the landing page
 │   ├── agent.py            # Demo agent entrypoint
 │   ├── Dockerfile          # Docker config
 │   ├── deploy.sh           # Deployment script
@@ -42,8 +42,8 @@ agent/
 
 ### Demo Agent (`demo/`)
 
-- **Purpose**: Quick 5-minute demos for landing page visitors
-- **Duration**: 5 minutes (auto-terminates)
+- **Purpose**: A bounded voice preview for landing page visitors
+- **Duration**: 2 minutes (server deadline; auto-terminates)
 - **Questions**: 1 question from bank or fallback
 - **Tone**: Energetic, conversational, fast-paced
 - **Dispatch name**: configured with `LIVEKIT_DEMO_AGENT_NAME`

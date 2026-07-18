@@ -1,24 +1,19 @@
 "use client";
 
-import {
-  ChevronLeft,
-  Monitor,
-  History,
-  BarChart3,
-  Settings,
-  LogOut,
-  BookOpen,
-  Mic,
-} from "lucide-react";
+import { ChevronLeft, LogOut, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppSurface } from "@/components/ui/app-surface";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { DashboardUser } from "./dashboard-layout";
+import {
+  type DashboardActiveSection,
+  DASHBOARD_NAVIGATION_ITEMS,
+} from "./dashboard-navigation";
 
 interface SidebarProps {
-  activeSection: string;
+  activeSection: DashboardActiveSection;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
   totalSessions?: number;
@@ -35,42 +30,6 @@ export function Sidebar({
   user,
   onSignOut,
 }: SidebarProps) {
-  const navigationItems = [
-    {
-      id: "overview",
-      icon: Monitor,
-      label: "Overview",
-      href: "/dashboard",
-    },
-    {
-      id: "history",
-      icon: History,
-      label: "Interview History",
-      href: "/dashboard/history",
-    },
-    {
-      id: "questions",
-      icon: BookOpen,
-      label: "Question Bank",
-      href: "/dashboard/questions",
-    },
-    {
-      id: "analytics",
-      icon: BarChart3,
-      label: "Analytics",
-      href: "/dashboard/analytics",
-    },
-    {
-      id: "settings",
-      icon: Settings,
-      label: "Settings",
-      href: "/dashboard/settings",
-    },
-  ];
-
-  // All navigation items are always visible - empty states handle no-data scenarios
-  const visibleNavItems = navigationItems;
-
   // Animation variants - width only for smooth collapse/expand
   const sidebarVariants = {
     expanded: {
@@ -127,11 +86,11 @@ export function Sidebar({
       <div className="flex h-full flex-col gap-3">
         <nav className="flex flex-col gap-1.5 py-2" aria-label="Workspace">
           {!collapsed && (
-            <div className="px-0 pb-1 font-sans text-[11px] font-bold tracking-[0.6px] text-[#6b7280] uppercase">
+            <div className="text-dashboard-muted px-0 pb-1 font-sans text-[11px] font-bold tracking-[0.6px] uppercase">
               Workspace
             </div>
           )}
-          {visibleNavItems.map((item) => (
+          {DASHBOARD_NAVIGATION_ITEMS.map((item) => (
             <Link
               key={item.id}
               href={item.href}
@@ -174,6 +133,9 @@ export function Sidebar({
           >
             <Link
               href="/dashboard/new-interview"
+              aria-current={
+                activeSection === "new-interview" ? "page" : undefined
+              }
               aria-label={collapsed ? "Start a new mock interview" : undefined}
               title={collapsed ? "New Mock Interview" : undefined}
             >
@@ -190,7 +152,7 @@ export function Sidebar({
             {user && (
               <>
                 <div className="border-primary/30 bg-primary/10 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[14px] border">
-                  <span className="text-primary text-xs leading-4 font-bold">
+                  <span className="text-dashboard-foreground text-xs leading-4 font-bold">
                     {(user?.user_metadata?.full_name || user?.email || "U")
                       .split(" ")
                       .map((n: string) => n[0])
@@ -205,7 +167,7 @@ export function Sidebar({
                       user?.email?.split("@")[0] ||
                       "User"}
                   </div>
-                  <div className="truncate text-xs leading-4 text-[#6b7280]">
+                  <div className="text-dashboard-muted truncate text-xs leading-4">
                     {user?.email}
                   </div>
                 </div>
@@ -228,7 +190,7 @@ export function Sidebar({
           <div className="flex flex-col items-center gap-3">
             {user && (
               <div className="border-primary/30 bg-primary/10 flex h-8 w-8 items-center justify-center rounded-[14px] border">
-                <span className="text-primary text-xs font-bold">
+                <span className="text-dashboard-foreground text-xs font-bold">
                   {(user?.user_metadata?.full_name || user?.email || "U")
                     .split(" ")
                     .map((n: string) => n[0])

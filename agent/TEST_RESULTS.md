@@ -52,7 +52,7 @@ Result: DEMO AGENT TEST PASSED ✅
 - Demo agent doesn't depend on shared modules (by design)
 - Demo agent has proper path setup for future extensibility
 
-**Key Finding**: Demo agent is **standalone** and doesn't use shared modules. This is correct - it has its own hardcoded prompts for the 5-minute demo experience.
+**Key Finding**: Demo agent is **standalone** and doesn't use shared modules. This is correct: it has a dedicated prompt and runtime for the bounded two-minute voice preview.
 
 ---
 

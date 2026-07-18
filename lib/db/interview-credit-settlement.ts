@@ -218,10 +218,10 @@ export function createDrizzleInterviewCreditSettlementStore(
   };
 }
 
-export function trackCompletedInterviewCreditSettlement(
+export async function trackCompletedInterviewCreditSettlement(
   evidence: InterviewCreditSettlementEvidence
-): void {
-  trackCompletedReservationEvent({
+): Promise<void> {
+  await trackCompletedReservationEvent({
     transactionType: evidence.transactionType,
     userId: evidence.userId,
     catalogId: evidence.catalogId as Parameters<
@@ -244,10 +244,10 @@ export async function withDeferredInterviewCreditSettlementTracking<T>(
   ) => Promise<T>,
   track: (
     evidence: InterviewCreditSettlementEvidence
-  ) => void = trackCompletedInterviewCreditSettlement
+  ) => void | Promise<void> = trackCompletedInterviewCreditSettlement
 ): Promise<T> {
   const completed: InterviewCreditSettlementEvidence[] = [];
   const result = await work((evidence) => completed.push(evidence));
-  for (const evidence of completed) track(evidence);
+  for (const evidence of completed) await track(evidence);
   return result;
 }

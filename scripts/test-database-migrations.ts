@@ -32,6 +32,7 @@ import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-e
 import { subscription } from "../lib/db/schema";
 
 import {
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   BILLING_TRUTH_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
@@ -46,6 +47,7 @@ import {
   getStableStartDatabaseSchemaContract,
   SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
   SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
@@ -56,6 +58,7 @@ const ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "lib/db/migrations");
 const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
+const RUNTIME_RECONCILIATION_DATABASE = "meelni_runtime_reconciliation_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
 const SESSION_DELETION = "22222222-3333-4333-8333-222222222222";
@@ -149,6 +152,10 @@ void run()
 async function run() {
   const cleanUrl = databaseUrl(baseUrl, CLEAN_DATABASE);
   const upgradeUrl = databaseUrl(baseUrl, UPGRADE_DATABASE);
+  const runtimeReconciliationUrl = databaseUrl(
+    baseUrl,
+    RUNTIME_RECONCILIATION_DATABASE
+  );
   const admin = postgres(baseUrl, { max: 1, prepare: false });
   await admin.unsafe(
     `DROP DATABASE IF EXISTS "${CLEAN_DATABASE}" WITH (FORCE)`
@@ -158,6 +165,10 @@ async function run() {
     `DROP DATABASE IF EXISTS "${UPGRADE_DATABASE}" WITH (FORCE)`
   );
   await admin.unsafe(`CREATE DATABASE "${UPGRADE_DATABASE}"`);
+  await admin.unsafe(
+    `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
+  );
+  await admin.unsafe(`CREATE DATABASE "${RUNTIME_RECONCILIATION_DATABASE}"`);
   const clean = postgres(cleanUrl, { max: 20, prepare: false });
 
   try {
@@ -218,6 +229,7 @@ async function run() {
     await verifyDeletionWebhookConcurrency(clean, cleanUrl);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
+    await verifyPublicDemoLimits(clean);
     await verifyAtomicCreditLedger(clean, cleanUrl, "clean");
     assertZeroCreditLedgerIntegrity(
       runPreflight(cleanUrl, true, "reconciled")!
@@ -233,10 +245,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -419,9 +428,12 @@ async function run() {
         DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
         FEEDBACK_V2_SCHEMA_FINGERPRINT,
         SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
+        ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
+        ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
+        PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 22; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 25; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -441,7 +453,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 23; found 22/
+            /Strict launch preflight requires the exact latest migration count 26; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -451,6 +463,11 @@ async function run() {
               credit_rollover_lot_allocation
             TO anon, authenticated, service_role
           `);
+        }
+        if (maxIndex === 22) {
+          await upgrade`
+            UPDATE user_settings SET share_anonymous_data = true
+          `;
         }
       }
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -486,6 +503,8 @@ async function run() {
       await upgrade.end();
     }
 
+    await verifyRuntimeSettlementReconciliation(runtimeReconciliationUrl);
+
     console.log("Database migration verification passed.");
   } finally {
     await clean.end();
@@ -495,7 +514,312 @@ async function run() {
     await admin.unsafe(
       `DROP DATABASE IF EXISTS "${UPGRADE_DATABASE}" WITH (FORCE)`
     );
+    await admin.unsafe(
+      `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
+    );
     await admin.end();
+  }
+}
+
+async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
+  const sql = postgres(databaseUrl, { max: 4, prepare: false });
+  const reconciliationSql = await readFile(
+    join(MIGRATIONS, "0024_runtime_settlement_reconciliation.sql"),
+    "utf8"
+  );
+  try {
+    await installSupabaseTestSurface(sql);
+
+    const throughTranscriptPrivacy = await createMigrationFolderThrough(12);
+    try {
+      await migrate(drizzle(sql), {
+        migrationsFolder: throughTranscriptPrivacy,
+      });
+    } finally {
+      await rm(throughTranscriptPrivacy, { recursive: true, force: true });
+    }
+
+    await seedAuthorizationFixtures(sql);
+    await sql`
+      UPDATE interview_session
+      SET status = 'completed',
+        lifecycle_state = 'completed',
+        terminal_reason = 'legacy_unknown',
+        ending_at = '2026-07-10T05:01:00.000Z'::timestamptz,
+        ended_at = '2026-07-10T05:01:00.000Z'::timestamptz
+      WHERE id = ${SESSION_ONE}::uuid
+    `;
+    await sql`
+      INSERT INTO transcript_turn (
+        session_id, speaker, started_at, ended_at, text, audio_ms, section
+      ) VALUES (
+        ${SESSION_ONE}::uuid,
+        'user',
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        '2026-07-10T05:00:01.000Z'::timestamptz,
+        'Generic legacy transcript row',
+        1000,
+        'answer'
+      )
+    `;
+
+    const legacyThrough0022 =
+      await createLegacyRuntimeMigrationFolderThrough(22);
+    try {
+      await migrate(drizzle(sql), { migrationsFolder: legacyThrough0022 });
+    } finally {
+      await rm(legacyThrough0022, { recursive: true, force: true });
+    }
+
+    const [legacyLedger] = await sql<{ hash: string; created_at: string }[]>`
+      SELECT hash, created_at::text
+      FROM drizzle.__drizzle_migrations
+      WHERE created_at = 1783892420196
+    `;
+    assert.deepEqual(legacyLedger, {
+      hash: "39a7508699f29fb5ab5619088ca09d900d49f9b5afac9b86e64c0db894b372e2",
+      created_at: "1783892420196",
+    });
+    const legacyThrough0022Preflight = runPreflight(
+      databaseUrl,
+      true,
+      "runtime_settlement_reconciliation_required"
+    )!;
+    assert.equal(legacyThrough0022Preflight.migrationCount, 23);
+    assert.equal(legacyThrough0022Preflight.tables, 29);
+    assert.equal(legacyThrough0022Preflight.rls_tables, 29);
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      "ca1f6074c933164b9b26425e8b835123dc14363efe19c03c96829ce5d09aa013"
+    );
+
+    const legacyThrough0023 =
+      await createLegacyRuntimeMigrationFolderThrough(23);
+    try {
+      await migrate(drizzle(sql), { migrationsFolder: legacyThrough0023 });
+    } finally {
+      await rm(legacyThrough0023, { recursive: true, force: true });
+    }
+    const legacyConsentFingerprint = databaseSchemaFingerprint(
+      await getStableStartDatabaseSchemaContract(sql)
+    );
+    assert.equal(
+      legacyConsentFingerprint,
+      "6f64a16b397da28ac2d2d027a0e5cc6ed58bb0cf5a2ce29f1f6f374808a51cd7"
+    );
+    const legacyThrough0023Preflight = runPreflight(
+      databaseUrl,
+      true,
+      "runtime_settlement_reconciliation_required"
+    )!;
+    assert.equal(legacyThrough0023Preflight.migrationCount, 24);
+    assert.equal(legacyThrough0023Preflight.tables, 29);
+    assert.equal(legacyThrough0023Preflight.rls_tables, 29);
+    assert.equal(
+      legacyThrough0023Preflight.schemaContract,
+      legacyConsentFingerprint
+    );
+
+    await sql`
+      ALTER TABLE transcript_turn ADD COLUMN writer_generation integer
+    `;
+    await assert.rejects(
+      () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+      /runtime_settlement_reconciliation_mixed_shape/
+    );
+    assert.equal(await migrationCount(sql), 24);
+    await sql`
+      ALTER TABLE transcript_turn DROP COLUMN writer_generation
+    `;
+
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN delivery_state SET DEFAULT 'delivered'
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_legacy_shape/
+    );
+    await sql`
+      ALTER TABLE transcript_turn ALTER COLUMN delivery_state DROP DEFAULT
+    `;
+
+    await sql.unsafe(`
+      DROP POLICY "Service role has full access to transcript_interruption_marker"
+      ON transcript_interruption_marker
+    `);
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_legacy_shape/
+    );
+    await sql.unsafe(`
+      CREATE POLICY "Service role has full access to transcript_interruption_marker"
+      ON transcript_interruption_marker FOR ALL TO service_role
+      USING (true) WITH CHECK (true)
+    `);
+
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = repeat('0', 64)
+      WHERE created_at = 1783892420196
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_ledger/
+    );
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = '39a7508699f29fb5ab5619088ca09d900d49f9b5afac9b86e64c0db894b372e2'
+      WHERE created_at = 1783892420196
+    `;
+
+    await sql`
+      INSERT INTO transcript_runtime_settlement (
+        session_id, contract_version, room_name, writer_id, state, settled_at
+      ) VALUES (
+        ${SESSION_ONE}::uuid, 1, 'legacy-room', 'legacy-writer', 'settled',
+        '2026-07-10T05:01:00.000Z'::timestamptz
+      )
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_nonempty_legacy_evidence/
+    );
+    await sql`DELETE FROM transcript_runtime_settlement`;
+
+    const throughRuntimeReconciliation = await createMigrationFolderThrough(24);
+    try {
+      await migrate(drizzle(sql), {
+        migrationsFolder: throughRuntimeReconciliation,
+      });
+    } finally {
+      await rm(throughRuntimeReconciliation, { recursive: true, force: true });
+    }
+
+    assert.equal(await migrationCount(sql), 25);
+    const reconciliationPreflight = runPreflight(
+      databaseUrl,
+      true,
+      "reconciled"
+    )!;
+    assert.equal(
+      reconciliationPreflight.startingContract,
+      "runtime_settlement_reconciled"
+    );
+    assert.equal(
+      reconciliationPreflight.migrationLineage,
+      "legacy_runtime_settlement"
+    );
+    assert.equal(
+      reconciliationPreflight.runtimeSettlementReconciliationPending,
+      false
+    );
+    assert.equal(reconciliationPreflight.tables, 30);
+    assert.equal(reconciliationPreflight.rls_tables, 30);
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+    );
+
+    const strictBeforePublicDemo = runStrictPreflight(databaseUrl);
+    assert.equal(strictBeforePublicDemo.status, 1);
+    assert.match(
+      `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
+      /exact latest migration count 26; found 25/
+    );
+
+    const genericRows = await sql<
+      {
+        text: string | null;
+        contract_version: number | null;
+        writer_generation: number | null;
+      }[]
+    >`
+      SELECT text, contract_version, writer_generation
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_ONE}::uuid
+        AND text = 'Generic legacy transcript row'
+    `;
+    assert.deepEqual(Array.from(genericRows), [
+      {
+        text: "Generic legacy transcript row",
+        contract_version: null,
+        writer_generation: null,
+      },
+    ]);
+
+    await sql.unsafe(reconciliationSql);
+    assert.equal(await migrationCount(sql), 25);
+
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN writer_generation SET DEFAULT 1
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN writer_generation DROP DEFAULT
+    `;
+
+    await sql`
+      GRANT SELECT ON transcript_runtime_writer TO authenticated
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`
+      REVOKE SELECT ON transcript_runtime_writer FROM authenticated
+    `;
+
+    await sql`DROP INDEX transcript_turn_chronological_idx`;
+    await sql`
+      CREATE INDEX transcript_turn_chronological_idx
+      ON transcript_turn (session_id, started_at)
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`DROP INDEX transcript_turn_chronological_idx`;
+    await sql`
+      CREATE INDEX transcript_turn_chronological_idx ON transcript_turn (
+        session_id, started_at, writer_generation, writer_id, sequence,
+        event_id, id
+      )
+    `;
+    await sql.unsafe(reconciliationSql);
+
+    await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
+    assert.equal(await migrationCount(sql), 26);
+    const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
+    assert.equal(finalPreflight.startingContract, "public_demo_limits");
+    assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
+    assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
+    assert.equal(finalPreflight.tables, 32);
+    assert.equal(finalPreflight.rls_tables, 32);
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+    );
+
+    const strictPreflight = runStrictPreflight(databaseUrl);
+    assert.equal(
+      strictPreflight.status,
+      0,
+      `Reconciled strict preflight failed:\n${strictPreflight.stdout}\n${strictPreflight.stderr}`
+    );
+  } finally {
+    await sql.end();
   }
 }
 
@@ -1159,6 +1483,10 @@ interface MigrationPreflightResult {
   migrationCount: number;
   schemaContract: string;
   startingContract: string;
+  migrationLineage: "canonical" | "legacy_runtime_settlement";
+  runtimeSettlementReconciliationPending: boolean;
+  tables: number;
+  rls_tables: number;
   invoice_status_duplicate_rows: number;
   lifecycleBackfill: {
     phase: "not_ready" | "preview" | "applied";
@@ -1345,6 +1673,21 @@ async function createMigrationFolderThrough(maxIndex: number): Promise<string> {
     )
   );
   await writeFile(join(meta, "_journal.json"), JSON.stringify(journal));
+  return folder;
+}
+
+async function createLegacyRuntimeMigrationFolderThrough(
+  maxIndex: number
+): Promise<string> {
+  assert.ok(maxIndex >= 13);
+  const folder = await createMigrationFolderThrough(maxIndex);
+  await copyFile(
+    join(
+      ROOT,
+      "packages/test-fixtures/database/legacy-runtime-settlement-0013.sql"
+    ),
+    join(folder, "0013_runtime_settlement.sql")
+  );
   return folder;
 }
 
@@ -5418,10 +5761,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      refundedPreflight.startingContract,
-      "server_owned_billing_privileges"
-    );
+    assert.equal(refundedPreflight.startingContract, "public_demo_limits");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -5572,7 +5912,9 @@ async function verifyProviderCreditRecovery(
             },
             databases[0]!
           ),
-        (evidence) => trackedAfterRollback.push(evidence)
+        (evidence) => {
+          trackedAfterRollback.push(evidence);
+        }
       ),
       /forced_outer_commit_rollback/
     );
@@ -5708,8 +6050,67 @@ async function verifyProviderCreditRecovery(
   }
 }
 
+async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
+  const userId = "18181818-1818-4818-8818-181818181818";
+  const [{ retained_soft_opt_in: retainedSoftOptIn }] = await sql<
+    { retained_soft_opt_in: number }[]
+  >`
+    SELECT count(*)::int AS retained_soft_opt_in
+    FROM user_settings WHERE share_anonymous_data = true
+  `;
+  assert.equal(retainedSoftOptIn, 0);
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${userId}::uuid, 'analytics-consent-test@meelni.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO user_settings (user_id)
+    VALUES (${userId}::uuid)
+    ON CONFLICT (user_id) DO NOTHING
+  `;
+
+  const defaults = await sql<
+    {
+      analytics_consent: string;
+      analytics_consent_source: string | null;
+      analytics_consent_updated_at: Date | null;
+      analytics_consent_version: number | null;
+      share_anonymous_data: boolean;
+    }[]
+  >`
+    SELECT analytics_consent, analytics_consent_version,
+      analytics_consent_source, analytics_consent_updated_at,
+      share_anonymous_data
+    FROM user_settings WHERE user_id = ${userId}::uuid
+  `;
+  assert.deepEqual(defaults[0], {
+    analytics_consent: "undecided",
+    analytics_consent_version: null,
+    analytics_consent_source: null,
+    analytics_consent_updated_at: null,
+    share_anonymous_data: false,
+  });
+
+  await assert.rejects(
+    sql`
+      UPDATE user_settings SET analytics_consent = 'accepted'
+      WHERE user_id = ${userId}::uuid
+    `
+  );
+  await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = now()
+    WHERE user_id = ${userId}::uuid
+  `;
+  await sql`DELETE FROM user_settings WHERE user_id = ${userId}::uuid`;
+  await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 23);
+  assert.equal(await migrationCount(sql), 26);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -5717,7 +6118,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 30);
+  assert.equal(tables.length, 32);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -5753,6 +6154,8 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "account_deletion_request")
   );
+
+  await verifyAnalyticsConsentSchema(sql);
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
@@ -6120,7 +6523,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 30);
+  assert.equal(rls.length, 32);
   assert.ok(rls.every((table) => table.enabled));
 
   const unsafePolicies = await sql<{ count: number }[]>`
@@ -6441,6 +6844,75 @@ async function verifyAuthorization(sql: postgres.Sql) {
       tx.unsafe(`SELECT * FROM ${table} LIMIT 0`)
     );
   }
+
+  for (const role of ["anon", "authenticated"] as const) {
+    await assert.rejects(
+      () => asRole(sql, role, (tx) => tx`SELECT * FROM public_demo_rate_limit`),
+      /permission denied/
+    );
+    await assert.rejects(
+      () =>
+        asRole(
+          sql,
+          role,
+          (tx) => tx`SELECT * FROM public.prune_public_demo_abuse_data()`
+        ),
+      /permission denied/
+    );
+  }
+  await asRole(
+    sql,
+    "service_role",
+    (tx) => tx`SELECT * FROM public.prune_public_demo_abuse_data()`
+  );
+
+  const functionPrivileges = await sql<
+    {
+      proname: string;
+      prosecdef: boolean;
+      proconfig: string[] | null;
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+    }[]
+  >`
+    SELECT p.proname, p.prosecdef, p.proconfig,
+      has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+      has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        AS authenticated_execute,
+      has_function_privilege('service_role', p.oid, 'EXECUTE')
+        AS service_execute
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'reserve_public_demo_session',
+        'complete_public_demo_session',
+        'finalize_public_demo_recovery_token',
+        'rollback_public_demo_recovery_token',
+        'fail_public_demo_recovery_session',
+        'prune_public_demo_abuse_data'
+      )
+    ORDER BY p.proname
+  `;
+  assert.deepEqual(
+    functionPrivileges.map((entry) => entry.proname),
+    [
+      "complete_public_demo_session",
+      "fail_public_demo_recovery_session",
+      "finalize_public_demo_recovery_token",
+      "prune_public_demo_abuse_data",
+      "reserve_public_demo_session",
+      "rollback_public_demo_recovery_token",
+    ]
+  );
+  for (const entry of functionPrivileges) {
+    assert.equal(entry.prosecdef, false);
+    assert.deepEqual(entry.proconfig, ["search_path=public"]);
+    assert.equal(entry.anon_execute, false);
+    assert.equal(entry.authenticated_execute, false);
+    assert.equal(entry.service_execute, true);
+  }
 }
 
 async function verifySharedLimiter(sql: postgres.Sql) {
@@ -6486,6 +6958,136 @@ async function verifySharedLimiter(sql: postgres.Sql) {
     WHERE user_id = ${USER_ONE}::uuid
   `;
   assert.equal((await consumeRateLimit(sql, USER_ONE)).allowed, true);
+}
+
+async function verifyPublicDemoLimits(sql: postgres.Sql) {
+  const sessionId = "d1000000-0000-4000-8000-000000000001";
+  const ipHash = "a".repeat(64);
+  const deviceHash = "b".repeat(64);
+  const reserve = (
+    client: postgres.Sql,
+    requestedSessionId: string,
+    requestedIpHash = ipHash,
+    requestedDeviceHash = deviceHash
+  ) =>
+    client<
+      {
+        decision: string;
+        room_name: string | null;
+        limiting_scope: string | null;
+        retry_after_seconds: number;
+        recovery_claim_token: string | null;
+      }[]
+    >`
+      SELECT decision, room_name, limiting_scope, retry_after_seconds,
+        recovery_claim_token
+      FROM public.reserve_public_demo_session(
+        ${requestedSessionId}::uuid,
+        'development',
+        ${requestedIpHash},
+        ${requestedDeviceHash}
+      )
+    `;
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
+  const [initial] = await reserve(sql, sessionId);
+  assert.equal(initial?.decision, "provision");
+  const [completed] = await sql<{ completed: boolean }[]>`
+    SELECT public.complete_public_demo_session(
+      ${sessionId}::uuid, 'ready', NULL
+    ) AS completed
+  `;
+  assert.equal(completed?.completed, true);
+
+  const recoveryAttempts = await Promise.all(
+    Array.from({ length: 12 }, () => reserve(sql, sessionId))
+  );
+  const recoveryRows = recoveryAttempts.flat();
+  assert.equal(
+    recoveryRows.filter((row) => row.decision === "issue_token").length,
+    1
+  );
+  const claim = recoveryRows.find(
+    (row) => row.decision === "issue_token"
+  )?.recovery_claim_token;
+  assert.ok(claim);
+  const [finalized] = await sql<{ completed: boolean }[]>`
+    SELECT public.finalize_public_demo_recovery_token(
+      ${sessionId}::uuid, ${claim}::uuid
+    ) AS completed
+  `;
+  const [finalizedAgain] = await sql<{ completed: boolean }[]>`
+    SELECT public.finalize_public_demo_recovery_token(
+      ${sessionId}::uuid, ${claim}::uuid
+    ) AS completed
+  `;
+  const [rollbackAfterFinalize] = await sql<{ completed: boolean }[]>`
+    SELECT public.rollback_public_demo_recovery_token(
+      ${sessionId}::uuid, ${claim}::uuid
+    ) AS completed
+  `;
+  assert.equal(finalized?.completed, true);
+  assert.equal(finalizedAgain?.completed, true);
+  assert.equal(rollbackAfterFinalize?.completed, false);
+  assert.equal((await reserve(sql, sessionId))[0]?.decision, "rate_limited");
+
+  const ipRowsBefore = await sql<{ rows: number }[]>`
+    SELECT count(*)::int AS rows
+    FROM public_demo_rate_limit
+    WHERE deployment_scope = 'development' AND scope = 'ip'
+  `;
+  const denied = await Promise.all(
+    Array.from({ length: 50 }, (_, index) =>
+      reserve(
+        sql,
+        `d2000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        index.toString(16).padStart(64, "0")
+      )
+    )
+  );
+  assert.equal(
+    denied.flat().every((row) => row.decision === "rate_limited"),
+    true
+  );
+  const ipRowsAfter = await sql<{ rows: number }[]>`
+    SELECT count(*)::int AS rows
+    FROM public_demo_rate_limit
+    WHERE deployment_scope = 'development' AND scope = 'ip'
+  `;
+  assert.equal(ipRowsAfter[0]?.rows, ipRowsBefore[0]?.rows);
+
+  const rollbackSessionId = "d3000000-0000-4000-8000-000000000001";
+  assert.equal(
+    (await reserve(sql, rollbackSessionId, "c".repeat(64), "d".repeat(64)))[0]
+      ?.decision,
+    "provision"
+  );
+  await sql`
+    SELECT public.complete_public_demo_session(
+      ${rollbackSessionId}::uuid, 'ready', NULL
+    )
+  `;
+  const [rollbackClaim] = await reserve(
+    sql,
+    rollbackSessionId,
+    "c".repeat(64),
+    "d".repeat(64)
+  );
+  assert.equal(rollbackClaim?.decision, "issue_token");
+  const [rolledBack] = await sql<{ completed: boolean }[]>`
+    SELECT public.rollback_public_demo_recovery_token(
+      ${rollbackSessionId}::uuid,
+      ${rollbackClaim?.recovery_claim_token}::uuid
+    ) AS completed
+  `;
+  assert.equal(rolledBack?.completed, true);
+  assert.equal(
+    (await reserve(sql, rollbackSessionId, "c".repeat(64), "d".repeat(64)))[0]
+      ?.decision,
+    "issue_token"
+  );
 }
 
 async function verifyAtomicCreditLedger(
@@ -7658,8 +8260,6 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     deleteUserApplicationData,
     getAccountDeletionRequest,
     listRecoverableAccountDeletions,
-    LIVEKIT_DELETION_PROVISIONING_LEASE_MS,
-    markAccountDeletionProcessing,
     markAccountDeletionCompleted,
     recordLateStripeDeletionSubjects,
     redactStripeEventLogs,

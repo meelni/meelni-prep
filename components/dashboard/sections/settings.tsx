@@ -1,11 +1,21 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import Link from "next/link";
 import { ArrowUpRight, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
+import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -256,7 +266,7 @@ export const SettingsSection = memo(function SettingsSection() {
           </p>
           <nav
             aria-label="Settings"
-            className="mt-5 flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible"
+            className="-mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0"
           >
             {SETTINGS_CATEGORY_ORDER.map((category) => {
               const selected = activeCategory === category;
@@ -377,7 +387,9 @@ function AccountPane({
         <div className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <div className="border-primary/40 bg-primary/10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
-              <span className="text-primary text-sm font-bold">{initials}</span>
+              <span className="text-dashboard-foreground text-sm font-bold">
+                {initials}
+              </span>
             </div>
             <div className="min-w-0">
               <p className="text-dashboard-foreground truncate text-sm font-bold">
@@ -682,12 +694,22 @@ function DataPrivacyPane({
     string | null
   >(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const deleteActionRef = useRef<HTMLButtonElement>(null);
   const [confirmation, setConfirmation] = useState("");
   const [deleteState, setDeleteState] = useState<
     AccountDeletionResult["state"] | "idle" | "submitting"
   >("idle");
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [reauthenticateAt, setReauthenticateAt] = useState<string | null>(null);
+  const {
+    accountSyncPending,
+    decision: analyticsDecision,
+    error: analyticsError,
+    retryAccountSync,
+    savingDecision,
+    setConsent: setAnalyticsConsent,
+  } = useAnalyticsConsent();
+  const analyticsSaving = savingDecision !== null;
 
   const handleAccountExport = async () => {
     setExportState("loading");
@@ -749,6 +771,65 @@ function DataPrivacyPane({
         />
       </SettingsGroup>
 
+      <SettingsGroup label="Optional analytics">
+        <div className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-dashboard-foreground text-sm font-medium">
+              Product usage analytics
+            </p>
+            <p className="text-dashboard-muted max-w-xl text-sm">
+              {analyticsDecision === "accepted"
+                ? "Allowed. Meelni may send minimized usage events to PostHog and Statsig."
+                : analyticsDecision === "declined"
+                  ? "Off. Optional analytics providers do not initialize."
+                  : "Not decided. Optional analytics remain off."}
+            </p>
+            <p className="text-dashboard-muted text-xs">
+              Session replay is disabled. Interview audio, transcripts,
+              questions, and answers are never included in analytics events.
+            </p>
+            {analyticsError && (
+              <p className="text-destructive text-xs" role="alert">
+                {analyticsError}
+              </p>
+            )}
+            {accountSyncPending && (
+              <Button
+                type="button"
+                size="sm"
+                variant="link"
+                className="min-h-11 px-0 text-xs"
+                disabled={analyticsSaving}
+                onClick={() => void retryAccountSync()}
+              >
+                Retry account sync
+              </Button>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="min-h-11"
+              disabled={analyticsSaving || analyticsDecision === "declined"}
+              onClick={() => void setAnalyticsConsent("declined", "settings")}
+            >
+              {savingDecision === "declined" ? "Turning off..." : "Turn off"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="min-h-11"
+              disabled={analyticsSaving || analyticsDecision === "accepted"}
+              onClick={() => void setAnalyticsConsent("accepted", "settings")}
+            >
+              {savingDecision === "accepted" ? "Enabling..." : "Allow"}
+            </Button>
+          </div>
+        </div>
+      </SettingsGroup>
+
       {exportMessage && (
         <SettingsNotice
           title={
@@ -804,6 +885,7 @@ function DataPrivacyPane({
           title="Delete account"
           description="Request account cleanup. You will be signed out while Meelni completes retryable authentication, billing-resource, and application-data steps."
           actionLabel="Delete"
+          actionRef={deleteActionRef}
           onClick={() => {
             setConfirmation("");
             setDeleteState("idle");
@@ -815,8 +897,15 @@ function DataPrivacyPane({
       </SettingsGroup>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground sm:max-w-xl">
-          <DialogHeader>
+        <DialogContent
+          onCloseAutoFocus={(event) => {
+            if (!deleteActionRef.current) return;
+            event.preventDefault();
+            deleteActionRef.current.focus();
+          }}
+          className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground sm:max-w-xl"
+        >
+          <DialogHeader className="pr-12">
             <div className="bg-destructive/10 text-destructive mb-3 flex h-10 w-10 items-center justify-center rounded-full">
               <Trash2 className="h-5 w-5" aria-hidden="true" />
             </div>
@@ -898,7 +987,7 @@ function DataPrivacyPane({
               </div>
             )}
 
-          <DialogFooter className="gap-2 sm:space-x-0">
+          <DialogFooter className="gap-2 sm:space-x-0 [&_button]:min-h-11">
             {deleteState === "submitting" && (
               <span className="sr-only" role="status" aria-live="polite">
                 Saving your account deletion request.
@@ -1049,6 +1138,7 @@ function SettingsActionRow({
   disabled,
   destructive,
   onClick,
+  actionRef,
 }: {
   title: string;
   description: string;
@@ -1057,9 +1147,10 @@ function SettingsActionRow({
   disabled?: boolean;
   destructive?: boolean;
   onClick?: () => void;
+  actionRef?: Ref<HTMLButtonElement>;
 }) {
   const actionClassName = cn(
-    "border-dashboard-panel-border h-8 rounded-lg bg-transparent px-3 text-xs font-bold text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground",
+    "border-dashboard-panel-border min-h-11 rounded-lg bg-transparent px-3 text-xs font-bold text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground",
     destructive &&
       "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
   );
@@ -1081,6 +1172,7 @@ function SettingsActionRow({
         </Button>
       ) : (
         <Button
+          ref={actionRef}
           type="button"
           variant="outline"
           size="sm"
@@ -1121,7 +1213,7 @@ function SettingsSwitchRow({
         disabled={disabled}
         onCheckedChange={onCheckedChange}
         aria-label={title}
-        className="data-[state=unchecked]:bg-dashboard-muted/20"
+        className="data-[state=unchecked]:bg-dashboard-muted/20 relative before:absolute before:-inset-x-1 before:-inset-y-3"
       />
     </div>
   );
@@ -1142,16 +1234,28 @@ function SettingsSelectRow({
   options: [string, string][];
   onValueChange: (value: string) => void;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
+
   return (
     <div className="border-dashboard-panel-border flex flex-col gap-4 border-y py-4 first:border-t-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
-        <p className="text-dashboard-muted mt-1 text-sm leading-5">
+        <p id={titleId} className="text-dashboard-foreground text-sm font-bold">
+          {title}
+        </p>
+        <p
+          id={descriptionId}
+          className="text-dashboard-muted mt-1 text-sm leading-5"
+        >
           {description}
         </p>
       </div>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger className="border-dashboard-panel-border text-dashboard-foreground bg-transparent sm:w-64">
+        <SelectTrigger
+          aria-labelledby={titleId}
+          aria-describedby={descriptionId}
+          className="border-dashboard-panel-border text-dashboard-foreground min-h-11 bg-transparent sm:w-64"
+        >
           <SelectValue placeholder={valueLabel} />
         </SelectTrigger>
         <SelectContent>
@@ -1180,19 +1284,25 @@ function SettingsSaveFooter({
       </p>
       <div className="flex items-center gap-3">
         {saveState === "ready" && (
-          <span className="text-success inline-flex items-center gap-1.5 text-sm">
+          <span
+            role="status"
+            aria-live="polite"
+            className="text-success inline-flex items-center gap-1.5 text-sm"
+          >
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             Saved
           </span>
         )}
         {saveState === "error" && (
-          <span className="text-destructive text-sm">Save failed</span>
+          <span role="alert" className="text-destructive text-sm">
+            Save failed
+          </span>
         )}
         <Button
           type="button"
           onClick={onSave}
           disabled={saveState === "loading"}
-          className="gap-2"
+          className="min-h-11 gap-2"
         >
           {saveState === "loading" && (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

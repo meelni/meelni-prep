@@ -68,7 +68,7 @@ Loopback HTTP is accepted only for local development.
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0022_server_owned_billing_privileges` and require the twenty-three-entry schema
+   `0025_public_demo_limits` and require the twenty-six-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime with the same environment's `LIVEKIT_API_SECRET`.
@@ -78,8 +78,8 @@ Loopback HTTP is accepted only for local development.
    logout, reload, and reconnect.
 6. Confirm local/session/IndexedDB storage contains no transcript text or retired
    queue payload after bootstrap and sign-out.
-7. Confirm PostHog replay masks all text and console/runtime logs contain only
-   safe identities and status codes.
+7. Confirm PostHog and Statsig replay/autocapture remain disabled and
+   console/runtime logs contain only safe identities and status codes.
 8. Confirm both LiveKit runtimes call `AgentSession.start(record=False)` so
    provider observability does not upload audio, transcripts, traces, or logs.
 9. Confirm every audible writer registers before output. Exercise replacement
@@ -99,7 +99,7 @@ Loopback HTTP is accepted only for local development.
 
 The isolated `meelni-preview` Supabase project now has a distinct project
 identity and is connected to `meelni/meelni-prep`. Isolation is only the safety
-prerequisite: the twenty-three-entry migration preflight, application deployment,
+prerequisite: the twenty-six-entry migration preflight, application deployment,
 matching LiveKit runtime configuration, and this end-to-end rehearsal still
 need recorded Preview evidence before the relaunch gate can change.
 

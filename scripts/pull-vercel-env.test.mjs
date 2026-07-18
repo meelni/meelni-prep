@@ -57,10 +57,12 @@ test("blank encrypted values preserve existing Preview secrets", () => {
     environment: "preview",
     previousText: scopedEnv(previewRef, {
       DATABASE_URL: databaseUrl(previewRef, "previous-password"),
+      DEMO_ABUSE_HMAC_SECRET: "p".repeat(43),
       SUPABASE_SERVICE_ROLE_KEY: "previous-service-role",
     }),
     pulledText: scopedEnv(previewRef, {
       DATABASE_URL: '""',
+      DEMO_ABUSE_HMAC_SECRET: '""',
       SUPABASE_SERVICE_ROLE_KEY: '""',
     }),
   });
@@ -69,6 +71,7 @@ test("blank encrypted values preserve existing Preview secrets", () => {
     readEnvValue(env, "DATABASE_URL"),
     databaseUrl(previewRef, "previous-password")
   );
+  assert.equal(readEnvValue(env, "DEMO_ABUSE_HMAC_SECRET"), "p".repeat(43));
   assert.equal(
     readEnvValue(env, "SUPABASE_SERVICE_ROLE_KEY"),
     "previous-service-role"
@@ -710,6 +713,7 @@ function scopedEnv(ref, overrides = {}, environment = "preview") {
   return (
     Object.entries({
       DATABASE_URL: databaseUrl(ref, "secret"),
+      DEMO_ABUSE_HMAC_SECRET: "d".repeat(43),
       LIVEKIT_API_KEY: "livekit-api-key",
       LIVEKIT_API_SECRET: "livekit-api-secret",
       MEELNI_INTERVIEW_LLM_MODEL: "openai/gpt-4.1-mini",
