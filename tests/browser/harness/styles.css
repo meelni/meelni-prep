@@ -1,0 +1,15 @@
+:root {
+  --font-everett: ui-sans-serif, system-ui, sans-serif;
+  --font-public-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-commit-mono: ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}

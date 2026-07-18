@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -29,11 +30,13 @@ interface QuotaExceededModalProps {
   currentUsage: number;
   limit: number;
   resetDate: string | null;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 export function QuotaExceededModal({
   isOpen,
   onClose,
+  returnFocusRef,
 }: QuotaExceededModalProps) {
   const router = useRouter();
   const purchasePlans = getPublicPricingPlans().filter(
@@ -70,9 +73,21 @@ export function QuotaExceededModal({
   ];
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusRef?.current) return;
+          event.preventDefault();
+          returnFocusRef.current.focus();
+        }}
+        className="max-w-2xl"
+      >
+        <DialogHeader className="pr-12">
           <div className="mb-2 flex items-center gap-3">
             <div className="bg-warning/10 flex h-12 w-12 items-center justify-center rounded-full">
               <AlertCircle className="text-warning h-6 w-6" />
@@ -139,7 +154,7 @@ export function QuotaExceededModal({
           </div>
         </div>
 
-        <DialogFooter className="flex-col gap-3 sm:flex-row">
+        <DialogFooter className="flex-col gap-3 sm:flex-row [&_button]:min-h-11">
           <Button
             variant="outline"
             onClick={onClose}

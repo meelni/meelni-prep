@@ -7,13 +7,7 @@
 
 import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { createContext, useContext, useLayoutEffect, useState } from "react";
 import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { clientConfig } from "./config";
 import { setAnalyticsCaptureAllowed } from "./analytics-service";
@@ -106,7 +100,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     setAnalyticsCaptureAllowed(resolved && decision === "accepted");
   }, [decision, resolved]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!resolved || decision !== "accepted") {
       setAnalyticsCaptureAllowed(false);
       setRuntimeReady(false);

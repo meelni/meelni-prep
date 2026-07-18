@@ -94,6 +94,17 @@ export function shouldApplyConsentResponse(
   );
 }
 
+export function shouldRetryAccountConsentSync(
+  consent: AnalyticsConsentSnapshot,
+  accountSynchronized: boolean
+): boolean {
+  return (
+    consent.decision !== "undecided" &&
+    consent.source !== "legacy_decline" &&
+    !accountSynchronized
+  );
+}
+
 export function serializeAnalyticsConsentCookie(
   consent: AnalyticsConsentSnapshot
 ): string | null {

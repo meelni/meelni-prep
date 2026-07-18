@@ -84,6 +84,7 @@ const ALLOWED_PROPERTIES: Record<string, readonly string[]> = {
     "entry_source",
   ],
   interview_started: ["interview_type", "mode", "skill_level"],
+  interview_deadline_reached: ["interview_type"],
   interview_ended: ["duration_seconds", "ended_naturally", "interview_type"],
   interview_completed: ["duration_seconds", "turn_count"],
   interview_error: ["error_code"],
@@ -116,7 +117,7 @@ const ALLOWED_PROPERTIES: Record<string, readonly string[]> = {
   billing_credit_rollover_created: billingProperties(),
   billing_no_credits: billingProperties(),
   billing_credit_payment_adjusted: billingProperties(),
-  page_performance: ["page", "lcp", "fid", "cls", "ttfb", "fcp"],
+  page_performance: ["page", "lcp", "fid", "inp", "cls", "ttfb", "fcp"],
   livekit_connection_established: [
     "connection_time_ms",
     "region",

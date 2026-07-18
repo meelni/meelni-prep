@@ -23,7 +23,7 @@ const DashboardSidebarNavItem = React.forwardRef<
     type={type}
     aria-current={selected ? "page" : undefined}
     className={cn(
-      "border-dashboard-panel-border focus-visible:ring-ring flex h-10 shrink-0 items-center justify-between gap-4 rounded-lg px-3 text-left text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none lg:w-full",
+      "border-dashboard-panel-border focus-visible:ring-ring flex min-h-11 shrink-0 items-center justify-between gap-4 rounded-lg px-3 text-left text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none lg:w-full",
       selected
         ? "bg-dashboard-muted/15 text-dashboard-foreground"
         : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground border-transparent",
