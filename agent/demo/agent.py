@@ -403,28 +403,30 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Demo agent starting")
 
-    metadata = parse_demo_room_metadata(ctx.job.room.metadata)
-    if not metadata:
-        logger.warning("Failed to parse demo metadata")
-
-    deadline = resolve_demo_deadline(
-        metadata,
-        wall_now=time.time(),
-        monotonic_now=time.monotonic(),
-    )
-    participant_identity = resolve_demo_participant_identity(metadata)
     deletion_guard = RoomDeletionGuard()
     stop_guard = LocalSessionStopGuard()
-    hard_deadline_task = asyncio.create_task(
-        enforce_hard_deadline(ctx, deadline, deletion_guard, stop_guard)
-    )
-    background_tasks = [hard_deadline_task]
+    background_tasks = []
 
     try:
         await run_bounded(
             lambda: ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY),
             ROOM_CONNECT_TIMEOUT_SECONDS,
         )
+        metadata = parse_demo_room_metadata(ctx.room.metadata)
+        if not metadata:
+            logger.warning("Failed to parse demo metadata")
+
+        deadline = resolve_demo_deadline(
+            metadata,
+            wall_now=time.time(),
+            monotonic_now=time.monotonic(),
+        )
+        participant_identity = resolve_demo_participant_identity(metadata)
+        hard_deadline_task = asyncio.create_task(
+            enforce_hard_deadline(ctx, deadline, deletion_guard, stop_guard)
+        )
+        background_tasks.append(hard_deadline_task)
+
         if participant_identity is None:
             logger.warning("Demo participant identity is unavailable")
             return
