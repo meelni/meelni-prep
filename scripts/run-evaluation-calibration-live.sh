@@ -203,7 +203,6 @@ fi
 
 reviewed_source_commit=""
 if [ "$test_mode" != "1" ]; then
-  GH_BIN=$(/bin/realpath "$GH_BIN") || fail "calibration_live_launcher_gh_missing"
   reviewed_source_commit=${MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT-}
   unset MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT
   [ "${#reviewed_source_commit}" -eq 40 ] || \
@@ -215,14 +214,15 @@ if [ "$test_mode" != "1" ]; then
     fail "calibration_live_launcher_head_invalid"
   [ "$actual_head" = "$reviewed_source_commit" ] || \
     fail "calibration_live_launcher_reviewed_head_mismatch"
-  attest_node_binary "$NODE_BIN"
-  attest_sha256_file "$GH_BIN" "$GH_SHA256"
   attest_reviewed_file "$LAUNCHER" "scripts/run-evaluation-calibration-live.sh" "$reviewed_source_commit"
   attest_reviewed_file "$BOOTSTRAP" "scripts/run-evaluation-calibration-live.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$STARTUP" "lib/evaluation/calibration-live-startup.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$MANIFEST" "docs/evidence/sav-248-v3-runtime-manifest.json" "$reviewed_source_commit"
   attest_reviewed_file "$RUNTIME" "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$PACKAGE_LOCK" "package-lock.json" "$reviewed_source_commit"
+  GH_BIN=$(/bin/realpath "$GH_BIN") || fail "calibration_live_launcher_gh_missing"
+  attest_node_binary "$NODE_BIN"
+  attest_sha256_file "$GH_BIN" "$GH_SHA256"
 fi
 
 channel_dir=$(/usr/bin/mktemp -d /tmp/meelni-calibration-live.XXXXXX)
