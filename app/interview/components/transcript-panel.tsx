@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { User, Bot } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -19,6 +19,7 @@ interface TranscriptPanelProps {
 
 export function TranscriptPanel({ turns }: TranscriptPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     // Auto-scroll to bottom on new turn
@@ -55,9 +56,9 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
               turn.eventId ??
               `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${index}`
             }
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
+            initial={prefersReducedMotion ? false : { y: 20 }}
+            animate={{ y: 0 }}
+            exit={prefersReducedMotion ? undefined : { scale: 0.95 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className={`flex gap-3 ${
               turn.speaker === "user" ? "flex-row-reverse" : "flex-row"

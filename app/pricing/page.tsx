@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -20,12 +19,6 @@ import {
 import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { useFeatureFlag } from "@/lib/feature-flags";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
 
 export default function PricingPage() {
   const reactivationEnabled = useFeatureFlag(
@@ -76,7 +69,7 @@ export default function PricingPage() {
       {/* Hero Section */}
       <section className="border-border/60 border-b py-20">
         <div className="container mx-auto px-4">
-          <motion.div {...fadeInUp}>
+          <div>
             <MarketingHero
               className="mb-0"
               eyebrow={
@@ -93,20 +86,15 @@ export default function PricingPage() {
                   : "Meelni is not currently accepting new subscriptions or PM interview practice sessions."
               }
             />
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {reactivationEnabled ? (
         <section className="py-20">
           <div className="container mx-auto grid max-w-6xl gap-4 px-4 md:grid-cols-2 xl:grid-cols-4">
-            {plans.map((plan, index) => (
-              <motion.div
-                key={plan.catalogId}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.08 }}
-              >
+            {plans.map((plan) => (
+              <div key={plan.catalogId}>
                 <AppSurface
                   variant={plan.popular ? "default" : "muted"}
                   size="lg"
@@ -152,6 +140,7 @@ export default function PricingPage() {
                   </ul>
                   <Button
                     className="mt-6 w-full"
+                    size="lg"
                     onClick={() => void handlePlanClick(plan)}
                     disabled={loadingCatalogId === plan.catalogId}
                     variant={plan.canPurchase ? "default" : "outline"}
@@ -162,19 +151,14 @@ export default function PricingPage() {
                     {plan.cta}
                   </Button>
                 </AppSurface>
-              </motion.div>
+              </div>
             ))}
           </div>
         </section>
       ) : (
         <section className="py-20">
           <div className="container mx-auto px-4">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="mx-auto max-w-2xl"
-            >
+            <div className="mx-auto max-w-2xl">
               <MarketingCtaCard
                 tone="muted"
                 mark={<AlertCircle className="h-7 w-7" />}
@@ -190,7 +174,7 @@ export default function PricingPage() {
                 }
                 footer="Thank you to everyone who used and supported Meelni."
               />
-            </motion.div>
+            </div>
           </div>
         </section>
       )}

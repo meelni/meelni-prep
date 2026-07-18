@@ -44,6 +44,8 @@ Analytics must not include interview audio, recordings, transcripts, prompt or q
 
 Every event uses an explicit property allowlist. Authenticated identities use an HMAC pseudonym derived with `ANALYTICS_PSEUDONYM_KEY`; raw Supabase identities and profile traits never enter browser Statsig. A missing or short key disables authenticated/server identification and billing analytics. Private feedback route identifiers are reduced to route templates before pageview delivery. Before the first new opt-in, the client purges legacy PostHog and Statsig identifiers, and incomplete cleanup is retried rather than marked complete. PostHog's final `before_send` filter rebuilds the outbound envelope from safe ingestion fields and the event allowlist.
 
+Lifecycle-owned server workflows await consent lookup and optional PostHog delivery after their durable billing mutation commits. Provider failure remains non-fatal, but delivery is not abandoned as an unobserved background promise when a serverless request returns.
+
 ## Versioning
 
 Increasing `ANALYTICS_CONSENT_POLICY_VERSION` invalidates prior acceptance and re-prompts. A prior decline remains effective until explicitly changed.

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const posthog = {
     __loaded: false,
+    capture: vi.fn(),
     debug: vi.fn(),
     has_opted_in_capturing: vi.fn(() => true),
     init: vi.fn(),
@@ -97,7 +98,15 @@ vi.mock("@/lib/analytics/config", () => ({
 }));
 
 import { PostHogProvider } from "@/lib/analytics/posthog-provider";
+import { analytics } from "@/lib/analytics/analytics-service";
 import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
+
+function CaptureOnMount() {
+  React.useEffect(() => {
+    analytics.track("landing_page_viewed", {});
+  }, []);
+  return null;
+}
 
 describe("optional analytics provider lifecycle", () => {
   afterEach(() => {
@@ -144,6 +153,22 @@ describe("optional analytics provider lifecycle", () => {
     );
     expect(mocks.posthog.reset).toHaveBeenCalledWith(true);
     expect(mocks.posthog.opt_out_capturing).toHaveBeenCalledTimes(1);
+  });
+
+  it("initializes before consent-authorized child mount events are delivered", async () => {
+    mocks.consent.decision = "accepted";
+
+    render(
+      <PostHogProvider>
+        <CaptureOnMount />
+      </PostHogProvider>
+    );
+
+    await waitFor(() => expect(mocks.posthog.capture).toHaveBeenCalledOnce());
+    expect(mocks.posthog.capture).toHaveBeenCalledWith(
+      "landing_page_viewed",
+      {}
+    );
   });
 
   it("creates no Statsig identity or client before acceptance and shuts down on withdrawal", async () => {
