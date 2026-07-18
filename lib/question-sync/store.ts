@@ -7,6 +7,11 @@ import type {
   StoredQuestionSyncQuestion,
 } from "@/lib/question-sync/source";
 
+type QuestionSyncDatabase = Pick<
+  PostgresJsDatabase<typeof schema>,
+  "select" | "insert" | "update"
+>;
+
 export interface QuestionSyncStore {
   listQuestions(): Promise<StoredQuestionSyncQuestion[]>;
   insertQuestions(questions: readonly QuestionSyncQuestion[]): Promise<void>;
@@ -14,7 +19,7 @@ export interface QuestionSyncStore {
 }
 
 export function createQuestionSyncStore(
-  database: PostgresJsDatabase<typeof schema>
+  database: QuestionSyncDatabase
 ): QuestionSyncStore {
   return {
     async listQuestions() {
