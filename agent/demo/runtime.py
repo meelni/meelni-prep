@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import math
 
 MAX_DEMO_DURATION_SECONDS = 120
@@ -36,6 +37,17 @@ class DemoDeadline:
 
     def session_end_notify_at(self, delivery_grace_seconds: float) -> float:
         return self.ends_at - delivery_grace_seconds
+
+
+def parse_demo_room_metadata(room_metadata: object) -> dict:
+    """Parse the server-authored room metadata carried by the dispatched job."""
+    if not isinstance(room_metadata, str) or not room_metadata:
+        return {}
+    try:
+        metadata = json.loads(room_metadata)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return metadata if isinstance(metadata, dict) else {}
 
 
 def resolve_demo_timing(metadata: object) -> DemoTiming:

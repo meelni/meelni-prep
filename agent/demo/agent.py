@@ -4,7 +4,6 @@ Two-minute voice preview for landing page visitors
 """
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -36,6 +35,7 @@ from demo.runtime import (
     SESSION_END_PUBLISH_TIMEOUT_SECONDS,
     SESSION_START_TIMEOUT_SECONDS,
     TAKEAWAY_TIMEOUT_SECONDS,
+    parse_demo_room_metadata,
     resolve_demo_deadline,
     resolve_demo_participant_identity,
     run_bounded,
@@ -403,13 +403,8 @@ async def entrypoint(ctx: JobContext):
 
     logger.info("Demo agent starting")
 
-    metadata = {}
-    try:
-        room_metadata = ctx.room.metadata or "{}"
-        parsed_metadata = json.loads(room_metadata)
-        if isinstance(parsed_metadata, dict):
-            metadata = parsed_metadata
-    except (json.JSONDecodeError, TypeError):
+    metadata = parse_demo_room_metadata(ctx.job.room.metadata)
+    if not metadata:
         logger.warning("Failed to parse demo metadata")
 
     deadline = resolve_demo_deadline(

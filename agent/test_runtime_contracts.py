@@ -75,6 +75,7 @@ from shared.transcript_ingest import (
     validate_internal_ingest_url,
 )
 from demo.runtime import (
+    parse_demo_room_metadata,
     resolve_demo_deadline,
     resolve_demo_participant_identity,
     resolve_demo_timing,
@@ -118,6 +119,18 @@ class RuntimeContractTests(unittest.TestCase):
             500,
         )
 
+    def test_public_demo_parses_dispatched_job_room_metadata(self):
+        metadata = parse_demo_room_metadata(json.dumps({
+            "duration_seconds": 120,
+            "participant_identity": "demo-opaque",
+        }))
+
+        self.assertEqual(metadata["duration_seconds"], 120)
+        self.assertEqual(metadata["participant_identity"], "demo-opaque")
+        self.assertEqual(parse_demo_room_metadata(None), {})
+        self.assertEqual(parse_demo_room_metadata("not-json"), {})
+        self.assertEqual(parse_demo_room_metadata("[]"), {})
+
     def test_public_demo_requires_server_participant_identity(self):
         self.assertEqual(
             resolve_demo_participant_identity(
@@ -158,10 +171,12 @@ class RuntimeContractTests(unittest.TestCase):
     def test_public_demo_source_arms_deadline_and_waits_for_exact_participant(self):
         source = (Path(__file__).parent / "demo" / "agent.py").read_text()
 
+        metadata = source.index("parse_demo_room_metadata(ctx.job.room.metadata)")
         deadline = source.index("hard_deadline_task = asyncio.create_task(")
         connect = source.index("lambda: ctx.connect(")
         wait = source.index("participant = await wait_for_candidate_before_greeting(")
         session_start = source.index("session.start(agent=demo_agent")
+        self.assertLess(metadata, deadline)
         self.assertLess(deadline, connect)
         self.assertLess(wait, session_start)
         self.assertIn("candidate_identity=participant_identity", source)
