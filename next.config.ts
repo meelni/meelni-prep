@@ -20,6 +20,20 @@ const NOINDEX_ROUTE_SOURCES = [
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
+  async redirects() {
+    return [
+      {
+        source: "/setup",
+        destination: "/dashboard/new-interview",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/new-rep",
+        destination: "/dashboard/new-interview",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     const globalHeaders = [
       ...(process.env.VERCEL_ENV === "production"
