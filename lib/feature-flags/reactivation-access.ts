@@ -1,20 +1,13 @@
-import { buildStatsigUser, getStatsigConfig } from "./config";
+import { getStatsigConfig } from "./config";
 import { buildServerGateDeploymentContext } from "./server-deployment-context";
 import { FEATURE_GATES } from "./gates";
+import { buildReactivationLaunchStateIdentity } from "./reactivation-identity";
 import {
   resolveServerGate,
   type ServerGateResolution,
 } from "./server-resolver";
 
-interface ReactivationUser {
-  id: string;
-  email?: string | null;
-  created_at?: string;
-  app_metadata?: { provider?: string };
-}
-
 export async function resolveReactivationAccess(input: {
-  user: ReactivationUser | null;
   localOverride?: string;
   env?: NodeJS.ProcessEnv;
   resolveGate?: typeof resolveServerGate;
@@ -36,11 +29,6 @@ export async function resolveReactivationAccess(input: {
     gateName: FEATURE_GATES.meelniReactivationAccess,
     fallbackValue,
     ...buildServerGateDeploymentContext(env, config.environmentTier),
-    user: input.user
-      ? buildStatsigUser({
-          anonymousId: `authenticated:${input.user.id}`,
-          user: input.user,
-        })
-      : { userID: "public-launch-state" },
+    user: buildReactivationLaunchStateIdentity(),
   });
 }

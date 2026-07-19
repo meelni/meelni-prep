@@ -9,8 +9,9 @@ import { FeatureFlagDevMenu } from "@/components/feature-flags/feature-flag-dev-
 import { buttonVariants } from "@/components/ui/button";
 import { useAuth } from "@/app/providers/auth-provider";
 import { siteConfig } from "@/lib/config";
-import { FEATURE_GATES } from "@/lib/feature-flags/gates";
-import { useFeatureFlag } from "@/lib/feature-flags";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -23,9 +24,7 @@ const navLinks = [
 
 export function Header() {
   const [activeSection, setActiveSection] = useState("");
-  const reactivationEnabled = useFeatureFlag(
-    FEATURE_GATES.meelniReactivationAccess
-  );
+  const activation = usePublicActivationDecision();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -81,13 +80,16 @@ export function Header() {
                 {siteConfig.name}
               </span>
             </Link>
-            <FeatureFlagDevMenu gateEnabled={reactivationEnabled} />
+            <FeatureFlagDevMenu gateEnabled={activation.canActivate} />
           </div>
 
           {/* Desktop Navigation */}
-          {reactivationEnabled && (
-            <nav className="hidden items-center gap-8 lg:flex">
-              {navLinks.map((link) => {
+          <nav className="hidden items-center gap-8 lg:flex">
+            {navLinks
+              .filter(
+                (link) => activation.canActivate || link.name !== "Features"
+              )
+              .map((link) => {
                 const isActive = activeSection === link.href.slice(1);
                 const isExternalRoute = link.href.startsWith("/");
                 return (
@@ -124,51 +126,48 @@ export function Header() {
                   </div>
                 );
               })}
-            </nav>
-          )}
+          </nav>
 
-          {reactivationEnabled && (
-            <div className="hidden items-center gap-2 lg:flex">
-              {user ? (
+          <div className="hidden items-center gap-2 lg:flex">
+            {user ? (
+              <Link
+                href="/dashboard"
+                className={cn(
+                  buttonVariants({ variant: "default", size: "sm" }),
+                  "rounded-lg px-4"
+                )}
+              >
+                Dashboard
+              </Link>
+            ) : (
+              <>
                 <Link
-                  href="/dashboard"
+                  href="/auth/signin"
                   className={cn(
-                    buttonVariants({ variant: "default", size: "sm" }),
+                    buttonVariants({ variant: "ghost", size: "sm" }),
                     "rounded-lg px-4"
                   )}
                 >
-                  Dashboard
+                  Log In
                 </Link>
-              ) : (
-                <>
-                  <Link
-                    href="/auth/signin"
-                    className={cn(
-                      buttonVariants({ variant: "ghost", size: "sm" }),
-                      "rounded-lg px-4"
-                    )}
-                  >
-                    Log In
-                  </Link>
-                  <Link
-                    href="/dashboard/new-interview"
-                    className={cn(
-                      buttonVariants({ variant: "default", size: "sm" }),
-                      "text-primary-foreground rounded-lg px-4"
-                    )}
-                  >
-                    {siteConfig.cta}
-                  </Link>
-                </>
-              )}
-            </div>
-          )}
+                <PublicActivationButton
+                  href={NEW_INTERVIEW_PATH}
+                  size="sm"
+                  variant={activation.canActivate ? "default" : "outline"}
+                  className={cn(
+                    "rounded-lg px-4",
+                    activation.canActivate && "text-primary-foreground"
+                  )}
+                >
+                  {siteConfig.cta}
+                </PublicActivationButton>
+              </>
+            )}
+          </div>
 
-          {reactivationEnabled && (
-            <div className="flex items-center lg:hidden">
-              <MobileDrawer />
-            </div>
-          )}
+          <div className="flex items-center lg:hidden">
+            <MobileDrawer />
+          </div>
         </div>
       </div>
 

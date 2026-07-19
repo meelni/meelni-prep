@@ -19,6 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
 import {
+  PUBLIC_ACTIVATION_PAUSED_DESCRIPTION,
+  PUBLIC_ACTIVATION_PAUSED_LABEL,
+} from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import {
   AUTH_SIGNIN_PATH,
   buildAuthPageHref,
   parseAuthHandoffContext,
@@ -27,6 +32,7 @@ import {
 type SignUpInputName = "password" | "confirmPassword";
 
 function SignUpContent() {
+  const activation = usePublicActivationDecision();
   const {
     signUpWithEmail,
     signInWithGoogle,
@@ -61,6 +67,8 @@ function SignUpContent() {
   }, [user, authLoading, router, redirectTo]);
 
   const handleGoogleSignIn = async () => {
+    if (!activation.canActivate) return;
+
     setIsSigningUp(true);
     setError(null);
     setErrorSource(null);
@@ -78,6 +86,8 @@ function SignUpContent() {
 
   const handleEmailSignUp = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!activation.canActivate) return;
+
     setIsSigningUp(true);
     setError(null);
     setErrorSource(null);
@@ -123,6 +133,34 @@ function SignUpContent() {
 
   if (authLoading || user) {
     return <AuthInitializationStatus />;
+  }
+
+  if (!activation.canActivate) {
+    return (
+      <AuthShell backLabel="Back" onBack={() => router.push(cancelTo)}>
+        <AuthCard
+          title="New accounts currently paused"
+          description={PUBLIC_ACTIVATION_PAUSED_DESCRIPTION}
+        >
+          <div
+            role="status"
+            className="border-border bg-muted/30 text-muted-foreground rounded-lg border px-4 py-3 text-sm leading-6"
+          >
+            {PUBLIC_ACTIVATION_PAUSED_LABEL}. If you already have an account,
+            you can still sign in.
+          </div>
+          <Button
+            type="button"
+            onClick={() =>
+              router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff))
+            }
+            className="mt-6 h-auto w-full rounded-xl px-6 py-3 font-semibold"
+          >
+            Sign in to an existing account
+          </Button>
+        </AuthCard>
+      </AuthShell>
+    );
   }
 
   return (

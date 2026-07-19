@@ -21,6 +21,7 @@ Good candidates:
 - [service health and readiness](./service-health.md);
 - [redacted operational failure events](./operational-failures.md);
 - [selected-question authentication intent](./auth-question-intent.md);
+- [public relaunch-aware conversion behavior](./public-reactivation-conversion.md);
 - [account export, recent-auth deletion, and retention boundaries](./account-privacy.md);
 - [subscription entitlement convergence across Stripe webhook delivery order](./subscription-entitlement.md);
 - [paid one-time Stripe Checkout fulfillment and replay behavior](./stripe-checkout-fulfillment.md);

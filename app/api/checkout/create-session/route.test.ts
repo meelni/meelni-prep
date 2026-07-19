@@ -129,9 +129,6 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       retryable: false,
     });
     expect(gateMocks.resolveReactivationAccess).toHaveBeenCalledWith({
-      user: expect.objectContaining({
-        id: "11111111-1111-4111-8111-111111111111",
-      }),
       localOverride: undefined,
     });
     expect(hasAccountDeletionTombstone).not.toHaveBeenCalled();
