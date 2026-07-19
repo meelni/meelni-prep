@@ -133,6 +133,11 @@ test("raw-exception guard permits fixed codes and the closed safe classifier onl
       console.error("raw", error);
       console.warn("message", error.message);
       console.info("wrapped", getErrorMessage(error));
+      const leaked = error;
+      const { message: leakedMessage } = error;
+      let assigned;
+      assigned = leaked;
+      console.log("aliased", leaked, leakedMessage, assigned);
     }
     try { work(); } catch ({ message }) {
       console.debug("destructured", message);
@@ -143,17 +148,44 @@ test("raw-exception guard permits fixed codes and the closed safe classifier onl
     "unsafe.ts:2",
     "unsafe.ts:3",
     "unsafe.ts:4",
-    "unsafe.ts:7",
+    "unsafe.ts:9",
+    "unsafe.ts:12",
   ]);
 
   const safe = findRawCaughtExceptionLogs(
-    `try { work(); } catch (error) {
+    `import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+    try { work(); } catch (error) {
       console.error("stable_failure_code");
       console.error("classified_failure", { ...toSafeErrorLog(error) });
+      const classified = toSafeErrorLog(error);
+      console.error("aliased_classification", classified);
     }`,
     "safe.ts"
   );
   assert.deepEqual(safe, []);
+
+  const shadowed = findRawCaughtExceptionLogs(
+    `import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+    try { work(); } catch (error) {
+      const toSafeErrorLog = (value) => value;
+      console.error("shadowed", toSafeErrorLog(error));
+      const disguised = toSafeErrorLog(error);
+      console.error("shadowed_alias", disguised);
+    }`,
+    "shadowed.ts"
+  );
+  assert.deepEqual(shadowed, ["shadowed.ts:4", "shadowed.ts:6"]);
+
+  const localOnly = findRawCaughtExceptionLogs(
+    `const toSafeErrorLog = (value) => value;
+    try { work(); } catch (error) {
+      console.error("local", toSafeErrorLog(error));
+      const disguised = toSafeErrorLog(error);
+      console.error("local_alias", disguised);
+    }`,
+    "local-only.ts"
+  );
+  assert.deepEqual(localOnly, ["local-only.ts:3", "local-only.ts:5"]);
 });
 
 test("billing boundaries retain their fixed route-level error codes", async () => {
@@ -247,6 +279,7 @@ function findRawCaughtExceptionLogs(source, filename) {
     ts.ScriptKind.TS
   );
   const violations = [];
+  const allowSafeClassifier = hasUnshadowedCanonicalSafeErrorImport(sourceFile);
 
   function visit(node, caughtNames) {
     if (ts.isCatchClause(node)) {
@@ -259,10 +292,28 @@ function findRawCaughtExceptionLogs(source, filename) {
 
     if (
       caughtNames.size > 0 &&
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      isRawAliasExpression(node.initializer, caughtNames, allowSafeClassifier)
+    ) {
+      addBindingNames(node.name, caughtNames);
+    }
+
+    if (
+      caughtNames.size > 0 &&
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      isRawAliasExpression(node.right, caughtNames, allowSafeClassifier)
+    ) {
+      addAssignmentNames(node.left, caughtNames);
+    }
+
+    if (
+      caughtNames.size > 0 &&
       ts.isCallExpression(node) &&
       isConsoleCall(node.expression) &&
       node.arguments.some((argument) =>
-        containsRawCaughtReference(argument, caughtNames)
+        containsRawCaughtReference(argument, caughtNames, allowSafeClassifier)
       )
     ) {
       const line =
@@ -288,8 +339,35 @@ function addBindingNames(binding, names) {
   }
 }
 
-function containsRawCaughtReference(node, caughtNames) {
+function addAssignmentNames(target, names) {
+  if (ts.isIdentifier(target)) {
+    names.add(target.text);
+    return;
+  }
+  if (ts.isParenthesizedExpression(target)) {
+    addAssignmentNames(target.expression, names);
+    return;
+  }
+  if (ts.isArrayLiteralExpression(target)) {
+    for (const element of target.elements) addAssignmentNames(element, names);
+    return;
+  }
+  if (ts.isObjectLiteralExpression(target)) {
+    for (const property of target.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        addAssignmentNames(property.initializer, names);
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        names.add(property.name.text);
+      } else if (ts.isSpreadAssignment(property)) {
+        addAssignmentNames(property.expression, names);
+      }
+    }
+  }
+}
+
+function containsRawCaughtReference(node, caughtNames, allowSafeClassifier) {
   if (
+    allowSafeClassifier &&
     ts.isCallExpression(node) &&
     ts.isIdentifier(node.expression) &&
     node.expression.text === "toSafeErrorLog"
@@ -300,9 +378,105 @@ function containsRawCaughtReference(node, caughtNames) {
 
   let found = false;
   ts.forEachChild(node, (child) => {
-    if (!found && containsRawCaughtReference(child, caughtNames)) found = true;
+    if (
+      !found &&
+      containsRawCaughtReference(child, caughtNames, allowSafeClassifier)
+    ) {
+      found = true;
+    }
   });
   return found;
+}
+
+function isRawAliasExpression(node, caughtNames, allowSafeClassifier) {
+  if (
+    allowSafeClassifier &&
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "toSafeErrorLog"
+  ) {
+    return false;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "toSafeErrorLog"
+  ) {
+    return node.arguments.some((argument) =>
+      containsRawCaughtReference(argument, caughtNames, false)
+    );
+  }
+  if (ts.isCallExpression(node) || ts.isNewExpression(node)) return false;
+  if (ts.isIdentifier(node) && caughtNames.has(node.text)) return true;
+
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (
+      !found &&
+      isRawAliasExpression(child, caughtNames, allowSafeClassifier)
+    ) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function hasUnshadowedCanonicalSafeErrorImport(sourceFile) {
+  let hasCanonicalImport = false;
+  let hasShadow = false;
+
+  function visit(node) {
+    if (
+      ts.isImportSpecifier(node) &&
+      node.name.text === "toSafeErrorLog" &&
+      !node.propertyName &&
+      ts.isImportDeclaration(node.parent.parent.parent) &&
+      ts.isStringLiteral(node.parent.parent.parent.moduleSpecifier) &&
+      node.parent.parent.parent.moduleSpecifier.text ===
+        "@/lib/privacy/safe-error"
+    ) {
+      hasCanonicalImport = true;
+    } else if (declaresBinding(node, "toSafeErrorLog")) {
+      hasShadow = true;
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return hasCanonicalImport && !hasShadow;
+}
+
+function declaresBinding(node, name) {
+  if (
+    ts.isVariableDeclaration(node) ||
+    ts.isParameter(node) ||
+    ts.isBindingElement(node)
+  ) {
+    return bindingContainsName(node.name, name);
+  }
+  if (
+    (ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)) &&
+    node.name
+  ) {
+    return node.name.text === name;
+  }
+  if (ts.isImportSpecifier(node) || ts.isNamespaceImport(node)) {
+    return node.name.text === name;
+  }
+  if (ts.isImportClause(node) && node.name) return node.name.text === name;
+  return false;
+}
+
+function bindingContainsName(binding, name) {
+  if (ts.isIdentifier(binding)) return binding.text === name;
+  return binding.elements.some(
+    (element) =>
+      ts.isBindingElement(element) && bindingContainsName(element.name, name)
+  );
 }
 
 function isConsoleCall(expression) {
