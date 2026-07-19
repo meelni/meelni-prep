@@ -56,7 +56,7 @@ unsupported.
 
 ## Concurrency and retry behavior
 
-Provider fetch and validation finish before the database transaction opens. The workflow then uses a PostgreSQL transaction-scoped advisory lock while that same transaction reads existing rows, builds the plan, inserts, reactivates, and deactivates. A connection or write failure rolls the complete mutation back. It works with transaction pooling and releases automatically when the transaction finishes. Migration `0024_question_provenance` supplies the internal provenance and quality columns, publication constraint, and safe column-level grants required by this workflow.
+Provider fetch and validation finish before the database transaction opens. The workflow then uses a PostgreSQL transaction-scoped advisory lock while that same transaction reads existing rows, builds the plan, inserts, reactivates, and deactivates. A connection or write failure rolls the complete mutation back. It works with transaction pooling and releases automatically when the transaction finishes. Migration `0027_question_provenance` supplies the internal provenance and quality columns, publication constraint, and safe column-level grants required by this workflow.
 
 An overlapping request may finish its provider fetch, but returns `409 question_sync_in_progress` with `Retry-After: 60` before database reads or writes begin. Wait until the active mutation finishes, then retry.
 
@@ -64,7 +64,7 @@ The provider has no durable row ID. The sync therefore hashes normalized non-pri
 
 Exact fingerprints collapse deterministically before planning, regardless of provider row order. Sheet fingerprinting and runtime planning use one shared Unicode NFC vocabulary. A near duplicate must have the same normalized prompt, company, and canonical PM round while differing only in provenance, quote style, terminal sentence punctuation, case, or spacing. Compatibility folding is forbidden: dashes, superscripts, circled numbers, comparison operators, percentages, currency, arithmetic signs, and other meaning-bearing symbols remain distinct. One existing active row remains canonical whenever possible; additional occurrences are stored inactive with `quality_status = quarantined_near_duplicate` and a canonical link. The database enforces that only `published` rows are active. Fuzzy semantic matching is intentionally out of scope and must not silently quarantine questions.
 
-Migration `0024_question_provenance` fails closed for historical data: every previously active row without deterministic source evidence becomes inactive `quarantined_unverified`, while an already inactive row becomes `retired_source_missing`. The first approved live sync can adopt matching rows in place, attach a source fingerprint, and publish the canonical occurrence without changing its ID. Do not enable public activation between applying the migration and completing the reviewed sync.
+Migration `0027_question_provenance` fails closed for historical data: every previously active row without deterministic source evidence becomes inactive `quarantined_unverified`, while an already inactive row becomes `retired_source_missing`. The first approved live sync can adopt matching rows in place, attach a source fingerprint, and publish the canonical occurrence without changing its ID. Do not enable public activation between applying the migration and completing the reviewed sync.
 
 The 25% bulk-removal guard counts every active row that would become inactive, whether it is source-missing or retired as a duplicate. A dry run that exceeds the guard fails instead of treating duplicate cleanup as exempt.
 
@@ -90,7 +90,7 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 
 1. Keep the global relaunch feature gate off while validating the sync path.
 2. Generate independent Preview credentials and configure the Preview cron and operator secrets.
-3. Deploy to Preview and apply the canonical migration chain through `0024_question_provenance`. Confirm strict preflight reports 25 migrations and schema fingerprint `e94c4a10694c778766a947f3cc8d32b89f801703fac9212aa1046eb2fbfd13bf`.
+3. Deploy to Preview and apply the canonical migration chain through `0027_question_provenance`. Confirm strict preflight reports 28 migrations and the question-provenance schema fingerprint recorded in the migration runbook.
 4. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
 5. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive unverified identity is adopted and published in place.
 6. Generate new, independent Production credentials and run a Production dry
@@ -100,7 +100,7 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
    adapter exists; do not bypass this through a direct dashboard or CLI mutation.
 7. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
 
-The current migration is `0024_question_provenance`, generated from stacked parent PR #324 at exact head `72aa4d3735046014a11d5f75bc2e0c76d3ce6d87`. If that parent changes or another migration lands first, regenerate the SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
+The current migration is `0027_question_provenance`, generated from stacked parent PR #349 at exact head `bc019ecbec5cd5872ad514ad8ef58d445b58af65`. If that parent changes or another migration lands first, regenerate the SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 

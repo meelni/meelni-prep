@@ -2,6 +2,7 @@ import {
   AccessToken,
   AgentDispatchClient,
   DataPacket_Kind,
+  RoomAgentDispatch,
   RoomServiceClient,
   TrackSource,
 } from "livekit-server-sdk";
@@ -23,6 +24,8 @@ export type LiveKitAgentKind = "interview" | "demo";
 
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
+export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -37,6 +40,29 @@ export interface StartedInterviewRoom {
   roomName: string;
   token: string;
   url: string;
+}
+
+export interface StartedPublicDemoRoom extends StartedInterviewRoom {
+  expiresAt: Date;
+}
+
+export interface StartPublicDemoRoomInput {
+  agentName: string;
+  identity: string;
+  roomName: string;
+  metadata: unknown;
+  observedAt: Date;
+  expiresAt: Date;
+  env: LiveKitEnvironment;
+}
+
+export interface IssuePublicDemoTokenInput {
+  agentName: string;
+  identity: string;
+  roomName: string;
+  observedAt: Date;
+  expiresAt: Date;
+  env: LiveKitEnvironment;
 }
 
 export interface IssueInterviewParticipantTokenInput {
@@ -92,6 +118,19 @@ export interface LiveKitRoomTerminationProvider {
   ): Promise<ProviderResult<TerminatedInterviewRoom>>;
 }
 
+export interface LiveKitPublicDemoProvider {
+  startPublicDemoRoom(
+    input: StartPublicDemoRoomInput
+  ): Promise<ProviderResult<StartedPublicDemoRoom>>;
+  issuePublicDemoToken(
+    input: IssuePublicDemoTokenInput
+  ): Promise<ProviderResult<StartedPublicDemoRoom>>;
+  deletePublicDemoRoom(
+    roomName: string,
+    env: LiveKitEnvironment
+  ): Promise<void>;
+}
+
 export interface LiveKitProvider
   extends LiveKitInterviewProvider,
     LiveKitRoomTerminationProvider {}
@@ -101,6 +140,7 @@ export interface LiveKitProviderDependencies {
   agentDispatchClientFactory?: AgentDispatchClientFactory;
   roomServiceClientFactory?: RoomServiceClientFactory;
   now?: () => Date;
+  sleep?: (milliseconds: number) => Promise<void>;
 }
 
 interface AccessTokenLike {
@@ -148,6 +188,7 @@ interface RoomServiceClientLike {
     emptyTimeout: number;
     maxParticipants: number;
     departureTimeout: number;
+    agents?: RoomAgentDispatch[];
   }): Promise<unknown>;
   listRooms?(
     names?: string[]
@@ -413,6 +454,311 @@ export function createLiveKitInterviewProvider({
       });
     },
   };
+}
+
+export function createLiveKitPublicDemoProvider({
+  accessTokenFactory = AccessToken,
+  agentDispatchClientFactory = (url, apiKey, apiSecret) =>
+    new AgentDispatchClient(url, apiKey, apiSecret),
+  roomServiceClientFactory = (url, apiKey, apiSecret) =>
+    new RoomServiceClient(url, apiKey, apiSecret),
+  now = () => new Date(),
+  sleep = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: LiveKitProviderDependencies = {}): LiveKitPublicDemoProvider {
+  async function mintToken(
+    input: IssuePublicDemoTokenInput
+  ): Promise<ProviderResult<StartedPublicDemoRoom>> {
+    try {
+      const signingAtSeconds = Math.floor(now().getTime() / 1_000);
+      const observedAtMilliseconds = input.observedAt.getTime();
+      const observedAtSeconds = Math.floor(observedAtMilliseconds / 1_000);
+      const expirationSeconds = Math.floor(input.expiresAt.getTime() / 1_000);
+      const ttlSeconds = expirationSeconds - signingAtSeconds;
+      if (
+        !Number.isSafeInteger(signingAtSeconds) ||
+        !Number.isFinite(observedAtMilliseconds) ||
+        !Number.isSafeInteger(observedAtSeconds) ||
+        !Number.isSafeInteger(expirationSeconds) ||
+        expirationSeconds <= observedAtSeconds ||
+        ttlSeconds < PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS ||
+        ttlSeconds > PUBLIC_DEMO_DURATION_SECONDS
+      ) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_token_deadline_invalid",
+          message: "The public demo token deadline is invalid or expired.",
+          retryable: false,
+        });
+      }
+      const token = new accessTokenFactory(
+        input.env.apiKey,
+        input.env.apiSecret,
+        {
+          identity: input.identity,
+          name: "Demo participant",
+          ttl: ttlSeconds,
+        }
+      );
+      token.addGrant({
+        room: input.roomName,
+        roomJoin: true,
+        canPublish: true,
+        canPublishData: false,
+        canPublishSources: [TrackSource.MICROPHONE],
+        canSubscribe: true,
+      });
+      const signedToken = await token.toJwt();
+      const actualExpiration = readJwtExpiration(signedToken);
+      const signedAtMilliseconds = now().getTime();
+      if (
+        actualExpiration === null ||
+        !Number.isFinite(signedAtMilliseconds) ||
+        actualExpiration !== expirationSeconds ||
+        actualExpiration * 1_000 - observedAtMilliseconds <
+          PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS * 1_000 ||
+        actualExpiration * 1_000 - signedAtMilliseconds <
+          PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS * 1_000
+      ) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_token_deadline_invalid",
+          message: "The signed public demo token exceeded its deadline.",
+          retryable: false,
+        });
+      }
+      return providerSuccess("livekit", {
+        roomName: input.roomName,
+        token: signedToken,
+        url: input.env.url,
+        expiresAt: new Date(actualExpiration * 1_000),
+      });
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_token_issue_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
+  }
+
+  async function deleteRoom(
+    roomName: string,
+    env: LiveKitEnvironment
+  ): Promise<void> {
+    const roomClient = roomServiceClientFactory(
+      env.url,
+      env.apiKey,
+      env.apiSecret
+    );
+    if (!roomClient.deleteRoom) {
+      throw new Error("LiveKit room deletion is unavailable");
+    }
+    await roomClient.deleteRoom(roomName);
+  }
+
+  async function verifyPublicDemoDispatch(
+    input: IssuePublicDemoTokenInput,
+    roomClient: RoomServiceClientLike,
+    dispatchClient: AgentDispatchClientLike
+  ): Promise<ProviderResult<true>> {
+    let dispatches: AgentDispatchLike[];
+    try {
+      dispatches = await dispatchClient.listDispatch(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_dispatch_verify_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    if (
+      dispatches.length === 1 &&
+      typeof dispatches[0].id === "string" &&
+      dispatches[0].id.trim() &&
+      dispatches[0].agentName === input.agentName &&
+      dispatches[0].room === input.roomName
+    ) {
+      return providerSuccess("livekit", true);
+    }
+
+    if (!roomClient.deleteRoom) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup is unavailable.",
+        retryable: true,
+      });
+    }
+    try {
+      await roomClient.deleteRoom(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup failed.",
+        retryable: true,
+        cause: error,
+      });
+    }
+    return providerFailure("livekit", {
+      code: "livekit_demo_dispatch_invalid",
+      message: "The public demo dispatch does not match the ready session.",
+      retryable: false,
+    });
+  }
+
+  return {
+    async startPublicDemoRoom(input) {
+      const roomClient = roomServiceClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      let roomCreationAttempted = false;
+
+      try {
+        roomCreationAttempted = true;
+        await roomClient.createRoom({
+          name: input.roomName,
+          metadata: JSON.stringify(input.metadata),
+          emptyTimeout: 30,
+          departureTimeout: 5,
+          maxParticipants: 2,
+          agents: [
+            new RoomAgentDispatch({
+              agentName: input.agentName,
+            }),
+          ],
+        });
+        const reconciled = await dispatchClient.listDispatch(input.roomName);
+        if (
+          reconciled.length !== 1 ||
+          typeof reconciled[0].id !== "string" ||
+          !reconciled[0].id.trim() ||
+          reconciled[0].agentName !== input.agentName ||
+          reconciled[0].room !== input.roomName
+        ) {
+          throw new Error(
+            "Public demo dispatch could not be reconciled uniquely."
+          );
+        }
+
+        const token = await mintToken(input);
+        if (!token.ok) throw token.error;
+        return token;
+      } catch (error) {
+        if (roomCreationAttempted) {
+          if (!roomClient.deleteRoom) {
+            return providerFailure("livekit", {
+              code: "livekit_demo_cleanup_failed",
+              message: "Demo provider cleanup is unavailable.",
+              retryable: true,
+              cause: error,
+            });
+          }
+          try {
+            await roomClient.deleteRoom(input.roomName);
+          } catch (cleanupError) {
+            if (!isStructuredLiveKitNotFoundError(cleanupError)) {
+              return providerFailure("livekit", {
+                code: "livekit_demo_cleanup_failed",
+                message: "Demo provider cleanup failed.",
+                retryable: true,
+                cause: cleanupError,
+              });
+            }
+          }
+        }
+        return providerFailure("livekit", {
+          code: "livekit_demo_start_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+    },
+    async issuePublicDemoToken(input) {
+      const roomClient = roomServiceClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      if (!roomClient.listParticipants) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_room_verify_failed",
+          message: "Demo room verification is unavailable.",
+          retryable: true,
+        });
+      }
+
+      const initialDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!initialDispatch.ok) return initialDispatch;
+
+      try {
+        let participants = await roomClient.listParticipants(input.roomName);
+        let hasRemoteAgent = hasRemoteAgentParticipant(
+          participants,
+          input.identity
+        );
+        if (!hasRemoteAgent) {
+          await sleep(1_000);
+          participants = await roomClient.listParticipants(input.roomName);
+          hasRemoteAgent = hasRemoteAgentParticipant(
+            participants,
+            input.identity
+          );
+        }
+        if (!hasRemoteAgent) {
+          return providerFailure("livekit", {
+            code: "livekit_demo_room_not_ready",
+            message: "The existing demo room has no remote agent participant.",
+            retryable: true,
+          });
+        }
+      } catch (error) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_room_verify_failed",
+          message: getErrorMessage(error),
+          retryable: true,
+          cause: error,
+        });
+      }
+
+      const finalDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!finalDispatch.ok) return finalDispatch;
+
+      return mintToken(input);
+    },
+    deletePublicDemoRoom: deleteRoom,
+  };
+}
+
+function hasRemoteAgentParticipant(
+  participants: Array<{ identity?: string; kind?: number }>,
+  localIdentity: string
+): boolean {
+  return participants.some(
+    (participant) =>
+      participant.kind === 4 && participant.identity !== localIdentity
+  );
 }
 
 export async function issueInterviewParticipantToken(
@@ -734,20 +1080,12 @@ function isLiveKitNotFoundError(error: unknown): boolean {
   return message.includes("not found") || message.includes("does not exist");
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function isStructuredLiveKitNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? error.code : undefined;
+  return typeof code === "string" && code.toLowerCase() === "not_found";
 }
 
-function isMissingRoomError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const record = error as Record<string, unknown>;
-  const code = String(record.code ?? "").toLowerCase();
-  const status = Number(record.status ?? record.statusCode ?? 0);
-  return (
-    status === 404 ||
-    code === "404" ||
-    code === "5" ||
-    code === "not_found" ||
-    code === "room_not_found"
-  );
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

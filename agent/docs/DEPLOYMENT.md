@@ -2,7 +2,7 @@
 
 This directory contains two separate LiveKit agents:
 
-1. **Demo Agent** - Quick 60-second demos on the landing page
+1. **Demo Agent** - Bounded two-minute voice previews on the landing page
 2. **Main Interview Agent** - Full interview sessions
 
 ## Quick Deployment

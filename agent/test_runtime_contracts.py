@@ -78,6 +78,14 @@ from shared.transcript_ingest import (
     sign_ingest_body,
     validate_internal_ingest_url,
 )
+from demo.runtime import (
+    parse_demo_room_metadata,
+    resolve_demo_deadline,
+    resolve_demo_participant_identity,
+    resolve_demo_timing,
+    run_optional,
+    stop_then_run_bounded,
+)
 from shared.transcript_events import (
     TRANSCRIPT_DATA_TOPIC,
     create_transcript_event,
@@ -88,6 +96,108 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_public_demo_uses_server_absolute_deadline_with_monotonic_waits(self):
+        metadata = {
+            "duration_seconds": 120,
+            "deadline_at": datetime.fromtimestamp(1090, timezone.utc).isoformat(),
+        }
+        deadline = resolve_demo_deadline(
+            metadata,
+            wall_now=1000,
+            monotonic_now=500,
+        )
+
+        self.assertEqual(resolve_demo_timing(metadata).warning_seconds, 90)
+        self.assertEqual(deadline.started_at, 470)
+        self.assertEqual(deadline.warning_at, 560)
+        self.assertEqual(deadline.ends_at, 590)
+        self.assertEqual(deadline.remaining_seconds(500), 90)
+
+        expired = resolve_demo_deadline(
+            {**metadata, "deadline_at": "1970-01-01T00:00:01+00:00"},
+            wall_now=1000,
+            monotonic_now=500,
+        )
+        self.assertEqual(expired.ends_at, 500)
+        self.assertEqual(
+            resolve_demo_deadline({}, wall_now=1000, monotonic_now=500).ends_at,
+            500,
+        )
+
+    def test_public_demo_parses_connected_room_metadata(self):
+        metadata = parse_demo_room_metadata(json.dumps({
+            "duration_seconds": 120,
+            "participant_identity": "demo-opaque",
+        }))
+
+        self.assertEqual(metadata["duration_seconds"], 120)
+        self.assertEqual(metadata["participant_identity"], "demo-opaque")
+        self.assertEqual(parse_demo_room_metadata(None), {})
+        self.assertEqual(parse_demo_room_metadata("not-json"), {})
+        self.assertEqual(parse_demo_room_metadata("[]"), {})
+
+    def test_public_demo_requires_server_participant_identity(self):
+        self.assertEqual(
+            resolve_demo_participant_identity(
+                {"participant_identity": "demo-opaque"}
+            ),
+            "demo-opaque",
+        )
+        self.assertIsNone(resolve_demo_participant_identity({}))
+        self.assertIsNone(
+            resolve_demo_participant_identity({"participant_identity": " "})
+        )
+
+    def test_public_demo_stops_local_spend_before_bounded_cleanup(self):
+        events = []
+
+        async def never_finishes():
+            events.append("delete_started")
+            await asyncio.Future()
+
+        async def stop_local():
+            events.append("local_stop_started")
+            await asyncio.sleep(0)
+            events.append("local_stop_finished")
+
+        with self.assertRaises(asyncio.TimeoutError):
+            asyncio.run(
+                stop_then_run_bounded(
+                    stop_local,
+                    never_finishes,
+                    0.01,
+                )
+            )
+        self.assertEqual(
+            events,
+            ["local_stop_started", "local_stop_finished", "delete_started"],
+        )
+
+    def test_public_demo_optional_control_failure_does_not_escape(self):
+        async def succeeds():
+            return None
+
+        async def fails():
+            raise RuntimeError("data channel unavailable")
+
+        self.assertTrue(asyncio.run(run_optional(succeeds)))
+        self.assertFalse(asyncio.run(run_optional(fails)))
+
+    def test_public_demo_source_arms_deadline_and_waits_for_exact_participant(self):
+        source = (Path(__file__).parent / "demo" / "agent.py").read_text()
+
+        connect = source.index("lambda: ctx.connect(")
+        metadata = source.index("parse_demo_room_metadata(ctx.room.metadata)")
+        deadline = source.index("hard_deadline_task = asyncio.create_task(")
+        wait = source.index("participant = await wait_for_candidate_before_greeting(")
+        session_start = source.index("session.start(agent=demo_agent")
+        self.assertLess(connect, metadata)
+        self.assertLess(metadata, deadline)
+        self.assertLess(deadline, wait)
+        self.assertLess(wait, session_start)
+        self.assertIn("candidate_identity=participant_identity", source)
+        self.assertNotIn("exc_info=True", source)
+
     def test_runtime_provider_error_codes_are_allowlisted_and_payload_free(self):
         self.assertEqual(provider_failure_code("stt_error"), "stt_provider_failed")
         self.assertEqual(provider_failure_code("llm_error"), "llm_provider_failed")
