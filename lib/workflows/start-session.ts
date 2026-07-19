@@ -761,7 +761,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       await trackReservedCreditEvents(reservation, result.credit);
       return result.start;
     },
-    getQuestionById,
+    getQuestionById: getActiveQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
     ensureTrialGrant: async (userId) => {
@@ -957,7 +957,7 @@ async function selectQuestion({
   | StartInterviewSessionErrorResult
 > {
   if (questionId) {
-    const question = await deps.getActiveQuestionById(questionId);
+    const question = await deps.getQuestionById(questionId);
 
     if (!question || !question.isActive) {
       return {

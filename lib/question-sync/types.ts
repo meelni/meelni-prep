@@ -8,6 +8,7 @@ export type QuestionSourceKind = "legacy" | "google_sheets";
 
 export type QuestionQualityStatus =
   | "published"
+  | "quarantined_unverified"
   | "quarantined_near_duplicate"
   | "retired_exact_duplicate"
   | "retired_source_missing";

@@ -30,10 +30,11 @@
 |    21 | `0021_feedback_v2`                       |
 |    22 | `0022_server_owned_billing_privileges`   |
 |    23 | `0023_explicit_analytics_consent`        |
+|    24 | `0024_question_provenance`               |
 
 <!-- migration-journal:end -->
 
-This twenty-four-entry inventory is generated from the same ordered contract as
+This twenty-five-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 

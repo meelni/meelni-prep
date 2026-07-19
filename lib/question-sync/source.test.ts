@@ -284,6 +284,31 @@ test("legacy active duplicates converge on the lowest stable id", () => {
   assert.equal(plan.duplicateRecordsRetired, 1);
 });
 
+test("a quarantined unverified legacy row is adopted and published in place", () => {
+  const source = question();
+  const legacy = stored(source, {
+    id: "stable-legacy-id",
+    sourceKind: "legacy",
+    sourceCategory: null,
+    sourceFingerprint: null,
+    isActive: false,
+    qualityStatus: "quarantined_unverified",
+  });
+
+  const plan = planQuestionSync([source], [legacy], () => "must-not-insert");
+
+  assert.deepEqual(plan.questionsToInsert, []);
+  assert.deepEqual(plan.questionsToUpdate, [
+    {
+      id: "stable-legacy-id",
+      ...source,
+      isActive: true,
+      qualityStatus: "published",
+      duplicateOfQuestionId: null,
+    },
+  ]);
+});
+
 test("source removal retires publication without deleting selected-question rows", () => {
   const existing = stored(question(), { id: "preserved-id" });
   const plan = planQuestionSync([], [existing]);

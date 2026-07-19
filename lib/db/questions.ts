@@ -20,6 +20,8 @@ export interface QuestionBankRecord {
 
 export interface QuestionListOptions {
   roundType?: RoundType;
+  /** @deprecated Public question reads are always publication-filtered. */
+  activeOnly?: boolean;
   limit?: number;
   offset?: number;
   search?: string;
@@ -197,6 +199,12 @@ export async function getPublishedQuestions(
     total,
   };
 }
+
+/**
+ * Backward-compatible public reader. The historical activeOnly option is
+ * intentionally ignored: callers cannot opt into quarantined or retired rows.
+ */
+export const getQuestions = getPublishedQuestions;
 
 /** Public lookup for a question that is currently eligible for new practice. */
 export async function getActiveQuestionById(
