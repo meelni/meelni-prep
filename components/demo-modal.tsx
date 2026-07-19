@@ -16,7 +16,6 @@ import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
 import type { Participant, TranscriptionSegment } from "livekit-client";
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
-import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +25,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -464,8 +466,8 @@ function DemoControls({
                     interview?
                   </p>
                 </div>
-                <Link
-                  href="/dashboard/new-interview"
+                <PublicActivationButton
+                  href={NEW_INTERVIEW_PATH}
                   onClick={() => {
                     // Track conversion to signup
                     if (demoStartTime.current) {
@@ -479,11 +481,12 @@ function DemoControls({
                       });
                     }
                   }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
+                  size="lg"
+                  className="h-auto gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
                 >
                   Start Full Interview
                   <ArrowRight className="h-5 w-5" />
-                </Link>
+                </PublicActivationButton>
               </motion.div>
             ) : isConnected ? (
               <motion.div
@@ -653,6 +656,8 @@ function DemoControls({
 }
 
 export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
+  const activation = usePublicActivationDecision();
+  const activationOpen = isOpen && activation.canActivate;
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -663,12 +668,13 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const [demoCompleted, setDemoCompleted] = useState(false);
 
   useEffect(() => {
-    if (isOpen && demoStartTime.current === undefined) {
+    if (activationOpen && demoStartTime.current === undefined) {
       demoStartTime.current = Date.now();
     }
-  }, [isOpen]);
+  }, [activationOpen]);
 
   const fetchDemoToken = useCallback(async () => {
+    if (!activation.canActivate) return;
     setIsLoading(true);
     setError("");
 
@@ -695,7 +701,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [activation.canActivate]);
 
   const handleClose = useCallback(() => {
     // Track demo close
@@ -723,15 +729,15 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
 
   // Fetch demo token when modal opens
   useEffect(() => {
-    if (isOpen && !token) {
+    if (activationOpen && !token) {
       fetchDemoToken();
     }
-  }, [fetchDemoToken, isOpen, token]);
+  }, [activationOpen, fetchDemoToken, token]);
 
   return (
     <MotionConfig reducedMotion="user">
       <Dialog
-        open={isOpen}
+        open={activationOpen}
         onOpenChange={(open) => {
           if (!open) handleClose();
         }}

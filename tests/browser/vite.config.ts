@@ -28,6 +28,10 @@ const config = {
         find: /^@\/lib\/feature-flags$/,
         replacement: shim("feature-flags.ts"),
       },
+      {
+        find: "@/lib/feature-flags/public-activation-client",
+        replacement: shim("feature-flags.ts"),
+      },
       { find: "posthog-js/react", replacement: shim("posthog-react.ts") },
       {
         find: "@meelni/test-fixtures",

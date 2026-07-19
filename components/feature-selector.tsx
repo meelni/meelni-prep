@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  CheckCircle2,
   Lightbulb,
   Pause,
   Play,
@@ -26,7 +25,7 @@ interface FeatureSelectorProps {
 }
 
 interface Message {
-  type: "interviewer" | "you" | "checkpoint";
+  type: "interviewer" | "you";
   content: string;
 }
 
@@ -60,15 +59,6 @@ const parseMessages = (text: string): Message[] => {
       messages.push({
         type: "you",
         content: line.replace("👤 You:", "").replace(/"/g, "").trim(),
-      });
-    } else if (
-      line.startsWith("[Framework checkpoint:") ||
-      line.startsWith("[STAR:") ||
-      line.startsWith("[Strategic")
-    ) {
-      messages.push({
-        type: "checkpoint",
-        content: line.replace(/[\[\]]/g, "").trim(),
       });
     }
   }
@@ -261,17 +251,6 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
           <div key={selectedIndex} className="space-y-3">
             {displayedMessages.map((message, index) => {
               const isLastMessage = index === displayedMessages.length - 1;
-
-              if (message.type === "checkpoint") {
-                return (
-                  <div key={index} className="my-3 flex justify-center">
-                    <span className="bg-warning/10 border-warning/30 text-warning inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      {message.content}
-                    </span>
-                  </div>
-                );
-              }
 
               if (message.type === "interviewer") {
                 return (

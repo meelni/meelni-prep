@@ -24,6 +24,7 @@ const CRITICAL_BOUNDARIES = [
   ["app/api/billing/usage/route.ts", "billing_read"],
   ["app/api/billing/portal/route.ts", "billing_portal"],
   ["app/api/customer-portal/route.ts", "billing_portal"],
+  ["app/api/checkout/status/route.ts", "checkout_confirmation"],
   ["lib/inngest/functions/enforce-interview-deadline.ts", "interview_recovery"],
   [
     "lib/inngest/functions/enforce-interview-reconnect.ts",
@@ -65,6 +66,11 @@ const BILLING_BOUNDARY_ERROR_CODES = [
       "billing_portal_session_failed",
     ],
   ],
+];
+
+const CHECKOUT_CONFIRMATION_ERROR_CODES = [
+  "checkout_confirmation_auth_failed",
+  "checkout_confirmation_settlement_read_failed",
 ];
 
 test("every launch-critical boundary emits the closed operational contract", async () => {
@@ -109,6 +115,17 @@ test("billing boundaries retain their fixed route-level error codes", async () =
       }
     }
   }
+  assert.deepEqual(missing, []);
+});
+
+test("checkout confirmation retains its fixed boundary error codes", async () => {
+  const source = await readFile(
+    path.join(ROOT, "app/api/checkout/status/route.ts"),
+    "utf8"
+  );
+  const missing = CHECKOUT_CONFIRMATION_ERROR_CODES.filter(
+    (errorCode) => !source.includes(`"${errorCode}"`)
+  );
   assert.deepEqual(missing, []);
 });
 

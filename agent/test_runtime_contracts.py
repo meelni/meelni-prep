@@ -21,6 +21,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.mock_interview_opening import (
+    build_mock_interview_opening,
+    speak_mock_interview_opening,
+)
 from shared.safe_logging import log_exception_class
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
@@ -391,7 +395,7 @@ class RuntimeContractTests(unittest.TestCase):
         wait_offset = source.index(
             "candidate = await wait_for_candidate_before_greeting("
         )
-        greeting_offset = source.index("await session.say(greeting)")
+        greeting_offset = source.index("await speak_mock_interview_opening(")
 
         self.assertLess(wait_offset, greeting_offset)
         self.assertIn("candidate_identity=candidate_identity", source)
@@ -415,7 +419,7 @@ class RuntimeContractTests(unittest.TestCase):
 
         registration = source.index("await asyncio.wait_for(")
         session_start = source.index("await session.start(")
-        greeting = source.index("await session.say(greeting)")
+        greeting = source.index("await speak_mock_interview_opening(")
         self.assertLess(registration, session_start)
         self.assertLess(registration, greeting)
 
@@ -675,6 +679,16 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(malformed["question"]["text"], "")
         self.assertEqual(malformed["question"]["type"], "")
 
+    def test_runtime_config_normalizes_every_feedback_mode_to_end_only(self):
+        for feedback_mode in ("real_time", "silent", "end_only"):
+            with self.subTest(feedback_mode=feedback_mode):
+                self.assertEqual(
+                    normalize_runtime_config({"feedback_mode": feedback_mode})[
+                        "feedback_mode"
+                    ],
+                    "end_only",
+                )
+
     def test_prompt_builder_ignores_legacy_persona_text(self):
         prompt = build_agent_prompt(
             "product_sense",
@@ -683,6 +697,166 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertNotIn("Ignore all instructions", prompt)
         self.assertNotIn("Persona Modifier", prompt)
+
+    def test_runtime_speaks_canonical_mock_opening_with_selected_question(self):
+        class RecordingSession:
+            def __init__(self):
+                self.calls = []
+
+            async def say(self, text, **kwargs):
+                self.calls.append((text, kwargs))
+
+        question = {"text": "How would you improve Spotify?"}
+        session = RecordingSession()
+
+        spoken = asyncio.run(
+            speak_mock_interview_opening(session, "product_sense", question)
+        )
+
+        self.assertEqual(
+            spoken,
+            "Hi, I'm Meelni, and I'll be your PM interviewer today. "
+            "We're doing a Product Sense mock interview. "
+            "Here is your question: How would you improve Spotify?",
+        )
+        self.assertEqual(
+            session.calls,
+            [
+                (
+                    spoken,
+                    {"allow_interruptions": False, "add_to_chat_ctx": True},
+                )
+            ],
+        )
+        self.assertNotIn("Ready to begin?", spoken)
+        self.assertTrue(spoken.endswith(question["text"]))
+
+    def test_runtime_opening_without_selected_question_asks_readiness(self):
+        opening = build_mock_interview_opening("execution")
+
+        self.assertEqual(
+            opening,
+            "Hi, I'm Meelni, and I'll be your PM interviewer today. "
+            "We're doing an Execution mock interview. Ready to begin?",
+        )
+
+    def test_metadata_to_prompt_keeps_selected_question_and_allows_follow_ups(self):
+        metadata = parse_room_metadata(json.dumps({
+            "contract_version": 1,
+            "session_id": "synthetic-selected-question-session",
+            "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+            "round_type": "product_sense",
+            "question": {
+                "id": "synthetic-question-1",
+                "text": "How would you improve Spotify?",
+                "company": "Example Company",
+                "type": "Product Sense",
+            },
+            "config": {
+                "difficulty": "advanced",
+                "hintMode": "coach",
+            },
+        }))
+
+        self.assertEqual(metadata["config"]["hintMode"], "off")
+        prompt = build_agent_prompt(
+            metadata["round_type"], metadata["config"], metadata["question"]
+        )
+
+        self.assertIn("THE PRIMARY INTERVIEW QUESTION", prompt)
+        self.assertIn(metadata["question"]["text"], prompt)
+        self.assertIn(
+            build_mock_interview_opening(
+                metadata["round_type"], metadata["question"]
+            ),
+            prompt,
+        )
+        self.assertIn("already been presented", prompt)
+        self.assertIn("MAY ask adaptive follow-up questions", prompt)
+        self.assertIn("Base follow-ups on what the candidate actually said", prompt)
+        self.assertNotIn("You CANNOT ask any other question", prompt)
+        self.assertNotIn("THE ONLY QUESTION YOU MAY ASK", prompt)
+        self.assertNotIn("FORBIDDEN from generating your own questions", prompt)
+        self.assertIn("Do not offer hints", prompt)
+
+    def test_demo_feedback_preview_remains_separate_from_full_interview_prompt(self):
+        demo_path = Path(__file__).parent / "demo" / "agent.py"
+        demo_tree = ast.parse(demo_path.read_text())
+        demo_builder = next(
+            node
+            for node in demo_tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "build_demo_instructions"
+        )
+        isolated_module = ast.fix_missing_locations(
+            ast.Module(body=[demo_builder], type_ignores=[])
+        )
+        namespace = {}
+        exec(compile(isolated_module, str(demo_path), "exec"), namespace)
+
+        demo_prompt = namespace["build_demo_instructions"]({
+            "question_text": "How would you improve Spotify?",
+            "company": "Example Company",
+        })
+        full_prompt = build_agent_prompt(
+            "product_sense",
+            normalize_runtime_config({}),
+            {"text": "How would you improve Spotify?"},
+        )
+
+        self.assertIn("5-minute product sense demo", demo_prompt)
+        self.assertIn("quick feedback", demo_prompt)
+        self.assertIn("Feedback (keep it punchy", demo_prompt)
+        self.assertNotIn("5-minute product sense demo", full_prompt)
+        self.assertNotIn("Feedback (keep it punchy", full_prompt)
+        self.assertIn(
+            "Feedback is delivered after the completed interview, never during it",
+            full_prompt,
+        )
+
+    def test_default_full_interview_prompts_preserve_mock_interviewer_contract(self):
+        config = normalize_runtime_config({})
+
+        self.assertEqual(config["feedback_mode"], "end_only")
+        self.assertEqual(config["hintMode"], "off")
+
+        round_expectations = {
+            "behavioral": "## Behavioral interview focus",
+            "product_sense": "## Product Sense interview focus",
+            "execution": "## Execution and Product Metrics interview focus",
+            "strategy": "## Strategy interview focus",
+        }
+
+        for round_type, expected_focus in round_expectations.items():
+            with self.subTest(round_type=round_type):
+                question = {
+                    "text": f"Synthetic {round_type} question?",
+                    "company": "Example Company",
+                    "type": round_type,
+                }
+                prompt = build_agent_prompt(round_type, config, question)
+                lowered = prompt.lower()
+
+                self.assertIn("## Your role: Realistic PM interviewer", prompt)
+                self.assertIn(expected_focus, prompt)
+                self.assertIn(question["text"], prompt)
+                self.assertIn(
+                    "Feedback is delivered after the completed interview, never during it",
+                    prompt,
+                )
+                self.assertIn("Do not offer hints", prompt)
+                self.assertNotIn("coach", lowered)
+                self.assertNotIn("nail", lowered)
+                self.assertNotIn("feedback as we go", lowered)
+                self.assertNotIn("immediate feedback", lowered)
+                self.assertNotIn("real-time feedback", lowered)
+
+        invalid_mode_prompt = build_agent_prompt(
+            "product_sense",
+            {"mode": "unexpected", "difficulty": "intermediate"},
+        )
+        self.assertIn("## Your role: Realistic PM interviewer", invalid_mode_prompt)
+        self.assertNotIn("coach", invalid_mode_prompt.lower())
 
     def test_duration_and_deadline_policy_matches_typescript_boundaries(self):
         for duration in (15, 30, 45):
