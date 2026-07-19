@@ -37,6 +37,7 @@ test("public demo workflow authorizes before provider work and maps a typed deni
           retryAfterSeconds: 600,
           remaining: 0,
           recoveryClaimToken: null,
+          deadlineAt: null,
         };
       },
       livekit: provider({
@@ -100,6 +101,11 @@ test("public demo workflow provisions one room and durably finalizes it", async 
     deadline_at: "2026-07-09T12:02:00.000Z",
   });
   assert.equal(startInput?.identity, INPUT.participantIdentity);
+  assert.equal(
+    startInput?.observedAt.toISOString(),
+    "2026-07-09T12:00:00.000Z"
+  );
+  assert.equal(startInput?.expiresAt.toISOString(), "2026-07-09T12:02:00.000Z");
   assert.deepEqual(result, {
     ok: true,
     body: {
@@ -112,12 +118,16 @@ test("public demo workflow provisions one room and durably finalizes it", async 
 
 test("ready-session replay finalizes token two server-side without redispatch", async () => {
   const calls: string[] = [];
+  let tokenInput:
+    | Parameters<LiveKitPublicDemoProvider["issuePublicDemoToken"]>[0]
+    | undefined;
   const result = await startPublicDemoWorkflow(
     INPUT,
     deps({
       reserveSession: async () => allowed("issue_token"),
       livekit: provider({
         issuePublicDemoToken: async (input) => {
+          tokenInput = input;
           calls.push(`token:${input.roomName}`);
           return success(input.roomName);
         },
@@ -137,6 +147,11 @@ test("ready-session replay finalizes token two server-side without redispatch", 
     "token:demo-room",
     `finalize:${INPUT.sessionId}:${RECOVERY_CLAIM}`,
   ]);
+  assert.equal(
+    tokenInput?.observedAt.toISOString(),
+    "2026-07-09T12:00:00.000Z"
+  );
+  assert.equal(tokenInput?.expiresAt.toISOString(), "2026-07-09T12:02:00.000Z");
   assert.deepEqual(result, {
     ok: true,
     body: {
@@ -160,6 +175,77 @@ test("recovery finalization failure never exposes the minted token", async () =>
     ok: false,
     status: 503,
     body: { error: "demo_temporarily_unavailable" },
+    resetSessionCookie: true,
+  });
+});
+
+test("recovery refuses a token after its delivery margin elapses", async () => {
+  const calls: string[] = [];
+  let currentTime = new Date("2026-07-09T12:00:00.000Z");
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("issue_token"),
+      livekit: provider({
+        issuePublicDemoToken: async (input) => {
+          currentTime = new Date("2026-07-09T12:01:56.000Z");
+          return success(input.roomName);
+        },
+      }),
+      finalizeRecovery: async () => {
+        calls.push("finalize");
+        return true;
+      },
+      failRecovery: async (_sessionId, _claimToken, failureCode) => {
+        calls.push(`fail:${failureCode}`);
+        return true;
+      },
+      now: () => currentTime,
+    })
+  );
+
+  assert.deepEqual(calls, ["fail:livekit_demo_token_deadline_invalid"]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+    resetSessionCookie: true,
+  });
+});
+
+test("initial provisioning cleans up when the token delivery margin elapses", async () => {
+  const calls: string[] = [];
+  let currentTime = new Date("2026-07-09T12:00:00.000Z");
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => allowed("provision"),
+      livekit: provider({
+        startPublicDemoRoom: async (input) => {
+          currentTime = new Date("2026-07-09T12:01:56.000Z");
+          return success(input.roomName);
+        },
+        deletePublicDemoRoom: async () => {
+          calls.push("delete");
+        },
+      }),
+      completeSession: async (_sessionId, status, failureCode) => {
+        calls.push(`complete:${status}:${failureCode ?? "none"}`);
+        return true;
+      },
+      now: () => currentTime,
+    })
+  );
+
+  assert.deepEqual(calls, [
+    "delete",
+    "complete:failed:livekit_demo_token_deadline_invalid",
+  ]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+    resetSessionCookie: true,
   });
 });
 
@@ -259,6 +345,37 @@ test("limiter failure fails closed without LiveKit work", async () => {
   });
 });
 
+test("an expired persisted deadline invalidates recovery without minting a token", async () => {
+  const calls: string[] = [];
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => ({
+        ...allowed("issue_token"),
+        deadlineAt: new Date("2026-07-09T11:59:59.000Z"),
+      }),
+      livekit: provider({
+        issuePublicDemoToken: async () => {
+          calls.push("token");
+          throw new Error("expired recovery must not mint");
+        },
+      }),
+      failRecovery: async (_sessionId, _claimToken, failureCode) => {
+        calls.push(`fail:${failureCode}`);
+        return true;
+      },
+    })
+  );
+
+  assert.deepEqual(calls, ["fail:livekit_demo_token_deadline_invalid"]);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 503,
+    body: { error: "demo_temporarily_unavailable" },
+    resetSessionCookie: true,
+  });
+});
+
 test("provider failure is recorded with a safe code", async () => {
   const completions: unknown[] = [];
   const audits: unknown[] = [];
@@ -325,6 +442,7 @@ function provider(
 function allowed(action: "provision" | "issue_token") {
   return {
     action,
+    deadlineAt: new Date("2026-07-09T12:02:00.000Z"),
     roomName: "demo-room",
     limitingScope: null,
     retryAfterSeconds: 0,
@@ -341,6 +459,7 @@ function success(roomName: string) {
       token: "signed-token",
       url: INPUT.env.url,
       roomName,
+      expiresAt: new Date("2026-07-09T12:02:00.000Z"),
     },
   };
 }

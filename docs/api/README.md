@@ -740,7 +740,7 @@ No caller-supplied identity, room name, or dispatch identifier is accepted. The 
 - Max participants: 2 (user + demo agent only)
 - Agent: Dedicated Cloud-hosted demo agent, explicitly dispatched once
 - Agent behavior: One PM practice question with brief feedback, bounded by the server deadline
-- Token TTL: 150 seconds; the absolute 120-second session deadline remains authoritative
+- Token TTL: Every initial or recovery token expires at the same persisted absolute session deadline; recovery receives only the remaining time, and issuance/finalization fails closed unless at least five seconds remain for delivery
 
 **Errors**:
 

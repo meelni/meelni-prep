@@ -100,6 +100,7 @@ export default async function RootLayout({
             <QueryProvider>
               <AuthProvider>
                 <AnalyticsConsentProvider
+                  initialAccountRevision={trustedConsent.accountRevision}
                   initialAccountSyncPending={trustedConsent.accountSyncPending}
                   initialAnalyticsPseudonym={trustedConsent.analyticsPseudonym}
                   initialConsent={trustedConsent.consent}

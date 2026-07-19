@@ -28,6 +28,7 @@ export interface PublicDemoReservationInput {
 
 export interface PublicDemoReservation {
   action: PublicDemoReservationAction;
+  deadlineAt: Date | null;
   roomName: string | null;
   limitingScope: PublicDemoLimitScope | null;
   retryAfterSeconds: number;
@@ -43,6 +44,7 @@ interface PublicDemoReservationRow {
   retry_after_seconds: number;
   remaining: number;
   recovery_claim_token: string | null;
+  deadline_at: Date | string | null;
 }
 
 export async function reservePublicDemoSession(
@@ -50,7 +52,7 @@ export async function reservePublicDemoSession(
 ): Promise<PublicDemoReservation> {
   const rows = await db.execute<PublicDemoReservationRow>(sql`
     SELECT decision, room_name, limiting_scope, retry_after_seconds, remaining,
-      recovery_claim_token
+      recovery_claim_token, deadline_at
     FROM public.reserve_public_demo_session(
       ${input.sessionId}::uuid,
       ${input.deploymentScope},
@@ -59,6 +61,7 @@ export async function reservePublicDemoSession(
     )
   `);
   const row = rows[0];
+  const deadlineAt = normalizeDeadline(row?.deadline_at);
 
   if (
     !row ||
@@ -78,6 +81,9 @@ export async function reservePublicDemoSession(
         row.retry_after_seconds !== 0)) ||
     (row.decision === "issue_token" && row.recovery_claim_token === null) ||
     (row.decision !== "issue_token" && row.recovery_claim_token !== null) ||
+    (["provision", "issue_token"].includes(row.decision) && !deadlineAt) ||
+    (!["provision", "issue_token"].includes(row.decision) &&
+      row.deadline_at !== null) ||
     (!["provision", "issue_token"].includes(row.decision) &&
       (row.retry_after_seconds < 1 || row.remaining !== 0))
   ) {
@@ -86,12 +92,19 @@ export async function reservePublicDemoSession(
 
   return {
     action: row.decision,
+    deadlineAt,
     roomName: row.room_name,
     limitingScope: row.limiting_scope,
     retryAfterSeconds: row.retry_after_seconds,
     remaining: row.remaining,
     recoveryClaimToken: row.recovery_claim_token,
   };
+}
+
+function normalizeDeadline(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  const deadline = value instanceof Date ? value : new Date(String(value));
+  return Number.isFinite(deadline.getTime()) ? deadline : null;
 }
 
 export async function completePublicDemoSession(

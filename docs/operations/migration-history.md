@@ -32,10 +32,11 @@
 |    23 | `0023_explicit_analytics_consent`        |
 |    24 | `0024_runtime_settlement_reconciliation` |
 |    25 | `0025_public_demo_limits`                |
+|    26 | `0026_preview_lineage_reconciliation`    |
 
 <!-- migration-journal:end -->
 
-This twenty-six-entry inventory is generated from the same ordered contract as
+This twenty-seven-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -285,3 +286,17 @@ reserves the single recovery token before signing. Identifier rows are created
 only for accepted reservations, so denied traffic cannot manufacture unbounded
 limiter rows. The service role is the only table/function caller, and expired
 pseudonymous data is eligible for pruning after 48 hours.
+
+## Preview-lineage forward reconciliation
+
+Migration `0026_preview_lineage_reconciliation` preserves the three original
+Preview ledger rows for 0023–0025 and accepts only that exact historical triple
+or the exact reviewed canonical triple. It rejects mixed hashes and unexpected
+schema shapes before mutation, adds and backfills the analytics-consent
+revision when needed, normalizes runtime-transcript table ownership, and
+replaces the public-demo functions with the exact persisted-deadline and
+five-second delivery-margin contract. Existing public-demo deadlines are only
+shortened to the canonical two-minute bound. The migration never updates or
+deletes migration history. It blocks until every old `provisioning` or `ready`
+public-demo deadline has passed, because a database update cannot revoke an
+already-issued three-minute LiveKit token.

@@ -70,7 +70,8 @@ RETURNS TABLE (
   "limiting_scope" text,
   "retry_after_seconds" integer,
   "remaining" integer,
-  "recovery_claim_token" uuid
+  "recovery_claim_token" uuid,
+  "deadline_at" timestamp with time zone
 )
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -143,6 +144,7 @@ BEGIN
         retry_after_seconds := 0;
         remaining := 0;
         recovery_claim_token := claim_token_value;
+        deadline_at := existing_session.active_expires_at;
         RETURN NEXT;
         RETURN;
       END IF;
@@ -326,16 +328,19 @@ BEGIN
   DO UPDATE SET accepted_at = EXCLUDED.accepted_at, updated_at = EXCLUDED.updated_at;
 
   room_name := 'demo-' || replace(requested_session_id::text, '-', '');
+  deadline_at := now_at + interval '2 minutes';
   INSERT INTO public_demo_session (
     id, deployment_scope, ip_hash, device_hash, room_name,
-    active_expires_at, expires_at
+    created_at, updated_at, active_expires_at, expires_at
   ) VALUES (
     requested_session_id,
     requested_deployment_scope,
     ip_identifier_hash,
     device_identifier_hash,
     room_name,
-    now_at + interval '3 minutes',
+    now_at,
+    now_at,
+    deadline_at,
     now_at + interval '15 minutes'
   );
 
@@ -382,7 +387,11 @@ BEGIN
     END,
     updated_at = now_at
   WHERE id = completed_session_id
-    AND status = 'provisioning';
+    AND status = 'provisioning'
+    AND (
+      completed_status = 'failed'
+      OR active_expires_at >= now_at + interval '5 seconds'
+    );
   GET DIAGNOSTICS updated_rows = ROW_COUNT;
   RETURN updated_rows = 1;
 END;
@@ -397,18 +406,21 @@ LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = public
 AS $$
+DECLARE
+  now_at timestamp with time zone := clock_timestamp();
 BEGIN
   IF completed_session_id IS NULL OR completed_claim_token IS NULL THEN
     RAISE EXCEPTION 'valid public demo recovery finalization inputs are required';
   END IF;
 
   UPDATE public_demo_session
-  SET recovery_finalized_at = COALESCE(recovery_finalized_at, clock_timestamp()),
-    updated_at = clock_timestamp()
+  SET recovery_finalized_at = COALESCE(recovery_finalized_at, now_at),
+    updated_at = now_at
   WHERE id = completed_session_id
     AND status = 'ready'
     AND token_issues = 2
-    AND recovery_claim_token = completed_claim_token;
+    AND recovery_claim_token = completed_claim_token
+    AND active_expires_at >= now_at + interval '5 seconds';
   RETURN FOUND;
 END;
 $$;
@@ -464,6 +476,8 @@ BEGIN
   UPDATE public_demo_session
   SET status = 'failed',
     failure_code = safe_failure_code,
+    recovery_claim_token = NULL,
+    recovery_finalized_at = NULL,
     active_expires_at = LEAST(active_expires_at, now_at),
     updated_at = now_at
   WHERE id = failed_session_id
