@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { paymentHistory } from "@/lib/db/schema";
 import { and, count, desc, eq, sql } from "drizzle-orm";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 const VISIBLE_PAYMENT_PREDICATE = sql<boolean>`
   ${paymentHistory.failureReason} IS DISTINCT FROM 'legacy_duplicate_quarantined'
@@ -92,9 +93,7 @@ export async function GET(req: Request) {
         createdAt: paymentHistory.createdAt,
       })
       .from(paymentHistory)
-      .where(
-        and(eq(paymentHistory.userId, user.id), VISIBLE_PAYMENT_PREDICATE)
-      )
+      .where(and(eq(paymentHistory.userId, user.id), VISIBLE_PAYMENT_PREDICATE))
       .orderBy(desc(paymentHistory.createdAt))
       .limit(limit)
       .offset(offset);
@@ -119,8 +118,12 @@ export async function GET(req: Request) {
         hasMore,
       },
     });
-  } catch (error) {
-    console.error("Error fetching payment history:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "billing_read",
+      errorCode: "billing_payment_history_read_failed",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to fetch payment history" },
       { status: 500 }

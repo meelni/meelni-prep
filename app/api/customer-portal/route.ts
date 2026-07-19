@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Stripe from "stripe";
 import { STRIPE_API_VERSION } from "@/lib/billing/stripe-catalog";
 import { isStripeLiveServerKey } from "@/lib/billing/stripe-key-mode";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 /**
  * POST /api/customer-portal
@@ -29,9 +30,21 @@ export async function POST(request: NextRequest) {
       .from("subscription")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (subError || !subscriptionData?.stripe_customer_id) {
+    if (subError) {
+      reportOperationalFailure({
+        operation: "billing_portal",
+        errorCode: "billing_portal_subscription_read_failed",
+        retryable: true,
+      });
+      return NextResponse.json(
+        { error: "Failed to create portal session" },
+        { status: 500 }
+      );
+    }
+
+    if (!subscriptionData?.stripe_customer_id) {
       return NextResponse.json(
         { error: "No active subscription found" },
         { status: 404 }
@@ -43,12 +56,12 @@ export async function POST(request: NextRequest) {
     // Verify customer exists in current Stripe mode (test vs live)
     try {
       await stripe.customers.retrieve(stripeCustomerId);
-    } catch (stripeError) {
-      // Customer doesn't exist in current mode (likely test customer ID with live keys)
-      console.error(
-        `Stripe customer ${stripeCustomerId} not found:`,
-        getErrorMessage(stripeError)
-      );
+    } catch {
+      reportOperationalFailure({
+        operation: "billing_portal",
+        errorCode: "billing_portal_customer_lookup_failed",
+        retryable: true,
+      });
 
       // Check if this is a mode mismatch (test customer with live keys or vice versa)
       const isTestCustomer =
@@ -85,17 +98,17 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ url: portalSession.url });
-  } catch (error) {
-    console.error("Error creating customer portal session:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "billing_portal",
+      errorCode: "billing_portal_session_failed",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to create portal session" },
       { status: 500 }
     );
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function getStripe() {
