@@ -4,8 +4,12 @@ import test from "node:test";
 import {
   assessServiceHealth,
   createCachedServiceHealthReader,
+  createDeduplicatedServiceHealthDatabaseFailureReporter,
   createDefaultServiceHealthDependencies,
+  SERVICE_HEALTH_FAILURE_DEDUPE_MS,
+  SERVICE_HEALTH_SYNTHETIC_CADENCE_MS,
   type ServiceHealthEvidence,
+  type ServiceHealthDatabaseFailureCode,
   type ServiceHealthStore,
 } from "./service-health";
 
@@ -92,12 +96,15 @@ test("configuration and backlog failures degrade without leaking details", async
 });
 
 test("database and LiveKit failures make practice unavailable", async () => {
+  const reported: string[] = [];
   const failingStore: ServiceHealthStore = {
     readEvidence: async () => {
       throw new Error("postgres://user:password@example.test/private");
     },
   };
-  const report = await assessServiceHealth(dependencies(failingStore, {}));
+  const report = await assessServiceHealth(
+    dependencies(failingStore, {}, (code) => reported.push(code))
+  );
 
   assert.equal(report.status, "unavailable");
   assert.deepEqual(report.checks.slice(1), [
@@ -123,6 +130,7 @@ test("database and LiveKit failures make practice unavailable", async () => {
     },
   ]);
   assert.doesNotMatch(JSON.stringify(report), /postgres|password|private/i);
+  assert.deepEqual(reported, ["service_health_database_query_failed"]);
 });
 
 test("database evidence uses one bounded stale-work cutoff", async () => {
@@ -168,6 +176,7 @@ test("failed durable work outranks simultaneous stale evidence", async () => {
 });
 
 test("a hung database check fails closed at the configured timeout", async () => {
+  const reported: string[] = [];
   const hangingStore: ServiceHealthStore = {
     readEvidence: () => new Promise(() => {}),
   };
@@ -175,6 +184,7 @@ test("a hung database check fails closed at the configured timeout", async () =>
     createDefaultServiceHealthDependencies({
       env: READY_ENV,
       now: () => NOW,
+      reportDatabaseFailure: (code) => reported.push(code),
       store: hangingStore,
       timeoutMs: 5,
     })
@@ -182,6 +192,53 @@ test("a hung database check fails closed at the configured timeout", async () =>
 
   assert.equal(report.status, "unavailable");
   assert.equal(report.checks[1].code, "database_unavailable");
+  assert.deepEqual(reported, ["service_health_database_timeout"]);
+});
+
+test("telemetry failure cannot replace the closed unavailable report", async () => {
+  const report = await assessServiceHealth(
+    createDefaultServiceHealthDependencies({
+      env: {},
+      now: () => NOW,
+      reportDatabaseFailure: () => {
+        throw new Error("receiver_failed");
+      },
+      store: {
+        readEvidence: async () => {
+          throw new Error("database_failed");
+        },
+      },
+    })
+  );
+
+  assert.equal(report.status, "unavailable");
+  assert.equal(report.checks[1].code, "database_unavailable");
+});
+
+test("database failure telemetry is bounded per code and isolate", () => {
+  assert.equal(SERVICE_HEALTH_SYNTHETIC_CADENCE_MS, 60_000);
+  let now = 0;
+  const reported: ServiceHealthDatabaseFailureCode[] = [];
+  const report = createDeduplicatedServiceHealthDatabaseFailureReporter({
+    now: () => now,
+    report: (code) => reported.push(code),
+  });
+
+  report("service_health_database_query_failed");
+  report("service_health_database_query_failed");
+  report("service_health_database_timeout");
+  assert.deepEqual(reported, [
+    "service_health_database_query_failed",
+    "service_health_database_timeout",
+  ]);
+
+  now = SERVICE_HEALTH_FAILURE_DEDUPE_MS;
+  report("service_health_database_query_failed");
+  assert.deepEqual(reported, [
+    "service_health_database_query_failed",
+    "service_health_database_timeout",
+    "service_health_database_query_failed",
+  ]);
 });
 
 test("health reader coalesces concurrent checks and briefly reuses safe results", async () => {
@@ -214,11 +271,15 @@ test("health reader coalesces concurrent checks and briefly reuses safe results"
 
 function dependencies(
   healthStore: ServiceHealthStore,
-  env: Readonly<Record<string, string | undefined>>
+  env: Readonly<Record<string, string | undefined>>,
+  reportDatabaseFailure: (
+    code: ServiceHealthDatabaseFailureCode
+  ) => void = () => {}
 ) {
   return createDefaultServiceHealthDependencies({
     env,
     now: () => NOW,
+    reportDatabaseFailure,
     store: healthStore,
     timeoutMs: 50,
   });

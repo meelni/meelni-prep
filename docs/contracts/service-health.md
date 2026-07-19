@@ -58,6 +58,10 @@ any HTTP/body-status mismatch and treats degraded as failed during relaunch. It
 also requires `checkedAt` to round-trip as an exact canonical UTC timestamp.
 Each server instance coalesces concurrent checks and reuses a result for at most
 ten seconds to bound database load without hiding sustained degradation.
+Database failures also emit a closed operational event that distinguishes an
+application timeout from another query failure without serializing the caught
+error. Reporter failure cannot change the endpoint result. Each server isolate
+emits either database-failure code at most once per five minutes.
 
 Database evidence checks for feedback dispatches and Stripe webhook rows stuck
 for more than ten minutes, plus any unresolved failed work. Failed evidence
@@ -73,3 +77,15 @@ occurred.
 Consumers must require the exact contract name, version, ordered check set, and
 fixed result-code family. Adding or removing a field/check requires a new
 version.
+
+## Rehearsal Evidence
+
+The provider-independent rehearsal verifier accepts only an exact Preview
+lifecycle: healthy baseline, one hash-bound synthetic failed-webhook fixture,
+degraded observation, hash-bound alert receipt and acknowledgement, hash-bound
+cleanup receipt, then healthy recovery. It rejects Production/customer-data
+claims, extra fields, non-canonical or out-of-order timestamps, runs longer
+than two hours, non-healthy endpoints at baseline/recovery, and any disturbance
+outside the closed fixture kind. Successful verification returns the exact
+40-character release and a canonical SHA-256 of the complete evidence bundle;
+it does not make an alert-receipt claim on its own.
