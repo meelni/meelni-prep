@@ -49,7 +49,12 @@ interface AnalyticsConsentContextValue {
 interface ConsentApiResponse {
   analyticsPseudonym: string | null;
   consent: AnalyticsConsentSnapshot;
-  persistence?: { account?: boolean; browserOnly?: boolean };
+  error?: string;
+  persistence?: {
+    account?: boolean;
+    accountRevision?: number | null;
+    browserOnly?: boolean;
+  };
 }
 
 const AnalyticsConsentContext = createContext<
@@ -58,12 +63,14 @@ const AnalyticsConsentContext = createContext<
 
 export function AnalyticsConsentProvider({
   children,
+  initialAccountRevision = null,
   initialAccountSyncPending = false,
   initialAnalyticsPseudonym = null,
   initialConsent = UNDECIDED_ANALYTICS_CONSENT,
   initialResolvedForSubject = null,
 }: {
   children: React.ReactNode;
+  initialAccountRevision?: number | null;
   initialAccountSyncPending?: boolean;
   initialAnalyticsPseudonym?: string | null;
   initialConsent?: AnalyticsConsentSnapshot;
@@ -74,6 +81,7 @@ export function AnalyticsConsentProvider({
   const latestSubjectRef = useRef<string | null>(currentSubject);
   latestSubjectRef.current = currentSubject;
   const requestSequenceRef = useRef(0);
+  const accountRevisionRef = useRef<number | null>(initialAccountRevision);
   const writeChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const previousSubjectRef = useRef<string | null>(initialResolvedForSubject);
   const [consent, setConsentState] = useState(initialConsent);
@@ -109,6 +117,7 @@ export function AnalyticsConsentProvider({
       analytics.reset();
       clearStatsigAnonymousIdentifiers();
       setAnalyticsPseudonym(null);
+      accountRevisionRef.current = null;
       setAccountSyncPending(false);
       setError(null);
       requestSequenceRef.current += 1;
@@ -150,17 +159,33 @@ export function AnalyticsConsentProvider({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             decision: decisionToWrite,
+            expectedRevision:
+              subject === ANONYMOUS_CONSENT_SUBJECT
+                ? undefined
+                : accountRevisionRef.current,
             policyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
             source,
           }),
         });
-        if (!response.ok) throw new Error("consent_persistence_failed");
-        return (await response.json()) as ConsentApiResponse;
+        const data = (await response.json()) as Partial<ConsentApiResponse>;
+        if (
+          response.status === 409 &&
+          data.error === "consent_policy_outdated"
+        ) {
+          return { kind: "policy_outdated" } as const;
+        }
+        if (!response.ok && !isConsentConflictResponse(response, data)) {
+          throw new Error("consent_persistence_failed");
+        }
+        return {
+          kind: "consent",
+          data: data as ConsentApiResponse,
+        } as const;
       });
       writeChainRef.current = write.catch(() => undefined);
 
       try {
-        const data = await write;
+        const result = await write;
         if (
           !shouldApplyConsentResponse(
             sequence,
@@ -171,7 +196,27 @@ export function AnalyticsConsentProvider({
         ) {
           return false;
         }
+        if (result.kind === "policy_outdated") {
+          analytics.reset();
+          clearStatsigAnonymousIdentifiers();
+          accountRevisionRef.current = null;
+          setAnalyticsPseudonym(null);
+          setConsentState(UNDECIDED_ANALYTICS_CONSENT);
+          setResolvedSubject(null);
+          setAccountSyncPending(false);
+          setError(
+            "Analytics are off while your updated privacy choice loads."
+          );
+          return false;
+        }
+        const data = result.data;
         setConsentState(data.consent);
+        if (data.consent.decision !== "accepted") {
+          analytics.reset();
+          clearStatsigAnonymousIdentifiers();
+        }
+        accountRevisionRef.current =
+          data.persistence?.accountRevision ?? accountRevisionRef.current;
         setResolvedSubject(subject);
         setAnalyticsPseudonym(data.analyticsPseudonym);
         const pending =
@@ -180,11 +225,13 @@ export function AnalyticsConsentProvider({
           data.persistence?.account !== true;
         setAccountSyncPending(pending);
         setError(
-          pending
-            ? "Analytics are off on this browser, but your account still needs to sync."
-            : null
+          data.error === "consent_conflict"
+            ? "Your analytics choice changed elsewhere. Review the current setting before enabling analytics."
+            : pending
+              ? "Analytics are off on this browser, but your account still needs to sync."
+              : null
         );
-        return true;
+        return data.error !== "consent_conflict";
       } catch {
         if (
           !shouldApplyConsentResponse(
@@ -250,6 +297,8 @@ export function AnalyticsConsentProvider({
           return;
         }
         setConsentState(data.consent);
+        accountRevisionRef.current =
+          data.persistence?.accountRevision ?? accountRevisionRef.current;
         setResolvedSubject(subject);
         setAnalyticsPseudonym(data.analyticsPseudonym);
         const pending =
@@ -335,6 +384,35 @@ export function AnalyticsConsentProvider({
     <AnalyticsConsentContext.Provider value={value}>
       {children}
     </AnalyticsConsentContext.Provider>
+  );
+}
+
+function isConsentConflictResponse(
+  response: Response,
+  data: Partial<ConsentApiResponse>
+): data is ConsentApiResponse & { error: "consent_conflict" } {
+  const consent = data.consent;
+  if (!consent) return false;
+  const pseudonymIsValid =
+    consent.decision === "declined"
+      ? data.analyticsPseudonym === null
+      : typeof data.analyticsPseudonym === "string";
+  return (
+    response.status === 409 &&
+    data.error === "consent_conflict" &&
+    data.persistence?.account === true &&
+    Number.isSafeInteger(data.persistence.accountRevision) &&
+    (data.persistence.accountRevision ?? -1) >= 0 &&
+    data.persistence.browserOnly === false &&
+    (consent.decision === "accepted" || consent.decision === "declined") &&
+    pseudonymIsValid &&
+    consent.scope === "account" &&
+    ["banner", "settings", "legacy_decline", "account_sync"].includes(
+      consent.source
+    ) &&
+    Number.isSafeInteger(consent.policyVersion) &&
+    consent.policyVersion > 0 &&
+    Number.isFinite(new Date(consent.decidedAt).getTime())
   );
 }
 
