@@ -50,4 +50,4 @@
 - Rollout or migration risk: additive package export only; no data migration or flag change.
 - Rollback path: remove the additive export and Phase 1 files before an integration depends on them.
 - Metrics or events to watch: none until an authenticated attempt workflow exists.
-- Follow-up slice: persist one idempotent self-directed attempt and integrate it into the feedback workspace without starting another interview session or consuming a credit.
+- Follow-up slice: SAV-269 Phase 2a defines the provider-free attempt lifecycle and repository seam. Persist it through the canonical database/RLS/API boundary, then integrate it into the feedback workspace without starting another interview session or consuming a credit.

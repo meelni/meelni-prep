@@ -5,6 +5,7 @@ import {
   FIXTURE_CLOCK,
   createAccountDataExportFixture,
   createDashboardProgressFixtures,
+  createFocusedPracticeAttemptSourceFixtures,
   createFocusedPracticePlanGoldenFixtures,
   createLiveKitStartFixture,
   createProductSenseInterviewFixture,
@@ -52,6 +53,13 @@ test("focused-practice plan fixtures are available from the public fixture entry
     ),
     ["product_sense", "execution", "behavioral", "strategy"]
   );
+});
+
+test("focused-practice attempt sources are available from the public fixture entrypoint", () => {
+  const fixtures = createFocusedPracticeAttemptSourceFixtures();
+
+  assert.equal(fixtures.length, 4);
+  assert.equal(fixtures[0]?.roundType, "product_sense");
 });
 
 test("product sense fixture exposes a complete interview regression scenario", () => {
