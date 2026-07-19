@@ -61,6 +61,7 @@
     "deploy:preflight:preview": "tsx --env-file=.env.local scripts/deployment-preflight.ts --target=preview",
     "deploy:preflight:production": "tsx --env-file=.env.production.local scripts/deployment-preflight.ts --target=production",
     "stripe:setup-catalog": "node scripts/setup-stripe-credit-catalog.mjs",
+    "stripe:webhook-events": "tsx scripts/stripe-webhook-event-contract.ts",
     "sync:questions": "tsx scripts/run-question-sync.ts",
     "test:agent": "tsx --test packages/agent/src/*.test.ts",
     "test:core": "tsx --test packages/core/src/*.test.ts",
