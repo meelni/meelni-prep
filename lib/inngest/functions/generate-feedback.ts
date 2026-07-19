@@ -7,6 +7,7 @@ import {
   type FeedbackGenerationSteps,
 } from "@/lib/workflows/generate-feedback";
 import { inngest } from "../client";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 interface FeedbackGenerationEventData {
   sessionId: string;
@@ -22,6 +23,12 @@ export const generateFeedback = inngest.createFunction(
     throttle: { limit: 10, period: "1m" },
     concurrency: [{ limit: 1, key: "event.data.sessionId" }],
     onFailure: async ({ event, step }) => {
+      reportOperationalFailure({
+        operation: "feedback_dispatch",
+        errorCode: "feedback_generation_failed",
+        severity: "critical",
+        retryable: false,
+      });
       const failedEvent = event.data.event;
       const sessionId = String(failedEvent.data?.sessionId ?? "");
       const userId = String(failedEvent.data?.userId ?? "");
