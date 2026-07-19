@@ -10,9 +10,11 @@ import {
   useState,
 } from "react";
 import { StatsigClient, type StatsigUser } from "@statsig/js-client";
-import { StatsigSessionReplayPlugin } from "@statsig/session-replay";
-import { StatsigAutoCapturePlugin } from "@statsig/web-analytics";
 import { useAuth } from "@/app/providers/auth-provider";
+import {
+  sanitizeAnalyticsString,
+  sanitizeAnalyticsValue,
+} from "@/lib/analytics/privacy-sanitizer";
 import { getOrCreateStatsigAnonymousId } from "./anonymous-id";
 import {
   buildStatsigUser,
@@ -126,10 +128,9 @@ export function StatsigProvider({
                     api: statsigConfig.apiUrl,
                   }
                 : undefined,
-              plugins: [
-                new StatsigSessionReplayPlugin(),
-                new StatsigAutoCapturePlugin(),
-              ],
+              // Keep feature-gate evaluation and explicit events, but do not
+              // expose auth/billing URLs through automatic capture or replay.
+              plugins: [],
             }
           );
 
@@ -233,7 +234,11 @@ export function StatsigProvider({
         return;
       }
 
-      clientRef.current.logEvent(eventName, value, metadata);
+      clientRef.current.logEvent(
+        eventName,
+        typeof value === "string" ? sanitizeAnalyticsString(value) : value,
+        sanitizeAnalyticsValue(metadata) as Record<string, string> | undefined
+      );
     },
     []
   );

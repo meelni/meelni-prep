@@ -7,6 +7,7 @@ import posthog from "posthog-js";
 import { clientConfig } from "./config";
 import type { AnalyticsEvent, EventProperties, UserTraits } from "./types";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { sanitizeAnalyticsString } from "./privacy-sanitizer";
 
 /**
  * PII patterns to detect and sanitize
@@ -287,7 +288,7 @@ export class AnalyticsService {
    * Sanitize a string by removing PII patterns
    */
   private sanitizeString(value: string): string {
-    let sanitized = value;
+    let sanitized = sanitizeAnalyticsString(value);
 
     // Remove emails
     sanitized = sanitized.replace(PII_PATTERNS.email, "[EMAIL_REDACTED]");
@@ -323,12 +324,16 @@ export class AnalyticsService {
    * Sanitize URL path by removing potential PII
    */
   private sanitizePath(path: string): string {
+    const providerSafePath = sanitizeAnalyticsString(path);
     // Remove email query params
-    let sanitized = path.replace(/([?&])email=[^&]*/g, "$1email=[REDACTED]");
+    let sanitized = providerSafePath.replace(
+      /([?&])email=[^&]*/g,
+      "$1email=[REDACTED]"
+    );
 
     // Remove token/session query params
     sanitized = sanitized.replace(
-      /([?&])(token|session|key)=[^&]*/g,
+      /([?&])(token|session|session_id|checkout_session_id|key)=[^&]*/g,
       "$1$2=[REDACTED]"
     );
 
