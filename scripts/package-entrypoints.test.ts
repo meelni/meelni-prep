@@ -11,8 +11,10 @@ import {
   calculateOverallScore,
   computeCreditEntitlements,
   DRILL_TEMPLATE_VERSION,
+  FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
   getBillingCatalogItem,
   recommendDrill,
+  resolveDrillRecommendation,
 } from "@meelni/core";
 import {
   buildInterviewRoomName,
@@ -60,6 +62,19 @@ test("workspace package entrypoints expose named contracts", () => {
     "unavailable"
   );
   assert.equal(
+    resolveDrillRecommendation({
+      roundType: "product_sense",
+      sourceState: "insufficient",
+      templateVersion: DRILL_TEMPLATE_VERSION,
+      feedback: null,
+    }).sourceFinding,
+    null
+  );
+  assert.equal(
+    FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
+    "focused-practice-attempt.v1"
+  );
+  assert.equal(
     buildInterviewRoomMetadata(fixture.roomMetadata).round_type,
     "product_sense"
   );
@@ -104,6 +119,10 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   assert.equal(typeof core.buildFullConfig, "function");
   assert.equal(typeof core.calculateOverallScore, "function");
   assert.equal(typeof core.recommendDrill, "function");
+  assert.equal(typeof core.resolveDrillRecommendation, "function");
+  assert.equal(typeof core.createFocusedPracticeAttempt, "function");
+  assert.equal(typeof core.parseFocusedPracticeAttempt, "function");
+  assert.equal(typeof core.completeFocusedPracticeAttempt, "function");
   assert.equal(typeof agent.buildInterviewRoomMetadata, "function");
   assert.equal(typeof agent.createTranscriptEvent, "function");
   assert.equal(typeof integrations.buildInterviewRoomName, "function");
@@ -126,7 +145,9 @@ test("server transcript persistence has no direct mutation bypass", async () => 
   ]) {
     assert.doesNotMatch(
       source,
-      new RegExp(`export\\s+(?:async\\s+function|interface)\\s+${forbiddenExport}\\b`)
+      new RegExp(
+        `export\\s+(?:async\\s+function|interface)\\s+${forbiddenExport}\\b`
+      )
     );
   }
 
