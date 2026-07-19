@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains twenty-six entries, from
-`0000_many_nocturne` through `0025_public_demo_limits`. The migration-history
+The current committed journal contains twenty-seven entries, from
+`0000_many_nocturne` through `0026_preview_lineage_reconciliation`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -81,7 +81,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with twenty-six
+six ledger entries. Expected post-migration status is `reconciled` with twenty-seven
 ledger entries, 32 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
@@ -97,12 +97,18 @@ table privileges on each table. Preflight keeps distinct accepted fingerprints
 for every supported migration state so a rolling deployment is diagnosable
 without weakening an earlier contract.
 
-The exact historical Preview lineage is also diagnosable at migration counts
-23 and 24. It is identified by the original `0013_runtime_settlement` timestamp
-and hash plus an exact schema fingerprint. Its status is
-`runtime_settlement_reconciliation_required`; any other ledger or schema shape
-is rejected. The reconciliation is a new forward migration. Never change the
-historical ledger row to make it resemble the canonical `0013` migration.
+The exact historical Preview lineages are also diagnosable without rewriting
+history. The original `0013_runtime_settlement` timestamp/hash remains
+supported for its guarded forward reconciliation. At counts 26 and 27, the
+preflight also accepts the exact original Preview hashes for migrations
+0023–0025 as one indivisible triple. Mixed or unknown hashes are rejected.
+Migration `0026_preview_lineage_reconciliation` validates that complete triple
+before changing data, appends its own ledger row, and converges the historical
+and canonical paths to the same schema contract. On the historical path it
+refuses to start while any `provisioning` or `ready` public-demo session still
+has an active deadline; wait for the old three-minute token window to drain and
+rerun. Shortening a database deadline cannot revoke an already-issued LiveKit
+token. Never edit, delete, or replace an existing migration ledger row.
 
 ## Rehearsal
 
@@ -169,8 +175,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 26`, and public-demo-limit schema fingerprint
-   `8320f3c455a93395c27de612a8e55c57bfddd3ae86a564f5339a9a21d1726290`.
+   `migrationCount: 27`, and public-demo-limit schema fingerprint
+   `82586c6f559387b1a1b98f955565b9e7efbf91265a36234adac41079d4d381ba`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

@@ -778,6 +778,11 @@ export const userSettings = pgTable(
     analyticsConsentUpdatedAt: timestamp("analytics_consent_updated_at", {
       withTimezone: true,
     }),
+    analyticsConsentRevision: bigint("analytics_consent_revision", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
     // Deprecated compatibility column. Canonical transcripts are persisted for
     // feedback and review regardless of this historical preference.
     saveTranscripts: boolean("save_transcripts").default(true).notNull(),
@@ -809,7 +814,7 @@ export const userSettings = pgTable(
     ),
     analyticsConsentMetadataCheck: check(
       "analytics_consent_metadata_check",
-      sql`(${table.analyticsConsent} = 'undecided' AND ${table.analyticsConsentVersion} IS NULL AND ${table.analyticsConsentSource} IS NULL AND ${table.analyticsConsentUpdatedAt} IS NULL) OR (${table.analyticsConsent} IN ('accepted', 'declined') AND ${table.analyticsConsentVersion} > 0 AND ${table.analyticsConsentSource} IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND ${table.analyticsConsentUpdatedAt} IS NOT NULL)`
+      sql`(${table.analyticsConsent} = 'undecided' AND ${table.analyticsConsentVersion} IS NULL AND ${table.analyticsConsentSource} IS NULL AND ${table.analyticsConsentUpdatedAt} IS NULL AND ${table.analyticsConsentRevision} = 0) OR (${table.analyticsConsent} IN ('accepted', 'declined') AND ${table.analyticsConsentVersion} > 0 AND ${table.analyticsConsentSource} IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND ${table.analyticsConsentUpdatedAt} IS NOT NULL AND ${table.analyticsConsentRevision} > 0)`
     ),
     // Index for looking up settings by user
     userIdIdx: index("user_settings_user_id_idx").on(table.userId),

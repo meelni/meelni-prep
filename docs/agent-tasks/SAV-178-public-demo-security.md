@@ -42,7 +42,7 @@
 
 - Required commands: Focused workflow/security/API/integration/Python tests, database migration verification, typechecks, lint, formatting, Semgrep, diff/credential scans, and a production build if local configuration permits.
 - Optional/manual checks: Isolated Preview limit/replay/cleanup/browser rehearsal only after SAV-226 provider isolation and explicit operational authorization.
-- Fixtures or regression tests needed: Concurrent reservation limits, replay/recovery fencing, spoofed-IP rejection, partial-room cleanup, grants/TTL, monotonic hard deadline, typed cooldown UI, privacy-safe auditing, and fail-closed deployment checks for missing or malformed public-demo HMAC configuration.
+- Fixtures or regression tests needed: Concurrent reservation limits, replay/recovery fencing, spoofed-IP rejection, partial-room cleanup, grants bound to the persisted absolute deadline with a five-second delivery margin, monotonic hard deadline, typed cooldown UI, privacy-safe auditing, and fail-closed deployment checks for missing or malformed public-demo HMAC configuration.
 
 ## Rollout
 

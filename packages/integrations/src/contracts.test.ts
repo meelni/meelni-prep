@@ -57,13 +57,17 @@ test("livekit env contract captures server keys and websocket URL alternatives",
 test("public demo provider uses bounded rooms, microphone-only grants, and cleanup", async () => {
   const calls: string[] = [];
   const grants: unknown[] = [];
+  const tokenOptions: unknown[] = [];
   const provider = createLiveKitPublicDemoProvider({
     accessTokenFactory: class {
+      constructor(_key: string, _secret: string, options: unknown) {
+        tokenOptions.push(options);
+      }
       addGrant(grant: unknown) {
         grants.push(grant);
       }
       async toJwt() {
-        return "demo-token";
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
       }
     },
     agentDispatchClientFactory: () => ({
@@ -83,12 +87,15 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
         calls.push("delete");
       },
     }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
   });
   const input = {
     agentName: "demo-agent",
     identity: "demo-opaque",
     roomName: "demo-room",
     metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
     env: {
       apiKey: "key",
       apiSecret: "secret",
@@ -109,6 +116,9 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
       canSubscribe: true,
     },
   ]);
+  assert.deepEqual(tokenOptions, [
+    { identity: "demo-opaque", name: "Demo participant", ttl: 120 },
+  ]);
 
   const cleanupCalls: string[] = [];
   const failing = createLiveKitPublicDemoProvider({
@@ -126,6 +136,7 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
         cleanupCalls.push("delete");
       },
     }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
   });
   const failed = await failing.startPublicDemoRoom(input);
   assert.equal(failed.ok, false);
@@ -159,6 +170,7 @@ test("public demo token-signing failure deletes the room after dispatch", async 
         calls.push("delete");
       },
     }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
   });
 
   const result = await provider.startPublicDemoRoom({
@@ -166,6 +178,8 @@ test("public demo token-signing failure deletes the room after dispatch", async 
     identity: "demo-opaque",
     roomName: "demo-room",
     metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
     env: {
       apiKey: "key",
       apiSecret: "secret",
@@ -188,7 +202,7 @@ test("public demo recovery requires an actual LiveKit agent participant", async 
       addGrant() {}
       async toJwt() {
         calls.push("token");
-        return "recovery-token";
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
       }
     },
     sleep: async () => {
@@ -205,11 +219,14 @@ test("public demo recovery requires an actual LiveKit agent participant", async 
         }));
       },
     }),
+    now: () => new Date("2026-07-09T12:01:00.000Z"),
   });
 
   const result = await provider.issuePublicDemoToken({
     identity: "demo-opaque",
     roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:01:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
     env: {
       apiKey: "key",
       apiSecret: "secret",
@@ -220,6 +237,105 @@ test("public demo recovery requires an actual LiveKit agent participant", async 
   assert.equal(result.ok, true);
   assert.deepEqual(calls, ["participants", "wait", "participants", "token"]);
 });
+
+test("public demo provider refuses initial and recovery tokens at or past the absolute deadline", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt() {
+        calls.push("token");
+        return "must-not-mint";
+      }
+    },
+    now: () => new Date("2026-07-09T12:02:00.000Z"),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+    }),
+    agentDispatchClientFactory: () => ({
+      createDispatch: async (room, agentName) => {
+        calls.push("dispatch");
+        return { id: "dispatch-1", room, agentName };
+      },
+      listDispatch: async () => [],
+    }),
+  });
+  const deadlineInput = {
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:02:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  };
+
+  const recovery = await provider.issuePublicDemoToken(deadlineInput);
+  assert.equal(recovery.ok, false);
+  if (!recovery.ok) {
+    assert.equal(recovery.error.code, "livekit_demo_token_deadline_invalid");
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("public demo provider withholds a delayed signed token that crosses the persisted deadline", async () => {
+  let now = new Date("2026-07-09T12:00:00.000Z");
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {}
+      async toJwt() {
+        now = new Date("2026-07-09T12:00:02.000Z");
+        return demoJwtWithExpiration("2026-07-09T12:02:02.000Z");
+      }
+    },
+    now: () => now,
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+    }),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_token_deadline_invalid");
+  }
+});
+
+function demoJwtWithExpiration(expiresAt: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString(
+    "base64url"
+  );
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(new Date(expiresAt).getTime() / 1_000) })
+  ).toString("base64url");
+  return `${header}.${payload}.signature`;
+}
 
 test("Supabase env contract includes the non-secret Production identity guard", () => {
   assert.deepEqual(listProviderEnvVars("supabase"), [
