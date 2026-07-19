@@ -23,6 +23,7 @@ import {
   fingerprintStripeSubject,
 } from "../lib/billing/stripe-privacy";
 import { ACCOUNT_IDENTITY_LOCK_NAMESPACE } from "../lib/db/account-identity-lock";
+import { withQuestionSyncLock } from "../lib/db/question-sync-lock";
 import {
   compareStripeSubscriptionEventCursors,
   mayApplyStripeSubscriptionResource,
@@ -47,6 +48,7 @@ import {
   getStableStartDatabaseSchemaContract,
   SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
+  QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
@@ -104,6 +106,8 @@ const SESSION_RECONNECT_INTEGRITY_VALID =
 const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
 const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
+const QUESTION_PROVENANCE_ACTIVE = "f3333333-3333-4333-8333-333333333333";
+const QUESTION_PROVENANCE_INACTIVE = "f4444444-4444-4444-8444-444444444444";
 
 type StripeResourceWinnerRow = {
   stripe_subscription_id: string;
@@ -205,6 +209,9 @@ async function run() {
     );
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
+    await verifyQuestionProvenance(clean, false);
+    await verifyQuestionSyncTransactionAdapter(cleanUrl);
+    await verifyQuestionLookupAdapters(cleanUrl);
     runAnalyticsConsentAdapterVerification(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
@@ -236,7 +243,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, ANALYTICS_CONSENT_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, QUESTION_PROVENANCE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -421,9 +428,10 @@ async function run() {
         FEEDBACK_V2_SCHEMA_FINGERPRINT,
         SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
         ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
+        QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 23; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 24; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -443,7 +451,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 24; found 22/
+            /Strict launch preflight requires the exact latest migration count 25; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -466,6 +474,7 @@ async function run() {
         countsBeforeRuntimeSettlement
       );
       await verifyDatabase(upgrade);
+      await verifyQuestionProvenance(upgrade, true);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyTranscriptIngest(upgrade, upgradeUrl);
@@ -509,7 +518,7 @@ async function run() {
 async function verifyLatestSnapshotTypes() {
   const snapshot = JSON.parse(
     await readFile(
-      join(ROOT, "lib/db/migrations/meta/0023_snapshot.json"),
+      join(ROOT, "lib/db/migrations/meta/0024_snapshot.json"),
       "utf8"
     )
   ) as {
@@ -4845,10 +4854,12 @@ async function verifyStableStartConcurrency(
     await Promise.all(clients.map((client) => client`SELECT 1`));
     await sql`
       INSERT INTO interview_question (
-        id, question_text, question_type, company, is_active
+        id, question_text, question_type, company, source_kind,
+        source_fingerprint, quality_status, is_active
       ) VALUES (
         ${questionId}::uuid, ${question.questionText},
-        ${question.questionType}, ${question.company}, true
+        ${question.questionType}, ${question.company}, 'google_sheets',
+        ${"d".repeat(64)}, 'published', true
       )
     `;
     for (const [index, userId] of [
@@ -5463,10 +5474,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      refundedPreflight.startingContract,
-      "server_owned_billing_privileges"
-    );
+    assert.equal(refundedPreflight.startingContract, "question_provenance");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -5867,6 +5875,187 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
   await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
 }
 
+async function seedQuestionProvenanceBackfillFixtures(sql: postgres.Sql) {
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, is_active
+    ) VALUES
+      (
+        ${QUESTION_PROVENANCE_ACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience', 'Product Sense', true
+      ),
+      (
+        ${QUESTION_PROVENANCE_INACTIVE}::uuid, 'Meta',
+        'Retired duplicate search question', 'Product Sense', false
+      )
+  `;
+}
+
+async function verifyQuestionProvenance(
+  sql: postgres.Sql,
+  expectBackfilledRows: boolean
+) {
+  const backfilled = await sql<
+    {
+      id: string;
+      source_kind: string;
+      source_fingerprint: string | null;
+      quality_status: string;
+      is_active: boolean;
+    }[]
+  >`
+    SELECT id, source_kind, source_fingerprint, quality_status, is_active
+    FROM interview_question
+    WHERE id IN (
+      ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+      ${QUESTION_PROVENANCE_INACTIVE}::uuid
+    )
+    ORDER BY id
+  `;
+
+  if (expectBackfilledRows) {
+    assert.deepEqual(
+      [...backfilled],
+      [
+        {
+          id: QUESTION_PROVENANCE_ACTIVE,
+          source_kind: "legacy",
+          source_fingerprint: null,
+          quality_status: "quarantined_unverified",
+          is_active: false,
+        },
+        {
+          id: QUESTION_PROVENANCE_INACTIVE,
+          source_kind: "legacy",
+          source_fingerprint: null,
+          quality_status: "retired_source_missing",
+          is_active: false,
+        },
+      ]
+    );
+    return;
+  }
+
+  await sql`
+    INSERT INTO interview_question (
+      id, company, question_text, question_type, asked_at, source_kind,
+      source_category, source_fingerprint, quality_status,
+      duplicate_of_question_id, is_active
+    ) VALUES
+      (
+        ${QUESTION_PROVENANCE_ACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience', 'Product Sense',
+        '2026-01-01T00:00:00.000Z'::timestamptz, 'google_sheets',
+        'Product Design', ${"a".repeat(64)}, 'published', null, true
+      ),
+      (
+        ${QUESTION_PROVENANCE_INACTIVE}::uuid, 'Meta',
+        'Design a trustworthy search experience!', 'Product Sense',
+        '2026-02-01T00:00:00.000Z'::timestamptz, 'google_sheets',
+        'Product Design', ${"b".repeat(64)},
+        'quarantined_near_duplicate', ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+        false
+      )
+  `;
+
+  const internalColumns = [
+    "source_kind",
+    "source_category",
+    "source_fingerprint",
+    "quality_status",
+    "duplicate_of_question_id",
+  ] as const;
+  for (const role of ["anon", "authenticated"] as const) {
+    const publicRows = await asRole(
+      sql,
+      role,
+      (tx) => tx`
+        SELECT id, company, question_text, question_type, difficulty, asked_at,
+          is_active, created_at
+        FROM interview_question
+        WHERE id IN (
+          ${QUESTION_PROVENANCE_ACTIVE}::uuid,
+          ${QUESTION_PROVENANCE_INACTIVE}::uuid
+        )
+        ORDER BY id
+      `
+    );
+    assert.equal(publicRows.length, 1);
+    assert.equal(publicRows[0]?.id, QUESTION_PROVENANCE_ACTIVE);
+    assert.equal(publicRows[0]?.company, "Meta");
+    assert.equal(
+      publicRows[0]?.question_text,
+      "Design a trustworthy search experience"
+    );
+    assert.equal(publicRows[0]?.question_type, "Product Sense");
+    assert.equal(publicRows[0]?.is_active, true);
+
+    for (const column of internalColumns) {
+      await assert.rejects(
+        asRole(sql, role, (tx) =>
+          tx.unsafe(
+            `SELECT ${column} FROM interview_question WHERE id = '${QUESTION_PROVENANCE_ACTIVE}'::uuid`
+          )
+        ),
+        /permission denied/
+      );
+    }
+  }
+
+  const serviceProvenance = await asRole(
+    sql,
+    "service_role",
+    (tx) => tx`
+      SELECT source_kind, source_category, source_fingerprint, quality_status,
+        duplicate_of_question_id
+      FROM interview_question
+      WHERE id = ${QUESTION_PROVENANCE_ACTIVE}::uuid
+    `
+  );
+  assert.equal(serviceProvenance[0]?.source_kind, "google_sheets");
+
+  await assert.rejects(
+    sql`
+      INSERT INTO interview_question (
+        company, question_text, question_type, source_kind,
+        source_fingerprint, quality_status, is_active
+      ) VALUES (
+        'Meta', 'Invalid active quarantine', 'Product Sense',
+        'google_sheets', ${"c".repeat(64)},
+        'quarantined_near_duplicate', true
+      )
+    `,
+    /publication_projection|duplicate_disposition/
+  );
+  await assert.rejects(
+    sql`
+      INSERT INTO interview_question (
+        company, question_text, question_type, source_kind,
+        source_fingerprint, quality_status, is_active
+      ) VALUES (
+        'Meta', 'Malformed fingerprint', 'Product Sense',
+        'google_sheets', 'not-a-fingerprint', 'published', true
+      )
+    `,
+    /source_fingerprint_check/
+  );
+}
+
+async function verifyQuestionSyncTransactionAdapter(databaseUrl: string) {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  try {
+    const result = await withQuestionSyncLock(
+      async (store) => (await store.listQuestions()).length
+    );
+    assert.equal(result.acquired, true);
+    assert.equal(result.value, 2);
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+}
+
 async function verifyQuestionLookupAdapters(databaseUrl: string) {
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = databaseUrl;
@@ -5893,7 +6082,7 @@ async function verifyQuestionLookupAdapters(databaseUrl: string) {
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 24);
+  assert.equal(await migrationCount(sql), 25);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

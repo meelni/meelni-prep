@@ -116,7 +116,10 @@ test("public question route cannot opt into inactive historical rows", async () 
     };
 
     assert.equal(response.status, 200);
-    assert.equal(body.questions.every((question) => question.isActive), true);
+    assert.equal(
+      body.questions.every((question) => question.isActive),
+      true
+    );
     assert.equal(body.pagination.total, 9);
     assert.deepEqual(
       body.questions

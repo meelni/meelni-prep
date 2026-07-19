@@ -45,6 +45,10 @@ export const SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT =
   "90ac6ee5a1b9e26b0de15bbbeef4019bb54233247397ea976a8a8f4b095fe185";
 export const ANALYTICS_CONSENT_SCHEMA_FINGERPRINT =
   "d6b855e326a11e0f44732bcbb4a25b0565af76074a4976d3caec750877bd9701";
+// Refreshed by the clean PostgreSQL migration acceptance test whenever the
+// canonical migration lineage changes.
+export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =
+  "e94c4a10694c778766a947f3cc8d32b89f801703fac9212aa1046eb2fbfd13bf";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

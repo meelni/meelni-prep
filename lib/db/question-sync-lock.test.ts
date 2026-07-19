@@ -9,7 +9,10 @@ import {
 } from "./question-sync-lock";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "@/lib/db/schema";
-import type { StoredQuestionSyncQuestion } from "@/lib/question-sync/source";
+import type {
+  PlannedQuestionSyncRecord,
+  StoredQuestionSyncQuestion,
+} from "@/lib/question-sync/source";
 import type { QuestionSyncStore } from "@/lib/question-sync/store";
 import { mutatePreparedQuestionSync } from "@/lib/question-sync/mutation";
 import type {

@@ -16,6 +16,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
+import type {
+  QuestionQualityStatus,
+  QuestionSourceKind,
+} from "@/lib/question-sync/types";
 import { appUser } from "./schema-core";
 import { interviewSession } from "./schema-session";
 
@@ -549,10 +553,10 @@ export const interviewQuestion = pgTable(
     sourceFingerprint: text("source_fingerprint"),
     qualityStatus: text("quality_status")
       .$type<QuestionQualityStatus>()
-      .default("published")
+      .default("quarantined_unverified")
       .notNull(),
     duplicateOfQuestionId: uuid("duplicate_of_question_id"),
-    isActive: boolean("is_active").default(true).notNull(),
+    isActive: boolean("is_active").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
@@ -576,7 +580,7 @@ export const interviewQuestion = pgTable(
     ),
     qualityStatusCheck: check(
       "interview_question_quality_status_check",
-      sql`${table.qualityStatus} IN ('published', 'quarantined_near_duplicate', 'retired_exact_duplicate', 'retired_source_missing')`
+      sql`${table.qualityStatus} IN ('published', 'quarantined_unverified', 'quarantined_near_duplicate', 'retired_exact_duplicate', 'retired_source_missing')`
     ),
     publicationProjectionCheck: check(
       "interview_question_publication_projection_check",
