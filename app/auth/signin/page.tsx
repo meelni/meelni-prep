@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 import {
   AUTH_SIGNUP_PATH,
   AUTH_FORGOT_PASSWORD_PATH,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/auth/auth-handoff";
 
 function SignInContent() {
+  const activation = usePublicActivationDecision();
   const {
     signInWithGoogle,
     signInWithEmail,
@@ -178,16 +180,22 @@ function SignInContent() {
 
         <div className="text-muted-foreground mt-6 text-center text-sm">
           Don&apos;t have an account?{" "}
-          <Button
-            type="button"
-            variant="link"
-            onClick={() =>
-              router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff))
-            }
-            className="min-h-11 px-2 py-0 font-medium"
-          >
-            Sign up
-          </Button>
+          {activation.canActivate ? (
+            <Button
+              type="button"
+              variant="link"
+              onClick={() =>
+                router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff))
+              }
+              className="min-h-11 px-2 py-0 font-medium"
+            >
+              Sign up
+            </Button>
+          ) : (
+            <span className="ml-1 font-medium">
+              New accounts currently paused
+            </span>
+          )}
         </div>
       </AuthCard>
     </AuthShell>

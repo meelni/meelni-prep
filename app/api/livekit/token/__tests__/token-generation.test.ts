@@ -74,7 +74,6 @@ describe("POST /api/livekit/token", () => {
       retryable: false,
     });
     expect(mocks.resolveReactivationAccess).toHaveBeenCalledWith({
-      user,
       localOverride: undefined,
     });
     expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
