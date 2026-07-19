@@ -1,0 +1,78 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  getBalance: vi.fn(),
+  report: vi.fn(),
+  select: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => ({
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: { user: { id: "user_fixture" } },
+        error: null,
+      })),
+    },
+  })),
+}));
+
+vi.mock("@/lib/billing/credit-balance-read-model", () => ({
+  getCreditBalanceReadModel: mocks.getBalance,
+}));
+vi.mock("@/lib/billing/credit-ledger-store", () => ({
+  createDrizzleCreditLedgerStore: vi.fn(() => ({})),
+}));
+vi.mock("@/lib/billing/local-dev-bypass", () => ({
+  getLocalDevCreditBalanceResponse: vi.fn(),
+  isLocalDevCreditBypassEnabled: vi.fn(() => false),
+}));
+vi.mock("@/lib/db", () => ({ db: { select: mocks.select } }));
+vi.mock("@/lib/operations/operational-events", () => ({
+  reportOperationalFailure: mocks.report,
+}));
+
+import { GET as getCredits } from "./credits/route";
+import { GET as getPaymentHistory } from "./payment-history/route";
+import { GET as getSubscription } from "./subscription/route";
+import { GET as getUsage } from "./usage/route";
+
+describe("billing read operational failures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getBalance.mockRejectedValue(new Error("database unavailable"));
+    mocks.select.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+  });
+
+  it.each([
+    ["credit balance", () => getCredits(), "billing_credit_read_failed"],
+    [
+      "payment history",
+      () =>
+        getPaymentHistory(
+          new Request("https://meelni.test/api/billing/payment-history")
+        ),
+      "billing_payment_history_read_failed",
+    ],
+    [
+      "subscription",
+      () => getSubscription(),
+      "billing_subscription_read_failed",
+    ],
+    ["usage compatibility", () => getUsage(), "billing_usage_read_failed"],
+  ])(
+    "reports a redacted %s failure without changing the 500 response",
+    async (_name, execute, errorCode) => {
+      const response = await execute();
+
+      expect(response.status).toBe(500);
+      expect(mocks.report).toHaveBeenCalledWith({
+        operation: "billing_read",
+        errorCode,
+        retryable: true,
+      });
+    }
+  );
+});
