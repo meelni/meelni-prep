@@ -185,11 +185,17 @@ test_runtime=${MEELNI_CALIBRATION_TEST_RUNTIME-}
 test_timeout=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-10}
 test_timeout_override=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-}
 test_node_bin=${MEELNI_CALIBRATION_TEST_NODE_BIN-}
-if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override$test_node_bin" ]; then
+test_channel_namespace=${MEELNI_CALIBRATION_TEST_CHANNEL_NAMESPACE-}
+if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override$test_node_bin$test_channel_namespace" ]; then
   [ "$test_mode" = "1" ] || fail "calibration_live_launcher_test_mode_invalid"
   case "$credential_fd" in *[!0-9]*|'') fail "calibration_live_launcher_test_fd_invalid" ;; esac
   case "$test_timeout" in *[!0-9]*|'') fail "calibration_live_launcher_test_timeout_invalid" ;; esac
   [ "$test_timeout" -gt 0 ] && [ "$test_timeout" -le 10 ] || fail "calibration_live_launcher_test_timeout_invalid"
+  case "$test_channel_namespace" in
+    ''|*[!A-Za-z0-9_-]*) fail "calibration_live_launcher_test_channel_namespace_invalid" ;;
+  esac
+  [ "${#test_channel_namespace}" -le 64 ] || \
+    fail "calibration_live_launcher_test_channel_namespace_invalid"
   BOOTSTRAP=$(/bin/realpath "$test_bootstrap") || fail "calibration_live_launcher_test_bootstrap_invalid"
   attest_file "$BOOTSTRAP"
   [ -n "$test_node_bin" ] || fail "calibration_live_launcher_test_node_invalid"
@@ -226,7 +232,11 @@ if [ "$test_mode" != "1" ]; then
   attest_sha256_file "$GH_BIN" "$GH_SHA256"
 fi
 
-channel_dir=$(/usr/bin/mktemp -d /tmp/meelni-calibration-live.XXXXXX)
+channel_template=/tmp/meelni-calibration-live.XXXXXX
+if [ "$test_mode" = "1" ]; then
+  channel_template="/tmp/meelni-calibration-live.${test_channel_namespace}.XXXXXX"
+fi
+channel_dir=$(/usr/bin/mktemp -d "$channel_template")
 channel_dir=$(/bin/realpath "$channel_dir")
 /bin/chmod 700 "$channel_dir"
 if [ "$test_mode" != "1" ]; then
