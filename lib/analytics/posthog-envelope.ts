@@ -4,6 +4,7 @@ import {
   hasAnalyticsEventPolicy,
 } from "./event-policy";
 import { sanitizeAnalyticsPath } from "./privacy";
+import { sanitizeAnalyticsString } from "./privacy-sanitizer";
 
 export interface PostHogCaptureEnvelope {
   $set?: Record<string, unknown>;
@@ -104,7 +105,7 @@ function pickProviderProperties(
   const safe: Record<string, string> = {};
   for (const key of SAFE_PROVIDER_PROPERTY_KEYS) {
     const value = stringValue(properties[key]);
-    if (value) safe[key] = value.slice(0, 256);
+    if (value) safe[key] = sanitizeAnalyticsString(value).slice(0, 256);
   }
   return safe;
 }

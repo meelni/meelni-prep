@@ -1,22 +1,24 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
+import { parse } from "yaml";
 
 const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const parsedWorkflow = parse(workflow);
 const triggerBlock = workflow.slice(
   workflow.indexOf("on:"),
   workflow.indexOf("permissions:")
 );
 const pullRequestTrigger = triggerBlock.slice(
   triggerBlock.indexOf("  pull_request:"),
-  triggerBlock.indexOf("  push:")
-);
-const mainPushTrigger = triggerBlock.slice(
-  triggerBlock.indexOf("  push:"),
   triggerBlock.indexOf("  workflow_dispatch:")
 );
+const stackWorkflow = readFileSync(
+  ".github/workflows/stack-topology.yml",
+  "utf8"
+);
 
-test("hosted Validate runs for merge-ready PRs, eligible main pushes, or manual dispatch", () => {
+test("hosted Validate runs for merge-ready PRs or manual dispatch", () => {
   assert.match(triggerBlock, /pull_request:\n\s+types:/);
   for (const event of [
     "opened",
@@ -28,11 +30,15 @@ test("hosted Validate runs for merge-ready PRs, eligible main pushes, or manual 
   ]) {
     assert.match(triggerBlock, new RegExp(`\\b${event}\\b`));
   }
-  assert.match(mainPushTrigger, /push:\n\s+branches: \[main\]/);
+  assert.doesNotMatch(triggerBlock, /^  push:\s*$/m);
   assert.match(triggerBlock, /workflow_dispatch:/);
   assert.match(
     workflow,
     /github\.event\.action != 'closed' && github\.event\.pull_request\.draft == false/
+  );
+  assert.match(
+    workflow,
+    /github\.event_name == 'workflow_dispatch' && 'Manual Validate'/
   );
   assert.match(
     workflow,
@@ -57,19 +63,23 @@ test("cost control preserves exact-head cancellation and the complete validation
   }
 });
 
-test("feature branches cannot reintroduce a duplicate push-triggered Validate run", () => {
-  assert.equal(triggerBlock.match(/^  push:$/gm)?.length, 1);
-  assert.doesNotMatch(triggerBlock, /branches:\s*\[[^\]]*(?:\*\*|codex\/)/);
+test("protected branch merges cannot start a duplicate push-triggered Validate run", () => {
+  assert.ok(parsedWorkflow?.on && typeof parsedWorkflow.on === "object");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(parsedWorkflow.on, "push"),
+    false
+  );
+  assert.doesNotMatch(triggerBlock, /^\s{2}push\s*:/m);
+  assert.doesNotMatch(triggerBlock, /branches:/);
 });
 
-test("registry-only main pushes skip the redundant full run without filtering PR validation", () => {
+test("pull request validation stays unfiltered while trusted main publishers remain active", () => {
   assert.doesNotMatch(pullRequestTrigger, /\bpaths(?:-ignore)?:/);
-  assert.match(mainPushTrigger, /^    paths-ignore:$/m);
-  assert.deepEqual(
-    [...mainPushTrigger.matchAll(/^      - "([^"]+)"$/gm)].map(
-      ([, path]) => path
-    ),
-    [".github/stacked-prs.json"]
+  assert.match(stackWorkflow, /^  push:\n    branches: \[main\]/m);
+  assert.match(stackWorkflow, /- "\.github\/stacked-prs\.json"/);
+  assert.match(
+    stackWorkflow,
+    /if: github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
   );
 });
 
@@ -83,6 +93,10 @@ test("draft and closed lifecycle events cannot publish the required Validate con
   assert.doesNotMatch(
     workflow,
     /name: Validate[\s\S]*if: github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false/
+  );
+  assert.match(
+    workflow,
+    /github\.event_name == 'workflow_dispatch' && 'Manual Validate'/
   );
 });
 

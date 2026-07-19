@@ -51,8 +51,9 @@ def normalize_runtime_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
         normalized["difficulty"] = source["difficulty"]
     if source.get("duration") in {15, 30, 45}:
         normalized["duration"] = source["duration"]
-    if source.get("hintMode") in {"off", "gentle", "coach"}:
-        normalized["hintMode"] = source["hintMode"]
+    # Full mock interviews never use in-session hints. Legacy non-off values
+    # remain readable but normalize to the canonical off behavior.
+    normalized["hintMode"] = "off"
     normalized["questionPreference"] = _normalize_question_preference(
         source.get("questionPreference")
     )

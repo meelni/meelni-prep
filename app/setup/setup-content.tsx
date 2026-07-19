@@ -723,7 +723,7 @@ export function SetupContent() {
                     {effectiveRoundType &&
                       INTERVIEW_TYPE_LABELS[effectiveRoundType]}{" "}
                     · {difficulty && DIFFICULTY_LEVELS[difficulty].label} ·
-                    hints off by default
+                    hints off
                   </span>
                 </div>
                 <InterviewDataDisclosure />

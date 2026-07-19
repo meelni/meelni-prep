@@ -21,6 +21,7 @@ import {
 } from "@/lib/auth/auth-handoff";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 interface QuestionSignInModalProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export function QuestionSignInModal({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { signInWithGoogle } = useAuth();
+  const activation = usePublicActivationDecision();
   const [isStartingGoogle, setIsStartingGoogle] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const originDestination = buildInternalRequestDestination(
@@ -63,6 +65,7 @@ export function QuestionSignInModal({
     }
   }, [isOpen]);
   const handleGoogleSignIn = async () => {
+    if (!activation.canActivate) return;
     setIsStartingGoogle(true);
     setGoogleError(null);
     try {
@@ -75,12 +78,18 @@ export function QuestionSignInModal({
   };
 
   const handleEmailSignIn = () => {
+    if (!activation.canActivate) return;
     router.push(buildAuthPageHref(AUTH_SIGNIN_PATH, authHandoff));
   };
 
   const handleSignUp = () => {
+    if (!activation.canActivate) return;
     router.push(buildAuthPageHref(AUTH_SIGNUP_PATH, authHandoff));
   };
+
+  if (!activation.canActivate) {
+    return null;
+  }
 
   return (
     <Dialog
