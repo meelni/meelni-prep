@@ -70,6 +70,17 @@ npm run typecheck
 
 - Keep explicit dispatch. Demo and full interview agents should not compete for
   the same room jobs.
+- Register every cloud worker with its configured agent name. An unnamed worker
+  enables automatic dispatch; the app treats any dispatch already attached to a
+  newly created public-demo room as a configuration conflict and deletes the
+  room without issuing a participant token.
+- Do not trust a successful dispatch request by itself. Initial public-demo
+  start requires the created dispatch to have a non-empty ID and the exact
+  requested room and agent, followed by exactly one matching listed dispatch
+  with the same ID. Recovery verifies exactly one matching named dispatch both
+  before and after agent-participant readiness. Any verified mismatch withholds
+  the token and terminalizes the recovery session; transient provider-read
+  failures remain retryable without minting.
 - Keep `LIVEKIT_DEMO_AGENT_NAME` distinct from
   `LIVEKIT_INTERVIEW_AGENT_NAME`. The public demo route fails closed before
   room creation when either name is absent or both names resolve to one
