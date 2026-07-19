@@ -84,8 +84,8 @@ export function trackServerEvent(
 
   try {
     client.capture(buildServerCapturePayload(event, properties, distinctId));
-  } catch (error) {
-    console.error("[Analytics Server] Error tracking event:", error);
+  } catch {
+    console.error("analytics_server_event_tracking_failed");
   }
 }
 
@@ -117,8 +117,8 @@ export function identifyServerUser(
 
   try {
     client.identify(buildServerIdentifyPayload(userId, properties));
-  } catch (error) {
-    console.error("[Analytics Server] Error identifying user:", error);
+  } catch {
+    console.error("analytics_server_user_identification_failed");
   }
 }
 

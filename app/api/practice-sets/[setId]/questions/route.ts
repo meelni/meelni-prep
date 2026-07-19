@@ -66,8 +66,8 @@ export async function GET(
           question.questionType,
       })),
     });
-  } catch (error) {
-    console.error("Error fetching practice set questions:", error);
+  } catch {
+    console.error("practice_set_question_list_read_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -128,8 +128,8 @@ export async function POST(
       .where(eq(practiceSet.id, setId));
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error adding question to practice set:", error);
+  } catch {
+    console.error("practice_set_question_add_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -191,8 +191,8 @@ export async function DELETE(
       .where(eq(practiceSet.id, setId));
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error removing question from practice set:", error);
+  } catch {
+    console.error("practice_set_question_remove_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

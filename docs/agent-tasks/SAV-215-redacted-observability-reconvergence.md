@@ -48,4 +48,5 @@
 - Risk: Medium; failure reporting must never mask the product failure or leak content.
 - Backward compatibility: Additive one-line JSON event; existing product responses and durable workflow state remain unchanged.
 - Watch: Event schema violations, missing release/environment, reporter failures, and duplicate alert volume.
-- Follow-up: Configure an approved Preview alert destination and pair it with SAV-216's health synthetic for event/alert/acknowledgement/recovery evidence.
+- Provider-free safety follow-up: close adjacent raw caught-exception sinks and enforce the deployed-server privacy boundary before connecting any receiver; tracked in `SAV-215-raw-server-sink-closeout.md`.
+- Remaining external follow-up: Configure an approved Preview alert destination that consumes only the closed event and pair it with SAV-216's health synthetic for event/alert/acknowledgement/recovery evidence.
