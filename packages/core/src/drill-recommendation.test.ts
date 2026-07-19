@@ -5,6 +5,7 @@ import {
   DRILL_RECOMMENDATION_CONTRACT_VERSION,
   DRILL_TEMPLATE_VERSION,
   recommendDrill,
+  resolveDrillRecommendation,
 } from "./drill-recommendation";
 import {
   FEEDBACK_PROMPT_VERSION,
@@ -104,6 +105,50 @@ test("equal validated inputs produce one stable PM drill ID", () => {
       confidence: 0.8,
     },
   });
+});
+
+test("trusted resolution returns the exact selected grounded finding in the same pass", () => {
+  const selected = {
+    ...baseFinding,
+    transcriptRefs: ["writer:9", "writer:8"],
+    evidence: [
+      { turnRef: "writer:9", quote: "missing threshold" },
+      { turnRef: "writer:8", quote: "unranked options" },
+    ],
+    confidence: 0.9,
+  };
+  const other = {
+    ...baseFinding,
+    transcriptRefs: ["writer:3"],
+    evidence: [{ turnRef: "writer:3", quote: "unclear sequence" }],
+    confidence: 0.6,
+  };
+  const resolution = resolveDrillRecommendation({
+    roundType: "product_sense",
+    sourceState: "completed",
+    templateVersion: DRILL_TEMPLATE_VERSION,
+    feedback: feedback({ improvements: [other, selected] }),
+  });
+
+  assert.equal(resolution.recommendation.state, "recommended");
+  assert.deepEqual(resolution.sourceFinding, selected);
+  assert.notStrictEqual(resolution.sourceFinding, selected);
+  assert.notStrictEqual(resolution.sourceFinding?.evidence, selected.evidence);
+  assert.deepEqual(
+    resolution.recommendation.state === "recommended"
+      ? resolution.recommendation.sourceFinding.transcriptRefs
+      : [],
+    ["writer:8", "writer:9"]
+  );
+
+  const unavailable = resolveDrillRecommendation({
+    roundType: "product_sense",
+    sourceState: "processing",
+    templateVersion: DRILL_TEMPLATE_VERSION,
+    feedback: null,
+  });
+  assert.equal(unavailable.recommendation.state, "unavailable");
+  assert.equal(unavailable.sourceFinding, null);
 });
 
 test("partial validated evidence receives a distinct evidence-gap mapping", () => {
