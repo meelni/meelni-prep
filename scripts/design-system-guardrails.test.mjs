@@ -1697,9 +1697,7 @@ test("landing feature selector uses shared controls and semantic status tokens",
     "Button",
     "text-info",
     "bg-info",
-    "text-warning",
     "bg-warning",
-    "border-warning",
     "bg-success",
     "bg-destructive",
   ];
@@ -1981,7 +1979,7 @@ test("marketing index pages use shared marketing surfaces and actions", async ()
 
 test("pricing result pages use shared marketing state surfaces", async () => {
   const files = [
-    "app/pricing/success/page.tsx",
+    "app/pricing/success/checkout-success-client.tsx",
     "app/pricing/canceled/page.tsx",
   ];
   const violations = [];

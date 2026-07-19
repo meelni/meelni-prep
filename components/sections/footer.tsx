@@ -2,6 +2,8 @@ import { Icons } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/lib/config";
 import Link from "next/link";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 const footerLinks = [
   { label: "Questions", href: "/explore" },
@@ -27,14 +29,14 @@ export function Footer() {
           </div>
 
           <div className="flex flex-col gap-3 pb-1 sm:flex-row">
-            <Button
-              asChild
+            <PublicActivationButton
+              href={NEW_INTERVIEW_PATH}
               size="lg"
               variant="secondary"
               className="text-footer-button h-12 rounded-full bg-white px-6 font-bold hover:bg-white/90"
             >
-              <Link href="/dashboard/new-interview">Start practice</Link>
-            </Button>
+              Start practice
+            </PublicActivationButton>
             <Button
               asChild
               size="lg"

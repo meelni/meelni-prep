@@ -169,6 +169,7 @@ function checkoutHarness(
             existing = {
               id: `cs_${sessionCreateCount}`,
               url: `https://checkout.example.invalid/${sessionCreateCount}`,
+              returnHandle: `cr_${String(sessionCreateCount).padStart(32, "0")}`,
               catalogId,
               userId: "user-1",
               customerId,

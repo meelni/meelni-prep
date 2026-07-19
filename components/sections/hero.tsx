@@ -8,8 +8,11 @@ import { DemoModal } from "@/components/demo-modal";
 import { siteConfig } from "@/lib/config";
 import { motion } from "framer-motion";
 import { ArrowRight, Mic } from "lucide-react";
-import Link from "next/link";
 import { useRef, useState } from "react";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -32,6 +35,8 @@ interface HeroCTAProps {
 }
 
 function HeroCTA({ onDemoClick, demoTriggerRef }: HeroCTAProps) {
+  const activation = usePublicActivationDecision();
+
   return (
     <div className="relative mt-8">
       <motion.div
@@ -40,26 +45,29 @@ function HeroCTA({ onDemoClick, demoTriggerRef }: HeroCTAProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.8, duration: 0.8, ease }}
       >
-        <Button
-          asChild
+        <PublicActivationButton
+          href={NEW_INTERVIEW_PATH}
           size="lg"
           className="h-12 w-full rounded-lg px-5 sm:w-auto"
         >
-          <Link href="/dashboard/new-interview">
-            {siteConfig.hero.cta}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
+          {siteConfig.hero.cta}
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </PublicActivationButton>
         <Button
           ref={demoTriggerRef}
           type="button"
-          onClick={onDemoClick}
+          onClick={activation.canActivate ? onDemoClick : undefined}
+          disabled={!activation.canActivate}
           variant="outline"
           size="lg"
           className="group border-primary/40 bg-background/80 text-primary hover:border-primary hover:bg-primary/10 h-12 w-full rounded-lg px-5 font-semibold backdrop-blur-md sm:w-auto"
         >
-          <Mic className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
-          Try voice demo
+          {activation.canActivate && (
+            <Mic className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+          )}
+          {activation.canActivate
+            ? "Try voice demo"
+            : PUBLIC_ACTIVATION_PAUSED_LABEL}
         </Button>
       </motion.div>
     </div>

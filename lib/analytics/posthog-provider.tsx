@@ -34,6 +34,7 @@ function initializePostHog() {
 
   // Check if already initialized
   if (posthog.__loaded) {
+    posthog.stopSessionRecording();
     return;
   }
 
@@ -76,6 +77,7 @@ function initializePostHog() {
 
     // Performance
     loaded: (ph) => {
+      ph.stopSessionRecording();
       if (clientConfig.debug) {
         console.log("[Analytics] PostHog loaded");
       }
