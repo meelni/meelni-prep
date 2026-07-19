@@ -61,7 +61,7 @@ test("migration operations docs match the ordered Drizzle journal", async () => 
   );
   assert.match(
     await readFile("docs/operations/database-migrations.md", "utf8"),
-    /strict preflight[\s\S]*migrationCount: 26[\s\S]*8320f3c455a93395c27de612a8e55c57bfddd3ae86a564f5339a9a21d1726290/i
+    /strict preflight[\s\S]*migrationCount: 26[\s\S]*82586c6f559387b1a1b98f955565b9e7efbf91265a36234adac41079d4d381ba/i
   );
 
   assert.match(history, /`transcript_runtime_writer` registry/);

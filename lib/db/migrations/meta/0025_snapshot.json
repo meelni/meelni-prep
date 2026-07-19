@@ -5575,6 +5575,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "analytics_consent_revision": {
+          "name": "analytics_consent_revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "save_transcripts": {
           "name": "save_transcripts",
           "type": "boolean",
@@ -5664,7 +5671,7 @@
         },
         "analytics_consent_metadata_check": {
           "name": "analytics_consent_metadata_check",
-          "value": "(\"user_settings\".\"analytics_consent\" = 'undecided' AND \"user_settings\".\"analytics_consent_version\" IS NULL AND \"user_settings\".\"analytics_consent_source\" IS NULL AND \"user_settings\".\"analytics_consent_updated_at\" IS NULL) OR (\"user_settings\".\"analytics_consent\" IN ('accepted', 'declined') AND \"user_settings\".\"analytics_consent_version\" > 0 AND \"user_settings\".\"analytics_consent_source\" IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND \"user_settings\".\"analytics_consent_updated_at\" IS NOT NULL)"
+          "value": "(\"user_settings\".\"analytics_consent\" = 'undecided' AND \"user_settings\".\"analytics_consent_version\" IS NULL AND \"user_settings\".\"analytics_consent_source\" IS NULL AND \"user_settings\".\"analytics_consent_updated_at\" IS NULL AND \"user_settings\".\"analytics_consent_revision\" = 0) OR (\"user_settings\".\"analytics_consent\" IN ('accepted', 'declined') AND \"user_settings\".\"analytics_consent_version\" > 0 AND \"user_settings\".\"analytics_consent_source\" IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND \"user_settings\".\"analytics_consent_updated_at\" IS NOT NULL AND \"user_settings\".\"analytics_consent_revision\" > 0)"
         }
       },
       "isRLSEnabled": false

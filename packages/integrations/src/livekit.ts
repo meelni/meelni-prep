@@ -24,7 +24,7 @@ export type LiveKitAgentKind = "interview" | "demo";
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
-export const PUBLIC_DEMO_PARTICIPANT_TOKEN_TTL_SECONDS = 150;
+export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
 export interface StartInterviewRoomInput {
   agentName: string;
@@ -41,17 +41,25 @@ export interface StartedInterviewRoom {
   url: string;
 }
 
+export interface StartedPublicDemoRoom extends StartedInterviewRoom {
+  expiresAt: Date;
+}
+
 export interface StartPublicDemoRoomInput {
   agentName: string;
   identity: string;
   roomName: string;
   metadata: unknown;
+  observedAt: Date;
+  expiresAt: Date;
   env: LiveKitEnvironment;
 }
 
 export interface IssuePublicDemoTokenInput {
   identity: string;
   roomName: string;
+  observedAt: Date;
+  expiresAt: Date;
   env: LiveKitEnvironment;
 }
 
@@ -111,10 +119,10 @@ export interface LiveKitRoomTerminationProvider {
 export interface LiveKitPublicDemoProvider {
   startPublicDemoRoom(
     input: StartPublicDemoRoomInput
-  ): Promise<ProviderResult<StartedInterviewRoom>>;
+  ): Promise<ProviderResult<StartedPublicDemoRoom>>;
   issuePublicDemoToken(
     input: IssuePublicDemoTokenInput
-  ): Promise<ProviderResult<StartedInterviewRoom>>;
+  ): Promise<ProviderResult<StartedPublicDemoRoom>>;
   deletePublicDemoRoom(
     roomName: string,
     env: LiveKitEnvironment
@@ -451,20 +459,41 @@ export function createLiveKitPublicDemoProvider({
     new AgentDispatchClient(url, apiKey, apiSecret),
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
+  now = () => new Date(),
   sleep = (milliseconds) =>
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }: LiveKitProviderDependencies = {}): LiveKitPublicDemoProvider {
   async function mintToken(
     input: IssuePublicDemoTokenInput
-  ): Promise<ProviderResult<StartedInterviewRoom>> {
+  ): Promise<ProviderResult<StartedPublicDemoRoom>> {
     try {
+      const signingAtSeconds = Math.floor(now().getTime() / 1_000);
+      const observedAtMilliseconds = input.observedAt.getTime();
+      const observedAtSeconds = Math.floor(observedAtMilliseconds / 1_000);
+      const expirationSeconds = Math.floor(input.expiresAt.getTime() / 1_000);
+      const ttlSeconds = expirationSeconds - signingAtSeconds;
+      if (
+        !Number.isSafeInteger(signingAtSeconds) ||
+        !Number.isFinite(observedAtMilliseconds) ||
+        !Number.isSafeInteger(observedAtSeconds) ||
+        !Number.isSafeInteger(expirationSeconds) ||
+        expirationSeconds <= observedAtSeconds ||
+        ttlSeconds < PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS ||
+        ttlSeconds > PUBLIC_DEMO_DURATION_SECONDS
+      ) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_token_deadline_invalid",
+          message: "The public demo token deadline is invalid or expired.",
+          retryable: false,
+        });
+      }
       const token = new accessTokenFactory(
         input.env.apiKey,
         input.env.apiSecret,
         {
           identity: input.identity,
           name: "Demo participant",
-          ttl: PUBLIC_DEMO_PARTICIPANT_TOKEN_TTL_SECONDS,
+          ttl: ttlSeconds,
         }
       );
       token.addGrant({
@@ -475,10 +504,29 @@ export function createLiveKitPublicDemoProvider({
         canPublishSources: [TrackSource.MICROPHONE],
         canSubscribe: true,
       });
+      const signedToken = await token.toJwt();
+      const actualExpiration = readJwtExpiration(signedToken);
+      const signedAtMilliseconds = now().getTime();
+      if (
+        actualExpiration === null ||
+        !Number.isFinite(signedAtMilliseconds) ||
+        actualExpiration !== expirationSeconds ||
+        actualExpiration * 1_000 - observedAtMilliseconds <
+          PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS * 1_000 ||
+        actualExpiration * 1_000 - signedAtMilliseconds <
+          PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS * 1_000
+      ) {
+        return providerFailure("livekit", {
+          code: "livekit_demo_token_deadline_invalid",
+          message: "The signed public demo token exceeded its deadline.",
+          retryable: false,
+        });
+      }
       return providerSuccess("livekit", {
         roomName: input.roomName,
-        token: await token.toJwt(),
+        token: signedToken,
         url: input.env.url,
+        expiresAt: new Date(actualExpiration * 1_000),
       });
     } catch (error) {
       return providerFailure("livekit", {

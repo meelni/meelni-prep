@@ -7140,10 +7140,11 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
         limiting_scope: string | null;
         retry_after_seconds: number;
         recovery_claim_token: string | null;
+        deadline_at: Date | string | null;
       }[]
     >`
       SELECT decision, room_name, limiting_scope, retry_after_seconds,
-        recovery_claim_token
+        recovery_claim_token, deadline_at
       FROM public.reserve_public_demo_session(
         ${requestedSessionId}::uuid,
         'development',
@@ -7155,8 +7156,38 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
   await sql`DELETE FROM public_demo_session`;
   await sql`DELETE FROM public_demo_rate_limit`;
 
+  const { reservePublicDemoSession } = await import(
+    "../lib/db/demo-rate-limits"
+  );
+  const adapterReservation = await reservePublicDemoSession({
+    sessionId: "d0000000-0000-4000-8000-000000000001",
+    deploymentScope: "development",
+    ipHash: "e".repeat(64),
+    deviceHash: "f".repeat(64),
+  });
+  assert.equal(adapterReservation.action, "provision");
+  assert.ok(adapterReservation.deadlineAt);
+  assert.equal(adapterReservation.deadlineAt.getTime() > Date.now(), true);
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
   const [initial] = await reserve(sql, sessionId);
   assert.equal(initial?.decision, "provision");
+  assert.ok(initial?.deadline_at);
+  const [initialSession] = await sql<
+    { created_at: Date | string; active_expires_at: Date | string }[]
+  >`
+    SELECT created_at, active_expires_at
+    FROM public_demo_session
+    WHERE id = ${sessionId}::uuid
+  `;
+  assert.ok(initialSession);
+  const createdAt = databaseTimestamp(initialSession.created_at);
+  const activeExpiresAt = databaseTimestamp(initialSession.active_expires_at);
+  const initialDeadlineAt = databaseTimestamp(initial.deadline_at);
+  assert.equal(activeExpiresAt.getTime() - createdAt.getTime(), 120_000);
+  assert.equal(initialDeadlineAt.getTime(), activeExpiresAt.getTime());
   const [completed] = await sql<{ completed: boolean }[]>`
     SELECT public.complete_public_demo_session(
       ${sessionId}::uuid, 'ready', NULL
@@ -7172,29 +7203,110 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
     recoveryRows.filter((row) => row.decision === "issue_token").length,
     1
   );
-  const claim = recoveryRows.find(
-    (row) => row.decision === "issue_token"
-  )?.recovery_claim_token;
-  assert.ok(claim);
+  const claim = recoveryRows.find((row) => row.decision === "issue_token");
+  assert.ok(claim?.deadline_at);
+  assert.equal(
+    databaseTimestamp(claim.deadline_at).getTime(),
+    initialDeadlineAt.getTime()
+  );
+  const recoveryClaimToken = claim?.recovery_claim_token;
+  assert.ok(recoveryClaimToken);
   const [finalized] = await sql<{ completed: boolean }[]>`
     SELECT public.finalize_public_demo_recovery_token(
-      ${sessionId}::uuid, ${claim}::uuid
+      ${sessionId}::uuid, ${recoveryClaimToken}::uuid
     ) AS completed
   `;
   const [finalizedAgain] = await sql<{ completed: boolean }[]>`
     SELECT public.finalize_public_demo_recovery_token(
-      ${sessionId}::uuid, ${claim}::uuid
+      ${sessionId}::uuid, ${recoveryClaimToken}::uuid
     ) AS completed
   `;
   const [rollbackAfterFinalize] = await sql<{ completed: boolean }[]>`
     SELECT public.rollback_public_demo_recovery_token(
-      ${sessionId}::uuid, ${claim}::uuid
+      ${sessionId}::uuid, ${recoveryClaimToken}::uuid
     ) AS completed
   `;
   assert.equal(finalized?.completed, true);
   assert.equal(finalizedAgain?.completed, true);
   assert.equal(rollbackAfterFinalize?.completed, false);
   assert.equal((await reserve(sql, sessionId))[0]?.decision, "rate_limited");
+
+  const delayedCompletionSessionId = "d1000000-0000-4000-8000-000000000003";
+  assert.equal(
+    (
+      await reserve(
+        sql,
+        delayedCompletionSessionId,
+        "1".repeat(64),
+        "2".repeat(64)
+      )
+    )[0]?.decision,
+    "provision"
+  );
+  await sql`
+    UPDATE public_demo_session
+    SET active_expires_at = clock_timestamp() + interval '4 seconds'
+    WHERE id = ${delayedCompletionSessionId}::uuid
+  `;
+  const [delayedReady] = await sql<{ completed: boolean }[]>`
+    SELECT public.complete_public_demo_session(
+      ${delayedCompletionSessionId}::uuid, 'ready', NULL
+    ) AS completed
+  `;
+  const [delayedFailed] = await sql<{ completed: boolean }[]>`
+    SELECT public.complete_public_demo_session(
+      ${delayedCompletionSessionId}::uuid,
+      'failed',
+      'reservation_finalize_failed'
+    ) AS completed
+  `;
+  assert.equal(delayedReady?.completed, false);
+  assert.equal(delayedFailed?.completed, true);
+
+  const delayedRecoverySessionId = "d1000000-0000-4000-8000-000000000002";
+  assert.equal(
+    (
+      await reserve(
+        sql,
+        delayedRecoverySessionId,
+        "3".repeat(64),
+        "4".repeat(64)
+      )
+    )[0]?.decision,
+    "provision"
+  );
+  await sql`
+    SELECT public.complete_public_demo_session(
+      ${delayedRecoverySessionId}::uuid, 'ready', NULL
+    )
+  `;
+  const [delayedRecoveryClaim] = await reserve(
+    sql,
+    delayedRecoverySessionId,
+    "3".repeat(64),
+    "4".repeat(64)
+  );
+  assert.equal(delayedRecoveryClaim?.decision, "issue_token");
+  await sql`
+    UPDATE public_demo_session
+    SET active_expires_at = clock_timestamp() + interval '4 seconds'
+    WHERE id = ${delayedRecoverySessionId}::uuid
+  `;
+  const [delayedFinalization] = await sql<{ completed: boolean }[]>`
+    SELECT public.finalize_public_demo_recovery_token(
+      ${delayedRecoverySessionId}::uuid,
+      ${delayedRecoveryClaim?.recovery_claim_token}::uuid
+    ) AS completed
+  `;
+  const [failedDelayedRecovery] = await sql<{ completed: boolean }[]>`
+    SELECT public.fail_public_demo_recovery_session(
+      ${delayedRecoverySessionId}::uuid,
+      ${delayedRecoveryClaim?.recovery_claim_token}::uuid,
+      'recovery_finalize_failed'
+    ) AS completed
+  `;
+  assert.equal(delayedFinalization?.completed, false);
+  assert.equal(failedDelayedRecovery?.completed, true);
 
   const ipRowsBefore = await sql<{ rows: number }[]>`
     SELECT count(*)::int AS rows
