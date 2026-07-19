@@ -80,6 +80,7 @@ Use the shared text utilities in `app/globals.css` when they fit: `text-display-
   - `FeedbackStatusPage`: canonical full-page feedback status layout for partial, insufficient, abandoned, loading, and recovery states.
   - `FeedbackMetricCard`: canonical compact metric tile for session stats and feedback thresholds.
   - `FeedbackActionItem`: canonical row item for feedback recommendations, reasons, tips, and troubleshooting guidance.
+- Use `components/public-activation-action.tsx` for public practice, signup, demo, and purchase conversion actions. It preserves the enabled destination and renders an inert, truthful paused state from the shared relaunch decision.
 - Add product-level composition components when a treatment repeats across pages, such as app shell, page header, metric card, empty state, status pill, CTA panel, and chart card.
 - Raw `<button>` and `<input>` are acceptable only when a primitive cannot express the required native behavior; document the exception in code if it is non-obvious.
 - Use lucide-react icons through component imports. Avoid hand-drawn inline SVG icons for common actions.

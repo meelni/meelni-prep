@@ -18,6 +18,10 @@ export function useFeatureFlags() {
   };
 }
 
+export function usePublicActivationDecision() {
+  return { canActivate: true, state: "available" as const };
+}
+
 export function StatsigProvider({ children }: { children: React.ReactNode }) {
   return children;
 }

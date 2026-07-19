@@ -34,7 +34,7 @@
 
 The Meelni API provides programmatic access to real-time AI-powered mock interviews for product managers. The API enables you to:
 
-- **Start and manage interview sessions** with AI coaches
+- **Start and manage mock interview sessions** with a realistic PM interviewer
 - **Save and retrieve conversation transcripts** turn-by-turn
 - **Generate AI feedback** with dimension scores and improvement recommendations
 - **Choose bounded interview preferences** such as difficulty and duration
@@ -302,12 +302,12 @@ Creates a new interview session, sets up a LiveKit room, dispatches an AI agent,
 
 **Config Object**:
 
-| Field                | Type   | Required | Default         | Description                                      |
-| -------------------- | ------ | -------- | --------------- | ------------------------------------------------ |
-| `difficulty`         | string | No       | `intermediate`  | `beginner`, `intermediate`, or `advanced`        |
-| `duration`           | number | No       | `30`            | 15, 30, or 45 minutes                            |
-| `hintMode`           | string | No       | `off`           | `off`, `gentle`, or `coach`                      |
-| `questionPreference` | object | No       | recent defaults | Bounded recency choice and optional `recentDays` |
+| Field                | Type   | Required | Default         | Description                                                              |
+| -------------------- | ------ | -------- | --------------- | ------------------------------------------------------------------------ |
+| `difficulty`         | string | No       | `intermediate`  | `beginner`, `intermediate`, or `advanced`                                |
+| `duration`           | number | No       | `30`            | 15, 30, or 45 minutes                                                    |
+| `hintMode`           | string | No       | `off`           | Compatibility field; full mock interviews normalize every value to `off` |
+| `questionPreference` | object | No       | recent defaults | Bounded recency choice and optional `recentDays`                         |
 
 Provider, model, voice, persona, and voice-tuning fields are not public
 controls. They are stripped or rejected before persistence and room creation.
@@ -959,7 +959,7 @@ async function runFullInterviewFlow() {
   console.log("Interview complete! Your score:", feedback.overallScore);
   console.log("Strengths:", feedback.strengths);
   console.log("Areas to improve:", feedback.improvements);
-  console.log("Practice drills:", feedback.drills);
+  console.log("Practice exercises:", feedback.drills);
 }
 ```
 

@@ -2,6 +2,7 @@ import {
   AccessToken,
   AgentDispatchClient,
   DataPacket_Kind,
+  RoomAgentDispatch,
   RoomServiceClient,
   TrackSource,
 } from "livekit-server-sdk";
@@ -56,6 +57,7 @@ export interface StartPublicDemoRoomInput {
 }
 
 export interface IssuePublicDemoTokenInput {
+  agentName: string;
   identity: string;
   roomName: string;
   observedAt: Date;
@@ -186,6 +188,7 @@ interface RoomServiceClientLike {
     emptyTimeout: number;
     maxParticipants: number;
     departureTimeout: number;
+    agents?: RoomAgentDispatch[];
   }): Promise<unknown>;
   listRooms?(
     names?: string[]
@@ -553,6 +556,57 @@ export function createLiveKitPublicDemoProvider({
     await roomClient.deleteRoom(roomName);
   }
 
+  async function verifyPublicDemoDispatch(
+    input: IssuePublicDemoTokenInput,
+    roomClient: RoomServiceClientLike,
+    dispatchClient: AgentDispatchClientLike
+  ): Promise<ProviderResult<true>> {
+    let dispatches: AgentDispatchLike[];
+    try {
+      dispatches = await dispatchClient.listDispatch(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_dispatch_verify_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    if (
+      dispatches.length === 1 &&
+      typeof dispatches[0].id === "string" &&
+      dispatches[0].id.trim() &&
+      dispatches[0].agentName === input.agentName &&
+      dispatches[0].room === input.roomName
+    ) {
+      return providerSuccess("livekit", true);
+    }
+
+    if (!roomClient.deleteRoom) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup is unavailable.",
+        retryable: true,
+      });
+    }
+    try {
+      await roomClient.deleteRoom(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup failed.",
+        retryable: true,
+        cause: error,
+      });
+    }
+    return providerFailure("livekit", {
+      code: "livekit_demo_dispatch_invalid",
+      message: "The public demo dispatch does not match the ready session.",
+      retryable: false,
+    });
+  }
+
   return {
     async startPublicDemoRoom(input) {
       const roomClient = roomServiceClientFactory(
@@ -565,33 +619,59 @@ export function createLiveKitPublicDemoProvider({
         input.env.apiKey,
         input.env.apiSecret
       );
-      let roomCreated = false;
+      let roomCreationAttempted = false;
 
       try {
+        roomCreationAttempted = true;
         await roomClient.createRoom({
           name: input.roomName,
           metadata: JSON.stringify(input.metadata),
           emptyTimeout: 30,
           departureTimeout: 5,
           maxParticipants: 2,
+          agents: [
+            new RoomAgentDispatch({
+              agentName: input.agentName,
+            }),
+          ],
         });
-        roomCreated = true;
-        await dispatchClient.createDispatch(input.roomName, input.agentName);
+        const reconciled = await dispatchClient.listDispatch(input.roomName);
+        if (
+          reconciled.length !== 1 ||
+          typeof reconciled[0].id !== "string" ||
+          !reconciled[0].id.trim() ||
+          reconciled[0].agentName !== input.agentName ||
+          reconciled[0].room !== input.roomName
+        ) {
+          throw new Error(
+            "Public demo dispatch could not be reconciled uniquely."
+          );
+        }
 
         const token = await mintToken(input);
         if (!token.ok) throw token.error;
         return token;
       } catch (error) {
-        if (roomCreated && roomClient.deleteRoom) {
-          try {
-            await roomClient.deleteRoom(input.roomName);
-          } catch {
+        if (roomCreationAttempted) {
+          if (!roomClient.deleteRoom) {
             return providerFailure("livekit", {
               code: "livekit_demo_cleanup_failed",
-              message: "Demo provider cleanup failed.",
+              message: "Demo provider cleanup is unavailable.",
               retryable: true,
               cause: error,
             });
+          }
+          try {
+            await roomClient.deleteRoom(input.roomName);
+          } catch (cleanupError) {
+            if (!isStructuredLiveKitNotFoundError(cleanupError)) {
+              return providerFailure("livekit", {
+                code: "livekit_demo_cleanup_failed",
+                message: "Demo provider cleanup failed.",
+                retryable: true,
+                cause: cleanupError,
+              });
+            }
           }
         }
         return providerFailure("livekit", {
@@ -608,6 +688,11 @@ export function createLiveKitPublicDemoProvider({
         input.env.apiKey,
         input.env.apiSecret
       );
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
       if (!roomClient.listParticipants) {
         return providerFailure("livekit", {
           code: "livekit_demo_room_verify_failed",
@@ -615,6 +700,13 @@ export function createLiveKitPublicDemoProvider({
           retryable: true,
         });
       }
+
+      const initialDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!initialDispatch.ok) return initialDispatch;
 
       try {
         let participants = await roomClient.listParticipants(input.roomName);
@@ -645,6 +737,13 @@ export function createLiveKitPublicDemoProvider({
           cause: error,
         });
       }
+
+      const finalDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!finalDispatch.ok) return finalDispatch;
 
       return mintToken(input);
     },
@@ -979,6 +1078,12 @@ function isLiveKitNotFoundError(error: unknown): boolean {
 
   const message = getErrorMessage(error).toLowerCase();
   return message.includes("not found") || message.includes("does not exist");
+}
+
+function isStructuredLiveKitNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? error.code : undefined;
+  return typeof code === "string" && code.toLowerCase() === "not_found";
 }
 
 function getErrorMessage(error: unknown): string {

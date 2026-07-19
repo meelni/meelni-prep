@@ -6,6 +6,16 @@ Meelni emits one-line JSON operational-failure events to server stderr. Vercel c
 
 The reporter accepts only fixed classifications plus environment, release, and an ownership-derived interview-session correlation. It never accepts exception text, payloads, transcripts, email, provider IDs, user IDs, tokens, or secrets. Inngest final-failure hooks also emit only the closed event before durable retry/recovery behavior continues.
 
+Server-side PostHog events pass through the shared recursive analytics privacy
+boundary immediately before capture or identify transmission. Raw Stripe
+Checkout Session IDs are redacted from all string values, including billing
+`source_id`, embedded `idempotency_key`, nested properties, event names,
+distinct IDs, and opaque Checkout return handles. This transmission-only
+redaction does not change durable database idempotency or settlement evidence.
+PostHog session recording is disabled globally because its compressed DOM
+snapshots do not pass through the ordinary event sanitizer. Keep it disabled
+until a separate replay privacy boundary is implemented and verified.
+
 The relaunch gate remains off until a controlled isolated-Preview failure proves the selected operator receives, acknowledges, and recovers the paired SAV-215 event and SAV-216 health alert.
 
 ## Finding Failures
@@ -28,15 +38,21 @@ Never paste complete logs into tickets. Record the fixed code, release, environm
 
 ## Initial Relaunch Policy
 
-| Signal                                                | Initial policy                                     | Response                                                                                               |
-| ----------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Any `critical` Production event                       | Page on the first event during controlled relaunch | Identify the operation and release; disable the relaunch gate when the core practice path is affected. |
-| `feedback_generation_failed`                          | Page on final retry exhaustion                     | Preserve the failed lifecycle row and use the feedback recovery workflow.                              |
-| `feedback_dispatch_failed`                            | Page on the first durable failed dispatch          | Preserve the dispatch attempt and retry through the owner-scoped feedback endpoint.                    |
-| `stripe_webhook_failed`                               | Page on the first event                            | Check Stripe delivery and the redacted idempotency row before replay.                                  |
-| `question_sync_failed` or `question_sync_unavailable` | Alert after two consecutive scheduled runs         | Keep the existing public corpus; do not run an unguarded mutation.                                     |
-| `auth_code_exchange_failed`                           | Alert on a sustained increase                      | Verify provider callback configuration without capturing codes or user data.                           |
-| `interview_recovery` failures                         | Page on final retry exhaustion during relaunch     | Preserve durable session/credit state and inspect the matching recovery workflow.                      |
+| Signal                                                | Initial policy                                     | Response                                                                                                                                                            |
+| ----------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any `critical` Production event                       | Page on the first event during controlled relaunch | Identify the operation and release; disable the relaunch gate when the core practice path is affected.                                                              |
+| `feedback_generation_failed`                          | Page on final retry exhaustion                     | Preserve the failed lifecycle row and use the feedback recovery workflow.                                                                                           |
+| `feedback_dispatch_failed`                            | Page on the first durable failed dispatch          | Preserve the dispatch attempt and retry through the owner-scoped feedback endpoint.                                                                                 |
+| `stripe_webhook_failed`                               | Page on the first event                            | Check Stripe delivery and the redacted idempotency row before replay.                                                                                               |
+| `billing_portal_session_failed`                       | Alert on the first event during relaunch           | Verify Stripe mode and portal configuration without recording customer or provider identifiers.                                                                     |
+| `billing_portal_subscription_read_failed`             | Alert on the first event during relaunch           | Check the authenticated subscription read using only environment, release, and fixed code.                                                                          |
+| `billing_portal_customer_lookup_failed`               | Alert on a sustained increase                      | Check provider reachability and account/mode alignment using authenticated tools; do not copy IDs.                                                                  |
+| `billing_read` failures                               | Alert on a sustained increase                      | Check database and billing-read health using only the fixed route error code and release.                                                                           |
+| `checkout_confirmation_auth_failed`                   | Alert on a sustained increase                      | Check authentication infrastructure without recording user or Checkout identifiers; missing/expired sessions are normal `401` responses and do not emit this event. |
+| `checkout_confirmation_settlement_read_failed`        | Alert on a sustained increase                      | Check account-tombstone and payment-history read health using only environment, release, and code.                                                                  |
+| `question_sync_failed` or `question_sync_unavailable` | Alert after two consecutive scheduled runs         | Keep the existing public corpus; do not run an unguarded mutation.                                                                                                  |
+| `auth_code_exchange_failed`                           | Alert on a sustained increase                      | Verify provider callback configuration without capturing codes or user data.                                                                                        |
+| `interview_recovery` failures                         | Page on final retry exhaustion during relaunch     | Preserve durable session/credit state and inspect the matching recovery workflow.                                                                                   |
 
 Tune thresholds only after isolated Preview and early controlled traffic evidence.
 

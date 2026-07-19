@@ -31,8 +31,7 @@ export interface InterviewRuntimeSettings {
 }
 
 export interface InterviewRuntimeConfig
-  extends InterviewClientPreferences,
-    InterviewRuntimeSettings {}
+  extends InterviewClientPreferences, InterviewRuntimeSettings {}
 
 export interface InterviewRoomQuestion {
   id: string;
@@ -116,9 +115,9 @@ export function normalizeInterviewClientPreferences(
     duration: isDuration(source.duration)
       ? source.duration
       : DEFAULT_INTERVIEW_RUNTIME_CONFIG.duration,
-    hintMode: isHintMode(source.hintMode)
-      ? source.hintMode
-      : DEFAULT_INTERVIEW_RUNTIME_CONFIG.hintMode,
+    // Full mock interviews preserve interview conditions. Legacy non-off
+    // values remain accepted at the transport boundary but normalize to off.
+    hintMode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.hintMode,
     questionPreference: normalizeQuestionPreference(source.questionPreference),
   };
 }
@@ -127,7 +126,11 @@ export function resolveInterviewRuntimeConfig(
   preferences: InterviewClientPreferences,
   settings: InterviewRuntimeSettings = DEFAULT_INTERVIEW_RUNTIME_SETTINGS
 ): InterviewRuntimeConfig {
-  return { ...preferences, ...settings };
+  return {
+    ...preferences,
+    ...settings,
+    feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+  };
 }
 
 export function interviewRuntimeSettingsFromEnv(
@@ -194,7 +197,10 @@ export function buildInterviewRoomMetadata(
     candidate_identity: metadata.candidate_identity?.trim(),
     transcript_ingest_url: transcriptIngestUrl,
     deadline_at: normalizeDeadlineAt(metadata.deadline_at),
-    config: metadata.config,
+    config: {
+      ...metadata.config,
+      feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+    },
     question: metadata.question ? normalizeQuestion(metadata.question) : null,
   };
 }
@@ -277,9 +283,10 @@ export function normalizeInterviewRuntimeConfig(
       config?.volume,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.volume!
     ),
-    feedback_mode: isFeedbackMode(config?.feedback_mode)
-      ? config.feedback_mode
-      : DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+    // Full mock interviews defer every evaluation to the post-interview flow.
+    // Legacy real_time and silent snapshots remain readable but normalize to
+    // the same canonical behavior as the Python runtime.
+    feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
     stt_model: stringOrDefault(
       config?.stt_model,
       DEFAULT_INTERVIEW_RUNTIME_CONFIG.stt_model
@@ -360,14 +367,6 @@ function isRoundType(value: unknown): value is RoundType {
     value === "execution" ||
     value === "strategy"
   );
-}
-
-function isFeedbackMode(value: unknown): value is InterviewFeedbackMode {
-  return value === "real_time" || value === "end_only" || value === "silent";
-}
-
-function isHintMode(value: unknown): value is HintMode {
-  return value === "off" || value === "gentle" || value === "coach";
 }
 
 function isDifficulty(value: unknown): value is DifficultyLevel {

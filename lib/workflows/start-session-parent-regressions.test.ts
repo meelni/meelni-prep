@@ -110,14 +110,14 @@ test("startInterviewSessionWorkflow rejects a selected question that became inac
   if (!result.ok) assert.equal(result.status, 404);
 });
 
-test("startInterviewSessionWorkflow carries hint mode through session config", async () => {
+test("startInterviewSessionWorkflow normalizes legacy hint mode to off", async () => {
   const h = harness();
   const result = await startInterviewSessionWorkflow(
     request({ config: { duration: 30, hintMode: "coach" } }),
     h.deps
   );
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.body.config.hintMode, "coach");
+  if (result.ok) assert.equal(result.body.config.hintMode, "off");
 });
 
 test("startInterviewSessionWorkflow strips legacy and malicious runtime controls", async () => {

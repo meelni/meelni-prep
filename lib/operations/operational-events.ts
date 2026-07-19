@@ -8,6 +8,9 @@ export const OPERATIONAL_FAILURE_OPERATIONS = [
   "question_sync",
   "account_deletion",
   "interview_recovery",
+  "billing_read",
+  "billing_portal",
+  "checkout_confirmation",
 ] as const;
 
 export const OPERATIONAL_FAILURE_ERROR_CODES = [
@@ -19,6 +22,15 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "account_deletion_sign_out_failed",
   "auth_code_exchange_failed",
   "auth_user_upsert_failed",
+  "billing_credit_read_failed",
+  "billing_payment_history_read_failed",
+  "billing_portal_customer_lookup_failed",
+  "billing_portal_session_failed",
+  "billing_portal_subscription_read_failed",
+  "billing_subscription_read_failed",
+  "billing_usage_read_failed",
+  "checkout_confirmation_auth_failed",
+  "checkout_confirmation_settlement_read_failed",
   "feedback_dispatch_failed",
   "feedback_generation_failed",
   "feedback_integrity_invalid",

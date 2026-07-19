@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import {
   MarketingCtaCard,
@@ -17,19 +17,25 @@ import {
   type PublicPricingPlan,
 } from "@/lib/billing/catalog-presentation";
 import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
-import { FEATURE_GATES } from "@/lib/feature-flags/gates";
-import { useFeatureFlag } from "@/lib/feature-flags";
+import {
+  parseCheckoutCreateResponse,
+  storeCheckoutReturnHandle,
+} from "@/lib/billing/checkout-return-cookie";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export default function PricingPage() {
-  const reactivationEnabled = useFeatureFlag(
-    FEATURE_GATES.meelniReactivationAccess
-  );
+  const activation = usePublicActivationDecision();
+  const reactivationEnabled = activation.canActivate;
   const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
   const plans = getPublicPricingPlans();
 
   async function handlePlanClick(plan: PublicPricingPlan) {
+    if (!activation.canActivate) return;
+
     if (!plan.canPurchase) {
-      window.location.href = "/dashboard/new-interview";
+      window.location.href = NEW_INTERVIEW_PATH;
       return;
     }
 
@@ -53,7 +59,13 @@ export default function PricingPage() {
         throw new Error("Unable to start checkout");
       }
 
-      const data = await response.json();
+      const data = parseCheckoutCreateResponse(await response.json());
+      if (
+        !data ||
+        !storeCheckoutReturnHandle(window.sessionStorage, data.returnHandle)
+      ) {
+        throw new Error("Invalid checkout response");
+      }
       window.location.href = data.url;
     } catch (error) {
       console.error("Checkout start failed:", error);
@@ -90,9 +102,20 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {reactivationEnabled ? (
-        <section className="py-20">
-          <div className="container mx-auto grid max-w-6xl gap-4 px-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="py-20">
+        <div className="container mx-auto max-w-6xl px-4">
+          {!reactivationEnabled && (
+            <MarketingCtaCard
+              className="mb-8"
+              tone="muted"
+              mark={<AlertCircle className="h-6 w-6" aria-hidden="true" />}
+              title="Purchases currently paused"
+              description="Pricing is shown for reference. New purchases and practice sessions are currently paused while we prepare the next version."
+              action={null}
+              role="status"
+            />
+          )}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
               <div key={plan.catalogId}>
                 <AppSurface
@@ -142,42 +165,25 @@ export default function PricingPage() {
                     className="mt-6 w-full"
                     size="lg"
                     onClick={() => void handlePlanClick(plan)}
-                    disabled={loadingCatalogId === plan.catalogId}
+                    disabled={
+                      !activation.canActivate ||
+                      loadingCatalogId === plan.catalogId
+                    }
                     variant={plan.canPurchase ? "default" : "outline"}
                   >
                     {loadingCatalogId === plan.catalogId && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    {plan.cta}
+                    {activation.canActivate
+                      ? plan.cta
+                      : PUBLIC_ACTIVATION_PAUSED_LABEL}
                   </Button>
                 </AppSurface>
               </div>
             ))}
           </div>
-        </section>
-      ) : (
-        <section className="py-20">
-          <div className="container mx-auto px-4">
-            <div className="mx-auto max-w-2xl">
-              <MarketingCtaCard
-                tone="muted"
-                mark={<AlertCircle className="h-7 w-7" />}
-                title="Service Paused"
-                description="Meelni is not currently accepting new subscriptions while we prepare the next version of the PM interview practice experience."
-                action={
-                  <Button asChild variant="outline" size="lg">
-                    <Link href="/">
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back to Home
-                    </Link>
-                  </Button>
-                }
-                footer="Thank you to everyone who used and supported Meelni."
-              />
-            </div>
-          </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* Footer */}
       <footer className="border-border border-t py-12">

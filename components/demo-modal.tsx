@@ -16,7 +16,6 @@ import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
 import type { Participant, TranscriptionSegment } from "livekit-client";
 import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
-import Link from "next/link";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +30,9 @@ import {
   requestPublicDemoStart,
   type DemoStartError,
 } from "@/lib/demo/public-demo-client";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 // Transcript message type
 interface TranscriptMessage {
@@ -571,8 +573,8 @@ function DemoControls({
                     transcript, and PM-calibrated feedback.
                   </p>
                 </div>
-                <Link
-                  href="/dashboard/new-interview?source=voice_demo"
+                <PublicActivationButton
+                  href={NEW_INTERVIEW_PATH}
                   onClick={() => {
                     // Track conversion to signup
                     if (demoStartTime.current) {
@@ -583,11 +585,12 @@ function DemoControls({
                       });
                     }
                   }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground inline-flex items-center gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
+                  size="lg"
+                  className="h-auto gap-2 rounded-xl px-8 py-4 text-base font-semibold shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
                 >
                   Start a Mock Interview
                   <ArrowRight className="h-5 w-5" />
-                </Link>
+                </PublicActivationButton>
               </motion.div>
             ) : isReady ? (
               <motion.div
@@ -758,6 +761,8 @@ function DemoControls({
 }
 
 export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
+  const activation = usePublicActivationDecision();
+  const activationOpen = isOpen && activation.canActivate;
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [durationSeconds, setDurationSeconds] = useState(120);
@@ -793,14 +798,15 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   }, [error]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (activationOpen) {
       modalOpenedAt.current = Date.now();
       demoStartTime.current = undefined;
       analytics.track("demo_modal_opened", { trigger_source: "landing_hero" });
     }
-  }, [isOpen]);
+  }, [activationOpen]);
 
   const fetchDemoToken = useCallback(async () => {
+    if (!activation.canActivate) return;
     if (tokenRequestRef.current || cooldownSeconds > 0) return;
     const controller = new AbortController();
     let requestTimedOut = false;
@@ -844,7 +850,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
       tokenRequestRef.current = null;
       setIsLoading(false);
     }
-  }, [cooldownSeconds]);
+  }, [activation.canActivate, cooldownSeconds]);
 
   const handleRuntimeError = useCallback((nextError: DemoStartError) => {
     setToken("");
@@ -890,16 +896,16 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
 
   // Fetch demo token when modal opens
   useEffect(() => {
-    if (isOpen && !token && !openedRequestStartedRef.current) {
+    if (activationOpen && !token && !openedRequestStartedRef.current) {
       openedRequestStartedRef.current = true;
       fetchDemoToken();
     }
-  }, [fetchDemoToken, isOpen, token]);
+  }, [activationOpen, fetchDemoToken, token]);
 
   return (
     <MotionConfig reducedMotion="user">
       <Dialog
-        open={isOpen}
+        open={activationOpen}
         onOpenChange={(open) => {
           if (!open) handleClose();
         }}
@@ -978,11 +984,13 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                         ? `Try again in ${formatCooldown(cooldownSeconds)}`
                         : "Try Again"}
                     </Button>
-                    <Button asChild variant="secondary" size="lg">
-                      <Link href="/dashboard/new-interview?source=voice_demo">
-                        Start a Mock Interview
-                      </Link>
-                    </Button>
+                    <PublicActivationButton
+                      href="/dashboard/new-interview?source=voice_demo"
+                      variant="secondary"
+                      size="lg"
+                    >
+                      Start a Mock Interview
+                    </PublicActivationButton>
                   </div>
                 )}
               </div>
