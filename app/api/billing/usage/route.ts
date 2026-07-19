@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCreditBalanceReadModel } from "@/lib/billing/credit-balance-read-model";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -39,8 +40,12 @@ export async function GET() {
         },
       }
     );
-  } catch (error) {
-    console.error("Error fetching credit compatibility view:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "billing_read",
+      errorCode: "billing_usage_read_failed",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to fetch credits" },
       { status: 500 }
