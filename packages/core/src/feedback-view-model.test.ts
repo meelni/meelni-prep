@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   decodeFeedbackLifecycleResponse,
   getFeedbackConfidenceLabel,
+  parsePersistedFeedbackV2,
   presentCompletedFeedback,
   toFeedbackViewState,
   type FeedbackLifecycleResponse,
@@ -102,6 +103,43 @@ test("presents strict full and partial v2 feedback without score coercion", () =
       feedback: partial,
     }).kind,
     "completed-partial"
+  );
+});
+
+test("rebuilds the complete trusted Feedback v2 shape for internal workflows", () => {
+  const parsed = parsePersistedFeedbackV2(completed(), { evidenceTurns });
+
+  assert.equal(parsed.schemaVersion, "feedback.v2");
+  assert.equal(parsed.overallScore, 7.9);
+  assert.deepEqual(parsed.drills, [
+    "Practice a two-minute prioritization explanation.",
+  ]);
+  assert.deepEqual(parsed.improvements[0]?.transcriptRefs, ["writer:2"]);
+
+  assert.throws(() =>
+    parsePersistedFeedbackV2(
+      completed({
+        strengths: [
+          {
+            ...finding,
+            evidence: [{ turnRef: "writer:1", quote: "invented quote" }],
+          },
+        ],
+      }),
+      { evidenceTurns }
+    )
+  );
+  assert.throws(() =>
+    parsePersistedFeedbackV2(
+      completed({
+        schemaVersion: null,
+        promptVersion: null,
+        modelVersion: null,
+        evaluationState: null,
+        rubricVersion: "1.0.0",
+      }),
+      { evidenceTurns }
+    )
   );
 });
 

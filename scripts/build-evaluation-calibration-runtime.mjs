@@ -30,6 +30,7 @@ const buildContract = Object.freeze({
   minify: false,
   sourcemap: false,
   treeShaking: true,
+  preserveSymlinks: true,
 });
 
 try {
@@ -53,6 +54,7 @@ const result = await build({
   minify: buildContract.minify,
   sourcemap: buildContract.sourcemap,
   treeShaking: buildContract.treeShaking,
+  preserveSymlinks: buildContract.preserveSymlinks,
   metafile: true,
   write: false,
 });
