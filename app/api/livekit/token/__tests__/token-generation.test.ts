@@ -178,6 +178,34 @@ describe("POST /api/livekit/token", () => {
     expect(response.headers.get("Retry-After")).toBe("42");
     expect(await response.json()).toEqual({ error: "rate_limit_exceeded" });
   });
+
+  it("does not duplicate a workflow-owned token failure event", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "authenticated-user", email: null } },
+          error: null,
+        }),
+      },
+    });
+    mocks.joinInterviewSessionWorkflow.mockResolvedValue({
+      ok: false,
+      status: 503,
+      body: { error: "livekit_token_unavailable" },
+    });
+
+    try {
+      const response = await POST(createRequest({ sessionId }));
+
+      expect(response.status).toBe(503);
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });
 
 function createRequest(body: Record<string, unknown>): NextRequest {

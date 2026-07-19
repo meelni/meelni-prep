@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { db } from "@/lib/db";
 import {
   stripeEventLog,
@@ -150,7 +151,12 @@ export async function POST(req: NextRequest) {
         webhookSecret
       );
     } catch {
-      console.error("Webhook signature verification failed");
+      reportOperationalFailure({
+        operation: "stripe_webhook",
+        errorCode: "stripe_signature_invalid",
+        severity: "warning",
+        retryable: false,
+      });
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
@@ -236,7 +242,6 @@ export async function POST(req: NextRequest) {
       // Event object with the same logical key replays the idempotent handler,
       // which verifies the already-persisted payment truth below.
       if (eventLog.status === "processed" && !logicalReplay) {
-        console.log("Stripe webhook duplicate skipped");
         return NextResponse.json({
           received: true,
           status: "already_processed",
@@ -395,7 +400,7 @@ export async function POST(req: NextRequest) {
           break;
 
         default:
-          console.log(`Unhandled event type: ${event.type}`);
+          break;
       }
 
       // Mark event as processed
@@ -466,7 +471,12 @@ export async function POST(req: NextRequest) {
       throw error;
     }
   } catch {
-    console.error("Stripe webhook processing failed");
+    reportOperationalFailure({
+      operation: "stripe_webhook",
+      errorCode: "stripe_webhook_failed",
+      severity: "critical",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }
@@ -953,7 +963,12 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
     if (entitlementInvoice) {
       throw new Error("stripe_customer_owner_not_found");
     }
-    console.warn("Missing userId in invoice metadata");
+    reportOperationalFailure({
+      operation: "stripe_webhook",
+      errorCode: "stripe_owner_metadata_missing",
+      severity: "warning",
+      retryable: true,
+    });
     return;
   }
   if (bootstrap && bootstrap.userId !== userId) {
@@ -1290,7 +1305,12 @@ async function handlePaymentFailed(event: Stripe.Event) {
     : invoice.metadata?.userId;
 
   if (!userId) {
-    console.warn("Missing userId in invoice metadata");
+    reportOperationalFailure({
+      operation: "stripe_webhook",
+      errorCode: "stripe_owner_metadata_missing",
+      severity: "warning",
+      retryable: true,
+    });
     return;
   }
 
@@ -1459,7 +1479,6 @@ async function handleTrialWillEnd(event: Stripe.Event) {
   }
 
   // TODO: Send trial ending email notification (Phase 1)
-  console.log("Stripe trial ending event accepted");
 }
 
 /**
