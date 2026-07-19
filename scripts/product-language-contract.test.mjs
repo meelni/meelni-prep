@@ -858,7 +858,7 @@ test("the live hero and metadata consume the positioning contract", async () => 
   assert.match(homeMetadata, /const description = PRODUCT_LANGUAGE\.oneLine/);
 });
 
-test("primary marketing launch actions enter the canonical interview flow", async () => {
+test("primary marketing launch actions consume the relaunch-aware activation contract", async () => {
   const files = [
     "components/sections/hero.tsx",
     "components/sections/header.tsx",
@@ -869,6 +869,7 @@ test("primary marketing launch actions enter the canonical interview flow", asyn
 
   for (const file of files) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    assert.match(source, /href="\/dashboard\/new-interview"/, file);
+    assert.match(source, /PublicActivationButton/, file);
+    assert.match(source, /NEW_INTERVIEW_PATH/, file);
   }
 });

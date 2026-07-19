@@ -9,6 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DemoModal } from "./demo-modal";
 import { Hero } from "./sections/hero";
 
+const activation = vi.hoisted(() => ({ canActivate: true }));
+
+vi.mock("@/lib/feature-flags/public-activation-client", () => ({
+  usePublicActivationDecision: () => ({
+    canActivate: activation.canActivate,
+    state: activation.canActivate ? "available" : "paused",
+  }),
+}));
+
 vi.mock("@livekit/components-react", () => ({
   LiveKitRoom: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -57,6 +66,7 @@ function DemoHarness() {
 
 describe("DemoModal", () => {
   beforeEach(() => {
+    activation.canActivate = true;
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise(() => undefined))
@@ -109,5 +119,21 @@ describe("DemoModal", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(demoTrigger).toHaveFocus();
     expect(primaryLink).not.toHaveFocus();
+  });
+
+  it("does not open or request a demo token while relaunch is paused", async () => {
+    activation.canActivate = false;
+    const user = userEvent.setup();
+    render(<Hero />);
+
+    const pausedActions = screen.getAllByRole("button", {
+      name: "Practice currently paused",
+    });
+    expect(pausedActions.length).toBeGreaterThanOrEqual(2);
+    for (const action of pausedActions) expect(action).toBeDisabled();
+
+    await user.click(pausedActions.at(-1)!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

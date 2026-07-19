@@ -20,6 +20,7 @@ test("question row keeps long content inside one visible practice control", () =
       }}
       index={0}
       isLast
+      busy
       disabled
       onPractice={() => undefined}
     />
@@ -37,4 +38,29 @@ test("question row keeps long content inside one visible practice control", () =
   assert.match(html, new RegExp(questionText.replace(/[?]/g, "\\?")));
   assert.doesNotMatch(html, /opacity-0/);
   assert.doesNotMatch(html, /<a\b/);
+});
+
+test("question row can expose a truthful paused state without claiming loading", () => {
+  const html = renderToStaticMarkup(
+    <ExploreQuestionListItem
+      question={{
+        id: "question-1",
+        company: "Example",
+        questionText: "How would you prioritize this roadmap?",
+        questionType: "Product Sense",
+        askedAt: null,
+      }}
+      index={0}
+      isLast
+      disabled
+      practiceLabel="Practice currently paused"
+      onPractice={() => undefined}
+    />
+  );
+
+  assert.match(html, /aria-disabled="true"/);
+  assert.doesNotMatch(html, /disabled=""/);
+  assert.match(html, /Practice currently paused/);
+  assert.doesNotMatch(html, /aria-busy="true"/);
+  assert.doesNotMatch(html, /group-hover:translate-x-1/);
 });

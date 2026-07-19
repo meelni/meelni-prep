@@ -77,7 +77,6 @@ export async function POST(req: NextRequest) {
   try {
     const gateName = FEATURE_GATES.meelniReactivationAccess;
     const access = await resolveReactivationAccess({
-      user: null,
       localOverride: req.cookies.get(
         `meelni_feature_flag_${encodeURIComponent(gateName)}`
       )?.value,

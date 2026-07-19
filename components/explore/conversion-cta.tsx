@@ -6,6 +6,8 @@ import { Sparkles, ArrowRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { usePostHog } from "posthog-js/react";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 interface ConversionCTAProps {
   index: number;
@@ -14,6 +16,7 @@ interface ConversionCTAProps {
 export function ConversionCTA({ index }: ConversionCTAProps) {
   const router = useRouter();
   const posthog = usePostHog();
+  const activation = usePublicActivationDecision();
   const [isDismissed, setIsDismissed] = useState(false);
 
   const handleDismiss = () => {
@@ -24,10 +27,11 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
   };
 
   const handleSignUpClick = () => {
+    if (!activation.canActivate) return;
     posthog?.capture("explore_cta_clicked", {
       cta_position: index,
     });
-    router.push('/auth/signin?redirectTo=/explore');
+    router.push("/auth/signin?redirectTo=/explore");
   };
 
   if (isDismissed) {
@@ -41,7 +45,7 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
       exit={{ opacity: 0, scale: 0.9 }}
       whileHover={{ y: -2 }}
       transition={{ delay: index * 0.05 }}
-      className="relative p-6 sm:p-8 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/3 to-primary/8 shadow-sm hover:shadow-md transition-all duration-300"
+      className="border-primary/20 from-primary/3 to-primary/8 relative rounded-xl border bg-gradient-to-br p-6 shadow-sm transition-all duration-300 hover:shadow-md sm:p-8"
     >
       {/* Dismiss button */}
       <Button
@@ -49,35 +53,39 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
         variant="ghost"
         size="icon"
         onClick={handleDismiss}
-        className="absolute top-3 right-3 h-6 w-6 rounded-full text-muted-foreground hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground absolute top-3 right-3 h-6 w-6 rounded-full"
         aria-label="Dismiss"
       >
-        <X className="w-3 h-3" />
+        <X className="h-3 w-3" />
       </Button>
 
       {/* Icon */}
-      <div className="mb-4 inline-flex p-3 rounded-xl bg-primary/10 border border-primary/20">
-        <Sparkles className="w-6 h-6 text-primary" />
+      <div className="bg-primary/10 border-primary/20 mb-4 inline-flex rounded-xl border p-3">
+        <Sparkles className="text-primary h-6 w-6" />
       </div>
 
       {/* Heading */}
-      <h3 className="text-lg font-semibold text-foreground mb-2">
+      <h3 className="text-foreground mb-2 text-lg font-semibold">
         Ready to start practicing?
       </h3>
 
       {/* Body */}
-      <p className="text-sm text-muted-foreground mb-6">
-        Get personalized AI coaching and track your progress over time
+      <p className="text-muted-foreground mb-6 text-sm">
+        Practice a selected PM question out loud and review feedback after the
+        completed mock interview.
       </p>
 
       {/* CTA Button */}
       <Button
         size="default"
         onClick={handleSignUpClick}
-        className="w-full sm:w-auto gap-2"
+        disabled={!activation.canActivate}
+        className="w-full gap-2 sm:w-auto"
       >
-        Sign Up Free
-        <ArrowRight className="w-4 h-4" />
+        {activation.canActivate
+          ? "Sign in to practice"
+          : PUBLIC_ACTIVATION_PAUSED_LABEL}
+        {activation.canActivate && <ArrowRight className="h-4 w-4" />}
       </Button>
     </motion.div>
   );

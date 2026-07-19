@@ -7,6 +7,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Button } from "@/components/ui/button";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
 import { QuestionSignInModal } from "./question-signin-modal";
 
 const mocks = vi.hoisted(() => ({
@@ -24,12 +26,16 @@ vi.mock("@/app/providers/auth-provider", () => ({
   useAuth: () => ({ signInWithGoogle: mocks.signInWithGoogle }),
 }));
 
-function ModalHarness() {
+function ModalHarness({ enabled = true }: { enabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <>
+    <StatsigProvider
+      initialGateValues={{
+        [FEATURE_GATES.meelniReactivationAccess]: enabled,
+      }}
+    >
       <Button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
         Choose question
       </Button>
@@ -40,7 +46,7 @@ function ModalHarness() {
         questionText="How would you improve Stripe Checkout?"
         returnFocusRef={triggerRef}
       />
-    </>
+    </StatsigProvider>
   );
 }
 
@@ -113,5 +119,16 @@ describe("QuestionSignInModal", () => {
       "overflow-y-auto"
     );
     expect(closeButton).toHaveClass("h-11", "w-11");
+  });
+
+  it("does not expose authentication actions while relaunch is paused", async () => {
+    const user = userEvent.setup();
+    render(<ModalHarness enabled={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Choose question" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.signInWithGoogle).not.toHaveBeenCalled();
   });
 });
