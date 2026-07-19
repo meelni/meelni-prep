@@ -2,6 +2,7 @@ import {
   AccessToken,
   AgentDispatchClient,
   DataPacket_Kind,
+  RoomAgentDispatch,
   RoomServiceClient,
   TrackSource,
 } from "livekit-server-sdk";
@@ -187,6 +188,7 @@ interface RoomServiceClientLike {
     emptyTimeout: number;
     maxParticipants: number;
     departureTimeout: number;
+    agents?: RoomAgentDispatch[];
   }): Promise<unknown>;
   listRooms?(
     names?: string[]
@@ -617,41 +619,27 @@ export function createLiveKitPublicDemoProvider({
         input.env.apiKey,
         input.env.apiSecret
       );
-      let roomCreated = false;
+      let roomCreationAttempted = false;
 
       try {
+        roomCreationAttempted = true;
         await roomClient.createRoom({
           name: input.roomName,
           metadata: JSON.stringify(input.metadata),
           emptyTimeout: 30,
           departureTimeout: 5,
           maxParticipants: 2,
+          agents: [
+            new RoomAgentDispatch({
+              agentName: input.agentName,
+            }),
+          ],
         });
-        roomCreated = true;
-        const existing = await dispatchClient.listDispatch(input.roomName);
-        if (existing.length !== 0) {
-          throw new Error(
-            "Public demo room already has an agent dispatch before explicit dispatch."
-          );
-        }
-
-        const created = await dispatchClient.createDispatch(
-          input.roomName,
-          input.agentName
-        );
-        if (
-          typeof created.id !== "string" ||
-          !created.id.trim() ||
-          created.agentName !== input.agentName ||
-          created.room !== input.roomName
-        ) {
-          throw new Error("LiveKit created a mismatched public demo dispatch.");
-        }
-
         const reconciled = await dispatchClient.listDispatch(input.roomName);
         if (
           reconciled.length !== 1 ||
-          reconciled[0].id !== created.id ||
+          typeof reconciled[0].id !== "string" ||
+          !reconciled[0].id.trim() ||
           reconciled[0].agentName !== input.agentName ||
           reconciled[0].room !== input.roomName
         ) {
@@ -664,7 +652,7 @@ export function createLiveKitPublicDemoProvider({
         if (!token.ok) throw token.error;
         return token;
       } catch (error) {
-        if (roomCreated) {
+        if (roomCreationAttempted) {
           if (!roomClient.deleteRoom) {
             return providerFailure("livekit", {
               code: "livekit_demo_cleanup_failed",
@@ -676,12 +664,14 @@ export function createLiveKitPublicDemoProvider({
           try {
             await roomClient.deleteRoom(input.roomName);
           } catch (cleanupError) {
-            return providerFailure("livekit", {
-              code: "livekit_demo_cleanup_failed",
-              message: "Demo provider cleanup failed.",
-              retryable: true,
-              cause: cleanupError,
-            });
+            if (!isStructuredLiveKitNotFoundError(cleanupError)) {
+              return providerFailure("livekit", {
+                code: "livekit_demo_cleanup_failed",
+                message: "Demo provider cleanup failed.",
+                retryable: true,
+                cause: cleanupError,
+              });
+            }
           }
         }
         return providerFailure("livekit", {
@@ -1088,6 +1078,12 @@ function isLiveKitNotFoundError(error: unknown): boolean {
 
   const message = getErrorMessage(error).toLowerCase();
   return message.includes("not found") || message.includes("does not exist");
+}
+
+function isStructuredLiveKitNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? error.code : undefined;
+  return typeof code === "string" && code.toLowerCase() === "not_found";
 }
 
 function getErrorMessage(error: unknown): string {

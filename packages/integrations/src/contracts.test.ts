@@ -58,7 +58,6 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
   const calls: string[] = [];
   const grants: unknown[] = [];
   const tokenOptions: unknown[] = [];
-  let dispatchListCalls = 0;
   const provider = createLiveKitPublicDemoProvider({
     accessTokenFactory: class {
       constructor(_key: string, _secret: string, options: unknown) {
@@ -72,19 +71,15 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
       }
     },
     agentDispatchClientFactory: () => ({
-      createDispatch: async (room, agentName) => {
-        calls.push("dispatch");
-        return { id: "dispatch-1", room, agentName };
-      },
       listDispatch: async (room) => {
-        dispatchListCalls += 1;
-        calls.push(dispatchListCalls === 1 ? "inspect" : "reconcile");
-        if (dispatchListCalls === 1) return [];
+        calls.push("reconcile");
         return [{ id: "dispatch-1", room, agentName: "demo-agent" }];
       },
     }),
     roomServiceClientFactory: () => ({
       createRoom: async (input) => {
+        assert.equal(input.agents?.length, 1);
+        assert.equal(input.agents?.[0]?.agentName, "demo-agent");
         calls.push(
           `room:${input.emptyTimeout}:${input.departureTimeout}:${input.maxParticipants}`
         );
@@ -111,7 +106,7 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
 
   const started = await provider.startPublicDemoRoom(input);
   assert.equal(started.ok, true);
-  assert.deepEqual(calls, ["room:30:5:2", "inspect", "dispatch", "reconcile"]);
+  assert.deepEqual(calls, ["room:30:5:2", "reconcile"]);
   assert.deepEqual(grants, [
     {
       room: "demo-room",
@@ -130,9 +125,11 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
   const failing = createLiveKitPublicDemoProvider({
     agentDispatchClientFactory: () => ({
       createDispatch: async () => {
+        throw new Error("atomic dispatch must not call createDispatch");
+      },
+      listDispatch: async () => {
         throw new Error("dispatch unavailable");
       },
-      listDispatch: async () => [],
     }),
     roomServiceClientFactory: () => ({
       createRoom: async () => {
@@ -149,7 +146,7 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
   assert.deepEqual(cleanupCalls, ["room", "delete"]);
 });
 
-test("public demo provider removes a room with an automatic dispatch before explicit dispatch", async () => {
+test("public demo provider never creates a second dispatch after atomic room creation", async () => {
   const calls: string[] = [];
   const provider = createLiveKitPublicDemoProvider({
     accessTokenFactory: class {
@@ -158,7 +155,7 @@ test("public demo provider removes a room with an automatic dispatch before expl
       }
       async toJwt() {
         calls.push("token");
-        return "must-not-mint";
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
       }
     },
     agentDispatchClientFactory: () => ({
@@ -166,14 +163,16 @@ test("public demo provider removes a room with an automatic dispatch before expl
         calls.push("dispatch");
         throw new Error("must not create a second dispatch");
       },
-      listDispatch: async () => {
-        calls.push("inspect");
-        return [{ id: "automatic-1", room: "demo-room", agentName: "" }];
+      listDispatch: async (room) => {
+        calls.push("reconcile");
+        return [{ id: "atomic-1", room, agentName: "demo-agent" }];
       },
     }),
     roomServiceClientFactory: () => ({
-      createRoom: async () => {
+      createRoom: async (input) => {
         calls.push("room");
+        assert.equal(input.agents?.length, 1);
+        assert.equal(input.agents?.[0]?.agentName, "demo-agent");
       },
       deleteRoom: async () => {
         calls.push("delete");
@@ -196,8 +195,8 @@ test("public demo provider removes a room with an automatic dispatch before expl
     },
   });
 
-  assert.equal(result.ok, false);
-  assert.deepEqual(calls, ["room", "inspect", "delete"]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["room", "reconcile", "grant", "token"]);
 });
 
 test("public demo provider cleans up when initial dispatch inspection fails", async () => {
@@ -242,6 +241,99 @@ test("public demo provider cleans up when initial dispatch inspection fails", as
     assert.equal(result.error.code, "livekit_demo_start_failed");
   }
   assert.deepEqual(calls, ["room", "inspect", "delete"]);
+});
+
+test("public demo provider cleans up an ambiguous atomic room-creation failure", async (t) => {
+  for (const cleanupMode of [
+    "not_found",
+    "message_only_not_found",
+    "unavailable",
+    "throws",
+  ] as const) {
+    await t.test(cleanupMode, async () => {
+      const calls: string[] = [];
+      const cleanupError = new Error("cleanup unavailable");
+      const provider = createLiveKitPublicDemoProvider({
+        accessTokenFactory: class {
+          addGrant() {
+            calls.push("grant");
+          }
+          async toJwt() {
+            calls.push("token");
+            return "must-not-mint";
+          }
+        },
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            throw new Error("atomic dispatch must not call createDispatch");
+          },
+          listDispatch: async () => {
+            calls.push("reconcile");
+            return [];
+          },
+        }),
+        roomServiceClientFactory: () => ({
+          createRoom: async () => {
+            calls.push("room");
+            throw new Error("response lost after request");
+          },
+          ...(cleanupMode === "unavailable"
+            ? {}
+            : {
+                deleteRoom: async () => {
+                  calls.push("delete");
+                  if (cleanupMode === "not_found") {
+                    throw Object.assign(new Error("room not found"), {
+                      code: "not_found",
+                    });
+                  }
+                  if (cleanupMode === "message_only_not_found") {
+                    throw new Error("LiveKit cleanup endpoint not found");
+                  }
+                  throw cleanupError;
+                },
+              }),
+        }),
+      });
+
+      const result = await provider.startPublicDemoRoom({
+        agentName: "demo-agent",
+        identity: "demo-opaque",
+        roomName: "demo-room",
+        metadata: { duration_seconds: 120 },
+        observedAt: new Date("2026-07-09T12:00:00.000Z"),
+        expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+        env: {
+          apiKey: "key",
+          apiSecret: "secret",
+          url: "wss://test.livekit.cloud",
+        },
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(
+          result.error.code,
+          cleanupMode === "not_found"
+            ? "livekit_demo_start_failed"
+            : "livekit_demo_cleanup_failed"
+        );
+        if (cleanupMode === "throws") {
+          assert.equal(result.error.cause, cleanupError);
+        }
+        if (cleanupMode === "message_only_not_found") {
+          assert.equal(
+            (result.error.cause as Error).message,
+            "LiveKit cleanup endpoint not found"
+          );
+        }
+      }
+      assert.deepEqual(
+        calls,
+        cleanupMode === "unavailable" ? ["room"] : ["room", "delete"]
+      );
+    });
+  }
 });
 
 test("public demo provider reports unavailable or failed initial cleanup", async (t) => {
@@ -306,92 +398,30 @@ test("public demo provider reports unavailable or failed initial cleanup", async
 test("public demo provider fails closed on mismatched or ambiguous dispatches", async (t) => {
   const cases: Array<{
     name: string;
-    created: { id: string; room: string; agentName: string };
     reconciled: Array<{ id: string; room: string; agentName: string }>;
-    expectedCalls: string[];
   }> = [
     {
-      name: "created dispatch id missing",
-      created: {
-        id: "",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
-      reconciled: [],
-      expectedCalls: ["room", "dispatch", "delete"],
-    },
-    {
-      name: "created agent mismatch",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "",
-      },
-      reconciled: [],
-      expectedCalls: ["room", "dispatch", "delete"],
-    },
-    {
-      name: "created room mismatch",
-      created: {
-        id: "dispatch-1",
-        room: "different-room",
-        agentName: "demo-agent",
-      },
-      reconciled: [],
-      expectedCalls: ["room", "dispatch", "delete"],
-    },
-    {
-      name: "missing reconciled dispatch",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
-      reconciled: [],
-      expectedCalls: ["room", "dispatch", "reconcile", "delete"],
-    },
-    {
-      name: "reconciled dispatch id mismatch",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
+      name: "dispatch id missing",
       reconciled: [
-        { id: "dispatch-2", room: "demo-room", agentName: "demo-agent" },
+        {
+          id: "",
+          room: "demo-room",
+          agentName: "demo-agent",
+        },
       ],
-      expectedCalls: ["room", "dispatch", "reconcile", "delete"],
     },
     {
-      name: "ambiguous reconciled dispatches",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
+      name: "agent mismatch",
       reconciled: [
-        { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
-        { id: "dispatch-2", room: "demo-room", agentName: "demo-agent" },
+        {
+          id: "dispatch-1",
+          room: "demo-room",
+          agentName: "",
+        },
       ],
-      expectedCalls: ["room", "dispatch", "reconcile", "delete"],
     },
     {
-      name: "reconciled agent mismatch",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
-      reconciled: [{ id: "dispatch-1", room: "demo-room", agentName: "" }],
-      expectedCalls: ["room", "dispatch", "reconcile", "delete"],
-    },
-    {
-      name: "reconciled room mismatch",
-      created: {
-        id: "dispatch-1",
-        room: "demo-room",
-        agentName: "demo-agent",
-      },
+      name: "room mismatch",
       reconciled: [
         {
           id: "dispatch-1",
@@ -399,14 +429,23 @@ test("public demo provider fails closed on mismatched or ambiguous dispatches", 
           agentName: "demo-agent",
         },
       ],
-      expectedCalls: ["room", "dispatch", "reconcile", "delete"],
+    },
+    {
+      name: "missing reconciled dispatch",
+      reconciled: [],
+    },
+    {
+      name: "ambiguous reconciled dispatches",
+      reconciled: [
+        { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
+        { id: "dispatch-2", room: "demo-room", agentName: "demo-agent" },
+      ],
     },
   ];
 
   for (const scenario of cases) {
     await t.test(scenario.name, async () => {
       const calls: string[] = [];
-      let dispatchListCalls = 0;
       const provider = createLiveKitPublicDemoProvider({
         accessTokenFactory: class {
           addGrant() {
@@ -420,11 +459,9 @@ test("public demo provider fails closed on mismatched or ambiguous dispatches", 
         agentDispatchClientFactory: () => ({
           createDispatch: async () => {
             calls.push("dispatch");
-            return scenario.created;
+            throw new Error("atomic dispatch must not call createDispatch");
           },
           listDispatch: async () => {
-            dispatchListCalls += 1;
-            if (dispatchListCalls === 1) return [];
             calls.push("reconcile");
             return scenario.reconciled;
           },
@@ -458,14 +495,13 @@ test("public demo provider fails closed on mismatched or ambiguous dispatches", 
       if (!result.ok) {
         assert.equal(result.error.code, "livekit_demo_start_failed");
       }
-      assert.deepEqual(calls, scenario.expectedCalls);
+      assert.deepEqual(calls, ["room", "reconcile", "delete"]);
     });
   }
 });
 
-test("public demo token-signing failure deletes the room after dispatch", async () => {
+test("public demo token-signing failure deletes the room after atomic dispatch", async () => {
   const calls: string[] = [];
-  let dispatchListCalls = 0;
   const provider = createLiveKitPublicDemoProvider({
     accessTokenFactory: class {
       addGrant() {
@@ -479,12 +515,10 @@ test("public demo token-signing failure deletes the room after dispatch", async 
     agentDispatchClientFactory: () => ({
       createDispatch: async () => {
         calls.push("dispatch");
-        return { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" };
+        throw new Error("atomic dispatch must not call createDispatch");
       },
       listDispatch: async () => {
-        dispatchListCalls += 1;
-        calls.push(dispatchListCalls === 1 ? "inspect" : "reconcile");
-        if (dispatchListCalls === 1) return [];
+        calls.push("reconcile");
         return [
           { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
         ];
@@ -516,15 +550,7 @@ test("public demo token-signing failure deletes the room after dispatch", async 
   });
 
   assert.equal(result.ok, false);
-  assert.deepEqual(calls, [
-    "room",
-    "inspect",
-    "dispatch",
-    "reconcile",
-    "grant",
-    "jwt",
-    "delete",
-  ]);
+  assert.deepEqual(calls, ["room", "reconcile", "grant", "jwt", "delete"]);
 });
 
 test("public demo recovery requires an actual LiveKit agent participant", async () => {

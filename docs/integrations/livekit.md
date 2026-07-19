@@ -71,16 +71,15 @@ npm run typecheck
 - Keep explicit dispatch. Demo and full interview agents should not compete for
   the same room jobs.
 - Register every cloud worker with its configured agent name. An unnamed worker
-  enables automatic dispatch; the app treats any dispatch already attached to a
-  newly created public-demo room as a configuration conflict and deletes the
-  room without issuing a participant token.
-- Do not trust a successful dispatch request by itself. Initial public-demo
-  start requires the created dispatch to have a non-empty ID and the exact
-  requested room and agent, followed by exactly one matching listed dispatch
-  with the same ID. Recovery verifies exactly one matching named dispatch both
-  before and after agent-participant readiness. Any verified mismatch withholds
-  the token and terminalizes the recovery session; transient provider-read
-  failures remain retryable without minting.
+  enables automatic dispatch. Public-demo start therefore creates the room and
+  its named agent dispatch atomically through `CreateRoom.agents`; it never
+  creates an unscoped room and then adds a second dispatch.
+- Do not trust successful room creation by itself. Initial public-demo start
+  requires exactly one listed dispatch with a non-empty ID and the exact
+  requested room and agent before minting. Recovery verifies that same invariant
+  both before and after agent-participant readiness. Any verified mismatch
+  withholds the token and terminalizes the recovery session; transient
+  provider-read failures remain retryable without minting.
 - Keep `LIVEKIT_DEMO_AGENT_NAME` distinct from
   `LIVEKIT_INTERVIEW_AGENT_NAME`. The public demo route fails closed before
   room creation when either name is absent or both names resolve to one
@@ -128,6 +127,6 @@ npm run typecheck
 
 ## References
 
-- LiveKit explicit dispatch: https://docs.livekit.io/agents/worker/agent-dispatch/
+- LiveKit explicit dispatch: https://docs.livekit.io/agents/server/agent-dispatch/
 - LiveKit authentication: https://docs.livekit.io/home/server/generating-tokens/
 - LiveKit Agents sessions: https://docs.livekit.io/agents/
