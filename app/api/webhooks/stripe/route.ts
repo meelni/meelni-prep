@@ -91,6 +91,12 @@ import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-a
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
 import {
+  getStripeWebhookAction,
+  isStripeWebhookActionEvent,
+  type StripeWebhookAction,
+  type StripeWebhookEventForAction,
+} from "@/lib/billing/stripe-webhook-events";
+import {
   mayApplyStripeSubscriptionResource,
   stripeSubscriptionCursorMayApply,
   stripeSubscriptionEventCursor,
@@ -359,52 +365,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, status: "deleted_subject" });
     }
 
-    // Process event based on type
+    // Process events through the canonical provider allowlist and action map.
     try {
-      switch (event.type) {
-        case "checkout.session.completed":
-        case "checkout.session.async_payment_succeeded":
-        case "checkout.session.async_payment_failed":
+      const action = getStripeWebhookAction(event.type);
+      switch (action) {
+        case "checkout_payment":
+          assertStripeWebhookActionEvent(event, action);
           await handleCheckoutPayment(event, stripe);
           break;
 
-        case "customer.subscription.created":
-        case "customer.subscription.updated":
+        case "subscription_update":
+          assertStripeWebhookActionEvent(event, action);
           await handleSubscriptionUpdate(event, stripe);
           break;
 
-        case "customer.subscription.deleted":
+        case "subscription_deleted":
+          assertStripeWebhookActionEvent(event, action);
           await handleSubscriptionDeleted(event);
           break;
 
-        case "invoice.payment_succeeded":
+        case "invoice_payment_succeeded":
+          assertStripeWebhookActionEvent(event, action);
           await handlePaymentSucceeded(event, stripe);
           break;
 
-        case "invoice.payment_failed":
+        case "invoice_payment_failed":
+          assertStripeWebhookActionEvent(event, action);
           await handlePaymentFailed(event, stripe);
           break;
 
-        case "customer.subscription.trial_will_end":
+        case "trial_will_end":
+          assertStripeWebhookActionEvent(event, action);
           await handleTrialWillEnd(event);
           break;
 
-        case "refund.created":
-        case "refund.updated":
-        case "refund.failed":
-        case "charge.refunded":
+        case "billing_adjustment":
+          assertStripeWebhookActionEvent(event, action);
           await handleRefundOrDispute(event);
           break;
 
-        case "charge.dispute.created":
-        case "charge.dispute.funds_withdrawn":
-        case "charge.dispute.funds_reinstated":
-        case "charge.dispute.closed":
-          await handleRefundOrDispute(event);
+        case null:
           break;
 
         default:
-          break;
+          assertNeverStripeWebhookAction(action);
       }
 
       // Mark event as processed
@@ -510,6 +514,19 @@ function getStripeWebhookSecret() {
   return stripeWebhookSecret;
 }
 
+function assertStripeWebhookActionEvent<Action extends StripeWebhookAction>(
+  event: Stripe.Event,
+  action: Action
+): asserts event is StripeWebhookEventForAction<Action> {
+  if (!isStripeWebhookActionEvent(event, action)) {
+    throw new Error("stripe_webhook_event_contract_mismatch");
+  }
+}
+
+function assertNeverStripeWebhookAction(action: never): never {
+  throw new Error(`Unhandled Stripe webhook action: ${action}`);
+}
+
 /**
  * Phase 0.5C: Get userId from Stripe customer with metadata fallback (P0 fix #3)
  *
@@ -540,7 +557,10 @@ async function getUserIdFromStripe(
  * Updates subscription state with optimistic locking
  * Phase 0.5C: Added customer mapping upsert and trial tracking (P0 fixes #2, #4)
  */
-async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
+async function handleSubscriptionUpdate(
+  event: StripeWebhookEventForAction<"subscription_update">,
+  stripe: Stripe
+) {
   const eventSubscription = event.data.object as Stripe.Subscription;
   const userId = await getUserIdFromStripe(
     eventSubscription.customer as string,
@@ -731,7 +751,7 @@ async function handleSubscriptionUpdate(event: Stripe.Event, stripe: Stripe) {
  * Reconcile signed Checkout payment events against current provider truth.
  */
 async function handleCheckoutPayment(
-  event: Stripe.Event,
+  event: StripeWebhookEventForAction<"checkout_payment">,
   stripe: Stripe
 ): Promise<"processed" | "deleted_checkout_reconciled"> {
   if (!isCheckoutPaymentEventType(event.type)) return "processed";
@@ -897,7 +917,9 @@ async function persistSucceededCheckoutPayment(
 /**
  * Handle subscription.deleted event
  */
-async function handleSubscriptionDeleted(event: Stripe.Event) {
+async function handleSubscriptionDeleted(
+  event: StripeWebhookEventForAction<"subscription_deleted">
+) {
   const stripeSubscription = event.data.object as Stripe.Subscription;
 
   // Phase 0.5C: Use metadata fallback (P0 fix #3)
@@ -946,7 +968,10 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
  *
  * Records successful payment in payment_history
  */
-async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
+async function handlePaymentSucceeded(
+  event: StripeWebhookEventForAction<"invoice_payment_succeeded">,
+  stripe: Stripe
+) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = getStripeCustomerId(invoice.customer);
   const recurringPriceIds = [
@@ -1484,7 +1509,10 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
  *
  * Phase 0.5B: Implements 7-day grace period for failed payments
  */
-async function handlePaymentFailed(event: Stripe.Event, stripe: Stripe) {
+async function handlePaymentFailed(
+  event: StripeWebhookEventForAction<"invoice_payment_failed">,
+  stripe: Stripe
+) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = getStripeCustomerId(invoice.customer);
   const recurringPrices = new Map([
@@ -1818,7 +1846,9 @@ function subscriptionResourceProofFromRow(
  *
  * Phase 0.5B: Track trial expiration
  */
-async function handleTrialWillEnd(event: Stripe.Event) {
+async function handleTrialWillEnd(
+  event: StripeWebhookEventForAction<"trial_will_end">
+) {
   const stripeSubscription = event.data.object as Stripe.Subscription;
   const userId = stripeSubscription.metadata.userId;
 
@@ -1834,7 +1864,9 @@ async function handleTrialWillEnd(event: Stripe.Event) {
  *
  * Phase 0.5B: Track refunds in payment history
  */
-async function handleRefundOrDispute(event: Stripe.Event) {
+async function handleRefundOrDispute(
+  event: StripeWebhookEventForAction<"billing_adjustment">
+) {
   await reconcileStripeBillingAdjustment(
     normalizeStripeBillingAdjustmentEvent(event)
   );
