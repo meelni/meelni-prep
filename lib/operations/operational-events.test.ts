@@ -190,6 +190,37 @@ test("billing read and portal failures stay inside the closed catalog", () => {
   assert.doesNotMatch(writes.join("\n"), /cus_|stripe|postgres|customer@/i);
 });
 
+test("service-health database failures stay inside the closed catalog", () => {
+  const writes: string[] = [];
+  for (const errorCode of [
+    "service_health_database_query_failed",
+    "service_health_database_timeout",
+  ] as const) {
+    const event = reportOperationalFailure(
+      {
+        operation: "service_health",
+        errorCode,
+        severity: "critical",
+        retryable: true,
+      },
+      {
+        now: () => new Date("2026-07-19T20:00:00.000Z"),
+        env: {
+          VERCEL_ENV: "preview",
+          VERCEL_GIT_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
+        },
+        write: (value) => writes.push(value),
+      }
+    );
+    assert.equal(event.operation, "service_health");
+    assert.equal(event.errorCode, errorCode);
+    assert.equal(event.correlationId, null);
+  }
+
+  assert.equal(writes.length, 2);
+  assert.doesNotMatch(writes.join("\n"), /postgres|password|exception|stack/i);
+});
+
 test("checkout confirmation failures stay inside the closed catalog", () => {
   const cases = [
     "checkout_confirmation_auth_failed",

@@ -11,6 +11,7 @@ export const OPERATIONAL_FAILURE_OPERATIONS = [
   "billing_read",
   "billing_portal",
   "checkout_confirmation",
+  "service_health",
 ] as const;
 
 export const OPERATIONAL_FAILURE_ERROR_CODES = [
@@ -53,6 +54,8 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "operational_reporter_failed",
   "question_sync_failed",
   "question_sync_unavailable",
+  "service_health_database_query_failed",
+  "service_health_database_timeout",
   "stripe_owner_metadata_missing",
   "stripe_signature_invalid",
   "stripe_webhook_failed",

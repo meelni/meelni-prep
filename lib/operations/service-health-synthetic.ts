@@ -80,7 +80,17 @@ export async function runServiceHealthSynthetic(input: {
   timeoutMs?: number;
   maxReportAgeMs?: number;
   now?: () => Date;
+  protectedPreview?: {
+    bypassSecret: string;
+    expectedOrigin: URL;
+  };
 }): Promise<ServiceHealthSyntheticResult> {
+  const protectionBypassSecret = input.protectedPreview
+    ? authorizeProtectedPreview(input.url, input.protectedPreview)
+    : undefined;
+  if (input.protectedPreview && !protectionBypassSecret) {
+    return failed("health_endpoint_invalid");
+  }
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -93,7 +103,12 @@ export async function runServiceHealthSynthetic(input: {
       cache: "no-store",
       redirect: "error",
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        ...(protectionBypassSecret
+          ? { "x-vercel-protection-bypass": protectionBypassSecret }
+          : {}),
+      },
     });
     const mediaType = response.headers
       .get("content-type")
@@ -144,6 +159,60 @@ export async function runServiceHealthSynthetic(input: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function authorizeProtectedPreview(
+  target: URL,
+  input: { bypassSecret: string; expectedOrigin: URL }
+) {
+  const expectedOrigin = parseProtectedServiceHealthPreviewOrigin(
+    input.expectedOrigin.href
+  );
+  if (
+    !expectedOrigin ||
+    target.origin !== expectedOrigin.origin ||
+    target.pathname !== "/api/health" ||
+    target.username ||
+    target.password ||
+    target.search ||
+    target.hash
+  ) {
+    return undefined;
+  }
+  return normalizeProtectionBypassSecret(input.bypassSecret);
+}
+
+function normalizeProtectionBypassSecret(value: string | undefined) {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed === value && trimmed.length >= 16 && trimmed.length <= 1_024
+    ? trimmed
+    : undefined;
+}
+
+export function parseProtectedServiceHealthPreviewOrigin(
+  value: string | undefined
+): URL | null {
+  if (!value || value.length > 2_048) return null;
+  let origin: URL;
+  try {
+    origin = new URL(value);
+  } catch {
+    return null;
+  }
+  if (
+    origin.protocol !== "https:" ||
+    origin.port ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    !/^meelni-git-[a-z0-9-]+-meelni\.vercel\.app$/.test(origin.hostname)
+  ) {
+    return null;
+  }
+  return origin;
 }
 
 async function readBoundedResponse(

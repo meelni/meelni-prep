@@ -35,6 +35,12 @@ Filter Runtime Logs for:
 
 Group only by `environment`, `release`, `operation`, `errorCode`, `severity`, and `retryable`. An owned `correlationId` may connect failures from one interview session; it is not a user or provider identifier.
 
+For `service_health`, distinguish only the fixed database timeout and query
+failure codes. Deduplicate globally by environment, release, operation, and
+error code until a healthy recovery. Application-side five-minute per-isolate
+deduplication bounds emitter load but cannot provide distributed incident
+deduplication.
+
 For a bounded query:
 
 ```bash

@@ -22,7 +22,14 @@
 }
 ```
 
-Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, `interview_recovery`, `billing_read`, `billing_portal`, and `checkout_confirmation`.
+Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, `interview_recovery`, `billing_read`, `billing_portal`, `checkout_confirmation`, and `service_health`.
+
+Service-health database failures distinguish the application deadline from a
+query/connection failure using only `service_health_database_timeout` or
+`service_health_database_query_failed`. They never include the database error,
+URL, relation/column name, or provider response. One server isolate emits each
+code at most once per five minutes; an external receiver must still deduplicate
+globally by environment, release, operation, and error code.
 
 Billing read and portal failures use fixed route-level error codes. They do not
 include Stripe customer identifiers, database messages, exception strings, or

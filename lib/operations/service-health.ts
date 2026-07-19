@@ -2,6 +2,10 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import {
+  reportOperationalFailure,
+  type OperationalFailureErrorCode,
+} from "@/lib/operations/operational-events";
 
 export const SERVICE_HEALTH_CHECKS = [
   "web",
@@ -30,6 +34,11 @@ export type ServiceHealthCode =
   | "stripe_webhook_stale"
   | "stripe_webhook_failed"
   | "stripe_webhook_dependency_unavailable";
+
+export type ServiceHealthDatabaseFailureCode = Extract<
+  OperationalFailureErrorCode,
+  "service_health_database_query_failed" | "service_health_database_timeout"
+>;
 
 export interface ServiceHealthCheck {
   name: ServiceHealthCheckName;
@@ -62,6 +71,7 @@ export interface ServiceHealthStore {
 interface ServiceHealthDependencies {
   env: Readonly<Record<string, string | undefined>>;
   now(): Date;
+  reportDatabaseFailure(code: ServiceHealthDatabaseFailureCode): void;
   store: ServiceHealthStore;
   timeoutMs: number;
 }
@@ -75,6 +85,11 @@ interface CachedServiceHealthReaderDependencies {
 const STALE_AFTER_MS = 10 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 2_000;
 const QUERY_TIMEOUT_HEADROOM_MS = 100;
+export const SERVICE_HEALTH_SYNTHETIC_CADENCE_MS = 60_000;
+export const SERVICE_HEALTH_FAILURE_DEDUPE_MS = 5 * 60_000;
+
+const defaultReportDatabaseFailure =
+  createDeduplicatedServiceHealthDatabaseFailureReporter();
 
 export async function assessServiceHealth(
   dependencies: ServiceHealthDependencies
@@ -120,7 +135,16 @@ export async function assessServiceHealth(
       status: "healthy",
       code: "database_ready",
     });
-  } catch {
+  } catch (error) {
+    try {
+      dependencies.reportDatabaseFailure(
+        error instanceof ServiceHealthTimeoutError
+          ? "service_health_database_timeout"
+          : "service_health_database_query_failed"
+      );
+    } catch {
+      // Telemetry is best-effort and must not replace the closed health result.
+    }
     checks.push({
       name: "database",
       status: "unavailable",
@@ -147,14 +171,54 @@ export async function assessServiceHealth(
 export function createDefaultServiceHealthDependencies(input: {
   env?: Readonly<Record<string, string | undefined>>;
   now?: () => Date;
+  reportDatabaseFailure?: (code: ServiceHealthDatabaseFailureCode) => void;
   store: ServiceHealthStore;
   timeoutMs?: number;
 }): ServiceHealthDependencies {
   return {
     env: input.env ?? process.env,
     now: input.now ?? (() => new Date()),
+    reportDatabaseFailure:
+      input.reportDatabaseFailure ?? defaultReportDatabaseFailure,
     store: input.store,
     timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  };
+}
+
+export function createDeduplicatedServiceHealthDatabaseFailureReporter(
+  input: {
+    now?: () => number;
+    dedupeMs?: number;
+    report?: (code: ServiceHealthDatabaseFailureCode) => void;
+  } = {}
+): (code: ServiceHealthDatabaseFailureCode) => void {
+  const lastReportedAt = new Map<ServiceHealthDatabaseFailureCode, number>();
+  const now = input.now ?? Date.now;
+  const dedupeMs = Math.max(
+    0,
+    input.dedupeMs ?? SERVICE_HEALTH_FAILURE_DEDUPE_MS
+  );
+  const report =
+    input.report ??
+    ((errorCode: ServiceHealthDatabaseFailureCode) => {
+      reportOperationalFailure({
+        operation: "service_health",
+        errorCode,
+        severity: "critical",
+        retryable: true,
+      });
+    });
+
+  return (code) => {
+    const observedAt = now();
+    const previous = lastReportedAt.get(code);
+    if (previous !== undefined && observedAt - previous < dedupeMs) return;
+    lastReportedAt.set(code, observedAt);
+    try {
+      report(code);
+    } catch {
+      // A receiver failure cannot change health behavior or bypass dedupe.
+    }
   };
 }
 
@@ -294,13 +358,20 @@ async function withTimeout<T>(
       promise,
       new Promise<never>((_, reject) => {
         timeout = setTimeout(
-          () => reject(new Error("service_health_timeout")),
+          () => reject(new ServiceHealthTimeoutError()),
           timeoutMs
         );
       }),
     ]);
   } finally {
     if (timeout) clearTimeout(timeout);
+  }
+}
+
+class ServiceHealthTimeoutError extends Error {
+  constructor() {
+    super("service_health_timeout");
+    this.name = "ServiceHealthTimeoutError";
   }
 }
 

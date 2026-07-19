@@ -26,6 +26,11 @@
   LiveKit configuration readiness, feedback-dispatch backlog/configuration,
   Stripe-webhook backlog/configuration, deterministic endpoint synthetic, tests,
   and an operating runbook.
+- Current remediation: execute the canonical evidence query against clean and
+  historical-upgrade disposable PostgreSQL, emit only deduplicated closed
+  database-failure events, provide a Preview-only redacted database preflight,
+  bind the Deployment Protection bypass header to one exact Preview origin,
+  and verify a cleanup-complete rehearsal bundle by canonical hash.
 - Out of scope: A status vendor, a provider-mutating interview synthetic, an
   alert receiver, Production data writes, or changing the relaunch flag.
 - Dependency: Provider-backed rehearsal and alert receipt wait for SAV-226
@@ -46,6 +51,12 @@
   simultaneous failed/stale evidence regressions.
 - `npm run check:ci` and `npm run build`.
 - Controlled isolated-Preview degradation and alert receipt remain launch gates.
+- A protected Preview request currently redirects to Vercel login without the
+  approved automation bypass. This is expected protection behavior, not a
+  healthy or unhealthy application result.
+- Root cause reproduced: the current lineage binds a JavaScript `Date` through
+  postgres-js and throws before query execution; canonical UTC string binding
+  fixes the exact reader and now runs against both migration test lineages.
 
 ## Rollout
 

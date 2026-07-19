@@ -30,6 +30,7 @@ import {
 } from "../lib/billing/stripe-subscription-event-order";
 import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-event-order";
 import { subscription } from "../lib/db/schema";
+import { createDrizzleServiceHealthEvidenceReader } from "../lib/operations/service-health-store";
 
 import {
   BILLING_TRUTH_SCHEMA_FINGERPRINT,
@@ -201,6 +202,7 @@ async function run() {
       0,
       `Latest strict preflight failed: ${latestStrictPreflight.stderr || latestStrictPreflight.stdout}`
     );
+    await verifyServiceHealthEvidenceQuery(clean, true);
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
     await verifyCleanLifecycleDefaults(clean);
@@ -458,6 +460,7 @@ async function run() {
         await protectedRowCounts(upgrade),
         countsBeforeRuntimeSettlement
       );
+      await verifyServiceHealthEvidenceQuery(upgrade, false);
       await verifyDatabase(upgrade);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
@@ -496,6 +499,29 @@ async function run() {
       `DROP DATABASE IF EXISTS "${UPGRADE_DATABASE}" WITH (FORCE)`
     );
     await admin.end();
+  }
+}
+
+async function verifyServiceHealthEvidenceQuery(
+  sql: postgres.Sql,
+  expectClear: boolean
+) {
+  const evidence = await createDrizzleServiceHealthEvidenceReader(
+    drizzle(sql) as never
+  ).read({
+    staleBefore: new Date("2026-07-19T22:50:00.000Z"),
+    queryTimeoutMs: 1_900,
+  });
+
+  for (const value of Object.values(evidence))
+    assert.equal(typeof value, "boolean");
+  if (expectClear) {
+    assert.deepEqual(evidence, {
+      feedbackDispatchStale: false,
+      feedbackDispatchFailed: false,
+      stripeWebhookStale: false,
+      stripeWebhookFailed: false,
+    });
   }
 }
 

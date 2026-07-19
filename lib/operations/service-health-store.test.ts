@@ -54,6 +54,10 @@ test("database reader applies a local statement timeout and disjoint evidence qu
   );
   assert.match(evidenceQuery.sql, /"stripe_event_log"\."status" = 'pending'/);
   assert.doesNotMatch(evidenceQuery.sql, /'pending', 'failed'/);
+  assert.deepEqual(evidenceQuery.params, [
+    "2026-07-10T19:50:00.000Z",
+    "2026-07-10T19:50:00.000Z",
+  ]);
   assert.deepEqual(evidence, CLEAR_EVIDENCE);
 });
 
@@ -79,6 +83,7 @@ test("timed-out assessments never duplicate unresolved database work", async () 
         createDefaultServiceHealthDependencies({
           env: {},
           now: () => NOW,
+          reportDatabaseFailure: () => {},
           store,
           timeoutMs: 5,
         })

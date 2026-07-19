@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  parseProtectedServiceHealthPreviewOrigin,
   parseServiceHealthUrl,
   runServiceHealthSynthetic,
 } from "./service-health-synthetic";
@@ -133,6 +134,106 @@ test("synthetic converts transport failures to one safe fixed code", async () =>
     status: "failed",
     code: "health_endpoint_unreachable",
   });
+});
+
+test("synthetic can access protected Preview only through the secret header", async () => {
+  const bypassSecret = "preview-automation-secret";
+  let capturedHeaders: Headers | undefined;
+  const result = await runServiceHealthSynthetic({
+    url: new URL("https://meelni-git-codex-safe-meelni.vercel.app/api/health"),
+    protectedPreview: {
+      bypassSecret,
+      expectedOrigin: new URL(
+        "https://meelni-git-codex-safe-meelni.vercel.app"
+      ),
+    },
+    fetcher: async (_url, init) => {
+      capturedHeaders = new Headers(init?.headers);
+      return Response.json(report("healthy")) as never;
+    },
+    now: () => new Date("2026-07-10T20:01:00.000Z"),
+  });
+
+  assert.equal(result.status, "passed");
+  assert.equal(
+    capturedHeaders?.get("x-vercel-protection-bypass"),
+    bypassSecret
+  );
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(bypassSecret));
+});
+
+test("protected Preview refuses secret exfiltration before transport", async () => {
+  const trusted = new URL("https://meelni-git-codex-safe-meelni.vercel.app");
+  const targets = [
+    "https://attacker.example/api/health",
+    "https://meelni-git-codex-safe-meelni.vercel.app.evil.example/api/health",
+    "https://user:password@meelni-git-codex-safe-meelni.vercel.app/api/health",
+    "https://meelni-git-codex-safe-meelni.vercel.app/api/health?next=evil",
+    "https://meelni-git-codex-safe-meelni.vercel.app/api/health#secret",
+    "https://meelni-git-other-meelni.vercel.app/api/health",
+  ];
+  for (const target of targets) {
+    let calls = 0;
+    const result = await runServiceHealthSynthetic({
+      url: new URL(target),
+      protectedPreview: {
+        bypassSecret: "preview-automation-secret",
+        expectedOrigin: trusted,
+      },
+      fetcher: async () => {
+        calls += 1;
+        return Response.json(report("healthy")) as never;
+      },
+    });
+    assert.equal(result.code, "health_endpoint_invalid");
+    assert.equal(calls, 0);
+  }
+});
+
+test("protected Preview origin parser rejects hostname and URL confusion", () => {
+  assert.equal(
+    parseProtectedServiceHealthPreviewOrigin(
+      "https://meelni-git-codex-safe-meelni.vercel.app"
+    )?.origin,
+    "https://meelni-git-codex-safe-meelni.vercel.app"
+  );
+  for (const value of [
+    "https://meelni.vercel.app",
+    "https://meelni-git-safe-meelni.vercel.app.evil.example",
+    "https://user:secret@meelni-git-safe-meelni.vercel.app",
+    "https://meelni-git-safe-meelni.vercel.app/path",
+    "https://meelni-git-safe-meelni.vercel.app?secret=value",
+    "http://meelni-git-safe-meelni.vercel.app",
+  ]) {
+    assert.equal(parseProtectedServiceHealthPreviewOrigin(value), null);
+  }
+});
+
+test("protected Preview never follows a response redirect with the bypass header", async () => {
+  const target = new URL(
+    "https://meelni-git-codex-safe-meelni.vercel.app/api/health"
+  );
+  let capturedRedirect: RequestRedirect | undefined;
+  let capturedUrl = "";
+  const result = await runServiceHealthSynthetic({
+    url: target,
+    protectedPreview: {
+      bypassSecret: "preview-automation-secret",
+      expectedOrigin: new URL(target.origin),
+    },
+    fetcher: async (url, init) => {
+      capturedUrl = String(url);
+      capturedRedirect = init?.redirect;
+      return Response.redirect(
+        "https://attacker.example/collect",
+        302
+      ) as never;
+    },
+  });
+
+  assert.equal(result.code, "health_endpoint_invalid");
+  assert.equal(capturedRedirect, "error");
+  assert.equal(capturedUrl, target.href);
 });
 
 test("synthetic URL parser allows HTTPS and loopback HTTP without credentials", () => {

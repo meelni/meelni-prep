@@ -127,6 +127,13 @@ Guidelines:
   closed `meelni_operational_failure@1` event. A receiver must select that
   closed event before external retention, or every additional selected server
   log source requires a separate privacy review.
+- Protected Preview health checks use Vercel's Protection Bypass for Automation
+  as the `x-vercel-protection-bypass` header, never a query parameter. Keep the
+  value in `VERCEL_AUTOMATION_BYPASS_SECRET` and use
+  `npm run health:synthetic:protected-preview`, which binds the header to the
+  exact `MEELNI_HEALTHCHECK_PREVIEW_ORIGIN`. The generic health synthetic never
+  reads the bypass secret. A Vercel login redirect is not a health receipt and
+  must not be followed or copied into evidence.
 
 ## GitHub
 
