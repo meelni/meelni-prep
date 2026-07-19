@@ -13,14 +13,20 @@ import {
   parseCheckoutCreateResponse,
   storeCheckoutReturnHandle,
 } from "@/lib/billing/checkout-return-cookie";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export function Pricing() {
   const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
+  const activation = usePublicActivationDecision();
   const plans = getPublicPricingPlans();
 
   async function handlePlanClick(plan: PublicPricingPlan) {
+    if (!activation.canActivate) return;
+
     if (!plan.canPurchase) {
-      window.location.href = "/dashboard/new-interview";
+      window.location.href = NEW_INTERVIEW_PATH;
       return;
     }
 
@@ -89,13 +95,18 @@ export function Pricing() {
                 <Button
                   className="mt-auto h-[42px] w-full rounded-full font-bold"
                   onClick={() => void handlePlanClick(plan)}
-                  disabled={loadingCatalogId === plan.catalogId}
+                  disabled={
+                    !activation.canActivate ||
+                    loadingCatalogId === plan.catalogId
+                  }
                   variant="outline"
                 >
                   {loadingCatalogId === plan.catalogId && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  {plan.cta}
+                  {activation.canActivate
+                    ? plan.cta
+                    : PUBLIC_ACTIVATION_PAUSED_LABEL}
                 </Button>
               </article>
             ))}

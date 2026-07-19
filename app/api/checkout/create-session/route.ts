@@ -43,7 +43,7 @@ const checkoutSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Authenticate before evaluating the user-scoped relaunch gate.
+    // 1. Authenticate before evaluating the global relaunch gate.
     const supabase = await createClient();
     const {
       data: { user },
@@ -62,7 +62,6 @@ export async function POST(req: NextRequest) {
 
     const gateName = FEATURE_GATES.meelniReactivationAccess;
     const access = await resolveReactivationAccess({
-      user,
       localOverride: req.cookies.get(
         `meelni_feature_flag_${encodeURIComponent(gateName)}`
       )?.value,
