@@ -151,6 +151,7 @@ test("ready-session replay finalizes token two server-side without redispatch", 
     tokenInput?.observedAt.toISOString(),
     "2026-07-09T12:00:00.000Z"
   );
+  assert.equal(tokenInput?.agentName, INPUT.agentName);
   assert.equal(tokenInput?.expiresAt.toISOString(), "2026-07-09T12:02:00.000Z");
   assert.deepEqual(result, {
     ok: true,
@@ -318,6 +319,92 @@ test("a verified missing agent invalidates the active session before cookie rese
     body: { error: "demo_temporarily_unavailable" },
     resetSessionCookie: true,
   });
+});
+
+test("a verified invalid dispatch or failed cleanup terminalizes recovery", async (t) => {
+  for (const failureCode of [
+    "livekit_demo_dispatch_invalid",
+    "livekit_demo_cleanup_failed",
+  ]) {
+    await t.test(failureCode, async () => {
+      const calls: string[] = [];
+      const result = await startPublicDemoWorkflow(
+        INPUT,
+        deps({
+          reserveSession: async () => allowed("issue_token"),
+          livekit: provider({
+            issuePublicDemoToken: async () => ({
+              ok: false,
+              provider: "livekit",
+              error: {
+                code: failureCode,
+                message: "dispatch state invalid",
+                retryable: failureCode === "livekit_demo_cleanup_failed",
+              },
+            }),
+          }),
+          failRecovery: async (_sessionId, _claimToken, code) => {
+            calls.push(`fail:${code}`);
+            return true;
+          },
+          rollbackRecovery: async () => {
+            calls.push("rollback");
+            return true;
+          },
+        })
+      );
+
+      assert.deepEqual(calls, [`fail:${failureCode}`]);
+      assert.deepEqual(result, {
+        ok: false,
+        status: 503,
+        body: { error: "demo_temporarily_unavailable" },
+        resetSessionCookie: true,
+      });
+    });
+  }
+});
+
+test("terminal recovery failures never roll back when durable invalidation fails", async (t) => {
+  for (const failMode of ["returns_false", "throws"] as const) {
+    await t.test(failMode, async () => {
+      const calls: string[] = [];
+      const result = await startPublicDemoWorkflow(
+        INPUT,
+        deps({
+          reserveSession: async () => allowed("issue_token"),
+          livekit: provider({
+            issuePublicDemoToken: async () => ({
+              ok: false,
+              provider: "livekit",
+              error: {
+                code: "livekit_demo_dispatch_invalid",
+                message: "dispatch state invalid",
+                retryable: false,
+              },
+            }),
+          }),
+          failRecovery: async () => {
+            calls.push("fail");
+            if (failMode === "throws") throw new Error("database unavailable");
+            return false;
+          },
+          rollbackRecovery: async () => {
+            calls.push("rollback");
+            return true;
+          },
+        })
+      );
+
+      assert.deepEqual(calls, ["fail"]);
+      assert.deepEqual(result, {
+        ok: false,
+        status: 503,
+        body: { error: "demo_temporarily_unavailable" },
+        resetSessionCookie: true,
+      });
+    });
+  }
 });
 
 test("limiter failure fails closed without LiveKit work", async () => {
