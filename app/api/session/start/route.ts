@@ -109,6 +109,7 @@ import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
 import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { resolveInterviewAppBaseUrl } from "@/lib/interview/app-base-url";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export async function POST(req: NextRequest) {
   try {
@@ -152,7 +153,12 @@ export async function POST(req: NextRequest) {
     // Validate required environment variables
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error("LiveKit environment validation failed");
+      reportOperationalFailure({
+        operation: "interview_start",
+        errorCode: "livekit_config_missing",
+        severity: "critical",
+        retryable: false,
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -161,7 +167,12 @@ export async function POST(req: NextRequest) {
 
     const interviewAgentName = getLiveKitAgentName("interview", process.env);
     if (!interviewAgentName.ok) {
-      console.error("LiveKit interview agent configuration failed");
+      reportOperationalFailure({
+        operation: "interview_start",
+        errorCode: "livekit_agent_config_missing",
+        severity: "critical",
+        retryable: false,
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -198,7 +209,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result.body);
   } catch {
-    console.error("Interview session start failed");
+    reportOperationalFailure({
+      operation: "interview_start",
+      errorCode: "interview_start_failed",
+      severity: "critical",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to start session" },
       { status: 500 }

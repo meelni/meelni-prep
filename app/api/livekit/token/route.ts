@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 import { joinInterviewSessionWorkflow } from "@/lib/workflows/join-interview-session";
 
@@ -47,7 +48,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (!livekitEnv.ok) {
-      console.error("Missing LiveKit environment variables");
+      reportOperationalFailure({
+        operation: "interview_token",
+        errorCode: "livekit_config_missing",
+        severity: "critical",
+        retryable: false,
+      });
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
@@ -69,8 +75,13 @@ export async function POST(req: NextRequest) {
       status: result.ok ? 200 : result.status,
       headers,
     });
-  } catch (error) {
-    console.error("Error issuing LiveKit participant token:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_token",
+      errorCode: "livekit_token_issue_failed",
+      severity: "critical",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to issue LiveKit token" },
       { status: 500 }

@@ -64,9 +64,16 @@ describe("POST /api/session/start logging", () => {
       expect(response.status).toBe(500);
       expect(JSON.stringify(await response.json())).not.toContain(sentinel);
       expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sentinel);
-      expect(consoleError).toHaveBeenCalledWith(
-        "Interview session start failed"
-      );
+      expect(readOperationalEvent(consoleError)).toMatchObject({
+        event: "meelni_operational_failure",
+        version: 1,
+        operation: "interview_start",
+        errorCode: "interview_start_failed",
+        severity: "critical",
+        retryable: true,
+        requestId: null,
+        correlationId: null,
+      });
     } finally {
       consoleError.mockRestore();
     }
@@ -87,12 +94,54 @@ describe("POST /api/session/start logging", () => {
 
       expect(response.status).toBe(500);
       expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sentinel);
+      expect(readOperationalEvent(consoleError)).toMatchObject({
+        operation: "interview_start",
+        errorCode: "livekit_config_missing",
+        severity: "critical",
+        retryable: false,
+      });
       expect(startInterviewSessionWorkflow).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
     }
   });
+
+  it("does not page on an expected idempotent start-in-progress retry", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    vi.mocked(startInterviewSessionWorkflow).mockResolvedValue({
+      ok: false,
+      status: 503,
+      body: {
+        error: "interview_start_in_progress",
+        message: "The interview is still starting. Please try again.",
+        retryable: true,
+        retryAfterMs: 1_000,
+      },
+    } as never);
+
+    try {
+      const response = await POST(request());
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });
+
+function readOperationalEvent(
+  consoleError: ReturnType<typeof vi.spyOn>
+): Record<string, unknown> {
+  expect(consoleError).toHaveBeenCalledTimes(1);
+  return JSON.parse(String(consoleError.mock.calls[0]?.[0])) as Record<
+    string,
+    unknown
+  >;
+}
 
 function request() {
   return new NextRequest("http://localhost/api/session/start", {

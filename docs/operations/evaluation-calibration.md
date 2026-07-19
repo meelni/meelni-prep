@@ -27,10 +27,9 @@ These modes make no model or database calls. A green deterministic self-test
 proves only the harness; its live-provider and calibration-evidence gates
 remain pending.
 
-## Future synthetic-output semantic review
+## V3 synthetic-output semantic review
 
-Before any future v3 plan or authorization is considered, use the provider-free
-contract in
+The SAV-248 v3 live launcher integrates the semantic-review contract in
 `docs/contracts/evaluation-output-semantic-adjudication.md`. The private-run
 boundary must hash raw synthetic output byte-for-byte and emit only the trusted
 hash manifest. Separately, a trusted operator/orchestrator must construct the
@@ -48,9 +47,14 @@ without a report if it rejects a hash, coverage, identity, prose, consistency,
 alternative-review, or agreement invariant. A report with `gate: failed` is
 terminal rejection evidence for that response set.
 
-This review is not wired into the paid launcher. It grants no provider access
-or spend authority. A future live run requires a distinct reviewed plan and
-owner authorization after this gate is operationally integrated.
+The launcher captures the exact UTF-8 bytes of the decoded provider message
+content before JSON parsing. It atomically persists a v9 automated report in
+`pending_semantic_review`, then waits for two decision-only panel files plus a
+separate operator-authored execution-authority file. Semantic review grants no
+provider access or spend authority. The current v3 artifacts are deliberately
+non-executable proposals; a fresh exact owner authorization, reviewed post-merge
+source commit, refreshed pricing review, and protected GitHub ledger would all
+be required before any paid run.
 
 ### Provider-free capture and retention
 
@@ -76,17 +80,24 @@ hash binder, not cryptographic proof that a task ran; the operator must verify
 the canonical task path and execution event before calling it. Never construct
 authority from panel-authored JSON or invent a human reviewer identity.
 
-`completePrivateSemanticReview` delegates decisions to the SAV-251 validator.
-It writes only a sanitized, content-free public report. It first publishes a
-truthful report with `rawCaptureDeleted: false`; only then does it delete the
-private directory and atomically replace the report with
-`rawCaptureDeleted: true`. A publication failure therefore preserves the raw
-capture. A validation failure publishes nothing and retains the capture for
-bounded investigation or explicit cleanup. Call
-`cleanupPrivateSemanticCapture` when aborting, and remove any retained capture
-no later than its private `retentionExpiresAt`. Public report paths inside the
-private capture are forbidden, including paths whose existing parent resolves
-through a symlink into that directory.
+`publishPrivateSemanticReviewBeforeTerminalReport` delegates decisions to the
+SAV-251 validator. It writes only a mode-`0600`, sanitized, content-free report
+for either unanimous acceptance or unanimous rejection, initially with
+`rawCaptureDeleted: false`. It also requires the exact opaque outputs marked
+`reviewed_legitimate` to equal the automated report's unique canonical-evidence
+mismatches; a count-only or unrelated alternative cannot convert a mismatch to
+a pass. The runner hashes only the immutable semantic-adjudication section,
+atomically replaces the pending v9 report with passed or failed, and verifies
+that exact terminal file before `completePrivateSemanticReviewAfterTerminalReport`
+may delete the private directory. It then atomically updates the semantic
+report to `rawCaptureDeleted: true`. Failure before terminal v9 publication
+preserves the capture. Failure or crash after terminal publication can leave
+the deletion bit conservatively false but cannot revert terminal evidence.
+Invalid, disagreeing, or malformed review input publishes no semantic result;
+the live runner atomically records terminal v9 failure before authenticated
+cleanup. Public report paths inside the private capture are forbidden,
+including paths whose existing parent resolves through a symlink into that
+directory.
 
 The issued capture handle is an opaque, module-authenticated, same-process
 capability. Reconstructed, spread, serialized, or post-restart handles are not
@@ -100,9 +111,10 @@ claim crash-surviving automatic deletion. A future restart-capable workflow
 would require a separate durable authenticated capability design, not a plain
 serialized handle.
 
-This flow is synthetic-only and provider-free. It must not receive Production
-or customer data, call a model, reuse the consumed v2 authority, or imply a v3
-plan, spend authorization, provider acceptance, or launch approval.
+The capture and adjudication helpers are testable without a provider. During
+any future authorized v3 run they may receive only synthetic/approved fixture output;
+they must never receive Production or customer data, reuse a terminal v1/v2
+authority, or imply provider acceptance or launch approval.
 
 Review the agent-authored candidate adjudications separately:
 
@@ -136,24 +148,76 @@ The eight insufficient fixtures are separately enforced validator negatives,
 not scored adjudication candidates. They have no score bands or findings;
 preflight requires all eight to skip evaluation and make zero provider calls.
 
-## Authorized live-provider run
+## Proposed live-provider run (not authorized)
 
-Do not run this step without explicit authorization for provider spend and
-confirmation that the intended model/configuration is the one being evaluated.
-The accepted plan evaluates 32 scored synthetic transcripts twice, for exactly
-64 planned model calls. The eight insufficient transcripts are expected to make
-zero model calls. The existing authorization remains capped at 96 physical
-attempts and $3 total estimated committed spend, but it does not expand the
-accepted 64-call plan. The runner stops before any call whose worst-case
-reservation could exceed the remaining spend cap.
+Do not run this step. The current code intentionally fails before the readiness
+handshake or credential delivery because no fresh v3 spend authorization exists.
+The proposal evaluates 32 scored synthetic transcripts twice, for exactly 64
+planned model calls. The eight insufficient transcripts are expected to make
+zero model calls. Its proposed envelope remains at most 96 physical attempts and
+$3 total estimated committed spend, but those numbers are not an authorization.
+The v1 and v2 refs are terminal historical authorities and cannot be reused.
 
-The explicit SAV-198 spend approval is committed as
-`docs/evidence/sav-198-paid-run-authorization.json`. It authorizes exactly one
-aggregate run, `sav-198-authorized-paid-calibration.v1`; it is not a renewable
-96-call allowance for each invocation. The CLI has no run-ID or ledger-path
-override. Spend authorization permits the bounded paid run only after the
-separate candidate adjudication is approved; it does not approve those semantic
-judgments itself.
+`docs/evidence/sav-248-v3-paid-run-authorization-proposal.json` truthfully
+records `pending_explicit_product_owner_approval`, null authorization source and
+date, and a null `reviewedSourceCommit`. It cannot authorize a provider request,
+GitHub mutation, or credential delivery. Before any future run, the product
+owner must approve one exact post-merge source commit and a regenerated plan
+after the official pricing review is refreshed. That reviewed change must then
+replace the pending proposal; historical approval for v1/v2 cannot be reused.
+
+The executable replacement must not trust `reviewedSourceCommit` as data alone.
+Before readiness, the runtime resolves the repository containing its source,
+compares the actual 40-character `HEAD` to the approved commit, independently
+hashes every tracked working-tree blob against the `HEAD` tree, and rejects any
+tracked, staged, or untracked worktree change. This direct content check also
+rejects changes hidden by Git `assume-unchanged` or `skip-worktree` flags.
+Launcher owner/mode checks do not satisfy this source-binding requirement.
+
+Local calibration bundle construction and verification first run
+`npm run runtime:check`, which requires the exact version in `.node-version`
+(`22.22.0`). This prevents a wrong host runtime from producing or verifying a
+bundle and then failing later inside security attestation. The package engine
+remains `22.x` for supported Vercel patch updates; it does not replace the
+privileged launcher's independently reviewed binary digest and signature pin.
+
+The live child does not execute through `tsx` or import from mutable
+`node_modules`. `npm run calibration:build-runtime` reproducibly bundles the
+complete 358-input runtime into
+`scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
+remain external. `npm run calibration:verify-runtime` must reproduce the exact
+tracked bundle and `docs/evidence/sav-248-v3-runtime-manifest.json`. Before
+spawning the child, the credential-free bootstrap checks the bundle's regular
+file identity, ownership, link count, mode, byte length, SHA-256, package-lock
+SHA-256, Node version, platform, and architecture. A dependency or source
+change therefore requires a reviewed bundle/manifest regeneration before a
+future exact owner authorization.
+
+A future authorized invocation must export
+`MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT` as the exact owner-approved merged
+commit alongside the separately required paid-run acknowledgement. The launcher
+consumes and unsets that value before bootstrap. It runs system Git with an
+empty environment and `GIT_NO_REPLACE_OBJECTS=1`, requires actual `HEAD` to
+match, and compares the raw working bytes of the launcher, bootstrap, startup
+verifier, manifest, bundle, and package lock to the corresponding blobs in that
+commit. It then copies every post-launch artifact into the private launcher
+directory, changes each copy to owner-read-only, rechecks the copies against the
+same commit, and executes only that sealed snapshot. Any absent, wrong, dirty,
+coherently replaced, hard-linked, or mid-copy artifact fails before bootstrap
+readiness and before GitHub or Keychain credential retrieval. The current
+proposal has no approved source commit, so do not set this variable or attempt
+the live command yet.
+
+The same pre-secret step pins the full Node 22.22.0 arm64 binary SHA-256 to
+`913b144fdb40638b1acef7974ab3c33fbd527cc0974cb5da467ab1e6ac51b4d4`
+and verifies its Node.js Foundation Developer ID team `HX7739G8FX`. It pins
+GitHub CLI 2.96.0 SHA-256 to
+`02d2d4a85241c6a8c0b77ebb1ec76fc723caf7fb128e00915b306b968847cba1`.
+The launcher copies both binaries into the private snapshot, changes them to
+owner-executable/read-only, repeats the digest/signature checks, and uses only
+those sealed copies. Upgrading Node or `gh` requires a reviewed digest change,
+bundle reproduction, and a new exact authorization; never weaken this to a
+version-string or `PATH` check.
 
 The paid launcher never loads `.env.local` and has no npm script. It retrieves
 the OpenAI key from the macOS Keychain service
@@ -163,13 +227,15 @@ not a shell argument, environment variable, repository file, or chat message.
 The launcher pins `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13` in the minimal
 attested runtime environment. That exact snapshot is bound to the repository's
 reviewed `evaluation-calibration-pricing.v1` contract; a moving alias or any
-other model fails before call one. The pricing contract was
+other model fails before call one. The current proposal's pricing contract was
 re-verified against the official OpenAI GPT-5.1 model page at
-`2026-07-16T23:54:50.000Z` and uses Standard rates of $1.25/M uncached input,
+`2026-07-18T19:00:00.000Z` and uses Standard rates of $1.25/M uncached input,
 $0.125/M cached input, and $10/M output tokens. The review is valid for only 24
-hours. Refresh the reviewed timestamp in code only after rechecking the official
-page; stale or future-dated reviews fail before call one. A pricing change
-requires a reviewed code change, not an environment override.
+hours and is not expected to remain current through merge. Refresh the reviewed
+timestamp in code only after rechecking the official page, then regenerate the
+plan proposal before requesting exact owner authorization. Stale or future-dated
+reviews fail before call one. A pricing change requires a reviewed code change,
+not an environment override.
 
 Unset `OPENAI_BASE_URL` completely. Paid calibration rejects even an ambient
 override equal to the official URL. Its client pins `https://api.openai.com/v1`,
@@ -198,35 +264,39 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the delegated acceptance of the exact rebased plan:
+Generate and verify the non-executable v3 proposal:
 
 ```bash
-npm run calibration:plan-acceptance -- \
+npm run calibration:plan-proposal -- \
   --approval docs/evidence/sav-198-adjudication-approval.json \
-  --output docs/evidence/sav-198-rebased-plan-acceptance.json
+  --output docs/evidence/sav-248-v3-plan-proposal.json
 ```
 
-The expected plan is 64 physical calls (two symmetric runs for each of 32
-scored fixtures), 2,052,925,000 nano-USD ($2.052925) worst case, and hash
-`53e88d34564efe1a869acf6a3464ee024b7e298955ac2b17be89510b75250fa0`.
+The current proposal is 64 physical calls (two symmetric runs for each of 32
+scored fixtures), 2,247,265,000 nano-USD ($2.247265) worst case, and hash
+`a0ca65f49bcbf6f0140701a1eb2e58d018b916e18a5bf80b3c438938d4062363`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
-This acceptance remains within the existing $3 authorization and does not
-activate the ledger or authorize a provider call.
+This proposal additionally pins request-policy hash
+`884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
+but leaves the reviewed source commit null. It must change after the final
+source commit and refreshed pricing are bound; treat it as review input, never
+as an accepted or executable plan.
 
 ### Durable single-run GitHub activation
 
-Paid execution remains disabled until repository owners configure the two
+Paid execution remains disabled. Only after a fresh exact authorization and
+reviewed replacement of the proposal may repository owners configure the two
 exact active repository rulesets below for:
 
 ```text
-refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3
 ```
 
-1. `Meelni SAV-198 calibration ledger immutable`: exact ref include, no
+1. `Meelni SAV-248 v3 calibration ledger immutable`: exact ref include, no
    excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
    With no bypass, administrators remain subject to both invariants.
-2. `Meelni SAV-198 calibration activation actor`: the same exact ref include,
+2. `Meelni SAV-248 v3 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
    bypass actor: GitHub user `saviii` (`24397508`). The independent immutable
    ruleset still prevents that actor from deleting or force-updating the ref.
@@ -236,8 +306,9 @@ The runtime also requires GitHub's effective branch-rule endpoint to return
 both rulesets before creating the ref. This PR intentionally does not create,
 configure, query, or activate the real ledger ref during tests.
 
-After both rulesets are active, create the initial commit through GitHub REST
-with these exact immutable fields:
+The current code computes the following proposal-only genesis. Do not create it.
+After a fresh exact authorization is merged, recompute and independently verify
+the final authorization message and OID before any GitHub mutation:
 
 ```text
 repository: meelni/meelni-prep (1089904588)
@@ -245,21 +316,21 @@ organization owner: meelni (302571838)
 tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
-author/committer date: 2026-07-12T08:00:00.000Z
+author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-expected commit: 5db3fdc9a4d9bd8b57619db03f4a4193d1b9637a
+proposal commit: d9dbb6b0b6d203e7a5e0c92d868451bbc5f2d9f2
 ```
 
-Use `gh api --hostname github.com` against the fixed repository to create only
-that commit object. Verify the returned SHA before using the create-reference
-endpoint once for the exact ledger ref. Do not use local `git push`, `origin`, a
-push URL, or a repository redirect for seeding. Then verify repository and
-viewer IDs, both detailed rulesets, all four effective branch rules, the exact
-ref SHA, and the genesis payload before enabling the paid command.
+The final authorized runbook may use `gh api --hostname github.com` against the
+fixed repository to create only the recomputed commit object, but only after
+separate explicit authority to mutate GitHub. Verify the returned SHA before
+using the create-reference endpoint once for the exact ledger ref. Do not use
+local `git push`, `origin`, a push URL, or a repository redirect for seeding.
 
 The trusted shell launcher invokes the fixed `/opt/homebrew/bin/gh auth token
---hostname github.com` command only after the credential-free bootstrap
-attests and returns its exact readiness handshake. The runtime then calls only
+--hostname github.com` command only after the credential-free bootstrap has
+spawned the runtime and relayed the runtime's exact authorization-ready
+handshake. The runtime then calls only
 `api.github.com:443` through Node HTTPS, using bundled TLS roots, standard
 hostname verification and SNI, redirect rejection, a ten-second timeout, and a
 1 MiB response limit. The
@@ -269,10 +340,14 @@ host/config, Unix-socket, proxy, custom-CA, and TLS override variables fail
 closed before every request. The executable POSIX launcher starts the absolute
 fnm Node 22.22.0 runtime under `env -i`, with no tokens, preload flags, debug
 state, proxy configuration, or TLS overrides. The bootstrap attests empty
-`execArgv` and returns `MEELNI_CALIBRATION_READY_V1` over a private FIFO
-before the launcher derives or transmits either credential over a second
-mode-0600 FIFO. It then permits only the exact resolved
-repository-pinned tsx 4.23.0 preflight and loader arguments. It rejects extra
+`execArgv`, verifies and launches the exact sealed standalone runtime bundle
+whose working bytes were first bound to the externally supplied owner-approved
+commit, without credentials or a package loader, and waits. The runtime must validate
+executable authorization, the exact clean reviewed checkout, and every private
+path before writing its internal readiness; only then does the bootstrap return
+`MEELNI_CALIBRATION_READY_V1` over a private FIFO. The launcher derives or
+transmits either credential only after that point over a second mode-`0600`
+FIFO. The bootstrap rejects extra
 preloads/imports, inspector/debugger flags, TLS key logging, OpenSSL config,
 custom CA, profiler, coverage, proxy, and endpoint overrides before credential
 delivery, again before client construction, and again before every
@@ -294,14 +369,61 @@ xtrace. Do not export `GITHUB_TOKEN` or `OPENAI_API_KEY`: the launcher
 rejects both so they cannot appear in inherited process environments. It
 sanitizes PATH and provider configuration, derives the short-lived GitHub token
 through the authenticated GitHub CLI, and reads the OpenAI key from Keychain
-only after readiness. Run it directly:
+only after readiness. The following is the future invocation shape after a
+fresh exact authorization is merged; do not run it against the pending proposal:
 
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
   --approval /secure/path/evaluation-adjudication-approval.json \
-  --output /tmp/meelni-calibration-live.json
+  --output /secure/path/sav-248-automated-report.json \
+  --semantic-capture-dir /secure/private/path/sav-248-capture \
+  --semantic-public-report /secure/path/sav-248-semantic-report.json \
+  --semantic-review-request /secure/path/sav-248-review-request.json \
+  --semantic-panel-a /secure/path/sav-248-panel-a.json \
+  --semantic-panel-b /secure/path/sav-248-panel-b.json \
+  --semantic-execution-authority /secure/path/sav-248-execution-authority.json \
+  --semantic-review-timeout-seconds 7200
 ```
+
+All six output/review files must be new and pairwise distinct. The private
+capture directory must be outside every Git worktree; the automated report,
+review request, panel files, execution authority, and sanitized semantic report
+must be outside that capture and outside every Git worktree. Every parent must
+be an owner-owned `0700` directory and each file must be `0600`. The runner
+rejects pre-existing, symlinked, unsafe, or non-private paths before readiness.
+
+After all non-canonical automated thresholds pass, the same process finalizes
+the capture, writes a pending v9 report and the review request, and waits. Start
+two actual independent agent tasks against the same capture and request. Each
+panel file contains only the review-input hash and decisions; it must not claim
+its own task or execution identity. After independently observing both
+completed executions, the trusted operator writes the separate authority:
+
+```bash
+npm run calibration:semantic-authority -- \
+  --review-request /secure/path/sav-248-review-request.json \
+  --panel-a /secure/path/sav-248-panel-a.json \
+  --panel-b /secure/path/sav-248-panel-b.json \
+  --task-a /root/sav248/panel_a --execution-a exec_<opaque-a> \
+  --completed-a 2026-07-18T20:10:00.000Z \
+  --task-b /root/sav248/panel_b --execution-b exec_<opaque-b> \
+  --completed-b 2026-07-18T20:11:00.000Z \
+  --output /secure/path/sav-248-execution-authority.json
+```
+
+The constructor binds operator-observed metadata; it is not cryptographic proof
+that a task ran. The launcher uses one combined poll loop for all three files.
+Malformed, unsafe, stale, symlinked, oversized, or hash-mismatched input fails
+immediately. Unanimous acceptance or rejection publishes a sanitized semantic
+report with a conservative deletion bit, atomically replaces the pending
+automated report with passed or failed, verifies that terminal file, and only
+then deletes raw output. Timeout, disagreement, interruption, or any other
+terminal failure exits nonzero after atomically replacing an already-pending v9
+report with failure; cleanup occurs only after terminal publication. If that
+publication fails, raw capture remains. SIGKILL and host crashes cannot
+guarantee automatic deletion; retention is sized for 64 five-minute requests,
+the full review window, and ten minutes of overhead for operator recovery.
 
 The launcher sends credentials only through the private pipe after the exact
 handshake, never through argv, logs, reports, environment files, or temporary
@@ -311,7 +433,7 @@ deliberately exact so an ambient boolean cannot accidentally enable paid
 calibration.
 
 The live CLI exits zero only when `calibrationEvidenceAcceptance` is `passed` in
-the current `evaluation-calibration-report.v8` report. A zero exit means only
+the current `evaluation-calibration-report.v9` report. A zero exit means only
 that the complete calibration evidence contract passed; it is not the human
 product owner's launch decision. A provider-quality pass still exits nonzero
 when adjudication approval is missing, stale, incomplete, or contains
@@ -322,8 +444,8 @@ adding secrets or provider responses containing sensitive data.
 
 The committed v7 receipts remain byte-for-byte immutable. Their historical
 `gate.launchAcceptance` values have the same technical state interpretation as
-v8 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
-Do not rewrite or regenerate those historical files during a v8 run.
+v9 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
+Do not rewrite or regenerate those historical files during a v9 run.
 
 ## Review checklist
 
@@ -341,7 +463,7 @@ Do not rewrite or regenerate those historical files during a v8 run.
   stopping. It has `completed_plan` only after all 64 planned calls reconcile
   successfully.
 - The cost report uses `evaluation-calibration-cost-report.v5`, the current
-  report uses `evaluation-calibration-report.v8`, and the fixed run,
+  report uses `evaluation-calibration-report.v9`, and the fixed run,
   authorization ID, and
   authorization hash match the committed spend-authorization manifest.
 - The activated plan reports exactly 64 calls and at most $3 worst-case, the
@@ -351,8 +473,10 @@ Do not rewrite or regenerate those historical files during a v8 run.
   the physical HTTP-attempt ceiling.
 - `observedServiceTiers` contains only `default` for a passing run. A missing or
   different returned tier stops after the first affected call.
-- Evidence validity, adjudicated evidence match, and insufficient handling are
-  all 100%.
+- Evidence validity and insufficient handling are 100%. Canonical adjudicated
+  evidence match remains a diagnostic regression metric. A non-canonical exact
+  phrase can count only after complete unanimous semantic review; it is never
+  automatically accepted.
 - An adjudicated match may quote a wider exact span from the same user turn,
   but it must preserve the complete approved anchor plus the approved finding
   kind and dimension. Do not reinterpret another grounded phrase as an

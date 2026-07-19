@@ -1,0 +1,32 @@
+{
+  "contractVersion": "evaluation-calibration-runtime-artifact.v1",
+  "nodeVersion": "22.22.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "packageLockSha256": "c81ee34784e085ce3525c45395e85b30804f0acb93c329071ed1f848d859ccd7",
+  "esbuildVersion": "0.25.12",
+  "buildContractSha256": "783acb243239e3f8f1156295ba3383b1f149e9aa7af2bd872a5e52409f6a90a1",
+  "bundlePath": "scripts/generated/run-evaluation-calibration.bundle.mjs",
+  "bundleBytes": 1243241,
+  "bundleSha256": "e314aac900c9f956c16edad423092beecc94246c269a852235398ad3228a24eb",
+  "externalImports": [
+    "crypto",
+    "fs",
+    "net",
+    "node:child_process",
+    "node:crypto",
+    "node:fs",
+    "node:fs/promises",
+    "node:https",
+    "node:path",
+    "node:readline",
+    "node:tls",
+    "node:url",
+    "os",
+    "path",
+    "perf_hooks",
+    "stream",
+    "tls"
+  ],
+  "inputCount": 358
+}
