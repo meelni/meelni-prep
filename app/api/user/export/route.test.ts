@@ -65,7 +65,7 @@ describe("GET /api/user/export", () => {
     } as never);
     vi.mocked(loadAccountExportSource).mockResolvedValue({} as never);
     vi.mocked(createAccountDataExport).mockReturnValue({
-      schemaVersion: "1.0.0",
+      schemaVersion: "1.1.0",
       exportedAt: "2026-07-10T16:00:00.000Z",
       account: { id: "user-one" },
     } as never);
@@ -89,7 +89,7 @@ describe("GET /api/user/export", () => {
     );
     expect(await response.json()).toEqual(
       expect.objectContaining({
-        schemaVersion: "1.0.0",
+        schemaVersion: "1.1.0",
         account: { id: "user-one" },
       })
     );
