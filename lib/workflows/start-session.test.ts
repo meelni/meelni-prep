@@ -113,8 +113,30 @@ test("stable start logs exclude question, company, and unrestricted error conten
     assert.doesNotMatch(serializedLogs, new RegExp(questionSentinel));
     assert.doesNotMatch(serializedLogs, new RegExp(companySentinel));
     assert.doesNotMatch(serializedLogs, new RegExp(errorSentinel));
-    assert.match(serializedLogs, new RegExp(QUESTION_ID));
-    assert.match(serializedLogs, /error_class/);
+    assert.doesNotMatch(serializedLogs, new RegExp(QUESTION_ID));
+    assert.doesNotMatch(serializedLogs, new RegExp(USER_ID));
+    assert.equal(captured.length, 1);
+
+    const [rawEvent] = captured[0] ?? [];
+    assert.equal(typeof rawEvent, "string");
+    const event = JSON.parse(String(rawEvent)) as Record<string, unknown>;
+    assert.deepEqual(Object.keys(event).sort(), [
+      "correlationId",
+      "environment",
+      "errorCode",
+      "event",
+      "occurredAt",
+      "operation",
+      "release",
+      "requestId",
+      "retryable",
+      "severity",
+      "version",
+    ]);
+    assert.equal(event.event, "meelni_operational_failure");
+    assert.equal(event.operation, "interview_start");
+    assert.equal(event.errorCode, "interview_start_failed");
+    assert.equal(event.correlationId, null);
   } finally {
     console.log = consoleLog;
     console.error = consoleError;

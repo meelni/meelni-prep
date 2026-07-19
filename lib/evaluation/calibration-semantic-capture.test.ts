@@ -21,9 +21,10 @@ import {
   buildTrustedSemanticExecutionAuthority,
   capturePrivateSyntheticOutput,
   cleanupPrivateSemanticCapture,
-  completePrivateSemanticReview,
+  completePrivateSemanticReviewAfterTerminalReport,
   finalizePrivateSemanticCapture,
   initializePrivateSemanticCapture,
+  publishPrivateSemanticReviewBeforeTerminalReport,
   purgeExpiredPrivateSemanticCapture,
   type PrivateSemanticCaptureHandle,
 } from "./calibration-semantic-capture";
@@ -44,7 +45,7 @@ test("provider-free capture binds exact bytes and emits only a sanitized report"
   }
 
   const review = reviewFor(fixture.input, fixture.accepted);
-  const report = completePrivateSemanticReview({
+  const report = completeReview({
     capture: fixture.capture,
     publicReportPath: fixture.reportPath,
     ...review,
@@ -59,7 +60,7 @@ test("provider-free capture binds exact bytes and emits only a sanitized report"
   assert.equal(existsSync(fixture.capture.directory), false);
   const serialized = readFileSync(fixture.reportPath, "utf8");
   assert.deepEqual(JSON.parse(serialized), report);
-  assert.equal(statSync(fixture.reportPath).mode & 0o777, 0o644);
+  assert.equal(statSync(fixture.reportPath).mode & 0o777, 0o600);
   assert.deepEqual(Object.keys(report).sort(), [
     "captureBindingSha256",
     "caseRunSetSha256",
@@ -97,6 +98,91 @@ test("provider-free capture binds exact bytes and emits only a sanitized report"
   cleanupRoot(fixture.root);
 });
 
+test("canonical mismatch alternatives must identify the exact captured case and run", () => {
+  const fixture = createFixture();
+  const decisions = fixture.accepted.map((decision) =>
+    decision.runIndex === 0
+      ? {
+          ...decision,
+          evidenceRelevance: "legitimate_alternative" as const,
+          alternativeDisposition: "reviewed_legitimate" as const,
+        }
+      : decision
+  );
+  const report = completeReview({
+    capture: fixture.capture,
+    publicReportPath: fixture.reportPath,
+    canonicalMismatchCaseRuns: [
+      { caseRef: "private-product-sense-case", runIndex: 0 },
+    ],
+    ...reviewFor(fixture.input, decisions),
+  });
+  assert.equal(
+    report.semanticAdjudication.summary.reviewedLegitimateAlternativeCount,
+    1
+  );
+  cleanupRoot(fixture.root);
+
+  const mismatch = createFixture();
+  assert.throws(
+    () =>
+      completeReview({
+        capture: mismatch.capture,
+        publicReportPath: mismatch.reportPath,
+        canonicalMismatchCaseRuns: [
+          { caseRef: "private-behavioral-case", runIndex: 1 },
+        ],
+        ...reviewFor(
+          mismatch.input,
+          mismatch.accepted.map((decision) =>
+            decision.runIndex === 0
+              ? {
+                  ...decision,
+                  evidenceRelevance: "legitimate_alternative" as const,
+                  alternativeDisposition: "reviewed_legitimate" as const,
+                }
+              : decision
+          )
+        ),
+      }),
+    /do not match canonical mismatches/
+  );
+  assert.equal(existsSync(mismatch.capture.directory), true);
+  cleanupPrivateSemanticCapture(mismatch.capture);
+  cleanupRoot(mismatch.root);
+});
+
+test("capture deletion requires a durable terminal v9 report", () => {
+  const fixture = createFixture();
+  const report = publishPrivateSemanticReviewBeforeTerminalReport({
+    capture: fixture.capture,
+    publicReportPath: fixture.reportPath,
+    canonicalMismatchCaseRuns: [],
+    ...reviewFor(fixture.input, fixture.accepted),
+  });
+  assert.equal(report.retention.rawCaptureDeleted, false);
+  assert.equal(existsSync(fixture.capture.directory), true);
+  assert.throws(
+    () =>
+      completePrivateSemanticReviewAfterTerminalReport({
+        capture: fixture.capture,
+        publicReportPath: fixture.reportPath,
+        report,
+        terminalReportPath: join(fixture.root, "missing-terminal.json"),
+        terminalReportSha256: "a".repeat(64),
+      }),
+    /ENOENT/
+  );
+  assert.equal(existsSync(fixture.capture.directory), true);
+  assert.equal(
+    JSON.parse(readFileSync(fixture.reportPath, "utf8")).retention
+      .rawCaptureDeleted,
+    false
+  );
+  cleanupPrivateSemanticCapture(fixture.capture);
+  cleanupRoot(fixture.root);
+});
+
 test("recomputed manifests cannot substitute captured bytes or finalized review bindings", () => {
   const openRoot = mkdtempSync(
     join(tmpdir(), "meelni-sav252-substitute-open-")
@@ -122,7 +208,7 @@ test("recomputed manifests cannot substitute captured bytes or finalized review 
   rewriteCapturedOutput(finalized.capture, Buffer.from("post-finalize swap"));
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: finalized.capture,
         publicReportPath: finalized.reportPath,
         ...reviewFor(finalized.input, finalized.accepted),
@@ -165,7 +251,7 @@ test("raw-byte and private-manifest mutations fail before authority construction
   });
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: rawMutation.capture,
         publicReportPath: rawMutation.reportPath,
         ...reviewFor(rawMutation.input, rawMutation.accepted),
@@ -266,7 +352,7 @@ test("subset and forged execution provenance produce no report", () => {
   const subsetReview = reviewFor(subset.input, subsetDecisions);
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: subset.capture,
         publicReportPath: subset.reportPath,
         ...subsetReview,
@@ -283,7 +369,7 @@ test("subset and forged execution provenance produce no report", () => {
     "f".repeat(64);
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: forged.capture,
         publicReportPath: forged.reportPath,
         ...forgedReview,
@@ -295,7 +381,7 @@ test("subset and forged execution provenance produce no report", () => {
   cleanupRoot(forged.root);
 });
 
-test("panel disagreement and unanimous semantic rejection produce no public report", () => {
+test("panel disagreement is invalid while unanimous rejection publishes a failed report", () => {
   const disagreement = createFixture();
   const rejected = rejection(disagreement.accepted);
   const disagreeingReceipts = [
@@ -320,7 +406,7 @@ test("panel disagreement and unanimous semantic rejection produce no public repo
   };
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: disagreement.capture,
         publicReportPath: disagreement.reportPath,
         ...disagreeingReview,
@@ -333,17 +419,15 @@ test("panel disagreement and unanimous semantic rejection produce no public repo
 
   const failed = createFixture();
   const failedReview = reviewFor(failed.input, rejection(failed.accepted));
-  assert.throws(
-    () =>
-      completePrivateSemanticReview({
-        capture: failed.capture,
-        publicReportPath: failed.reportPath,
-        ...failedReview,
-      }),
-    /did not pass/
-  );
-  assert.equal(existsSync(failed.reportPath), false);
-  cleanupPrivateSemanticCapture(failed.capture);
+  const failedReport = completeReview({
+    capture: failed.capture,
+    publicReportPath: failed.reportPath,
+    ...failedReview,
+  });
+  assert.equal(failedReport.semanticAdjudication.gate, "failed");
+  assert.equal(failedReport.retention.rawCaptureDeleted, true);
+  assert.equal(existsSync(failed.reportPath), true);
+  assert.equal(existsSync(failed.capture.directory), false);
   cleanupRoot(failed.root);
 });
 
@@ -352,7 +436,7 @@ test("report publication failure preserves the private capture and a false delet
   writeFileSync(fixture.reportPath, "already exists", { mode: 0o600 });
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: fixture.capture,
         publicReportPath: fixture.reportPath,
         ...reviewFor(fixture.input, fixture.accepted),
@@ -373,7 +457,7 @@ test("canonical report containment rejects a symlinked parent into capture", () 
   symlinkSync(privateReportDirectory, reportParentLink, "dir");
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture: fixture.capture,
         publicReportPath: join(reportParentLink, "public.json"),
         ...reviewFor(fixture.input, fixture.accepted),
@@ -445,7 +529,7 @@ test("expiry is enforced at the exact boundary and purge remains available", (t)
   now = expiresAt;
   assert.throws(
     () =>
-      completePrivateSemanticReview({
+      completeReview({
         capture,
         publicReportPath: join(root, "expired-public.json"),
         ...reviewFor(
@@ -619,6 +703,40 @@ function reviewFor(
       { taskPath: string; decisions: SemanticAdjudicationDecision[] },
     ],
   };
+}
+
+function completeReview(
+  input: Omit<
+    Parameters<typeof publishPrivateSemanticReviewBeforeTerminalReport>[0],
+    "canonicalMismatchCaseRuns"
+  > & {
+    canonicalMismatchCaseRuns?: Array<{ caseRef: string; runIndex: number }>;
+  }
+) {
+  const report = publishPrivateSemanticReviewBeforeTerminalReport({
+    ...input,
+    canonicalMismatchCaseRuns: input.canonicalMismatchCaseRuns ?? [],
+  });
+  const terminalReportPath = join(
+    dirname(input.publicReportPath),
+    `${basename(input.publicReportPath)}.terminal.json`
+  );
+  const terminal = `${JSON.stringify({
+    contractVersion: "evaluation-calibration-report.v9",
+    semanticReview: { status: report.semanticAdjudication.gate },
+    gate: { calibrationEvidenceAcceptance: report.semanticAdjudication.gate },
+  })}\n`;
+  writeFileSync(terminalReportPath, terminal, { flag: "wx", mode: 0o600 });
+  const completed = completePrivateSemanticReviewAfterTerminalReport({
+    capture: input.capture,
+    publicReportPath: input.publicReportPath,
+    report,
+    terminalReportPath,
+    terminalReportSha256: createHash("sha256")
+      .update(terminal)
+      .digest("hex"),
+  });
+  return completed.report;
 }
 
 function panel(

@@ -7,6 +7,7 @@ import {
   recoverInterviewCreditCandidates,
   recoverInterviewCreditWorkflow,
 } from "@/lib/workflows/recover-interview-credit";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const recoverInterviewCredits = inngest.createFunction(
   {
@@ -14,6 +15,14 @@ export const recoverInterviewCredits = inngest.createFunction(
     name: "Recover Interview Credits",
     retries: 2,
     concurrency: [{ limit: 1 }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_credit_recovery_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/5 * * * *" },
   async ({ step }) => {

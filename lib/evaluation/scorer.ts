@@ -17,6 +17,7 @@ import {
   projectEvaluationTranscriptAliases,
   restoreCanonicalTranscriptIds,
 } from "./transcript-aliases";
+import { getFeedbackProviderResponseFormat } from "./provider-response-format";
 
 export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
   "feedback_configuration_missing_openai_key";
@@ -32,6 +33,7 @@ import {
   CALIBRATION_REQUEST_TIMEOUT_MS,
   CALIBRATION_SERVICE_TIER,
 } from "./calibration-budget";
+import { FEEDBACK_CALIBRATION_TEMPERATURE } from "./calibration-request-policy";
 
 export interface FeedbackProviderUsage {
   inputTokens: number;
@@ -47,9 +49,14 @@ export interface FeedbackProviderResult {
 }
 
 export const FEEDBACK_PROVIDER_FAILURE_CODES = [
+  "evaluation_provider_refused",
+  "evaluation_provider_incomplete",
+  "evaluation_provider_content_filtered",
+  "evaluation_provider_unexpected_finish",
   "evaluation_provider_returned_no_content",
   "evaluation_provider_returned_invalid_json",
   "evaluation_provider_returned_invalid_feedback",
+  "evaluation_private_capture_failed",
   "evaluation_provider_usage_missing",
   "evaluation_provider_invocation_failed",
 ] as const;
@@ -150,6 +157,7 @@ export async function generateFeedbackWithUsage(
     maxCompletionTokens?: number;
     calibrationPaidMode?: boolean;
     beforePhysicalRequest?: () => void | Promise<void>;
+    onRawSyntheticOutput?: (rawResponse: Uint8Array) => void | Promise<void>;
     calibrationCredentials?: { openaiApiKey: string };
   } = {}
 ): Promise<FeedbackProviderResult> {
@@ -169,7 +177,8 @@ export async function generateFeedbackWithUsage(
     assertCalibrationProviderRequestPolicy(
       modelVersion,
       options.maxCompletionTokens,
-      options.beforePhysicalRequest
+      options.beforePhysicalRequest,
+      options.onRawSyntheticOutput
     );
   }
   try {
@@ -193,8 +202,10 @@ export async function generateFeedbackWithUsage(
           content: userPrompt,
         },
       ],
-      temperature: 0.2,
-      response_format: { type: "json_object" },
+      temperature: FEEDBACK_CALIBRATION_TEMPERATURE,
+      response_format: options.calibrationPaidMode
+        ? getFeedbackProviderResponseFormat(evaluationState)
+        : { type: "json_object" },
       ...(options.calibrationPaidMode
         ? getCalibrationProviderRequestFields()
         : options.maxCompletionTokens === undefined
@@ -209,7 +220,42 @@ export async function generateFeedbackWithUsage(
       observedServiceTier
     );
 
-    const responseText = completion.choices[0]?.message.content;
+    const choice = completion.choices[0];
+    const refusal = choice?.message.refusal;
+    if (typeof refusal === "string" && refusal.trim()) {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_refused",
+        usage,
+        completion.model,
+        observedServiceTier
+      );
+    }
+    if (choice?.finish_reason === "length") {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_incomplete",
+        usage,
+        completion.model,
+        observedServiceTier
+      );
+    }
+    if (choice?.finish_reason === "content_filter") {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_content_filtered",
+        usage,
+        completion.model,
+        observedServiceTier
+      );
+    }
+    if (choice?.finish_reason !== "stop") {
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_unexpected_finish",
+        usage,
+        completion.model,
+        observedServiceTier
+      );
+    }
+
+    const responseText = choice?.message.content;
     if (!responseText) {
       throw new FeedbackProviderInvocationError(
         "evaluation_provider_returned_no_content",
@@ -217,6 +263,20 @@ export async function generateFeedbackWithUsage(
         completion.model,
         observedServiceTier
       );
+    }
+
+    if (options.calibrationPaidMode) {
+      try {
+        await options.onRawSyntheticOutput!(Buffer.from(responseText, "utf8"));
+      } catch (error) {
+        throw new FeedbackProviderInvocationError(
+          "evaluation_private_capture_failed",
+          usage,
+          completion.model,
+          observedServiceTier,
+          { cause: error }
+        );
+      }
     }
 
     let unknownResponse: unknown;
@@ -408,12 +468,16 @@ export function assertCalibrationOpenAIEnvironment(
 export function assertCalibrationProviderRequestPolicy(
   model: string,
   maxCompletionTokens: number | undefined,
-  beforePhysicalRequest: (() => void | Promise<void>) | undefined
+  beforePhysicalRequest: (() => void | Promise<void>) | undefined,
+  onRawSyntheticOutput:
+    | ((rawResponse: Uint8Array) => void | Promise<void>)
+    | undefined
 ): void {
   if (
     model !== CALIBRATION_PRICING_CONTRACT.model ||
     maxCompletionTokens !== CALIBRATION_MAX_COMPLETION_TOKENS ||
-    typeof beforePhysicalRequest !== "function"
+    typeof beforePhysicalRequest !== "function" ||
+    typeof onRawSyntheticOutput !== "function"
   ) {
     throw new Error("calibration_provider_request_policy_mismatch");
   }

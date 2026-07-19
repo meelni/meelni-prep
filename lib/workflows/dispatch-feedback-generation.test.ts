@@ -16,6 +16,7 @@ const INITIAL_EVENT_ID = feedbackGenerationEventId(SESSION_ID, 0);
 const EVENT_ID = feedbackGenerationEventId(SESSION_ID, 1);
 const RETRY_EVENT_ID = feedbackGenerationEventId(SESSION_ID, 2);
 const NOW = new Date("2026-07-09T22:00:00.000Z");
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 test("concurrent dispatch attempts accept one claim and one send", async () => {
   const store = createMemoryStore();
@@ -50,24 +51,31 @@ test("concurrent dispatch attempts accept one claim and one send", async () => {
 test("failed send remains retryable with a unique event identity per attempt", async () => {
   const store = createMemoryStore();
   const sentIds: string[] = [];
+  const failures: Array<string | null> = [];
   const failed = await dispatchFeedbackGenerationWorkflow(
-    { sessionId: SESSION_ID, userId: "user-1", tier: "partial" },
-    createDeps(store, async (event) => {
-      sentIds.push(event.id);
-      throw new Error("provider unavailable");
-    })
+    { sessionId: SESSION_ID, userId: USER_ID, tier: "partial" },
+    createDeps(
+      store,
+      async (event) => {
+        sentIds.push(event.id);
+        throw new Error("provider unavailable");
+      },
+      { reportFailure: (correlationId) => failures.push(correlationId) }
+    )
   );
   assert.equal(failed.disposition, "failed");
   assert.equal((await store.get(SESSION_ID))?.status, "failed");
+  assert.deepEqual(failures, [SESSION_ID]);
 
   const retried = await dispatchFeedbackGenerationWorkflow(
-    { sessionId: SESSION_ID, userId: "user-1", tier: "partial" },
+    { sessionId: SESSION_ID, userId: USER_ID, tier: "partial" },
     createDeps(store, async (event) => {
       sentIds.push(event.id);
     })
   );
   assert.equal(retried.disposition, "sent");
   assert.deepEqual(sentIds, [EVENT_ID, RETRY_EVENT_ID]);
+  assert.deepEqual(failures, [SESSION_ID]);
   assert.equal((await store.get(SESSION_ID))?.attempts, 2);
 });
 
@@ -116,25 +124,38 @@ test("a stale sender reports the newer fenced claim instead of sent", async () =
 test("a corrupt claim without an event identity fails immediately", async () => {
   const store = createMemoryStore({ eventId: null }, false);
   let sends = 0;
+  const failures: Array<string | null> = [];
 
   const result = await dispatchFeedbackGenerationWorkflow(
-    { sessionId: SESSION_ID, userId: "user-1", tier: "full" },
-    createDeps(store, async () => {
-      sends += 1;
-    })
+    { sessionId: SESSION_ID, userId: USER_ID, tier: "full" },
+    createDeps(
+      store,
+      async () => {
+        sends += 1;
+      },
+      { reportFailure: (correlationId) => failures.push(correlationId) }
+    )
   );
 
   assert.equal(result.disposition, "failed");
   assert.equal(result.dispatch?.eventId, null);
   assert.equal((await store.get(SESSION_ID))?.status, "failed");
   assert.equal(sends, 0);
+  assert.deepEqual(failures, [SESSION_ID]);
 });
 
 function createDeps(
   store: FeedbackDispatchStore,
-  send: DispatchFeedbackGenerationDeps["send"]
+  send: DispatchFeedbackGenerationDeps["send"],
+  overrides: Partial<DispatchFeedbackGenerationDeps> = {}
 ): DispatchFeedbackGenerationDeps {
-  return { store, send, now: () => NOW };
+  return {
+    store,
+    send,
+    now: () => NOW,
+    reportFailure: () => undefined,
+    ...overrides,
+  };
 }
 
 function createMemoryStore(

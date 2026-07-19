@@ -11,14 +11,19 @@ umask 077
 
 NODE_VERSION="22.22.0"
 NODE_BIN="/Users/REDACTED/.local/share/fnm/node-versions/v${NODE_VERSION}/installation/bin/node"
+NODE_SHA256="913b144fdb40638b1acef7974ab3c33fbd527cc0974cb5da467ab1e6ac51b4d4"
 SCRIPT_DIR="$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && /bin/pwd -P)"
 SCRIPT_DIR=$(/bin/realpath "$SCRIPT_DIR")
 LAUNCHER="$SCRIPT_DIR/run-evaluation-calibration-live.sh"
 BOOTSTRAP="$SCRIPT_DIR/run-evaluation-calibration-live.mjs"
-RUNTIME="$SCRIPT_DIR/run-evaluation-calibration.ts"
+RUNTIME="$SCRIPT_DIR/generated/run-evaluation-calibration.bundle.mjs"
 STARTUP=$(/bin/realpath "$SCRIPT_DIR/../lib/evaluation/calibration-live-startup.mjs")
+MANIFEST=$(/bin/realpath "$SCRIPT_DIR/../docs/evidence/sav-248-v3-runtime-manifest.json")
+PACKAGE_LOCK=$(/bin/realpath "$SCRIPT_DIR/../package-lock.json")
+SOURCE_REPOSITORY_ROOT=$(/bin/realpath "$SCRIPT_DIR/..")
 READY="MEELNI_CALIBRATION_READY_V1"
 GH_BIN="/opt/homebrew/bin/gh"
+GH_SHA256="02d2d4a85241c6a8c0b77ebb1ec76fc723caf7fb128e00915b306b968847cba1"
 SECURITY_BIN="/usr/bin/security"
 SAFE_PATH="/opt/homebrew/bin:/usr/bin:/bin"
 child_pid=""
@@ -116,10 +121,60 @@ attest_file() {
   [ "$owner" = "$(/usr/bin/id -u)" ] || fail "calibration_live_launcher_file_owner_rejected"
   [ $((0$mode & 022)) -eq 0 ] || fail "calibration_live_launcher_file_mode_rejected"
 }
+safe_git() {
+  /usr/bin/env -i GIT_NO_REPLACE_OBJECTS=1 PATH="/usr/bin:/bin" \
+    /usr/bin/git -C "$SOURCE_REPOSITORY_ROOT" "$@"
+}
+attest_reviewed_file() {
+  file=$1
+  relative=$2
+  reviewed_commit=$3
+  attest_file "$file"
+  expected_blob=$(safe_git rev-parse --verify "$reviewed_commit:$relative") || \
+    fail "calibration_live_launcher_reviewed_blob_missing"
+  actual_blob=$(
+    /usr/bin/env -i GIT_NO_REPLACE_OBJECTS=1 PATH="/usr/bin:/bin" \
+      /usr/bin/git hash-object --no-filters "$file"
+  ) || fail "calibration_live_launcher_reviewed_blob_hash_failed"
+  [ "$actual_blob" = "$expected_blob" ] || \
+    fail "calibration_live_launcher_reviewed_blob_mismatch"
+}
+attest_sha256_file() {
+  file=$1
+  expected_sha256=$2
+  attest_file "$file"
+  digest=$(/usr/bin/shasum -a 256 "$file") || \
+    fail "calibration_live_launcher_binary_hash_failed"
+  digest=${digest%% *}
+  [ "$digest" = "$expected_sha256" ] || \
+    fail "calibration_live_launcher_binary_hash_mismatch"
+}
+attest_node_binary() {
+  file=$1
+  attest_sha256_file "$file" "$NODE_SHA256"
+  /usr/bin/codesign --verify --strict --verbose=0 \
+    -R '=anchor apple generic and certificate leaf[subject.OU] = "HX7739G8FX" and identifier "node"' \
+    "$file" || fail "calibration_live_launcher_node_signature_rejected"
+}
+seal_reviewed_file() {
+  relative=$1
+  reviewed_commit=$2
+  source="$SOURCE_REPOSITORY_ROOT/$relative"
+  destination="$sealed_root/$relative"
+  /bin/mkdir -p -- "$(/usr/bin/dirname -- "$destination")" || \
+    fail "calibration_live_launcher_sealed_directory_failed"
+  /bin/cp "$source" "$destination" || \
+    fail "calibration_live_launcher_sealed_copy_failed"
+  /bin/chmod 400 "$destination" || \
+    fail "calibration_live_launcher_sealed_mode_failed"
+  attest_reviewed_file "$destination" "$relative" "$reviewed_commit"
+}
 attest_file "$LAUNCHER"
 attest_file "$BOOTSTRAP"
 attest_file "$RUNTIME"
 attest_file "$STARTUP"
+attest_file "$MANIFEST"
+attest_file "$PACKAGE_LOCK"
 [ -z "${GITHUB_TOKEN-}" ] || fail "calibration_live_launcher_ambient_github_token_rejected"
 [ -z "${OPENAI_API_KEY-}" ] || fail "calibration_live_launcher_ambient_openai_key_rejected"
 
@@ -130,11 +185,17 @@ test_runtime=${MEELNI_CALIBRATION_TEST_RUNTIME-}
 test_timeout=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-10}
 test_timeout_override=${MEELNI_CALIBRATION_TEST_TIMEOUT_SECONDS-}
 test_node_bin=${MEELNI_CALIBRATION_TEST_NODE_BIN-}
-if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override$test_node_bin" ]; then
+test_channel_namespace=${MEELNI_CALIBRATION_TEST_CHANNEL_NAMESPACE-}
+if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_override$test_node_bin$test_channel_namespace" ]; then
   [ "$test_mode" = "1" ] || fail "calibration_live_launcher_test_mode_invalid"
   case "$credential_fd" in *[!0-9]*|'') fail "calibration_live_launcher_test_fd_invalid" ;; esac
   case "$test_timeout" in *[!0-9]*|'') fail "calibration_live_launcher_test_timeout_invalid" ;; esac
   [ "$test_timeout" -gt 0 ] && [ "$test_timeout" -le 10 ] || fail "calibration_live_launcher_test_timeout_invalid"
+  case "$test_channel_namespace" in
+    ''|*[!A-Za-z0-9_-]*) fail "calibration_live_launcher_test_channel_namespace_invalid" ;;
+  esac
+  [ "${#test_channel_namespace}" -le 64 ] || \
+    fail "calibration_live_launcher_test_channel_namespace_invalid"
   BOOTSTRAP=$(/bin/realpath "$test_bootstrap") || fail "calibration_live_launcher_test_bootstrap_invalid"
   attest_file "$BOOTSTRAP"
   [ -n "$test_node_bin" ] || fail "calibration_live_launcher_test_node_invalid"
@@ -143,11 +204,65 @@ if [ -n "$test_mode$credential_fd$test_bootstrap$test_runtime$test_timeout_overr
     test_runtime=$(/bin/realpath "$test_runtime") || fail "calibration_live_launcher_test_runtime_invalid"
     attest_file "$test_runtime"
   fi
+  [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 fi
-[ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
 
-channel_dir=$(/usr/bin/mktemp -d /tmp/meelni-calibration-live.XXXXXX)
+reviewed_source_commit=""
+if [ "$test_mode" != "1" ]; then
+  reviewed_source_commit=${MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT-}
+  unset MEELNI_CALIBRATION_REVIEWED_SOURCE_COMMIT
+  [ "${#reviewed_source_commit}" -eq 40 ] || \
+    fail "calibration_live_launcher_reviewed_source_commit_invalid"
+  case "$reviewed_source_commit" in
+    *[!0-9a-f]*) fail "calibration_live_launcher_reviewed_source_commit_invalid" ;;
+  esac
+  actual_head=$(safe_git rev-parse --verify 'HEAD^{commit}') || \
+    fail "calibration_live_launcher_head_invalid"
+  [ "$actual_head" = "$reviewed_source_commit" ] || \
+    fail "calibration_live_launcher_reviewed_head_mismatch"
+  attest_reviewed_file "$LAUNCHER" "scripts/run-evaluation-calibration-live.sh" "$reviewed_source_commit"
+  attest_reviewed_file "$BOOTSTRAP" "scripts/run-evaluation-calibration-live.mjs" "$reviewed_source_commit"
+  attest_reviewed_file "$STARTUP" "lib/evaluation/calibration-live-startup.mjs" "$reviewed_source_commit"
+  attest_reviewed_file "$MANIFEST" "docs/evidence/sav-248-v3-runtime-manifest.json" "$reviewed_source_commit"
+  attest_reviewed_file "$RUNTIME" "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
+  attest_reviewed_file "$PACKAGE_LOCK" "package-lock.json" "$reviewed_source_commit"
+  [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
+  GH_BIN=$(/bin/realpath "$GH_BIN") || fail "calibration_live_launcher_gh_missing"
+  attest_node_binary "$NODE_BIN"
+  attest_sha256_file "$GH_BIN" "$GH_SHA256"
+fi
+
+channel_template=/tmp/meelni-calibration-live.XXXXXX
+if [ "$test_mode" = "1" ]; then
+  channel_template="/tmp/meelni-calibration-live.${test_channel_namespace}.XXXXXX"
+fi
+channel_dir=$(/usr/bin/mktemp -d "$channel_template")
+channel_dir=$(/bin/realpath "$channel_dir")
 /bin/chmod 700 "$channel_dir"
+if [ "$test_mode" != "1" ]; then
+  sealed_root="$channel_dir/reviewed"
+  /bin/mkdir -p "$sealed_root" || fail "calibration_live_launcher_sealed_root_failed"
+  /bin/chmod 700 "$sealed_root" || fail "calibration_live_launcher_sealed_root_mode_failed"
+  seal_reviewed_file "scripts/run-evaluation-calibration-live.mjs" "$reviewed_source_commit"
+  seal_reviewed_file "lib/evaluation/calibration-live-startup.mjs" "$reviewed_source_commit"
+  seal_reviewed_file "docs/evidence/sav-248-v3-runtime-manifest.json" "$reviewed_source_commit"
+  seal_reviewed_file "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
+  seal_reviewed_file "package-lock.json" "$reviewed_source_commit"
+  /bin/cp "$NODE_BIN" "$sealed_root/node" || \
+    fail "calibration_live_launcher_sealed_node_copy_failed"
+  /bin/chmod 500 "$sealed_root/node" || \
+    fail "calibration_live_launcher_sealed_node_mode_failed"
+  attest_node_binary "$sealed_root/node"
+  /bin/cp "$GH_BIN" "$sealed_root/gh" || \
+    fail "calibration_live_launcher_sealed_gh_copy_failed"
+  /bin/chmod 500 "$sealed_root/gh" || \
+    fail "calibration_live_launcher_sealed_gh_mode_failed"
+  attest_sha256_file "$sealed_root/gh" "$GH_SHA256"
+  BOOTSTRAP="$sealed_root/scripts/run-evaluation-calibration-live.mjs"
+  RUNTIME="$sealed_root/scripts/generated/run-evaluation-calibration.bundle.mjs"
+  NODE_BIN="$sealed_root/node"
+  GH_BIN="$sealed_root/gh"
+fi
 /usr/bin/mkfifo "$channel_dir/status" "$channel_dir/credentials"
 /bin/chmod 600 "$channel_dir/status" "$channel_dir/credentials"
 
@@ -155,7 +270,9 @@ if [ -n "$test_runtime" ]; then
   /usr/bin/env -i PATH="$SAFE_PATH" MEELNI_CALIBRATION_TEST_RUNTIME="$test_runtime" "$NODE_BIN" "$BOOTSTRAP" "$@" \
     3>"$channel_dir/status" <"$channel_dir/credentials" &
 else
-  /usr/bin/env -i PATH="$SAFE_PATH" "$NODE_BIN" "$BOOTSTRAP" "$@" \
+  /usr/bin/env -i PATH="$SAFE_PATH" \
+    MEELNI_CALIBRATION_REPOSITORY_ROOT="$SOURCE_REPOSITORY_ROOT" \
+    "$NODE_BIN" "$BOOTSTRAP" "$@" \
   3>"$channel_dir/status" <"$channel_dir/credentials" &
 fi
 child_pid=$!

@@ -2,6 +2,7 @@ import type { EvaluationCalibrationCase } from "@meelni/test-fixtures";
 
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
+import { serializeFeedbackProviderResponseFormat } from "./provider-response-format";
 
 export const CALIBRATION_MAX_PROVIDER_CALLS = 96;
 export const CALIBRATION_MAX_SPEND_NANO_USD = 3_000_000_000;
@@ -30,7 +31,7 @@ export interface CalibrationPricingContract {
   maximumSdkRetries: 0;
   redirectPolicy: "error";
   requestTimeoutMs: 300_000;
-  reviewedAt: "2026-07-16T23:54:50.000Z";
+  reviewedAt: "2026-07-18T19:00:00.000Z";
   reviewTtlHours: 24;
   source: "https://developers.openai.com/api/docs/models/gpt-5.1";
   nanoUsdPerMillionTokens: {
@@ -49,7 +50,7 @@ export const CALIBRATION_PRICING_CONTRACT: CalibrationPricingContract = {
   maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
   redirectPolicy: "error",
   requestTimeoutMs: CALIBRATION_REQUEST_TIMEOUT_MS,
-  reviewedAt: "2026-07-16T23:54:50.000Z",
+  reviewedAt: "2026-07-18T19:00:00.000Z",
   reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
   nanoUsdPerMillionTokens: {
@@ -216,7 +217,7 @@ export class CalibrationSpendGuard {
       return null;
     }
 
-    const inputTokenCeiling = calibrationInputTokenCeiling(fixture);
+    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
     const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
       inputTokenCeiling,
       CALIBRATION_MAX_COMPLETION_TOKENS,
@@ -581,6 +582,19 @@ export function calibrationInputTokenCeiling(
     Buffer.byteLength(EVALUATION_SYSTEM_PROMPT, "utf8") +
     Buffer.byteLength(userPrompt, "utf8") +
     REQUEST_FRAMING_TOKEN_CEILING
+  );
+}
+
+export function structuredCalibrationInputTokenCeiling(
+  fixture: EvaluationCalibrationCase
+): number {
+  const state = fixture.expectedCompletionState;
+  if (state !== "full" && state !== "partial") {
+    throw new Error("insufficient_fixture_cannot_reserve_provider_spend");
+  }
+  return (
+    calibrationInputTokenCeiling(fixture) +
+    Buffer.byteLength(serializeFeedbackProviderResponseFormat(state), "utf8")
   );
 }
 
