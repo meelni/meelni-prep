@@ -150,6 +150,7 @@ void run()
   });
 
 async function run() {
+  await verifyLatestSnapshotTypes();
   const cleanUrl = databaseUrl(baseUrl, CLEAN_DATABASE);
   const upgradeUrl = databaseUrl(baseUrl, UPGRADE_DATABASE);
   const runtimeReconciliationUrl = databaseUrl(
@@ -214,6 +215,7 @@ async function run() {
     );
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
+    runAnalyticsConsentAdapterVerification(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
     await verifyProviderStartCleanupOwnership(clean, cleanUrl);
@@ -607,7 +609,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     );
     assert.equal(
       legacyConsentFingerprint,
-      "6f64a16b397da28ac2d2d027a0e5cc6ed58bb0cf5a2ce29f1f6f374808a51cd7"
+      "9fc4bbd34c87e1617110348ce88bbb1c068859a07fdc48ff10c9138d04f92056"
     );
     const legacyThrough0023Preflight = runPreflight(
       databaseUrl,
@@ -621,6 +623,25 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       legacyThrough0023Preflight.schemaContract,
       legacyConsentFingerprint
     );
+
+    await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_turn OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_unknown_legacy_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(`ALTER TABLE transcript_turn OWNER TO CURRENT_USER`);
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
 
     await sql`
       ALTER TABLE transcript_turn ADD COLUMN writer_generation integer
@@ -752,8 +773,38 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       },
     ]);
 
-    await sql.unsafe(reconciliationSql);
+    await sql.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL search_path TO public, pg_catalog`);
+      const [before] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      await tx.unsafe(reconciliationSql);
+      const [after] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      assert.equal(after?.search_path, before?.search_path);
+    });
     assert.equal(await migrationCount(sql), 25);
+
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_runtime_writer OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_partial_current_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(
+          `ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER`
+        );
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
 
     await sql`
       ALTER TABLE transcript_turn
@@ -821,6 +872,34 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
   } finally {
     await sql.end();
   }
+}
+
+async function verifyLatestSnapshotTypes() {
+  const journal = JSON.parse(
+    await readFile(join(ROOT, "lib/db/migrations/meta/_journal.json"), "utf8")
+  ) as { entries: Array<{ idx: number }> };
+  const latestIndex = journal.entries.at(-1)?.idx;
+  assert.notEqual(latestIndex, undefined);
+  const snapshot = JSON.parse(
+    await readFile(
+      join(
+        ROOT,
+        `lib/db/migrations/meta/${String(latestIndex).padStart(4, "0")}_snapshot.json`
+      ),
+      "utf8"
+    )
+  ) as {
+    tables: Record<string, { columns: Record<string, { type: string }> }>;
+  };
+  assert.equal(
+    snapshot.tables["public.account_deletion_request"].columns.attempts.type,
+    "integer"
+  );
+  assert.equal(
+    snapshot.tables["public.user_settings"].columns.analytics_consent_revision
+      .type,
+    "bigint"
+  );
 }
 
 async function seedLegacyInvoiceDuplicateFixtures(sql: postgres.Sql) {
@@ -1417,6 +1496,36 @@ function runCliMigration(databaseUrl: string) {
     `CLI migration failed:\n${result.stderr}\n${result.stdout}`
   );
   assert.match(result.stdout, /Database target fingerprint:/);
+}
+
+function runOwnershipBlockedPreflight(databaseUrl: string) {
+  const result = spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /Reconciled database does not satisfy the launch schema contract/
+  );
+}
+
+function runAnalyticsConsentAdapterVerification(databaseUrl: string) {
+  const result = spawnSync(
+    "npm",
+    ["exec", "--", "tsx", "scripts/verify-analytics-consent-adapter.ts"],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Analytics consent adapter verification failed:\n${result.stderr}\n${result.stdout}`
+  );
 }
 
 function runPreflight(
@@ -6077,11 +6186,13 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
       analytics_consent_source: string | null;
       analytics_consent_updated_at: Date | null;
       analytics_consent_version: number | null;
+      analytics_consent_revision: number;
       share_anonymous_data: boolean;
     }[]
   >`
     SELECT analytics_consent, analytics_consent_version,
       analytics_consent_source, analytics_consent_updated_at,
+      analytics_consent_revision::int AS analytics_consent_revision,
       share_anonymous_data
     FROM user_settings WHERE user_id = ${userId}::uuid
   `;
@@ -6090,6 +6201,7 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
     analytics_consent_version: null,
     analytics_consent_source: null,
     analytics_consent_updated_at: null,
+    analytics_consent_revision: 0,
     share_anonymous_data: false,
   });
 
@@ -6103,9 +6215,59 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
     UPDATE user_settings
     SET analytics_consent = 'accepted', analytics_consent_version = 1,
       analytics_consent_source = 'settings',
-      analytics_consent_updated_at = now()
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
     WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 0
   `;
+  await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'declined', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision >= 1
+  `;
+  const staleAcceptance = await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 1
+    RETURNING analytics_consent
+  `;
+  assert.equal(staleAcceptance.length, 0);
+  const [withdrawn] = await sql<
+    { analytics_consent: string; analytics_consent_revision: number }[]
+  >`
+    SELECT analytics_consent,
+      analytics_consent_revision::int AS analytics_consent_revision
+    FROM user_settings WHERE user_id = ${userId}::uuid
+  `;
+  assert.deepEqual(withdrawn, {
+    analytics_consent: "declined",
+    analytics_consent_revision: 2,
+  });
+  const freshAcceptance = await sql<
+    { analytics_consent: string; analytics_consent_revision: number }[]
+  >`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 2
+    RETURNING analytics_consent,
+      analytics_consent_revision::int AS analytics_consent_revision
+  `;
+  assert.deepEqual(freshAcceptance[0], {
+    analytics_consent: "accepted",
+    analytics_consent_revision: 3,
+  });
   await sql`DELETE FROM user_settings WHERE user_id = ${userId}::uuid`;
   await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
 }

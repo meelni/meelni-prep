@@ -44,7 +44,7 @@ const LEGACY_RUNTIME_SETTLEMENT_MIGRATION_HASH =
 const LEGACY_RUNTIME_SETTLEMENT_THROUGH_0022_SCHEMA_FINGERPRINT =
   "ca1f6074c933164b9b26425e8b835123dc14363efe19c03c96829ce5d09aa013";
 const LEGACY_RUNTIME_SETTLEMENT_WITH_ANALYTICS_CONSENT_SCHEMA_FINGERPRINT =
-  "6f64a16b397da28ac2d2d027a0e5cc6ed58bb0cf5a2ce29f1f6f374808a51cd7";
+  "9fc4bbd34c87e1617110348ce88bbb1c068859a07fdc48ff10c9138d04f92056";
 
 const envFile = process.env.MEELNI_ENV_FILE || ".env.local";
 const loadedEnv = config({
@@ -235,6 +235,7 @@ async function run(url: string, environmentIdentity: string) {
         {
           tables: number;
           rls_tables: number;
+          unsafe_table_owners: number;
           unsupported_tiers: number;
           legacy_premium_trials: number;
           unsafe_policies: number;
@@ -251,6 +252,23 @@ async function run(url: string, environmentIdentity: string) {
             WHERE pg_namespace.nspname = 'public'
               AND pg_class.relkind = 'r'
               AND pg_class.relrowsecurity) AS rls_tables,
+          (SELECT count(*)::int
+            FROM pg_class relation
+            JOIN pg_namespace namespace
+              ON namespace.oid = relation.relnamespace
+            LEFT JOIN pg_class anchor
+              ON anchor.oid = to_regclass('public.interview_session')
+            WHERE namespace.nspname = 'public'
+              AND relation.relkind = 'r'
+              AND relation.relname IN (
+                'transcript_runtime_writer',
+                'transcript_runtime_settlement',
+                'transcript_interruption_marker',
+                'transcript_turn'
+              )
+              AND (
+                anchor.oid IS NULL OR relation.relowner <> anchor.relowner
+              )) AS unsafe_table_owners,
           (SELECT count(*)::int FROM subscription
             WHERE tier NOT IN ('free', 'starter', 'pro')) AS unsupported_tiers,
           (SELECT count(*)::int FROM subscription
@@ -478,6 +496,7 @@ async function run(url: string, environmentIdentity: string) {
         if (
           summary.tables !== expectedTableCount ||
           summary.rls_tables !== expectedTableCount ||
+          summary.unsafe_table_owners !== 0 ||
           summary.unsafe_policies !== 0 ||
           summary.unique_contracts !== 3 ||
           (migrations.length >= 23 &&

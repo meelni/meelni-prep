@@ -154,7 +154,7 @@ test("a stale browser acceptance cannot overwrite a newer account decline", () =
   );
 });
 
-test("a newer local withdrawal fails closed over stale account acceptance", () => {
+test("an account-scoped local withdrawal fails closed regardless of application clocks", () => {
   const accountAccepted = createAnalyticsConsentDecision(
     "accepted",
     "settings",
@@ -165,7 +165,7 @@ test("a newer local withdrawal fails closed over stale account acceptance", () =
     "declined",
     "settings",
     "account",
-    new Date("2026-07-10T12:01:00.000Z")
+    new Date("2026-07-10T11:59:00.000Z")
   );
   assert.equal(
     resolveTrustedAnalyticsConsent(browserDeclined, accountAccepted, "account")

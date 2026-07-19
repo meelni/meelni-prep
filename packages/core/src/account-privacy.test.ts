@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ACCOUNT_EXPORT_SCHEMA_VERSION,
   ACCOUNT_DELETION_RECENT_AUTH_WINDOW_MS,
   getAccountDeletionAuthDecision,
 } from "./account-privacy";
 
 const NOW = new Date("2026-07-10T16:00:00.000Z");
+
+test("account export version includes operative analytics consent", () => {
+  assert.equal(ACCOUNT_EXPORT_SCHEMA_VERSION, "1.1.0");
+});
 
 test("account deletion accepts a recent server-verified sign-in", () => {
   assert.deepEqual(
