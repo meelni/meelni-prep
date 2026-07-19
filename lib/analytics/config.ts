@@ -73,8 +73,10 @@ export function getAnalyticsConfig(): AnalyticsConfig {
     enabled: !!apiKey && !isTest,
     debug: isDevelopment,
     sessionRecording: {
-      enabled: true,
-      sampleRate: isProduction ? 0.3 : 1.0, // 30% in prod, 100% in dev
+      // Keep recording off globally until DOM snapshots have a separately
+      // verified privacy boundary; ordinary event sanitization is insufficient.
+      enabled: false,
+      sampleRate: 0,
       maskTextInputs: true,
       maskAllText: true,
       maskEmails: true,

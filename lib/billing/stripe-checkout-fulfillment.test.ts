@@ -126,11 +126,12 @@ test("fails async success that is not authoritatively paid", async () => {
   assert.equal(fixture.grantInputs.length, 0);
 });
 
-test("acknowledges async failure without provider reads or mutations", async () => {
+test("authenticates authoritative async failure without granting", async () => {
   const fixture = createFixture({
-    retrieveSession: async () => {
-      throw new Error("provider_should_not_be_called");
-    },
+    session: authoritativeSession({
+      paymentStatus: "unpaid",
+      paymentIntentId: null,
+    }),
   });
 
   const result = await fulfillInterviewPassCheckout(
@@ -144,10 +145,15 @@ test("acknowledges async failure without provider reads or mutations", async () 
   assert.deepEqual(result, {
     status: "payment_failed",
     sessionId: SESSION_ID,
+    userId: USER_ID,
+    amountInCents: 2_900,
+    currency: "usd",
   });
-  assert.equal(fixture.retrievedSessionIds.length, 0);
+  assert.deepEqual(fixture.retrievedSessionIds, [SESSION_ID]);
   assert.equal(fixture.grantInputs.length, 0);
-  assert.equal(fixture.claimInputs.length, 0);
+  assert.deepEqual(fixture.claimInputs, [
+    { customerId: CUSTOMER_ID, userId: USER_ID },
+  ]);
 });
 
 test("completed and async-success deliveries converge on one grant", async () => {
@@ -203,7 +209,7 @@ test("async failure delivered after success does not revoke the grant", async ()
     fixture.deps
   );
 
-  assert.equal(failed.status, "payment_failed");
+  assert.equal(failed.status, "pending_payment");
   assert.equal(durableGrants.size, 1);
   assert.equal(fixture.grantInputs.length, 1);
 });

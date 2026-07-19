@@ -190,6 +190,36 @@ test("billing read and portal failures stay inside the closed catalog", () => {
   assert.doesNotMatch(writes.join("\n"), /cus_|stripe|postgres|customer@/i);
 });
 
+test("checkout confirmation failures stay inside the closed catalog", () => {
+  const cases = [
+    "checkout_confirmation_auth_failed",
+    "checkout_confirmation_settlement_read_failed",
+  ] as const;
+  const writes: string[] = [];
+
+  for (const errorCode of cases) {
+    const event = reportOperationalFailure(
+      {
+        operation: "checkout_confirmation",
+        errorCode,
+        retryable: true,
+      },
+      {
+        now: () => new Date("2026-07-19T20:00:00.000Z"),
+        env: { VERCEL_ENV: "preview" },
+        write: (value) => writes.push(value),
+      }
+    );
+    assert.equal(event.operation, "checkout_confirmation");
+    assert.equal(event.errorCode, errorCode);
+    assert.equal(event.retryable, true);
+    assert.equal(event.correlationId, null);
+  }
+
+  assert.equal(writes.length, cases.length);
+  assert.doesNotMatch(writes.join("\n"), /cs_|stripe|postgres|customer@/i);
+});
+
 test("only ownership-validated interview sessions can become correlations", () => {
   assert.equal(
     readOwnedInterviewSessionCorrelationId({

@@ -17,6 +17,10 @@ import {
   type PublicPricingPlan,
 } from "@/lib/billing/catalog-presentation";
 import type { StripeCheckoutCatalogId } from "@/lib/billing/stripe-catalog";
+import {
+  parseCheckoutCreateResponse,
+  storeCheckoutReturnHandle,
+} from "@/lib/billing/checkout-return-cookie";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { useFeatureFlag } from "@/lib/feature-flags";
 
@@ -53,7 +57,13 @@ export default function PricingPage() {
         throw new Error("Unable to start checkout");
       }
 
-      const data = await response.json();
+      const data = parseCheckoutCreateResponse(await response.json());
+      if (
+        !data ||
+        !storeCheckoutReturnHandle(window.sessionStorage, data.returnHandle)
+      ) {
+        throw new Error("Invalid checkout response");
+      }
       window.location.href = data.url;
     } catch (error) {
       console.error("Checkout start failed:", error);

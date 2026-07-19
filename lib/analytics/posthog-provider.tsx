@@ -9,6 +9,7 @@ import posthog from "posthog-js";
 import { PostHogProvider as PHProvider } from "posthog-js/react";
 import { useEffect } from "react";
 import { clientConfig } from "./config";
+import { sanitizeAnalyticsValue } from "./privacy-sanitizer";
 
 /**
  * Initialize PostHog client
@@ -28,6 +29,7 @@ function initializePostHog() {
 
   // Check if already initialized
   if (posthog.__loaded) {
+    posthog.stopSessionRecording();
     return;
   }
 
@@ -38,9 +40,20 @@ function initializePostHog() {
     autocapture: !clientConfig.privacy.disableAutocapture,
     capture_pageview: !clientConfig.privacy.disablePageviewTracking,
     ip: !clientConfig.privacy.anonymizeIp,
+    before_send: (event) => {
+      if (!event) return null;
+      event.properties = sanitizeAnalyticsValue(
+        event.properties
+      ) as typeof event.properties;
+      event.$set = sanitizeAnalyticsValue(event.$set) as typeof event.$set;
+      event.$set_once = sanitizeAnalyticsValue(
+        event.$set_once
+      ) as typeof event.$set_once;
+      return event;
+    },
 
     // Session Recording
-    disable_session_recording: !clientConfig.sessionRecording.enabled,
+    disable_session_recording: true,
     session_recording: {
       maskAllInputs: clientConfig.sessionRecording.maskTextInputs,
       maskTextSelector: clientConfig.sessionRecording.maskAllText ? "*" : null,
@@ -63,6 +76,7 @@ function initializePostHog() {
 
     // Performance
     loaded: (ph) => {
+      ph.stopSessionRecording();
       if (clientConfig.debug) {
         console.log("[Analytics] PostHog loaded", ph);
       }
