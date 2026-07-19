@@ -8,6 +8,7 @@ import {
   requestAccountDeletionWithCurrentSubjects,
 } from "@/lib/db/account-deletions";
 import { inngest } from "@/lib/inngest/client";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 
 const deletionRequestSchema = z
@@ -47,7 +48,12 @@ export async function POST(request: NextRequest) {
     user = authResult.data.user;
     authError = authResult.error;
   } catch {
-    console.error("Account deletion authentication check failed");
+    reportOperationalFailure({
+      operation: "account_deletion",
+      errorCode: "account_deletion_auth_check_failed",
+      severity: "error",
+      retryable: true,
+    });
     return NextResponse.json(
       {
         error: "authentication_check_failed",
@@ -92,7 +98,12 @@ export async function POST(request: NextRequest) {
       try {
         await markAccountDeletionFailed(user.id, "event_enqueue_failed");
       } catch {
-        console.error("Account deletion retry state could not be recorded");
+        reportOperationalFailure({
+          operation: "account_deletion",
+          errorCode: "account_deletion_retry_state_failed",
+          severity: "critical",
+          retryable: true,
+        });
       }
     }
 
@@ -101,7 +112,12 @@ export async function POST(request: NextRequest) {
     } catch {
       // The middleware rejects any surviving session because the tombstone is
       // already durable. Do not turn a saved deletion request into false failure.
-      console.error("Account deletion local sign-out did not complete");
+      reportOperationalFailure({
+        operation: "account_deletion",
+        errorCode: "account_deletion_sign_out_failed",
+        severity: "warning",
+        retryable: false,
+      });
     }
 
     return NextResponse.json(
@@ -115,7 +131,12 @@ export async function POST(request: NextRequest) {
       { status: 202 }
     );
   } catch {
-    console.error("Account deletion request could not be persisted");
+    reportOperationalFailure({
+      operation: "account_deletion",
+      errorCode: "account_deletion_request_failed",
+      severity: "critical",
+      retryable: true,
+    });
     return NextResponse.json(
       {
         error: "account_deletion_request_failed",

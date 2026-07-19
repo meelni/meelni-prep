@@ -2,6 +2,7 @@ import { listInterviewStartRecoveryCandidates } from "@/lib/db/interview-start-r
 import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { recoverInterviewStartWorkflow } from "@/lib/workflows/recover-interview-start";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const recoverInterviewStarts = inngest.createFunction(
   {
@@ -9,6 +10,14 @@ export const recoverInterviewStarts = inngest.createFunction(
     name: "Recover Stale Interview Starts",
     retries: 2,
     concurrency: [{ limit: 1 }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_start_recovery_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/5 * * * *" },
   async ({ step }) => {
