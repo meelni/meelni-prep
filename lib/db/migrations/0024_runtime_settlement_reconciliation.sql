@@ -4,6 +4,7 @@ DECLARE
   has_settlement_generation boolean;
   has_turn_generation boolean;
   has_marker_generation boolean;
+  canonical_table_owner name;
   current_columns_match boolean;
   current_constraints_match boolean;
   current_indexes_match boolean;
@@ -75,6 +76,11 @@ BEGIN
   IF has_writer_table THEN
     LOCK TABLE public.transcript_runtime_writer IN ACCESS EXCLUSIVE MODE;
   END IF;
+
+  SELECT pg_catalog.pg_get_userbyid(relowner)::name
+    INTO canonical_table_owner
+  FROM pg_catalog.pg_class
+  WHERE oid = 'public.interview_session'::regclass;
 
   LOOP
   IF has_writer_table
@@ -360,6 +366,16 @@ BEGIN
       OR NOT current_indexes_match
       OR NOT current_policies_match
       OR NOT current_grants_match
+      OR EXISTS (
+        SELECT 1 FROM pg_catalog.pg_class
+        WHERE oid IN (
+          'public.transcript_runtime_writer'::regclass,
+          'public.transcript_runtime_settlement'::regclass,
+          'public.transcript_interruption_marker'::regclass,
+          'public.transcript_turn'::regclass
+        )
+          AND pg_catalog.pg_get_userbyid(relowner) <> canonical_table_owner
+      )
       OR NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_class
         WHERE oid = 'public.transcript_runtime_writer'::regclass
@@ -383,7 +399,7 @@ BEGIN
       RAISE EXCEPTION 'runtime_settlement_reconciliation_partial_current_shape';
     END IF;
 
-    RETURN;
+    EXIT;
   END IF;
 
   IF has_writer_table
@@ -642,6 +658,15 @@ BEGIN
     OR NOT legacy_turn_contract_match
     OR NOT legacy_policy_match
     OR NOT legacy_grants_match
+    OR EXISTS (
+      SELECT 1 FROM pg_catalog.pg_class
+      WHERE oid IN (
+        'public.transcript_runtime_settlement'::regclass,
+        'public.transcript_interruption_marker'::regclass,
+        'public.transcript_turn'::regclass
+      )
+        AND pg_catalog.pg_get_userbyid(relowner) <> canonical_table_owner
+    )
     OR NOT EXISTS (
       SELECT 1 FROM pg_catalog.pg_class
       WHERE oid = 'public.transcript_runtime_settlement'::regclass

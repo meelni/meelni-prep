@@ -606,7 +606,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     );
     assert.equal(
       legacyConsentFingerprint,
-      "6f64a16b397da28ac2d2d027a0e5cc6ed58bb0cf5a2ce29f1f6f374808a51cd7"
+      "9fc4bbd34c87e1617110348ce88bbb1c068859a07fdc48ff10c9138d04f92056"
     );
     const legacyThrough0023Preflight = runPreflight(
       databaseUrl,
@@ -620,6 +620,25 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       legacyThrough0023Preflight.schemaContract,
       legacyConsentFingerprint
     );
+
+    await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_turn OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_unknown_legacy_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(`ALTER TABLE transcript_turn OWNER TO CURRENT_USER`);
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
 
     await sql`
       ALTER TABLE transcript_turn ADD COLUMN writer_generation integer
@@ -728,8 +747,38 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       },
     ]);
 
-    await sql.unsafe(reconciliationSql);
+    await sql.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL search_path TO public, pg_catalog`);
+      const [before] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      await tx.unsafe(reconciliationSql);
+      const [after] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      assert.equal(after?.search_path, before?.search_path);
+    });
     assert.equal(await migrationCount(sql), 25);
+
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_runtime_writer OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_partial_current_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(
+          `ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER`
+        );
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
 
     await sql`
       ALTER TABLE transcript_turn
@@ -778,9 +827,17 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
 }
 
 async function verifyLatestSnapshotTypes() {
+  const journal = JSON.parse(
+    await readFile(join(ROOT, "lib/db/migrations/meta/_journal.json"), "utf8")
+  ) as { entries: Array<{ idx: number }> };
+  const latestIndex = journal.entries.at(-1)?.idx;
+  assert.notEqual(latestIndex, undefined);
   const snapshot = JSON.parse(
     await readFile(
-      join(ROOT, "lib/db/migrations/meta/0023_snapshot.json"),
+      join(
+        ROOT,
+        `lib/db/migrations/meta/${String(latestIndex).padStart(4, "0")}_snapshot.json`
+      ),
       "utf8"
     )
   ) as {
@@ -1391,6 +1448,19 @@ function runCliMigration(databaseUrl: string) {
     `CLI migration failed:\n${result.stderr}\n${result.stdout}`
   );
   assert.match(result.stdout, /Database target fingerprint:/);
+}
+
+function runOwnershipBlockedPreflight(databaseUrl: string) {
+  const result = spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /Reconciled database does not satisfy the launch schema contract/
+  );
 }
 
 function runAnalyticsConsentAdapterVerification(databaseUrl: string) {
