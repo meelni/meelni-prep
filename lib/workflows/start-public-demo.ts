@@ -1,6 +1,7 @@
 import {
   createLiveKitPublicDemoProvider,
   PUBLIC_DEMO_DURATION_SECONDS,
+  PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS,
   type LiveKitEnvironment,
   type LiveKitPublicDemoProvider,
 } from "@/lib/internal/integrations";
@@ -131,6 +132,29 @@ export async function startPublicDemoWorkflow(
   }
 
   const roomName = reservation.roomName!;
+  const observedAt = deps.now();
+  const deadlineAt = reservation.deadlineAt;
+  if (!deadlineAt || !hasDeliveryMargin(deadlineAt, observedAt)) {
+    if (
+      reservation.action === "issue_token" &&
+      reservation.recoveryClaimToken
+    ) {
+      await safelyFailRecovery(
+        input.sessionId,
+        reservation.recoveryClaimToken,
+        "livekit_demo_token_deadline_invalid",
+        deps
+      );
+    } else {
+      await safelyMarkFailed(
+        input.sessionId,
+        "livekit_demo_token_deadline_invalid",
+        deps
+      );
+    }
+    deps.audit({ outcome: "failed", reason: "demo_deadline_elapsed" });
+    return unavailable(true);
+  }
   if (reservation.action === "issue_token") {
     const claimToken = reservation.recoveryClaimToken;
     if (!claimToken) {
@@ -140,10 +164,15 @@ export async function startPublicDemoWorkflow(
     const token = await deps.livekit.issuePublicDemoToken({
       identity: input.participantIdentity,
       roomName,
+      observedAt,
+      expiresAt: deadlineAt,
       env: input.env,
     });
     if (!token.ok) {
-      if (token.error.code === "livekit_demo_room_not_ready") {
+      if (
+        token.error.code === "livekit_demo_room_not_ready" ||
+        token.error.code === "livekit_demo_token_deadline_invalid"
+      ) {
         const invalidated = await safelyFailRecovery(
           input.sessionId,
           claimToken,
@@ -159,6 +188,16 @@ export async function startPublicDemoWorkflow(
       deps.audit({ outcome: "failed", reason: "recovery_token_failed" });
       return unavailable();
     }
+    if (!hasDeliveryMargin(token.data.expiresAt, deps.now())) {
+      const invalidated = await safelyFailRecovery(
+        input.sessionId,
+        claimToken,
+        "livekit_demo_token_deadline_invalid",
+        deps
+      );
+      deps.audit({ outcome: "failed", reason: "demo_delivery_margin_elapsed" });
+      return unavailable(invalidated);
+    }
     let finalized = false;
     try {
       finalized = await deps.finalizeRecovery(input.sessionId, claimToken);
@@ -166,11 +205,22 @@ export async function startPublicDemoWorkflow(
       finalized = false;
     }
     if (!finalized) {
+      const invalidated = await safelyFailRecovery(
+        input.sessionId,
+        claimToken,
+        "recovery_finalize_failed",
+        deps
+      );
       deps.audit({ outcome: "failed", reason: "recovery_finalize_failed" });
-      return unavailable();
+      return unavailable(invalidated);
     }
     deps.audit({ outcome: "allowed", reason: "recovery_token_issued" });
-    return success(token.data.token, token.data.url);
+    return success(
+      token.data.token,
+      token.data.url,
+      token.data.expiresAt,
+      deps.now()
+    );
   }
 
   const started = await deps.livekit.startPublicDemoRoom({
@@ -182,10 +232,10 @@ export async function startPublicDemoWorkflow(
       type: "demo",
       duration_seconds: PUBLIC_DEMO_DURATION_SECONDS,
       participant_identity: input.participantIdentity,
-      deadline_at: new Date(
-        deps.now().getTime() + PUBLIC_DEMO_DURATION_SECONDS * 1000
-      ).toISOString(),
+      deadline_at: deadlineAt.toISOString(),
     },
+    observedAt,
+    expiresAt: deadlineAt,
     env: input.env,
   });
   if (!started.ok) {
@@ -194,6 +244,21 @@ export async function startPublicDemoWorkflow(
       outcome: "failed",
       reason: safeFailureCode(started.error.code),
     });
+    return unavailable(true);
+  }
+
+  if (!hasDeliveryMargin(started.data.expiresAt, deps.now())) {
+    try {
+      await deps.livekit.deletePublicDemoRoom(roomName, input.env);
+    } catch {
+      deps.audit({ outcome: "failed", reason: "delivery_cleanup_failed" });
+    }
+    await safelyMarkFailed(
+      input.sessionId,
+      "livekit_demo_token_deadline_invalid",
+      deps
+    );
+    deps.audit({ outcome: "failed", reason: "demo_delivery_margin_elapsed" });
     return unavailable(true);
   }
 
@@ -219,7 +284,12 @@ export async function startPublicDemoWorkflow(
   }
 
   deps.audit({ outcome: "allowed", reason: "demo_started" });
-  return success(started.data.token, started.data.url);
+  return success(
+    started.data.token,
+    started.data.url,
+    started.data.expiresAt,
+    deps.now()
+  );
 }
 
 export function getPublicDemoDeploymentScope(
@@ -300,15 +370,33 @@ async function safelyFailRecovery(
   }
 }
 
-function success(token: string, url: string): StartPublicDemoResult {
+function success(
+  token: string,
+  url: string,
+  deadlineAt: Date,
+  observedAt: Date
+): StartPublicDemoResult {
+  const remainingSeconds = Math.min(
+    PUBLIC_DEMO_DURATION_SECONDS,
+    Math.floor((deadlineAt.getTime() - observedAt.getTime()) / 1_000)
+  );
   return {
     ok: true,
     body: {
       token,
       url,
-      durationSeconds: PUBLIC_DEMO_DURATION_SECONDS,
+      durationSeconds: remainingSeconds,
     },
   };
+}
+
+function hasDeliveryMargin(deadlineAt: Date, observedAt: Date): boolean {
+  return (
+    Number.isFinite(deadlineAt.getTime()) &&
+    Number.isFinite(observedAt.getTime()) &&
+    deadlineAt.getTime() - observedAt.getTime() >=
+      PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS * 1_000
+  );
 }
 
 function unavailable(resetSessionCookie = false): StartPublicDemoResult {
