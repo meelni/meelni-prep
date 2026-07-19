@@ -672,6 +672,23 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
     }
 
     await sql`
+      GRANT EXECUTE ON FUNCTION prune_public_demo_abuse_data()
+      TO service_role WITH GRANT OPTION
+    `;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_public_demo_acl_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`
+        REVOKE GRANT OPTION FOR EXECUTE
+        ON FUNCTION prune_public_demo_abuse_data() FROM service_role
+      `;
+    }
+
+    await sql`
       CREATE POLICY "Preview reconciliation unsafe probe"
       ON public_demo_session FOR SELECT TO authenticated USING (true)
     `;
@@ -686,6 +703,44 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         DROP POLICY IF EXISTS "Preview reconciliation unsafe probe"
         ON public_demo_session
       `;
+    }
+
+    await sql`
+      DROP POLICY "Service role has full access to public_demo_session"
+      ON public_demo_session
+    `;
+    await sql`
+      CREATE POLICY "Service role has full access to public_demo_session"
+      ON public_demo_session AS RESTRICTIVE FOR ALL TO service_role
+      USING (true) WITH CHECK (true)
+    `;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`
+        DROP POLICY "Service role has full access to public_demo_session"
+        ON public_demo_session
+      `;
+      await sql`
+        CREATE POLICY "Service role has full access to public_demo_session"
+        ON public_demo_session FOR ALL TO service_role
+        USING (true) WITH CHECK (true)
+      `;
+    }
+
+    await sql`ALTER TABLE public_demo_session FORCE ROW LEVEL SECURITY`;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`ALTER TABLE public_demo_session NO FORCE ROW LEVEL SECURITY`;
     }
 
     await sql.unsafe("DROP ROLE IF EXISTS preview_owner_probe");
