@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { subscription } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 /**
  * GET /api/billing/subscription
@@ -76,8 +77,12 @@ export async function GET() {
       trialEnd: sub.trialEnd?.toISOString() || null,
       proTrialUsed: sub.proTrialUsed,
     });
-  } catch (error) {
-    console.error("Error fetching subscription:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "billing_read",
+      errorCode: "billing_subscription_read_failed",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to fetch subscription" },
       { status: 500 }
