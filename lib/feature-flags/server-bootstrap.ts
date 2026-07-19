@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { getStatsigConfig } from "./config";
 import { buildServerGateDeploymentContext } from "./server-deployment-context";
 import { FEATURE_GATES } from "./gates";
+import { buildReactivationLaunchStateIdentity } from "./reactivation-identity";
 import { resolveServerGate } from "./server-resolver";
 
 export interface FeatureFlagBootstrap {
@@ -42,7 +43,7 @@ export const getFeatureFlagBootstrap = cache(
               process.env,
               config.environmentTier
             ),
-            user: { userID: "public-launch-state" },
+            user: buildReactivationLaunchStateIdentity(),
           });
 
     return {

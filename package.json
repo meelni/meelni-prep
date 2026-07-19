@@ -71,11 +71,11 @@
     "test:browser:qa": "node scripts/verify-browser-fixture-boundary.mjs && node scripts/run-browser-qa.mjs test",
     "test:local": "node --test scripts/*.test.mjs",
     "test:fixtures": "tsx --test packages/test-fixtures/src/*.test.ts",
-    "test:content": "tsx --test app/explore/explore-client.test.tsx app/opengraph-image.test.tsx lib/blog-data.test.ts lib/data/public-company.test.ts lib/explore/*.test.ts lib/seo/*.test.ts components/explore/structured-data.test.tsx && node --test scripts/content-credibility-contract.test.mjs",
+    "test:content": "tsx --test app/explore/explore-client.test.tsx app/opengraph-image.test.tsx lib/blog-data.test.ts lib/data/public-company.test.ts lib/explore/*.test.ts lib/seo/*.test.ts components/explore/structured-data.test.tsx components/explore/explore-question-list-item.test.tsx components/public-activation-action.test.tsx && node --test scripts/content-credibility-contract.test.mjs scripts/public-activation-contract.test.mjs",
     "test:legal": "tsx --test lib/legal/*.test.ts app/legal-pages.test.ts && node --test scripts/legal-content-contract.test.mjs",
     "test:workflows": "tsx --test lib/workflows/*.test.ts lib/inngest/functions/cleanup-interview-rooms.test.ts lib/inngest/functions/reconcile-interview-presence.test.ts lib/db/*.test.ts lib/question-sync/*.test.ts lib/security/*.test.ts lib/privacy/*.test.ts lib/evaluation/*.test.ts lib/supabase/*.test.ts lib/auth/*.test.ts lib/navigation/*.test.ts lib/analytics/*.test.ts lib/dashboard/*.test.ts lib/interview/*.test.ts lib/utils/*.test.ts",
     "test:api": "vitest run app/auth/callback/route.test.ts app/api/analytics/consent/route.test.ts app/api/statsig/[endpoint]/route.test.ts app/api/contact/route.test.ts app/api/questions/[id]/route.test.ts app/api/interview/end/__tests__/route.test.ts app/api/nudges/analyze/route.test.ts app/api/session/start/route.test.ts app/api/session/[sessionId]/route.test.ts app/api/session/[sessionId]/transcript/route.test.ts app/api/internal/transcript/route.test.ts app/api/feedback/[sessionId]/route.test.ts app/api/billing/cancel/route.test.ts app/api/billing/read-observability.test.ts app/api/billing/portal/route.test.ts app/api/customer-portal/route.test.ts app/api/checkout/create-session/route.test.ts app/api/billing/sync/route.test.ts app/api/livekit/demo-token/route.test.ts app/api/livekit/token/__tests__/token-generation.test.ts app/api/webhooks/livekit/route.test.ts app/api/webhooks/stripe/route.test.ts app/api/user/export/route.test.ts app/api/user/delete/route.test.ts app/api/user/settings/route.test.ts app/api/insights/__tests__/route.test.ts lib/evaluation/__tests__/insights-aggregator.test.ts lib/evaluation/__tests__/session-validator.test.ts lib/inngest/functions/__tests__/update-user-insights.test.ts",
-    "test:auth-ui": "tsx --test components/auth/*.test.tsx components/dashboard/layout/*.test.tsx app/interview/components/interview-room-surface.test.tsx app/setup/components/*.test.tsx && vitest run components/demo-modal.test.tsx components/explore/question-signin-modal.test.tsx app/auth/*.test.tsx app/interview/components/end-session-modal.test.tsx app/interview/page-lifecycle.test.tsx app/setup/use-selected-question-intent.test.tsx",
+    "test:auth-ui": "tsx --test components/auth/*.test.tsx components/dashboard/layout/*.test.tsx app/interview/components/interview-room-surface.test.tsx app/setup/components/*.test.tsx && vitest run components/demo-modal.test.tsx components/explore/question-signin-modal.test.tsx components/mobile-drawer.test.tsx components/sections/header.test.tsx app/auth/*.test.tsx app/interview/components/end-session-modal.test.tsx app/interview/page-lifecycle.test.tsx app/setup/use-selected-question-intent.test.tsx",
     "test:billing": "tsx --test lib/billing/*.test.ts",
     "test:operations": "tsx --test lib/operations/*.test.ts scripts/non-production-script-guard.test.ts scripts/run-question-sync.test.ts && node --test lib/operations/*.test.mjs scripts/production-entrypoints.test.mjs scripts/vercel-ignore-build.test.mjs scripts/check-service-health.test.mjs scripts/migration-docs-contract.test.mjs scripts/operational-observability-contract.test.mjs",
     "test:calibration": "npm run calibration:verify-runtime && tsx --test lib/evaluation/calibration.test.ts lib/evaluation/calibration-approval.test.ts lib/evaluation/calibration-budget.test.ts lib/evaluation/calibration-cli.test.ts lib/evaluation/calibration-live-launcher.test.mjs lib/evaluation/calibration-live-semantic-review.test.ts lib/evaluation/calibration-provider-policy.test.ts lib/evaluation/calibration-report-compatibility.test.ts lib/evaluation/calibration-run-ledger.test.ts lib/evaluation/calibration-runtime-artifact.test.mjs lib/evaluation/calibration-semantic-adjudication.test.ts lib/evaluation/calibration-semantic-capture.test.ts lib/evaluation/calibration-source-attestation.test.ts packages/test-fixtures/src/evaluation-calibration.test.ts",
@@ -83,7 +83,7 @@
     "calibration:build-runtime": "npm run runtime:check && node scripts/build-evaluation-calibration-runtime.mjs --write",
     "calibration:verify-runtime": "npm run runtime:check && node scripts/build-evaluation-calibration-runtime.mjs",
     "test:packages": "tsx --test scripts/package-entrypoints.test.ts",
-    "test:feature-flags": "vitest run app/providers/analytics-consent-provider.test.tsx lib/analytics/analytics-providers.test.tsx lib/analytics/use-analytics-pageview.test.tsx lib/feature-flags/config.test.ts lib/feature-flags/server-deployment-context.test.ts lib/feature-flags/server-resolver.test.ts && tsx --test lib/feature-flags/reactivation-access.test.ts",
+    "test:feature-flags": "vitest run app/providers/analytics-consent-provider.test.tsx lib/analytics/analytics-providers.test.tsx lib/analytics/use-analytics-pageview.test.tsx lib/feature-flags/config.test.ts lib/feature-flags/server-deployment-context.test.ts lib/feature-flags/server-resolver.test.ts && tsx --test lib/feature-flags/reactivation-access.test.ts lib/feature-flags/public-activation.test.ts",
     "test:deploy-preflight": "tsx --test lib/deployment/*.test.ts lib/supabase/supabase-jwt.test.ts && node --test scripts/deployment-preflight.test.mjs",
     "test:quality": "node --test scripts/quality-scripts.test.mjs scripts/verify-browser-fixture-boundary.test.mjs",
     "test:stack": "node --test scripts/check-stacked-pr*.test.mjs scripts/check-migration-collisions*.test.mjs",
@@ -133,8 +133,6 @@
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "@statsig/js-client": "^3.33.3",
-    "@statsig/session-replay": "^3.33.3",
-    "@statsig/web-analytics": "^3.33.3",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.79.0",
     "@tailwindcss/typography": "^0.5.19",
@@ -207,7 +205,8 @@
     "tsx": "^4.20.6",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
   },
   "overrides": {
     "@esbuild-kit/core-utils": {

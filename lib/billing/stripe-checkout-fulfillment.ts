@@ -82,6 +82,9 @@ export type CheckoutFulfillmentResult =
   | {
       status: "payment_failed";
       sessionId: string;
+      userId: string;
+      amountInCents: number;
+      currency: "usd";
     }
   | {
       status: "account_deletion_pending";
@@ -142,16 +145,66 @@ export async function fulfillInterviewPassCheckout(
   input: FulfillInterviewPassCheckoutInput,
   deps: CheckoutFulfillmentDependencies
 ): Promise<CheckoutFulfillmentResult> {
-  if (input.eventType === "checkout.session.async_payment_failed") {
-    return { status: "payment_failed", sessionId: input.sessionId };
-  }
-
   const session = await deps.retrieveSession(input.sessionId);
   assertAuthoritativeSession(session, input);
 
   const userId = session.metadata?.userId;
   if (!userId) {
     throw fulfillmentError(CHECKOUT_FULFILLMENT_ERROR_CODES.ownerInvalid);
+  }
+
+  if (input.eventType === "checkout.session.async_payment_failed") {
+    if (session.customerId) {
+      try {
+        await deps.claimCustomerOwnership({
+          customerId: session.customerId,
+          userId,
+        });
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "stripe_subject_owner_mismatch"
+        ) {
+          throw fulfillmentError(
+            CHECKOUT_FULFILLMENT_ERROR_CODES.ownerMismatch
+          );
+        }
+        throw error;
+      }
+    }
+    if (await deps.hasDeletionTombstone(userId)) {
+      return {
+        status: "account_deletion_pending",
+        sessionId: session.id,
+        userId,
+      };
+    }
+    // A delayed failure can arrive after provider truth has already advanced
+    // to paid. Never materialize stale failure truth in that case.
+    if (session.paymentStatus === "paid") {
+      return { status: "pending_payment", sessionId: session.id, userId };
+    }
+    if (session.paymentStatus !== "unpaid") {
+      throw fulfillmentError(CHECKOUT_FULFILLMENT_ERROR_CODES.paymentNotPaid);
+    }
+    if (
+      session.amountTotal === null ||
+      !Number.isSafeInteger(session.amountTotal) ||
+      session.amountTotal < 0
+    ) {
+      throw fulfillmentError(
+        CHECKOUT_FULFILLMENT_ERROR_CODES.paymentAmountInvalid
+      );
+    }
+    return {
+      status: "payment_failed",
+      sessionId: session.id,
+      userId,
+      amountInCents: session.amountTotal,
+      currency: "usd",
+    };
   }
 
   if (session.paymentStatus === "unpaid") {

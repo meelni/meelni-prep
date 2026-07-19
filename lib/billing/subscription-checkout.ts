@@ -12,6 +12,7 @@ export interface SubscriptionCheckoutState {
 export interface SubscriptionCheckoutSession {
   id: string;
   url: string | null;
+  returnHandle: string;
   catalogId: string | null;
   userId: string | null;
   customerId: string | null;

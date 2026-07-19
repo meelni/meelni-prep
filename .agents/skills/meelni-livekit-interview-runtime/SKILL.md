@@ -59,6 +59,7 @@ If any link changes, inspect the adjacent links. Most runtime bugs are correlati
 - Are partial and final transcripts separated enough to avoid duplicate or polluted turns?
 - Does selected-question practice reliably start with the selected question and preserve company/type/text?
 - Does the agent keep PM interview discipline instead of drifting into generic coaching?
+- Does the authenticated full-interview prompt stay in realistic interviewer role, with hints off and evaluation deferred by default? Keep the short public demo's feedback-preview behavior separate.
 
 ### Persistence And Handoff
 

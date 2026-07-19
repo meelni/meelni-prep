@@ -20,6 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
 import { JsonLd } from "@/components/seo/json-ld";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 const publicCompanies = companies.map(toPublicCompanyGuide);
 
@@ -202,12 +204,14 @@ export default function CompaniesPage() {
           title="Ready to practice?"
           description="Practice a PM question out loud, then review feedback and choose what to improve next."
           action={
-            <Button asChild size="lg" variant="glow">
-              <Link href="/dashboard/new-interview">
-                Start mock interview
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            <PublicActivationButton
+              href={NEW_INTERVIEW_PATH}
+              size="lg"
+              variant="glow"
+            >
+              Start mock interview
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </PublicActivationButton>
           }
         />
       </div>

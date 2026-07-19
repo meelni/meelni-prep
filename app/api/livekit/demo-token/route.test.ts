@@ -78,7 +78,6 @@ describe("POST /api/livekit/demo-token", () => {
       retryable: false,
     });
     expect(liveKitMocks.resolveReactivationAccess).toHaveBeenCalledWith({
-      user: null,
       localOverride: undefined,
     });
     expect(liveKitMocks.createRoom).not.toHaveBeenCalled();

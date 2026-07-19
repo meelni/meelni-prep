@@ -29,6 +29,8 @@ import { useAuth } from "@/app/providers/auth-provider";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
 import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 import { resolveQuestionEntryAction } from "@/lib/navigation/question-auth-entry";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 import {
   getExploreResultsAnnouncement,
   resolvePublicQuestionAvailability,
@@ -53,6 +55,7 @@ export function ExploreClient({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
+  const activation = usePublicActivationDecision();
   const [questions, setQuestions] =
     useState<PublicQuestion[]>(initialQuestions);
   const [totalQuestions, setTotalQuestions] = useState(initialTotal);
@@ -188,21 +191,21 @@ export function ExploreClient({
     question: PublicQuestion,
     event: React.MouseEvent<HTMLButtonElement>
   ) => {
-    // Track click
+    const entryAction = resolveQuestionEntryAction({
+      authLoading,
+      isAuthenticated: Boolean(user),
+      reactivationEnabled: activation.canActivate,
+    });
+
+    if (entryAction === "paused" || entryAction === "wait") {
+      return;
+    }
+
     analytics.track("explore_question_clicked", {
       question_type: question.questionType,
       company: question.company,
       page: currentPage,
     });
-
-    const entryAction = resolveQuestionEntryAction({
-      authLoading,
-      isAuthenticated: Boolean(user),
-    });
-
-    if (entryAction === "wait") {
-      return;
-    }
 
     if (entryAction === "launch") {
       router.push(
@@ -403,7 +406,13 @@ export function ExploreClient({
                   question={question}
                   index={index}
                   isLast={index === paginatedQuestions.length - 1}
-                  disabled={authLoading}
+                  busy={authLoading}
+                  disabled={authLoading || !activation.canActivate}
+                  practiceLabel={
+                    activation.canActivate
+                      ? "Practice question"
+                      : PUBLIC_ACTIVATION_PAUSED_LABEL
+                  }
                   onPractice={(event) => handleQuestionClick(question, event)}
                 />
               ))}
@@ -448,7 +457,7 @@ export function ExploreClient({
       </main>
 
       {/* Sign-In Modal */}
-      {selectedQuestion && (
+      {activation.canActivate && selectedQuestion && (
         <QuestionSignInModal
           isOpen={signInModalOpen}
           onClose={() => setSignInModalOpen(false)}
