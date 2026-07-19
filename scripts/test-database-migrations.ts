@@ -3520,6 +3520,7 @@ async function verifyAtomicSessionCompletion(
                 dispatchFeedbackGenerationWorkflow(input, {
                   store: dispatchRecoveryStores[1]!,
                   now: () => new Date("2026-07-10T06:32:00.000Z"),
+                  reportFailure: () => undefined,
                   send: async () => {
                     recoveredFeedbackEvents += 1;
                   },

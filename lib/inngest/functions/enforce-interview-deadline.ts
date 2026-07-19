@@ -10,6 +10,7 @@ import {
   buildInvalidInterviewSessionRecoveryEvent,
   INTERVIEW_DEADLINE_EVENT_NAME,
 } from "@/lib/workflows/schedule-interview-deadline";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const enforceInterviewDeadline = inngest.createFunction(
   {
@@ -17,6 +18,14 @@ export const enforceInterviewDeadline = inngest.createFunction(
     name: "Enforce Interview Deadline",
     retries: 5,
     concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_deadline_enforcement_failed",
+        severity: "critical",
+        retryable: false,
+      });
+    },
   },
   { event: INTERVIEW_DEADLINE_EVENT_NAME },
   async ({ event, step }) => {
@@ -52,6 +61,14 @@ export const recoverInterviewDeadlines = inngest.createFunction(
     id: "interview-deadline-recovery",
     name: "Recover Interview Deadlines",
     retries: 2,
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_deadline_enforcement_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {

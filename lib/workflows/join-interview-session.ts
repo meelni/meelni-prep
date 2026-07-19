@@ -10,6 +10,11 @@ import {
   normalizeInterviewDurationMinutes,
   type InterviewLifecycleState,
 } from "@/lib/internal/core";
+import {
+  readOwnedInterviewSessionCorrelationId,
+  reportOperationalFailure,
+  type InterviewSessionCorrelationId,
+} from "@/lib/operations/operational-events";
 
 const PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 
@@ -45,15 +50,23 @@ export interface JoinInterviewSessionInput {
 export interface JoinInterviewSessionDeps {
   audit(event: {
     outcome: "allowed" | "denied" | "failed";
-    reason: string;
+    reason:
+      | "invalid_session_id"
+      | "livekit_token_expiry_invalid_after_authorization"
+      | "livekit_token_unavailable"
+      | "reconnect_authorization_changed"
+      | "reconnect_rate_limit_unavailable"
+      | "reconnect_token_issued"
+      | "reconnect_token_rate_limited"
+      | "session_not_found"
+      | "session_not_joinable";
     diagnostic?:
       | "missing_migration"
       | "permission"
       | "timeout"
       | "malformed_result"
       | "unknown";
-    sessionId?: string;
-    userId: string;
+    correlationId?: InterviewSessionCorrelationId | null;
   }): void;
   consumeRateLimit(userId: string): Promise<{
     allowed: boolean;
@@ -97,7 +110,6 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "denied",
       reason: "invalid_session_id",
-      userId: input.user.id,
     });
     return {
       ok: false,
@@ -114,8 +126,6 @@ export async function joinInterviewSessionWorkflow(
       outcome: "failed",
       reason: "reconnect_rate_limit_unavailable",
       diagnostic: classifyReconnectRateLimitError(error),
-      sessionId: input.sessionId,
-      userId: input.user.id,
     });
     return {
       ok: false,
@@ -130,8 +140,6 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "denied",
       reason: "reconnect_token_rate_limited",
-      sessionId: input.sessionId,
-      userId: input.user.id,
     });
     return {
       ok: false,
@@ -152,8 +160,6 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "denied",
       reason: "session_not_found",
-      sessionId: input.sessionId,
-      userId: input.user.id,
     });
     return {
       ok: false,
@@ -161,6 +167,12 @@ export async function joinInterviewSessionWorkflow(
       body: { error: "session_not_found" },
     };
   }
+
+  const correlationId = readOwnedInterviewSessionCorrelationId({
+    kind: "owned_interview_session",
+    session,
+    authenticatedUserId: input.user.id,
+  });
 
   // Stable session creation already owns one reservation. The ready voice
   // session is the join entitlement; checking the user's remaining balance
@@ -170,8 +182,7 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "denied",
       reason: "session_not_joinable",
-      sessionId: input.sessionId,
-      userId: input.user.id,
+      correlationId,
     });
     return {
       ok: false,
@@ -197,8 +208,7 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "failed",
       reason: "livekit_token_unavailable",
-      sessionId: input.sessionId,
-      userId: input.user.id,
+      correlationId,
     });
     return {
       ok: false,
@@ -227,8 +237,7 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "denied",
       reason: "reconnect_authorization_changed",
-      sessionId: input.sessionId,
-      userId: input.user.id,
+      correlationId,
     });
     return {
       ok: false,
@@ -251,8 +260,7 @@ export async function joinInterviewSessionWorkflow(
     deps.audit({
       outcome: "failed",
       reason: "livekit_token_expiry_invalid_after_authorization",
-      sessionId: input.sessionId,
-      userId: input.user.id,
+      correlationId,
     });
     return {
       ok: false,
@@ -264,8 +272,7 @@ export async function joinInterviewSessionWorkflow(
   deps.audit({
     outcome: "allowed",
     reason: "reconnect_token_issued",
-    sessionId: input.sessionId,
-    userId: input.user.id,
+    correlationId,
   });
 
   return {
@@ -306,11 +313,35 @@ export function classifyReconnectRateLimitError(
 
 export function createJoinInterviewSessionDeps(): JoinInterviewSessionDeps {
   return {
-    audit: (event) => console.info("[LiveKitJoinAudit]", event),
+    audit: reportJoinInterviewFailure,
     consumeRateLimit: consumeReconnectRateLimit,
     getSession: getSessionForLiveKitJoin,
     issueToken: issueInterviewParticipantToken,
   };
+}
+
+function reportJoinInterviewFailure(
+  event: Parameters<JoinInterviewSessionDeps["audit"]>[0]
+) {
+  if (event.outcome !== "failed") return;
+
+  const errorCode =
+    event.reason === "reconnect_rate_limit_unavailable"
+      ? "livekit_reconnect_rate_limit_unavailable"
+      : event.reason === "livekit_token_expiry_invalid_after_authorization"
+        ? "livekit_token_issue_failed"
+        : event.reason === "livekit_token_unavailable"
+          ? "livekit_token_unavailable"
+          : null;
+  if (!errorCode) return;
+
+  reportOperationalFailure({
+    operation: "interview_token",
+    errorCode,
+    severity: "critical",
+    retryable: true,
+    correlationId: event.correlationId,
+  });
 }
 
 function deriveJoinAuthorization(
