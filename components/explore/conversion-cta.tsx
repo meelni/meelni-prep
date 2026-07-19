@@ -6,6 +6,8 @@ import { Sparkles, ArrowRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
+import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 interface ConversionCTAProps {
   index: number;
@@ -13,6 +15,7 @@ interface ConversionCTAProps {
 
 export function ConversionCTA({ index }: ConversionCTAProps) {
   const router = useRouter();
+  const activation = usePublicActivationDecision();
   const [isDismissed, setIsDismissed] = useState(false);
 
   const handleDismiss = () => {
@@ -23,6 +26,7 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
   };
 
   const handleSignUpClick = () => {
+    if (!activation.canActivate) return;
     analytics.track("explore_cta_clicked", {
       cta_position: index,
     });
@@ -66,17 +70,21 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
 
       {/* Body */}
       <p className="text-muted-foreground mb-6 text-sm">
-        Get personalized AI coaching and track your progress over time
+        Practice a selected PM question out loud and review feedback after the
+        completed mock interview.
       </p>
 
       {/* CTA Button */}
       <Button
         size="default"
         onClick={handleSignUpClick}
+        disabled={!activation.canActivate}
         className="w-full gap-2 sm:w-auto"
       >
-        Sign Up Free
-        <ArrowRight className="h-4 w-4" />
+        {activation.canActivate
+          ? "Sign in to practice"
+          : PUBLIC_ACTIVATION_PAUSED_LABEL}
+        {activation.canActivate && <ArrowRight className="h-4 w-4" />}
       </Button>
     </motion.div>
   );

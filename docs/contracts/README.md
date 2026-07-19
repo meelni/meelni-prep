@@ -12,6 +12,7 @@ Good candidates:
 - [feedback v2 evidence and response shape](./feedback-v2.md);
 - [deterministic drill recommendations from validated Feedback v2](./drill-recommendations.md);
 - [deterministic focused-practice plans from accepted recommendations](./focused-practice-plans.md);
+- [focused-practice attempt lifecycle and authenticated workflow boundary](./focused-practice-attempts.md);
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
 - [evaluation calibration gold set and report](./evaluation-calibration.md);
 - [synthetic calibration output semantic adjudication](./evaluation-output-semantic-adjudication.md);
@@ -20,6 +21,7 @@ Good candidates:
 - [service health and readiness](./service-health.md);
 - [redacted operational failure events](./operational-failures.md);
 - [selected-question authentication intent](./auth-question-intent.md);
+- [public relaunch-aware conversion behavior](./public-reactivation-conversion.md);
 - [account export, recent-auth deletion, and retention boundaries](./account-privacy.md);
 - [subscription entitlement convergence across Stripe webhook delivery order](./subscription-entitlement.md);
 - [paid one-time Stripe Checkout fulfillment and replay behavior](./stripe-checkout-fulfillment.md);

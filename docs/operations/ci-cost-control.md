@@ -14,20 +14,34 @@ gate when a change becomes merge-ready.
   allocating a new Validate runner.
 - Closing a pull request also cancels any queued or running Validate work without
   publishing the required context.
-- Pushes to `main` retain the complete gate unless the stack registry is the
-  only changed path. Registry pull requests still run the complete gate before
-  merge, while their trusted default-branch publisher performs the required
-  post-merge topology and migration revalidation.
-- Manual `workflow_dispatch` runs retain the complete gate.
+- Protected merges to `main` do not allocate a second full Validate runner.
+  Strict branch protection requires every merge-ready pull request to be current
+  with `main`, and the pull-request workflow validates GitHub's generated merge
+  ref. The resulting protected merge therefore has the same Git tree that the
+  required PR check already validated.
+- Trusted stack and migration publishers retain their own scoped `main` triggers
+  and post-merge revalidation. Removing the full CI push trigger does not remove
+  those operational checks.
+- Manual `workflow_dispatch` runs retain the complete gate under the distinct
+  `Manual Validate` context, so they cannot satisfy the protected PR-only
+  `Validate` requirement.
 - Concurrency cancellation stops superseded runs for the same pull request/ref.
 
 The trigger policy changes frequency without reducing merge-ready coverage.
 Validate still installs a clean dependency graph, starts PostgreSQL, verifies
 clean and upgrade migration paths, runs repository skills and Node/Python
 contracts, executes the full quality/regression suite, and builds the production
-application. The exact `.github/stacked-prs.json` exclusion applies only to the
-post-merge `main` push. A pull request changing that file remains unfiltered,
-and any `main` push containing another path still runs the complete gate.
+application. Pull-request validation remains path-unfiltered. Manual dispatch
+remains the break-glass clean-machine verification path, but never substitutes
+for merge-ref validation.
+
+This policy depends on live protection, not convention. As verified on July 19,
+2026, required status checks use strict up-to-date enforcement, protection
+applies to admins, and force pushes are disabled. PR #353's validated merge ref
+`b6474d1c` and resulting `main` merge `c7cf038f` had the exact same tree
+`1ab7e873bc5013b9c7d789a6d7651340518e063e`; the second 9m48s full run therefore
+retested identical content. If strict protection, admin enforcement, or merge
+policy changes, restore the `push: main` trigger before relying on this policy.
 
 ## Agent workflow
 
@@ -77,8 +91,8 @@ API above.
 
 To roll back the cost-control workflow itself, revert its commit through a PR;
 keep `Validate`, `Trusted Publisher`, and `Migration Collision Publisher`
-required and restore the previous trigger policy only long enough to prove the
-replacement workflow. Never leave a skipped lifecycle context named `Validate`.
+required and restore the `push: main` full-CI trigger. Never leave a skipped
+lifecycle context named `Validate`.
 
 Vercel, GitGuardian, and local results remain complementary evidence; none
 replaces hosted Validate.
@@ -93,8 +107,8 @@ trusted-checker/default-branch full revalidation run topology and migration
 publication in one hosted job. A `main` change to `.github/stacked-prs.json`
 continues to trigger `Relaunch Integration Gates`, which checks out trusted
 default-branch code and revalidates every open registered stack plus migration
-ownership. The CI path exclusion does not change publisher permissions,
-required contexts, or branch protection.
+ownership. Removing CI's general `main` push trigger does not change publisher
+permissions, required contexts, or branch protection.
 
 ## Budget operations
 
@@ -107,7 +121,7 @@ it a code failure.
 
 Expected impact: removing duplicate feature-push runs cuts the common two-run
 pattern roughly in half. Suppressing full runs during iterative draft work saves
-additional minutes while retaining final independent proof. Registry-only
-merges save one further full run, approximately nine minutes in the July 2026
-observations, while retaining their merge-ready Validate and trusted post-merge
-publication evidence.
+additional minutes while retaining final independent proof. Removing the
+post-merge duplicate saves one further full run for every protected merge—9m48s
+for PR #353—while retaining merge-ref Validate, strict protection, manual
+dispatch, and trusted stack/migration publication.

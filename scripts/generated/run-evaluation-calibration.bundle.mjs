@@ -5914,6 +5914,12 @@ function sourceRecommendationId(roundType, dimension, evidenceGap) {
   ].join(":");
 }
 
+// packages/core/src/focused-practice-attempt.ts
+var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
+  revised_answer: 8e3,
+  reflection: 2e3
+});
+
 // packages/core/src/feedback-eligibility.ts
 var FEEDBACK_ELIGIBILITY_POLICY = {
   partial: {
@@ -18774,7 +18780,16 @@ var userSettings = pgTable(
     weeklyProgressReport: boolean("weekly_progress_report").default(false).notNull(),
     // Deprecated compatibility column. Analytics consent is owned by the
     // explicit consent contract, not this historical setting.
-    shareAnonymousData: boolean("share_anonymous_data").default(true).notNull(),
+    shareAnonymousData: boolean("share_anonymous_data").default(false).notNull(),
+    analyticsConsent: text("analytics_consent").default("undecided").notNull(),
+    analyticsConsentVersion: integer("analytics_consent_version"),
+    analyticsConsentSource: text("analytics_consent_source"),
+    analyticsConsentUpdatedAt: timestamp("analytics_consent_updated_at", {
+      withTimezone: true
+    }),
+    analyticsConsentRevision: bigint("analytics_consent_revision", {
+      mode: "number"
+    }).default(0).notNull(),
     // Deprecated compatibility column. Canonical transcripts are persisted for
     // feedback and review regardless of this historical preference.
     saveTranscripts: boolean("save_transcripts").default(true).notNull(),
@@ -18799,6 +18814,14 @@ var userSettings = pgTable(
     themeCheck: check(
       "theme_check",
       sql`${table.theme} IS NULL OR ${table.theme} IN ('light', 'dark', 'system')`
+    ),
+    analyticsConsentCheck: check(
+      "analytics_consent_check",
+      sql`${table.analyticsConsent} IN ('undecided', 'accepted', 'declined')`
+    ),
+    analyticsConsentMetadataCheck: check(
+      "analytics_consent_metadata_check",
+      sql`(${table.analyticsConsent} = 'undecided' AND ${table.analyticsConsentVersion} IS NULL AND ${table.analyticsConsentSource} IS NULL AND ${table.analyticsConsentUpdatedAt} IS NULL AND ${table.analyticsConsentRevision} = 0) OR (${table.analyticsConsent} IN ('accepted', 'declined') AND ${table.analyticsConsentVersion} > 0 AND ${table.analyticsConsentSource} IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND ${table.analyticsConsentUpdatedAt} IS NOT NULL AND ${table.analyticsConsentRevision} > 0)`
     ),
     // Index for looking up settings by user
     userIdIdx: index("user_settings_user_id_idx").on(table.userId)
@@ -19317,6 +19340,162 @@ var DEFAULT_INTERVIEW_RUNTIME_SETTINGS = {
   llm_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.llm_model,
   tts_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.tts_model
 };
+
+// lib/analytics/types.ts
+var LEGACY_INTERVIEW_LAUNCH_EVENTS = {
+  new_interview_launcher_viewed: "new_rep_launcher_viewed",
+  new_interview_recommendation_accepted: "new_rep_recommendation_accepted",
+  new_interview_recommendation_changed: "new_rep_recommendation_changed",
+  new_interview_start_attempted: "new_rep_start_attempted",
+  new_interview_start_succeeded: "new_rep_start_succeeded",
+  new_interview_start_failed: "new_rep_start_failed"
+};
+
+// lib/analytics/event-policy.ts
+var ALLOWED_PROPERTIES = {
+  landing_page_viewed: [],
+  cta_clicked: ["location", "destination"],
+  demo_modal_opened: ["trigger_source"],
+  demo_modal_closed: [
+    "duration_seconds",
+    "completed",
+    "agent_joined",
+    "user_spoke"
+  ],
+  demo_completed: ["duration_seconds", "turn_count"],
+  demo_mic_toggled: ["new_state", "time_in_demo_seconds"],
+  demo_failed: ["stage", "error_code", "retryable"],
+  demo_conversion_clicked: ["destination", "duration_seconds", "turn_count"],
+  explore_page_viewed: ["total_questions"],
+  explore_cta_clicked: ["cta_position"],
+  explore_cta_dismissed: ["cta_position"],
+  explore_search: ["results_count"],
+  explore_filter_type: ["filter_type", "results_count"],
+  explore_question_clicked: ["question_type", "company", "page"],
+  explore_page_changed: ["page", "total_pages"],
+  auth_signup_started: ["source"],
+  auth_signup_completed: ["method"],
+  auth_signup_failed: ["method", "error_code"],
+  auth_signin_started: ["source"],
+  auth_signin_completed: ["method"],
+  auth_signin_failed: ["method", "error_code"],
+  auth_signout_completed: [],
+  auth_password_reset_requested: [],
+  auth_error: ["error_code", "auth_method"],
+  setup_started: ["user_authenticated"],
+  interview_type_selected: ["interview_type"],
+  skill_level_selected: [
+    "skill_level",
+    "interview_type",
+    "is_default_selection"
+  ],
+  setup_completed: [
+    "interview_type",
+    "skill_level",
+    "mode",
+    "time_to_complete_seconds",
+    "selections_changed"
+  ],
+  new_interview_launcher_viewed: [
+    "source",
+    "recommended_round_type",
+    "recommended_difficulty",
+    "recommendation_source",
+    "entry_source"
+  ],
+  new_interview_recommendation_accepted: [
+    "recommended_round_type",
+    "recommended_difficulty",
+    "recommendation_source",
+    "entry_source"
+  ],
+  new_interview_recommendation_changed: [
+    "field",
+    "value",
+    "recommended_round_type",
+    "recommended_difficulty",
+    "entry_source"
+  ],
+  new_interview_start_attempted: [
+    "interview_type",
+    "skill_level",
+    "recommendation_source",
+    "accepted_recommendation",
+    "entry_source"
+  ],
+  new_interview_start_succeeded: [
+    "interview_type",
+    "skill_level",
+    "entry_source"
+  ],
+  new_interview_start_failed: [
+    "interview_type",
+    "skill_level",
+    "error_code",
+    "entry_source"
+  ],
+  interview_started: ["interview_type", "mode", "skill_level"],
+  interview_deadline_reached: ["interview_type"],
+  interview_ended: ["duration_seconds", "ended_naturally", "interview_type"],
+  interview_completed: ["duration_seconds", "turn_count"],
+  interview_error: ["error_code"],
+  mic_toggled: ["new_state"],
+  hint_mode_changed: ["hint_mode", "interview_type"],
+  hint_dismissed: ["hint_type", "hint_mode"],
+  dashboard_viewed: ["section"],
+  ftue_cta_clicked: ["source"],
+  ftue_viewed: [],
+  session_history_viewed: ["section", "total_sessions", "has_feedback"],
+  session_details_clicked: [
+    "interview_type",
+    "session_age_days",
+    "has_feedback"
+  ],
+  feedback_viewed: ["feedback_available", "overall_score"],
+  chart_interacted: ["chart_type", "interaction_type", "time_spent_seconds"],
+  competency_radar_viewed: [
+    "competencies_count",
+    "has_scores",
+    "avg_competency_score"
+  ],
+  score_trend_analyzed: ["time_range", "sessions_in_range", "trend_direction"],
+  billing_credit_granted: billingProperties(),
+  billing_credit_reserved: billingProperties(),
+  billing_credit_consumed: billingProperties(),
+  billing_credit_released: billingProperties(),
+  billing_credit_refunded: billingProperties(),
+  billing_credit_expired: billingProperties(),
+  billing_credit_rollover_created: billingProperties(),
+  billing_no_credits: billingProperties(),
+  billing_credit_payment_adjusted: billingProperties(),
+  page_performance: ["page", "lcp", "fid", "inp", "cls", "ttfb", "fcp"],
+  livekit_connection_established: [
+    "connection_time_ms",
+    "region",
+    "connection_quality"
+  ],
+  error_boundary_triggered: ["error_code", "page"],
+  public_demo_authorization: ["outcome", "reason"]
+};
+var EVENT_POLICY_ALIASES = Object.fromEntries(
+  Object.entries(LEGACY_INTERVIEW_LAUNCH_EVENTS).map(
+    ([canonicalEvent, legacyEvent]) => [legacyEvent, canonicalEvent]
+  )
+);
+function billingProperties() {
+  return [
+    "catalog_id",
+    "credit_source",
+    "transaction_type",
+    "credits",
+    "balance_after",
+    "reason_code",
+    "duplicate",
+    "reserved_credits",
+    "consumed_credits",
+    "unrecoverable_credits"
+  ];
+}
 
 // node_modules/posthog-node/dist/extensions/error-tracking/modifiers/module.node.mjs
 import { dirname, posix, sep } from "path";
@@ -20594,6 +20773,9 @@ ErrorTracking.errorPropertiesBuilder = new error_tracking_exports.ErrorPropertie
   createModulerModifier(),
   addSourceContext
 ]);
+
+// lib/analytics/consent-contract.ts
+var ANALYTICS_CONSENT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
 // node_modules/openai/internal/tslib.mjs
 function __classPrivateFieldSet(receiver, state, value, kind, f) {

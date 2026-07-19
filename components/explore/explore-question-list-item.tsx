@@ -14,7 +14,9 @@ interface ExploreQuestionListItemProps {
   };
   index: number;
   isLast: boolean;
+  busy?: boolean;
   disabled?: boolean;
+  practiceLabel?: string;
   onPractice: MouseEventHandler<HTMLButtonElement>;
 }
 
@@ -32,13 +34,16 @@ export function ExploreQuestionListItem({
   question,
   index,
   isLast,
+  busy = false,
   disabled = false,
+  practiceLabel = "Practice question",
   onPractice,
 }: ExploreQuestionListItemProps) {
   return (
     <article
       className={cn(
-        "group hover:bg-muted/20 -mx-4 rounded-lg px-4 py-6 transition-colors duration-200",
+        "group -mx-4 rounded-lg px-4 py-6 transition-colors duration-200",
+        disabled ? "cursor-not-allowed" : "hover:bg-muted/20",
         !isLast && "border-border/40 border-b"
       )}
       role="listitem"
@@ -47,11 +52,17 @@ export function ExploreQuestionListItem({
       <Button
         type="button"
         variant="ghost"
-        onClick={onPractice}
-        disabled={disabled}
-        aria-busy={disabled}
-        className="h-auto min-h-24 w-full min-w-0 touch-manipulation flex-col items-stretch justify-start gap-3 rounded-lg p-0 text-left whitespace-normal hover:bg-transparent"
-        aria-label={`Practice question: ${question.questionText}`}
+        onClick={(event) => {
+          if (!disabled) onPractice(event);
+        }}
+        disabled={busy}
+        aria-disabled={disabled || undefined}
+        aria-busy={busy || undefined}
+        className={cn(
+          "h-auto min-h-24 w-full min-w-0 touch-manipulation flex-col items-stretch justify-start gap-3 rounded-lg p-0 text-left whitespace-normal hover:bg-transparent",
+          disabled && !busy && "cursor-not-allowed"
+        )}
+        aria-label={`${practiceLabel}: ${question.questionText}`}
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-foreground max-w-full min-w-0 text-xs font-medium [overflow-wrap:anywhere] break-words">
@@ -66,15 +77,27 @@ export function ExploreQuestionListItem({
         </div>
 
         <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-6">
-          <h2 className="text-foreground group-hover:text-primary min-w-0 text-lg leading-snug font-semibold [overflow-wrap:anywhere] break-words whitespace-normal transition-colors">
+          <h2
+            className={cn(
+              "text-foreground min-w-0 text-lg leading-snug font-semibold [overflow-wrap:anywhere] break-words whitespace-normal transition-colors",
+              !disabled && "group-hover:text-primary"
+            )}
+          >
             {formatQuestionText(question.questionText)}
           </h2>
-          <span className="text-primary flex min-h-11 shrink-0 items-center gap-2 text-sm font-semibold">
-            Practice question
-            <ArrowRight
-              className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
-              aria-hidden="true"
-            />
+          <span
+            className={cn(
+              "flex min-h-11 shrink-0 items-center gap-2 text-sm font-semibold",
+              disabled ? "text-muted-foreground" : "text-primary"
+            )}
+          >
+            {practiceLabel}
+            {!disabled && (
+              <ArrowRight
+                className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                aria-hidden="true"
+              />
+            )}
           </span>
         </div>
       </Button>

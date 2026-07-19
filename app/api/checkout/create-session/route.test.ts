@@ -69,6 +69,11 @@ vi.mock("@/lib/feature-flags/reactivation-access", () => ({
 import { createClient } from "@/lib/supabase/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { BillingAccountBusyError } from "@/lib/billing/subscription-state";
+import {
+  checkoutReturnCorrelationFromCookie,
+  checkoutReturnCookieName,
+  isCheckoutReturnHandle,
+} from "@/lib/billing/checkout-return-cookie";
 import { POST } from "./route";
 
 describe("POST /api/checkout/create-session deletion guard", () => {
@@ -124,9 +129,6 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       retryable: false,
     });
     expect(gateMocks.resolveReactivationAccess).toHaveBeenCalledWith({
-      user: expect.objectContaining({
-        id: "11111111-1111-4111-8111-111111111111",
-      }),
       localOverride: undefined,
     });
     expect(hasAccountDeletionTombstone).not.toHaveBeenCalled();
@@ -201,9 +203,62 @@ describe("POST /api/checkout/create-session deletion guard", () => {
       "11111111-1111-4111-8111-111111111111"
     );
     expect(input.metadata.userId).toBe(input.client_reference_id);
+    const successUrl = new URL(input.success_url);
+    const returnHandle = input.metadata.checkoutReturnHandle;
+    expect(successUrl.pathname).toBe("/pricing/success");
+    expect(successUrl.search).toBe("");
+    expect(isCheckoutReturnHandle(returnHandle)).toBe(true);
+    expect(input.metadata).toEqual({
+      userId: input.client_reference_id,
+      catalogId: "interview_pass",
+      checkoutReturnHandle: returnHandle,
+    });
+    expect(input.success_url).not.toContain("{CHECKOUT_SESSION_ID}");
+    expect(input.success_url).not.toContain("checkout_return");
     expect(input.expires_at).toBeGreaterThan(
       Math.floor(Date.now() / 1000) + 29 * 60
     );
+    const cookie = response.cookies.get(
+      checkoutReturnCookieName(returnHandle!)!
+    );
+    expect(cookie).toMatchObject({
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+    });
+    expect(checkoutReturnCorrelationFromCookie(cookie!.value)).toMatchObject({
+      handle: returnHandle,
+      sessionId: "cs_test_created",
+      createdAtMs: expect.any(Number),
+    });
+    await expect(response.json()).resolves.toEqual({
+      url: "https://checkout.example.invalid/session",
+      returnHandle,
+    });
+  });
+
+  it("writes only one of the fixed Checkout return-cookie slots", async () => {
+    vi.mocked(hasAccountDeletionTombstone).mockResolvedValue(false);
+    const response = await POST(
+      new NextRequest("http://localhost/api/checkout/create-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ catalogId: "interview_pass" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const writes = response.cookies.getAll();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.name).toMatch(/^__Host-meelni_checkout_return_[0-7]$/);
+    expect(writes[0]?.value).toMatch(
+      /^cr_[A-Za-z0-9]{32}:cs_test_created:\d+$/
+    );
+    expect(writes[0]?.maxAge).toBe(30 * 24 * 60 * 60);
   });
 
   it("blocks overlapping subscription Checkout while cancellation is scheduled", async () => {

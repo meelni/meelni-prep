@@ -18,6 +18,13 @@ const CRITICAL_BOUNDARIES = [
   ["lib/workflows/sync-question-bank.ts", "question_sync"],
   ["lib/inngest/functions/delete-account.ts", "account_deletion"],
   ["app/api/user/delete/route.ts", "account_deletion"],
+  ["app/api/billing/credits/route.ts", "billing_read"],
+  ["app/api/billing/payment-history/route.ts", "billing_read"],
+  ["app/api/billing/subscription/route.ts", "billing_read"],
+  ["app/api/billing/usage/route.ts", "billing_read"],
+  ["app/api/billing/portal/route.ts", "billing_portal"],
+  ["app/api/customer-portal/route.ts", "billing_portal"],
+  ["app/api/checkout/status/route.ts", "checkout_confirmation"],
   ["lib/inngest/functions/enforce-interview-deadline.ts", "interview_recovery"],
   [
     "lib/inngest/functions/enforce-interview-reconnect.ts",
@@ -30,6 +37,40 @@ const CRITICAL_BOUNDARIES = [
   ["lib/inngest/functions/cleanup-interview-rooms.ts", "interview_recovery"],
   ["lib/inngest/functions/recover-interview-starts.ts", "interview_recovery"],
   ["lib/inngest/functions/recover-interview-credits.ts", "interview_recovery"],
+];
+
+const BILLING_BOUNDARY_ERROR_CODES = [
+  ["app/api/billing/credits/route.ts", ["billing_credit_read_failed"]],
+  [
+    "app/api/billing/payment-history/route.ts",
+    ["billing_payment_history_read_failed"],
+  ],
+  [
+    "app/api/billing/subscription/route.ts",
+    ["billing_subscription_read_failed"],
+  ],
+  ["app/api/billing/usage/route.ts", ["billing_usage_read_failed"]],
+  [
+    "app/api/billing/portal/route.ts",
+    [
+      "billing_portal_subscription_read_failed",
+      "billing_portal_customer_lookup_failed",
+      "billing_portal_session_failed",
+    ],
+  ],
+  [
+    "app/api/customer-portal/route.ts",
+    [
+      "billing_portal_subscription_read_failed",
+      "billing_portal_customer_lookup_failed",
+      "billing_portal_session_failed",
+    ],
+  ],
+];
+
+const CHECKOUT_CONFIRMATION_ERROR_CODES = [
+  "checkout_confirmation_auth_failed",
+  "checkout_confirmation_settlement_read_failed",
 ];
 
 test("every launch-critical boundary emits the closed operational contract", async () => {
@@ -62,6 +103,30 @@ test("critical boundaries cannot bypass the reporter with ad hoc console output"
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test("billing boundaries retain their fixed route-level error codes", async () => {
+  const missing = [];
+  for (const [file, errorCodes] of BILLING_BOUNDARY_ERROR_CODES) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    for (const errorCode of errorCodes) {
+      if (!source.includes(`errorCode: "${errorCode}"`)) {
+        missing.push(`${file}: ${errorCode}`);
+      }
+    }
+  }
+  assert.deepEqual(missing, []);
+});
+
+test("checkout confirmation retains its fixed boundary error codes", async () => {
+  const source = await readFile(
+    path.join(ROOT, "app/api/checkout/status/route.ts"),
+    "utf8"
+  );
+  const missing = CHECKOUT_CONFIRMATION_ERROR_CODES.filter(
+    (errorCode) => !source.includes(`"${errorCode}"`)
+  );
+  assert.deepEqual(missing, []);
 });
 
 test("the reporter interface cannot accept arbitrary failure data", async () => {

@@ -22,7 +22,18 @@
 }
 ```
 
-Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, and `interview_recovery`.
+Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, `interview_recovery`, `billing_read`, `billing_portal`, and `checkout_confirmation`.
+
+Billing read and portal failures use fixed route-level error codes. They do not
+include Stripe customer identifiers, database messages, exception strings, or
+request bodies. Subscription reads, provider customer lookups, portal-session
+creation, and authenticated billing reads are retryable operational errors;
+expected accounts without a subscription do not emit a failure event.
+
+Checkout confirmation uses fixed codes for authentication and first-party
+settlement reads. Expected unauthenticated requests and malformed, missing, or
+foreign session correlations do not emit a failure event. All
+checkout-confirmation events omit purchase and account identifiers.
 
 ## Privacy Boundary
 

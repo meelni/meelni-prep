@@ -8,7 +8,7 @@ import {
   paymentHistory,
   stripeCustomerMapping,
 } from "@/lib/db/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, isNull, or, sql } from "drizzle-orm";
 import {
   createCreditLedgerService,
   emitSubscriptionRenewalPostCommitEffects,
@@ -81,8 +81,12 @@ import {
   fulfillInterviewPassCheckout,
   isCheckoutFulfillmentError,
   isCheckoutPaymentEventType,
-  type AuthoritativeCheckoutSession,
 } from "@/lib/billing/stripe-checkout-fulfillment";
+import {
+  findAuthoritativeSubscriptionCheckoutSession,
+  findSubscriptionCheckoutSessionForInvoice,
+  retrieveAuthoritativeCheckoutSession,
+} from "@/lib/billing/stripe-checkout-session";
 import { reconcileStripeBillingAdjustment } from "@/lib/billing/stripe-billing-adjustment";
 import { normalizeStripeBillingAdjustmentEvent } from "@/lib/billing/stripe-adjustment-events";
 import { getStripeLogicalEventKey } from "@/lib/billing/stripe-event-identity";
@@ -378,7 +382,7 @@ export async function POST(req: NextRequest) {
           break;
 
         case "invoice.payment_failed":
-          await handlePaymentFailed(event);
+          await handlePaymentFailed(event, stripe);
           break;
 
         case "customer.subscription.trial_will_end":
@@ -772,36 +776,13 @@ async function handleCheckoutPayment(
       return "processed";
     }
 
+    if (result.status === "payment_failed") {
+      await persistFailedCheckoutPayment(event, result);
+      return "processed";
+    }
     if (result.status !== "fulfilled") return "processed";
 
-    await db
-      .insert(paymentHistory)
-      .values({
-        userId: result.userId,
-        stripePaymentIntentId: result.paymentIntentId,
-        stripeCheckoutSessionId: result.sessionId,
-        stripeEventId: event.id,
-        creditGrantId: result.grantId,
-        catalogId: "interview_pass",
-        amountInCents: result.amountInCents,
-        currency: result.currency,
-        status: "succeeded",
-        tier: "interview_pass",
-      })
-      .onConflictDoNothing();
-    const persisted = await db
-      .select()
-      .from(paymentHistory)
-      .where(eq(paymentHistory.stripeCheckoutSessionId, result.sessionId))
-      .limit(1);
-    assertPersistedCheckoutPayment(persisted[0], {
-      userId: result.userId,
-      stripePaymentIntentId: result.paymentIntentId,
-      creditGrantId: result.grantId,
-      catalogId: "interview_pass",
-      amountInCents: result.amountInCents,
-      currency: result.currency,
-    });
+    await persistSucceededCheckoutPayment(event, result);
   } catch (error) {
     if (!isAccountDeletionPendingError(error)) throw error;
     await redactDeletedStripeEvent(event);
@@ -817,35 +798,100 @@ async function handleCheckoutPayment(
   return "processed";
 }
 
-async function retrieveAuthoritativeCheckoutSession(
-  stripe: Stripe,
-  sessionId: string
-): Promise<AuthoritativeCheckoutSession> {
-  const session = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["line_items"],
+async function persistFailedCheckoutPayment(
+  event: Stripe.Event,
+  result: {
+    sessionId: string;
+    userId: string;
+    amountInCents: number;
+    currency: "usd";
+  }
+) {
+  await db
+    .insert(paymentHistory)
+    .values({
+      userId: result.userId,
+      stripePaymentIntentId: null,
+      stripeCheckoutSessionId: result.sessionId,
+      stripeEventId: event.id,
+      creditGrantId: null,
+      catalogId: "interview_pass",
+      amountInCents: result.amountInCents,
+      currency: result.currency,
+      status: "failed",
+      tier: "interview_pass",
+      failureReason: "payment_failed",
+      createdAt: stripeEventCreatedAt(event),
+    })
+    .onConflictDoNothing({
+      target: paymentHistory.stripeCheckoutSessionId,
+    });
+  const persisted = await db
+    .select()
+    .from(paymentHistory)
+    .where(eq(paymentHistory.stripeCheckoutSessionId, result.sessionId))
+    .limit(1);
+  assertPersistedFailedCheckoutPayment(persisted[0], {
+    userId: result.userId,
+    catalogId: "interview_pass",
+    amountInCents: result.amountInCents,
+    currency: result.currency,
   });
-  const lineItems = session.line_items;
+}
 
-  return {
-    id: session.id,
-    status: session.status,
-    paymentStatus: session.payment_status,
-    mode: session.mode,
-    clientReferenceId: session.client_reference_id,
-    metadata: session.metadata ? { ...session.metadata } : null,
-    customerId: getStripeCustomerId(session.customer),
-    paymentIntentId: getProviderId(session.payment_intent),
-    amountTotal: session.amount_total,
-    currency: session.currency,
-    lineItems: {
-      data: (lineItems?.data ?? []).map((lineItem) => ({
-        priceId: getProviderId(lineItem.price),
-        quantity: lineItem.quantity,
-        currency: lineItem.currency,
-      })),
-      hasMore: lineItems?.has_more ?? true,
-    },
+async function persistSucceededCheckoutPayment(
+  event: Stripe.Event,
+  result: {
+    sessionId: string;
+    userId: string;
+    paymentIntentId: string;
+    grantId: string;
+    amountInCents: number;
+    currency: "usd";
+  }
+) {
+  const succeeded = {
+    userId: result.userId,
+    stripePaymentIntentId: result.paymentIntentId,
+    stripeCheckoutSessionId: result.sessionId,
+    stripeEventId: event.id,
+    creditGrantId: result.grantId,
+    catalogId: "interview_pass" as const,
+    amountInCents: result.amountInCents,
+    currency: result.currency,
+    status: "succeeded" as const,
+    tier: "interview_pass" as const,
+    failureReason: null,
   };
+  await db
+    .insert(paymentHistory)
+    .values(succeeded)
+    .onConflictDoUpdate({
+      target: paymentHistory.stripeCheckoutSessionId,
+      set: succeeded,
+      setWhere: and(
+        eq(paymentHistory.status, "failed"),
+        eq(paymentHistory.userId, result.userId),
+        eq(paymentHistory.catalogId, "interview_pass"),
+        eq(paymentHistory.amountInCents, result.amountInCents),
+        eq(paymentHistory.currency, result.currency),
+        isNull(paymentHistory.stripePaymentIntentId),
+        isNull(paymentHistory.creditGrantId)
+      ),
+    });
+  const persisted = await db
+    .select()
+    .from(paymentHistory)
+    .where(eq(paymentHistory.stripeCheckoutSessionId, result.sessionId))
+    .limit(1);
+  assertPersistedCheckoutPayment(persisted[0], {
+    userId: result.userId,
+    stripePaymentIntentId: result.paymentIntentId,
+    creditGrantId: result.grantId,
+    catalogId: "interview_pass",
+    amountInCents: result.amountInCents,
+    currency: result.currency,
+  });
 }
 
 /**
@@ -932,7 +978,13 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
   const invoiceSubscriptionId = getStripeInvoiceSubscriptionId(invoice);
   let bootstrap: InvoiceFirstSubscriptionBootstrap | null = null;
   if (invoice.billing_reason === "subscription_create") {
-    if (!paidServicePeriod || !invoiceSubscriptionId) {
+    if (
+      !paidServicePeriod ||
+      !invoiceSubscriptionId ||
+      invoice.currency !== "usd" ||
+      !Number.isSafeInteger(invoice.amount_paid) ||
+      invoice.amount_paid < 0
+    ) {
       throw new Error("stripe_invoice_subscription_bootstrap_evidence_invalid");
     }
     bootstrap = deriveInvoiceFirstSubscriptionBootstrap({
@@ -975,6 +1027,17 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
     throw stripeSubjectOwnerMismatch();
   }
 
+  const bootstrapCheckoutSession = bootstrap
+    ? await findAuthoritativeSubscriptionCheckoutSession(stripe, {
+        subscriptionId: bootstrap.subscriptionId,
+        invoiceId: invoice.id,
+        customerId: bootstrap.customerId,
+        userId,
+        catalogId: bootstrap.catalogId,
+        expectedPriceId: bootstrap.priceId,
+      })
+    : null;
+
   const invoicePayment = await getInvoicePaymentCorrelation(invoice);
   const eventTimestamp = new Date(event.created * 1000);
   const invoiceCursor = stripeSubscriptionEventCursor(event);
@@ -985,6 +1048,26 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
   let postCommitEffects: SubscriptionRenewalPostCommitEffects | null = null;
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
+    let bootstrapExistingPayment: PersistedPayment | null = null;
+    if (bootstrapCheckoutSession) {
+      const invoicePayments = await tx
+        .select()
+        .from(paymentHistory)
+        .where(eq(paymentHistory.stripeInvoiceId, invoice.id))
+        .limit(3)
+        .for("update");
+      bootstrapExistingPayment = validateSubscriptionCreateInvoicePayment(
+        invoicePayments,
+        {
+          userId,
+          invoiceId: invoice.id,
+          checkoutSessionId: bootstrapCheckoutSession.id,
+          catalogId: bootstrap!.catalogId,
+          amountInCents: invoice.amount_paid,
+          currency: invoice.currency,
+        }
+      );
+    }
     let [currentSub] = await tx
       .select()
       .from(subscription)
@@ -1245,46 +1328,150 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
     }
     // Provider correlation is resolved before the transaction; payment truth,
     // entitlement truth, and subscription state commit atomically here.
-    await tx
-      .insert(paymentHistory)
-      .values({
-        userId,
-        stripePaymentIntentId: invoicePayment.paymentIntentId,
-        stripeInvoiceId: invoice.id,
-        stripeChargeId: invoicePayment.chargeId,
-        stripeEventId: event.id,
-        creditGrantId,
-        catalogId,
-        amountInCents: invoice.amount_paid,
-        currency: invoice.currency,
-        status: "succeeded",
-        tier: catalogId,
-        periodStart: invoicePeriodStart,
-        periodEnd: invoicePeriodEnd,
-        receiptUrl: invoice.hosted_invoice_url,
-      })
-      .onConflictDoNothing();
-
-    const persisted = await tx
-      .select()
-      .from(paymentHistory)
-      .where(
-        and(
-          eq(paymentHistory.stripeInvoiceId, invoice.id),
-          eq(paymentHistory.status, "succeeded")
-        )
-      )
-      .limit(1);
-    assertPersistedPayment(persisted[0], {
+    const succeededPayment = {
       userId,
       stripePaymentIntentId: invoicePayment.paymentIntentId,
+      stripeInvoiceId: invoice.id,
+      stripeCheckoutSessionId: bootstrapCheckoutSession?.id ?? null,
       stripeChargeId: invoicePayment.chargeId,
+      stripeEventId: event.id,
       creditGrantId,
       catalogId,
       amountInCents: invoice.amount_paid,
       currency: invoice.currency,
       status: "succeeded",
-    });
+      tier: catalogId,
+      periodStart: invoicePeriodStart,
+      periodEnd: invoicePeriodEnd,
+      receiptUrl: invoice.hosted_invoice_url,
+      failureReason: null,
+    };
+    let persisted: PersistedPayment[];
+    if (bootstrapCheckoutSession && bootstrapExistingPayment) {
+      if (bootstrapExistingPayment.status === "failed") {
+        persisted = await tx
+          .update(paymentHistory)
+          .set(succeededPayment)
+          .where(
+            and(
+              eq(paymentHistory.id, bootstrapExistingPayment.id),
+              eq(paymentHistory.userId, userId),
+              eq(paymentHistory.stripeInvoiceId, invoice.id),
+              eq(paymentHistory.status, "failed"),
+              or(
+                isNull(paymentHistory.stripeCheckoutSessionId),
+                eq(
+                  paymentHistory.stripeCheckoutSessionId,
+                  bootstrapCheckoutSession.id
+                )
+              ),
+              eq(paymentHistory.catalogId, bootstrap!.catalogId),
+              eq(paymentHistory.amountInCents, invoice.amount_paid),
+              eq(paymentHistory.currency, invoice.currency),
+              isNull(paymentHistory.stripePaymentIntentId),
+              isNull(paymentHistory.stripeChargeId),
+              isNull(paymentHistory.creditGrantId)
+            )
+          )
+          .returning();
+        if (persisted.length !== 1) {
+          throw new Error("billing_payment_persistence_conflict");
+        }
+      } else {
+        let retained = bootstrapExistingPayment;
+        if (retained.stripeCheckoutSessionId === null) {
+          const correlated = await tx
+            .update(paymentHistory)
+            .set({ stripeCheckoutSessionId: bootstrapCheckoutSession.id })
+            .where(
+              and(
+                eq(paymentHistory.id, retained.id),
+                eq(paymentHistory.userId, userId),
+                eq(paymentHistory.stripeInvoiceId, invoice.id),
+                eq(paymentHistory.status, retained.status),
+                isNull(paymentHistory.stripeCheckoutSessionId),
+                eq(paymentHistory.catalogId, bootstrap!.catalogId),
+                eq(paymentHistory.amountInCents, invoice.amount_paid),
+                eq(paymentHistory.currency, invoice.currency)
+              )
+            )
+            .returning();
+          if (correlated.length !== 1) {
+            throw new Error("billing_payment_persistence_conflict");
+          }
+          retained = correlated[0]!;
+        }
+        assertPersistedPayment(retained, {
+          userId,
+          stripePaymentIntentId: invoicePayment.paymentIntentId,
+          stripeCheckoutSessionId: bootstrapCheckoutSession.id,
+          stripeChargeId: invoicePayment.chargeId,
+          creditGrantId,
+          catalogId,
+          amountInCents: invoice.amount_paid,
+          currency: invoice.currency,
+        });
+        if (
+          retained.status !== "succeeded" &&
+          !SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(retained.status)
+        ) {
+          throw new Error("billing_payment_truth_mismatch:status");
+        }
+        persisted = [retained];
+      }
+    } else {
+      const succeededInsert = tx
+        .insert(paymentHistory)
+        .values(succeededPayment);
+      if (bootstrapCheckoutSession) {
+        await succeededInsert.onConflictDoUpdate({
+          target: paymentHistory.stripeCheckoutSessionId,
+          set: succeededPayment,
+          setWhere: and(
+            eq(paymentHistory.status, "failed"),
+            eq(paymentHistory.userId, userId),
+            eq(paymentHistory.stripeInvoiceId, invoice.id),
+            eq(
+              paymentHistory.stripeCheckoutSessionId,
+              bootstrapCheckoutSession.id
+            ),
+            eq(paymentHistory.catalogId, bootstrap!.catalogId),
+            eq(paymentHistory.amountInCents, invoice.amount_paid),
+            eq(paymentHistory.currency, invoice.currency),
+            isNull(paymentHistory.stripePaymentIntentId),
+            isNull(paymentHistory.stripeChargeId),
+            isNull(paymentHistory.creditGrantId)
+          ),
+        });
+      } else {
+        await succeededInsert.onConflictDoNothing();
+      }
+      persisted = await tx
+        .select()
+        .from(paymentHistory)
+        .where(
+          and(
+            eq(paymentHistory.stripeInvoiceId, invoice.id),
+            eq(paymentHistory.status, "succeeded")
+          )
+        )
+        .limit(1);
+    }
+    if (
+      !SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(persisted[0]?.status ?? "")
+    ) {
+      assertPersistedPayment(persisted[0], {
+        userId,
+        stripePaymentIntentId: invoicePayment.paymentIntentId,
+        stripeCheckoutSessionId: bootstrapCheckoutSession?.id ?? null,
+        stripeChargeId: invoicePayment.chargeId,
+        creditGrantId,
+        catalogId,
+        amountInCents: invoice.amount_paid,
+        currency: invoice.currency,
+        status: "succeeded",
+      });
+    }
     postCommitEffects = result.postCommitEffects;
   });
   if (postCommitEffects) {
@@ -1297,12 +1484,49 @@ async function handlePaymentSucceeded(event: Stripe.Event, stripe: Stripe) {
  *
  * Phase 0.5B: Implements 7-day grace period for failed payments
  */
-async function handlePaymentFailed(event: Stripe.Event) {
+async function handlePaymentFailed(event: Stripe.Event, stripe: Stripe) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = getStripeCustomerId(invoice.customer);
+  const recurringPrices = new Map([
+    [getStripePriceIdForCatalogId("starter"), "starter" as const],
+    [getStripePriceIdForCatalogId("pro"), "pro" as const],
+  ]);
+  const invoiceSubscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  let checkoutCorrelation: Awaited<
+    ReturnType<typeof findSubscriptionCheckoutSessionForInvoice>
+  > | null = null;
+  if (invoice.billing_reason === "subscription_create") {
+    if (!customerId || !invoiceSubscriptionId) {
+      throw new Error("stripe_invoice_subscription_bootstrap_evidence_invalid");
+    }
+    checkoutCorrelation = await findSubscriptionCheckoutSessionForInvoice(
+      stripe,
+      {
+        subscriptionId: invoiceSubscriptionId,
+        invoiceId: invoice.id,
+        customerId,
+        supportedPrices: recurringPrices,
+      }
+    );
+    const invoicePriceId = selectUniqueSupportedStripeInvoicePriceId(
+      await loadCompleteStripeInvoiceLines(stripe, invoice),
+      [...recurringPrices.keys()]
+    );
+    if (
+      !invoicePriceId ||
+      invoice.currency !== "usd" ||
+      !Number.isSafeInteger(invoice.amount_due) ||
+      invoice.amount_due < 0 ||
+      checkoutCorrelation.priceId !== invoicePriceId ||
+      checkoutCorrelation.catalogId !== recurringPrices.get(invoicePriceId)
+    ) {
+      throw new Error("stripe_invoice_subscription_bootstrap_evidence_invalid");
+    }
+  }
+  const ownerHint = checkoutCorrelation?.userId ?? invoice.metadata?.userId;
   const userId = customerId
-    ? await getUserIdFromStripe(customerId, invoice.metadata?.userId)
-    : invoice.metadata?.userId;
+    ? await getUserIdFromStripe(customerId, ownerHint)
+    : ownerHint;
 
   if (!userId) {
     reportOperationalFailure({
@@ -1313,65 +1537,189 @@ async function handlePaymentFailed(event: Stripe.Event) {
     });
     return;
   }
+  if (checkoutCorrelation && checkoutCorrelation.userId !== userId) {
+    throw stripeSubjectOwnerMismatch();
+  }
 
-  const settledPayment = await db
-    .select({ id: paymentHistory.id })
-    .from(paymentHistory)
-    .where(
-      and(
-        eq(paymentHistory.stripeInvoiceId, invoice.id),
-        eq(paymentHistory.status, "succeeded")
-      )
-    )
-    .limit(1);
-  if (settledPayment[0]) {
-    // Stripe does not guarantee delivery order. A delayed failure must not
-    // overwrite a later successful settlement for the same invoice.
-    return;
+  if (checkoutCorrelation && checkoutCorrelation.paymentStatus !== "unpaid") {
+    if (checkoutCorrelation.paymentStatus !== "paid") {
+      throw new Error("stripe_subscription_checkout_session_invalid");
+    }
   }
 
   // Set a 7-day grace period without persisting raw provider errors.
   const eventTimestamp = new Date(event.created * 1000);
   await db.transaction(async (tx) => {
     await lockBillingUserUnlessDeleting(tx, userId);
-    await tx
-      .insert(paymentHistory)
-      .values({
-        userId,
-        stripePaymentIntentId: null,
-        stripeInvoiceId: invoice.id,
-        stripeEventId: event.id,
-        amountInCents: invoice.amount_due,
-        currency: invoice.currency,
-        status: "failed",
-        tier: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
-        periodStart: invoice.period_start
-          ? new Date(invoice.period_start * 1000)
-          : null,
-        periodEnd: invoice.period_end
-          ? new Date(invoice.period_end * 1000)
-          : null,
-        failureReason: "payment_failed",
-        createdAt: stripeEventCreatedAt(event),
-      })
-      .onConflictDoNothing();
-    const persisted = await tx
-      .select()
-      .from(paymentHistory)
-      .where(
-        and(
-          eq(paymentHistory.stripeInvoiceId, invoice.id),
-          eq(paymentHistory.status, "failed")
-        )
-      )
-      .limit(1);
-    assertPersistedPayment(persisted[0], {
+    const failedPayment = {
       userId,
-      catalogId: getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+      stripePaymentIntentId: null,
+      stripeInvoiceId: invoice.id,
+      stripeCheckoutSessionId: checkoutCorrelation?.id ?? null,
+      stripeChargeId: null,
+      stripeEventId: event.id,
+      creditGrantId: null,
+      catalogId:
+        checkoutCorrelation?.catalogId ??
+        getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
       amountInCents: invoice.amount_due,
       currency: invoice.currency,
       status: "failed",
+      tier:
+        checkoutCorrelation?.catalogId ??
+        getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+      periodStart: invoice.period_start
+        ? new Date(invoice.period_start * 1000)
+        : null,
+      periodEnd: invoice.period_end
+        ? new Date(invoice.period_end * 1000)
+        : null,
+      failureReason: "payment_failed",
+      createdAt: stripeEventCreatedAt(event),
+    };
+    let persisted: PersistedPayment[] = [];
+    const invoicePayments = await tx
+      .select()
+      .from(paymentHistory)
+      .where(eq(paymentHistory.stripeInvoiceId, invoice.id))
+      .limit(3)
+      .for("update");
+    if (checkoutCorrelation) {
+      let existing = validateSubscriptionCreateInvoicePayment(invoicePayments, {
+        userId,
+        invoiceId: invoice.id,
+        checkoutSessionId: checkoutCorrelation.id,
+        catalogId: checkoutCorrelation.catalogId,
+        amountInCents: invoice.amount_due,
+        currency: invoice.currency,
+      });
+      if (existing?.stripeCheckoutSessionId === null) {
+        const correlated = await tx
+          .update(paymentHistory)
+          .set({ stripeCheckoutSessionId: checkoutCorrelation.id })
+          .where(
+            and(
+              eq(paymentHistory.id, existing.id),
+              eq(paymentHistory.userId, userId),
+              eq(paymentHistory.stripeInvoiceId, invoice.id),
+              eq(paymentHistory.status, existing.status),
+              isNull(paymentHistory.stripeCheckoutSessionId),
+              eq(paymentHistory.catalogId, checkoutCorrelation.catalogId),
+              eq(paymentHistory.amountInCents, invoice.amount_due),
+              eq(paymentHistory.currency, invoice.currency)
+            )
+          )
+          .returning();
+        if (correlated.length !== 1) {
+          throw new Error("billing_payment_persistence_conflict");
+        }
+        existing = correlated[0]!;
+      }
+      if (
+        existing &&
+        (existing.status === "succeeded" ||
+          SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(existing.status))
+      ) {
+        return;
+      }
+      if (checkoutCorrelation.paymentStatus === "paid") {
+        // Provider truth has advanced beyond this delayed failure. Preserve a
+        // validated legacy correlation but wait for signed success settlement.
+        return;
+      }
+      if (existing) persisted = [existing];
+    } else {
+      if (invoicePayments.length > 2) {
+        throw new Error("billing_payment_invoice_history_ambiguous");
+      }
+      for (const payment of invoicePayments) {
+        assertPersistedPayment(payment, {
+          userId,
+          catalogId: failedPayment.catalogId,
+          amountInCents: invoice.amount_due,
+          currency: invoice.currency,
+        });
+        if (payment.stripeInvoiceId !== invoice.id) {
+          throw new Error("billing_payment_truth_mismatch:stripeInvoiceId");
+        }
+        if (payment.status === "failed") {
+          if (
+            payment.stripePaymentIntentId !== null ||
+            payment.stripeChargeId !== null ||
+            payment.creditGrantId !== null
+          ) {
+            throw new Error(
+              "billing_payment_truth_mismatch:failed_correlation"
+            );
+          }
+        } else if (
+          payment.status === "succeeded" ||
+          SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(payment.status)
+        ) {
+          if (!payment.stripePaymentIntentId || !payment.creditGrantId) {
+            throw new Error(
+              "billing_payment_truth_mismatch:settlement_correlation"
+            );
+          }
+        } else {
+          throw new Error("billing_payment_truth_mismatch:status");
+        }
+      }
+      const settled = invoicePayments.find(
+        (payment) =>
+          payment.status === "succeeded" ||
+          SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(payment.status)
+      );
+      if (settled) {
+        // Stripe does not guarantee delivery order. A delayed failure must not
+        // overwrite later successful or reversed settlement truth.
+        return;
+      }
+      const failed = invoicePayments.filter(
+        (payment) => payment.status === "failed"
+      );
+      if (failed.length > 1 || failed.length !== invoicePayments.length) {
+        throw new Error("billing_payment_invoice_history_ambiguous");
+      }
+      if (failed[0]) persisted = [failed[0]];
+    }
+    if (persisted.length === 0) {
+      const failedInsert = tx.insert(paymentHistory).values(failedPayment);
+      await failedInsert.onConflictDoNothing();
+      persisted = checkoutCorrelation
+        ? await tx
+            .select()
+            .from(paymentHistory)
+            .where(
+              eq(paymentHistory.stripeCheckoutSessionId, checkoutCorrelation.id)
+            )
+            .limit(1)
+        : await tx
+            .select()
+            .from(paymentHistory)
+            .where(
+              and(
+                eq(paymentHistory.stripeInvoiceId, invoice.id),
+                eq(paymentHistory.status, "failed")
+              )
+            )
+            .limit(1);
+    }
+    assertPersistedPayment(persisted[0], {
+      userId,
+      ...(checkoutCorrelation
+        ? { stripeCheckoutSessionId: checkoutCorrelation.id }
+        : {}),
+      catalogId:
+        checkoutCorrelation?.catalogId ??
+        getStripeCatalogIdForPrice(getInvoicePriceId(invoice)),
+      amountInCents: invoice.amount_due,
+      currency: invoice.currency,
     });
+    if (persisted[0]?.status !== "failed") {
+      if (persisted[0]?.status === "succeeded") return;
+      throw new Error("billing_payment_truth_mismatch:status");
+    }
     const gracePeriodEnd = new Date(
       persisted[0]!.createdAt.getTime() + PAYMENT_FAILURE_GRACE_MS
     );
@@ -1494,6 +1842,78 @@ async function handleRefundOrDispute(event: Stripe.Event) {
 
 type PersistedPayment = typeof paymentHistory.$inferSelect;
 
+const SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES = new Set([
+  "partially_refunded",
+  "refunded",
+  "disputed",
+]);
+
+function validateSubscriptionCreateInvoicePayment(
+  rows: readonly PersistedPayment[],
+  expected: {
+    userId: string;
+    invoiceId: string;
+    checkoutSessionId: string;
+    catalogId: string;
+    amountInCents: number;
+    currency: string;
+  }
+): PersistedPayment | null {
+  if (rows.length > 2) {
+    throw new Error("billing_payment_invoice_history_ambiguous");
+  }
+  const failed: PersistedPayment[] = [];
+  const terminal: PersistedPayment[] = [];
+  for (const row of rows) {
+    assertPersistedPayment(row, {
+      userId: expected.userId,
+      catalogId: expected.catalogId,
+      amountInCents: expected.amountInCents,
+      currency: expected.currency,
+    });
+    if (row.stripeInvoiceId !== expected.invoiceId) {
+      throw new Error("billing_payment_truth_mismatch:stripeInvoiceId");
+    }
+    if (
+      row.stripeCheckoutSessionId !== null &&
+      row.stripeCheckoutSessionId !== expected.checkoutSessionId
+    ) {
+      throw new Error("billing_payment_truth_mismatch:stripeCheckoutSessionId");
+    }
+    if (row.status === "failed") {
+      if (
+        row.stripePaymentIntentId !== null ||
+        row.stripeChargeId !== null ||
+        row.creditGrantId !== null
+      ) {
+        throw new Error("billing_payment_truth_mismatch:failed_correlation");
+      }
+      failed.push(row);
+      continue;
+    }
+    if (
+      row.status === "succeeded" ||
+      SUBSCRIPTION_REVERSAL_PAYMENT_STATUSES.has(row.status)
+    ) {
+      if (!row.stripePaymentIntentId || !row.creditGrantId) {
+        throw new Error(
+          "billing_payment_truth_mismatch:settlement_correlation"
+        );
+      }
+      terminal.push(row);
+      continue;
+    }
+    throw new Error("billing_payment_truth_mismatch:status");
+  }
+  if (failed.length > 1 || terminal.length > 1) {
+    throw new Error("billing_payment_invoice_history_ambiguous");
+  }
+  // Historical code could persist failure and settlement under separate
+  // invoice+status rows. Terminal provider truth wins; the failed artifact is
+  // retained as history and is never mutated into a second correlated row.
+  return terminal[0] ?? failed[0] ?? null;
+}
+
 function assertPersistedPayment(
   actual: PersistedPayment | undefined,
   expected: Partial<
@@ -1501,6 +1921,7 @@ function assertPersistedPayment(
       PersistedPayment,
       | "userId"
       | "stripePaymentIntentId"
+      | "stripeCheckoutSessionId"
       | "stripeChargeId"
       | "creditGrantId"
       | "catalogId"
@@ -1541,6 +1962,25 @@ function assertPersistedCheckoutPayment(
 ) {
   assertPersistedPayment(actual, expected);
   if (!actual || !CHECKOUT_REPLAY_PAYMENT_STATUSES.has(actual.status)) {
+    throw new Error("billing_payment_truth_mismatch:status");
+  }
+}
+
+function assertPersistedFailedCheckoutPayment(
+  actual: PersistedPayment | undefined,
+  expected: Partial<
+    Pick<
+      PersistedPayment,
+      "userId" | "catalogId" | "amountInCents" | "currency"
+    >
+  >
+) {
+  assertPersistedPayment(actual, expected);
+  if (
+    !actual ||
+    (actual.status !== "failed" &&
+      !CHECKOUT_REPLAY_PAYMENT_STATUSES.has(actual.status))
+  ) {
     throw new Error("billing_payment_truth_mismatch:status");
   }
 }
