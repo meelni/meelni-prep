@@ -4,13 +4,13 @@ Full-featured interview agent for authenticated user sessions.
 
 ## Overview
 
-This is the main interview agent that powers full mock interview sessions. It supports multiple interview types, difficulty levels, coaching modes, and real-time transcript saving.
+This is the main interview agent that powers authenticated full mock interview sessions. It supports multiple interview types, difficulty levels, realistic adaptive follow-ups, and real-time transcript saving.
 
 ## Features
 
 - **4 Interview Types**: Product Sense, Execution, Leadership & Drive, Strategy
 - **3 Difficulty Levels**: Junior, Mid, Senior
-- **3 Coaching Modes**: Mock Interview, Practice, Learning
+- **Realistic Mock Mode**: Interviewer behavior without mid-session teaching, hints, or evaluation
 - **Dynamic Prompts**: Question bank integration with 2,879+ real PM questions
 - **Durable Transcripts**: Persists signed runtime-owned turns before publishing them to the browser
 - **Configurable Duration**: 15, 30, or 45-minute sessions
@@ -82,14 +82,21 @@ Uses shared modules from `../shared/`:
 3. Agent receives `JobContext` with room metadata
 4. Agent parses metadata with `parse_room_metadata()`
 5. Agent builds dynamic prompt with `build_agent_prompt()` using:
-   - Interview type (determines framework and evaluation criteria)
-   - Difficulty level (adjusts coaching intensity)
-   - Coaching mode (mock vs practice vs learning)
+   - Interview type (determines the round-specific areas to probe)
+   - Difficulty level (adjusts the interview bar and follow-up depth)
+   - Canonical feedback and hint defaults (`end_only` and `off`)
    - Question from bank (or generates own questions)
 6. Agent starts AgentSession with configured models
-7. Agent greets user and conducts interview
+7. Agent speaks the canonical mock-interview opening and conducts the interview;
+   when a selected question is present, that exact question is part of the first
+   audible turn and the model continues with response-grounded follow-ups
 8. Final transcript events are signed and persisted by the runtime, then published to the room for browser display
 9. The web session workflow owns the terminal outcome; provider disconnect and runtime shutdown are normalized inputs, not terminal truth
+
+During step 7 the agent remains a PM interviewer. It does not teach a framework,
+offer suggested answers, or evaluate response quality. Those outputs belong to
+the post-interview feedback workflow. The public demo agent is separate and
+retains its short feedback-preview behavior.
 
 The runtime uses `deadline_at` to close `AgentSession` immediately without
 draining queued speech and to terminate the room. Missing deadlines remain
@@ -133,11 +140,9 @@ SAV-189 writer and durable deadline workflow before relaunch.
 
 Edit prompts in `../shared/prompts.py`:
 
-- `BASE_INTERVIEWER_SYSTEM` - Core interviewer behavior
-- `PRODUCT_SENSE_PROMPT` - Product Sense framework
-- `EXECUTION_PROMPT` - Execution framework
-- `LEADERSHIP_DRIVE_PROMPT` - Leadership & Drive framework
-- `STRATEGY_PROMPT` - Strategy framework
+- `MOCK_INTERVIEWER_SYSTEM` - Core full-interview behavior
+- `MOCK_INTERVIEW_TYPE_GUIDES` - Round-specific interviewer focus areas
+- `get_mock_interview_prompt()` - Composition of the system contract and selected guide
 
 ### Adjust VAD Sensitivity
 

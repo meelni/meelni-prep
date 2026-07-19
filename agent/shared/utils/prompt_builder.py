@@ -10,6 +10,10 @@ shared_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(shared_dir))
 
 from prompts import get_prompt
+from shared.mock_interview_opening import (
+    build_mock_interview_opening,
+    selected_question_text,
+)
 
 logger = logging.getLogger("prompt-builder")
 
@@ -50,6 +54,16 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
 
     role = config.get("role", "interviewee")
     mode = config.get("mode", "mock_interview")
+    if mode not in {
+        "mock_interview",
+        "practice",
+        "learning",
+        "feedback",
+        "demonstration",
+        "interactive_coaching",
+        "strategy",
+    }:
+        mode = "mock_interview"
     skill_level = config.get("skill_level", "mid")
     duration = config.get("duration", 30)
 
@@ -75,10 +89,9 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
     )
 
     # IMPORTANT: Add specific question FIRST (before greeting) so LLM sees it early
-    question_text = None
+    question_text = selected_question_text(question)
     if question:
         # Handle both field name formats (question_text/text, question_type/type)
-        question_text = question.get("question_text") or question.get("text")
         company = question.get("company")
         question_type = question.get("question_type") or question.get("type")
 
@@ -89,8 +102,8 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
             question_header = "=" * 80
             question_header += "\n🚨 CRITICAL SYSTEM CONSTRAINT - READ FIRST 🚨"
             question_header += "\n" + "=" * 80
-            question_header += f"\n\nYou are LOCKED to this specific interview question. You CANNOT ask any other question."
-            question_header += f"\n\nTHE ONLY QUESTION YOU MAY ASK:"
+            question_header += "\n\nYou are LOCKED to this specific primary interview question. Do not replace it with another primary question."
+            question_header += "\n\nTHE PRIMARY INTERVIEW QUESTION:"
             question_header += f"\n\n    \"{question_text}\""
 
             # Add company context if available
@@ -103,8 +116,9 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
 
             question_header += "\n\n" + "=" * 80
             question_header += "\n🚨 CONSTRAINT ENFORCEMENT:"
-            question_header += "\n• You are FORBIDDEN from generating your own questions"
-            question_header += "\n• You MUST use this exact question (same meaning, same content)"
+            question_header += "\n• You MUST use this exact question as the primary interview question (same meaning, same content)"
+            question_header += "\n• You MAY ask adaptive follow-up questions grounded in what the candidate says"
+            question_header += "\n• Follow-ups must stay within the scope of the primary question and must not supply an answer"
             question_header += "\n• ALLOWED natural fixes when speaking:"
             question_header += "\n  - Expand abbreviations: 'NSM' → 'North Star Metric', '6mo' → '6 months', 'pls' → 'please'"
             question_header += "\n  - Fix obvious typos: 'teh' → 'the', 'recieve' → 'receive'"
@@ -115,11 +129,45 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
 
             base_prompt = question_header + "\n" + base_prompt
 
-    # Add opening greeting instruction - CRITICAL: Tell agent to speak first
+    # Describe the deterministic opening that the runtime adds to chat context.
+    # Explicit teaching/practice modes retain their separate coaching behavior.
     mode_name = mode.replace("_", " ").title()
     interview_type_name = interview_type.replace("_", " ").title()
 
-    greeting_instruction = f"""
+    if mode == "mock_interview":
+        opening = build_mock_interview_opening(round_type, question)
+        if question_text:
+            greeting_instruction = f"""
+
+## RUNTIME-PROVIDED OPENING:
+
+Before your first model-generated turn, the voice runtime has already spoken
+this exact opening and added it to the conversation context:
+
+"{opening}"
+
+The selected primary question has therefore already been presented. Do not
+greet again, replace it, or repeat it unless the candidate explicitly asks.
+Treat a substantive candidate response as their answer to that question, then
+ask one adaptive follow-up grounded in what they said. If they ask for time or
+a repeat, respond neutrally without teaching, hinting, or evaluating.
+"""
+        else:
+            greeting_instruction = f"""
+
+## RUNTIME-PROVIDED OPENING:
+
+Before your first model-generated turn, the voice runtime has already spoken
+this exact opening and added it to the conversation context:
+
+"{opening}"
+
+Do not greet again. After the candidate confirms they are ready, ask one
+primary {interview_type_name} question. Keep it realistic and do not teach,
+hint, or evaluate.
+"""
+    else:
+        greeting_instruction = f"""
 
 ## CRITICAL - OPENING GREETING:
 
@@ -131,14 +179,8 @@ Example opening (adapt to your personality):
 "Hey! I'm Meelni, your AI interview coach. Today we're doing a {interview_type_name} interview in {mode_name} mode. I'll ask questions and give you feedback as we go. Sound good? Ready to start?"
 """
 
-    # If we have a specific question, modify the greeting instruction
-    if question_text:
-        greeting_instruction += f"""
-After the greeting, IMMEDIATELY ask the EXACT question specified above (starting with: "{question_text[:50]}...").
-DO NOT ask any other question first. DO NOT make up your own question.
-"""
-
-    greeting_instruction += """
+    if mode != "mock_interview":
+        greeting_instruction += """
 Requirements for your greeting:
 - Mention you're Meelni, the AI interview coach
 - State the interview type: """ + interview_type_name + """
@@ -155,28 +197,6 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
 
     # Add duration context
     base_prompt += f"\n\nInterview Duration: {duration} minutes - pace yourself accordingly."
-
-    # OLD LOCATION: Question was here (moved to top for visibility)
-    if False:  # Keeping this section as reference but never executing
-        # Handle both field name formats (question_text/text, question_type/type)
-        question_text = question.get("question_text") or question.get("text")
-        company = question.get("company")
-        question_type = question.get("question_type") or question.get("type")
-
-        base_prompt += "\n\n## INTERVIEW QUESTION FROM QUESTION BANK:"
-
-        # Add company context if available
-        if company:
-            base_prompt += f"\n\nCompany Context: Imagine the candidate is interviewing at {company}."
-
-        # Add question type context
-        if question_type:
-            base_prompt += f"\nQuestion Type: {question_type}"
-
-        # Add the actual question - this is the PRIMARY question you must ask
-        if question_text:
-            base_prompt += f"\n\nYour PRIMARY interview question:\n\"{question_text}\""
-            base_prompt += "\n\nIMPORTANT: Use this exact question as the main question in your interview. After your opening, ask this question and guide the candidate through their response using the framework appropriate to this interview type."
 
     logger.info(
         "Built interview prompt",
