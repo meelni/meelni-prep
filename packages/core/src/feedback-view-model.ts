@@ -6,6 +6,7 @@ import {
   type FeedbackEvaluationState,
   type FeedbackEvidence,
   type FeedbackV2Item,
+  type FeedbackV2Result,
   type FeedbackV2Scores,
 } from "./feedback-v2";
 import {
@@ -201,6 +202,66 @@ export function presentCompletedFeedback(
   } catch {
     return { kind: "invalid", reason: "incompatible_or_corrupt" };
   }
+}
+
+/**
+ * Rebuild the strict internal Feedback v2 contract from bounded persistence
+ * fields and canonical transcript evidence. Unlike the customer presenter,
+ * this retains validated stored practice-suggestion strings because the
+ * deterministic recommendation contract requires the complete v2 shape.
+ */
+export function parsePersistedFeedbackV2(
+  input: PersistedCompletedFeedback,
+  options: PresentCompletedFeedbackOptions
+): FeedbackV2Result {
+  requireExact(input.schemaVersion, FEEDBACK_SCHEMA_VERSION);
+  requireExact(input.promptVersion, FEEDBACK_PROMPT_VERSION);
+  requireExact(input.rubricVersion, FEEDBACK_RUBRIC_VERSION);
+  const evaluationState = requireEvaluationState(input.evaluationState);
+  const scores = parseScores(input);
+  const evidenceByTurn = parseCanonicalEvidenceTurns(options.evidenceTurns);
+  const strengths = parseV2Items(input.strengths, "strengths", evidenceByTurn);
+  const improvements = parseV2Items(
+    input.improvements,
+    "improvements",
+    evidenceByTurn
+  );
+  requireUniqueEvidence([...strengths, ...improvements]);
+  const drills = parseStringArray(
+    input.drills,
+    1,
+    3,
+    FEEDBACK_READ_LIMITS.storedPracticeSuggestion
+  );
+
+  // Validate the row-level provenance fields even though they do not cross the
+  // provider-neutral Feedback v2 return contract.
+  requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier);
+  requireBoundedString(input.sessionId, FEEDBACK_READ_LIMITS.identifier);
+  requireDateString(input.createdAt);
+
+  return {
+    schemaVersion: FEEDBACK_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_PROMPT_VERSION,
+    modelVersion: requireBoundedString(
+      input.modelVersion,
+      FEEDBACK_READ_LIMITS.modelVersion
+    ),
+    rubricVersion: FEEDBACK_RUBRIC_VERSION,
+    evaluationState,
+    scores: {
+      structure: scores.structure,
+      clarity: scores.clarity,
+      insight: scores.insight,
+      communication: scores.communication,
+      leadership: scores.leadership,
+    },
+    overallScore: scores.overall,
+    strengths,
+    improvements,
+    drills,
+    summary: requireBoundedString(input.summary, FEEDBACK_READ_LIMITS.summary),
+  };
 }
 
 export function toFeedbackViewState(
@@ -549,27 +610,7 @@ function parseV2Feedback(
   input: PersistedCompletedFeedback,
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
 ): FeedbackV2View {
-  requireExact(input.schemaVersion, FEEDBACK_SCHEMA_VERSION);
-  requireExact(input.promptVersion, FEEDBACK_PROMPT_VERSION);
-  requireExact(input.rubricVersion, FEEDBACK_RUBRIC_VERSION);
-  const evaluationState = requireEvaluationState(input.evaluationState);
-  const scores = parseScores(input);
-  const evidenceByTurn = parseCanonicalEvidenceTurns(evidenceTurns);
-  const strengths = parseV2Items(input.strengths, "strengths", evidenceByTurn);
-  const improvements = parseV2Items(
-    input.improvements,
-    "improvements",
-    evidenceByTurn
-  );
-  requireUniqueEvidence([...strengths, ...improvements]);
-  // Stored model-authored suggestions remain untrusted and are validated, but
-  // are intentionally excluded from the customer read model until SAV-201.
-  parseStringArray(
-    input.drills,
-    1,
-    3,
-    FEEDBACK_READ_LIMITS.storedPracticeSuggestion
-  );
+  const feedback = parsePersistedFeedbackV2(input, { evidenceTurns });
 
   return {
     kind: "v2",
@@ -578,18 +619,15 @@ function parseV2Feedback(
       input.sessionId,
       FEEDBACK_READ_LIMITS.identifier
     ),
-    scores,
-    strengths,
-    improvements,
-    summary: requireBoundedString(input.summary, FEEDBACK_READ_LIMITS.summary),
+    scores: { ...feedback.scores, overall: feedback.overallScore },
+    strengths: feedback.strengths,
+    improvements: feedback.improvements,
+    summary: feedback.summary,
     schemaVersion: FEEDBACK_SCHEMA_VERSION,
     promptVersion: FEEDBACK_PROMPT_VERSION,
-    modelVersion: requireBoundedString(
-      input.modelVersion,
-      FEEDBACK_READ_LIMITS.modelVersion
-    ),
+    modelVersion: feedback.modelVersion,
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
-    evaluationState,
+    evaluationState: feedback.evaluationState,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
