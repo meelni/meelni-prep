@@ -1,6 +1,6 @@
 # Focused-Practice Plan Contract
 
-Status: provider-neutral Phase 1 core contract implemented for SAV-202; no database, API, or product-surface integration in this slice
+Status: provider-neutral Phase 1 core contract implemented for SAV-202; Phase 2a attempt lifecycle and workflow seam implemented in SAV-269; no database, API, or product-surface integration yet
 
 ## Purpose
 
@@ -104,7 +104,9 @@ fixtures, tests, and this contract. It does not create an attempt record, API,
 page, interview session, model call, LiveKit room, background job, credit-ledger
 entry, analytics event, or feature-flag change.
 
-A later SAV-202 slice may persist one idempotent attempt and integrate the
-feedback workspace. That slice must preserve the source snapshot, require a
-user-authored revision or reflection before completion, and present an explicit
-self-review comparison with the source grounded feedback.
+SAV-269 Phase 2a now defines the versioned attempt snapshot, idempotent start
+and completion behavior, authenticated workflow/repository seam, candidate
+revision-or-reflection requirement, and non-scored self-review comparison. It
+does not persist an attempt or expose an API or UI. A later SAV-202 slice must
+implement the durable adapter and database contract before the feedback
+workspace consumes it.
