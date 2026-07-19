@@ -511,7 +511,7 @@ Keep track of deployed agent IDs:
 ```
 # Demo Agent
 Agent ID: CA_t3sKQEihMQ7x
-Purpose: 60-second landing page demos
+Purpose: Server-bounded two-minute landing-page voice previews
 Room Pattern: demo-*
 
 # Main Interview Agent

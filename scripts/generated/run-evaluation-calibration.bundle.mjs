@@ -17244,6 +17244,8 @@ __export(schema_exports, {
   practiceSetQuestion: () => practiceSetQuestion,
   practiceSetQuestionRelations: () => practiceSetQuestionRelations,
   practiceSetRelations: () => practiceSetRelations,
+  publicDemoRateLimit: () => publicDemoRateLimit,
+  publicDemoSession: () => publicDemoSession,
   sessionQuestion: () => sessionQuestion,
   stripeCustomerMapping: () => stripeCustomerMapping,
   stripeCustomerMappingRelations: () => stripeCustomerMappingRelations,
@@ -18322,6 +18324,101 @@ var livekitReconnectRateLimit = pgTable(
       "livekit_reconnect_rate_limit_capacity_check",
       sql`cardinality(${table.acceptedAt}) <= 10`
     )
+  })
+);
+var publicDemoRateLimit = pgTable(
+  "public_demo_rate_limit",
+  {
+    deploymentScope: text("deployment_scope").notNull(),
+    scope: text("scope").notNull(),
+    identifierHash: text("identifier_hash").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).array().default(sql`ARRAY[]::timestamptz[]`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "public_demo_rate_limit_pkey",
+      columns: [table.deploymentScope, table.scope, table.identifierHash]
+    }),
+    deploymentScopeCheck: check(
+      "public_demo_rate_limit_deployment_scope_check",
+      sql`${table.deploymentScope} IN ('production', 'preview', 'development')`
+    ),
+    scopeCheck: check(
+      "public_demo_rate_limit_scope_check",
+      sql`${table.scope} IN ('global', 'ip', 'device')`
+    ),
+    hashCheck: check(
+      "public_demo_rate_limit_hash_check",
+      sql`${table.identifierHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    capacityCheck: check(
+      "public_demo_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 100`
+    )
+  })
+);
+var publicDemoSession = pgTable(
+  "public_demo_session",
+  {
+    id: uuid("id").primaryKey().notNull(),
+    deploymentScope: text("deployment_scope").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    deviceHash: text("device_hash").notNull(),
+    roomName: text("room_name").notNull().unique(),
+    status: text("status").default("provisioning").notNull(),
+    tokenIssues: integer("token_issues").default(0).notNull(),
+    recoveryClaimToken: uuid("recovery_claim_token"),
+    recoveryFinalizedAt: timestamp("recovery_finalized_at", {
+      withTimezone: true
+    }),
+    failureCode: text("failure_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    activeExpiresAt: timestamp("active_expires_at", {
+      withTimezone: true
+    }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    statusCheck: check(
+      "public_demo_session_status_check",
+      sql`${table.status} IN ('provisioning', 'ready', 'failed')`
+    ),
+    deploymentScopeCheck: check(
+      "public_demo_session_deployment_scope_check",
+      sql`${table.deploymentScope} IN ('production', 'preview', 'development')`
+    ),
+    ipHashCheck: check(
+      "public_demo_session_ip_hash_check",
+      sql`${table.ipHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    deviceHashCheck: check(
+      "public_demo_session_device_hash_check",
+      sql`${table.deviceHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    tokenIssuesCheck: check(
+      "public_demo_session_token_issues_check",
+      sql`${table.tokenIssues} BETWEEN 0 AND 2`
+    ),
+    recoveryClaimCheck: check(
+      "public_demo_session_recovery_claim_check",
+      sql`(${table.recoveryClaimToken} IS NULL AND ${table.recoveryFinalizedAt} IS NULL) OR (${table.status} = 'ready' AND ${table.tokenIssues} = 2 AND (${table.recoveryFinalizedAt} IS NULL OR ${table.recoveryClaimToken} IS NOT NULL))`
+    ),
+    failureCodeCheck: check(
+      "public_demo_session_failure_code_check",
+      sql`${table.failureCode} IS NULL OR ${table.failureCode} ~ '^[a-z0-9_]{1,64}$'`
+    ),
+    expiryOrderCheck: check(
+      "public_demo_session_expiry_order_check",
+      sql`${table.activeExpiresAt} <= ${table.expiresAt}`
+    ),
+    deviceExpiryIdx: index("public_demo_session_device_expiry_idx").on(
+      table.deploymentScope,
+      table.deviceHash,
+      table.activeExpiresAt
+    ),
+    expiryIdx: index("public_demo_session_expiry_idx").on(table.expiresAt)
   })
 );
 var accountDeletionRequest = pgTable(

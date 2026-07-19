@@ -7,6 +7,7 @@ import { createLiveKitStartFixture } from "@meelni/test-fixtures";
 import {
   buildInterviewRoomName,
   createLiveKitInterviewProvider,
+  createLiveKitPublicDemoProvider,
   findMissingRequiredEnv,
   getLiveKitAgentName,
   getLiveKitEnvironment,
@@ -45,12 +46,940 @@ test("livekit env contract captures server keys and websocket URL alternatives",
   assert.deepEqual(listProviderEnvVars("livekit"), [
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "DEMO_ABUSE_HMAC_SECRET",
     "LIVEKIT_INTERVIEW_AGENT_NAME",
     "LIVEKIT_DEMO_AGENT_NAME",
     "NEXT_PUBLIC_LIVEKIT_URL",
     "LIVEKIT_URL",
   ]);
 });
+
+test("public demo provider uses bounded rooms, microphone-only grants, and cleanup", async () => {
+  const calls: string[] = [];
+  const grants: unknown[] = [];
+  const tokenOptions: unknown[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      constructor(_key: string, _secret: string, options: unknown) {
+        tokenOptions.push(options);
+      }
+      addGrant(grant: unknown) {
+        grants.push(grant);
+      }
+      async toJwt() {
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async (room, agentName) => {
+        calls.push("unexpected-create-dispatch");
+        return { id: "unexpected", room, agentName };
+      },
+      listDispatch: async (room) => {
+        calls.push("reconcile");
+        return [{ id: "dispatch-1", room, agentName: "demo-agent" }];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async (input) => {
+        assert.equal(input.agents?.length, 1);
+        assert.equal(input.agents?.[0]?.agentName, "demo-agent");
+        calls.push(
+          `room:${input.emptyTimeout}:${input.departureTimeout}:${input.maxParticipants}`
+        );
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
+  });
+  const input = {
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  };
+
+  const started = await provider.startPublicDemoRoom(input);
+  assert.equal(started.ok, true);
+  assert.deepEqual(calls, ["room:30:5:2", "reconcile"]);
+  assert.deepEqual(grants, [
+    {
+      room: "demo-room",
+      roomJoin: true,
+      canPublish: true,
+      canPublishData: false,
+      canPublishSources: [2],
+      canSubscribe: true,
+    },
+  ]);
+  assert.deepEqual(tokenOptions, [
+    { identity: "demo-opaque", name: "Demo participant", ttl: 120 },
+  ]);
+
+  const cleanupCalls: string[] = [];
+  const failing = createLiveKitPublicDemoProvider({
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("atomic dispatch must not call createDispatch");
+      },
+      listDispatch: async () => {
+        throw new Error("dispatch unavailable");
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        cleanupCalls.push("room");
+      },
+      deleteRoom: async () => {
+        cleanupCalls.push("delete");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
+  });
+  const failed = await failing.startPublicDemoRoom(input);
+  assert.equal(failed.ok, false);
+  assert.deepEqual(cleanupCalls, ["room", "delete"]);
+});
+
+test("public demo provider never creates a second dispatch after atomic room creation", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt() {
+        calls.push("token");
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+        throw new Error("must not create a second dispatch");
+      },
+      listDispatch: async (room) => {
+        calls.push("reconcile");
+        return [{ id: "atomic-1", room, agentName: "demo-agent" }];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async (input) => {
+        calls.push("room");
+        assert.equal(input.agents?.length, 1);
+        assert.equal(input.agents?.[0]?.agentName, "demo-agent");
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
+  });
+
+  const result = await provider.startPublicDemoRoom({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["room", "reconcile", "grant", "token"]);
+});
+
+test("public demo provider cleans up when initial dispatch inspection fails", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+        throw new Error("must not dispatch");
+      },
+      listDispatch: async () => {
+        calls.push("inspect");
+        throw new Error("inspection unavailable");
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+  });
+
+  const result = await provider.startPublicDemoRoom({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_start_failed");
+  }
+  assert.deepEqual(calls, ["room", "inspect", "delete"]);
+});
+
+test("public demo provider cleans up an ambiguous atomic room-creation failure", async (t) => {
+  for (const cleanupMode of [
+    "not_found",
+    "message_only_not_found",
+    "unavailable",
+    "throws",
+  ] as const) {
+    await t.test(cleanupMode, async () => {
+      const calls: string[] = [];
+      const cleanupError = new Error("cleanup unavailable");
+      const provider = createLiveKitPublicDemoProvider({
+        accessTokenFactory: class {
+          addGrant() {
+            calls.push("grant");
+          }
+          async toJwt() {
+            calls.push("token");
+            return "must-not-mint";
+          }
+        },
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            throw new Error("atomic dispatch must not call createDispatch");
+          },
+          listDispatch: async () => {
+            calls.push("reconcile");
+            return [];
+          },
+        }),
+        roomServiceClientFactory: () => ({
+          createRoom: async () => {
+            calls.push("room");
+            throw new Error("response lost after request");
+          },
+          ...(cleanupMode === "unavailable"
+            ? {}
+            : {
+                deleteRoom: async () => {
+                  calls.push("delete");
+                  if (cleanupMode === "not_found") {
+                    throw Object.assign(new Error("room not found"), {
+                      code: "not_found",
+                    });
+                  }
+                  if (cleanupMode === "message_only_not_found") {
+                    throw new Error("LiveKit cleanup endpoint not found");
+                  }
+                  throw cleanupError;
+                },
+              }),
+        }),
+      });
+
+      const result = await provider.startPublicDemoRoom({
+        agentName: "demo-agent",
+        identity: "demo-opaque",
+        roomName: "demo-room",
+        metadata: { duration_seconds: 120 },
+        observedAt: new Date("2026-07-09T12:00:00.000Z"),
+        expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+        env: {
+          apiKey: "key",
+          apiSecret: "secret",
+          url: "wss://test.livekit.cloud",
+        },
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(
+          result.error.code,
+          cleanupMode === "not_found"
+            ? "livekit_demo_start_failed"
+            : "livekit_demo_cleanup_failed"
+        );
+        if (cleanupMode === "throws") {
+          assert.equal(result.error.cause, cleanupError);
+        }
+        if (cleanupMode === "message_only_not_found") {
+          assert.equal(
+            (result.error.cause as Error).message,
+            "LiveKit cleanup endpoint not found"
+          );
+        }
+      }
+      assert.deepEqual(
+        calls,
+        cleanupMode === "unavailable" ? ["room"] : ["room", "delete"]
+      );
+    });
+  }
+});
+
+test("public demo provider reports unavailable or failed initial cleanup", async (t) => {
+  for (const cleanupMode of ["unavailable", "throws"] as const) {
+    await t.test(cleanupMode, async () => {
+      const calls: string[] = [];
+      const cleanupError = new Error("cleanup unavailable");
+      const provider = createLiveKitPublicDemoProvider({
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            calls.push("dispatch");
+            throw new Error("must not dispatch");
+          },
+          listDispatch: async () => [
+            { id: "automatic-1", room: "demo-room", agentName: "" },
+          ],
+        }),
+        roomServiceClientFactory: () => ({
+          createRoom: async () => {
+            calls.push("room");
+          },
+          ...(cleanupMode === "throws"
+            ? {
+                deleteRoom: async () => {
+                  calls.push("delete");
+                  throw cleanupError;
+                },
+              }
+            : {}),
+        }),
+      });
+
+      const result = await provider.startPublicDemoRoom({
+        agentName: "demo-agent",
+        identity: "demo-opaque",
+        roomName: "demo-room",
+        metadata: { duration_seconds: 120 },
+        observedAt: new Date("2026-07-09T12:00:00.000Z"),
+        expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+        env: {
+          apiKey: "key",
+          apiSecret: "secret",
+          url: "wss://test.livekit.cloud",
+        },
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.error.code, "livekit_demo_cleanup_failed");
+        if (cleanupMode === "throws") {
+          assert.equal(result.error.cause, cleanupError);
+        }
+      }
+      assert.deepEqual(
+        calls,
+        cleanupMode === "throws" ? ["room", "delete"] : ["room"]
+      );
+    });
+  }
+});
+
+test("public demo provider fails closed on mismatched or ambiguous dispatches", async (t) => {
+  const cases: Array<{
+    name: string;
+    reconciled: Array<{ id: string; room: string; agentName: string }>;
+  }> = [
+    {
+      name: "dispatch id missing",
+      reconciled: [
+        {
+          id: "",
+          room: "demo-room",
+          agentName: "demo-agent",
+        },
+      ],
+    },
+    {
+      name: "agent mismatch",
+      reconciled: [
+        {
+          id: "dispatch-1",
+          room: "demo-room",
+          agentName: "",
+        },
+      ],
+    },
+    {
+      name: "room mismatch",
+      reconciled: [
+        {
+          id: "dispatch-1",
+          room: "different-room",
+          agentName: "demo-agent",
+        },
+      ],
+    },
+    {
+      name: "missing reconciled dispatch",
+      reconciled: [],
+    },
+    {
+      name: "ambiguous reconciled dispatches",
+      reconciled: [
+        { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
+        { id: "dispatch-2", room: "demo-room", agentName: "demo-agent" },
+      ],
+    },
+  ];
+
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const calls: string[] = [];
+      const provider = createLiveKitPublicDemoProvider({
+        accessTokenFactory: class {
+          addGrant() {
+            calls.push("grant");
+          }
+          async toJwt() {
+            calls.push("token");
+            return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
+          }
+        },
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            calls.push("dispatch");
+            throw new Error("atomic dispatch must not call createDispatch");
+          },
+          listDispatch: async () => {
+            calls.push("reconcile");
+            return scenario.reconciled;
+          },
+        }),
+        roomServiceClientFactory: () => ({
+          createRoom: async () => {
+            calls.push("room");
+          },
+          deleteRoom: async () => {
+            calls.push("delete");
+          },
+        }),
+        now: () => new Date("2026-07-09T12:00:00.000Z"),
+      });
+
+      const result = await provider.startPublicDemoRoom({
+        agentName: "demo-agent",
+        identity: "demo-opaque",
+        roomName: "demo-room",
+        metadata: { duration_seconds: 120 },
+        observedAt: new Date("2026-07-09T12:00:00.000Z"),
+        expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+        env: {
+          apiKey: "key",
+          apiSecret: "secret",
+          url: "wss://test.livekit.cloud",
+        },
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.error.code, "livekit_demo_start_failed");
+      }
+      assert.deepEqual(calls, ["room", "reconcile", "delete"]);
+    });
+  }
+});
+
+test("public demo token-signing failure deletes the room after atomic dispatch", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt(): Promise<string> {
+        calls.push("jwt");
+        throw new Error("signing unavailable");
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        calls.push("dispatch");
+        throw new Error("atomic dispatch must not call createDispatch");
+      },
+      listDispatch: async () => {
+        calls.push("reconcile");
+        return [
+          { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
+        ];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:00:00.000Z"),
+  });
+
+  const result = await provider.startPublicDemoRoom({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    metadata: { duration_seconds: 120 },
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, ["room", "reconcile", "grant", "jwt", "delete"]);
+});
+
+test("public demo recovery requires an actual LiveKit agent participant", async () => {
+  const checks: Array<Array<{ identity: string; kind: number }>> = [
+    [{ identity: "different-human", kind: 0 }],
+    [{ identity: "demo-agent", kind: 4 }],
+  ];
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {}
+      async toJwt() {
+        calls.push("token");
+        return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
+      }
+    },
+    sleep: async () => {
+      calls.push("wait");
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("recovery must not redispatch");
+      },
+      listDispatch: async (room) => {
+        calls.push("dispatch");
+        return [{ id: "dispatch-1", room, agentName: "demo-agent" }];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => {
+        calls.push("participants");
+        return (checks.shift() ?? []).map((participant) => ({
+          ...participant,
+          state: 1,
+          joinedAtMs: BigInt(0),
+        }));
+      },
+    }),
+    now: () => new Date("2026-07-09T12:01:00.000Z"),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:01:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    "dispatch",
+    "participants",
+    "wait",
+    "participants",
+    "dispatch",
+    "token",
+  ]);
+});
+
+test("public demo recovery withholds tokens and cleans up invalid dispatches", async (t) => {
+  const cases: Array<{
+    name: string;
+    dispatches: Array<{ id: string; room: string; agentName: string }>;
+  }> = [
+    { name: "missing dispatch", dispatches: [] },
+    {
+      name: "missing dispatch id",
+      dispatches: [{ id: "", room: "demo-room", agentName: "demo-agent" }],
+    },
+    {
+      name: "wrong agent",
+      dispatches: [
+        { id: "dispatch-1", room: "demo-room", agentName: "other-agent" },
+      ],
+    },
+    {
+      name: "wrong room",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "different-room",
+          agentName: "demo-agent",
+        },
+      ],
+    },
+    {
+      name: "multiple dispatches",
+      dispatches: [
+        { id: "dispatch-1", room: "demo-room", agentName: "demo-agent" },
+        { id: "dispatch-2", room: "demo-room", agentName: "demo-agent" },
+      ],
+    },
+  ];
+
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const calls: string[] = [];
+      const provider = createLiveKitPublicDemoProvider({
+        accessTokenFactory: class {
+          addGrant() {
+            calls.push("grant");
+          }
+          async toJwt() {
+            calls.push("token");
+            return demoJwtWithExpiration("2026-07-09T12:02:00.000Z");
+          }
+        },
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            calls.push("redispatch");
+            throw new Error("recovery must not redispatch");
+          },
+          listDispatch: async () => {
+            calls.push("dispatch");
+            return scenario.dispatches;
+          },
+        }),
+        roomServiceClientFactory: () => ({
+          createRoom: async () => undefined,
+          listParticipants: async () => [
+            {
+              identity: "demo-agent",
+              kind: 4,
+              state: 1,
+              joinedAtMs: BigInt(0),
+            },
+          ],
+          deleteRoom: async () => {
+            calls.push("delete");
+          },
+        }),
+        now: () => new Date("2026-07-09T12:01:00.000Z"),
+      });
+
+      const result = await provider.issuePublicDemoToken({
+        agentName: "demo-agent",
+        identity: "demo-opaque",
+        roomName: "demo-room",
+        observedAt: new Date("2026-07-09T12:01:00.000Z"),
+        expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+        env: {
+          apiKey: "key",
+          apiSecret: "secret",
+          url: "wss://test.livekit.cloud",
+        },
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.error.code, "livekit_demo_dispatch_invalid");
+      }
+      assert.deepEqual(calls, ["dispatch", "delete"]);
+    });
+  }
+});
+
+test("public demo recovery treats dispatch verification errors as retryable without deleting", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt() {
+        calls.push("token");
+        return "must-not-mint";
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("recovery must not redispatch");
+      },
+      listDispatch: async () => {
+        calls.push("dispatch");
+        throw new Error("provider unavailable");
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:01:00.000Z"),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:01:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_dispatch_verify_failed");
+    assert.equal(result.error.retryable, true);
+  }
+  assert.deepEqual(calls, ["dispatch"]);
+});
+
+test("public demo recovery reports cleanup failure without minting a token", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt() {
+        calls.push("token");
+        return "must-not-mint";
+      }
+    },
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("recovery must not redispatch");
+      },
+      listDispatch: async () => {
+        calls.push("dispatch");
+        return [];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+      deleteRoom: async () => {
+        calls.push("delete");
+        throw new Error("cleanup unavailable");
+      },
+    }),
+    now: () => new Date("2026-07-09T12:01:00.000Z"),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:01:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_cleanup_failed");
+  }
+  assert.deepEqual(calls, ["dispatch", "delete"]);
+});
+
+test("public demo recovery checks dispatch before participant readiness", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("recovery must not redispatch");
+      },
+      listDispatch: async () => {
+        calls.push("dispatch");
+        return [];
+      },
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => {
+        calls.push("participants");
+        return [];
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+    }),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:01:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_dispatch_invalid");
+  }
+  assert.deepEqual(calls, ["dispatch", "delete"]);
+});
+
+test("public demo provider refuses initial and recovery tokens at or past the absolute deadline", async () => {
+  const calls: string[] = [];
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {
+        calls.push("grant");
+      }
+      async toJwt() {
+        calls.push("token");
+        return "must-not-mint";
+      }
+    },
+    now: () => new Date("2026-07-09T12:02:00.000Z"),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => {
+        calls.push("room");
+      },
+      deleteRoom: async () => {
+        calls.push("delete");
+      },
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+    }),
+    agentDispatchClientFactory: () => ({
+      createDispatch: async (room, agentName) => {
+        calls.push("dispatch");
+        return { id: "dispatch-1", room, agentName };
+      },
+      listDispatch: async (room) => [
+        { id: "dispatch-1", room, agentName: "demo-agent" },
+      ],
+    }),
+  });
+  const deadlineInput = {
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:02:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  };
+
+  const recovery = await provider.issuePublicDemoToken(deadlineInput);
+  assert.equal(recovery.ok, false);
+  if (!recovery.ok) {
+    assert.equal(recovery.error.code, "livekit_demo_token_deadline_invalid");
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("public demo provider withholds a delayed signed token that crosses the persisted deadline", async () => {
+  let now = new Date("2026-07-09T12:00:00.000Z");
+  const provider = createLiveKitPublicDemoProvider({
+    accessTokenFactory: class {
+      addGrant() {}
+      async toJwt() {
+        now = new Date("2026-07-09T12:00:02.000Z");
+        return demoJwtWithExpiration("2026-07-09T12:02:02.000Z");
+      }
+    },
+    now: () => now,
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("recovery must not redispatch");
+      },
+      listDispatch: async (room) => [
+        { id: "dispatch-1", room, agentName: "demo-agent" },
+      ],
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listParticipants: async () => [
+        { identity: "demo-agent", kind: 4, state: 1, joinedAtMs: BigInt(0) },
+      ],
+    }),
+  });
+
+  const result = await provider.issuePublicDemoToken({
+    agentName: "demo-agent",
+    identity: "demo-opaque",
+    roomName: "demo-room",
+    observedAt: new Date("2026-07-09T12:00:00.000Z"),
+    expiresAt: new Date("2026-07-09T12:02:00.000Z"),
+    env: {
+      apiKey: "key",
+      apiSecret: "secret",
+      url: "wss://test.livekit.cloud",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "livekit_demo_token_deadline_invalid");
+  }
+});
+
+function demoJwtWithExpiration(expiresAt: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString(
+    "base64url"
+  );
+  const payload = Buffer.from(
+    JSON.stringify({ exp: Math.floor(new Date(expiresAt).getTime() / 1_000) })
+  ).toString("base64url");
+  return `${header}.${payload}.signature`;
+}
 
 test("Supabase env contract includes the non-secret Production identity guard", () => {
   assert.deepEqual(listProviderEnvVars("supabase"), [

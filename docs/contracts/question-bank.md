@@ -68,9 +68,9 @@ failure for the new question.
 
 The public contract and all application decisions use the four canonical rounds. Until the historical migration baseline is reconciled, the storage adapter persists canonical Strategy questions with the database-compatible `Product Strategy` label. Reads normalize that label back to `Strategy` before it leaves the data boundary.
 
-The sync stores the original source category separately from the canonical storage label. Public APIs do not expose that category, the source fingerprint, quality status, or duplicate linkage. Existing rows begin with `source_kind = legacy`. Because that is not traceable evidence, migration `0024_question_provenance` changes previously active legacy rows to inactive `quarantined_unverified`; previously inactive rows become `retired_source_missing`. A successful approved live sync adopts matching canonical rows in place, attaches deterministic source evidence, and publishes them without changing bookmarks, sessions, or selected-question IDs.
+The sync stores the original source category separately from the canonical storage label. Public APIs do not expose that category, the source fingerprint, quality status, or duplicate linkage. Existing rows begin with `source_kind = legacy`. Because that is not traceable evidence, migration `0027_question_provenance` changes previously active legacy rows to inactive `quarantined_unverified`; previously inactive rows become `retired_source_missing`. A successful approved live sync adopts matching canonical rows in place, attaches deterministic source evidence, and publishes them without changing bookmarks, sessions, or selected-question IDs.
 
-The question-provenance migration is currently stacked as `0024_question_provenance` on PR #324 exact head `72aa4d3735046014a11d5f75bc2e0c76d3ce6d87`. Its sequence, journal entry, snapshot, and schema fingerprint must be regenerated if that parent changes or another migration becomes the canonical predecessor.
+The question-provenance migration is currently stacked as `0027_question_provenance` on PR #349 exact head `bc019ecbec5cd5872ad514ad8ef58d445b58af65`. Its sequence, journal entry, snapshot, and schema fingerprint must be regenerated if that parent changes or another migration becomes the canonical predecessor.
 
 ## Sync authorization and execution
 

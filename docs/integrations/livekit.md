@@ -36,6 +36,7 @@ LIVEKIT_API_SECRET=...
 NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_INTERVIEW_AGENT_NAME=...
 LIVEKIT_DEMO_AGENT_NAME=...
+DEMO_ABUSE_HMAC_SECRET=...
 ```
 
 For LiveKit Cloud agents, also set provider secrets required by the selected
@@ -69,6 +70,16 @@ npm run typecheck
 
 - Keep explicit dispatch. Demo and full interview agents should not compete for
   the same room jobs.
+- Register every cloud worker with its configured agent name. An unnamed worker
+  enables automatic dispatch. Public-demo start therefore creates the room and
+  its named agent dispatch atomically through `CreateRoom.agents`; it never
+  creates an unscoped room and then adds a second dispatch.
+- Do not trust successful room creation by itself. Initial public-demo start
+  requires exactly one listed dispatch with a non-empty ID and the exact
+  requested room and agent before minting. Recovery verifies that same invariant
+  both before and after agent-participant readiness. Any verified mismatch
+  withholds the token and terminalizes the recovery session; transient
+  provider-read failures remain retryable without minting.
 - Keep `LIVEKIT_DEMO_AGENT_NAME` distinct from
   `LIVEKIT_INTERVIEW_AGENT_NAME`. The public demo route fails closed before
   room creation when either name is absent or both names resolve to one
@@ -77,7 +88,8 @@ npm run typecheck
 - Preview provider identity and rehearsal readiness are source-owned by
   `lib/deployment/provider-identities.ts` and the
   [deployment preflight contract](../contracts/deployment-preflight.md).
-- Keep browser participant grants minimal: room join, publish, subscribe.
+- Keep public-preview browser grants microphone-only: room join, microphone
+  publication, subscription, and no data/camera/screen publication.
 - Do not expose model/provider strings as end-user controls unless product
   strategy accepts it.
 - Preserve correlation across session ID, room name, selected question,
@@ -115,6 +127,6 @@ npm run typecheck
 
 ## References
 
-- LiveKit explicit dispatch: https://docs.livekit.io/agents/worker/agent-dispatch/
+- LiveKit explicit dispatch: https://docs.livekit.io/agents/server/agent-dispatch/
 - LiveKit authentication: https://docs.livekit.io/home/server/generating-tokens/
 - LiveKit Agents sessions: https://docs.livekit.io/agents/
