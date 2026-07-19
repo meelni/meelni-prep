@@ -16,7 +16,7 @@
  * @request.config {Object} Optional - Client-safe interview preferences
  * @request.config.difficulty {string} Optional - beginner, intermediate, or advanced
  * @request.config.duration {number} Optional - 15, 30, or 45 minutes
- * @request.config.hintMode {string} Optional - off, gentle, or coach
+ * @request.config.hintMode {string} Optional compatibility field; full mock interviews always normalize it to off
  * @request.config.questionPreference {Object} Optional - Question recency preference
  *
  * @response {Object} response - Session credentials and info
