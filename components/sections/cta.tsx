@@ -4,73 +4,70 @@ import Link from "next/link";
 import { Section } from "@/components/section";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { FEATURE_GATES } from "@/lib/feature-flags/gates";
-import { useFeatureFlag } from "@/lib/feature-flags";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export function CTA() {
-  const reactivationEnabled = useFeatureFlag(FEATURE_GATES.meelniReactivationAccess);
+  const activation = usePublicActivationDecision();
 
   return (
     <Section id="cta">
-      <div className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
+      <div className="px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
           {/* Top border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mb-12 shadow-lg shadow-primary/20"
+            className="via-primary/40 shadow-primary/20 mb-12 h-px w-full bg-gradient-to-r from-transparent to-transparent shadow-lg"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8 }}
           />
 
-          <div className="text-center space-y-6">
+          <div className="space-y-6 text-center">
             <motion.h2
-              className="text-display-lg md:text-display-xl font-display font-light text-foreground text-balance"
+              className="text-display-lg md:text-display-xl font-display text-foreground font-light text-balance"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              {reactivationEnabled
+              {activation.canActivate
                 ? "Ready to practice with Meelni?"
                 : "Thank you for your interest in Meelni"}
             </motion.h2>
 
             <motion.p
-              className="text-muted-foreground text-lg max-w-2xl mx-auto"
+              className="text-muted-foreground mx-auto max-w-2xl text-lg"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.4 }}
             >
-              {reactivationEnabled
+              {activation.canActivate
                 ? "Start a mock interview, explore the question bank, and pick up where the product experience leaves off."
-                : "This service has been discontinued. We appreciate everyone who tried our AI-powered mock interview platform."}
+                : "Practice sessions are paused while we prepare the next version. You can still browse PM questions, company guides, and interview articles."}
             </motion.p>
 
-            {reactivationEnabled && (
-              <motion.div
-                className="flex flex-col items-center justify-center gap-3 sm:flex-row"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-              >
-                <Button asChild size="lg">
-                  <Link href="/dashboard/new-interview">
-                    Start a mock interview
-                  </Link>
-                </Button>
-                <Button asChild size="lg" variant="outline">
-                  <Link href="/explore">Explore questions</Link>
-                </Button>
-              </motion.div>
-            )}
+            <motion.div
+              className="flex flex-col items-center justify-center gap-3 sm:flex-row"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+            >
+              <PublicActivationButton href={NEW_INTERVIEW_PATH} size="lg">
+                Start a mock interview
+              </PublicActivationButton>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/explore">Explore questions</Link>
+              </Button>
+            </motion.div>
           </div>
 
           {/* Bottom border with glow */}
           <motion.div
-            className="h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent mt-12 shadow-lg shadow-primary/20"
+            className="via-primary/40 shadow-primary/20 mt-12 h-px w-full bg-gradient-to-r from-transparent to-transparent shadow-lg"
             initial={{ opacity: 0, scaleX: 0 }}
             whileInView={{ opacity: 1, scaleX: 1 }}
             viewport={{ once: true }}

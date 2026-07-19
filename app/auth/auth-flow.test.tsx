@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   signUpWithEmail: vi.fn(),
   updateUser: vi.fn(),
   searchParams: new URLSearchParams(),
+  canActivate: true,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -47,6 +48,13 @@ vi.mock("@/lib/analytics/analytics-service", () => ({
   analytics: { track: vi.fn() },
 }));
 
+vi.mock("@/lib/feature-flags/public-activation-client", () => ({
+  usePublicActivationDecision: () => ({
+    canActivate: mocks.canActivate,
+    state: mocks.canActivate ? "available" : "paused",
+  }),
+}));
+
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({ auth: { updateUser: mocks.updateUser } }),
 }));
@@ -60,6 +68,7 @@ const selectedQuestionHandoff = new URLSearchParams({
 describe("rendered auth intent and recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canActivate = true;
     mocks.searchParams = new URLSearchParams(selectedQuestionHandoff);
   });
 
@@ -107,6 +116,50 @@ describe("rendered auth intent and recovery", () => {
 
     await user.click(screen.getByRole("button", { name: "Back" }));
     expect(mocks.push).toHaveBeenLastCalledWith("/");
+  });
+
+  it("keeps existing sign-in available without exposing signup activation while paused", () => {
+    mocks.canActivate = false;
+    render(<SignInPage />);
+
+    expect(screen.getByRole("button", { name: "Sign In" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Continue with Google" })
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Sign up" })).toBeNull();
+    expect(
+      screen.getByText("New accounts currently paused")
+    ).toBeInTheDocument();
+    expect(mocks.push).not.toHaveBeenCalledWith(
+      expect.stringContaining("/auth/signup")
+    );
+  });
+
+  it("makes the direct signup route inert while paused and retains existing-account entry", async () => {
+    mocks.canActivate = false;
+    const user = userEvent.setup();
+    render(<SignUpPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "New accounts currently paused" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Practice currently paused"
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Continue with Google" })
+    ).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Sign in to an existing account" })
+    );
+    expect(mocks.push).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/signin")
+    );
+    expect(mocks.signUpWithEmail).not.toHaveBeenCalled();
+    expect(mocks.signInWithGoogle).not.toHaveBeenCalled();
   });
 
   it("carries selected-question intent into password recovery and exposes a retryable failure", async () => {
