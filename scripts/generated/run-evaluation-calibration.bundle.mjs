@@ -5914,6 +5914,12 @@ function sourceRecommendationId(roundType, dimension, evidenceGap) {
   ].join(":");
 }
 
+// packages/core/src/focused-practice-attempt.ts
+var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
+  revised_answer: 8e3,
+  reflection: 2e3
+});
+
 // packages/core/src/feedback-eligibility.ts
 var FEEDBACK_ELIGIBILITY_POLICY = {
   partial: {
