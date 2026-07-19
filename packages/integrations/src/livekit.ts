@@ -56,6 +56,7 @@ export interface StartPublicDemoRoomInput {
 }
 
 export interface IssuePublicDemoTokenInput {
+  agentName: string;
   identity: string;
   roomName: string;
   observedAt: Date;
@@ -553,6 +554,57 @@ export function createLiveKitPublicDemoProvider({
     await roomClient.deleteRoom(roomName);
   }
 
+  async function verifyPublicDemoDispatch(
+    input: IssuePublicDemoTokenInput,
+    roomClient: RoomServiceClientLike,
+    dispatchClient: AgentDispatchClientLike
+  ): Promise<ProviderResult<true>> {
+    let dispatches: AgentDispatchLike[];
+    try {
+      dispatches = await dispatchClient.listDispatch(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_dispatch_verify_failed",
+        message: getErrorMessage(error),
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    if (
+      dispatches.length === 1 &&
+      typeof dispatches[0].id === "string" &&
+      dispatches[0].id.trim() &&
+      dispatches[0].agentName === input.agentName &&
+      dispatches[0].room === input.roomName
+    ) {
+      return providerSuccess("livekit", true);
+    }
+
+    if (!roomClient.deleteRoom) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup is unavailable.",
+        retryable: true,
+      });
+    }
+    try {
+      await roomClient.deleteRoom(input.roomName);
+    } catch (error) {
+      return providerFailure("livekit", {
+        code: "livekit_demo_cleanup_failed",
+        message: "Demo provider cleanup failed.",
+        retryable: true,
+        cause: error,
+      });
+    }
+    return providerFailure("livekit", {
+      code: "livekit_demo_dispatch_invalid",
+      message: "The public demo dispatch does not match the ready session.",
+      retryable: false,
+    });
+  }
+
   return {
     async startPublicDemoRoom(input) {
       const roomClient = roomServiceClientFactory(
@@ -576,21 +628,59 @@ export function createLiveKitPublicDemoProvider({
           maxParticipants: 2,
         });
         roomCreated = true;
-        await dispatchClient.createDispatch(input.roomName, input.agentName);
+        const existing = await dispatchClient.listDispatch(input.roomName);
+        if (existing.length !== 0) {
+          throw new Error(
+            "Public demo room already has an agent dispatch before explicit dispatch."
+          );
+        }
+
+        const created = await dispatchClient.createDispatch(
+          input.roomName,
+          input.agentName
+        );
+        if (
+          typeof created.id !== "string" ||
+          !created.id.trim() ||
+          created.agentName !== input.agentName ||
+          created.room !== input.roomName
+        ) {
+          throw new Error("LiveKit created a mismatched public demo dispatch.");
+        }
+
+        const reconciled = await dispatchClient.listDispatch(input.roomName);
+        if (
+          reconciled.length !== 1 ||
+          reconciled[0].id !== created.id ||
+          reconciled[0].agentName !== input.agentName ||
+          reconciled[0].room !== input.roomName
+        ) {
+          throw new Error(
+            "Public demo dispatch could not be reconciled uniquely."
+          );
+        }
 
         const token = await mintToken(input);
         if (!token.ok) throw token.error;
         return token;
       } catch (error) {
-        if (roomCreated && roomClient.deleteRoom) {
+        if (roomCreated) {
+          if (!roomClient.deleteRoom) {
+            return providerFailure("livekit", {
+              code: "livekit_demo_cleanup_failed",
+              message: "Demo provider cleanup is unavailable.",
+              retryable: true,
+              cause: error,
+            });
+          }
           try {
             await roomClient.deleteRoom(input.roomName);
-          } catch {
+          } catch (cleanupError) {
             return providerFailure("livekit", {
               code: "livekit_demo_cleanup_failed",
               message: "Demo provider cleanup failed.",
               retryable: true,
-              cause: error,
+              cause: cleanupError,
             });
           }
         }
@@ -608,6 +698,11 @@ export function createLiveKitPublicDemoProvider({
         input.env.apiKey,
         input.env.apiSecret
       );
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
       if (!roomClient.listParticipants) {
         return providerFailure("livekit", {
           code: "livekit_demo_room_verify_failed",
@@ -615,6 +710,13 @@ export function createLiveKitPublicDemoProvider({
           retryable: true,
         });
       }
+
+      const initialDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!initialDispatch.ok) return initialDispatch;
 
       try {
         let participants = await roomClient.listParticipants(input.roomName);
@@ -645,6 +747,13 @@ export function createLiveKitPublicDemoProvider({
           cause: error,
         });
       }
+
+      const finalDispatch = await verifyPublicDemoDispatch(
+        input,
+        roomClient,
+        dispatchClient
+      );
+      if (!finalDispatch.ok) return finalDispatch;
 
       return mintToken(input);
     },

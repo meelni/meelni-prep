@@ -162,6 +162,7 @@ export async function startPublicDemoWorkflow(
       return unavailable(true);
     }
     const token = await deps.livekit.issuePublicDemoToken({
+      agentName: input.agentName,
       identity: input.participantIdentity,
       roomName,
       observedAt,
@@ -169,20 +170,25 @@ export async function startPublicDemoWorkflow(
       env: input.env,
     });
     if (!token.ok) {
-      if (
+      const terminalRecoveryFailure =
         token.error.code === "livekit_demo_room_not_ready" ||
-        token.error.code === "livekit_demo_token_deadline_invalid"
-      ) {
+        token.error.code === "livekit_demo_token_deadline_invalid" ||
+        token.error.code === "livekit_demo_dispatch_invalid" ||
+        token.error.code === "livekit_demo_cleanup_failed";
+      if (terminalRecoveryFailure) {
         const invalidated = await safelyFailRecovery(
           input.sessionId,
           claimToken,
           token.error.code,
           deps
         );
-        if (invalidated) {
-          deps.audit({ outcome: "failed", reason: "recovery_room_missing" });
-          return unavailable(true);
-        }
+        deps.audit({
+          outcome: "failed",
+          reason: invalidated
+            ? safeFailureCode(token.error.code)
+            : "recovery_invalidation_failed",
+        });
+        return unavailable(true);
       }
       await safelyRollbackRecovery(input.sessionId, claimToken, deps);
       deps.audit({ outcome: "failed", reason: "recovery_token_failed" });
