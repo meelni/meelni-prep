@@ -133,8 +133,6 @@
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "@statsig/js-client": "^3.33.3",
-    "@statsig/session-replay": "^3.33.3",
-    "@statsig/web-analytics": "^3.33.3",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.79.0",
     "@tailwindcss/typography": "^0.5.19",
