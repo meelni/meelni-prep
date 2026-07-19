@@ -84,6 +84,15 @@ export type DrillRecommendation =
   | RecommendedDrill
   | UnavailableDrillRecommendation;
 
+/**
+ * Trusted in-process resolution used by workflows that must snapshot the exact
+ * grounded finding selected alongside the public recommendation contract.
+ */
+export interface DrillRecommendationResolution {
+  recommendation: DrillRecommendation;
+  sourceFinding: FeedbackV2Item | null;
+}
+
 const SCORE_DIMENSIONS = [
   "structure",
   "clarity",
@@ -126,23 +135,29 @@ const SOURCE_STATE_UNAVAILABLE_REASON = {
 export function recommendDrill(
   input: DrillRecommendationInput
 ): DrillRecommendation {
+  return resolveDrillRecommendation(input).recommendation;
+}
+
+export function resolveDrillRecommendation(
+  input: DrillRecommendationInput
+): DrillRecommendationResolution {
   if (!isRoundType(input.roundType)) {
-    return unavailable(input.templateVersion, "invalid_round");
+    return unresolved(input.templateVersion, "invalid_round");
   }
   if (!isSourceState(input.sourceState)) {
-    return unavailable(input.templateVersion, "invalid_source_state");
+    return unresolved(input.templateVersion, "invalid_source_state");
   }
   if (input.templateVersion !== DRILL_TEMPLATE_VERSION) {
-    return unavailable(input.templateVersion, "unsupported_template_version");
+    return unresolved(input.templateVersion, "unsupported_template_version");
   }
   if (input.sourceState !== "completed") {
-    return unavailable(
+    return unresolved(
       input.templateVersion,
       SOURCE_STATE_UNAVAILABLE_REASON[input.sourceState]
     );
   }
   if (!isCompleteFeedbackV2Result(input.feedback)) {
-    return unavailable(input.templateVersion, "missing_validated_feedback");
+    return unresolved(input.templateVersion, "missing_validated_feedback");
   }
 
   const scoreEntries = SCORE_DIMENSIONS.map((dimension) => ({
@@ -150,13 +165,13 @@ export function recommendDrill(
     score: input.feedback!.scores[dimension],
   }));
   if (scoreEntries.some(({ score }) => !isValidScore(score))) {
-    return unavailable(input.templateVersion, "invalid_scores");
+    return unresolved(input.templateVersion, "invalid_scores");
   }
   if (
     !isValidOverallScore(input.feedback.overallScore) ||
     input.feedback.overallScore !== calculateOverallScore(input.feedback.scores)
   ) {
-    return unavailable(input.templateVersion, "invalid_scores");
+    return unresolved(input.templateVersion, "invalid_scores");
   }
 
   const weakestScore = Math.min(...scoreEntries.map(({ score }) => score));
@@ -174,14 +189,14 @@ export function recommendDrill(
       groundedImprovements.some((item) => item.dimension === dimension)
   );
   if (!weakestDimension) {
-    return unavailable(input.templateVersion, "missing_grounded_improvement");
+    return unresolved(input.templateVersion, "missing_grounded_improvement");
   }
 
   const sourceFinding = groundedImprovements
     .filter(({ dimension }) => dimension === weakestDimension)
     .sort(compareGroundedFindings)[0];
   if (!sourceFinding) {
-    return unavailable(input.templateVersion, "missing_grounded_improvement");
+    return unresolved(input.templateVersion, "missing_grounded_improvement");
   }
 
   const evidenceGap: DrillEvidenceGap =
@@ -190,25 +205,46 @@ export function recommendDrill(
       : "grounded_partial";
 
   return {
-    state: "recommended",
-    contractVersion: DRILL_RECOMMENDATION_CONTRACT_VERSION,
-    templateVersion: DRILL_TEMPLATE_VERSION,
-    drillId: [
-      "pm-drill",
-      DRILL_TEMPLATE_VERSION,
-      input.roundType,
+    recommendation: {
+      state: "recommended",
+      contractVersion: DRILL_RECOMMENDATION_CONTRACT_VERSION,
+      templateVersion: DRILL_TEMPLATE_VERSION,
+      drillId: [
+        "pm-drill",
+        DRILL_TEMPLATE_VERSION,
+        input.roundType,
+        weakestDimension,
+        evidenceGap,
+      ].join(":"),
+      roundType: input.roundType,
       weakestDimension,
+      weakestScore,
+      tiedDimensions,
       evidenceGap,
-    ].join(":"),
-    roundType: input.roundType,
-    weakestDimension,
-    weakestScore,
-    tiedDimensions,
-    evidenceGap,
-    sourceFinding: {
-      transcriptRefs: [...sourceFinding.transcriptRefs].sort(),
-      confidence: sourceFinding.confidence,
+      sourceFinding: {
+        transcriptRefs: [...sourceFinding.transcriptRefs].sort(),
+        confidence: sourceFinding.confidence,
+      },
     },
+    sourceFinding: cloneFeedbackItem(sourceFinding),
+  };
+}
+
+function unresolved(
+  templateVersion: string,
+  reason: DrillRecommendationUnavailableReason
+): DrillRecommendationResolution {
+  return {
+    recommendation: unavailable(templateVersion, reason),
+    sourceFinding: null,
+  };
+}
+
+function cloneFeedbackItem(item: FeedbackV2Item): FeedbackV2Item {
+  return {
+    ...item,
+    transcriptRefs: [...item.transcriptRefs],
+    evidence: item.evidence.map((entry) => ({ ...entry })),
   };
 }
 
