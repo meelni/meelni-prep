@@ -6,6 +6,7 @@ import {
   getLocalDevCreditBalanceResponse,
   isLocalDevCreditBypassEnabled,
 } from "@/lib/billing/local-dev-bypass";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -28,8 +29,12 @@ export async function GET() {
     return NextResponse.json(
       await getCreditBalanceReadModel({ store, userId: user.id })
     );
-  } catch (error) {
-    console.error("Error fetching credit balance:", error);
+  } catch {
+    reportOperationalFailure({
+      operation: "billing_read",
+      errorCode: "billing_credit_read_failed",
+      retryable: true,
+    });
     return NextResponse.json(
       { error: "Failed to fetch credit balance" },
       { status: 500 }
