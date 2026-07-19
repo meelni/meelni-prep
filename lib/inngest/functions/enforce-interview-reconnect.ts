@@ -6,6 +6,7 @@ import {
   buildInterviewReconnectEvent,
   INTERVIEW_RECONNECT_EVENT_NAME,
 } from "@/lib/workflows/schedule-interview-reconnect";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const enforceInterviewReconnect = inngest.createFunction(
   {
@@ -13,6 +14,14 @@ export const enforceInterviewReconnect = inngest.createFunction(
     name: "Enforce Interview Reconnect Grace",
     retries: 5,
     concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_reconnect_enforcement_failed",
+        severity: "critical",
+        retryable: false,
+      });
+    },
   },
   { event: INTERVIEW_RECONNECT_EVENT_NAME },
   async ({ event, step }) => {
@@ -38,6 +47,14 @@ export const recoverInterviewReconnects = inngest.createFunction(
     id: "interview-reconnect-recovery",
     name: "Recover Interview Reconnect Schedules",
     retries: 2,
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_reconnect_enforcement_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {

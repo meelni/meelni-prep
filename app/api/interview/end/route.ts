@@ -5,13 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
-import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import {
+  readOwnedInterviewSessionCorrelationId,
+  reportOperationalFailure,
+  type InterviewSessionCorrelationId,
+} from "@/lib/operations/operational-events";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -55,6 +60,11 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+    correlationId = readOwnedInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: sessionId, userId: user.id },
+      authenticatedUserId: user.id,
+    });
 
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (result.completion.roomName) {
@@ -64,17 +74,24 @@ export async function POST(req: NextRequest) {
             sessionId,
             env: livekitEnv.data,
           });
-        } catch (cleanupError) {
+        } catch {
           // Terminal truth is already committed. The durable cleanup marker and
           // recovery worker own provider retries; do not ask the user to end twice.
-          console.error("[Interview End] room_cleanup_deferred", {
-            code: "interview_room_cleanup_deferred",
-            ...toSafeErrorLog(cleanupError),
+          reportOperationalFailure({
+            operation: "interview_end",
+            errorCode: "interview_room_cleanup_deferred",
+            severity: "warning",
+            retryable: true,
+            correlationId,
           });
         }
       } else {
-        console.error("Terminal interview room cleanup deferred", {
-          code: livekitEnv.error.code,
+        reportOperationalFailure({
+          operation: "interview_end",
+          errorCode: "interview_room_cleanup_deferred",
+          severity: "warning",
+          retryable: true,
+          correlationId,
         });
       }
     }
@@ -120,10 +137,13 @@ export async function POST(req: NextRequest) {
         : {}),
       nextHref: `/feedback/${sessionId}/loading`,
     });
-  } catch (error) {
-    console.error("[Interview End] session_end_failed", {
-      code: "session_end_failed",
-      ...toSafeErrorLog(error),
+  } catch {
+    reportOperationalFailure({
+      operation: "interview_end",
+      errorCode: "interview_end_failed",
+      severity: "critical",
+      retryable: true,
+      correlationId,
     });
     return NextResponse.json(
       {

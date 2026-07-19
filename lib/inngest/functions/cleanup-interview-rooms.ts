@@ -2,6 +2,7 @@ import { listInterviewRoomCleanupSessions } from "@/lib/db/session-reconnects";
 import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const INTERVIEW_ROOM_CLEANUP_EVENT_NAME =
   "interview/room.cleanup.requested" as const;
@@ -23,6 +24,14 @@ export const cleanupInterviewRoom = inngest.createFunction(
     name: "Clean Terminal Interview Room",
     retries: 5,
     concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_room_cleanup_failed",
+        severity: "critical",
+        retryable: false,
+      });
+    },
   },
   { event: INTERVIEW_ROOM_CLEANUP_EVENT_NAME },
   async ({ event, step }) => {
@@ -44,6 +53,14 @@ export const recoverInterviewRoomCleanup = inngest.createFunction(
     name: "Recover Terminal Interview Room Cleanup",
     retries: 2,
     concurrency: [{ limit: 1 }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_room_cleanup_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {
