@@ -28,9 +28,9 @@
     },
     {
       "pr": 359,
-      "parentPr": 324,
+      "parentPr": 349,
       "headRef": "codex/sav-204-question-provenance-current",
-      "parentRef": "codex/sav-180-consent-reconvergence"
+      "parentRef": "codex/sav-268-preview-lineage-reconciliation"
     }
   ]
 }
