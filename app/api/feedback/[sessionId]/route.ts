@@ -27,7 +27,11 @@ import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
 } from "@/lib/db/session-deadlines";
-import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import {
+  readOwnedInterviewSessionCorrelationId,
+  reportOperationalFailure,
+  type InterviewSessionCorrelationId,
+} from "@/lib/operations/operational-events";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 
 // Estimated total processing time (seconds)
@@ -37,6 +41,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -61,6 +66,13 @@ export async function GET(
     }
 
     const session = await getSessionById(sessionId);
+    if (session) {
+      correlationId = readOwnedInterviewSessionCorrelationId({
+        kind: "owned_interview_session",
+        session,
+        authenticatedUserId: user.id,
+      });
+    }
 
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
@@ -110,11 +122,12 @@ export async function GET(
     }
 
     if (!hasValidFeedbackLifecycleFields(feedbackRecord)) {
-      console.error("[feedback.integrity] invalid lifecycle fields", {
-        environment:
-          process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
-        release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
-        sessionId,
+      reportOperationalFailure({
+        operation: "feedback_dispatch",
+        errorCode: "feedback_integrity_invalid",
+        severity: "error",
+        retryable: false,
+        correlationId,
       });
       return NextResponse.json(
         { error: "Invalid feedback state" },
@@ -225,11 +238,12 @@ export async function GET(
         { evidenceTurns }
       );
       if (feedbackView.kind === "invalid") {
-        console.error("[feedback.integrity] incompatible completed feedback", {
-          environment:
-            process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
-          release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
-          sessionId,
+        reportOperationalFailure({
+          operation: "feedback_dispatch",
+          errorCode: "feedback_integrity_invalid",
+          severity: "error",
+          retryable: false,
+          correlationId,
         });
       }
       return NextResponse.json(
@@ -270,11 +284,12 @@ export async function GET(
       };
       const skippedResponse = decodeFeedbackLifecycleResponse(candidate);
       if (!skippedResponse || skippedResponse.status !== "skipped") {
-        console.error("[feedback.integrity] invalid skipped feedback", {
-          environment:
-            process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
-          release: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
-          sessionId,
+        reportOperationalFailure({
+          operation: "feedback_dispatch",
+          errorCode: "feedback_integrity_invalid",
+          severity: "error",
+          retryable: false,
+          correlationId,
         });
         return NextResponse.json(
           { error: "Invalid feedback state" },
@@ -320,10 +335,13 @@ export async function GET(
       { error: "Invalid feedback status" },
       { status: 500 }
     );
-  } catch (error) {
-    console.error("[Feedback API] fetch_failed", {
-      code: "feedback_fetch_failed",
-      ...toSafeErrorLog(error),
+  } catch {
+    reportOperationalFailure({
+      operation: "feedback_dispatch",
+      errorCode: "feedback_read_failed",
+      severity: "error",
+      retryable: true,
+      correlationId,
     });
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
@@ -336,6 +354,7 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
+  let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     const supabase = await createClient();
     const {
@@ -379,6 +398,11 @@ export async function POST(
         { status: 409 }
       );
     }
+    correlationId = readOwnedInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: sessionId, userId: user.id },
+      authenticatedUserId: user.id,
+    });
     return NextResponse.json(
       {
         status: result.status,
@@ -389,10 +413,13 @@ export async function POST(
       },
       { headers: { "Cache-Control": "private, no-store" } }
     );
-  } catch (error) {
-    console.error("[Feedback API] retry_failed", {
-      code: "feedback_retry_failed",
-      ...toSafeErrorLog(error),
+  } catch {
+    reportOperationalFailure({
+      operation: "feedback_dispatch",
+      errorCode: "feedback_retry_failed",
+      severity: "error",
+      retryable: true,
+      correlationId,
     });
     return NextResponse.json(
       {
