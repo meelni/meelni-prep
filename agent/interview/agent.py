@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.config import parse_room_metadata
 from shared.candidate_presence import wait_for_candidate_before_greeting
+from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
     create_runtime_event,
@@ -118,7 +119,7 @@ async def terminate_livekit_room(ctx: JobContext, room_name: str) -> None:
 
 
 class InterviewAgent(Agent):
-    """PM Interview Coach Agent with dynamic instructions"""
+    """Realistic PM interviewer with round-specific instructions."""
 
     def __init__(self, instructions: str) -> None:
         super().__init__(instructions=instructions)
@@ -997,14 +998,11 @@ async def entrypoint(ctx: JobContext):
         else "Legacy interview candidate is present"
     )
 
-    # CRITICAL: Send initial greeting so agent speaks first
-    # AgentSession doesn't auto-generate output - it waits for user input
-    interview_type_display = round_type.replace("_", " ").title()
-    greeting = f"Hey! Ready to jump in? We'll be doing a {interview_type_display} interview today."
-
+    # AgentSession waits for user input, so the runtime owns one deterministic
+    # first turn and adds it to chat context before model-generated follow-ups.
     try:
-        await session.say(greeting)
-        logger.info("Initial greeting sent")
+        await speak_mock_interview_opening(session, round_type, question)
+        logger.info("Initial mock interview opening sent")
     except Exception as error:
         log_exception_class(
             logger,
