@@ -3,7 +3,7 @@
 ## Account export
 
 `GET /api/user/export` requires a server-verified authenticated user and returns
-one JSON attachment scoped to that user. The payload version is `1.0.0` and is
+one JSON attachment scoped to that user. The payload version is `1.1.0` and is
 defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
@@ -19,6 +19,11 @@ notification preferences. Deprecated compatibility columns such as
 exported as active preferences: they do not control transcript persistence and
 must never be interpreted as analytics consent. The columns remain in the
 database only for a separately rehearsed compatibility cleanup.
+
+The operative analytics-consent export contains the decision, policy version,
+source, database timestamp, and monotonic account revision. This is the user's
+actual optional-analytics preference record; it does not export provider IDs or
+the deprecated `share_anonymous_data` compatibility value.
 
 The export excludes:
 
@@ -42,7 +47,7 @@ Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
 
 Meelni no longer writes or derives streaks and achievements in active product
-workflows. Export schema `1.0.0` continues to return any historical values so a
+workflows. Export schema `1.1.0` continues to return any historical values so a
 product retirement does not silently discard user data. The legacy columns and
 table also remain covered by account deletion. Physical removal requires a
 separate retention decision, a versioned export-contract change, and a

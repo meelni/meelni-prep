@@ -12,11 +12,12 @@ import {
   type AnalyticsConsentSnapshot,
 } from "@/lib/analytics/consent-contract";
 import { createAnalyticsPseudonym } from "@/lib/analytics/pseudonym";
-import { readUserAnalyticsConsent } from "@/lib/db/analytics-consent";
+import { readUserAnalyticsConsentRecord } from "@/lib/db/analytics-consent";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { createClient } from "@/lib/supabase/server";
 
 export interface TrustedAnalyticsConsentState {
+  accountRevision: number | null;
   accountSyncPending: boolean;
   accountSynchronized: boolean;
   analyticsPseudonym: string | null;
@@ -56,6 +57,7 @@ export async function resolveTrustedAnalyticsConsentState(
     if (!user) {
       const browser = parseAnalyticsConsentCookie(browserCookieValue);
       return {
+        accountRevision: null,
         accountSyncPending: false,
         accountSynchronized: false,
         analyticsPseudonym: null,
@@ -70,13 +72,15 @@ export async function resolveTrustedAnalyticsConsentState(
       };
     }
 
-    const account = await readUserAnalyticsConsent(user.id);
+    const accountRecord = await readUserAnalyticsConsentRecord(user.id);
+    const account = accountRecord.consent;
     const browser = parseAnalyticsConsentCookie(browserCookieValue);
     const consent = resolveTrustedAnalyticsConsent(browser, account, "account");
     const accountSynchronized =
       consent.decision === account.decision &&
       consent.decidedAt === account.decidedAt;
     return {
+      accountRevision: accountRecord.revision,
       accountSyncPending: shouldRetryAccountConsentSync(
         consent,
         accountSynchronized
@@ -93,6 +97,7 @@ export async function resolveTrustedAnalyticsConsentState(
       ...toSafeErrorLog(error),
     });
     return {
+      accountRevision: null,
       accountSyncPending: false,
       accountSynchronized: false,
       analyticsPseudonym: null,

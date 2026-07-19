@@ -21,6 +21,7 @@ import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 const writeSchema = z
   .object({
     decision: z.enum(["accepted", "declined"]),
+    expectedRevision: z.number().int().nonnegative().optional(),
     policyVersion: z.number().int().positive(),
     source: z.enum(["banner", "settings", "legacy_decline"]),
   })
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
     persistence: {
       browser: state.consent.decision !== "undecided",
       account: state.accountSynchronized,
+      accountRevision: state.accountRevision,
       browserOnly,
     },
   });
@@ -76,17 +78,50 @@ export async function PUT(request: NextRequest) {
   if (!subject.resolved) {
     return json({ error: "consent_persistence_failed" }, 503);
   }
-  let consent = createAnalyticsConsentDecision(
+  const requestedConsent = createAnalyticsConsentDecision(
     parsed.data.decision,
     parsed.data.source,
     subject.user ? "account" : "anonymous"
   );
+  let consent: AnalyticsConsentSnapshot = requestedConsent;
   let accountPersisted = false;
+  let accountRevision: number | null = null;
   const browserOnly = parsed.data.source === "legacy_decline";
   try {
     if (subject.user && !browserOnly) {
-      consent = await writeUserAnalyticsConsent(subject.user.id, consent);
+      if (parsed.data.expectedRevision === undefined) {
+        return json({ error: "consent_revision_required" }, 400);
+      }
+      const result = await writeUserAnalyticsConsent(
+        subject.user.id,
+        requestedConsent,
+        parsed.data.expectedRevision
+      );
+      consent = result.consent;
+      accountRevision = result.revision;
       accountPersisted = true;
+      if (result.status === "conflict") {
+        const response = json(
+          {
+            error: "consent_conflict",
+            analyticsPseudonym:
+              consent.decision === "accepted"
+                ? createAnalyticsPseudonym(subject.user.id)
+                : null,
+            consent,
+            currentPolicyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+            persistence: {
+              browser: true,
+              account: true,
+              accountRevision,
+              browserOnly: false,
+            },
+          },
+          409
+        );
+        setConsentCookie(response, consent);
+        return response;
+      }
     }
   } catch (error) {
     console.error("[AnalyticsConsent] Failed to persist account consent", {
@@ -104,7 +139,12 @@ export async function PUT(request: NextRequest) {
         : null,
     consent,
     currentPolicyVersion: ANALYTICS_CONSENT_POLICY_VERSION,
-    persistence: { browser: true, account: accountPersisted, browserOnly },
+    persistence: {
+      browser: true,
+      account: accountPersisted,
+      accountRevision,
+      browserOnly,
+    },
   });
   setConsentCookie(response, consent);
   return response;

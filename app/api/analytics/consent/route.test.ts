@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
-  readUserAnalyticsConsent: vi.fn(),
+  readUserAnalyticsConsentRecord: vi.fn(),
   writeUserAnalyticsConsent: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser: mocks.getUser } }),
 }));
 vi.mock("@/lib/db/analytics-consent", () => ({
-  readUserAnalyticsConsent: mocks.readUserAnalyticsConsent,
+  readUserAnalyticsConsentRecord: mocks.readUserAnalyticsConsentRecord,
   writeUserAnalyticsConsent: mocks.writeUserAnalyticsConsent,
 }));
 
@@ -33,9 +33,16 @@ describe("analytics consent API", () => {
       data: { user: null },
       error: new AuthSessionMissingError(),
     });
-    mocks.readUserAnalyticsConsent.mockResolvedValue(undecided);
+    mocks.readUserAnalyticsConsentRecord.mockResolvedValue({
+      consent: undecided,
+      revision: 0,
+    });
     mocks.writeUserAnalyticsConsent.mockImplementation(
-      async (_userId, consent) => consent
+      async (_userId, consent, expectedRevision) => ({
+        consent,
+        revision: expectedRevision + 1,
+        status: "applied",
+      })
     );
   });
 
@@ -43,6 +50,7 @@ describe("analytics consent API", () => {
     const response = await PUT(
       request({
         decision: "accepted",
+        expectedRevision: 0,
         policyVersion: 1,
         source: "banner",
       })
@@ -65,6 +73,7 @@ describe("analytics consent API", () => {
     const response = await PUT(
       request({
         decision: "accepted",
+        expectedRevision: 0,
         policyVersion: 1,
         source: "settings",
       })
@@ -72,6 +81,25 @@ describe("analytics consent API", () => {
     expect(response.status).toBe(200);
     expect(mocks.writeUserAnalyticsConsent).toHaveBeenCalledOnce();
     expect((await response.json()).persistence.account).toBe(true);
+  });
+
+  it("requires the last observed revision for signed-in writes", async () => {
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-1" } },
+      error: null,
+    });
+    const response = await PUT(
+      request({
+        decision: "accepted",
+        policyVersion: 1,
+        source: "settings",
+      })
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "consent_revision_required",
+    });
+    expect(mocks.writeUserAnalyticsConsent).not.toHaveBeenCalled();
   });
 
   it("rejects an outdated policy version without persistence", async () => {
@@ -108,6 +136,7 @@ describe("analytics consent API", () => {
     const response = await PUT(
       request({
         decision: "accepted",
+        expectedRevision: 0,
         policyVersion: 1,
         source: "banner",
       })
@@ -128,15 +157,20 @@ describe("analytics consent API", () => {
       decidedAt: "2026-07-10T12:01:00.000Z",
       scope: "account",
     };
-    mocks.writeUserAnalyticsConsent.mockResolvedValue(accountDecline);
+    mocks.writeUserAnalyticsConsent.mockResolvedValue({
+      consent: accountDecline,
+      revision: 2,
+      status: "conflict",
+    });
     const response = await PUT(
       request({
         decision: "accepted",
+        expectedRevision: 1,
         policyVersion: 1,
         source: "settings",
       })
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
     expect((await response.json()).consent).toEqual(accountDecline);
     expect(response.headers.getSetCookie().join(";")).toContain("v1.declined.");
   });
@@ -166,6 +200,7 @@ describe("analytics consent API", () => {
     const response = await PUT(
       request({
         decision: "declined",
+        expectedRevision: 0,
         policyVersion: 1,
         source: "settings",
       })
@@ -180,20 +215,23 @@ describe("analytics consent API", () => {
       data: { user: { id: "user-1" } },
       error: null,
     });
-    mocks.readUserAnalyticsConsent.mockRejectedValue(new Error("db read down"));
+    mocks.readUserAnalyticsConsentRecord.mockRejectedValue(
+      new Error("db read down")
+    );
     mocks.writeUserAnalyticsConsent.mockRejectedValue(
       new Error("db write down")
     );
     const response = await PUT(
       request({
         decision: "declined",
+        expectedRevision: 0,
         policyVersion: 1,
         source: "settings",
       })
     );
     expect(response.status).toBe(200);
     expect(response.headers.getSetCookie().join(";")).toContain("v1.declined.");
-    expect(mocks.readUserAnalyticsConsent).not.toHaveBeenCalled();
+    expect(mocks.readUserAnalyticsConsentRecord).not.toHaveBeenCalled();
   });
 
   it("blocks cross-site writes before auth or persistence", async () => {
@@ -221,7 +259,10 @@ describe("analytics consent API", () => {
       data: { user: { id: "user-2" } },
       error: null,
     });
-    mocks.readUserAnalyticsConsent.mockResolvedValue(undecided);
+    mocks.readUserAnalyticsConsentRecord.mockResolvedValue({
+      consent: undecided,
+      revision: 0,
+    });
     const getRequest = new NextRequest(
       "http://localhost:3000/api/analytics/consent",
       {
@@ -258,6 +299,7 @@ describe("analytics consent API", () => {
     expect(body.persistence).toEqual({
       browser: true,
       account: false,
+      accountRevision: null,
       browserOnly: true,
     });
     expect(mocks.writeUserAnalyticsConsent).not.toHaveBeenCalled();

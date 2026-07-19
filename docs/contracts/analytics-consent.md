@@ -2,18 +2,18 @@
 
 ## State
 
-Optional analytics use one versioned tri-state decision: `undecided`, `accepted`, or `declined`. A decided record also carries `policyVersion`, `source`, `decidedAt`, and a browser/account scope.
+Optional analytics use one versioned tri-state decision: `undecided`, `accepted`, or `declined`. A decided record also carries `policyVersion`, `source`, `decidedAt`, and a browser/account scope. Account records carry a database-monotonic revision; timestamps are audit metadata and never ordering authority.
 
 - Current-version `accepted`: optional browser analytics may initialize.
 - `declined`: optional analytics remain off, including under an older policy version.
 - Missing, malformed, undecided, or old-version accepted: optional analytics remain off and the user may be prompted again.
 
-Anonymous acceptance is never promoted into an account by a read. Account persistence is last-write-wins by timestamp, with decline winning an equal-timestamp tie. Authentication subject changes immediately invalidate the prior resolved state.
+Anonymous acceptance is never promoted into an account by a read. Account acceptance uses compare-and-set against the last observed revision. Withdrawal is dominant: a decline advances the current database revision even when its observed revision is stale, while a stale acceptance conflicts and cannot reverse it. An account-scoped browser decline keeps analytics off until it is synchronized or explicitly replaced on that browser. Authentication subject changes immediately invalidate the prior resolved state and revision.
 
 ## Persistence
 
 - Browser: versioned `__Host-meelni_analytics_consent` Secure, HttpOnly, SameSite=Lax, host-only preference cookie. The `__Host-` prefix prevents sibling or parent-domain cookie shadowing.
-- Account: `user_settings.analytics_consent`, `analytics_consent_version`, `analytics_consent_source`, and `analytics_consent_updated_at`.
+- Account: `user_settings.analytics_consent`, `analytics_consent_version`, `analytics_consent_source`, `analytics_consent_updated_at`, and `analytics_consent_revision`.
 - `share_anonymous_data` is deprecated, defaults false, and is never read as consent.
 - A legacy `localStorage.cookie-consent=declined` value becomes only a browser-local decline. Historical acceptance is not migrated.
 - Consent is a preference, never authentication, authorization, recording consent, or entitlement.
@@ -22,7 +22,7 @@ Anonymous acceptance is never promoted into an account by a read. Account persis
 
 `GET /api/analytics/consent` returns the effective snapshot with `Cache-Control: private, no-store`.
 
-`PUT /api/analytics/consent` accepts same-origin JSON containing a current policy version, `accepted | declined`, and `banner | settings | legacy_decline` source. Anonymous decisions persist to the browser. Authenticated acceptance activates only after account persistence succeeds. Decline is fail-closed locally even when account synchronization needs retry.
+`PUT /api/analytics/consent` accepts same-origin JSON containing a current policy version, `accepted | declined`, `banner | settings | legacy_decline` source, and the last observed account revision for authenticated account writes. Anonymous decisions persist to the browser. Authenticated acceptance activates only after compare-and-set persistence succeeds. A stale acceptance returns the authoritative account snapshot and revision with `409 consent_conflict`; clients apply that state and never auto-retry. Decline is fail-closed locally even when account synchronization needs retry.
 
 ## Provider Matrix
 

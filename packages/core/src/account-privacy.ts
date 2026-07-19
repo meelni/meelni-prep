@@ -1,4 +1,4 @@
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = "1.0.0" as const;
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = "1.1.0" as const;
 export const ACCOUNT_DELETION_RECENT_AUTH_WINDOW_MS = 10 * 60 * 1000;
 
 export type AccountDeletionAuthDecision =
@@ -43,6 +43,13 @@ export interface AccountExportSettingsV1 {
   feedbackReadyEmail: boolean;
   weeklyProgressReport: boolean;
   theme: string | null;
+  analyticsConsent: {
+    decision: "undecided" | "accepted" | "declined";
+    policyVersion: number | null;
+    source: "banner" | "settings" | "legacy_decline" | "account_sync" | null;
+    decidedAt: string | null;
+    revision: number;
+  };
   createdAt: string | null;
   updatedAt: string | null;
 }
