@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -173,7 +174,8 @@ async function customerContentFiles(directory) {
 function stripExactCompatibilityIdentifiers(source) {
   return source
     .replace(/(["'])drills\1(?=\s*:)/g, '"compatibilityField"')
-    .replace(/\bdrills(?=\s*:)/g, "compatibilityField")
+    .replace(/^([ \t]*)drills\s*:\s*$/gm, "$1compatibilityField:")
+    .replace(/([,{]\s*)drills(?=\s*:)/g, "$1compatibilityField")
     .replace(/\.drills\b/g, ".compatibilityField")
     .replace(/\[\s*(["'])drills\1\s*\]/g, ".compatibilityField")
     .replace(
@@ -181,6 +183,33 @@ function stripExactCompatibilityIdentifiers(source) {
       "`compatibilityField`"
     )
     .replace(/`\/dashboard\/new-rep`/g, "`/dashboard/compatibility-route`");
+}
+
+function buildDefaultPythonInterviewPrompts() {
+  const result = spawnSync(
+    "python3",
+    [
+      "-c",
+      [
+        "import json, sys",
+        "sys.path.insert(0, 'agent')",
+        "from shared.runtime_config import normalize_runtime_config",
+        "from shared.utils.prompt_builder import build_agent_prompt",
+        "config = normalize_runtime_config({})",
+        "rounds = ('behavioral', 'product_sense', 'execution', 'strategy')",
+        "prompts = {round_type: build_agent_prompt(round_type, config) for round_type in rounds}",
+        "print(json.dumps({'config': config, 'prompts': prompts}))",
+      ].join("; "),
+    ],
+    { cwd: ROOT, encoding: "utf8" }
+  );
+
+  assert.equal(
+    result.status,
+    0,
+    `Python prompt generation failed: ${result.stderr || result.stdout}`
+  );
+  return JSON.parse(result.stdout);
 }
 
 function stripExactLegacyIdentifiers(file, source) {
@@ -370,6 +399,44 @@ test("active product surfaces use interview-practice language", async () => {
   assert.deepEqual(violations, []);
 });
 
+test("public examples disclose the complete synthetic content scope", async () => {
+  const source = await readFile(
+    path.join(ROOT, "components/sections/examples.tsx"),
+    "utf8"
+  );
+
+  for (const contentType of [
+    "questions",
+    "answers",
+    "scenarios",
+    "company references",
+    "metrics",
+  ]) {
+    assert.match(source, new RegExp(`\\b${contentType}\\b`, "i"));
+  }
+  assert.match(source, /illustrative synthetic examples/i);
+  assert.match(source, /not customer\s+data or transcripts/i);
+  assert.match(source, /company details and metrics are not\s+verified facts/i);
+});
+
+test("public mock playback contains interviewer and candidate dialogue only", async () => {
+  const examples = await readFile(
+    path.join(ROOT, "components/sections/examples.tsx"),
+    "utf8"
+  );
+  const playback = await readFile(
+    path.join(ROOT, "components/feature-selector.tsx"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(
+    examples,
+    /\[(?:Framework checkpoint|STAR|Strategic(?: context| analysis| decision)?):/i
+  );
+  assert.doesNotMatch(playback, /type:\s*["']checkpoint["']/i);
+  assert.doesNotMatch(playback, /Framework checkpoint|CheckCircle2/i);
+});
+
 test("retired reward mechanics cannot return to active product paths", async () => {
   for (const file of RETIRED_REWARD_FILES) {
     await assert.rejects(access(path.join(ROOT, file)));
@@ -462,10 +529,7 @@ test("the retired launcher route exists only at its compatibility boundary", asy
     "utf8"
   );
   assert.match(compatibilityPage, /permanentRedirect/);
-  assert.match(
-    compatibilityPage,
-    /buildNewInterviewHrefFromPageSearchParams/
-  );
+  assert.match(compatibilityPage, /buildNewInterviewHrefFromPageSearchParams/);
 });
 
 test("canonical product guidance no longer defines Meelni as a gym", async () => {
@@ -531,12 +595,64 @@ test("compatibility fields are ignored without hiding customer-facing copy", () 
     ),
     FITNESS_LANGUAGE
   );
+  assert.match(
+    stripExactCompatibilityIdentifiers(
+      "Practice drills: state one decision and one trade-off."
+    ),
+    FITNESS_LANGUAGE
+  );
+  assert.doesNotMatch(
+    stripExactCompatibilityIdentifiers(
+      "const response = { drills: feedback.drills };"
+    ),
+    FITNESS_LANGUAGE
+  );
+  assert.doesNotMatch(
+    stripExactCompatibilityIdentifiers(
+      "properties:\n  drills:\n    type: array"
+    ),
+    FITNESS_LANGUAGE
+  );
   assert.doesNotMatch(
     stripExactCompatibilityIdentifiers(
       "Preserve `drills` only where it is an existing API compatibility key."
     ),
     FITNESS_LANGUAGE
   );
+});
+
+test("default Python interview prompts preserve realistic mock positioning", () => {
+  const { config, prompts } = buildDefaultPythonInterviewPrompts();
+
+  assert.equal(config.feedback_mode, "end_only");
+  assert.equal(config.hintMode, "off");
+  assert.deepEqual(Object.keys(prompts).sort(), [
+    "behavioral",
+    "execution",
+    "product_sense",
+    "strategy",
+  ]);
+
+  const violations = [];
+  for (const [roundType, prompt] of Object.entries(prompts)) {
+    if (!prompt.includes("## Your role: Realistic PM interviewer")) {
+      violations.push(`${roundType}: missing realistic interviewer role`);
+    }
+    if (/\bcoach(?:ing)?\b|\bnail\b/i.test(prompt)) {
+      violations.push(`${roundType}: coaching positioning`);
+    }
+    if (UNSUPPORTED_FEEDBACK_TIMING.test(prompt)) {
+      violations.push(`${roundType}: unsupported feedback timing`);
+    }
+    if (UNSUPPORTED_OUTCOME_PROMISE.test(prompt)) {
+      violations.push(`${roundType}: unsupported outcome promise`);
+    }
+    if (findGuidancePatternViolations(prompt, FITNESS_LANGUAGE).length) {
+      violations.push(`${roundType}: fitness metaphor`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
 });
 
 test("guidance exceptions cannot hide prohibited copy on mixed lines", () => {
@@ -742,7 +858,7 @@ test("the live hero and metadata consume the positioning contract", async () => 
   assert.match(homeMetadata, /const description = PRODUCT_LANGUAGE\.oneLine/);
 });
 
-test("primary marketing launch actions enter the canonical interview flow", async () => {
+test("primary marketing launch actions consume the relaunch-aware activation contract", async () => {
   const files = [
     "components/sections/hero.tsx",
     "components/sections/header.tsx",
@@ -753,6 +869,7 @@ test("primary marketing launch actions enter the canonical interview flow", asyn
 
   for (const file of files) {
     const source = await readFile(path.join(ROOT, file), "utf8");
-    assert.match(source, /href="\/dashboard\/new-interview"/, file);
+    assert.match(source, /PublicActivationButton/, file);
+    assert.match(source, /NEW_INTERVIEW_PATH/, file);
   }
 });

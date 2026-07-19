@@ -21,6 +21,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Header } from "@/components/sections/header";
 import type { PublicCompanyGuide } from "@/lib/data/public-company";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export function CompanyDetailClient({
   company,
@@ -187,12 +189,10 @@ export function CompanyDetailClient({
             <p className="text-foreground/70 text-sm">
               Practice a question out loud and review feedback afterward.
             </p>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/new-interview">
-                Start practicing
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            <PublicActivationButton href={NEW_INTERVIEW_PATH} variant="outline">
+              Start practicing
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </PublicActivationButton>
           </div>
         </section>
 
@@ -202,12 +202,14 @@ export function CompanyDetailClient({
           title={`Prepare for your ${company.name} interview.`}
           description="Practice a PM question out loud, then review feedback and choose what to improve next."
           action={
-            <Button asChild size="lg" variant="glow">
-              <Link href="/dashboard/new-interview">
-                Start mock interview
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            <PublicActivationButton
+              href={NEW_INTERVIEW_PATH}
+              size="lg"
+              variant="glow"
+            >
+              Start mock interview
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </PublicActivationButton>
           }
         />
 

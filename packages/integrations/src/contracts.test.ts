@@ -71,6 +71,10 @@ test("public demo provider uses bounded rooms, microphone-only grants, and clean
       }
     },
     agentDispatchClientFactory: () => ({
+      createDispatch: async (room, agentName) => {
+        calls.push("unexpected-create-dispatch");
+        return { id: "unexpected", room, agentName };
+      },
       listDispatch: async (room) => {
         calls.push("reconcile");
         return [{ id: "dispatch-1", room, agentName: "demo-agent" }];

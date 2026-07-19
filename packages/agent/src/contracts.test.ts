@@ -10,6 +10,7 @@ import {
 } from "@meelni/test-fixtures";
 
 import {
+  DEFAULT_INTERVIEW_RUNTIME_SETTINGS,
   INTERVIEW_RUNTIME_FAILURE_CODES,
   acceptTranscriptEventOnce,
   buildInterviewRoomMetadata,
@@ -27,6 +28,7 @@ import {
   parseInterviewRuntimeEvent,
   parseInterviewRoomMetadata,
   parseTranscriptEvent,
+  resolveInterviewRuntimeConfig,
 } from "./index";
 
 const TRANSCRIPT_INGEST_URL = "http://localhost:3000/api/internal/transcript";
@@ -42,11 +44,39 @@ test("buildInterviewRoomMetadata serializes the production room metadata shape",
   assert.equal(metadata.config.difficulty, "intermediate");
 });
 
-test("buildInterviewRoomMetadata keeps normalized runtime config objects intact", () => {
+test("buildInterviewRoomMetadata preserves normalized runtime config values", () => {
   const fixture = createProductSenseInterviewFixture();
   const metadata = buildInterviewRoomMetadata(fixture.roomMetadata);
 
-  assert.equal(metadata.config, fixture.roomMetadata.config);
+  assert.deepEqual(metadata.config, fixture.roomMetadata.config);
+});
+
+test("authoritative TypeScript composition and serialization defer legacy feedback modes", () => {
+  const fixture = createProductSenseInterviewFixture();
+  const preferences = normalizeInterviewClientPreferences(
+    fixture.roomMetadata.config
+  );
+
+  for (const feedback_mode of ["real_time", "silent"] as const) {
+    const config = resolveInterviewRuntimeConfig(preferences, {
+      ...DEFAULT_INTERVIEW_RUNTIME_SETTINGS,
+      feedback_mode,
+    });
+    const metadata = buildInterviewRoomMetadata({
+      ...fixture.roomMetadata,
+      config: {
+        ...fixture.roomMetadata.config,
+        feedback_mode,
+      },
+    });
+
+    assert.equal(config.feedback_mode, "end_only");
+    assert.equal(metadata.config.feedback_mode, "end_only");
+    assert.equal(
+      JSON.parse(JSON.stringify(metadata)).config.feedback_mode,
+      "end_only"
+    );
+  }
 });
 
 test("parseInterviewRoomMetadata fails closed for malformed metadata", () => {
@@ -221,7 +251,7 @@ test("public preferences strip every legacy runtime control alias", () => {
   assert.deepEqual(preferences, {
     difficulty: "advanced",
     duration: 45,
-    hintMode: "coach",
+    hintMode: "off",
     questionPreference: { recency: "recent", recentDays: 730 },
   });
 });
@@ -280,14 +310,14 @@ test("full interview metadata requires versioned session correlation", () => {
   );
 });
 
-test("runtime config normalizes hint mode to safe defaults", () => {
+test("full interview runtime normalizes every hint mode to off", () => {
   assert.equal(
     normalizeInterviewRuntimeConfig({ hintMode: "gentle" }).hintMode,
-    "gentle"
+    "off"
   );
   assert.equal(
     normalizeInterviewRuntimeConfig({ hintMode: "coach" }).hintMode,
-    "coach"
+    "off"
   );
   assert.equal(
     normalizeInterviewRuntimeConfig({ hintMode: "always-on" as never })
@@ -295,6 +325,15 @@ test("runtime config normalizes hint mode to safe defaults", () => {
     "off"
   );
   assert.equal(normalizeInterviewRuntimeConfig({}).hintMode, "off");
+});
+
+test("full interview runtime normalizes every feedback mode to end_only", () => {
+  for (const feedback_mode of ["real_time", "silent", "end_only"] as const) {
+    assert.equal(
+      normalizeInterviewRuntimeConfig({ feedback_mode }).feedback_mode,
+      "end_only"
+    );
+  }
 });
 
 test("runtime config normalizes invalid cross-runtime values consistently", () => {

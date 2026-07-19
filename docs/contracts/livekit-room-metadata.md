@@ -41,11 +41,13 @@ Full interview rooms receive JSON metadata with this shape:
 
 ### Configuration ownership
 
-The public session-start boundary accepts only `difficulty`, `duration`,
-`hintMode`, and `questionPreference`. Provider names, model names, voice IDs,
-speed, emotion, volume, and feedback timing are operational settings. The web
-workflow strips legacy or malicious copies of those fields before persistence
-and room creation, then resolves trusted settings from server environment.
+The public session-start boundary accepts only `difficulty`, `duration`, the
+legacy-compatible `hintMode` field, and `questionPreference`. Full mock
+interviews normalize every `hintMode` value to `off`. Provider names, model
+names, voice IDs, speed, emotion, volume, and feedback timing are operational
+settings. The web workflow strips legacy or malicious copies of those fields
+before persistence and room creation, then resolves trusted settings from
+server environment.
 
 Free-form persona text is not part of the public request or room contract and
 is never appended to the agent prompt. The optional public `role` field accepts
@@ -106,6 +108,30 @@ Room metadata correlates the runtime to the session; it does not own session
 lifecycle. Provider-native room/job/participant states are normalized signals
 for the session workflow described in
 [Interview Session Lifecycle Contract](./interview-session-lifecycle.md).
+
+## Full-Interview Prompt Behavior
+
+The authenticated full-interview runtime is a realistic PM interviewer, not an
+in-session teaching experience. For every supported round type it:
+
+- speaks one non-interruptible deterministic opening that is retained in model
+  chat context;
+- includes the selected question in that first audible turn when one is present,
+  then asks one adaptive follow-up at a time;
+- probes the candidate's reasoning, specificity, evidence, trade-offs, and risks;
+- does not teach a framework, suggest an answer, or judge answer quality during
+  the interview; and
+- leaves strengths, improvements, scores, and recommendations to the durable
+  post-interview feedback workflow.
+
+Full mock interviews normalize `feedback_mode` to `end_only` and `hintMode` to
+`off` at both the TypeScript and Python boundaries. This includes legacy
+`real_time` or `silent` feedback values and legacy `gentle` or `coach` hint
+values. The authoritative TypeScript runtime composer and room-metadata writer
+also overwrite legacy feedback timing after caller-provided settings are
+merged, so newly serialized rooms always carry `end_only`. The short public
+demo is a separate runtime and may provide a brief feedback preview; its
+behavior must not be used as the authenticated mock-interview contract.
 
 ## Runtime Lifecycle Events
 

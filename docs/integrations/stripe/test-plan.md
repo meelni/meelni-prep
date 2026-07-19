@@ -52,6 +52,50 @@ stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
 
 Use any future expiry, any CVC, and any ZIP in test mode.
 
+## Checkout Return-Page Truth
+
+For every catalog item, verify the return page independently from webhook
+fulfillment:
+
+1. Visit `/pricing/success` without same-tab correlation, then visit the legacy
+   return endpoint with arbitrary query input.
+2. Confirm neither path claims that credits were added and the browser-visible
+   success URL contains no Checkout Session ID.
+3. Start two valid Checkouts in separate tabs. Confirm the start response has a
+   different validated opaque handle, each client stores it in same-tab
+   `sessionStorage`, and Stripe returns to queryless `/pricing/success`. Confirm
+   the start JSON omits the Checkout Session ID. Each authenticated status read
+   must be a queryless `POST` whose JSON body contains the handle and whose
+   deterministic cookie slot contains that same handle plus Session ID.
+   Complete authentication and confirm the handoff is queryless.
+4. Delay the relevant webhook and confirm the page remains pending.
+5. Process the exact owner-correlated webhook transaction and confirm the page
+   confirms the purchase and says credits were added only after
+   `payment_history` links the purchase to the durable credit grant. Do not
+   interpret this historical grant evidence as the current remaining balance.
+6. Exercise failed-then-succeeded, refunded, disputed, success-plus-reversal,
+   ambiguous, foreign-owner, grant-mismatch, and database-unavailable fixtures
+   and confirm the UI shows only first-party recovery copy.
+7. Keep relaunch access off and confirm status resolution still runs, while a
+   confirmed purchase offers dashboard and billing settings rather than an
+   interview-start action.
+8. Stop automatic polling, revisit queryless `/pricing/success` in the same tab,
+   and manually check again. Correlation must remain valid for 30 days to cover delayed
+   methods that settle over several business days. Confirm only the selected
+   cookie is cleared after confirmation or a definitive terminal result.
+9. Confirm a missing or expired Supabase session returns `401` and preserves
+   the auth handoff, while a simulated auth-infrastructure failure returns the
+   fixed retryable `503`. Confirm refund/dispute copy acknowledges reversal and
+   does not claim credits were never added.
+10. Send repeated raw-session and fake-handle requests to the public return
+    route and confirm it creates no cookies and always redirects queryless.
+    Simulate concurrent authenticated starts and confirm only the eight fixed
+    correlation-cookie names can exist. Force a slot collision and confirm the
+    older handle fails closed without selecting or clearing the newer value.
+
+The confirmation endpoint is read-only. These checks must not create refunds,
+prorations, cancellations, grants, or any other billing mutation.
+
 ## Scenario 1: Interview Pass Purchase
 
 **Goal**: Verify one-time Checkout grants exactly one credit.
@@ -73,7 +117,7 @@ Expected:
 - Grant has `original_credits = 1`, `remaining_credits = 1`, source `checkout`, and an expiration about 30 days after purchase.
 - Replaying the same event does not create another grant.
 
-For a delayed payment method, the completed event remains unpaid and creates no grant. The later `checkout.session.async_payment_succeeded` event creates the same single grant; `checkout.session.async_payment_failed` creates no grant.
+For a delayed payment method, the completed event remains unpaid and creates no grant. A validated `checkout.session.async_payment_failed` creates one canonical failed payment row keyed by the Checkout Session and no grant. A later `checkout.session.async_payment_succeeded` atomically promotes that same row to succeeded grant truth; a delayed failure after success cannot downgrade it.
 
 Verification:
 
@@ -199,9 +243,11 @@ Expected:
 - `credit_grant` still has one row for the purchase idempotency key.
 - A distinct Event ID for the same immutable invoice transition creates no
   second payment-history row and does not move the failed-payment grace date.
-- Deliver a failed and successful event for one invoice in both orders; the
-  final subscription is active with no grace date and payment history exposes
-  only the successful attempt.
+- Deliver a failed and successful event for one invoice in both orders. For
+  `subscription_create`, require the exact validated Checkout Session on the
+  failed row and atomically promote that same canonical row on success. The
+  final subscription is active with no grace date; delayed failure cannot
+  downgrade succeeded truth.
 - Deliver the initial successful invoice and subscription-created event in
   both orders and concurrently. Every permutation must converge to one
   subscription, one customer mapping, one succeeded payment, and one linked
@@ -224,7 +270,7 @@ HAVING COUNT(*) > 1;
 
 The second query should return zero rows.
 
-Also deliver `checkout.session.completed` and `checkout.session.async_payment_succeeded` for the same synthetic session in both orders. Paid reconciliation must converge on the same grant key. Delivering `checkout.session.async_payment_failed` before or after success must not grant or revoke credits.
+Also deliver `checkout.session.completed` and `checkout.session.async_payment_succeeded` for the same synthetic session in both orders. Paid reconciliation must converge on the same grant key and canonical payment row. Deliver `checkout.session.async_payment_failed` before success and verify the single row is promoted; deliver it after success and verify no downgrade. Failure must never grant or revoke credits.
 
 ## Scenario 7: Subscription Renewal
 
