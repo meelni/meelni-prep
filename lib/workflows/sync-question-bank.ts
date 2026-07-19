@@ -10,6 +10,7 @@ import type {
   PreparedQuestionSync,
   SyncResult,
 } from "@/lib/question-sync/types";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export type QuestionSyncTrigger = "cron" | "manual" | "cli";
 
@@ -190,7 +191,17 @@ function finish<T extends QuestionSyncWorkflowResult>(
   };
 
   if (result.status === "completed") event.summary = result.summary;
-  else event.errorCode = result.errorCode;
+  else {
+    event.errorCode = result.errorCode;
+    if (result.status === "failed" || result.status === "unavailable") {
+      reportOperationalFailure({
+        operation: "question_sync",
+        errorCode: result.errorCode,
+        severity: result.status === "unavailable" ? "critical" : "error",
+        retryable: true,
+      });
+    }
+  }
 
   dependencies.audit(event);
   return result;

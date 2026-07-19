@@ -2,6 +2,7 @@ import { listInterviewPresenceReconciliationSessions } from "@/lib/db/session-re
 import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { reconcileInterviewPresenceWorkflow } from "@/lib/workflows/reconcile-interview-presence";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const INTERVIEW_PRESENCE_RECONCILIATION_EVENT_NAME =
   "interview/presence.reconciliation.requested" as const;
@@ -23,6 +24,14 @@ export const reconcileInterviewPresence = inngest.createFunction(
     name: "Reconcile Interview Participant Presence",
     retries: 5,
     concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_presence_reconciliation_failed",
+        severity: "critical",
+        retryable: false,
+      });
+    },
   },
   { event: INTERVIEW_PRESENCE_RECONCILIATION_EVENT_NAME },
   async ({ event, step }) => {
@@ -45,6 +54,14 @@ export const recoverInterviewPresenceReconciliation = inngest.createFunction(
     name: "Recover Interview Presence Reconciliation",
     retries: 2,
     concurrency: [{ limit: 1 }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "interview_recovery",
+        errorCode: "interview_presence_reconciliation_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "* * * * *" },
   async ({ event, step }) => {
