@@ -168,12 +168,10 @@ export function resolveTrustedAnalyticsConsent(
     ) {
       return effectiveAccount;
     }
-    if (effectiveAnalyticsDecision(effectiveAccount) === "undecided") {
-      return browser;
-    }
-    const browserTime = new Date(browser.decidedAt!).getTime();
-    const accountTime = new Date(effectiveAccount.decidedAt!).getTime();
-    return browserTime >= accountTime ? browser : effectiveAccount;
+    // A browser withdrawal is fail-closed until account synchronization or a
+    // later explicit choice replaces the cookie on this browser. Application
+    // clocks are audit metadata, never consent ordering authority.
+    return browser;
   }
   return browser.scope === "anonymous"
     ? normalizeEffective(browser)
