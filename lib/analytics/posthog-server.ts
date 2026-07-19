@@ -13,6 +13,10 @@ import {
   sanitizeAnalyticsTraits,
 } from "./event-policy";
 import { createAnalyticsPseudonym } from "./pseudonym";
+import {
+  sanitizeAnalyticsString,
+  sanitizeAnalyticsValue,
+} from "./privacy-sanitizer";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 let serverPostHog: PostHog | null = null;
@@ -91,10 +95,12 @@ export async function identifyServerUser(
   if (!client) return;
 
   try {
-    client.identify({
-      distinctId,
-      properties: properties ? sanitizeAnalyticsTraits(properties) : undefined,
-    });
+    client.identify(
+      buildServerIdentifyPayload(
+        distinctId,
+        properties ? sanitizeAnalyticsTraits(properties) : undefined
+      )
+    );
     await client.flush();
   } catch (error) {
     console.error("[AnalyticsServer] Optional identity delivery failed", {
@@ -120,6 +126,31 @@ export async function deliverPostHogCapture(
     properties: Record<string, unknown>;
   }
 ): Promise<void> {
-  client.capture(message);
+  const { distinctId, event, properties } = message;
+  client.capture(buildServerCapturePayload(event, properties, distinctId));
   await client.flush();
+}
+
+export function buildServerCapturePayload(
+  event: string,
+  properties: Record<string, unknown>,
+  distinctId?: string
+) {
+  return {
+    distinctId: sanitizeAnalyticsString(distinctId || "anonymous"),
+    event: sanitizeAnalyticsString(event),
+    properties: sanitizeAnalyticsValue(properties) as Record<string, unknown>,
+  };
+}
+
+export function buildServerIdentifyPayload(
+  distinctId: string,
+  properties?: Record<string, unknown>
+) {
+  return {
+    distinctId: sanitizeAnalyticsString(distinctId),
+    properties: properties
+      ? (sanitizeAnalyticsValue(properties) as Record<string, unknown>)
+      : undefined,
+  };
 }

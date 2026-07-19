@@ -24,13 +24,13 @@ This is the fast reference for future Meelni UI work. Use these production examp
 
 ## Action Cluster Examples
 
-| Pattern                   | Canonical Files                                                                                                | Action Model                                                                             |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Recommendation CTA        | `components/dashboard/sections/overview.tsx`, `components/dashboard/weakest-area-card.tsx`                     | One primary `Start mock interview`; secondary review/feedback action only when relevant  |
-| Feedback recovery         | `components/feedback/feedback-review.tsx`, `components/feedback/feedback-lifecycle-status.tsx`                 | Recovery follows the authoritative lifecycle state; dashboard navigation stays secondary |
-| Feedback page back action | `app/feedback/[sessionId]/page.tsx`, `app/feedback/[sessionId]/compare/page.tsx`                               | Back action is `ghost`, not primary; review content remains dominant                     |
-| Modal footer actions      | `components/dashboard/setup-modal.tsx`, `app/interview/components/end-session-modal.tsx`                       | Secondary cancel/back and primary/destructive commit are visually distinct               |
-| Marketing conversion CTA  | `components/marketing/marketing-surface.tsx`, `components/sections/cta.tsx`, `components/sections/pricing.tsx` | Marketing can use higher-emphasis CTA treatment; product dashboards should stay calmer   |
+| Pattern                   | Canonical Files                                                                                                                                           | Action Model                                                                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Recommendation CTA        | `components/dashboard/sections/overview.tsx`, `components/dashboard/weakest-area-card.tsx`                                                                | One primary `Start mock interview`; secondary review/feedback action only when relevant                                                |
+| Feedback recovery         | `components/feedback/feedback-review.tsx`, `components/feedback/feedback-lifecycle-status.tsx`                                                            | Recovery follows the authoritative lifecycle state; dashboard navigation stays secondary                                               |
+| Feedback page back action | `app/feedback/[sessionId]/page.tsx`, `app/feedback/[sessionId]/compare/page.tsx`                                                                          | Back action is `ghost`, not primary; review content remains dominant                                                                   |
+| Modal footer actions      | `components/dashboard/setup-modal.tsx`, `app/interview/components/end-session-modal.tsx`                                                                  | Secondary cancel/back and primary/destructive commit are visually distinct                                                             |
+| Marketing conversion CTA  | `components/marketing/marketing-surface.tsx`, `components/public-activation-action.tsx`, `components/sections/cta.tsx`, `components/sections/pricing.tsx` | Public activation actions consume the shared relaunch decision; marketing can use higher emphasis while product dashboards stay calmer |
 
 ## State Examples
 
@@ -47,17 +47,18 @@ This is the fast reference for future Meelni UI work. Use these production examp
 
 ## Primitive Examples
 
-| Primitive                 | Canonical Files                                                                                                                | Use It For                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `Button`                  | `components/ui/button.tsx`                                                                                                     | Ordinary actions; variants are role-based, not page-themed                                    |
-| `StatusPill`              | `components/ui/app-surface.tsx`, `app/interview/page.tsx`, `components/feedback/feedback-surface.tsx`                          | Compact status, category, and mode labels                                                     |
-| `SelectableCard`          | `components/ui/selectable-card.tsx`, `app/setup/components/round-selector.tsx`, `app/setup/components/difficulty-selector.tsx` | Single-choice or locked selectable options                                                    |
-| `SegmentedControl`        | `components/ui/segmented-control.tsx`, `components/feature-flags/feature-flag-dev-menu.tsx`                                    | Compact mutually exclusive mode switches with equal-width slots                               |
-| Dashboard surfaces        | `components/dashboard/dashboard-surface.tsx`                                                                                   | Dashboard metric, chart, state, skeleton, section, and action panels                          |
-| Feedback surfaces         | `components/feedback/feedback-surface.tsx`                                                                                     | Feedback sections, scores, status, metrics, and recommendation rows                           |
-| Marketing surfaces        | `components/marketing/marketing-surface.tsx`                                                                                   | Public page hero, article, card, prose, and CTA structure                                     |
-| `FilterPill`              | `components/ui/filter-pill.tsx`, `components/dashboard/sections/questions.tsx`, `components/dashboard/sections/history.tsx`    | Compact filter choices where pill shape communicates filter state                             |
-| `DashboardSidebarNavItem` | `components/dashboard/dashboard-surface.tsx`, `components/dashboard/sections/settings.tsx`                                     | Dashboard category/sidebar choices where the selected item behaves like local page navigation |
+| Primitive                 | Canonical Files                                                                                                                | Use It For                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `Button`                  | `components/ui/button.tsx`                                                                                                     | Ordinary actions; variants are role-based, not page-themed                                      |
+| `StatusPill`              | `components/ui/app-surface.tsx`, `app/interview/page.tsx`, `components/feedback/feedback-surface.tsx`                          | Compact status, category, and mode labels                                                       |
+| `SelectableCard`          | `components/ui/selectable-card.tsx`, `app/setup/components/round-selector.tsx`, `app/setup/components/difficulty-selector.tsx` | Single-choice or locked selectable options                                                      |
+| `SegmentedControl`        | `components/ui/segmented-control.tsx`, `components/feature-flags/feature-flag-dev-menu.tsx`                                    | Compact mutually exclusive mode switches with equal-width slots                                 |
+| Dashboard surfaces        | `components/dashboard/dashboard-surface.tsx`                                                                                   | Dashboard metric, chart, state, skeleton, section, and action panels                            |
+| Feedback surfaces         | `components/feedback/feedback-surface.tsx`                                                                                     | Feedback sections, scores, status, metrics, and recommendation rows                             |
+| Marketing surfaces        | `components/marketing/marketing-surface.tsx`                                                                                   | Public page hero, article, card, prose, and CTA structure                                       |
+| Public activation actions | `components/public-activation-action.tsx`                                                                                      | Relaunch-aware public practice, signup, demo, and purchase actions with a truthful paused state |
+| `FilterPill`              | `components/ui/filter-pill.tsx`, `components/dashboard/sections/questions.tsx`, `components/dashboard/sections/history.tsx`    | Compact filter choices where pill shape communicates filter state                               |
+| `DashboardSidebarNavItem` | `components/dashboard/dashboard-surface.tsx`, `components/dashboard/sections/settings.tsx`                                     | Dashboard category/sidebar choices where the selected item behaves like local page navigation   |
 
 ## Anti-Patterns To Avoid
 

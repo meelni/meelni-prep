@@ -67,9 +67,57 @@ test("Explore server render exposes the initial corpus, count, and schema", () =
 
   assert.match(html, /Browse 41 available practice questions/);
   assert.match(html, /How would you measure success for a new PM product\?/);
+  assert.match(html, /Practice currently paused/);
+  assert.match(html, /disabled=""/);
   assert.match(html, /"@type":"ItemList"/);
   assert.match(html, /"@type":"Dataset"/);
   assert.doesNotMatch(html, /acceptedAnswer|aggregateRating|dateModified/);
+});
+
+test("Explore server render keeps question activation available when relaunch is on", () => {
+  const html = renderToStaticMarkup(
+    <AppRouterContext.Provider value={router}>
+      <PathnameContext.Provider value="/explore">
+        <SearchParamsContext.Provider value={new URLSearchParams()}>
+          <AuthProvider>
+            <AnalyticsConsentProvider
+              initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
+            >
+              <StatsigProvider
+                initialGateValues={{
+                  [FEATURE_GATES.meelniReactivationAccess]: true,
+                }}
+              >
+                <ExploreClient
+                  initialLoadError={null}
+                  initialTotal={1}
+                  initialQuestions={[
+                    {
+                      id: "question-1",
+                      company: "Example Company",
+                      questionText: "How would you improve activation?",
+                      questionType: "Product Sense",
+                      askedAt: null,
+                      isActive: true,
+                      createdAt: null,
+                    },
+                  ]}
+                />
+              </StatsigProvider>
+            </AnalyticsConsentProvider>
+          </AuthProvider>
+        </SearchParamsContext.Provider>
+      </PathnameContext.Provider>
+    </AppRouterContext.Provider>
+  );
+
+  assert.match(html, /Practice question/);
+  assert.doesNotMatch(html, /Practice currently paused/);
+  const questionControl = html.match(
+    /<button[^>]*aria-label="Practice question: How would you improve activation\?"[^>]*>/
+  );
+  assert.ok(questionControl);
+  assert.match(questionControl[0], /aria-busy="true"/);
 });
 
 test("Explore server failure never invents corpus facts or schema", () => {

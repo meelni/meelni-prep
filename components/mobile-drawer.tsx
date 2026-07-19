@@ -16,9 +16,20 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useAuth } from "@/app/providers/auth-provider";
 import { Loader2, Menu } from "lucide-react";
+import { PublicActivationButton } from "@/components/public-activation-action";
+import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+
+const publicNavigation = [
+  { label: "Questions", href: "/explore" },
+  { label: "Companies", href: "/companies" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Blog", href: "/blog" },
+] as const;
 
 export function MobileDrawer() {
   const { user, isLoading } = useAuth();
+  const activation = usePublicActivationDecision();
 
   return (
     <Drawer>
@@ -41,6 +52,23 @@ export function MobileDrawer() {
           <DrawerDescription>{siteConfig.description}</DrawerDescription>
         </DrawerHeader>
         <DrawerFooter className="space-y-3">
+          <nav
+            aria-label="Public navigation"
+            className="grid grid-cols-2 gap-2"
+          >
+            {publicNavigation.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  buttonVariants({ variant: "ghost" }),
+                  "min-h-11 rounded-lg"
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
           {isLoading ? (
             // Loading state
             <div
@@ -88,15 +116,16 @@ export function MobileDrawer() {
               >
                 Log In
               </Link>
-              <Link
-                href="/dashboard/new-interview"
+              <PublicActivationButton
+                href={NEW_INTERVIEW_PATH}
+                variant={activation.canActivate ? "default" : "outline"}
                 className={cn(
-                  buttonVariants({ variant: "default" }),
-                  "text-primary-foreground min-h-11 rounded-lg"
+                  "min-h-11 rounded-lg",
+                  activation.canActivate && "text-primary-foreground"
                 )}
               >
                 {siteConfig.cta}
-              </Link>
+              </PublicActivationButton>
             </>
           )}
         </DrawerFooter>

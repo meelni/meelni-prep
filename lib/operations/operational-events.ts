@@ -10,6 +10,7 @@ export const OPERATIONAL_FAILURE_OPERATIONS = [
   "interview_recovery",
   "billing_read",
   "billing_portal",
+  "checkout_confirmation",
 ] as const;
 
 export const OPERATIONAL_FAILURE_ERROR_CODES = [
@@ -28,6 +29,8 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "billing_portal_subscription_read_failed",
   "billing_subscription_read_failed",
   "billing_usage_read_failed",
+  "checkout_confirmation_auth_failed",
+  "checkout_confirmation_settlement_read_failed",
   "feedback_dispatch_failed",
   "feedback_generation_failed",
   "feedback_integrity_invalid",
@@ -89,7 +92,12 @@ export interface OperationalFailureEvent {
   version: 1;
   occurredAt: string;
   environment:
-    "local" | "development" | "preview" | "production" | "test" | "unknown";
+    | "local"
+    | "development"
+    | "preview"
+    | "production"
+    | "test"
+    | "unknown";
   release: string | null;
   operation: OperationalFailureOperation;
   errorCode: OperationalFailureErrorCode;

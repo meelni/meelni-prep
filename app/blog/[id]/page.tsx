@@ -27,6 +27,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { PUBLIC_ORIGIN, publicMetadata } from "@/lib/seo/public-metadata";
 import { JsonLd } from "@/components/seo/json-ld";
+import {
+  PublicActivationButton,
+  PublicActivationInlineLink,
+} from "@/components/public-activation-action";
+import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export async function generateStaticParams() {
   return blogPosts.map((post) => ({
@@ -278,14 +283,22 @@ export default async function BlogPost({
                   {children}
                 </blockquote>
               ),
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  className="text-primary hover:text-primary/80 decoration-primary/30 hover:decoration-primary/60 font-medium underline transition-colors duration-200"
-                >
-                  {children}
-                </a>
-              ),
+              a: ({ href, children }) =>
+                href?.startsWith(NEW_INTERVIEW_PATH) ? (
+                  <PublicActivationInlineLink
+                    href={href}
+                    className="text-primary hover:text-primary/80 decoration-primary/30 hover:decoration-primary/60 font-medium underline transition-colors duration-200"
+                  >
+                    {children}
+                  </PublicActivationInlineLink>
+                ) : (
+                  <a
+                    href={href}
+                    className="text-primary hover:text-primary/80 decoration-primary/30 hover:decoration-primary/60 font-medium underline transition-colors duration-200"
+                  >
+                    {children}
+                  </a>
+                ),
               code: ({ children }) => (
                 <code className="border-border/30 bg-muted text-foreground/90 rounded border px-2 py-0.5 font-mono text-sm">
                   {children}
@@ -327,15 +340,17 @@ export default async function BlogPost({
         <MarketingCtaCard
           className="mt-20 text-left"
           mark="M"
-          title="Ready to practice with AI?"
+          title="Ready to practice out loud?"
           description="Put the framework into action in a voice mock interview, then review feedback after the completed session."
           action={
-            <Button asChild size="lg" variant="glow">
-              <Link href="/dashboard/new-interview">
-                Start practicing now
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+            <PublicActivationButton
+              href={NEW_INTERVIEW_PATH}
+              size="lg"
+              variant="glow"
+            >
+              Start practicing now
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </PublicActivationButton>
           }
         />
 
