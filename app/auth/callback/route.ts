@@ -6,6 +6,7 @@ import {
   buildAuthFailureHref,
   resolveAuthCallbackAction,
 } from "@/lib/auth/auth-handoff";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -41,7 +42,12 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      console.error("Error exchanging code for session:", error);
+      reportOperationalFailure({
+        operation: "auth_callback",
+        errorCode: "auth_code_exchange_failed",
+        severity: "warning",
+        retryable: true,
+      });
       const retryUrl = new URL(
         buildAuthFailureHref({
           redirectTo: next ?? undefined,
@@ -82,7 +88,12 @@ export async function GET(request: Request) {
             )
           );
         }
-        console.error("Error upserting user:", error);
+        reportOperationalFailure({
+          operation: "auth_callback",
+          errorCode: "auth_user_upsert_failed",
+          severity: "error",
+          retryable: true,
+        });
         // Continue anyway - user is authenticated even if DB insert fails
       }
     }
