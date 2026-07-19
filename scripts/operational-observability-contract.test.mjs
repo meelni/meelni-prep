@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import ts from "typescript";
 
 const ROOT = process.cwd();
+const APP_API_ROUTE_FILES = await listRouteFiles(path.join(ROOT, "app/api"));
 const CRITICAL_BOUNDARIES = [
   ["app/auth/callback/route.ts", "auth_callback"],
   ["app/api/livekit/token/route.ts", "interview_token"],
@@ -37,6 +39,17 @@ const CRITICAL_BOUNDARIES = [
   ["lib/inngest/functions/cleanup-interview-rooms.ts", "interview_recovery"],
   ["lib/inngest/functions/recover-interview-starts.ts", "interview_recovery"],
   ["lib/inngest/functions/recover-interview-credits.ts", "interview_recovery"],
+];
+
+const DEPLOYED_SERVER_ERROR_BOUNDARIES = [
+  ...new Set([
+    ...APP_API_ROUTE_FILES,
+    "app/auth/callback/route.ts",
+    ...CRITICAL_BOUNDARIES.map(([file]) => file),
+    "lib/analytics/posthog-server.ts",
+    "lib/db/questions.ts",
+    "lib/evaluation/scorer.ts",
+  ]),
 ];
 
 const BILLING_BOUNDARY_ERROR_CODES = [
@@ -105,6 +118,44 @@ test("critical boundaries cannot bypass the reporter with ad hoc console output"
   assert.deepEqual(violations, []);
 });
 
+test("deployed server boundaries never write raw caught exceptions", async () => {
+  const violations = [];
+  for (const file of DEPLOYED_SERVER_ERROR_BOUNDARIES) {
+    const source = await readFile(path.join(ROOT, file), "utf8");
+    violations.push(...findRawCaughtExceptionLogs(source, file));
+  }
+  assert.deepEqual(violations, []);
+});
+
+test("raw-exception guard permits fixed codes and the closed safe classifier only", () => {
+  const unsafe = findRawCaughtExceptionLogs(
+    `try { work(); } catch (error) {
+      console.error("raw", error);
+      console.warn("message", error.message);
+      console.info("wrapped", getErrorMessage(error));
+    }
+    try { work(); } catch ({ message }) {
+      console.debug("destructured", message);
+    }`,
+    "unsafe.ts"
+  );
+  assert.deepEqual(unsafe, [
+    "unsafe.ts:2",
+    "unsafe.ts:3",
+    "unsafe.ts:4",
+    "unsafe.ts:7",
+  ]);
+
+  const safe = findRawCaughtExceptionLogs(
+    `try { work(); } catch (error) {
+      console.error("stable_failure_code");
+      console.error("classified_failure", { ...toSafeErrorLog(error) });
+    }`,
+    "safe.ts"
+  );
+  assert.deepEqual(safe, []);
+});
+
 test("billing boundaries retain their fixed route-level error codes", async () => {
   const missing = [];
   for (const [file, errorCodes] of BILLING_BOUNDARY_ERROR_CODES) {
@@ -171,4 +222,94 @@ function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+async function listRouteFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) return listRouteFiles(absolute);
+      return entry.isFile() && entry.name === "route.ts"
+        ? [path.relative(ROOT, absolute)]
+        : [];
+    })
+  );
+  return files.flat().sort();
+}
+
+function findRawCaughtExceptionLogs(source, filename) {
+  const sourceFile = ts.createSourceFile(
+    filename,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const violations = [];
+
+  function visit(node, caughtNames) {
+    if (ts.isCatchClause(node)) {
+      const nextNames = new Set(caughtNames);
+      const binding = node.variableDeclaration?.name;
+      if (binding) addBindingNames(binding, nextNames);
+      visit(node.block, nextNames);
+      return;
+    }
+
+    if (
+      caughtNames.size > 0 &&
+      ts.isCallExpression(node) &&
+      isConsoleCall(node.expression) &&
+      node.arguments.some((argument) =>
+        containsRawCaughtReference(argument, caughtNames)
+      )
+    ) {
+      const line =
+        sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+      violations.push(`${filename}:${line}`);
+    }
+
+    ts.forEachChild(node, (child) => visit(child, caughtNames));
+  }
+
+  visit(sourceFile, new Set());
+  return violations;
+}
+
+function addBindingNames(binding, names) {
+  if (ts.isIdentifier(binding)) {
+    names.add(binding.text);
+    return;
+  }
+
+  for (const element of binding.elements) {
+    if (ts.isBindingElement(element)) addBindingNames(element.name, names);
+  }
+}
+
+function containsRawCaughtReference(node, caughtNames) {
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "toSafeErrorLog"
+  ) {
+    return false;
+  }
+  if (ts.isIdentifier(node) && caughtNames.has(node.text)) return true;
+
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (!found && containsRawCaughtReference(child, caughtNames)) found = true;
+  });
+  return found;
+}
+
+function isConsoleCall(expression) {
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "console" &&
+    ["error", "warn", "log", "info", "debug"].includes(expression.name.text)
+  );
 }
