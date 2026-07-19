@@ -54,7 +54,7 @@ agent/
 - **Purpose**: Full mock interviews for authenticated users
 - **Duration**: 15, 30, or 45 minutes (configurable)
 - **Features**: 4 interview types, 3 difficulty levels, real-time transcripts
-- **Tone**: Professional, adaptive coaching
+- **Tone**: Professional, realistic PM interviewer; evaluation follows the interview
 - **Dispatch name**: configured with `LIVEKIT_INTERVIEW_AGENT_NAME`
 - **Documentation**: [interview/README.md](interview/README.md)
 
@@ -236,20 +236,20 @@ Provider, model, and voice settings are resolved from server-only
 
 ### Interview Configuration
 
-- **Interview Type**: `product_sense`, `analytical`, `leadership`, `strategy`
-- **Candidate preferences**: difficulty, hint mode, question recency, time limit
+- **Interview Type**: `product_sense`, `execution`, `behavioral`, or `strategy`
+- **Selected Question**: optional canonical question-bank record
+- **Candidate preferences**: difficulty, question recency, and time limit
+- **Feedback and hints**: `end_only` and `off` by default
 - **Operator settings**: STT/LLM/TTS model, voice, speed, emotion, and volume
 
 ### Dynamic Prompt System
 
-The agent adapts its instructions based on configuration:
+The authenticated agent builds a round-specific mock-interview prompt. It stays
+in realistic interviewer role, asks adaptive follow-ups, and does not teach,
+hint, or evaluate the answer during the session. The public demo uses its own
+standalone prompt and intentionally remains a shorter feedback preview.
 
-- **Interviewee mode**: Acts as experienced PM interviewer
-- **Interviewer mode**: Acts as candidate being interviewed
-- **Learning mode**: Teaches frameworks step-by-step
-- **Mock Interview mode**: Realistic 45-minute session with pacing
-
-See [`agent.py`](./agent.py) for prompt templates.
+See [`shared/prompts.py`](./shared/prompts.py) for prompt templates.
 
 ---
 
@@ -382,9 +382,9 @@ Assesses leadership, collaboration, conflict resolution, decision making, and le
 
 **Difficulty Adjustments**:
 
-- **Beginner**: High guidance, reminds of STAR framework explicitly
-- **Intermediate**: Moderate guidance, probes for missing elements
-- **Advanced**: Bar-raiser mode, expects polished answers with metrics
+- **Beginner**: Direct follow-ups, more thinking time, concrete evidence bar
+- **Intermediate**: Independent structure, specific decisions, measurable impact
+- **Advanced**: Bar-raiser depth across judgment, stakeholders, and learning
 
 #### 2. **Product Sense** (5-Step Framework)
 
@@ -400,9 +400,9 @@ Assesses user empathy, creative thinking, prioritization, and business understan
 
 **Difficulty Adjustments**:
 
-- **Beginner**: Actively guides through 5 steps, suggests frameworks
-- **Intermediate**: Lets candidate drive, probes for missing elements
-- **Advanced**: Interrupts and challenges, expects PM maturity
+- **Beginner**: Accessible follow-ups without supplying a framework
+- **Intermediate**: Candidate-led structure with realistic depth probes
+- **Advanced**: Direct challenges to prioritization, trade-offs, and product judgment
 
 #### 3. **Execution** (Metrics & Trade-offs)
 
@@ -417,9 +417,9 @@ Assesses analytical thinking, prioritization, technical depth, stakeholder manag
 
 **Difficulty Adjustments**:
 
-- **Beginner**: Guides through metrics step-by-step, provides examples
-- **Intermediate**: Expects framework knowledge (AARRR, RICE)
-- **Advanced**: Senior PM thinking, challenges metrics, expects unit economics
+- **Beginner**: Clear metric and trade-off questions without suggested answers
+- **Intermediate**: Independent metric selection and causal reasoning
+- **Advanced**: Senior-level challenges on economics, systems, and execution risk
 
 #### 4. **Strategy** (Business Thinking)
 
@@ -434,30 +434,18 @@ Assesses business acumen, market understanding, competitive analysis, long-term 
 
 **Difficulty Adjustments**:
 
-- **Beginner**: Guides through frameworks (SWOT, Porter's 5 Forces)
-- **Intermediate**: Expects basic strategy frameworks
-- **Advanced**: Executive-level thinking, challenges assumptions with data
+- **Beginner**: Direct questions about objective, alternatives, and rationale
+- **Intermediate**: Independent strategic structure and defensible trade-offs
+- **Advanced**: Executive-level challenges to assumptions, economics, and sequencing
 
-### Feedback Modes
+### Feedback And Hint Defaults
 
-#### end_only (default)
-
-- No feedback during interview
-- Brief 2-3 sentence summary at end if asked
-- Saves detailed feedback for post-interview
-
-#### real_time
-
-- Provides brief feedback after each response
-- 1-2 sentences, concise
-- Balances positive and constructive
-- Example: "Good use of STAR method. Try to include more specific metrics."
-
-#### silent
-
-- Zero feedback during interview
-- Pure evaluation mode
-- All feedback in post-interview report
+`feedback_mode` is normalized to `end_only`, and full mock interviews normalize
+`hintMode` to `off`, including legacy `gentle` or `coach` metadata values.
+The interviewer gives no strengths, improvements, scores, suggested answers, or
+framework instruction during the mock interview. Detailed evaluation is created
+by the post-interview feedback workflow. Teaching and feedback-preview behavior
+belong to separate experiences, not the authenticated full-interview runtime.
 
 ### Room Metadata Configuration
 
@@ -485,13 +473,14 @@ internal transport contract, not a client request shape:
 ### Testing Different Configurations
 
 ```python
-# Test behavioral interview, beginner difficulty
+# Test behavioral interview, beginner difficulty with canonical defaults
 metadata = json.dumps({
     "round_type": "behavioral",
     "config": {
         "difficulty": "beginner",
         "duration": 30,
-        "feedback_mode": "real_time"
+        "feedback_mode": "end_only",
+        "hintMode": "off"
     }
 })
 
@@ -501,7 +490,8 @@ metadata = json.dumps({
     "config": {
         "difficulty": "advanced",
         "duration": 45,
-        "feedback_mode": "silent"
+        "feedback_mode": "end_only",
+        "hintMode": "off"
     }
 })
 ```

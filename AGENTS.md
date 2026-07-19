@@ -16,6 +16,8 @@ Canonical instructions for Codex, Claude, and other coding agents working in thi
 
 Meelni is a live PM interview practice product: real PM interview questions, live voice mock interviews, PM-calibrated feedback, and practice progress over time. Do not frame the product as a gym or call interviews reps. Follow `lib/product-language.ts` and the accepted positioning decision for canonical customer-facing language.
 
+The authenticated full-interview agent acts as a realistic PM interviewer. It asks adaptive follow-ups without teaching, hinting, or evaluating mid-session; feedback belongs to the post-interview experience. The short public demo is a separate experience and may provide a brief preview of feedback.
+
 Only the human product owner makes the final launch GO/NO-GO. Agents and
 automated gates may provide evidence and a readiness recommendation, but they
 must not infer the owner's decision or authorize default-on, Production, or

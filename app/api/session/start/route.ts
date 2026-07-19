@@ -16,7 +16,7 @@
  * @request.config {Object} Optional - Client-safe interview preferences
  * @request.config.difficulty {string} Optional - beginner, intermediate, or advanced
  * @request.config.duration {number} Optional - 15, 30, or 45 minutes
- * @request.config.hintMode {string} Optional - off, gentle, or coach
+ * @request.config.hintMode {string} Optional compatibility field; full mock interviews always normalize it to off
  * @request.config.questionPreference {Object} Optional - Question recency preference
  *
  * @response {Object} response - Session credentials and info
@@ -126,7 +126,6 @@ export async function POST(req: NextRequest) {
 
     const gateName = FEATURE_GATES.meelniReactivationAccess;
     const access = await resolveReactivationAccess({
-      user,
       localOverride: req.cookies.get(
         `meelni_feature_flag_${encodeURIComponent(gateName)}`
       )?.value,

@@ -20,7 +20,9 @@ const state = vi.hoisted(() => ({
   lastSelectResponse: [] as Array<Record<string, unknown>>,
   tombstoneFingerprints: new Set<string>(),
   checkoutSession: {} as Record<string, unknown>,
+  checkoutSessionList: [] as Array<Record<string, unknown>>,
   retrieveCheckoutSession: vi.fn(),
+  listCheckoutSessions: vi.fn(),
   ownershipClaims: [] as Array<Record<string, string>>,
   deletedCustomerIds: [] as string[],
   signatureCalls: 0,
@@ -65,6 +67,7 @@ vi.mock("stripe", () => ({
     checkout = {
       sessions: {
         retrieve: state.retrieveCheckoutSession,
+        list: state.listCheckoutSessions,
         expire: vi.fn(async () => undefined),
       },
     };
@@ -126,7 +129,16 @@ vi.mock("@/lib/db", () => ({
             },
           };
         },
-        onConflictDoUpdate: async () => undefined,
+        onConflictDoUpdate: async () => {
+          if (value.stripeCheckoutSessionId) {
+            const current = state.payments.find(
+              (row) =>
+                row.stripeCheckoutSessionId === value.stripeCheckoutSessionId
+            );
+            if (!current) state.payments.push(value);
+            else if (current.status === "failed") Object.assign(current, value);
+          }
+        },
       }),
     }),
     update: () => ({
@@ -154,9 +166,38 @@ vi.mock("@/lib/db", () => ({
           { currentTime: new Date("2026-07-12T00:00:00Z") },
         ],
         select: () => ({
-          from: () => ({
+          from: (table: Record<string, unknown>) => ({
             where: () => ({
-              limit: () => {
+              limit: (limit?: number) => {
+                const isPaymentHistory =
+                  "stripeInvoiceId" in table &&
+                  "stripeCheckoutSessionId" in table;
+                if (isPaymentHistory) {
+                  const invoice = (
+                    state.currentEvent?.data as
+                      | { object?: Record<string, unknown> }
+                      | undefined
+                  )?.object;
+                  const matching = state.payments.filter(
+                    (payment) => payment.stripeInvoiceId === invoice?.id
+                  );
+                  const preferred =
+                    limit === 1
+                      ? matching.filter((payment) =>
+                          state.currentEvent?.type ===
+                          "invoice.payment_succeeded"
+                            ? payment.status === "succeeded"
+                            : payment.status === "failed"
+                        )
+                      : matching;
+                  const response = preferred.slice(
+                    0,
+                    limit ?? preferred.length
+                  );
+                  return Object.assign(Promise.resolve(response), {
+                    for: async () => response,
+                  });
+                }
                 selectCount += 1;
                 const response =
                   selectCount === 1
@@ -196,26 +237,73 @@ vi.mock("@/lib/db", () => ({
             ) {
               state.mappingWrites.push(value);
             }
-            if ("stripeInvoiceId" in value && "status" in value) {
-              const duplicate = state.payments.some(
-                (row) =>
-                  row.stripeInvoiceId === value.stripeInvoiceId &&
-                  row.status === value.status
-              );
-              if (!duplicate) state.payments.push(value);
-            }
             return {
-              onConflictDoUpdate: async () => undefined,
-              onConflictDoNothing: async () => undefined,
+              onConflictDoUpdate: async () => {
+                if (value.stripeCheckoutSessionId) {
+                  const current = state.payments.find(
+                    (row) =>
+                      row.stripeCheckoutSessionId ===
+                      value.stripeCheckoutSessionId
+                  );
+                  if (!current) state.payments.push(value);
+                  else if (current.status === "failed") {
+                    Object.assign(current, value);
+                  }
+                }
+              },
+              onConflictDoNothing: async () => {
+                if (!("stripeInvoiceId" in value) || !("status" in value)) {
+                  return;
+                }
+                const duplicate = state.payments.some(
+                  (row) =>
+                    (value.stripeCheckoutSessionId &&
+                      row.stripeCheckoutSessionId ===
+                        value.stripeCheckoutSessionId) ||
+                    (row.stripeInvoiceId === value.stripeInvoiceId &&
+                      row.status === value.status)
+                );
+                if (!duplicate) state.payments.push(value);
+              },
             };
           },
         }),
-        update: () => ({
+        update: (table: Record<string, unknown>) => ({
           set: (value: Record<string, unknown>) => {
             state.updates.push(value);
             return {
               where: () => ({
                 returning: async () => {
+                  const isPaymentHistory =
+                    "stripeInvoiceId" in table &&
+                    "stripeCheckoutSessionId" in table;
+                  if (isPaymentHistory) {
+                    const invoice = (
+                      state.currentEvent?.data as
+                        | { object?: Record<string, unknown> }
+                        | undefined
+                    )?.object;
+                    const invoicePayments = state.payments.filter(
+                      (row) => row.stripeInvoiceId === invoice?.id
+                    );
+                    const payment =
+                      "stripeCheckoutSessionId" in value && !("status" in value)
+                        ? (invoicePayments.find((row) =>
+                            [
+                              "succeeded",
+                              "partially_refunded",
+                              "refunded",
+                              "disputed",
+                            ].includes(String(row.status))
+                          ) ?? invoicePayments[0])
+                        : invoicePayments[0];
+                    if (!payment) return [];
+                    if ("status" in value && payment.status !== "failed") {
+                      return [];
+                    }
+                    Object.assign(payment, value);
+                    return [payment];
+                  }
                   const applies =
                     state.transactionUpdateResults.shift() ?? true;
                   if (!applies) return [];
@@ -333,6 +421,11 @@ describe("POST /api/webhooks/stripe", () => {
     state.retrieveCheckoutSession.mockImplementation(async () =>
       structuredClone(state.checkoutSession)
     );
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.listCheckoutSessions.mockImplementation(async () => ({
+      data: structuredClone(state.checkoutSessionList),
+      has_more: false,
+    }));
   });
 
   it("replays and acknowledges distinct Event IDs for one logical transition", async () => {
@@ -474,19 +567,10 @@ describe("POST /api/webhooks/stripe", () => {
 
   it("preserves the first provider-derived failed-invoice grace deadline across logical replay", async () => {
     const firstCreated = 1_000;
-    const persistedPayment = {
-      userId: "invoice_user",
-      stripePaymentIntentId: null,
-      stripeInvoiceId: "in_failed",
-      stripeChargeId: null,
-      creditGrantId: null,
-      catalogId: "starter",
-      amountInCents: 900,
-      currency: "usd",
-      status: "failed",
-      createdAt: new Date(firstCreated * 1_000),
-    };
-    state.selectResponses.push([], [], [], [persistedPayment]);
+    state.selectResponses.push([], [], []);
+    state.transactionSelectResponses.push([
+      invoiceSubscriptionRow(firstCreated),
+    ]);
     expect(
       (
         await POST(
@@ -495,7 +579,10 @@ describe("POST /api/webhooks/stripe", () => {
       ).status
     ).toBe(200);
 
-    state.selectResponses.push([state.logs[0]!], [], [], [persistedPayment]);
+    state.selectResponses.push([state.logs[0]!], [], []);
+    state.transactionSelectResponses.push([
+      invoiceSubscriptionRow(firstCreated),
+    ]);
     const replay = await POST(
       request(failedInvoiceEvent("evt_failed_replay", firstCreated + 86_400))
     );
@@ -526,6 +613,7 @@ describe("POST /api/webhooks/stripe", () => {
         userId: "invoice_user",
         stripePaymentIntentId: null,
         stripeInvoiceId: "in_failed",
+        stripeCheckoutSessionId: null,
         stripeChargeId: null,
         creditGrantId: null,
         catalogId: "starter",
@@ -543,7 +631,7 @@ describe("POST /api/webhooks/stripe", () => {
       };
 
       if (order === "failure_then_success") {
-        state.selectResponses.push([], [], [], [failedPayment]);
+        state.selectResponses.push([], [], []);
         expect((await POST(request(failed))).status).toBe(200);
         state.selectResponses.push(
           [],
@@ -628,7 +716,7 @@ describe("POST /api/webhooks/stripe", () => {
       [],
       [mapping],
       [bootstrapped],
-      [invoiceFirstPersistedPayment()]
+      [invoiceFirstPersistedPayment(undefined, undefined, "cs_invoice_first")]
     );
 
     expect((await POST(request(created))).status).toBe(200);
@@ -648,8 +736,15 @@ describe("POST /api/webhooks/stripe", () => {
       expect.objectContaining({
         creditGrantId: "grant_renewal_route",
         stripeInvoiceId: "in_failed",
+        stripeCheckoutSessionId: "cs_invoice_first",
       })
     );
+    expect(state.listCheckoutSessions).toHaveBeenCalledWith({
+      subscription: "sub_route_test",
+      status: "complete",
+      limit: 100,
+      expand: ["data.line_items"],
+    });
 
     const replay = await POST(request(created));
     expect(await replay.json()).toEqual({
@@ -657,6 +752,376 @@ describe("POST /api/webhooks/stripe", () => {
       status: "already_processed",
     });
     expect(state.renewalCalls).toHaveLength(1);
+  });
+
+  it("promotes one subscription-create Checkout row from failed to succeeded", async () => {
+    const periodStart = 1_783_932_163;
+    const failed = invoiceFirstFailedEvent(
+      "evt_invoice_first_failed",
+      periodStart
+    );
+    const failedPayment = {
+      userId: "invoice_user",
+      stripePaymentIntentId: null,
+      stripeInvoiceId: "in_failed",
+      stripeCheckoutSessionId: "cs_invoice_first",
+      stripeEventId: "evt_invoice_first_failed",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "starter",
+      failureReason: "payment_failed",
+      createdAt: new Date(periodStart * 1_000),
+    };
+    state.checkoutSessionList = [
+      invoiceFirstCheckoutSession({ payment_status: "unpaid" }),
+    ];
+    state.selectResponses.push([], [], []);
+    state.transactionSelectResponses.push([failedPayment]);
+
+    expect((await POST(request(failed))).status).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject(failedPayment);
+    expect(state.renewalCalls).toHaveLength(0);
+
+    const succeeded = invoiceFirstSucceededEvent(
+      "evt_invoice_first_succeeded",
+      periodStart
+    );
+    const succeededPayment = invoiceFirstPersistedPayment(
+      undefined,
+      undefined,
+      "cs_invoice_first"
+    );
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.subscriptionRetrieveResult =
+      invoiceFirstProviderSubscription(periodStart);
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [],
+      [],
+      [invoiceFirstMapping()],
+      [invoiceFirstSubscriptionRow(periodStart)],
+      [succeededPayment]
+    );
+
+    expect((await POST(request(succeeded))).status).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject(succeededPayment);
+    expect(state.payments[0]?.status).toBe("succeeded");
+    expect(state.renewalCalls).toHaveLength(1);
+  });
+
+  it("backfills an exact legacy NULL-session failed row without inserting a duplicate", async () => {
+    const periodStart = 1_783_932_163;
+    const legacyFailed = {
+      id: "payment_legacy_failed",
+      userId: "invoice_user",
+      stripePaymentIntentId: null,
+      stripeInvoiceId: "in_failed",
+      stripeCheckoutSessionId: null,
+      stripeChargeId: null,
+      stripeEventId: "evt_legacy_failed_original",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "starter",
+      failureReason: "payment_failed",
+      createdAt: new Date(periodStart * 1_000),
+    };
+    state.payments.push(legacyFailed);
+    state.checkoutSessionList = [
+      invoiceFirstCheckoutSession({ payment_status: "unpaid" }),
+    ];
+    state.selectResponses.push([], []);
+    state.transactionSelectResponses.push([
+      invoiceFirstSubscriptionRow(periodStart, "invoice_user", {
+        lastEventTimestamp: new Date((periodStart - 1) * 1_000),
+      }),
+    ]);
+
+    const response = await POST(
+      request(invoiceFirstFailedEvent("evt_legacy_failed_replay", periodStart))
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject({
+      id: "payment_legacy_failed",
+      stripeCheckoutSessionId: "cs_invoice_first",
+      status: "failed",
+      stripePaymentIntentId: null,
+      creditGrantId: null,
+    });
+    expect(state.updates.some((update) => update.status === "past_due")).toBe(
+      true
+    );
+  });
+
+  it("promotes an exact legacy NULL-session failed row in place on success", async () => {
+    const periodStart = 1_783_932_163;
+    state.payments.push({
+      id: "payment_legacy_promote",
+      userId: "invoice_user",
+      stripePaymentIntentId: null,
+      stripeInvoiceId: "in_failed",
+      stripeCheckoutSessionId: null,
+      stripeChargeId: null,
+      stripeEventId: "evt_legacy_failed_original",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "starter",
+      failureReason: "payment_failed",
+      createdAt: new Date(periodStart * 1_000),
+    });
+    state.subscriptionRetrieveResult =
+      invoiceFirstProviderSubscription(periodStart);
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [],
+      [],
+      [invoiceFirstMapping()],
+      [invoiceFirstSubscriptionRow(periodStart)]
+    );
+
+    const response = await POST(
+      request(invoiceFirstSucceededEvent("evt_legacy_promoted", periodStart))
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject({
+      id: "payment_legacy_promote",
+      stripeCheckoutSessionId: "cs_invoice_first",
+      stripePaymentIntentId: "pi_invoice",
+      stripeChargeId: "ch_invoice",
+      creditGrantId: "grant_renewal_route",
+      status: "succeeded",
+    });
+  });
+
+  it("correlates terminal truth when legacy history has failed and succeeded rows", async () => {
+    const periodStart = 1_783_932_163;
+    const legacyFailed = {
+      id: "payment_legacy_failed_artifact",
+      userId: "invoice_user",
+      stripePaymentIntentId: null,
+      stripeInvoiceId: "in_failed",
+      stripeCheckoutSessionId: null,
+      stripeChargeId: null,
+      stripeEventId: "evt_legacy_failed_original",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "starter",
+      failureReason: "payment_failed",
+      createdAt: new Date(periodStart * 1_000),
+    };
+    const legacySucceeded = {
+      id: "payment_legacy_succeeded_terminal",
+      ...invoiceFirstPersistedPayment(),
+      stripeCheckoutSessionId: null,
+    };
+    state.payments.push(legacyFailed, legacySucceeded);
+    state.subscriptionRetrieveResult =
+      invoiceFirstProviderSubscription(periodStart);
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.selectResponses.push([]);
+    state.transactionSelectResponses.push(
+      [],
+      [],
+      [invoiceFirstMapping()],
+      [invoiceFirstSubscriptionRow(periodStart)]
+    );
+
+    const response = await POST(
+      request(
+        invoiceFirstSucceededEvent("evt_legacy_two_row_success", periodStart)
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toHaveLength(2);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        id: "payment_legacy_failed_artifact",
+        stripeCheckoutSessionId: null,
+        status: "failed",
+      })
+    );
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        id: "payment_legacy_succeeded_terminal",
+        stripeCheckoutSessionId: "cs_invoice_first",
+        status: "succeeded",
+      })
+    );
+  });
+
+  it.each(["partially_refunded", "refunded", "disputed"])(
+    "backfills but never downgrades an exact legacy NULL-session %s row",
+    async (status) => {
+      const periodStart = 1_783_932_163;
+      state.payments.push({
+        id: `payment_legacy_${status}`,
+        ...invoiceFirstPersistedPayment(),
+        stripeCheckoutSessionId: null,
+        status,
+      });
+      state.subscriptionRetrieveResult =
+        invoiceFirstProviderSubscription(periodStart);
+      state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+      state.selectResponses.push([]);
+      state.transactionSelectResponses.push(
+        [],
+        [],
+        [invoiceFirstMapping()],
+        [invoiceFirstSubscriptionRow(periodStart)]
+      );
+
+      const response = await POST(
+        request(
+          invoiceFirstSucceededEvent(
+            `evt_legacy_${status}_success`,
+            periodStart
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(state.payments).toHaveLength(1);
+      expect(state.payments[0]).toMatchObject({
+        stripeCheckoutSessionId: "cs_invoice_first",
+        status,
+      });
+    }
+  );
+
+  it("backfills but does not downgrade a legacy reversal on delayed failure", async () => {
+    const periodStart = 1_783_932_163;
+    state.payments.push({
+      id: "payment_legacy_reversal_failure",
+      ...invoiceFirstPersistedPayment(),
+      stripeCheckoutSessionId: null,
+      status: "disputed",
+    });
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.selectResponses.push([], []);
+
+    const response = await POST(
+      request(
+        invoiceFirstFailedEvent(
+          "evt_legacy_reversal_delayed_failure",
+          periodStart
+        )
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject({
+      stripeCheckoutSessionId: "cs_invoice_first",
+      status: "disputed",
+    });
+    expect(state.updates.some((update) => update.status === "past_due")).toBe(
+      false
+    );
+  });
+
+  it("correlates reversal truth when legacy history also has a failed row", async () => {
+    const periodStart = 1_783_932_163;
+    const legacyFailed = {
+      id: "payment_legacy_failed_before_reversal",
+      userId: "invoice_user",
+      stripePaymentIntentId: null,
+      stripeInvoiceId: "in_failed",
+      stripeCheckoutSessionId: null,
+      stripeChargeId: null,
+      stripeEventId: "evt_legacy_failed_before_reversal",
+      creditGrantId: null,
+      catalogId: "starter",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "starter",
+      failureReason: "payment_failed",
+      createdAt: new Date(periodStart * 1_000),
+    };
+    const legacyReversal = {
+      id: "payment_legacy_reversal_terminal",
+      ...invoiceFirstPersistedPayment(),
+      stripeCheckoutSessionId: null,
+      status: "disputed",
+    };
+    state.payments.push(legacyReversal, legacyFailed);
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.selectResponses.push([], []);
+
+    const response = await POST(
+      request(
+        invoiceFirstFailedEvent(
+          "evt_legacy_two_row_delayed_failure",
+          periodStart
+        )
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(state.payments).toHaveLength(2);
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        id: "payment_legacy_failed_before_reversal",
+        stripeCheckoutSessionId: null,
+        status: "failed",
+      })
+    );
+    expect(state.payments).toContainEqual(
+      expect.objectContaining({
+        id: "payment_legacy_reversal_terminal",
+        stripeCheckoutSessionId: "cs_invoice_first",
+        status: "disputed",
+      })
+    );
+    expect(state.updates.some((update) => update.status === "past_due")).toBe(
+      false
+    );
+  });
+
+  it("validates but does not downgrade subscription-create success on delayed failure", async () => {
+    const periodStart = 1_783_932_163;
+    const succeededPayment = {
+      ...invoiceFirstPersistedPayment(undefined, undefined, "cs_invoice_first"),
+      stripeEventId: "evt_invoice_first_succeeded_first",
+    };
+    state.payments.push(succeededPayment);
+    state.checkoutSessionList = [invoiceFirstCheckoutSession()];
+    state.selectResponses.push([], [succeededPayment]);
+
+    const response = await POST(
+      request(
+        invoiceFirstFailedEvent(
+          "evt_invoice_first_failure_delayed",
+          periodStart
+        )
+      )
+    );
+    expect(response.status).toBe(200);
+    expect(state.listCheckoutSessions).toHaveBeenCalled();
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]?.status).toBe("succeeded");
+    expect(state.updates.some((update) => update.status === "past_due")).toBe(
+      false
+    );
   });
 
   it("fails closed before payment when a subscription-cycle has no local state", async () => {
@@ -1056,7 +1521,7 @@ describe("POST /api/webhooks/stripe", () => {
     expect(state.ownershipClaims).toEqual([
       { customerId: "cus_route_async", userId },
     ]);
-    expect(state.payments).toContainEqual(persisted);
+    expect(state.payments).toContainEqual(expect.objectContaining(persisted));
   });
 
   it("reconciles delayed Checkout success after deletion without granting or refunding", async () => {
@@ -1101,14 +1566,37 @@ describe("POST /api/webhooks/stripe", () => {
     });
   });
 
-  it("acknowledges async payment failure without provider or credit mutation", async () => {
+  it("validates and persists canonical async payment failure without granting", async () => {
     const userId = "11111111-1111-4111-8111-111111111111";
-    state.selectResponses.push([]);
+    const failedPayment = {
+      userId,
+      stripePaymentIntentId: null,
+      stripeCheckoutSessionId: "cs_route_async_failure",
+      stripeEventId: "evt_checkout_async_failure",
+      creditGrantId: null,
+      catalogId: "interview_pass",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "interview_pass",
+      failureReason: "payment_failed",
+      createdAt: new Date(1_000_000),
+    };
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: "cs_route_async_failure",
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      payment_status: "unpaid",
+      payment_intent: null,
+      amount_total: 900,
+    });
+    state.selectResponses.push([], [failedPayment]);
 
     const response = await POST(
       request({
         id: "evt_checkout_async_failure",
         type: "checkout.session.async_payment_failed",
+        created: 1_000,
         data: {
           object: {
             id: "cs_route_async_failure",
@@ -1123,9 +1611,171 @@ describe("POST /api/webhooks/stripe", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(state.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(state.retrieveCheckoutSession).toHaveBeenCalledWith(
+      "cs_route_async_failure",
+      { expand: ["line_items"] }
+    );
     expect(state.grantCalls).toHaveLength(0);
-    expect(state.payments).toHaveLength(0);
+    expect(state.payments).toEqual([failedPayment]);
+  });
+
+  it("promotes one canonical Checkout row from failed to succeeded", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const sessionId = "cs_route_failure_then_success";
+    const failedPayment = {
+      userId,
+      stripePaymentIntentId: null,
+      stripeCheckoutSessionId: sessionId,
+      stripeEventId: "evt_checkout_failure_first",
+      creditGrantId: null,
+      catalogId: "interview_pass",
+      amountInCents: 900,
+      currency: "usd",
+      status: "failed",
+      tier: "interview_pass",
+      failureReason: "payment_failed",
+      createdAt: new Date(1_000_000),
+    };
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: sessionId,
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      payment_status: "unpaid",
+      payment_intent: null,
+    });
+    state.selectResponses.push([], [failedPayment]);
+    expect(
+      (
+        await POST(
+          request({
+            id: "evt_checkout_failure_first",
+            type: "checkout.session.async_payment_failed",
+            created: 1_000,
+            data: {
+              object: {
+                id: sessionId,
+                object: "checkout.session",
+                mode: "payment",
+                client_reference_id: userId,
+                metadata: { userId, catalogId: "interview_pass" },
+                customer: null,
+              },
+            },
+          })
+        )
+      ).status
+    ).toBe(200);
+
+    const succeededPayment = {
+      ...failedPayment,
+      stripePaymentIntentId: "pi_failure_then_success",
+      stripeEventId: "evt_checkout_success_later",
+      creditGrantId: "grant_route",
+      status: "succeeded",
+      failureReason: null,
+    };
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: sessionId,
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      payment_status: "paid",
+      payment_intent: "pi_failure_then_success",
+    });
+    state.selectResponses.push([], [succeededPayment]);
+    expect(
+      (
+        await POST(
+          request({
+            id: "evt_checkout_success_later",
+            type: "checkout.session.async_payment_succeeded",
+            created: 1_001,
+            data: {
+              object: {
+                id: sessionId,
+                object: "checkout.session",
+                mode: "payment",
+                client_reference_id: userId,
+                metadata: { userId, catalogId: "interview_pass" },
+                customer: null,
+              },
+            },
+          })
+        )
+      ).status
+    ).toBe(200);
+
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]).toMatchObject(succeededPayment);
+    expect(state.grantCalls).toHaveLength(1);
+  });
+
+  it("does not downgrade canonical Checkout success on delayed failure", async () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const sessionId = "cs_route_success_then_failure";
+    const succeededPayment = {
+      userId,
+      stripePaymentIntentId: "pi_success_then_failure",
+      stripeCheckoutSessionId: sessionId,
+      stripeEventId: "evt_checkout_success_first",
+      creditGrantId: "grant_route",
+      catalogId: "interview_pass",
+      amountInCents: 900,
+      currency: "usd",
+      status: "succeeded",
+      tier: "interview_pass",
+      failureReason: null,
+    };
+    state.checkoutSession = authoritativeCheckoutSession({
+      id: sessionId,
+      client_reference_id: userId,
+      metadata: { userId, catalogId: "interview_pass" },
+      payment_status: "paid",
+      payment_intent: "pi_success_then_failure",
+    });
+    state.selectResponses.push([], [succeededPayment]);
+    expect(
+      (
+        await POST(
+          request({
+            id: "evt_checkout_success_first",
+            type: "checkout.session.async_payment_succeeded",
+            data: {
+              object: {
+                id: sessionId,
+                object: "checkout.session",
+                mode: "payment",
+                client_reference_id: userId,
+                metadata: { userId, catalogId: "interview_pass" },
+                customer: null,
+              },
+            },
+          })
+        )
+      ).status
+    ).toBe(200);
+    state.selectResponses.push([]);
+    expect(
+      (
+        await POST(
+          request({
+            id: "evt_checkout_failure_delayed",
+            type: "checkout.session.async_payment_failed",
+            data: {
+              object: {
+                id: sessionId,
+                object: "checkout.session",
+                mode: "payment",
+                client_reference_id: userId,
+                metadata: { userId, catalogId: "interview_pass" },
+                customer: null,
+              },
+            },
+          })
+        )
+      ).status
+    ).toBe(200);
+    expect(state.payments).toHaveLength(1);
+    expect(state.payments[0]?.status).toBe("succeeded");
   });
 
   it("leaves subscription Checkout events to subscription and invoice handlers", async () => {
@@ -1503,6 +2153,20 @@ function invoiceFirstSucceededEvent(
   return invoice;
 }
 
+function invoiceFirstFailedEvent(
+  id: string,
+  periodStart: number,
+  userId = "invoice_user"
+) {
+  const invoice = invoiceFirstSucceededEvent(id, periodStart, userId);
+  invoice.type = "invoice.payment_failed";
+  const object = invoice.data.object as unknown as Record<string, unknown>;
+  delete object.amount_paid;
+  delete object.hosted_invoice_url;
+  delete object.payments;
+  return invoice;
+}
+
 function setInvoiceSubscriptionIdentity(
   invoice: ReturnType<typeof succeededInvoiceEvent>,
   subscriptionId: string
@@ -1569,6 +2233,34 @@ function invoiceFirstProviderSubscription(
   };
 }
 
+function invoiceFirstCheckoutSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "cs_invoice_first",
+    object: "checkout.session",
+    status: "complete",
+    payment_status: "paid",
+    mode: "subscription",
+    subscription: "sub_route_test",
+    invoice: "in_failed",
+    customer: "cus_invoice_first",
+    client_reference_id: "invoice_user",
+    metadata: { userId: "invoice_user", catalogId: "starter" },
+    currency: "usd",
+    line_items: {
+      data: [
+        {
+          id: "li_invoice_first",
+          currency: "usd",
+          price: { id: "price_starter_route" },
+          quantity: 1,
+        },
+      ],
+      has_more: false,
+    },
+    ...overrides,
+  };
+}
+
 function invoiceFirstMapping(userId = "invoice_user") {
   return {
     stripeCustomerId: "cus_invoice_first",
@@ -1598,12 +2290,14 @@ function invoiceFirstSubscriptionRow(
 
 function invoiceFirstPersistedPayment(
   userId = "invoice_user",
-  creditGrantId: string | null = "grant_renewal_route"
+  creditGrantId: string | null = "grant_renewal_route",
+  stripeCheckoutSessionId: string | null = null
 ) {
   return {
     userId,
     stripePaymentIntentId: "pi_invoice",
     stripeInvoiceId: "in_failed",
+    stripeCheckoutSessionId,
     stripeChargeId: "ch_invoice",
     creditGrantId,
     catalogId: "starter",
