@@ -5914,6 +5914,12 @@ function sourceRecommendationId(roundType, dimension, evidenceGap) {
   ].join(":");
 }
 
+// packages/core/src/focused-practice-attempt.ts
+var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
+  revised_answer: 8e3,
+  reflection: 2e3
+});
+
 // packages/core/src/feedback-eligibility.ts
 var FEEDBACK_ELIGIBILITY_POLICY = {
   partial: {
@@ -8070,11 +8076,11 @@ var liveKitStartFixture = {
   }
 };
 
-// node_modules/postgres/src/index.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/index.js
 import os from "os";
 import fs from "fs";
 
-// node_modules/postgres/src/query.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/query.js
 var originCache = /* @__PURE__ */ new Map();
 var originStackCache = /* @__PURE__ */ new Map();
 var originError = Symbol("OriginError");
@@ -8211,7 +8217,7 @@ function cachedError(xs) {
   return originCache.get(xs);
 }
 
-// node_modules/postgres/src/errors.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/errors.js
 var PostgresError = class extends Error {
   constructor(x) {
     super(x.message);
@@ -8261,7 +8267,7 @@ function notSupported(x) {
   return error;
 }
 
-// node_modules/postgres/src/types.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/types.js
 var types = {
   string: {
     to: 25,
@@ -8547,14 +8553,14 @@ fromKebab.column = { to: fromKebab };
 var kebab = { ...toKebab };
 kebab.column.to = fromKebab;
 
-// node_modules/postgres/src/connection.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/connection.js
 import net from "net";
 import tls from "tls";
 import crypto2 from "crypto";
 import Stream from "stream";
 import { performance } from "perf_hooks";
 
-// node_modules/postgres/src/result.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/result.js
 var Result = class extends Array {
   constructor() {
     super();
@@ -8571,7 +8577,7 @@ var Result = class extends Array {
   }
 };
 
-// node_modules/postgres/src/queue.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/queue.js
 var queue_default = Queue;
 function Queue(initial = []) {
   let xs = initial.slice();
@@ -8598,7 +8604,7 @@ function Queue(initial = []) {
   };
 }
 
-// node_modules/postgres/src/bytes.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/bytes.js
 var size = 256;
 var buffer = Buffer.allocUnsafe(size);
 var messages = "BCcDdEFfHPpQSX".split("").reduce((acc, x) => {
@@ -8671,7 +8677,7 @@ function reset() {
   return b;
 }
 
-// node_modules/postgres/src/connection.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/connection.js
 var connection_default = Connection;
 var uid = 1;
 var Sync = bytes_default().S().end();
@@ -9489,7 +9495,7 @@ function timer(fn, seconds) {
   }
 }
 
-// node_modules/postgres/src/subscribe.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/subscribe.js
 var noop2 = () => {
 };
 function Subscribe(postgres2, options) {
@@ -9701,7 +9707,7 @@ function parseEvent(x) {
   return (command || "*") + (path2 ? ":" + (path2.indexOf(".") === -1 ? "public." + path2 : path2) : "") + (key ? "=" + key : "");
 }
 
-// node_modules/postgres/src/large.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/large.js
 import Stream2 from "stream";
 function largeObject(sql2, oid, mode = 131072 | 262144) {
   return new Promise(async (resolve5, reject) => {
@@ -9767,7 +9773,7 @@ function largeObject(sql2, oid, mode = 131072 | 262144) {
   });
 }
 
-// node_modules/postgres/src/index.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/postgres/src/index.js
 Object.assign(Postgres, {
   PostgresError,
   toPascal,
@@ -10169,7 +10175,7 @@ function osUsername() {
   }
 }
 
-// node_modules/drizzle-orm/entity.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/entity.js
 var entityKind = Symbol.for("drizzle:entityKind");
 var hasOwnEntityKind = Symbol.for("drizzle:hasOwnEntityKind");
 function is(value, type) {
@@ -10196,7 +10202,7 @@ function is(value, type) {
   return false;
 }
 
-// node_modules/drizzle-orm/logger.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/logger.js
 var ConsoleLogWriter = class {
   static [entityKind] = "ConsoleLogWriter";
   write(message) {
@@ -10227,7 +10233,7 @@ var NoopLogger = class {
   }
 };
 
-// node_modules/drizzle-orm/query-promise.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/query-promise.js
 var QueryPromise = class {
   static [entityKind] = "QueryPromise";
   [Symbol.toStringTag] = "QueryPromise";
@@ -10251,7 +10257,7 @@ var QueryPromise = class {
   }
 };
 
-// node_modules/drizzle-orm/column.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/column.js
 var Column = class {
   constructor(table, config) {
     this.table = table;
@@ -10302,7 +10308,7 @@ var Column = class {
   }
 };
 
-// node_modules/drizzle-orm/column-builder.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/column-builder.js
 var ColumnBuilder = class {
   static [entityKind] = "ColumnBuilder";
   config;
@@ -10405,10 +10411,10 @@ var ColumnBuilder = class {
   }
 };
 
-// node_modules/drizzle-orm/table.utils.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/table.utils.js
 var TableName = Symbol.for("drizzle:Name");
 
-// node_modules/drizzle-orm/pg-core/foreign-keys.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/foreign-keys.js
 var ForeignKeyBuilder = class {
   static [entityKind] = "PgForeignKeyBuilder";
   /** @internal */
@@ -10476,12 +10482,12 @@ function foreignKey(config) {
   return new ForeignKeyBuilder(mappedConfig);
 }
 
-// node_modules/drizzle-orm/tracing-utils.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/tracing-utils.js
 function iife(fn, ...args) {
   return fn(...args);
 }
 
-// node_modules/drizzle-orm/pg-core/unique-constraint.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/unique-constraint.js
 function unique(name) {
   return new UniqueOnConstraintBuilder(name);
 }
@@ -10534,7 +10540,7 @@ var UniqueConstraint = class {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/utils/array.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/utils/array.js
 function parsePgArrayValue(arrayString, startFrom, inQuotes) {
   for (let i = startFrom; i < arrayString.length; i++) {
     const char2 = arrayString[i];
@@ -10610,7 +10616,7 @@ function makePgArray(array) {
   }).join(",")}}`;
 }
 
-// node_modules/drizzle-orm/pg-core/columns/common.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/common.js
 var PgColumnBuilder = class extends ColumnBuilder {
   foreignKeyConfigs = [];
   static [entityKind] = "PgColumnBuilder";
@@ -10794,7 +10800,7 @@ var PgArray = class _PgArray extends PgColumn {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/columns/enum.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/enum.js
 var PgEnumObjectColumnBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgEnumObjectColumnBuilder";
   constructor(name, enumInstance) {
@@ -10852,7 +10858,7 @@ var PgEnumColumn = class extends PgColumn {
   }
 };
 
-// node_modules/drizzle-orm/subquery.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/subquery.js
 var Subquery = class {
   static [entityKind] = "Subquery";
   constructor(sql2, fields, alias, isWith = false, usedTables = []) {
@@ -10873,10 +10879,10 @@ var WithSubquery = class extends Subquery {
   static [entityKind] = "WithSubquery";
 };
 
-// node_modules/drizzle-orm/version.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/version.js
 var version = "0.45.2";
 
-// node_modules/drizzle-orm/tracing.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/tracing.js
 var otel;
 var rawTracer;
 var tracer = {
@@ -10911,10 +10917,10 @@ var tracer = {
   }
 };
 
-// node_modules/drizzle-orm/view-common.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/view-common.js
 var ViewBaseConfig = Symbol.for("drizzle:ViewBaseConfig");
 
-// node_modules/drizzle-orm/table.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/table.js
 var Schema = Symbol.for("drizzle:Schema");
 var Columns = Symbol.for("drizzle:Columns");
 var ExtraConfigColumns = Symbol.for("drizzle:ExtraConfigColumns");
@@ -10976,7 +10982,7 @@ function getTableUniqueName(table) {
   return `${table[Schema] ?? "public"}.${table[TableName]}`;
 }
 
-// node_modules/drizzle-orm/sql/sql.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/sql/sql.js
 var FakePrimitiveParam = class {
   static [entityKind] = "FakePrimitiveParam";
 };
@@ -11370,7 +11376,7 @@ Subquery.prototype.getSQL = function() {
   return new SQL([this]);
 };
 
-// node_modules/drizzle-orm/alias.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/alias.js
 var ColumnAliasProxyHandler = class {
   constructor(table) {
     this.table = table;
@@ -11466,7 +11472,7 @@ function mapColumnsInSQLToAlias(query, alias) {
   }));
 }
 
-// node_modules/drizzle-orm/selection-proxy.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/selection-proxy.js
 var SelectionProxyHandler = class _SelectionProxyHandler {
   static [entityKind] = "SelectionProxyHandler";
   config;
@@ -11534,7 +11540,7 @@ var SelectionProxyHandler = class _SelectionProxyHandler {
   }
 };
 
-// node_modules/drizzle-orm/utils.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/utils.js
 function mapResultRow(columns, row, joinsNotNullableMap) {
   const nullifyMap = {};
   const result = columns.reduce(
@@ -11685,7 +11691,7 @@ function isConfig(data) {
 }
 var textDecoder = typeof TextDecoder === "undefined" ? null : new TextDecoder();
 
-// node_modules/drizzle-orm/pg-core/columns/int.common.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/int.common.js
 var PgIntColumnBaseBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgIntColumnBaseBuilder";
   generatedAlwaysAsIdentity(sequence) {
@@ -11724,7 +11730,7 @@ var PgIntColumnBaseBuilder = class extends PgColumnBuilder {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/columns/bigint.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/bigint.js
 var PgBigInt53Builder = class extends PgIntColumnBaseBuilder {
   static [entityKind] = "PgBigInt53Builder";
   constructor(name) {
@@ -11778,7 +11784,7 @@ function bigint(a, b2) {
   return new PgBigInt64Builder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/bigserial.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/bigserial.js
 var PgBigSerial53Builder = class extends PgColumnBuilder {
   static [entityKind] = "PgBigSerial53Builder";
   constructor(name) {
@@ -11838,7 +11844,7 @@ function bigserial(a, b2) {
   return new PgBigSerial64Builder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/boolean.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/boolean.js
 var PgBooleanBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgBooleanBuilder";
   constructor(name) {
@@ -11859,7 +11865,7 @@ function boolean(name) {
   return new PgBooleanBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/char.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/char.js
 var PgCharBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgCharBuilder";
   constructor(name, config) {
@@ -11888,7 +11894,7 @@ function char(a, b2 = {}) {
   return new PgCharBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/cidr.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/cidr.js
 var PgCidrBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgCidrBuilder";
   constructor(name) {
@@ -11909,7 +11915,7 @@ function cidr(name) {
   return new PgCidrBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/custom.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/custom.js
 var PgCustomColumnBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgCustomColumnBuilder";
   constructor(name, fieldConfig, customTypeParams) {
@@ -11953,7 +11959,7 @@ function customType(customTypeParams) {
   };
 }
 
-// node_modules/drizzle-orm/pg-core/columns/date.common.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/date.common.js
 var PgDateColumnBaseBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgDateColumnBaseBuilder";
   defaultNow() {
@@ -11961,7 +11967,7 @@ var PgDateColumnBaseBuilder = class extends PgColumnBuilder {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/columns/date.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/date.js
 var PgDateBuilder = class extends PgDateColumnBaseBuilder {
   static [entityKind] = "PgDateBuilder";
   constructor(name) {
@@ -12016,7 +12022,7 @@ function date(a, b2) {
   return new PgDateStringBuilder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/double-precision.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/double-precision.js
 var PgDoublePrecisionBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgDoublePrecisionBuilder";
   constructor(name) {
@@ -12046,7 +12052,7 @@ function doublePrecision(name) {
   return new PgDoublePrecisionBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/inet.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/inet.js
 var PgInetBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgInetBuilder";
   constructor(name) {
@@ -12067,7 +12073,7 @@ function inet(name) {
   return new PgInetBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/integer.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/integer.js
 var PgIntegerBuilder = class extends PgIntColumnBaseBuilder {
   static [entityKind] = "PgIntegerBuilder";
   constructor(name) {
@@ -12094,7 +12100,7 @@ function integer(name) {
   return new PgIntegerBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/interval.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/interval.js
 var PgIntervalBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgIntervalBuilder";
   constructor(name, intervalConfig) {
@@ -12121,7 +12127,7 @@ function interval(a, b2 = {}) {
   return new PgIntervalBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/json.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/json.js
 var PgJsonBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgJsonBuilder";
   constructor(name) {
@@ -12158,7 +12164,7 @@ function json(name) {
   return new PgJsonBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/jsonb.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/jsonb.js
 var PgJsonbBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgJsonbBuilder";
   constructor(name) {
@@ -12195,7 +12201,7 @@ function jsonb(name) {
   return new PgJsonbBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/line.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/line.js
 var PgLineBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgLineBuilder";
   constructor(name) {
@@ -12256,7 +12262,7 @@ function line(a, b2) {
   return new PgLineABCBuilder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/macaddr.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/macaddr.js
 var PgMacaddrBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgMacaddrBuilder";
   constructor(name) {
@@ -12277,7 +12283,7 @@ function macaddr(name) {
   return new PgMacaddrBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/macaddr8.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/macaddr8.js
 var PgMacaddr8Builder = class extends PgColumnBuilder {
   static [entityKind] = "PgMacaddr8Builder";
   constructor(name) {
@@ -12298,7 +12304,7 @@ function macaddr8(name) {
   return new PgMacaddr8Builder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/numeric.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/numeric.js
 var PgNumericBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgNumericBuilder";
   constructor(name, precision, scale) {
@@ -12415,7 +12421,7 @@ function numeric(a, b2) {
   return mode === "number" ? new PgNumericNumberBuilder(name, config?.precision, config?.scale) : mode === "bigint" ? new PgNumericBigIntBuilder(name, config?.precision, config?.scale) : new PgNumericBuilder(name, config?.precision, config?.scale);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/point.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/point.js
 var PgPointTupleBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgPointTupleBuilder";
   constructor(name) {
@@ -12482,7 +12488,7 @@ function point(a, b2) {
   return new PgPointObjectBuilder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/postgis_extension/utils.js
 function hexToBytes(hex) {
   const bytes = [];
   for (let c = 0; c < hex.length; c += 2) {
@@ -12521,7 +12527,7 @@ function parseEWKB(hex) {
   throw new Error("Unsupported geometry type");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/postgis_extension/geometry.js
 var PgGeometryBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgGeometryBuilder";
   constructor(name) {
@@ -12581,7 +12587,7 @@ function geometry(a, b2) {
   return new PgGeometryObjectBuilder(name);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/real.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/real.js
 var PgRealBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgRealBuilder";
   constructor(name, length) {
@@ -12612,7 +12618,7 @@ function real(name) {
   return new PgRealBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/serial.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/serial.js
 var PgSerialBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgSerialBuilder";
   constructor(name) {
@@ -12635,7 +12641,7 @@ function serial(name) {
   return new PgSerialBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/smallint.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/smallint.js
 var PgSmallIntBuilder = class extends PgIntColumnBaseBuilder {
   static [entityKind] = "PgSmallIntBuilder";
   constructor(name) {
@@ -12662,7 +12668,7 @@ function smallint(name) {
   return new PgSmallIntBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/smallserial.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/smallserial.js
 var PgSmallSerialBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgSmallSerialBuilder";
   constructor(name) {
@@ -12688,7 +12694,7 @@ function smallserial(name) {
   return new PgSmallSerialBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/text.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/text.js
 var PgTextBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgTextBuilder";
   constructor(name, config) {
@@ -12712,7 +12718,7 @@ function text(a, b2 = {}) {
   return new PgTextBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/time.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/time.js
 var PgTimeBuilder = class extends PgDateColumnBaseBuilder {
   constructor(name, withTimezone, precision) {
     super(name, "string", "PgTime");
@@ -12746,7 +12752,7 @@ function time(a, b2 = {}) {
   return new PgTimeBuilder(name, config.withTimezone ?? false, config.precision);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/timestamp.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/timestamp.js
 var PgTimestampBuilder = class extends PgDateColumnBaseBuilder {
   static [entityKind] = "PgTimestampBuilder";
   constructor(name, withTimezone, precision) {
@@ -12827,7 +12833,7 @@ function timestamp(a, b2 = {}) {
   return new PgTimestampBuilder(name, config?.withTimezone ?? false, config?.precision);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/uuid.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/uuid.js
 var PgUUIDBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgUUIDBuilder";
   constructor(name) {
@@ -12854,7 +12860,7 @@ function uuid(name) {
   return new PgUUIDBuilder(name ?? "");
 }
 
-// node_modules/drizzle-orm/pg-core/columns/varchar.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/varchar.js
 var PgVarcharBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgVarcharBuilder";
   constructor(name, config) {
@@ -12883,7 +12889,7 @@ function varchar(a, b2 = {}) {
   return new PgVarcharBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/vector_extension/bit.js
 var PgBinaryVectorBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgBinaryVectorBuilder";
   constructor(name, config) {
@@ -12910,7 +12916,7 @@ function bit(a, b2) {
   return new PgBinaryVectorBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/vector_extension/halfvec.js
 var PgHalfVectorBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgHalfVectorBuilder";
   constructor(name, config) {
@@ -12943,7 +12949,7 @@ function halfvec(a, b2) {
   return new PgHalfVectorBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/vector_extension/sparsevec.js
 var PgSparseVectorBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgSparseVectorBuilder";
   constructor(name, config) {
@@ -12970,7 +12976,7 @@ function sparsevec(a, b2) {
   return new PgSparseVectorBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/vector_extension/vector.js
 var PgVectorBuilder = class extends PgColumnBuilder {
   static [entityKind] = "PgVectorBuilder";
   constructor(name, config) {
@@ -13003,7 +13009,7 @@ function vector(a, b2) {
   return new PgVectorBuilder(name, config);
 }
 
-// node_modules/drizzle-orm/pg-core/columns/all.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/columns/all.js
 function getPgColumnBuilders() {
   return {
     bigint,
@@ -13041,7 +13047,7 @@ function getPgColumnBuilders() {
   };
 }
 
-// node_modules/drizzle-orm/pg-core/table.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/table.js
 var InlineForeignKeys = Symbol.for("drizzle:PgInlineForeignKeys");
 var EnableRLS = Symbol.for("drizzle:EnableRLS");
 var PgTable = class extends Table {
@@ -13097,7 +13103,7 @@ var pgTable = (name, columns, extraConfig) => {
   return pgTableWithSchema(name, columns, extraConfig, void 0);
 };
 
-// node_modules/drizzle-orm/pg-core/checks.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/checks.js
 var CheckBuilder = class {
   constructor(name, value) {
     this.name = name;
@@ -13124,7 +13130,7 @@ function check(name, value) {
   return new CheckBuilder(name, value);
 }
 
-// node_modules/drizzle-orm/pg-core/indexes.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/indexes.js
 var IndexBuilderOn = class {
   constructor(unique2, name) {
     this.unique = unique2;
@@ -13236,7 +13242,7 @@ function uniqueIndex(name) {
   return new IndexBuilderOn(true, name);
 }
 
-// node_modules/drizzle-orm/pg-core/primary-keys.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/primary-keys.js
 function primaryKey(...config) {
   if (config[0].columns) {
     return new PrimaryKeyBuilder(config[0].columns, config[0].name);
@@ -13272,7 +13278,7 @@ var PrimaryKey = class {
   }
 };
 
-// node_modules/drizzle-orm/casing.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/casing.js
 function toSnakeCase(input) {
   const words = input.replace(/['\u2019]/g, "").match(/[\da-z]+|[A-Z]+(?![a-z])|[A-Z][\da-z]+/g) ?? [];
   return words.map((word) => word.toLowerCase()).join("_");
@@ -13324,7 +13330,7 @@ var CasingCache = class {
   }
 };
 
-// node_modules/drizzle-orm/errors.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/errors.js
 var DrizzleError = class extends Error {
   static [entityKind] = "DrizzleError";
   constructor({ message, cause }) {
@@ -13351,7 +13357,7 @@ var TransactionRollbackError = class extends DrizzleError {
   }
 };
 
-// node_modules/drizzle-orm/sql/expressions/conditions.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/sql/expressions/conditions.js
 function bindIfParam(value, column) {
   if (isDriverValueEncoder(column) && !isSQLWrapper(value) && !is(value, Param) && !is(value, Placeholder) && !is(value, Column) && !is(value, Table) && !is(value, View)) {
     return new Param(value, column);
@@ -13466,7 +13472,7 @@ function notIlike(column, value) {
   return sql`${column} not ilike ${value}`;
 }
 
-// node_modules/drizzle-orm/sql/expressions/select.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/sql/expressions/select.js
 function asc(column) {
   return sql`${column} asc`;
 }
@@ -13474,7 +13480,7 @@ function desc(column) {
   return sql`${column} desc`;
 }
 
-// node_modules/drizzle-orm/relations.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/relations.js
 var Relation = class {
   constructor(sourceTable, referencedTable, relationName) {
     this.sourceTable = sourceTable;
@@ -13746,12 +13752,12 @@ function mapRelationalRow(tablesConfig, tableConfig, row, buildQueryResultSelect
   return result;
 }
 
-// node_modules/drizzle-orm/pg-core/view-base.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/view-base.js
 var PgViewBase = class extends View {
   static [entityKind] = "PgViewBase";
 };
 
-// node_modules/drizzle-orm/pg-core/dialect.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/dialect.js
 var PgDialect = class {
   static [entityKind] = "PgDialect";
   /** @internal */
@@ -14856,7 +14862,7 @@ var PgDialect = class {
   }
 };
 
-// node_modules/drizzle-orm/query-builders/query-builder.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/query-builders/query-builder.js
 var TypedQueryBuilder = class {
   static [entityKind] = "TypedQueryBuilder";
   /** @internal */
@@ -14865,7 +14871,7 @@ var TypedQueryBuilder = class {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/select.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/select.js
 var PgSelectBuilder = class {
   static [entityKind] = "PgSelectBuilder";
   fields;
@@ -15681,7 +15687,7 @@ var intersectAll = createSetOperator("intersect", true);
 var except = createSetOperator("except", false);
 var exceptAll = createSetOperator("except", true);
 
-// node_modules/drizzle-orm/pg-core/query-builders/query-builder.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/query-builder.js
 var QueryBuilder = class {
   static [entityKind] = "PgQueryBuilder";
   dialect;
@@ -15768,7 +15774,7 @@ var QueryBuilder = class {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/utils.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/utils.js
 function extractUsedTable(table) {
   if (is(table, PgTable)) {
     return [table[Schema] ? `${table[Schema]}.${table[Table.Symbol.BaseName]}` : table[Table.Symbol.BaseName]];
@@ -15782,7 +15788,7 @@ function extractUsedTable(table) {
   return [];
 }
 
-// node_modules/drizzle-orm/pg-core/query-builders/delete.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/delete.js
 var PgDeleteBase = class extends QueryPromise {
   constructor(table, session, dialect, withList) {
     super();
@@ -15878,7 +15884,7 @@ var PgDeleteBase = class extends QueryPromise {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/insert.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/insert.js
 var PgInsertBuilder = class {
   constructor(table, session, dialect, withList, overridingSystemValue_) {
     this.table = table;
@@ -16071,7 +16077,7 @@ var PgInsertBase = class extends QueryPromise {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/refresh-materialized-view.js
 var PgRefreshMaterializedView = class extends QueryPromise {
   constructor(view, session, dialect) {
     super();
@@ -16125,7 +16131,7 @@ var PgRefreshMaterializedView = class extends QueryPromise {
   };
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/update.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/update.js
 var PgUpdateBuilder = class {
   constructor(table, session, dialect, withList) {
     this.table = table;
@@ -16337,7 +16343,7 @@ var PgUpdateBase = class extends QueryPromise {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/count.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/count.js
 var PgCountBuilder = class _PgCountBuilder extends SQL {
   constructor(params) {
     super(_PgCountBuilder.buildEmbeddedCount(params.source, params.filters).queryChunks);
@@ -16388,7 +16394,7 @@ var PgCountBuilder = class _PgCountBuilder extends SQL {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/query.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/query.js
 var RelationalQueryBuilder = class {
   constructor(fullSchema, schema, tableNamesMap, table, tableConfig, dialect, session) {
     this.fullSchema = fullSchema;
@@ -16501,7 +16507,7 @@ var PgRelationalQuery = class extends QueryPromise {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/query-builders/raw.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/query-builders/raw.js
 var PgRaw = class extends QueryPromise {
   constructor(execute, sql2, query, mapBatchResult) {
     super();
@@ -16530,7 +16536,7 @@ var PgRaw = class extends QueryPromise {
   }
 };
 
-// node_modules/drizzle-orm/pg-core/db.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/db.js
 var PgDatabase = class {
   constructor(dialect, session, schema) {
     this.dialect = dialect;
@@ -16809,7 +16815,7 @@ var PgDatabase = class {
   }
 };
 
-// node_modules/drizzle-orm/cache/core/cache.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/cache/core/cache.js
 var Cache = class {
   static [entityKind] = "Cache";
 };
@@ -16836,7 +16842,7 @@ async function hashQuery(sql2, params) {
   return hashHex;
 }
 
-// node_modules/drizzle-orm/pg-core/session.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/pg-core/session.js
 var PgPreparedQuery = class {
   constructor(query, cache, queryMetadata, cacheConfig) {
     this.query = query;
@@ -16996,7 +17002,7 @@ var PgTransaction = class extends PgDatabase {
   }
 };
 
-// node_modules/drizzle-orm/postgres-js/session.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/postgres-js/session.js
 var PostgresJsPreparedQuery = class extends PgPreparedQuery {
   constructor(client, queryString, params, logger, cache, queryMetadata, cacheConfig, fields, _isResponseInArrayMode, customResultMapper) {
     super({ sql: queryString, params }, cache, queryMetadata, cacheConfig);
@@ -17132,7 +17138,7 @@ var PostgresJsTransaction = class _PostgresJsTransaction extends PgTransaction {
   }
 };
 
-// node_modules/drizzle-orm/postgres-js/driver.js
+// ../meelni-open-prs.3kvwO4/repo/node_modules/drizzle-orm/postgres-js/driver.js
 var PostgresJsDatabase = class extends PgDatabase {
   static [entityKind] = "PostgresJsDatabase";
 };
@@ -19318,7 +19324,7 @@ var DEFAULT_INTERVIEW_RUNTIME_SETTINGS = {
   tts_model: DEFAULT_INTERVIEW_RUNTIME_CONFIG.tts_model
 };
 
-// node_modules/posthog-node/dist/extensions/error-tracking/modifiers/module.node.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/extensions/error-tracking/modifiers/module.node.mjs
 import { dirname, posix, sep } from "path";
 function createModulerModifier() {
   const getModuleFromFileName = createGetModuleFromFilename();
@@ -19349,7 +19355,7 @@ function normalizeWindowsPath(path2) {
   return path2.replace(/^[A-Z]:/, "").replace(/\\/g, "/");
 }
 
-// node_modules/@posthog/core/dist/vendor/uuidv7.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/vendor/uuidv7.mjs
 var DIGITS = "0123456789abcdef";
 var UUID = class _UUID {
   constructor(bytes) {
@@ -19511,7 +19517,7 @@ var defaultGenerator;
 var uuidv7 = () => uuidv7obj().toString();
 var uuidv7obj = () => (defaultGenerator || (defaultGenerator = new V7Generator())).generate();
 
-// node_modules/@posthog/core/dist/utils/type-utils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/utils/type-utils.mjs
 var nativeIsArray = Array.isArray;
 var ObjProto = Object.prototype;
 var type_utils_hasOwnProperty = ObjProto.hasOwnProperty;
@@ -19544,7 +19550,7 @@ function isEvent(candidate2) {
   return !isUndefined(Event) && isInstanceOf(candidate2, Event);
 }
 
-// node_modules/@posthog/core/dist/utils/number-utils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/utils/number-utils.mjs
 function clampToRange(value, min, max, logger, fallbackValue) {
   if (min > max) {
     logger.warn("min cannot be greater than max.");
@@ -19562,7 +19568,7 @@ function clampToRange(value, min, max, logger, fallbackValue) {
   return clampToRange(fallbackValue || max, min, max, logger);
 }
 
-// node_modules/@posthog/core/dist/utils/bucketed-rate-limiter.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/utils/bucketed-rate-limiter.mjs
 var ONE_DAY_IN_MS = 864e5;
 var BucketedRateLimiter = class {
   constructor(options) {
@@ -19603,10 +19609,10 @@ var BucketedRateLimiter = class {
   }
 };
 
-// node_modules/@posthog/core/dist/utils/index.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/utils/index.mjs
 var isError = (x) => x instanceof Error;
 
-// node_modules/@posthog/core/dist/error-tracking/index.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/index.mjs
 var error_tracking_exports = {};
 __export(error_tracking_exports, {
   DOMExceptionCoercer: () => DOMExceptionCoercer,
@@ -19629,7 +19635,7 @@ __export(error_tracking_exports, {
   winjsStackLineParser: () => winjsStackLineParser
 });
 
-// node_modules/@posthog/core/dist/error-tracking/chunk-ids.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/chunk-ids.mjs
 var parsedStackResults;
 var lastKeysCount;
 var cachedFilenameChunkIds;
@@ -19664,7 +19670,7 @@ function getFilenameToChunkIdMap(stackParser) {
   return cachedFilenameChunkIds;
 }
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/base.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/base.mjs
 var UNKNOWN_FUNCTION = "?";
 function createFrame(filename, func, lineno, colno) {
   const frame = {
@@ -19678,7 +19684,7 @@ function createFrame(filename, func, lineno, colno) {
   return frame;
 }
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/safari.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/safari.mjs
 var extractSafariExtensionDetails = (func, filename) => {
   const isSafariExtension = -1 !== func.indexOf("safari-extension");
   const isSafariWebExtension = -1 !== func.indexOf("safari-web-extension");
@@ -19691,7 +19697,7 @@ var extractSafariExtensionDetails = (func, filename) => {
   ];
 };
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/chrome.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/chrome.mjs
 var chromeRegexNoFnName = /^\s*at (\S+?)(?::(\d+))(?::(\d+))\s*$/i;
 var chromeRegex = /^\s*at (?:(.+?\)(?: \[.+\])?|.*?) ?\((?:address at )?)?(?:async )?((?:<anonymous>|[-a-z]+:|.*bundle|\/)?.*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i;
 var chromeEvalRegex = /\((\S*)(?::(\d+))(?::(\d+))\)/;
@@ -19717,14 +19723,14 @@ var chromeStackLineParser = (line2) => {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/winjs.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/winjs.mjs
 var winjsRegex = /^\s*at (?:((?:\[object object\])?.+) )?\(?((?:[-a-z]+):.*?):(\d+)(?::(\d+))?\)?\s*$/i;
 var winjsStackLineParser = (line2) => {
   const parts = winjsRegex.exec(line2);
   return parts ? createFrame(parts[2], parts[1] || UNKNOWN_FUNCTION, +parts[3], parts[4] ? +parts[4] : void 0) : void 0;
 };
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/gecko.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/gecko.mjs
 var geckoREgex = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:[-a-z]+)?:\/.*?|\[native code\]|[^@]*(?:bundle|\d+\.js)|\/[\w\-. /=]+)(?::(\d+))?(?::(\d+))?\s*$/i;
 var geckoEvalRegex = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i;
 var geckoStackLineParser = (line2) => {
@@ -19747,7 +19753,7 @@ var geckoStackLineParser = (line2) => {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/opera.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/opera.mjs
 var opera10Regex = / line (\d+).*script (?:in )?(\S+)(?:: in function (\S+))?$/i;
 var opera10StackLineParser = (line2) => {
   const parts = opera10Regex.exec(line2);
@@ -19759,7 +19765,7 @@ var opera11StackLineParser = (line2) => {
   return parts ? createFrame(parts[5], parts[3] || parts[4] || UNKNOWN_FUNCTION, +parts[1], +parts[2]) : void 0;
 };
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/node.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/node.mjs
 var FILENAME_MATCH = /^\s*[-]{4,}$/;
 var FULL_MATCH = /at (?:async )?(?:(.+?)\s+\()?(?:(.+):(\d+):(\d+)?|([^)]+))\)?/;
 var nodeStackLineParser = (line2) => {
@@ -19824,7 +19830,7 @@ function _parseIntOrUndefined(input) {
   return parseInt(input || "", 10) || void 0;
 }
 
-// node_modules/@posthog/core/dist/error-tracking/parsers/index.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/parsers/index.mjs
 var WEBPACK_ERROR_REGEXP = /\(error: (.*)\)/;
 var STACKTRACE_FRAME_LIMIT = 50;
 function reverseAndStripFrames(stack) {
@@ -19863,7 +19869,7 @@ function createStackParser(...parsers2) {
   };
 }
 
-// node_modules/@posthog/core/dist/error-tracking/error-properties-builder.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/error-properties-builder.mjs
 var MAX_CAUSE_RECURSION = 4;
 var ErrorPropertiesBuilder = class {
   constructor(coercers = [], parsers2 = [], modifiers = []) {
@@ -19973,7 +19979,7 @@ var ErrorPropertiesBuilder = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/dom-exception-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/dom-exception-coercer.mjs
 var DOMExceptionCoercer = class {
   match(err) {
     return this.isDOMException(err) || this.isDOMError(err);
@@ -20004,7 +20010,7 @@ var DOMExceptionCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/error-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/error-coercer.mjs
 var ErrorCoercer = class {
   match(err) {
     return isPlainError(err);
@@ -20031,7 +20037,7 @@ var ErrorCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/error-event-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/error-event-coercer.mjs
 var ErrorEventCoercer = class {
   constructor() {
   }
@@ -20050,7 +20056,7 @@ var ErrorEventCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/string-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/string-coercer.mjs
 var ERROR_TYPES_PATTERN = /^(?:[Uu]ncaught (?:exception: )?)?(?:((?:Eval|Internal|Range|Reference|Syntax|Type|URI|)Error): )?(.*)$/i;
 var StringCoercer = class {
   match(input) {
@@ -20080,7 +20086,7 @@ var StringCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/types.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/types.mjs
 var severityLevels = [
   "fatal",
   "error",
@@ -20090,7 +20096,7 @@ var severityLevels = [
   "debug"
 ];
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/utils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/utils.mjs
 function extractExceptionKeysForMessage(err, maxLength = 40) {
   const keys = Object.keys(err);
   keys.sort();
@@ -20105,7 +20111,7 @@ function extractExceptionKeysForMessage(err, maxLength = 40) {
   return "";
 }
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/object-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/object-coercer.mjs
 var ObjectCoercer = class {
   match(candidate2) {
     return "object" == typeof candidate2 && null !== candidate2;
@@ -20154,7 +20160,7 @@ var ObjectCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/event-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/event-coercer.mjs
 var EventCoercer = class {
   match(err) {
     return isEvent(err);
@@ -20170,7 +20176,7 @@ var EventCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/primitive-coercer.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/primitive-coercer.mjs
 var PrimitiveCoercer = class {
   match(candidate2) {
     return isPrimitive(candidate2);
@@ -20185,7 +20191,7 @@ var PrimitiveCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/coercers/promise-rejection-event.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/coercers/promise-rejection-event.mjs
 var PromiseRejectionEventCoercer = class {
   match(err) {
     return isBuiltin(err, "PromiseRejectionEvent");
@@ -20211,7 +20217,7 @@ var PromiseRejectionEventCoercer = class {
   }
 };
 
-// node_modules/@posthog/core/dist/error-tracking/utils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/@posthog/core/dist/error-tracking/utils.mjs
 var ReduceableCache = class {
   constructor(_maxSize) {
     this._maxSize = _maxSize;
@@ -20235,7 +20241,7 @@ var ReduceableCache = class {
   }
 };
 
-// node_modules/posthog-node/dist/extensions/error-tracking/modifiers/context-lines.node.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/extensions/error-tracking/modifiers/context-lines.node.mjs
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 var LRU_FILE_CONTENTS_CACHE = new error_tracking_exports.ReduceableCache(25);
@@ -20423,7 +20429,7 @@ function snipLine(line2, colno) {
   return newLine;
 }
 
-// node_modules/posthog-node/dist/extensions/error-tracking/autocapture.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/extensions/error-tracking/autocapture.mjs
 function makeUncaughtExceptionHandler(captureFn, onFatalFn) {
   let calledFatalError = false;
   return Object.assign((error) => {
@@ -20455,7 +20461,7 @@ function addUnhandledRejectionListener(captureFn) {
   }));
 }
 
-// node_modules/posthog-node/dist/extensions/error-tracking/index.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/extensions/error-tracking/index.mjs
 var SHUTDOWN_TIMEOUT = 2e3;
 var ErrorTracking = class _ErrorTracking {
   constructor(client, options, _logger) {
@@ -20517,7 +20523,7 @@ var ErrorTracking = class _ErrorTracking {
   }
 };
 
-// node_modules/posthog-node/dist/extensions/sentry-integration.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/extensions/sentry-integration.mjs
 var NAME = "posthog-node";
 function createEventProcessor(_posthog, { organization, projectId, prefix, severityAllowList = [
   "error"
@@ -20581,7 +20587,7 @@ var PostHogSentryIntegration = class {
   }
 };
 
-// node_modules/posthog-node/dist/entrypoints/index.node.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/posthog-node/dist/entrypoints/index.node.mjs
 ErrorTracking.errorPropertiesBuilder = new error_tracking_exports.ErrorPropertiesBuilder([
   new error_tracking_exports.EventCoercer(),
   new error_tracking_exports.ErrorCoercer(),
@@ -20595,7 +20601,7 @@ ErrorTracking.errorPropertiesBuilder = new error_tracking_exports.ErrorPropertie
   addSourceContext
 ]);
 
-// node_modules/openai/internal/tslib.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/tslib.mjs
 function __classPrivateFieldSet(receiver, state, value, kind, f) {
   if (kind === "m")
     throw new TypeError("Private method is not writable");
@@ -20613,7 +20619,7 @@ function __classPrivateFieldGet(receiver, state, kind, f) {
   return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 }
 
-// node_modules/openai/internal/utils/uuid.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/uuid.mjs
 var uuid4 = function() {
   const { crypto: crypto3 } = globalThis;
   if (crypto3?.randomUUID) {
@@ -20625,7 +20631,7 @@ var uuid4 = function() {
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
 };
 
-// node_modules/openai/internal/errors.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/errors.mjs
 function isAbortError(err) {
   return typeof err === "object" && err !== null && // Spec-compliant fetch implementations
   ("name" in err && err.name === "AbortError" || // Expo fetch
@@ -20656,7 +20662,7 @@ var castToError = (err) => {
   return new Error(err);
 };
 
-// node_modules/openai/core/error.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/core/error.mjs
 var OpenAIError = class extends Error {
 };
 var APIError = class _APIError extends OpenAIError {
@@ -20765,7 +20771,7 @@ var InvalidWebhookSignatureError = class extends Error {
   }
 };
 
-// node_modules/openai/internal/utils/values.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/values.mjs
 var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url) => {
   return startsWithSchemeRegexp.test(url);
@@ -20808,13 +20814,13 @@ var safeJSON = (text2) => {
   }
 };
 
-// node_modules/openai/internal/utils/sleep.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/sleep.mjs
 var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
 
-// node_modules/openai/version.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/version.mjs
 var VERSION = "6.8.1";
 
-// node_modules/openai/internal/detect-platform.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/detect-platform.mjs
 var isRunningInBrowser = () => {
   return (
     // @ts-ignore
@@ -20948,7 +20954,7 @@ var getPlatformHeaders = () => {
   return _platformHeaders ?? (_platformHeaders = getPlatformProperties());
 };
 
-// node_modules/openai/internal/shims.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/shims.mjs
 function getDefaultFetch() {
   if (typeof fetch !== "undefined") {
     return fetch;
@@ -21020,7 +21026,7 @@ async function CancelReadableStream(stream) {
   await cancelPromise;
 }
 
-// node_modules/openai/internal/request-options.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/request-options.mjs
 var FallbackEncoder = ({ headers, body }) => {
   return {
     bodyHeaders: {
@@ -21030,7 +21036,7 @@ var FallbackEncoder = ({ headers, body }) => {
   };
 };
 
-// node_modules/openai/internal/qs/formats.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/qs/formats.mjs
 var default_format = "RFC3986";
 var default_formatter = (v) => String(v);
 var formatters = {
@@ -21039,7 +21045,7 @@ var formatters = {
 };
 var RFC1738 = "RFC1738";
 
-// node_modules/openai/internal/qs/utils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/qs/utils.mjs
 var has = (obj, key) => (has = Object.hasOwn ?? Function.prototype.call.bind(Object.prototype.hasOwnProperty), has(obj, key));
 var hex_table = /* @__PURE__ */ (() => {
   const array = [];
@@ -21118,7 +21124,7 @@ function maybe_map(val, fn) {
   return fn(val);
 }
 
-// node_modules/openai/internal/qs/stringify.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/qs/stringify.mjs
 var array_prefix_generators = {
   brackets(prefix) {
     return String(prefix) + "[]";
@@ -21396,7 +21402,7 @@ function stringify2(object, opts = {}) {
   return joined.length > 0 ? prefix + joined : "";
 }
 
-// node_modules/openai/internal/utils/bytes.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/bytes.mjs
 function concatBytes(buffers) {
   let length = 0;
   for (const buffer2 of buffers) {
@@ -21421,7 +21427,7 @@ function decodeUTF8(bytes) {
   return (decodeUTF8_ ?? (decoder = new globalThis.TextDecoder(), decodeUTF8_ = decoder.decode.bind(decoder)))(bytes);
 }
 
-// node_modules/openai/internal/decoders/line.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/decoders/line.mjs
 var _LineDecoder_buffer;
 var _LineDecoder_carriageReturnIndex;
 var LineDecoder = class {
@@ -21498,7 +21504,7 @@ function findDoubleNewlineIndex(buffer2) {
   return -1;
 }
 
-// node_modules/openai/internal/utils/log.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/log.mjs
 var levelNumbers = {
   off: 0,
   error: 200,
@@ -21571,7 +21577,7 @@ var formatRequestDetails = (details) => {
   return details;
 };
 
-// node_modules/openai/core/streaming.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/core/streaming.mjs
 var _Stream_client;
 var Stream3 = class _Stream {
   constructor(iterator, controller, client) {
@@ -21829,7 +21835,7 @@ function partition(str2, delimiter) {
   return [str2, "", ""];
 }
 
-// node_modules/openai/internal/parse.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/parse.mjs
 async function defaultParseResponse(client, props) {
   const { response, requestLogID, retryOfRequestLogID, startTime } = props;
   const body = await (async () => {
@@ -21875,7 +21881,7 @@ function addRequestID(value, response) {
   });
 }
 
-// node_modules/openai/core/api-promise.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/core/api-promise.mjs
 var _APIPromise_client;
 var APIPromise = class _APIPromise extends Promise {
   constructor(client, responsePromise, parseResponse2 = defaultParseResponse) {
@@ -21938,7 +21944,7 @@ var APIPromise = class _APIPromise extends Promise {
 };
 _APIPromise_client = /* @__PURE__ */ new WeakMap();
 
-// node_modules/openai/core/pagination.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/core/pagination.mjs
 var _AbstractPage_client;
 var AbstractPage = class {
   constructor(client, response, body, options) {
@@ -22069,7 +22075,7 @@ var ConversationCursorPage = class extends AbstractPage {
   }
 };
 
-// node_modules/openai/internal/uploads.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/uploads.mjs
 var checkFileSupport = () => {
   if (typeof File === "undefined") {
     const { process: process2 } = globalThis;
@@ -22160,7 +22166,7 @@ var addFormValue = async (form, key, value) => {
   }
 };
 
-// node_modules/openai/internal/to-file.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/to-file.mjs
 var isBlobLike = (value) => value != null && typeof value === "object" && typeof value.size === "number" && typeof value.type === "string" && typeof value.text === "function" && typeof value.slice === "function" && typeof value.arrayBuffer === "function";
 var isFileLike = (value) => value != null && typeof value === "object" && typeof value.name === "string" && typeof value.lastModified === "number" && isBlobLike(value);
 var isResponseLike = (value) => value != null && typeof value === "object" && typeof value.url === "string" && typeof value.blob === "function";
@@ -22212,14 +22218,14 @@ function propsForError(value) {
   return `; props: [${props.map((p) => `"${p}"`).join(", ")}]`;
 }
 
-// node_modules/openai/core/resource.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/core/resource.mjs
 var APIResource = class {
   constructor(client) {
     this._client = client;
   }
 };
 
-// node_modules/openai/internal/utils/path.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/path.mjs
 function encodeURIPath(str2) {
   return str2.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@]+/g, encodeURIComponent);
 }
@@ -22274,7 +22280,7 @@ ${underline}`);
 };
 var path = /* @__PURE__ */ createPathTagFunction(encodeURIPath);
 
-// node_modules/openai/resources/chat/completions/messages.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/chat/completions/messages.mjs
 var Messages = class extends APIResource {
   /**
    * Get the messages in a stored chat completion. Only Chat Completions that have
@@ -22295,7 +22301,7 @@ var Messages = class extends APIResource {
   }
 };
 
-// node_modules/openai/lib/parser.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/parser.mjs
 function isChatCompletionFunctionTool(tool) {
   return tool !== void 0 && "function" in tool && tool.function !== void 0;
 }
@@ -22402,7 +22408,7 @@ function validateInputTools(tools) {
   }
 }
 
-// node_modules/openai/lib/chatCompletionUtils.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/chatCompletionUtils.mjs
 var isAssistantMessage = (message) => {
   return message?.role === "assistant";
 };
@@ -22410,7 +22416,7 @@ var isToolMessage = (message) => {
   return message?.role === "tool";
 };
 
-// node_modules/openai/lib/EventStream.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/EventStream.mjs
 var _EventStream_instances;
 var _EventStream_connectedPromise;
 var _EventStream_resolveConnectedPromise;
@@ -22599,12 +22605,12 @@ _EventStream_connectedPromise = /* @__PURE__ */ new WeakMap(), _EventStream_reso
   return this._emit("error", new OpenAIError(String(error)));
 };
 
-// node_modules/openai/lib/RunnableFunction.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/RunnableFunction.mjs
 function isRunnableFunctionWithParse(fn) {
   return typeof fn.parse === "function";
 }
 
-// node_modules/openai/lib/AbstractChatCompletionRunner.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/AbstractChatCompletionRunner.mjs
 var _AbstractChatCompletionRunner_instances;
 var _AbstractChatCompletionRunner_getFinalContent;
 var _AbstractChatCompletionRunner_getFinalMessage;
@@ -22874,7 +22880,7 @@ _AbstractChatCompletionRunner_instances = /* @__PURE__ */ new WeakSet(), _Abstra
   return typeof rawContent === "string" ? rawContent : rawContent === void 0 ? "undefined" : JSON.stringify(rawContent);
 };
 
-// node_modules/openai/lib/ChatCompletionRunner.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/ChatCompletionRunner.mjs
 var ChatCompletionRunner = class _ChatCompletionRunner extends AbstractChatCompletionRunner {
   static runTools(client, params, options) {
     const runner = new _ChatCompletionRunner();
@@ -22893,7 +22899,7 @@ var ChatCompletionRunner = class _ChatCompletionRunner extends AbstractChatCompl
   }
 };
 
-// node_modules/openai/_vendor/partial-json-parser/parser.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/_vendor/partial-json-parser/parser.mjs
 var STR = 1;
 var NUM = 2;
 var ARR = 4;
@@ -23105,7 +23111,7 @@ var _parseJSON = (jsonString, allow) => {
 };
 var partialParse = (input) => parseJSON(input, Allow.ALL ^ Allow.NUM);
 
-// node_modules/openai/lib/ChatCompletionStream.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/ChatCompletionStream.mjs
 var _ChatCompletionStream_instances;
 var _ChatCompletionStream_params;
 var _ChatCompletionStream_choiceEventStates;
@@ -23585,7 +23591,7 @@ function assertIsEmpty(obj) {
 function assertNever(_x) {
 }
 
-// node_modules/openai/lib/ChatCompletionStreamingRunner.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/ChatCompletionStreamingRunner.mjs
 var ChatCompletionStreamingRunner = class _ChatCompletionStreamingRunner extends ChatCompletionStream {
   static fromReadableStream(stream) {
     const runner = new _ChatCompletionStreamingRunner(null);
@@ -23606,7 +23612,7 @@ var ChatCompletionStreamingRunner = class _ChatCompletionStreamingRunner extends
   }
 };
 
-// node_modules/openai/resources/chat/completions/completions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/chat/completions/completions.mjs
 var Completions = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -23697,7 +23703,7 @@ var Completions = class extends APIResource {
 };
 Completions.Messages = Messages;
 
-// node_modules/openai/resources/chat/chat.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/chat/chat.mjs
 var Chat = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -23706,7 +23712,7 @@ var Chat = class extends APIResource {
 };
 Chat.Completions = Completions;
 
-// node_modules/openai/internal/headers.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/headers.mjs
 var brand_privateNullableHeaders = /* @__PURE__ */ Symbol("brand.privateNullableHeaders");
 function* iterateHeaders(headers) {
   if (!headers)
@@ -23769,7 +23775,7 @@ var buildHeaders = (newHeaders) => {
   return { [brand_privateNullableHeaders]: true, values: targetHeaders, nulls: nullHeaders };
 };
 
-// node_modules/openai/resources/audio/speech.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/audio/speech.mjs
 var Speech = class extends APIResource {
   /**
    * Generates audio from the input text.
@@ -23796,7 +23802,7 @@ var Speech = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/audio/transcriptions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/audio/transcriptions.mjs
 var Transcriptions = class extends APIResource {
   create(body, options) {
     return this._client.post("/audio/transcriptions", multipartFormRequestOptions({
@@ -23808,14 +23814,14 @@ var Transcriptions = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/audio/translations.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/audio/translations.mjs
 var Translations = class extends APIResource {
   create(body, options) {
     return this._client.post("/audio/translations", multipartFormRequestOptions({ body, ...options, __metadata: { model: body.model } }, this._client));
   }
 };
 
-// node_modules/openai/resources/audio/audio.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/audio/audio.mjs
 var Audio = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -23828,7 +23834,7 @@ Audio.Transcriptions = Transcriptions;
 Audio.Translations = Translations;
 Audio.Speech = Speech;
 
-// node_modules/openai/resources/batches.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/batches.mjs
 var Batches = class extends APIResource {
   /**
    * Creates and executes a batch from an uploaded file of requests
@@ -23858,7 +23864,7 @@ var Batches = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/assistants.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/assistants.mjs
 var Assistants = class extends APIResource {
   /**
    * Create an assistant with a model and instructions.
@@ -23945,7 +23951,7 @@ var Assistants = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/realtime/sessions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/realtime/sessions.mjs
 var Sessions = class extends APIResource {
   /**
    * Create an ephemeral API token for use in client-side applications with the
@@ -23971,7 +23977,7 @@ var Sessions = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/realtime/transcription-sessions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/realtime/transcription-sessions.mjs
 var TranscriptionSessions = class extends APIResource {
   /**
    * Create an ephemeral API token for use in client-side applications with the
@@ -23997,7 +24003,7 @@ var TranscriptionSessions = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/realtime/realtime.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/realtime/realtime.mjs
 var Realtime = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -24008,7 +24014,7 @@ var Realtime = class extends APIResource {
 Realtime.Sessions = Sessions;
 Realtime.TranscriptionSessions = TranscriptionSessions;
 
-// node_modules/openai/resources/beta/chatkit/sessions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/chatkit/sessions.mjs
 var Sessions2 = class extends APIResource {
   /**
    * Create a ChatKit session
@@ -24046,7 +24052,7 @@ var Sessions2 = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/chatkit/threads.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/chatkit/threads.mjs
 var Threads = class extends APIResource {
   /**
    * Retrieve a ChatKit thread
@@ -24115,7 +24121,7 @@ var Threads = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/chatkit/chatkit.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/chatkit/chatkit.mjs
 var ChatKit = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -24126,7 +24132,7 @@ var ChatKit = class extends APIResource {
 ChatKit.Sessions = Sessions2;
 ChatKit.Threads = Threads;
 
-// node_modules/openai/resources/beta/threads/messages.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/threads/messages.mjs
 var Messages2 = class extends APIResource {
   /**
    * Create a message.
@@ -24191,7 +24197,7 @@ var Messages2 = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/beta/threads/runs/steps.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/threads/runs/steps.mjs
 var Steps = class extends APIResource {
   /**
    * Retrieves a run step.
@@ -24221,7 +24227,7 @@ var Steps = class extends APIResource {
   }
 };
 
-// node_modules/openai/internal/utils/base64.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/base64.mjs
 var toFloat32Array = (base64Str) => {
   if (typeof Buffer !== "undefined") {
     const buf = Buffer.from(base64Str, "base64");
@@ -24237,7 +24243,7 @@ var toFloat32Array = (base64Str) => {
   }
 };
 
-// node_modules/openai/internal/utils/env.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/internal/utils/env.mjs
 var readEnv = (env) => {
   if (typeof globalThis.process !== "undefined") {
     return globalThis.process.env?.[env]?.trim() ?? void 0;
@@ -24248,7 +24254,7 @@ var readEnv = (env) => {
   return void 0;
 };
 
-// node_modules/openai/lib/AssistantStream.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/AssistantStream.mjs
 var _AssistantStream_instances;
 var _a;
 var _AssistantStream_events;
@@ -24787,7 +24793,7 @@ _a = AssistantStream, _AssistantStream_addEvent = function _AssistantStream_addE
 function assertNever2(_x) {
 }
 
-// node_modules/openai/resources/beta/threads/runs/runs.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/threads/runs/runs.mjs
 var Runs = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -24952,7 +24958,7 @@ var Runs = class extends APIResource {
 };
 Runs.Steps = Steps;
 
-// node_modules/openai/resources/beta/threads/threads.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/threads/threads.mjs
 var Threads2 = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25032,7 +25038,7 @@ var Threads2 = class extends APIResource {
 Threads2.Runs = Runs;
 Threads2.Messages = Messages2;
 
-// node_modules/openai/resources/beta/beta.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/beta/beta.mjs
 var Beta = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25047,14 +25053,14 @@ Beta.ChatKit = ChatKit;
 Beta.Assistants = Assistants;
 Beta.Threads = Threads2;
 
-// node_modules/openai/resources/completions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/completions.mjs
 var Completions2 = class extends APIResource {
   create(body, options) {
     return this._client.post("/completions", { body, ...options, stream: body.stream ?? false });
   }
 };
 
-// node_modules/openai/resources/containers/files/content.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/containers/files/content.mjs
 var Content = class extends APIResource {
   /**
    * Retrieve Container File Content
@@ -25069,7 +25075,7 @@ var Content = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/containers/files/files.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/containers/files/files.mjs
 var Files = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25113,7 +25119,7 @@ var Files = class extends APIResource {
 };
 Files.Content = Content;
 
-// node_modules/openai/resources/containers/containers.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/containers/containers.mjs
 var Containers = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25149,7 +25155,7 @@ var Containers = class extends APIResource {
 };
 Containers.Files = Files;
 
-// node_modules/openai/resources/conversations/items.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/conversations/items.mjs
 var Items = class extends APIResource {
   /**
    * Create items in a conversation with the given ID.
@@ -25184,7 +25190,7 @@ var Items = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/conversations/conversations.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/conversations/conversations.mjs
 var Conversations = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25217,7 +25223,7 @@ var Conversations = class extends APIResource {
 };
 Conversations.Items = Items;
 
-// node_modules/openai/resources/embeddings.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/embeddings.mjs
 var Embeddings = class extends APIResource {
   /**
    * Creates an embedding vector representing the input text.
@@ -25260,7 +25266,7 @@ var Embeddings = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/evals/runs/output-items.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/evals/runs/output-items.mjs
 var OutputItems = class extends APIResource {
   /**
    * Get an evaluation run output item by ID.
@@ -25278,7 +25284,7 @@ var OutputItems = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/evals/runs/runs.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/evals/runs/runs.mjs
 var Runs2 = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25325,7 +25331,7 @@ var Runs2 = class extends APIResource {
 };
 Runs2.OutputItems = OutputItems;
 
-// node_modules/openai/resources/evals/evals.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/evals/evals.mjs
 var Evals = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25369,7 +25375,7 @@ var Evals = class extends APIResource {
 };
 Evals.Runs = Runs2;
 
-// node_modules/openai/resources/files.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/files.mjs
 var Files2 = class extends APIResource {
   /**
    * Upload a file that can be used across various endpoints. Individual files can be
@@ -25444,11 +25450,11 @@ var Files2 = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/fine-tuning/methods.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/methods.mjs
 var Methods = class extends APIResource {
 };
 
-// node_modules/openai/resources/fine-tuning/alpha/graders.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/alpha/graders.mjs
 var Graders = class extends APIResource {
   /**
    * Run a grader.
@@ -25492,7 +25498,7 @@ var Graders = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/fine-tuning/alpha/alpha.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/alpha/alpha.mjs
 var Alpha = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25501,7 +25507,7 @@ var Alpha = class extends APIResource {
 };
 Alpha.Graders = Graders;
 
-// node_modules/openai/resources/fine-tuning/checkpoints/permissions.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/checkpoints/permissions.mjs
 var Permissions = class extends APIResource {
   /**
    * **NOTE:** Calling this endpoint requires an [admin API key](../admin-api-keys).
@@ -25567,7 +25573,7 @@ var Permissions = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/fine-tuning/checkpoints/checkpoints.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/checkpoints/checkpoints.mjs
 var Checkpoints = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25576,7 +25582,7 @@ var Checkpoints = class extends APIResource {
 };
 Checkpoints.Permissions = Permissions;
 
-// node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
 var Checkpoints2 = class extends APIResource {
   /**
    * List checkpoints for a fine-tuning job.
@@ -25596,7 +25602,7 @@ var Checkpoints2 = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/fine-tuning/jobs/jobs.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/jobs/jobs.mjs
 var Jobs = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25709,7 +25715,7 @@ var Jobs = class extends APIResource {
 };
 Jobs.Checkpoints = Checkpoints2;
 
-// node_modules/openai/resources/fine-tuning/fine-tuning.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/fine-tuning/fine-tuning.mjs
 var FineTuning = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25724,11 +25730,11 @@ FineTuning.Jobs = Jobs;
 FineTuning.Checkpoints = Checkpoints;
 FineTuning.Alpha = Alpha;
 
-// node_modules/openai/resources/graders/grader-models.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/graders/grader-models.mjs
 var GraderModels = class extends APIResource {
 };
 
-// node_modules/openai/resources/graders/graders.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/graders/graders.mjs
 var Graders2 = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25737,7 +25743,7 @@ var Graders2 = class extends APIResource {
 };
 Graders2.GraderModels = GraderModels;
 
-// node_modules/openai/resources/images.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/images.mjs
 var Images = class extends APIResource {
   /**
    * Creates a variation of a given image. This endpoint only supports `dall-e-2`.
@@ -25760,7 +25766,7 @@ var Images = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/models.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/models.mjs
 var Models = class extends APIResource {
   /**
    * Retrieves a model instance, providing basic information about the model such as
@@ -25785,7 +25791,7 @@ var Models = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/moderations.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/moderations.mjs
 var Moderations = class extends APIResource {
   /**
    * Classifies if text and/or image inputs are potentially harmful. Learn more in
@@ -25796,7 +25802,7 @@ var Moderations = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/realtime/calls.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/realtime/calls.mjs
 var Calls = class extends APIResource {
   /**
    * Accept an incoming SIP call and configure the realtime session that will handle
@@ -25864,7 +25870,7 @@ var Calls = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/realtime/client-secrets.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/realtime/client-secrets.mjs
 var ClientSecrets = class extends APIResource {
   /**
    * Create a Realtime client secret with an associated session configuration.
@@ -25880,7 +25886,7 @@ var ClientSecrets = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/realtime/realtime.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/realtime/realtime.mjs
 var Realtime2 = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -25891,7 +25897,7 @@ var Realtime2 = class extends APIResource {
 Realtime2.ClientSecrets = ClientSecrets;
 Realtime2.Calls = Calls;
 
-// node_modules/openai/lib/ResponsesParser.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/ResponsesParser.mjs
 function maybeParseResponse(response, params) {
   if (!params || !hasAutoParseableInput2(params)) {
     return {
@@ -26012,7 +26018,7 @@ function addOutputText(rsp) {
   rsp.output_text = texts.join("");
 }
 
-// node_modules/openai/lib/responses/ResponseStream.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/responses/ResponseStream.mjs
 var _ResponseStream_instances;
 var _ResponseStream_params;
 var _ResponseStream_currentResponseSnapshot;
@@ -26274,7 +26280,7 @@ function finalizeResponse(snapshot, params) {
   return maybeParseResponse(snapshot, params);
 }
 
-// node_modules/openai/resources/responses/input-items.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/responses/input-items.mjs
 var InputItems = class extends APIResource {
   /**
    * Returns a list of input items for a given response.
@@ -26294,7 +26300,7 @@ var InputItems = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/responses/input-tokens.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/responses/input-tokens.mjs
 var InputTokens = class extends APIResource {
   /**
    * Get input token counts
@@ -26309,7 +26315,7 @@ var InputTokens = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/responses/responses.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/responses/responses.mjs
 var Responses = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -26380,7 +26386,7 @@ var Responses = class extends APIResource {
 Responses.InputItems = InputItems;
 Responses.InputTokens = InputTokens;
 
-// node_modules/openai/resources/uploads/parts.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/uploads/parts.mjs
 var Parts = class extends APIResource {
   /**
    * Adds a
@@ -26400,7 +26406,7 @@ var Parts = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/uploads/uploads.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/uploads/uploads.mjs
 var Uploads = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -26457,7 +26463,7 @@ var Uploads = class extends APIResource {
 };
 Uploads.Parts = Parts;
 
-// node_modules/openai/lib/Util.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/lib/Util.mjs
 var allSettledWithThrow = async (promises) => {
   const results = await Promise.allSettled(promises);
   const rejected = results.filter((result) => result.status === "rejected");
@@ -26476,7 +26482,7 @@ var allSettledWithThrow = async (promises) => {
   return values2;
 };
 
-// node_modules/openai/resources/vector-stores/file-batches.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/vector-stores/file-batches.mjs
 var FileBatches = class extends APIResource {
   /**
    * Create a vector store file batch.
@@ -26593,7 +26599,7 @@ var FileBatches = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/vector-stores/files.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/vector-stores/files.mjs
 var Files3 = class extends APIResource {
   /**
    * Create a vector store file by attaching a
@@ -26725,7 +26731,7 @@ var Files3 = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/vector-stores/vector-stores.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/vector-stores/vector-stores.mjs
 var VectorStores = class extends APIResource {
   constructor() {
     super(...arguments);
@@ -26796,7 +26802,7 @@ var VectorStores = class extends APIResource {
 VectorStores.Files = Files3;
 VectorStores.FileBatches = FileBatches;
 
-// node_modules/openai/resources/videos.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/videos.mjs
 var Videos = class extends APIResource {
   /**
    * Create a video
@@ -26841,7 +26847,7 @@ var Videos = class extends APIResource {
   }
 };
 
-// node_modules/openai/resources/webhooks.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/resources/webhooks.mjs
 var _Webhooks_instances;
 var _Webhooks_validateSecret;
 var _Webhooks_getRequiredHeader;
@@ -26920,7 +26926,7 @@ _Webhooks_instances = /* @__PURE__ */ new WeakSet(), _Webhooks_validateSecret = 
   return value;
 };
 
-// node_modules/openai/client.mjs
+// ../meelni-open-prs.3kvwO4/repo/node_modules/openai/client.mjs
 var _OpenAI_instances;
 var _a2;
 var _OpenAI_encoder;
