@@ -24,6 +24,7 @@ import {
   runSafeAccountDeletionStep,
   safeAccountDeletionError,
 } from "@/lib/workflows/delete-account";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 
 export const deleteAccount = inngest.createFunction(
   {
@@ -31,6 +32,14 @@ export const deleteAccount = inngest.createFunction(
     name: "Delete Account",
     retries: 5,
     concurrency: [{ limit: 1, key: "event.data.userId" }],
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "account_deletion",
+        errorCode: "account_deletion_failed",
+        severity: "critical",
+        retryable: false,
+      });
+    },
   },
   { event: "account/deletion.requested" },
   async ({ event, step }) => {
@@ -182,6 +191,14 @@ export const recoverAccountDeletions = inngest.createFunction(
     id: "account-deletion-recovery",
     name: "Recover Account Deletions",
     retries: 2,
+    onFailure: async () => {
+      reportOperationalFailure({
+        operation: "account_deletion",
+        errorCode: "account_deletion_recovery_failed",
+        severity: "critical",
+        retryable: true,
+      });
+    },
   },
   { cron: "*/10 * * * *" },
   async ({ step }) => {

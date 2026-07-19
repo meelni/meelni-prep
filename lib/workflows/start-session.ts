@@ -63,6 +63,10 @@ import {
   markAccountDeletionFailed,
   type LiveKitDeletionRoom,
 } from "@/lib/db/account-deletions";
+import {
+  readOwnedInterviewSessionCorrelationId,
+  reportOperationalFailure,
+} from "@/lib/operations/operational-events";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -314,8 +318,8 @@ export async function startInterviewSessionWorkflow(
     if (error instanceof InterviewStartFailedError) {
       try {
         await cleanupFailedStart(start, reservationKey, input.env, deps);
-      } catch (cleanupError) {
-        logStartFailure("failed_start_cleanup_pending", cleanupError);
+      } catch {
+        reportStartFailure();
         return {
           ok: false,
           status: 503,
@@ -372,8 +376,8 @@ export async function startInterviewSessionWorkflow(
   if (claim.disposition === "failed") {
     try {
       await cleanupFailedStart(start, reservationKey, input.env, deps);
-    } catch (cleanupError) {
-      logStartFailure("expired_start_cleanup_pending", cleanupError);
+    } catch {
+      reportStartFailure();
       return {
         ok: false,
         status: 503,
@@ -431,8 +435,8 @@ export async function startInterviewSessionWorkflow(
         metadata: roomMetadata,
         env: input.env,
       });
-    } catch (error) {
-      logStartFailure("livekit_start_exception", error);
+    } catch {
+      reportStartFailure();
       await safelyTerminateProvisioningRoom(
         start.roomName,
         input.user.id,
@@ -454,8 +458,12 @@ export async function startInterviewSessionWorkflow(
       };
     }
     if (!livekitResult.ok) {
-      console.error("[Session Start] livekit_start_failed", {
+      reportOperationalFailure({
+        operation: "interview_start",
+        errorCode: "interview_start_failed",
+        severity: "critical",
         retryable: livekitResult.error.retryable,
+        correlationId: correlationForStart(start),
       });
       if (livekitResult.error.retryable) {
         await safelyTerminateProvisioningRoom(
@@ -486,8 +494,8 @@ export async function startInterviewSessionWorkflow(
           env: input.env,
           deps,
         });
-      } catch (cleanupError) {
-        logStartFailure("failed_start_cleanup_pending", cleanupError);
+      } catch {
+        reportStartFailure();
         return {
           ok: false,
           status: 503,
@@ -545,7 +553,7 @@ export async function startInterviewSessionWorkflow(
         throw new InterviewProvisioningLeaseLostError();
       }
     } catch (error) {
-      logStartFailure("provisioning_acknowledgement_failed", error);
+      reportStartFailure();
 
       let durableStart: PersistedStableInterviewStart | null;
       try {
@@ -554,11 +562,8 @@ export async function startInterviewSessionWorkflow(
           userId: input.user.id,
           requestFingerprint,
         });
-      } catch (reconciliationError) {
-        logStartFailure(
-          "provisioning_acknowledgement_reconciliation_failed",
-          reconciliationError
-        );
+      } catch {
+        reportStartFailure();
         return {
           ok: false,
           status: 503,
@@ -803,8 +808,8 @@ async function ensureTrialGrantForStart(
   try {
     await deps.ensureTrialGrant(userId);
     return { ok: true };
-  } catch (error) {
-    logStartFailure("trial_credit_grant_failed", error);
+  } catch {
+    reportStartFailure();
     return {
       ok: false,
       status: 503,
@@ -977,7 +982,6 @@ async function selectQuestion({
       };
     }
 
-    logQuestion("Using pre-selected question", question);
     return {
       ok: true,
       value: question,
@@ -995,20 +999,12 @@ async function selectQuestion({
     const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${
       recentDays ? ` from the last ${recentDays} days` : ""
     }. Try selecting "All Questions" or a different interview type.`;
-    console.warn(`[Session Start] ${errorMsg}`);
-
     return {
       ok: false,
       status: 404,
       body: { error: errorMsg },
     };
   }
-
-  logQuestion("Random question selected", question, {
-    user_selected_round_type: roundType,
-    mapped_db_types: dbQuestionTypes.join(", "),
-    total_available_types: dbQuestionTypes.length,
-  });
 
   return { ok: true, value: question, roundType };
 }
@@ -1023,18 +1019,6 @@ function getRecentDays(config: InterviewClientPreferences): number | undefined {
   return typeof questionPreference.recentDays === "number"
     ? questionPreference.recentDays
     : undefined;
-}
-
-function logQuestion(
-  message: string,
-  question: QuestionBankRecord,
-  extra: Record<string, unknown> = {}
-) {
-  console.log(`[Session Start] ${message}:`, {
-    id: question.id,
-    type: question.questionType,
-    ...extra,
-  });
 }
 
 export function fingerprintStartRequest(
@@ -1109,19 +1093,25 @@ async function rejectCreatedRoomForAccountDeletion({
     });
     await deps.clearDeletionRoom(start.userId, room);
   } catch {
-    console.error("Account deletion room cleanup remains pending");
+    reportOperationalFailure({
+      operation: "interview_start",
+      errorCode: "interview_room_cleanup_deferred",
+      severity: "warning",
+      retryable: true,
+      correlationId: correlationForStart(start),
+    });
     await deps.markDeletionCleanupFailed(start.userId).catch(() => {
-      console.error("Account deletion cleanup state update remains pending");
+      reportStartRecoveryFailure(start);
     });
   }
 
   await deps.startStore
     .markProvisioningFailed({ startAttemptId: start.startAttemptId, leaseId })
     .catch(() => {
-      console.error("Deleted account start fencing remains pending");
+      reportStartRecoveryFailure(start);
     });
   await terminalizeProviderFailure(start.sessionId, deps).catch(() => {
-    console.error("Deleted account session terminalization remains pending");
+    reportStartRecoveryFailure(start);
   });
   await deps
     .releaseReservation({
@@ -1129,7 +1119,7 @@ async function rejectCreatedRoomForAccountDeletion({
       idempotencyKey: `release:${reservationKey}`,
     })
     .catch(() => {
-      console.error("Deleted account credit release remains pending");
+      reportStartRecoveryFailure(start);
     });
 }
 
@@ -1166,15 +1156,19 @@ async function reconcileLateProvisionedRoom(
   } catch {
     // The terminal/deadline winner retains durable cleanup intent. Never log
     // provider details, room identity, or credentials from this path.
-    console.error("Late interview provisioning cleanup remains pending");
+    reportOperationalFailure({
+      operation: "interview_start",
+      errorCode: "interview_room_cleanup_deferred",
+      severity: "warning",
+      retryable: true,
+      correlationId: correlationForStart(start),
+    });
   }
 
   try {
     await deps.settleCredit(start.sessionId);
   } catch {
-    console.error(
-      "Late interview provisioning credit settlement remains pending"
-    );
+    reportStartRecoveryFailure(start);
   }
 }
 
@@ -1187,7 +1181,12 @@ async function authorizeProvisionedOrReconcile(
   try {
     return await deps.startStore.authorizeProvisioned(input);
   } catch {
-    console.error("Interview provisioning authorization remains pending");
+    reportOperationalFailure({
+      operation: "interview_start",
+      errorCode: "interview_start_failed",
+      severity: "critical",
+      retryable: true,
+    });
     return null;
   }
 }
@@ -1236,8 +1235,8 @@ async function safelyTerminateProvisioningRoom(
 ): Promise<void> {
   try {
     await deps.terminateRoom({ roomName, participantIdentity, env });
-  } catch (error) {
-    logStartFailure("provisioning_room_cleanup_failed", error);
+  } catch {
+    reportStartFailure();
   }
 }
 
@@ -1268,17 +1267,30 @@ function isInsufficientCreditsError(error: unknown): boolean {
   return error instanceof Error && error.message === "insufficient_credits";
 }
 
-function logStartFailure(event: string, error: unknown) {
-  console.error(`[Session Start] ${event}`, {
-    error_class: safeErrorClass(error),
+function reportStartFailure() {
+  reportOperationalFailure({
+    operation: "interview_start",
+    errorCode: "interview_start_failed",
+    severity: "critical",
+    retryable: true,
   });
 }
 
-function safeErrorClass(error: unknown): string {
-  if (error instanceof TypeError) return "TypeError";
-  if (error instanceof RangeError) return "RangeError";
-  if (error instanceof SyntaxError) return "SyntaxError";
-  if (error instanceof Error) return "Error";
-  return "NonError";
+function reportStartRecoveryFailure(start: PersistedStableInterviewStart) {
+  reportOperationalFailure({
+    operation: "interview_start",
+    errorCode: "interview_start_failed",
+    severity: "error",
+    retryable: true,
+    correlationId: correlationForStart(start),
+  });
+}
+
+function correlationForStart(start: PersistedStableInterviewStart) {
+  return readOwnedInterviewSessionCorrelationId({
+    kind: "owned_interview_session",
+    session: { id: start.sessionId, userId: start.userId },
+    authenticatedUserId: start.userId,
+  });
 }
 import { createHash, randomUUID } from "node:crypto";

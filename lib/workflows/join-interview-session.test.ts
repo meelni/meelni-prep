@@ -11,7 +11,7 @@ import {
 } from "./join-interview-session";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
-const USER_ID = "user-1";
+const USER_ID = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-07-09T12:20:00.000Z");
 const ENV: LiveKitEnvironment = {
   apiKey: "test-key",
@@ -71,8 +71,7 @@ test("join workflow derives token identity and room from authenticated server re
     {
       outcome: "allowed",
       reason: "reconnect_token_issued",
-      sessionId: SESSION_ID,
-      userId: USER_ID,
+      correlationId: SESSION_ID,
     },
   ]);
 });
@@ -444,8 +443,6 @@ test("join workflow rate limits repeated token issuance before storage and audit
     {
       outcome: "denied",
       reason: "reconnect_token_rate_limited",
-      sessionId: SESSION_ID,
-      userId: USER_ID,
     },
   ]);
 });
@@ -518,8 +515,6 @@ test("join workflow fails closed when the shared limiter is unavailable", async 
       outcome: "failed",
       reason: "reconnect_rate_limit_unavailable",
       diagnostic: "unknown",
-      sessionId: SESSION_ID,
-      userId: USER_ID,
     },
   ]);
 });
