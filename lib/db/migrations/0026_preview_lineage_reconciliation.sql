@@ -171,9 +171,10 @@ BEGIN
   )
   SELECT pg_catalog.md5(pg_catalog.string_agg(
       pg_catalog.format(
-        '%s|%s|%s|%s|%s|%s',
+        '%s|%s|%s|%s|%s|%s|%s',
         policies.tablename,
         policies.policyname,
+        policies.permissive,
         policies.roles::text,
         policies.cmd,
         COALESCE(pg_catalog.regexp_replace(
@@ -227,7 +228,7 @@ BEGIN
     OR shared_indexes_fingerprint IS DISTINCT FROM
       '7a7c0f511bdc60a9c33751438ead3770'
     OR shared_policies_fingerprint IS DISTINCT FROM
-      '5594c6a24525ac8581592065ee0f1cdb'
+      'f3f77c36e4238aefa07697b4dcf8beac'
     OR shared_privileges_fingerprint IS DISTINCT FROM
       'dbe2b7dcee5dfc8579d3fb559447fe5d'
     OR EXISTS (
@@ -262,7 +263,7 @@ BEGIN
         'public.public_demo_rate_limit'::regclass,
         'public.public_demo_session'::regclass
       )
-        AND NOT relrowsecurity
+        AND (NOT relrowsecurity OR relforcerowsecurity)
     )
     OR (
       current_lineage
@@ -496,7 +497,8 @@ BEGIN
       )
       AND grantee IN ('PUBLIC', 'anon', 'authenticated')
   ) OR (
-    SELECT pg_catalog.count(DISTINCT specific_name) <> 6
+    SELECT pg_catalog.count(*) <> 6
+      OR pg_catalog.bool_or(is_grantable <> 'NO')
     FROM information_schema.routine_privileges
     WHERE routine_schema = 'public'
       AND routine_name IN (
@@ -594,6 +596,22 @@ BEGIN
    AND proc.pronamespace = 'public'::regnamespace;
 
   IF NOT COALESCE(function_contract_match, false)
+    OR (
+      SELECT pg_catalog.count(*) <> 6
+        OR pg_catalog.bool_or(is_grantable <> 'NO')
+      FROM information_schema.routine_privileges
+      WHERE routine_schema = 'public'
+        AND routine_name IN (
+          'reserve_public_demo_session',
+          'complete_public_demo_session',
+          'finalize_public_demo_recovery_token',
+          'rollback_public_demo_recovery_token',
+          'fail_public_demo_recovery_session',
+          'prune_public_demo_abuse_data'
+        )
+        AND grantee = 'service_role'
+        AND privilege_type = 'EXECUTE'
+    )
     OR EXISTS (
       SELECT 1
       FROM information_schema.routine_privileges privileges
@@ -1349,9 +1367,10 @@ BEGIN
       (
         SELECT pg_catalog.md5(pg_catalog.string_agg(
           pg_catalog.format(
-            '%s|%s|%s|%s|%s|%s',
+            '%s|%s|%s|%s|%s|%s|%s',
             policies.tablename,
             policies.policyname,
+            policies.permissive,
             policies.roles::text,
             policies.cmd,
             COALESCE(pg_catalog.regexp_replace(
@@ -1406,7 +1425,7 @@ BEGIN
     INTO shared_contract_fingerprint;
 
   IF shared_contract_fingerprint IS DISTINCT FROM
-      'f089b4d3a58d778eea2471c80642c880'
+      'c6bf6737aaffc99f8959aab6f1a55eb9'
     OR EXISTS (
       SELECT 1
       FROM information_schema.table_privileges privileges
@@ -1490,6 +1509,7 @@ BEGIN
       AND (
         pg_catalog.pg_get_userbyid(relowner) <> canonical_table_owner
         OR NOT relrowsecurity
+        OR relforcerowsecurity
       )
   ) THEN
     RAISE EXCEPTION 'preview_lineage_reconciliation_table_postflight_failed';
@@ -1592,6 +1612,22 @@ BEGIN
    AND proc.pronamespace = 'public'::regnamespace;
 
   IF NOT COALESCE(function_contract_match, false)
+    OR (
+      SELECT pg_catalog.count(*) <> 6
+        OR pg_catalog.bool_or(is_grantable <> 'NO')
+      FROM information_schema.routine_privileges
+      WHERE routine_schema = 'public'
+        AND routine_name IN (
+          'reserve_public_demo_session',
+          'complete_public_demo_session',
+          'finalize_public_demo_recovery_token',
+          'rollback_public_demo_recovery_token',
+          'fail_public_demo_recovery_session',
+          'prune_public_demo_abuse_data'
+        )
+        AND grantee = 'service_role'
+        AND privilege_type = 'EXECUTE'
+    )
     OR EXISTS (
       SELECT 1
       FROM information_schema.routine_privileges privileges
