@@ -5,6 +5,11 @@
 
 import { PostHog } from "posthog-node";
 
+import {
+  sanitizeAnalyticsString,
+  sanitizeAnalyticsValue,
+} from "./privacy-sanitizer";
+
 let serverPostHog: PostHog | null = null;
 
 /**
@@ -13,8 +18,10 @@ let serverPostHog: PostHog | null = null;
  */
 export function getServerPostHog(): PostHog | null {
   // Use server-side key (not exposed to client)
-  const apiKey = process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
+  const apiKey =
+    process.env.POSTHOG_SERVER_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const host =
+    process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
   // Return null if no API key configured
   if (!apiKey) {
@@ -25,7 +32,10 @@ export function getServerPostHog(): PostHog | null {
   }
 
   // Warn if using client key instead of server key
-  if (!process.env.POSTHOG_SERVER_KEY && process.env.NODE_ENV !== "production") {
+  if (
+    !process.env.POSTHOG_SERVER_KEY &&
+    process.env.NODE_ENV !== "production"
+  ) {
     console.warn(
       "[Analytics Server] Using NEXT_PUBLIC_POSTHOG_KEY (client key) instead of POSTHOG_SERVER_KEY. " +
         "Please set POSTHOG_SERVER_KEY for production."
@@ -73,14 +83,22 @@ export function trackServerEvent(
   }
 
   try {
-    client.capture({
-      distinctId: distinctId || "anonymous",
-      event,
-      properties,
-    });
+    client.capture(buildServerCapturePayload(event, properties, distinctId));
   } catch (error) {
     console.error("[Analytics Server] Error tracking event:", error);
   }
+}
+
+export function buildServerCapturePayload(
+  event: string,
+  properties: Record<string, unknown>,
+  distinctId?: string
+) {
+  return {
+    distinctId: sanitizeAnalyticsString(distinctId || "anonymous"),
+    event: sanitizeAnalyticsString(event),
+    properties: sanitizeAnalyticsValue(properties) as Record<string, unknown>,
+  };
 }
 
 /**
@@ -98,11 +116,20 @@ export function identifyServerUser(
   }
 
   try {
-    client.identify({
-      distinctId: userId,
-      properties,
-    });
+    client.identify(buildServerIdentifyPayload(userId, properties));
   } catch (error) {
     console.error("[Analytics Server] Error identifying user:", error);
   }
+}
+
+export function buildServerIdentifyPayload(
+  userId: string,
+  properties?: Record<string, unknown>
+) {
+  return {
+    distinctId: sanitizeAnalyticsString(userId),
+    properties: properties
+      ? (sanitizeAnalyticsValue(properties) as Record<string, unknown>)
+      : undefined,
+  };
 }

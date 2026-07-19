@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { stripeCustomerMapping, subscription } from "@/lib/db/schema";
@@ -24,6 +25,12 @@ import {
 } from "@/lib/billing/subscription-state";
 import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import {
+  CHECKOUT_RETURN_COOKIE_MAX_AGE_SECONDS,
+  checkoutReturnCookieName,
+  encodeCheckoutReturnCookie,
+  isCheckoutReturnHandle,
+} from "@/lib/billing/checkout-return-cookie";
 
 const SUBSCRIPTION_CHECKOUT_PROVIDER_DEADLINE_MS = 90_000;
 const SUBSCRIPTION_CHECKOUT_PROVIDER_CALL_TIMEOUT_MS = 10_000;
@@ -83,7 +90,12 @@ export async function POST(req: NextRequest) {
 
     const priceId = getStripePriceIdForCatalogId(catalogId);
     const mode = getCheckoutModeForCatalogId(catalogId);
-    const metadata = { userId, catalogId };
+    const proposedReturnHandle = createCheckoutReturnHandle();
+    const metadata = {
+      userId,
+      catalogId,
+      checkoutReturnHandle: proposedReturnHandle,
+    };
 
     if (mode === "subscription") {
       if (catalogId !== "starter" && catalogId !== "pro") {
@@ -184,16 +196,27 @@ export async function POST(req: NextRequest) {
           if (sessions.has_more) {
             throw new Error("billing_checkout_open_sessions_incomplete");
           }
-          return sessions.data
-            .filter((session) => session.mode === "subscription")
-            .map((session) => ({
-              id: session.id,
-              url: session.url,
-              catalogId: session.metadata?.catalogId ?? null,
-              userId:
-                session.metadata?.userId ?? session.client_reference_id ?? null,
-              customerId: getStripeCustomerId(session.customer) ?? customerId,
-            }));
+          return sessions.data.flatMap((session) => {
+            const returnHandle = session.metadata?.checkoutReturnHandle;
+            return session.mode === "subscription" &&
+              returnHandle &&
+              isCheckoutReturnHandle(returnHandle)
+              ? [
+                  {
+                    id: session.id,
+                    url: session.url,
+                    returnHandle,
+                    catalogId: session.metadata?.catalogId ?? null,
+                    userId:
+                      session.metadata?.userId ??
+                      session.client_reference_id ??
+                      null,
+                    customerId:
+                      getStripeCustomerId(session.customer) ?? customerId,
+                  },
+                ]
+              : [];
+          });
         },
         createSession: async (idempotencyKey, customerId) => {
           const session = await stripe.checkout.sessions.create(
@@ -211,6 +234,7 @@ export async function POST(req: NextRequest) {
           return {
             id: session.id,
             url: session.url,
+            returnHandle: proposedReturnHandle,
             catalogId,
             userId,
             customerId: getStripeCustomerId(session.customer) ?? customerId,
@@ -232,10 +256,11 @@ export async function POST(req: NextRequest) {
       if (!checkout.allowed) {
         return subscriptionCheckoutBlockedResponse(checkout.reason);
       }
-      return NextResponse.json({
+      return checkoutSessionResponse({
         url: checkout.session.url,
         sessionId: checkout.session.id,
-        ...(checkout.reused ? { reused: true } : {}),
+        returnHandle: checkout.session.returnHandle,
+        reused: checkout.reused,
       });
     }
 
@@ -263,12 +288,16 @@ export async function POST(req: NextRequest) {
               (openSession) =>
                 openSession.metadata?.catalogId === catalogId &&
                 openSession.metadata?.userId === userId &&
-                openSession.client_reference_id === userId
+                openSession.client_reference_id === userId &&
+                isCheckoutReturnHandle(
+                  openSession.metadata?.checkoutReturnHandle
+                )
             );
             if (existingSession) {
               return {
                 id: existingSession.id,
                 url: existingSession.url,
+                returnHandle: existingSession.metadata!.checkoutReturnHandle!,
                 reused: true,
               };
             }
@@ -288,7 +317,12 @@ export async function POST(req: NextRequest) {
             existingStripeCustomerId,
           })
         );
-        return { id: created.id, url: created.url, reused: false };
+        return {
+          id: created.id,
+          url: created.url,
+          returnHandle: proposedReturnHandle,
+          reused: false,
+        };
       },
       expireSession: async (sessionId, idempotencyKey) => {
         await stripe.checkout.sessions.expire(
@@ -304,10 +338,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Return checkout URL
-    return NextResponse.json({
+    return checkoutSessionResponse({
       url: checkout.session.url,
       sessionId: checkout.session.id,
-      ...(checkout.session.reused ? { reused: true } : {}),
+      returnHandle: checkout.session.returnHandle,
+      reused: checkout.session.reused,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -369,7 +404,11 @@ function checkoutSessionParams({
   userEmail?: string;
   priceId: string;
   mode: "payment" | "subscription";
-  metadata: { userId: string; catalogId: string };
+  metadata: {
+    userId: string;
+    catalogId: string;
+    checkoutReturnHandle: string;
+  };
   existingStripeCustomerId?: string | null;
 }): Stripe.Checkout.SessionCreateParams {
   return {
@@ -381,12 +420,62 @@ function checkoutSessionParams({
     client_reference_id: userId,
     line_items: [{ price: priceId, quantity: 1 }],
     mode,
-    ...(mode === "subscription" ? { subscription_data: { metadata } } : {}),
+    ...(mode === "subscription"
+      ? {
+          subscription_data: {
+            metadata: {
+              userId: metadata.userId,
+              catalogId: metadata.catalogId,
+            },
+          },
+        }
+      : {}),
     metadata,
-    success_url: `${req.nextUrl.origin}/pricing/success?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${req.nextUrl.origin}/pricing/success`,
     cancel_url: `${req.nextUrl.origin}/pricing/canceled`,
     allow_promotion_codes: true,
     expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
+  };
+}
+
+function createCheckoutReturnHandle(): string {
+  return `cr_${randomUUID().replaceAll("-", "")}`;
+}
+
+function checkoutSessionResponse(input: {
+  url: string | null;
+  sessionId: string;
+  returnHandle: string;
+  reused: boolean;
+}): NextResponse {
+  const cookieName = checkoutReturnCookieName(input.returnHandle);
+  const cookieValue = encodeCheckoutReturnCookie(
+    input.returnHandle,
+    input.sessionId
+  );
+  if (!input.url || !cookieName || !cookieValue) {
+    throw new Error("billing_checkout_return_handle_invalid");
+  }
+  const response = NextResponse.json({
+    url: input.url,
+    returnHandle: input.returnHandle,
+    ...(input.reused ? { reused: true } : {}),
+  });
+  response.cookies.set(
+    cookieName,
+    cookieValue,
+    checkoutReturnCookieOptions(CHECKOUT_RETURN_COOKIE_MAX_AGE_SECONDS)
+  );
+  return response;
+}
+
+function checkoutReturnCookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge,
   };
 }
 
