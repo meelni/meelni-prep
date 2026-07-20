@@ -14,7 +14,7 @@ import {
 test("account export fixture is versioned and contains no provider payloads", () => {
   const fixture = createAccountDataExportFixture();
 
-  assert.equal(fixture.schemaVersion, "1.1.0");
+  assert.equal(fixture.schemaVersion, "1.2.0");
   assert.equal(fixture.account.id, "fixture-account-user-1");
   assert.deepEqual(fixture.settings?.analyticsConsent, {
     decision: "undecided",

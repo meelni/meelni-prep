@@ -10,6 +10,7 @@ import {
   creditReservation,
   creditTransaction,
   feedback,
+  focusedPracticeAttempt,
   interviewQuestion,
   interviewSession,
   paymentHistory,
@@ -222,6 +223,26 @@ export async function loadAccountExportSource(
     .where(eq(userAchievement.userId, userId))
     .orderBy(asc(userAchievement.earnedAt));
 
+  const focusedPracticeAttempts = await db
+    .select({
+      userId: focusedPracticeAttempt.userId,
+      id: focusedPracticeAttempt.id,
+      sourceSessionId: focusedPracticeAttempt.sourceSessionId,
+      sourceFeedbackId: focusedPracticeAttempt.sourceFeedbackId,
+      contractVersion: focusedPracticeAttempt.contractVersion,
+      lifecycleVersion: focusedPracticeAttempt.lifecycleVersion,
+      state: focusedPracticeAttempt.state,
+      feedbackVersion: focusedPracticeAttempt.feedbackVersion,
+      plan: focusedPracticeAttempt.plan,
+      sourceFinding: focusedPracticeAttempt.sourceFinding,
+      startedAt: focusedPracticeAttempt.startedAt,
+      completedAt: focusedPracticeAttempt.completedAt,
+      completion: focusedPracticeAttempt.completion,
+    })
+    .from(focusedPracticeAttempt)
+    .where(eq(focusedPracticeAttempt.userId, userId))
+    .orderBy(asc(focusedPracticeAttempt.startedAt));
+
   const insights = await db
     .select({
       userId: userInsights.userId,
@@ -354,6 +375,7 @@ export async function loadAccountExportSource(
         without(row, "practiceSetId")
       ),
     })),
+    focusedPracticeAttempts,
     achievements,
     insights,
     subscription: subscriptionRow ?? null,
