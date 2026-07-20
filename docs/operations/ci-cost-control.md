@@ -49,14 +49,20 @@ is the sole authority allowed to create the required `Validate` success. It
 requires exactly one `modified` `.github/stacked-prs.json` file; matching
 repository IDs and names; a same-repository head and default-branch base; and
 fresh event/API PR number, ref, head SHA, and base SHA. It fetches the proposed
-manifest as inert data at that immutable head SHA and never checks out or
-executes PR code. It verifies manifest shape, the complete open stacked-PR
+manifest as inert data by traversing the exact head commit and non-truncated Git
+trees. The registry must be one unambiguous `100644 blob`; symlinks, gitlinks,
+executables, missing entries, and mismatched Pull Files/tree/blob SHAs fail.
+The blob response must have canonical base64, the exact declared and decoded
+size within the 256 KiB bound, its recomputed Git object SHA, and fatal UTF-8
+decoding. The publisher never checks out or executes PR code. It verifies
+manifest shape, the complete open stacked-PR
 inventory, every declared child/parent snapshot and ancestry, and current
 PR-body evidence twice across a freshness barrier. After exact eligibility and
 before that work begins, it creates a new exact-head `Validate` check in
-progress so an earlier green snapshot cannot authorize a merge during the
-sweep. It completes that same check success or failure; a completion
-infrastructure failure leaves it pending and blocking.
+progress. It completes that same check success or failure and binds success to
+a SHA-256 generation of the exact repository/head/base/topology proof. A
+failure while completing an already-created check leaves that new check pending
+and blocking.
 
 Forks, extra files, additions, deletions, renames, stale snapshots, malformed
 manifests, missing declarations, topology failures, incomplete pagination, API
@@ -75,6 +81,43 @@ evidence. Unrelated `main` changes do not run this publisher; strict up-to-date
 protection forces the registry branch to update before merge, and that new head
 receives the pull-request sweep.
 
+There is an unavoidable cross-PR interval between a dependency event and the
+publisher opening a replacement check. A GitHub API or runner failure before
+that pending check is created cannot erase an older green check. Do not treat a
+visible green registry-only `Validate` result by itself as merge authority.
+
+### Registry-only merge window
+
+Run the read-only preflight from a clean, trusted default-branch checkout
+immediately before merging an exact registry-only PR:
+
+```bash
+GITHUB_TOKEN="$(gh auth token)" \
+GITHUB_REPOSITORY=meelni/meelni-prep \
+npm run preflight:registry-merge -- --pr <number>
+```
+
+The preflight recomputes the exact-head Git-object and live topology proof,
+requires the proof-bound `Validate` success to be no more than ten minutes old,
+and checks that the trusted publisher workflow queue is fully drained and its
+newest run succeeded. It also verifies strict required checks, admin
+enforcement, disabled force-push/deletion, a clean mergeable PR, and disabled
+auto-merge. All three required contexts are directly re-read as exact-head
+successful Check Runs from their configured GitHub App; only `Validate` carries
+the independently recomputed proof-generation binding. Current cross-PR truth
+for the other publishers is supported by the clean mergeable state plus the
+drained, stable, newest-successful publisher queue, not by an atomic GitHub
+snapshot. The preflight repeats the PR proof and publisher-queue inventory
+across a freshness barrier.
+
+After it passes, freeze registry, child/parent branch, base, and PR-body evidence
+changes and merge immediately within the reported deadline. That deadline is
+the earlier of two minutes after preflight or the proof-bound `Validate` check's
+ten-minute expiry; it does not grant a fresh ten-minute window. Do not enable
+auto-merge and do not use an admin bypass. Any delay, activity, provider
+incident, or API uncertainty invalidates the window; rerun the preflight. This
+narrows but cannot make the GitHub read and merge operation atomic.
+
 This policy depends on live protection, not convention. As verified on July 19,
 2026, required status checks use strict up-to-date enforcement, protection
 applies to admins, and force pushes are disabled. PR #353's validated merge ref
@@ -89,9 +132,9 @@ policy changes, restore the `push: main` trigger before relying on this policy.
 2. Run `npm run check:ci`, relevant provider/database harnesses, and
    `npm run build` locally before requesting final hosted evidence.
 3. After independent review is clean, mark the pull request Ready for review.
-4. Confirm exactly one current-head Validate result passes. For an exact
-   registry-only PR, inspect its trusted-publisher summary and confirm no full
-   CI runner started; for every other PR, confirm ordinary Validate ran.
+4. For an exact registry-only PR, run the mandatory read-only merge preflight
+   above; inspect its proof generation and publisher run, and confirm no full CI
+   runner started. For every other PR, confirm ordinary Validate ran.
 5. If the head changes, require a new exact-head green run before merge.
 
 Repository rules must require the exact `Validate` context on `main`. A skipped

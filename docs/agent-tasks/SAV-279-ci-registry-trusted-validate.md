@@ -36,17 +36,22 @@
 - Eligibility requires exactly one `modified` registry file plus matching
   repository IDs/names, same-repository head, default-branch base, and fresh
   event/API head and base SHAs.
-- The proposed manifest is fetched as data at the immutable head SHA. No
-  pull-request file is checked out or executed.
-- For each eligible ready candidate, the publisher first creates a new
-  exact-head `Validate` check in progress so an older success cannot authorize
-  a merge during revalidation. It validates manifest shape, the complete open
+- The proposed manifest is fetched through the exact head commit/tree/blob
+  graph. Only an unambiguous non-truncated `100644 blob` with matching Pull
+  Files/tree/blob SHAs, canonical bounded base64 bytes, recomputed Git object
+  SHA, and fatal UTF-8 decoding is accepted. No pull-request file is checked out
+  or executed.
+- For each successfully classified ready candidate, the publisher first tries
+  to create a new exact-head `Validate` check in progress. Once created, that
+  check blocks an older success during revalidation. It validates manifest shape, the complete open
   stacked-PR inventory, every declared child/parent snapshot, ancestry, and
   PR-body evidence twice across a freshness barrier before completing that same
   check.
 
 General metadata path optimization, branch-protection changes, provider state,
-Production, relaunch flags, and merge authorization are out of scope.
+Production, relaunch flags, and merge authorization are out of scope. A
+read-only operator/Codex merge preflight is in scope because dynamic cross-PR
+freshness cannot be made atomic by the publisher.
 
 ## Fail-closed cases
 
@@ -64,14 +69,21 @@ The trusted workflow sweeps every open ready exact-registry candidate after
 ready PR and close events, draft branch/base movement, draft stack-evidence body
 edits, and trusted publisher/manifest push or manual fan-out. Drafts, forks,
 non-default bases, malformed rows, and ordinary PRs are excluded before
-candidate classification. A newly invalid topology completes the pending check
-as failure; a completion infrastructure failure leaves it pending and blocking.
+candidate classification. A newly invalid topology completes an opened pending
+check as failure; a completion infrastructure failure leaves that opened check
+pending and blocking. An API or runner failure before a replacement check is
+created can leave an older success visible. Therefore registry-only PRs
+prohibit auto-merge and admin bypass and require the documented just-in-time
+merge preflight: exact proof-bound success no more than ten minutes old, drained
+healthy publisher queue, enforced protection, and stable proof/queue snapshots
+across a second barrier.
 
 ## Validation
 
 - Focused registry-only publisher, trigger, and stack-adapter tests.
 - Full `npm run test:local` and `npm run test:stack`.
 - YAML parse and Prettier for both workflows, scripts, tests, and docs.
+- Behavioral merge-preflight tests and a real local Git symlink-mode harness.
 - `npm run verify:agent` when the complete local environment is available.
 - Read-only inspection of live branch protection; no protection mutation.
 

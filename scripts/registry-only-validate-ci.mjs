@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -183,12 +184,14 @@ async function listPaginated({
 }
 
 function exactRegistryFile(files) {
-  return (
-    files.length === 1 &&
-    files[0]?.filename === REGISTRY_PATH &&
-    files[0]?.status === "modified" &&
-    files[0]?.previous_filename == null
-  );
+  const file = files[0];
+  return files.length === 1 &&
+    file?.filename === REGISTRY_PATH &&
+    file?.status === "modified" &&
+    file?.previous_filename == null &&
+    SHA_PATTERN.test(file?.sha ?? "")
+    ? file
+    : null;
 }
 
 function couldBeRegistryCandidate(pullRequest, repository, defaultBranch) {
@@ -240,24 +243,45 @@ export async function classifyRegistryOnlyPullRequest({
   const defaultBranchBase =
     sameRepository(current.baseRepository, binding.repository) &&
     current.baseRef === binding.defaultBranch;
-  const eligible =
-    sameRepositoryHead && defaultBranchBase && exactRegistryFile(files);
+  const registryFile = exactRegistryFile(files);
+  const eligible = sameRepositoryHead && defaultBranchBase && !!registryFile;
   return {
     status: eligible ? "eligible" : "trusted_validate_not_eligible",
     eligible,
     binding,
-    files: files.map(({ filename, previous_filename, status }) => ({
+    registryBlobSha: registryFile?.sha,
+    files: files.map(({ filename, previous_filename, sha, status }) => ({
       filename,
       ...(previous_filename == null ? {} : { previous_filename }),
+      ...(typeof sha === "string" ? { sha } : {}),
       status,
     })),
   };
 }
 
-function decodeManifest(payload, expectedHeadSha) {
+function exactTreeEntry(payload, { expectedSha, path, mode, type }) {
   if (
-    payload?.type !== "file" ||
-    payload?.path !== REGISTRY_PATH ||
+    payload?.sha !== expectedSha ||
+    payload?.truncated !== false ||
+    !Array.isArray(payload?.tree)
+  ) {
+    fail("registry_validate_manifest_object_invalid");
+  }
+  const matches = payload.tree.filter((entry) => entry?.path === path);
+  if (
+    matches.length !== 1 ||
+    matches[0]?.mode !== mode ||
+    matches[0]?.type !== type ||
+    !SHA_PATTERN.test(matches[0]?.sha ?? "")
+  ) {
+    fail("registry_validate_manifest_object_invalid");
+  }
+  return matches[0];
+}
+
+function decodeManifestBlob(payload, expectedBlobSha) {
+  if (
+    payload?.sha !== expectedBlobSha ||
     payload?.encoding !== "base64" ||
     typeof payload?.content !== "string" ||
     !Number.isSafeInteger(payload?.size) ||
@@ -266,9 +290,29 @@ function decodeManifest(payload, expectedHeadSha) {
   ) {
     fail("registry_validate_manifest_payload_invalid");
   }
-  const bytes = Buffer.from(payload.content.replace(/\s/g, ""), "base64");
+  const encoded = payload.content.replace(/[\r\n]/g, "");
+  if (
+    encoded.length === 0 ||
+    encoded.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      encoded
+    )
+  ) {
+    fail("registry_validate_manifest_base64_invalid");
+  }
+  const bytes = Buffer.from(encoded, "base64");
+  if (bytes.toString("base64") !== encoded) {
+    fail("registry_validate_manifest_base64_invalid");
+  }
   if (bytes.length !== payload.size || bytes.length > MAX_MANIFEST_BYTES) {
     fail("registry_validate_manifest_size_mismatch");
+  }
+  const actualBlobSha = createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
+  if (actualBlobSha !== expectedBlobSha) {
+    fail("registry_validate_manifest_sha_mismatch");
   }
   let content;
   try {
@@ -276,19 +320,61 @@ function decodeManifest(payload, expectedHeadSha) {
   } catch {
     fail("registry_validate_manifest_utf8_invalid");
   }
-  return { content, expectedHeadSha };
+  return content;
 }
 
-async function fetchProposedManifest({ classification, env, api, fetchImpl }) {
+export async function fetchProposedRegistryManifest({
+  classification,
+  env,
+  api,
+  fetchImpl,
+}) {
   const repository = classification.binding.repository.fullName;
   const headSha = classification.binding.pullRequest.headSha;
-  const payload = await api({
+  const commit = await api({
     token: env.GITHUB_TOKEN,
     repository,
-    path: `/contents/${REGISTRY_PATH}?ref=${encodeURIComponent(headSha)}`,
+    path: `/git/commits/${encodeURIComponent(headSha)}`,
     fetchImpl,
   });
-  return decodeManifest(payload, headSha).content;
+  if (commit?.sha !== headSha || !SHA_PATTERN.test(commit?.tree?.sha ?? "")) {
+    fail("registry_validate_manifest_object_invalid");
+  }
+  const rootTreeSha = commit.tree.sha;
+  const rootTree = await api({
+    token: env.GITHUB_TOKEN,
+    repository,
+    path: `/git/trees/${encodeURIComponent(rootTreeSha)}`,
+    fetchImpl,
+  });
+  const githubDirectory = exactTreeEntry(rootTree, {
+    expectedSha: rootTreeSha,
+    path: ".github",
+    mode: "040000",
+    type: "tree",
+  });
+  const githubTree = await api({
+    token: env.GITHUB_TOKEN,
+    repository,
+    path: `/git/trees/${encodeURIComponent(githubDirectory.sha)}`,
+    fetchImpl,
+  });
+  const registryBlob = exactTreeEntry(githubTree, {
+    expectedSha: githubDirectory.sha,
+    path: "stacked-prs.json",
+    mode: "100644",
+    type: "blob",
+  });
+  if (registryBlob.sha !== classification.registryBlobSha) {
+    fail("registry_validate_manifest_sha_mismatch");
+  }
+  const blob = await api({
+    token: env.GITHUB_TOKEN,
+    repository,
+    path: `/git/blobs/${encodeURIComponent(registryBlob.sha)}`,
+    fetchImpl,
+  });
+  return decodeManifestBlob(blob, registryBlob.sha);
 }
 
 async function listOpenPullRequests({ binding, env, api, fetchImpl }) {
@@ -372,6 +458,17 @@ function stableProof(value) {
   return JSON.stringify(value);
 }
 
+export function registryProofGeneration(proof) {
+  return createHash("sha256").update(stableProof(proof)).digest("hex");
+}
+
+export function registryValidateExternalId(binding, generation) {
+  const identity =
+    `registry-only:${binding.repository.id}:${binding.pullRequest.number}:` +
+    `${binding.pullRequest.headSha}:${binding.pullRequest.baseSha}`;
+  return generation ? `${identity}:${generation}` : identity;
+}
+
 async function createPendingValidate({ classification, env, api, fetchImpl }) {
   const binding = classification.binding;
   const check = await api({
@@ -384,7 +481,7 @@ async function createPendingValidate({ classification, env, api, fetchImpl }) {
       head_sha: binding.pullRequest.headSha,
       status: "in_progress",
       started_at: new Date().toISOString(),
-      external_id: `registry-only:${binding.repository.id}:${binding.pullRequest.number}:${binding.pullRequest.headSha}:${binding.pullRequest.baseSha}`,
+      external_id: registryValidateExternalId(binding),
       output: {
         title: "Trusted registry-only validation is running",
         summary:
@@ -452,6 +549,14 @@ async function completeValidate({
       status: "completed",
       conclusion,
       completed_at: new Date().toISOString(),
+      ...(conclusion === "success"
+        ? {
+            external_id: registryValidateExternalId(
+              binding,
+              registryProofGeneration(proof)
+            ),
+          }
+        : {}),
       output: {
         title:
           conclusion === "success"
@@ -499,7 +604,7 @@ export async function publishRegistryOnlyValidate({
     fetchImpl,
   });
   try {
-    const firstManifest = await fetchProposedManifest({
+    const firstManifest = await fetchProposedRegistryManifest({
       classification: first,
       env,
       api,
@@ -525,7 +630,7 @@ export async function publishRegistryOnlyValidate({
       fetchImpl,
     });
     if (!fresh.eligible) fail("registry_validate_scope_changed");
-    const freshManifest = await fetchProposedManifest({
+    const freshManifest = await fetchProposedRegistryManifest({
       classification: fresh,
       env,
       api,
