@@ -51,6 +51,8 @@ export const PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT =
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =
   "6089186d1df02b3d47f78d9926859a3f6b2aac90e935c9e3d7e56f88fed36af3";
+export const FOCUSED_PRACTICE_SCHEMA_FINGERPRINT =
+  "e78473ada45f32f6e453b7987876ae97021310020b7dc8cbf513f80464affc91";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -180,7 +182,9 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
           AND p.proname IN (
             'protect_interview_session_stable_evidence',
             'enforce_interview_credit_evidence_immutable',
-            'enforce_billing_adjustment_immutable'
+            'enforce_billing_adjustment_immutable',
+            'enforce_focused_practice_attempt_transition',
+            'can_read_owned_focused_practice_attempt'
           )
         ORDER BY p.proname, arguments
       `,
@@ -193,7 +197,8 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
           AND trigger_name IN (
             'protect_interview_session_stable_evidence',
             'interview_credit_evidence_immutable',
-            'billing_adjustment_immutable'
+            'billing_adjustment_immutable',
+            'focused_practice_attempt_transition_guard'
           )
         ORDER BY event_object_table, trigger_name, event_manipulation
       `,

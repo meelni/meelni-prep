@@ -330,6 +330,10 @@ export const interviewSession = pgTable(
     idUserAttemptUnique: unique(
       "interview_session_id_user_start_attempt_uniq"
     ).on(table.id, table.userId, table.startAttemptId),
+    idUserUnique: unique("interview_session_id_user_uniq").on(
+      table.id,
+      table.userId
+    ),
     idAttemptUnique: unique("interview_session_id_start_attempt_uniq").on(
       table.id,
       table.startAttemptId

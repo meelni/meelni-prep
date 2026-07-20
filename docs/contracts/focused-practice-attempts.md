@@ -1,6 +1,6 @@
 # Focused-Practice Attempt Contract
 
-Status: provider-neutral Phase 2a core lifecycle and workflow port implemented for SAV-269; no database, API, UI, provider, or environment integration in this slice
+Status: durable authenticated API integration implemented for SAV-277; feedback-workspace UI remains a separate slice
 
 ## Purpose
 
@@ -51,7 +51,7 @@ An in-progress attempt snapshots:
 - the selected grounded finding's dimension, observation, next step, references, and confidence; and
 - canonical start time.
 
-Question-bank or feedback changes after creation do not rewrite the snapshot. Repeated and concurrent starts resume the same record. A future adapter must enforce this with a unique source/version identity and an atomic create-or-load operation; it must never use process memory as production persistence.
+Question-bank or feedback changes after creation do not rewrite the snapshot. Repeated and concurrent starts resume the same record. The `focused_practice_attempt` adapter enforces this with a unique owner/source/version identity and an atomic create-or-load transaction; production persistence never depends on process memory.
 
 Every repository-hydrated attempt is decoded against the exact v1 shape before it can be returned or transitioned. The decoder verifies canonical timestamps, lifecycle/state relationships, Feedback full/partial provenance, deterministic recommendation and template identities, exact versioned template copy, plan and finding consistency, and terminal self-review provenance, then rebuilds a frozen value. The workflow also binds every decoded result back to the requested owner, source, and attempt identity before returning it. Corrupt rows, unknown versions, extra fields, disposition/state contradictions, and wrong-row adapter results fail closed.
 
@@ -72,15 +72,36 @@ Successful repository dispositions are bound to the command that produced them. 
 
 The deterministic self-review records the candidate response beside the snapshotted focus dimension, grounded observation, grounded next step, success criterion, and self-review prompt. It does not call a model, rescore the interview, issue pass/fail labels, predict hiring outcomes, or claim readiness.
 
-## Deferred integration obligations
+## Durable API and privacy boundary
 
-Phase 2a adds no migration, durable adapter, route, UI, provider call, LiveKit room, job, credit mutation, analytics event, environment action, or flag change. A later slice must add:
+Migration `0028_focused_practice_attempts` adds the canonical durable table. It
+binds every attempt to its owner, source session, and source feedback with
+composite foreign keys; stores explicit contract/template columns beside the
+strict JSON snapshot; and permits only the one `in_progress` version 0 to
+`completed` version 1 transition. Immutable source or plan changes are rejected
+by the database. Owner RLS is deletion-aware and grants authenticated users
+read-only access; writes remain server-owned.
 
-- the next canonical migration after the current migration head;
-- Drizzle persistence plus RLS/owner checks and atomic uniqueness/version transitions;
-- account-identity locking with an in-transaction deletion-tombstone fence for every mutation;
-- separate authenticated no-store start/read/complete routes;
-- account export and irreversible-deletion coverage for persisted attempts; and
-- integration tests proving database concurrency and non-enumerating ownership behavior.
+The authenticated, dynamic, no-store API surface is:
 
-The feedback-workspace UI is a separate slice and must preserve the same customer-language and non-scoring boundaries.
+- `POST /api/focused-practice/attempts/start` with exactly `sourceSessionId`;
+- `GET /api/focused-practice/attempts/:attemptId`; and
+- `POST /api/focused-practice/attempts/:attemptId/complete` with exactly the
+  v1 completion object.
+
+Authentication and the deterministic relaunch-access gate run before body
+parsing or database work. Provider authentication errors and access-resolution
+errors fail closed. Missing and cross-owner resources have indistinguishable
+responses. The server injects the authenticated owner and withholds internal
+owner/source-feedback identifiers from responses.
+
+Every mutation takes the account-identity lock, locks the local account row,
+and checks the deletion tombstone in the same transaction. Account export
+schema `1.2.0` includes the user's persisted attempts using an explicit safe
+field projection. Irreversible account deletion removes attempts before the
+feedback/session graph.
+
+This integration adds no model call, LiveKit room, Inngest job, credit mutation,
+analytics event, provider/environment action, or relaunch-flag change. The
+feedback-workspace UI is a separate slice and must preserve the same
+customer-language and non-scoring boundaries.

@@ -50,6 +50,7 @@ export function createAccountDataExportFixture(): AccountDataExportV1 {
       interviews: [],
       bookmarks: [],
       practiceSets: [],
+      focusedPracticeAttempts: [],
       achievements: [],
       insights: [],
     },

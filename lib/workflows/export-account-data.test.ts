@@ -71,6 +71,21 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
       ],
       bookmarks: [{ userId: "user-two", questionText: "Do not export this" }],
       practiceSets: [],
+      focusedPracticeAttempts: [
+        {
+          userId: "user-one",
+          id: "attempt-one",
+          sourceSessionId: "session-one",
+          sourceFeedbackId: "feedback-one",
+          state: "completed",
+          response: { kind: "reflection", text: "I changed the tradeoff." },
+        },
+        {
+          userId: "user-two",
+          id: "attempt-other-user",
+          response: { text: "Do not export this attempt" },
+        },
+      ],
       achievements: [
         {
           userId: "user-one",
@@ -93,7 +108,7 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
   });
 
-  assert.equal(result.schemaVersion, "1.1.0");
+  assert.equal(result.schemaVersion, "1.2.0");
   assert.equal(result.account.id, "user-one");
   assert.deepEqual(result.account.streak, {
     current: 4,
@@ -116,6 +131,19 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
   assert.equal(JSON.stringify(result).includes("provider/model"), false);
   assert.equal(JSON.stringify(result).includes("Do not export this"), false);
   assert.equal(JSON.stringify(result).includes("do_not_export"), false);
+  assert.deepEqual(result.practice.focusedPracticeAttempts, [
+    {
+      id: "attempt-one",
+      sourceSessionId: "session-one",
+      sourceFeedbackId: "feedback-one",
+      state: "completed",
+      response: { kind: "reflection", text: "I changed the tradeoff." },
+    },
+  ]);
+  assert.equal(
+    JSON.stringify(result).includes("Do not export this attempt"),
+    false
+  );
   assert.equal(JSON.stringify(result).includes("userId"), false);
   assert.deepEqual(result.settings, {
     displayName: "Candidate",

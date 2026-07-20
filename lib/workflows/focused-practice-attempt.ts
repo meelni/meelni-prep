@@ -124,7 +124,19 @@ export type CompleteFocusedPracticeAttemptWorkflowResult =
         | "conflict";
     };
 
+export type ReadFocusedPracticeAttemptResult =
+  | { ok: true; attempt: FocusedPracticeAttempt }
+  | {
+      ok: false;
+      reason:
+        | "invalid_request"
+        | "account_deletion_pending"
+        | "not_found"
+        | "attempt_invalid";
+    };
+
 const START_KEYS = ["userId", "sourceSessionId"] as const;
+const READ_KEYS = ["userId", "attemptId"] as const;
 const COMPLETE_KEYS = ["userId", "attemptId", "completion"] as const;
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
@@ -376,6 +388,37 @@ export async function completeFocusedPracticeAttemptWorkflow(
   };
 }
 
+export async function readFocusedPracticeAttemptWorkflow(
+  input: unknown,
+  deps: FocusedPracticeAttemptWorkflowDependencies
+): Promise<ReadFocusedPracticeAttemptResult> {
+  const parsed = parseReadInput(input);
+  if (!parsed) return { ok: false, reason: "invalid_request" };
+  if (await deps.isDeletionPending(parsed.userId)) {
+    return { ok: false, reason: "account_deletion_pending" };
+  }
+
+  const existing = await deps.repository.getOwned(parsed);
+  // The read itself can race durable deletion acceptance. Withhold the
+  // snapshot when the account boundary moved while the row was loading.
+  if (await deps.isDeletionPending(parsed.userId)) {
+    return { ok: false, reason: "account_deletion_pending" };
+  }
+  if (!existing) return { ok: false, reason: "not_found" };
+
+  const decoded = parseFocusedPracticeAttempt(existing);
+  if (decoded.state === "invalid") {
+    return { ok: false, reason: "attempt_invalid" };
+  }
+  if (
+    decoded.attempt.userId !== parsed.userId ||
+    decoded.attempt.attemptId !== parsed.attemptId
+  ) {
+    return { ok: false, reason: "not_found" };
+  }
+  return { ok: true, attempt: decoded.attempt };
+}
+
 /** Pure helper for repository fakes and future compare-and-set adapters. */
 export function transitionFocusedPracticeAttemptCompletion(input: {
   attempt: FocusedPracticeAttempt;
@@ -406,6 +449,15 @@ function parseCompleteInput(value: unknown): {
         attemptId: value.attemptId,
         completion: value.completion,
       }
+    : null;
+}
+
+function parseReadInput(
+  value: unknown
+): { userId: string; attemptId: string } | null {
+  if (!isRecord(value) || !hasExactKeys(value, READ_KEYS)) return null;
+  return isIdentity(value.userId) && isIdentity(value.attemptId)
+    ? { userId: value.userId, attemptId: value.attemptId }
     : null;
 }
 
