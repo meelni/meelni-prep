@@ -17,6 +17,16 @@ feedback, and settings at these fixed viewports:
 - Mobile: `390 x 844`.
 - Desktop: `1440 x 1000`.
 
+The matrix also verifies the mobile navigation dialog and Explore question-type
+listbox in both closed and open states. Closed triggers must not publish a
+reference to an unmounted popup. Open triggers must reference the exact mounted
+dialog or listbox ID, preserve the expected expanded state, pass a focused Axe
+`aria-valid-attr-value` scan while the popup is active, close with Escape, and
+restore focus to the trigger. The ordinary closed-state scan remains the broad
+WCAG-tagged page gate; the focused open-state scan avoids misclassifying known
+Axe manual-review results for modal background hiding and Vaul's visual
+overscroll pseudo-element as popup-reference failures.
+
 The public tests run the built production Next.js application. Authenticated
 compositions use production components with approved synthetic fixture data
 through the browser-QA fixture
@@ -61,10 +71,10 @@ the assertion or fixture boundary; do not hide it with retries, sleeps, broad
 console allowlists, global accessibility-rule suppression, or pixel-diff
 baselines.
 
-An intentional accessibility exception must identify the exact rule and
-selector, explain why it is safe, name an owner, and include an expiration or
-follow-up issue. Screenshots are evidence and diagnostics, not pixel-perfect
-blocking snapshots.
+There are no accessibility incomplete-result exceptions. Any serious or
+critical incomplete result is blocking, as is any `color-contrast` incomplete
+result regardless of impact. Screenshots are evidence and diagnostics, not
+pixel-perfect blocking snapshots.
 
 Every Axe run attaches its incomplete rule IDs, impacts, help text, node
 selectors, and failure summaries before enforcing the blocking threshold. Do
@@ -72,17 +82,13 @@ not replace that evidence with aggregate counts: incomplete results can signal
 that Axe could not finish evaluating a launch-critical element.
 
 SAV-265 removed all 27 observed `color-contrast` incomplete-result allowances
-by making production foreground/background composition deterministic. The
-allowlist now rejects `color-contrast` entries as a contract, so future
-contrast uncertainty is blocking rather than silently grandfathered.
-
-The only current incomplete-result exceptions are three exact
-`aria-valid-attr-value` selectors scoped to closed Radix triggers on the mobile
-landing, Explore, and pricing surfaces. Axe cannot resolve a popup target that
-is mounted only while the menu or listbox is open. Follow-up issue `SAV-278`
-owns removal or revalidation by 2026-08-15. The test enforces that expiration;
-after the date, the selectors return to blocking status automatically. A new
-project, selector, rule, or surface is not covered and fails the matrix.
+by making production foreground/background composition deterministic.
+SAV-278 removed the final three `aria-valid-attr-value` allowances: the mobile
+navigation trigger now exposes `aria-controls` only while its dialog is open,
+and Radix Select 2.3.4 applies the same mounted-popup contract to the Explore
+listbox. The matrix retains raw incomplete evidence and blocks every serious,
+critical, or contrast result rather than grandfathering a rule, selector,
+surface, or browser project.
 
 ## Local Operation
 

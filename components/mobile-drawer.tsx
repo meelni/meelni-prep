@@ -19,6 +19,7 @@ import { Loader2, Menu } from "lucide-react";
 import { PublicActivationButton } from "@/components/public-activation-action";
 import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import { useId, useState } from "react";
 
 const publicNavigation = [
   { label: "Questions", href: "/explore" },
@@ -30,16 +31,19 @@ const publicNavigation = [
 export function MobileDrawer() {
   const { user, isLoading } = useAuth();
   const activation = usePublicActivationDecision();
+  const [open, setOpen] = useState(false);
+  const drawerContentId = `mobile-navigation-${useId().replaceAll(":", "")}`;
 
   return (
-    <Drawer>
+    <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger
         aria-label="Open navigation menu"
+        aria-controls={open ? drawerContentId : undefined}
         className="focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
         <Menu className="h-6 w-6" aria-hidden="true" />
       </DrawerTrigger>
-      <DrawerContent>
+      <DrawerContent id={drawerContentId}>
         <DrawerHeader className="px-6">
           <Link
             href="/"
