@@ -41,58 +41,6 @@ const TABBABLE_SELECTOR = [
   "[tabindex]",
 ].join(",");
 
-type AxeIncompleteAllowance = {
-  expires: string;
-  owner: string;
-  projects: string[];
-  reason: string;
-  rule: string;
-  selector: string;
-};
-
-// Axe cannot finish these exact project/surface/rule/selector combinations.
-// Keep the raw incomplete evidence attached and expire each exception; any
-// different project, rule, surface, or selector remains blocking.
-const AXE_INCOMPLETE_ALLOWLIST: Record<string, AxeIncompleteAllowance[]> = {
-  landing: [
-    {
-      expires: "2026-08-15",
-      owner: "SAV-278",
-      projects: ["mobile-chromium"],
-      reason:
-        "The closed Radix mobile navigation trigger references popup content that is mounted only while the menu is open.",
-      rule: "aria-valid-attr-value",
-      selector: ".min-h-11",
-    },
-  ],
-  explore: [
-    {
-      expires: "2026-08-15",
-      owner: "SAV-278",
-      projects: ["mobile-chromium"],
-      reason:
-        "The closed Radix Select trigger references popup content that is mounted only while the listbox is open.",
-      rule: "aria-valid-attr-value",
-      selector: ".min-w-11",
-    },
-  ],
-  pricing: [
-    {
-      expires: "2026-08-15",
-      owner: "SAV-278",
-      projects: ["mobile-chromium"],
-      reason:
-        "The closed Radix mobile navigation trigger references popup content that is mounted only while the menu is open.",
-      rule: "aria-valid-attr-value",
-      selector: ".min-h-11",
-    },
-  ],
-};
-
-const colorContrastAllowances = Object.values(AXE_INCOMPLETE_ALLOWLIST)
-  .flat()
-  .filter((allowance) => allowance.rule === "color-contrast");
-
 async function countTabbableElements(page: Page): Promise<number> {
   return page.locator(TABBABLE_SELECTOR).evaluateAll(
     (elements) =>
@@ -245,10 +193,6 @@ export async function assertCriticalAccessibility(
   testInfo: TestInfo,
   surfaceId: string
 ) {
-  expect(
-    colorContrastAllowances,
-    "color-contrast incomplete results must never be allowlisted"
-  ).toEqual([]);
   await page.evaluate(async () => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -278,40 +222,11 @@ export async function assertCriticalAccessibility(
       selector: node.target,
     })),
   });
-  const allowanceFor = (
-    finding: (typeof result.incomplete)[number],
-    selector: string
-  ) =>
-    (AXE_INCOMPLETE_ALLOWLIST[surfaceId] ?? []).find(
-      (allowance) =>
-        allowance.rule === finding.id &&
-        allowance.selector === selector &&
-        allowance.projects.includes(testInfo.project.name) &&
-        Date.now() <= Date.parse(`${allowance.expires}T23:59:59.999Z`)
-    );
-  const allowedIncomplete = result.incomplete.flatMap((finding) =>
-    finding.nodes.flatMap((node) => {
-      const allowance = allowanceFor(finding, node.target.join(" > "));
-      return allowance
-        ? [
-            {
-              ...allowance,
-              failureSummary: node.failureSummary,
-              impact: finding.impact,
-            },
-          ]
-        : [];
-    })
-  );
   const blockingIncomplete = result.incomplete.flatMap((finding) => {
     if (!isBlocking(finding)) return [];
-    const nodes = finding.nodes.filter(
-      (node) => !allowanceFor(finding, node.target.join(" > "))
-    );
-    return nodes.length > 0 ? [summarize({ ...finding, nodes })] : [];
+    return [summarize(finding)];
   });
   const evidence = {
-    allowedIncomplete,
     blocking: {
       incomplete: blockingIncomplete,
       violations: result.violations.filter(isBlocking).map(summarize),
@@ -321,13 +236,56 @@ export async function assertCriticalAccessibility(
     violationCount: result.violations.length,
   };
 
-  await testInfo.attach("axe-accessibility-evidence", {
+  await testInfo.attach(
+    surfaceId.endsWith("-open-popup")
+      ? `axe-accessibility-evidence-${surfaceId}`
+      : "axe-accessibility-evidence",
+    {
+      body: Buffer.from(JSON.stringify(evidence, null, 2)),
+      contentType: "application/json",
+    }
+  );
+  expect(
+    evidence.blocking,
+    "serious, critical, and color-contrast Axe violations or incomplete results must be resolved"
+  ).toEqual({ incomplete: [], violations: [] });
+
+  return evidence;
+}
+
+export async function assertPopupAriaAccessibility(
+  page: Page,
+  testInfo: TestInfo,
+  surfaceId: string
+) {
+  const result = await new AxeBuilder({ page })
+    .withRules(["aria-valid-attr-value"])
+    .analyze();
+  const summarize = (finding: (typeof result.violations)[number]) => ({
+    help: finding.help,
+    impact: finding.impact,
+    rule: finding.id,
+    nodes: finding.nodes.map((node) => ({
+      failureSummary: node.failureSummary,
+      selector: node.target,
+    })),
+  });
+  const evidence = {
+    incomplete: result.incomplete.map(summarize),
+    passes: result.passes.map(summarize),
+    violations: result.violations.map(summarize),
+  };
+
+  await testInfo.attach(`axe-popup-aria-evidence-${surfaceId}`, {
     body: Buffer.from(JSON.stringify(evidence, null, 2)),
     contentType: "application/json",
   });
   expect(
-    evidence.blocking,
-    "serious, critical, and color-contrast Axe violations or incomplete results must be resolved"
+    {
+      incomplete: evidence.incomplete,
+      violations: evidence.violations,
+    },
+    "open popup ARIA references must be valid without an Axe exception"
   ).toEqual({ incomplete: [], violations: [] });
 
   return evidence;
