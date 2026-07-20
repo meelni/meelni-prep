@@ -49,9 +49,9 @@
   check.
 
 General metadata path optimization, branch-protection changes, provider state,
-Production, relaunch flags, and merge authorization are out of scope. A
-read-only operator/Codex merge preflight is in scope because dynamic cross-PR
-freshness cannot be made atomic by the publisher.
+Production, and relaunch flags are out of scope. The explicit operator merge
+command is in scope because dynamic cross-PR freshness cannot be made atomic by
+the publisher or safely delegated to a later manual click.
 
 ## Fail-closed cases
 
@@ -73,17 +73,21 @@ candidate classification. A newly invalid topology completes an opened pending
 check as failure; a completion infrastructure failure leaves that opened check
 pending and blocking. An API or runner failure before a replacement check is
 created can leave an older success visible. Therefore registry-only PRs
-prohibit auto-merge and admin bypass and require the documented just-in-time
-merge preflight: exact proof-bound success no more than ten minutes old, drained
-healthy publisher queue, enforced protection, and stable proof/queue snapshots
-across a second barrier.
+prohibit auto-merge and admin bypass and require the documented explicit
+merge-owning command. Read-only mode is advisory evidence, never merge
+authorization. Merge mode verifies exact proof-bound success less than ten
+minutes old, a drained healthy publisher queue, enforced protection, and stable
+proof/queue snapshots, then performs a third final live barrier and immediately
+submits a normal protected GitHub merge for the exact PR head SHA. It fails if
+the evidence expires at any barrier or immediately before mutation.
 
 ## Validation
 
 - Focused registry-only publisher, trigger, and stack-adapter tests.
 - Full `npm run test:local` and `npm run test:stack`.
 - YAML parse and Prettier for both workflows, scripts, tests, and docs.
-- Behavioral merge-preflight tests and a real local Git symlink-mode harness.
+- Behavioral advisory/merge tests, including no-mutation failure barriers, and
+  a real local Git symlink-mode harness.
 - `npm run verify:agent` when the complete local environment is available.
 - Read-only inspection of live branch protection; no protection mutation.
 

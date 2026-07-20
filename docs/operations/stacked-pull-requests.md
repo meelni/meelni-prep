@@ -180,12 +180,14 @@ push/manual fan-out. A later-invalid generation completes the pending check as
 failure; a failure completing an already-created check leaves that check pending
 and blocking. A failure before a replacement check is created can leave an
 older cross-PR green result visible, so exact registry-only PRs must never use
-auto-merge or admin bypass. Immediately before merge, run the read-only
-`npm run preflight:registry-merge -- --pr <number>` procedure documented in
-`docs/operations/ci-cost-control.md`; it requires a fresh proof-bound success,
+auto-merge or admin bypass. The only authorized path is the explicit merge-owning
+`npm run preflight:registry-merge -- --pr <number> --merge` procedure documented
+in `docs/operations/ci-cost-control.md`; it requires fresh proof-bound success,
 a drained healthy publisher queue, stable proof/queue snapshots, and enforced
-protection. Rerun it after any activity or delay; GitHub reads and merge are not
-atomic.
+protection, then performs a final live barrier and exact-head protected merge.
+Read-only mode is advisory and must never be followed by a manual merge. GitHub
+cannot make multiple mutable PR refs and the merge one transaction, but keeping
+the final checks and merge in one command removes the prior manual window.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own
