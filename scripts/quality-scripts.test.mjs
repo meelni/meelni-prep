@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const scripts = packageJson.scripts ?? {};
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const testTsconfig = JSON.parse(readFileSync("tsconfig.tests.json", "utf8"));
+const allTestsTsconfig = JSON.parse(
+  readFileSync("tsconfig.tests.all.json", "utf8")
+);
 
 test("package scripts expose the aggregate quality gates", () => {
   for (const scriptName of [
@@ -35,6 +40,58 @@ test("package scripts expose the aggregate quality gates", () => {
 
 test("CI includes deterministic stacked PR regression fixtures", () => {
   assert.match(scripts["check:ci"], /npm\s+run\s+test:stack/);
+});
+
+test("the default test typecheck includes every test directory", () => {
+  assert.deepEqual(testTsconfig.exclude, [
+    "node_modules",
+    ".next",
+    "agent/venv",
+  ]);
+  assert.ok(testTsconfig.include.includes("**/*.test.ts"));
+  assert.ok(testTsconfig.include.includes("**/*.test.tsx"));
+  assert.ok(testTsconfig.include.includes("**/*.spec.ts"));
+  assert.ok(testTsconfig.include.includes("**/*.spec.tsx"));
+  assert.ok(testTsconfig.include.includes("**/__tests__/**/*.ts"));
+  assert.ok(testTsconfig.include.includes("**/__tests__/**/*.tsx"));
+  assert.deepEqual(allTestsTsconfig, { extends: "./tsconfig.tests.json" });
+
+  const resolvedConfig = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [
+        "node_modules/typescript/bin/tsc",
+        "--showConfig",
+        "--project",
+        "tsconfig.tests.json",
+      ],
+      { encoding: "utf8" }
+    )
+  );
+  const resolvedFiles = new Set(
+    resolvedConfig.files.map((file) => file.replace(/^\.\//, ""))
+  );
+  const trackedTestSources = execFileSync(
+    "git",
+    ["ls-files", "--", "*.ts", "*.tsx"],
+    { encoding: "utf8" }
+  )
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .filter(
+      (file) =>
+        /\.(?:test|spec)\.tsx?$/.test(file) ||
+        file.split("/").includes("__tests__")
+    );
+  const missingTestSources = trackedTestSources.filter(
+    (file) => !resolvedFiles.has(file)
+  );
+  assert.deepEqual(
+    missingTestSources,
+    [],
+    "tsconfig.tests.json must typecheck every tracked TS/TSX test source"
+  );
 });
 
 test("browser QA exposes one pinned Chromium entrypoint", () => {
