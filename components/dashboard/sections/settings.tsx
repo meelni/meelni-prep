@@ -265,7 +265,7 @@ export const SettingsSection = memo(function SettingsSection() {
           </p>
           <nav
             aria-label="Settings"
-            className="-mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0"
+            className="-mx-1 mt-5 grid grid-cols-2 gap-2 px-1 pb-2 lg:mx-0 lg:flex lg:flex-col lg:px-0 lg:pb-0"
           >
             {SETTINGS_CATEGORY_ORDER.map((category) => {
               const selected = activeCategory === category;
