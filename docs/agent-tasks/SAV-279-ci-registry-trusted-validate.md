@@ -49,9 +49,10 @@
   check.
 
 General metadata path optimization, branch-protection changes, provider state,
-Production, and relaunch flags are out of scope. The explicit operator merge
-command is in scope because dynamic cross-PR freshness cannot be made atomic by
-the publisher or safely delegated to a later manual click.
+Production, and relaunch flags are out of scope. The trusted default-branch
+workflow-dispatch merge operation is in scope because dynamic cross-PR
+freshness cannot be made atomic by the publisher or safely delegated to a
+local process or later manual click.
 
 ## Fail-closed cases
 
@@ -73,21 +74,38 @@ candidate classification. A newly invalid topology completes an opened pending
 check as failure; a completion infrastructure failure leaves that opened check
 pending and blocking. An API or runner failure before a replacement check is
 created can leave an older success visible. Therefore registry-only PRs
-prohibit auto-merge and admin bypass and require the documented explicit
-merge-owning command. Read-only mode is advisory evidence, never merge
-authorization. Merge mode verifies exact proof-bound success less than ten
-minutes old, a drained healthy publisher queue, enforced protection, and stable
-proof/queue snapshots, then performs a third final live barrier and immediately
-submits a normal protected GitHub merge for the exact PR head SHA. It fails if
-the evidence expires at any barrier or immediately before mutation.
+prohibit auto-merge and admin bypass and require the documented serialized
+`merge_registry` workflow-dispatch operation. Read-only mode is advisory
+evidence, never merge authorization, and local script merge mode is rejected.
+The trusted job verifies its canonical workflow/ref/run context and exact
+dispatch inputs, requires exact proof-bound success less than ten minutes old,
+excludes only its verified self run from an otherwise drained healthy publisher
+queue, and rechecks protection and stable proof/queue snapshots. It binds an
+operator-supplied exact head across all three live barriers and immediately
+submits a normal protected merge for that SHA. It fails if evidence expires at
+any barrier or immediately before mutation.
+
+The job proves its output channel and records `merge_attempted=true` immediately
+before mutation. After a valid merge response, it records the performed merge
+and SHA before bounded read-after-write verification. If that output or
+verification fails, an always-run read-only probe recovers merge state and SHA
+from the exact PR/head. It verifies the merge commit, PR, and new `main`,
+detaches the trusted checkout at that commit, then explicitly runs stack,
+migration, and registry publications to compensate for `GITHUB_TOKEN` event
+suppression. Failure after mutation reports an incomplete post-merge recovery,
+not a rollback. Cross-PR state can still change in the irreducible interval
+between the last read and merge because GitHub offers no transaction across
+those refs.
 
 ## Validation
 
 - Focused registry-only publisher, trigger, and stack-adapter tests.
 - Full `npm run test:local` and `npm run test:stack`.
 - YAML parse and Prettier for both workflows, scripts, tests, and docs.
-- Behavioral advisory/merge tests, including no-mutation failure barriers, and
-  a real local Git symlink-mode harness.
+- Behavioral advisory/merge tests, including untrusted context, strict argument
+  parsing, exact expected-head barriers, verified self-run queue exclusion,
+  no-mutation failures, post-merge uncertainty recovery, workflow permissions,
+  and a real local Git symlink-mode harness.
 - `npm run verify:agent` when the complete local environment is available.
 - Read-only inspection of live branch protection; no protection mutation.
 

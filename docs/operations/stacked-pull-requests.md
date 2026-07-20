@@ -180,14 +180,22 @@ push/manual fan-out. A later-invalid generation completes the pending check as
 failure; a failure completing an already-created check leaves that check pending
 and blocking. A failure before a replacement check is created can leave an
 older cross-PR green result visible, so exact registry-only PRs must never use
-auto-merge or admin bypass. The only authorized path is the explicit merge-owning
-`npm run preflight:registry-merge -- --pr <number> --merge` procedure documented
-in `docs/operations/ci-cost-control.md`; it requires fresh proof-bound success,
-a drained healthy publisher queue, stable proof/queue snapshots, and enforced
-protection, then performs a final live barrier and exact-head protected merge.
-Read-only mode is advisory and must never be followed by a manual merge. GitHub
-cannot make multiple mutable PR refs and the merge one transaction, but keeping
-the final checks and merge in one command removes the prior manual window.
+auto-merge or admin bypass. The only authorized path is the default-branch
+`merge_registry` workflow-dispatch operation documented in
+`docs/operations/ci-cost-control.md`; local `--merge` is rejected. The trusted
+job requires an exact expected head, verifies and excludes only its own Actions
+run from the shared queue, requires fresh proof-bound success and stable
+proof/queue snapshots, then performs a final live barrier and exact-head
+protected merge. Read-only mode is advisory and must never be followed by a
+manual merge. The same job verifies the returned merge commit, detaches at that
+new `main`, and explicitly republishes stack, migration, and registry evidence
+because `GITHUB_TOKEN` merge events do not recursively start workflows.
+
+GitHub cannot make multiple mutable PR/dependency refs and the merge one
+transaction. The expected SHA closes candidate-head movement and the serialized
+workflow removes competing publishers, but a dependency can still move after
+the final read. Post-merge verification and publication expose and recover
+evidence from that irreducible interval; they cannot undo a completed merge.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own
