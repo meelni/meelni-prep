@@ -120,7 +120,7 @@ test("billing boundaries retain their fixed route-level error codes", async () =
 
 test("checkout confirmation retains its fixed boundary error codes", async () => {
   const source = await readFile(
-    path.join(ROOT, "app/api/checkout/status/route.ts"),
+    path.join(ROOT, "lib/billing/checkout-success-status-route.ts"),
     "utf8"
   );
   const missing = CHECKOUT_CONFIRMATION_ERROR_CODES.filter(
