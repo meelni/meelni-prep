@@ -181,6 +181,19 @@ function validateEnvironment(): ValidationResult {
   }
 
   const environment = sharedEnvironment(process.env);
+  const contactRateLimitSecret = process.env.CONTACT_RATE_LIMIT_HMAC_SECRET;
+  if (environment && !isValidServerSecret(contactRateLimitSecret)) {
+    errors.push(
+      "❌ CONTACT_RATE_LIMIT_HMAC_SECRET must be configured for Preview and Production and satisfy the server-secret contract"
+    );
+  } else if (
+    contactRateLimitSecret !== undefined &&
+    !isValidServerSecret(contactRateLimitSecret)
+  ) {
+    errors.push(
+      "❌ CONTACT_RATE_LIMIT_HMAC_SECRET must satisfy the server-secret contract when configured"
+    );
+  }
   const vercelEnvironment = recognizedSharedEnvironment(process.env.VERCEL_ENV);
   const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: process.env.DATABASE_URL,
@@ -198,11 +211,6 @@ function validateEnvironment(): ValidationResult {
   // Additional security checks
   const productionChecks = process.env.NODE_ENV === "production";
   if (productionChecks) {
-    if (!isValidServerSecret(process.env.CONTACT_RATE_LIMIT_HMAC_SECRET)) {
-      errors.push(
-        "❌ CONTACT_RATE_LIMIT_HMAC_SECRET is required and must be at least 32 characters in production"
-      );
-    }
     // Warn if using test Stripe keys in production
     if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
       warnings.push("⚠️  Using Stripe TEST key in production environment");

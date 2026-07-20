@@ -27,6 +27,7 @@ import type {
   QuestionQualityStatus,
   QuestionSourceKind,
 } from "@/lib/question-sync/types";
+import type { ContactReason } from "@/lib/contact/contracts";
 import { appUser } from "./schema-core";
 import { interviewSession } from "./schema-session";
 
@@ -215,6 +216,124 @@ export const publicDemoSession = pgTable(
       table.activeExpiresAt
     ),
     expiryIdx: index("public_demo_session_expiry_idx").on(table.expiresAt),
+  })
+);
+
+// Server-only support inbox. A committed row is the product's durable
+// acceptance guarantee; delivery to an external email provider is not implied.
+export const contactSubmission = pgTable(
+  "contact_submission",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    idempotencyKey: uuid("idempotency_key").notNull(),
+    userId: uuid("user_id").references(() => appUser.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    reason: text("reason").$type<ContactReason>().notNull(),
+    subject: text("subject").notNull(),
+    message: text("message").notNull(),
+    persistenceState: text("persistence_state").default("stored").notNull(),
+    triageState: text("triage_state").default("new").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    idempotencyKeyIdx: uniqueIndex("contact_submission_idempotency_key_idx").on(
+      table.idempotencyKey
+    ),
+    createdAtIdx: index("contact_submission_created_at_idx").on(
+      table.createdAt
+    ),
+    userIdIdx: index("contact_submission_user_id_idx").on(table.userId),
+    reasonCheck: check(
+      "contact_submission_reason_check",
+      sql`${table.reason} IN ('billing', 'support', 'bug', 'feedback', 'other')`
+    ),
+    nameBoundsCheck: check(
+      "contact_submission_name_bounds_check",
+      sql`${table.name} = btrim(${table.name}) AND char_length(${table.name}) BETWEEN 1 AND 100 AND octet_length(${table.name}) <= 400 AND ${table.name} !~ '[[:cntrl:]]'`
+    ),
+    emailBoundsCheck: check(
+      "contact_submission_email_bounds_check",
+      sql`${table.email} = btrim(${table.email}) AND ${table.email} = lower(${table.email}) AND char_length(${table.email}) BETWEEN 3 AND 320 AND octet_length(${table.email}) <= 320 AND position('@' IN ${table.email}) > 1 AND ${table.email} !~ '[[:cntrl:][:space:]]'`
+    ),
+    subjectBoundsCheck: check(
+      "contact_submission_subject_bounds_check",
+      sql`${table.subject} = btrim(${table.subject}) AND char_length(${table.subject}) BETWEEN 1 AND 200 AND octet_length(${table.subject}) <= 800 AND ${table.subject} !~ '[[:cntrl:]]'`
+    ),
+    messageBoundsCheck: check(
+      "contact_submission_message_bounds_check",
+      sql`${table.message} = btrim(${table.message}) AND char_length(${table.message}) BETWEEN 10 AND 5000 AND octet_length(${table.message}) <= 20000 AND regexp_replace(${table.message}, E'[\\t\\n\\r]', '', 'g') !~ '[[:cntrl:]]'`
+    ),
+    persistenceStateCheck: check(
+      "contact_submission_persistence_state_check",
+      sql`${table.persistenceState} = 'stored'`
+    ),
+    triageStateCheck: check(
+      "contact_submission_triage_state_check",
+      sql`${table.triageState} IN ('new', 'claimed', 'resolved')`
+    ),
+  })
+);
+
+// Append-only, PII-free record of privileged support inbox access and triage.
+export const contactSubmissionAccessAudit = pgTable(
+  "contact_submission_access_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    submissionId: uuid("submission_id")
+      .references(() => contactSubmission.id, { onDelete: "cascade" })
+      .notNull(),
+    accessType: text("access_type").notNull(),
+    actorReference: text("actor_reference").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    submissionCreatedIdx: index(
+      "contact_submission_access_audit_submission_created_idx"
+    ).on(table.submissionId, table.createdAt),
+    accessTypeCheck: check(
+      "contact_submission_access_audit_type_check",
+      sql`${table.accessType} IN ('read', 'claim', 'resolve')`
+    ),
+    actorReferenceCheck: check(
+      "contact_submission_access_audit_actor_reference_check",
+      sql`${table.actorReference} ~ '^[A-Za-z0-9_.:-]{3,80}$'`
+    ),
+  })
+);
+
+// Shared PostgreSQL budget used by the public contact endpoint. Only hashes of
+// normalized limiter identities are retained; no raw email or IP is stored.
+export const contactSubmissionRateLimit = pgTable(
+  "contact_submission_rate_limit",
+  {
+    identityHash: text("identity_hash").primaryKey().notNull(),
+    windowStartedAt: timestamp("window_started_at", {
+      withTimezone: true,
+    }).notNull(),
+    requestCount: integer("request_count").default(0).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    identityHashCheck: check(
+      "contact_submission_rate_limit_identity_hash_check",
+      sql`${table.identityHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    requestCountCheck: check(
+      "contact_submission_rate_limit_request_count_check",
+      sql`${table.requestCount} >= 0`
+    ),
+    windowStartedAtIdx: index(
+      "contact_submission_rate_limit_window_started_idx"
+    ).on(table.windowStartedAt),
   })
 );
 

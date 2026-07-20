@@ -15,6 +15,9 @@ import {
   createContactAttemptRateLimitIdentity,
   createContactRateLimitIdentities,
 } from "@/lib/security/contact-rate-limit-identity";
+import { FEATURE_GATES } from "@/lib/feature-flags/gates";
+import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-access";
+import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { submitContactRequest } from "@/lib/workflows/submit-contact-request";
 
 const MAX_CONTACT_REQUEST_BYTES = 32 * 1024;
@@ -22,12 +25,45 @@ const MAX_CONTACT_REQUEST_BYTES = 32 * 1024;
 class ContactRequestTooLarge extends Error {}
 
 export async function POST(req: NextRequest) {
+  try {
+    const gateName = FEATURE_GATES.meelniReactivationAccess;
+    const access = await resolveReactivationAccess({
+      localOverride: req.cookies.get(
+        `meelni_feature_flag_${encodeURIComponent(gateName)}`
+      )?.value,
+    });
+    if (!access.value) {
+      return contactError(
+        "contact_unavailable",
+        "The contact form is temporarily unavailable. Email support@meelni.com or manage account and billing settings from your dashboard.",
+        false,
+        403
+      );
+    }
+  } catch {
+    reportOperationalFailure({
+      operation: "contact_submission",
+      errorCode: "contact_submission_access_check_failed",
+      severity: "error",
+      retryable: true,
+    });
+    return contactError(
+      "storage_unavailable",
+      "We could not save your request. Try again or email support@meelni.com directly.",
+      true,
+      503
+    );
+  }
+
   let attemptIdentity: string;
   try {
     attemptIdentity = createContactAttemptRateLimitIdentity(req.headers);
   } catch {
-    console.error("contact_submission_failed", {
-      code: "security_configuration_unavailable",
+    reportOperationalFailure({
+      operation: "contact_submission",
+      errorCode: "contact_submission_security_configuration_failed",
+      severity: "critical",
+      retryable: false,
     });
     return contactError(
       "storage_unavailable",
@@ -42,8 +78,11 @@ export async function POST(req: NextRequest) {
     attemptDecision =
       await consumeContactSubmissionAttemptBudget(attemptIdentity);
   } catch {
-    console.error("contact_submission_failed", {
-      code: "attempt_budget_unavailable",
+    reportOperationalFailure({
+      operation: "contact_submission",
+      errorCode: "contact_submission_attempt_budget_failed",
+      severity: "error",
+      retryable: true,
     });
     return contactError(
       "storage_unavailable",
@@ -54,15 +93,24 @@ export async function POST(req: NextRequest) {
   }
 
   if (!attemptDecision.allowed) {
-    console.warn("contact_submission_rejected", {
-      code: "rate_limited",
-    });
     return contactError(
       "rate_limited",
       "Too many requests were submitted. Wait a little, then try again or email us directly.",
       true,
       429,
       attemptDecision.retryAfterSeconds
+    );
+  }
+
+  if (
+    req.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase() !==
+    "application/json"
+  ) {
+    return contactError(
+      "invalid_request",
+      "Submit the form as JSON and try again.",
+      false,
+      415
     );
   }
 
@@ -115,8 +163,11 @@ export async function POST(req: NextRequest) {
       parsed.data.email
     );
   } catch {
-    console.error("contact_submission_failed", {
-      code: "security_configuration_unavailable",
+    reportOperationalFailure({
+      operation: "contact_submission",
+      errorCode: "contact_submission_security_configuration_failed",
+      severity: "critical",
+      retryable: false,
     });
     return contactError(
       "storage_unavailable",
@@ -126,7 +177,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const userId = await resolveAuthenticatedContactUserId(parsed.data.email);
+  let userId: string | null;
+  try {
+    userId = await resolveAuthenticatedContactUserId(parsed.data.email);
+  } catch {
+    reportOperationalFailure({
+      operation: "contact_submission",
+      errorCode: "contact_submission_auth_link_failed",
+      severity: "error",
+      retryable: true,
+    });
+    return contactError(
+      "storage_unavailable",
+      "We could not save your request. Try again or email support@meelni.com directly.",
+      true,
+      503
+    );
+  }
 
   const result = await submitContactRequest(
     {
@@ -146,9 +213,6 @@ export async function POST(req: NextRequest) {
   }
 
   if (result.code === "idempotency_conflict") {
-    console.warn("contact_submission_rejected", {
-      code: result.code,
-    });
     return contactError(
       result.code,
       "The form changed while it was being saved. Review it and submit again.",
@@ -158,9 +222,6 @@ export async function POST(req: NextRequest) {
   }
 
   if (result.code === "rate_limited") {
-    console.warn("contact_submission_rejected", {
-      code: result.code,
-    });
     const retryAfterSeconds = result.retryAfterSeconds ?? 60;
     return contactError(
       result.code,
@@ -171,8 +232,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  console.error("contact_submission_failed", {
-    code: result.code,
+  reportOperationalFailure({
+    operation: "contact_submission",
+    errorCode: "contact_submission_storage_failed",
+    severity: "error",
+    retryable: true,
   });
   return contactError(
     result.code,

@@ -6,13 +6,24 @@ const {
   createContactAttemptRateLimitIdentity,
   createContactRateLimitIdentities,
   resolveAuthenticatedContactUserId,
+  resolveReactivationAccess,
+  reportOperationalFailure,
   submitContactRequest,
 } = vi.hoisted(() => ({
   consumeContactSubmissionAttemptBudget: vi.fn(),
   createContactAttemptRateLimitIdentity: vi.fn(),
   createContactRateLimitIdentities: vi.fn(),
   resolveAuthenticatedContactUserId: vi.fn(),
+  resolveReactivationAccess: vi.fn(),
+  reportOperationalFailure: vi.fn(),
   submitContactRequest: vi.fn(),
+}));
+
+vi.mock("@/lib/feature-flags/reactivation-access", () => ({
+  resolveReactivationAccess,
+}));
+vi.mock("@/lib/operations/operational-events", () => ({
+  reportOperationalFailure,
 }));
 
 vi.mock("@/lib/db/contact-submissions", () => ({
@@ -47,6 +58,12 @@ describe("POST /api/contact", () => {
     createContactAttemptRateLimitIdentity.mockReset();
     createContactRateLimitIdentities.mockReset();
     resolveAuthenticatedContactUserId.mockReset();
+    resolveReactivationAccess.mockReset();
+    reportOperationalFailure.mockReset();
+    resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: true,
+    });
     consumeContactSubmissionAttemptBudget.mockResolvedValue({
       allowed: true,
       retryAfterSeconds: 0,
@@ -59,6 +76,52 @@ describe("POST /api/contact", () => {
       email: "b".repeat(64),
       global: "c".repeat(64),
     });
+  });
+
+  it("rejects disabled relaunch access before identity, budget, or body reads", async () => {
+    resolveReactivationAccess.mockResolvedValue({
+      source: "statsig",
+      value: false,
+    });
+    const unreadBody = new ReadableStream({
+      pull() {
+        throw new Error("body_must_not_be_read");
+      },
+    });
+
+    const response = await POST(
+      new NextRequest("https://meelni.example/api/contact", {
+        method: "POST",
+        body: unreadBody,
+        duplex: "half",
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "contact_unavailable",
+      retryable: false,
+    });
+    expect(createContactAttemptRateLimitIdentity).not.toHaveBeenCalled();
+    expect(consumeContactSubmissionAttemptBudget).not.toHaveBeenCalled();
+    expect(submitContactRequest).not.toHaveBeenCalled();
+  });
+
+  it("fails closed and reports a fixed event when access resolution fails", async () => {
+    resolveReactivationAccess.mockRejectedValue(new Error("statsig-secret"));
+
+    const response = await POST(request(validBody));
+
+    expect(response.status).toBe(503);
+    expect(reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "contact_submission",
+      errorCode: "contact_submission_access_check_failed",
+      severity: "error",
+      retryable: true,
+    });
+    expect(createContactAttemptRateLimitIdentity).not.toHaveBeenCalled();
+    expect(submitContactRequest).not.toHaveBeenCalled();
   });
 
   afterEach(() => {
@@ -98,7 +161,6 @@ describe("POST /api/contact", () => {
   });
 
   it("returns retryable rate-limit semantics without logging PII", async () => {
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     submitContactRequest.mockResolvedValue({
       ok: false,
       code: "rate_limited",
@@ -107,17 +169,9 @@ describe("POST /api/contact", () => {
     });
 
     const response = await POST(request(validBody));
-    const serializedLogs = JSON.stringify(warning.mock.calls);
-
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("31");
-    expect(serializedLogs).not.toContain(validBody.name);
-    expect(serializedLogs).not.toContain(validBody.email);
-    expect(serializedLogs).not.toContain(validBody.subject);
-    expect(serializedLogs).not.toContain(validBody.message);
-    expect(warning).toHaveBeenCalledWith("contact_submission_rejected", {
-      code: "rate_limited",
-    });
+    expect(reportOperationalFailure).not.toHaveBeenCalled();
   });
 
   it("consumes the attempt budget before parsing or resolving authentication", async () => {
@@ -180,7 +234,6 @@ describe("POST /api/contact", () => {
   });
 
   it("returns 503 instead of false success when storage is unavailable", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     submitContactRequest.mockResolvedValue({
       ok: false,
       code: "storage_unavailable",
@@ -195,13 +248,15 @@ describe("POST /api/contact", () => {
       code: "storage_unavailable",
       retryable: true,
     });
-    expect(log).toHaveBeenCalledWith("contact_submission_failed", {
-      code: "storage_unavailable",
+    expect(reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "contact_submission",
+      errorCode: "contact_submission_storage_failed",
+      severity: "error",
+      retryable: true,
     });
   });
 
   it("fails closed before storage when trusted-edge identity is unavailable", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     createContactAttemptRateLimitIdentity.mockImplementation(() => {
       throw new Error("contact_trusted_edge_unavailable");
     });
@@ -211,13 +266,15 @@ describe("POST /api/contact", () => {
     expect(response.status).toBe(503);
     expect(consumeContactSubmissionAttemptBudget).not.toHaveBeenCalled();
     expect(submitContactRequest).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("contact_submission_failed", {
-      code: "security_configuration_unavailable",
+    expect(reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "contact_submission",
+      errorCode: "contact_submission_security_configuration_failed",
+      severity: "critical",
+      retryable: false,
     });
   });
 
   it("fails closed after the attempt budget when accepted-request identities are unavailable", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     createContactRateLimitIdentities.mockImplementation(() => {
       throw new Error("contact_trusted_edge_unavailable");
     });
@@ -228,9 +285,40 @@ describe("POST /api/contact", () => {
     expect(consumeContactSubmissionAttemptBudget).toHaveBeenCalledTimes(1);
     expect(resolveAuthenticatedContactUserId).not.toHaveBeenCalled();
     expect(submitContactRequest).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("contact_submission_failed", {
-      code: "security_configuration_unavailable",
+    expect(reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "contact_submission",
+      errorCode: "contact_submission_security_configuration_failed",
+      severity: "critical",
+      retryable: false,
     });
+  });
+
+  it("fails closed with fixed-code telemetry when authenticated linkage cannot be verified", async () => {
+    resolveAuthenticatedContactUserId.mockRejectedValue(
+      new Error("supabase-provider-secret")
+    );
+
+    const response = await POST(request(validBody));
+
+    expect(response.status).toBe(503);
+    expect(submitContactRequest).not.toHaveBeenCalled();
+    expect(reportOperationalFailure).toHaveBeenCalledWith({
+      operation: "contact_submission",
+      errorCode: "contact_submission_auth_link_failed",
+      severity: "error",
+      retryable: true,
+    });
+    expect(JSON.stringify(await response.json())).not.toContain("secret");
+  });
+
+  it("rejects unknown client fields instead of silently stripping them", async () => {
+    const response = await POST(
+      request({ ...validBody, userId: "attacker-controlled" })
+    );
+
+    expect(response.status).toBe(400);
+    expect(resolveAuthenticatedContactUserId).not.toHaveBeenCalled();
+    expect(submitContactRequest).not.toHaveBeenCalled();
   });
 
   it("denies a malformed request before reading its body when the attempt budget is exhausted", async () => {
@@ -253,6 +341,30 @@ describe("POST /api/contact", () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("23");
+    expect(submitContactRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-JSON request after consuming the durable attempt budget", async () => {
+    const response = await POST(
+      new NextRequest("https://meelni.example/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "Idempotency-Key": "11111111-1111-4111-8111-111111111111",
+          "x-vercel-forwarded-for": "203.0.113.8",
+        },
+        body: JSON.stringify(validBody),
+      })
+    );
+
+    expect(response.status).toBe(415);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: "invalid_request",
+      retryable: false,
+    });
+    expect(consumeContactSubmissionAttemptBudget).toHaveBeenCalledOnce();
+    expect(resolveAuthenticatedContactUserId).not.toHaveBeenCalled();
     expect(submitContactRequest).not.toHaveBeenCalled();
   });
 });
