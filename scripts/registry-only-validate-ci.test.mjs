@@ -874,6 +874,24 @@ test("trusted code push sweeps registry snapshots without PR event authority", a
   assert.equal(result.results[0].status, "published");
 });
 
+test("unused repository dispatch cannot invoke trusted publication", async () => {
+  const api = async () => {
+    throw new Error("repository dispatch must fail before GitHub API access");
+  };
+  await assert.rejects(
+    publishRegistryOnlyValidate({
+      eventContent: JSON.stringify(event()),
+      env: env("repository_dispatch"),
+      api,
+    }),
+    /registry_validate_publisher_event_invalid/
+  );
+  await assert.rejects(
+    sweepRegistryOnlyValidate({ env: env("repository_dispatch"), api }),
+    /registry_validate_sweep_event_invalid/
+  );
+});
+
 test("concurrent head movement prevents publication", async () => {
   let moved = false;
   const fixture = apiFixture({

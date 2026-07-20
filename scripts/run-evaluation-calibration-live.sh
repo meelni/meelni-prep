@@ -121,16 +121,18 @@ attest_file() {
   [ "$owner" = "$(/usr/bin/id -u)" ] || fail "calibration_live_launcher_file_owner_rejected"
   [ $((0$mode & 022)) -eq 0 ] || fail "calibration_live_launcher_file_mode_rejected"
 }
-safe_git() {
+safe_git_rev_parse() {
+  revision=$1
   /usr/bin/env -i GIT_NO_REPLACE_OBJECTS=1 PATH="/usr/bin:/bin" \
-    /usr/bin/git -C "$SOURCE_REPOSITORY_ROOT" "$@"
+    /usr/bin/git -C "$SOURCE_REPOSITORY_ROOT" rev-parse --verify \
+      "$revision"
 }
 attest_reviewed_file() {
   file=$1
   relative=$2
   reviewed_commit=$3
   attest_file "$file"
-  expected_blob=$(safe_git rev-parse --verify "$reviewed_commit:$relative") || \
+  expected_blob=$(safe_git_rev_parse "$reviewed_commit:$relative") || \
     fail "calibration_live_launcher_reviewed_blob_missing"
   actual_blob=$(
     /usr/bin/env -i GIT_NO_REPLACE_OBJECTS=1 PATH="/usr/bin:/bin" \
@@ -216,7 +218,7 @@ if [ "$test_mode" != "1" ]; then
   case "$reviewed_source_commit" in
     *[!0-9a-f]*) fail "calibration_live_launcher_reviewed_source_commit_invalid" ;;
   esac
-  actual_head=$(safe_git rev-parse --verify 'HEAD^{commit}') || \
+  actual_head=$(safe_git_rev_parse 'HEAD^{commit}') || \
     fail "calibration_live_launcher_head_invalid"
   [ "$actual_head" = "$reviewed_source_commit" ] || \
     fail "calibration_live_launcher_reviewed_head_mismatch"
