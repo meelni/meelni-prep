@@ -43,7 +43,7 @@ from demo.runtime import (
     stop_then_run_bounded,
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
-from shared.dispatch import require_dispatch_name
+from shared.dispatch import resolve_cli_dispatch_name
 from shared.safe_logging import log_exception_class
 
 load_dotenv()
@@ -522,8 +522,9 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    # Every worker is named so room creation can never opt into automatic dispatch.
-    agent_name = require_dispatch_name("LIVEKIT_DEMO_AGENT_NAME")
+    # Asset builds use a non-routable sentinel; every worker command still
+    # requires its environment-owned explicit dispatch name.
+    agent_name = resolve_cli_dispatch_name("LIVEKIT_DEMO_AGENT_NAME")
 
     options = {
         "entrypoint_fnc": entrypoint,

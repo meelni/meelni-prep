@@ -18,7 +18,6 @@ import {
   buildInterviewRecommendation,
   isValidRoundType,
   mapQuestionTypeToRoundType,
-  shouldAnalyzeNudges,
   isCompletedScoredFeedback,
   parseRubricScore,
   validateScores,
@@ -302,11 +301,4 @@ test("question type mapping supports stored question bank labels", () => {
   assert.equal(mapQuestionTypeToRoundType("Product Strategy"), "strategy");
   assert.equal(mapQuestionTypeToRoundType("Strategy"), "strategy");
   assert.equal(mapQuestionTypeToRoundType("Unknown"), null);
-});
-
-test("hint mode gates optional nudge analysis safely", () => {
-  assert.equal(shouldAnalyzeNudges("off"), false);
-  assert.equal(shouldAnalyzeNudges("gentle"), true);
-  assert.equal(shouldAnalyzeNudges("coach"), true);
-  assert.equal(shouldAnalyzeNudges("unknown"), false);
 });

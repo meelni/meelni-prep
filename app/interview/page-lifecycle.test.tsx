@@ -88,10 +88,6 @@ vi.mock("@/lib/analytics/analytics-service", () => ({
   analytics: { track: vi.fn() },
 }));
 
-vi.mock("@/components/interview/nudge-overlay", () => ({
-  NudgeOverlay: () => null,
-}));
-
 vi.mock("./components/audio-visualizer", () => ({
   AudioVisualizer: () => null,
 }));

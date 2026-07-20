@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
-from shared.dispatch import require_dispatch_name
+from shared.dispatch import resolve_cli_dispatch_name
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
@@ -1021,8 +1021,9 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    # Every worker is named so room creation can never opt into automatic dispatch.
-    agent_name = require_dispatch_name("LIVEKIT_INTERVIEW_AGENT_NAME")
+    # Asset builds use a non-routable sentinel; every worker command still
+    # requires its environment-owned explicit dispatch name.
+    agent_name = resolve_cli_dispatch_name("LIVEKIT_INTERVIEW_AGENT_NAME")
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
     # Cloud doesn't support num_idle_processes or load_threshold

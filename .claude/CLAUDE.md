@@ -1686,7 +1686,7 @@ cp -r docs/templates/SPRINT_TEMPLATE/* .claude/sprints/[feature-name-YYYY-MM]/
 
 - ⏳ Enable leaked password protection in Supabase Auth (5-min manual step)
 - Add feedback UI in dashboard to display evaluation results
-- Consider implementing real-time nudges during interviews (optional)
+- Keep full mock interviews coaching-free; any future guided-practice surface requires a separate accepted product and runtime contract
 - Optimize RLS policies for performance when scale demands (auth.uid() → select auth.uid())
 
 ---
