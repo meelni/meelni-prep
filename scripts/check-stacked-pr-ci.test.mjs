@@ -1254,7 +1254,7 @@ test("the authoritative workflow checks out default-branch code and never PR cod
     workflow,
     /revalidate-all:[^]*?github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
   );
-  assert.equal(workflow.match(/continue-on-error: true/g)?.length, 4);
+  assert.equal(workflow.match(/continue-on-error: true/g)?.length, 6);
   assert.match(
     workflow,
     /audit-draft-impact:[^]*?steps\.stack_audit\.outcome != 'success'[^]*?steps\.migration_audit\.outcome != 'success'/

@@ -20,6 +20,7 @@ on:
       - "scripts/check-stacked-pr.mjs"
       - "scripts/check-stacked-pr-ci.mjs"
       - "scripts/revalidate-stacked-prs-ci.mjs"
+      - "scripts/registry-only-validate-ci.mjs"
       - "scripts/check-migration-collisions.mjs"
       - "scripts/check-migration-collisions-ci.mjs"
       - "scripts/check-migration-collisions-event-ci.mjs"
@@ -71,6 +72,12 @@ jobs:
         run: node scripts/revalidate-stacked-prs-ci.mjs --event-path "$GITHUB_EVENT_PATH"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Refresh trusted registry-only Validate snapshots
+        run: node scripts/registry-only-validate-ci.mjs --sweep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
   verify-migrations:
     if: >-
@@ -152,12 +159,55 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - id: registry_validate_sweep
+        name: Refresh registry-only Validate snapshots
+        if: always()
+        continue-on-error: true
+        run: node scripts/registry-only-validate-ci.mjs --sweep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
       - name: Fail incomplete draft dependency audit
         if: >-
           always() &&
           (steps.stack_audit.outcome != 'success' ||
-          steps.migration_audit.outcome != 'success')
+          steps.migration_audit.outcome != 'success' ||
+          steps.registry_validate_sweep.outcome != 'success')
         run: exit 1
+
+  refresh-registry-body-edits:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.draft == true &&
+      github.event.action == 'edited' &&
+      github.event.changes.body != null &&
+      github.event.changes.base == null
+    name: Registry Validate Refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Refresh registry-only Validate snapshots
+        run: node scripts/registry-only-validate-ci.mjs --sweep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
   revalidate-all:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
@@ -201,9 +251,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
+      - id: registry_validate_sweep
+        name: Revalidate registry-only Validate snapshots
+        if: always()
+        continue-on-error: true
+        run: node scripts/registry-only-validate-ci.mjs --sweep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
       - name: Fail incomplete full revalidation
         if: >-
           always() &&
           (steps.stack_audit.outcome != 'success' ||
-          steps.migration_audit.outcome != 'success')
+          steps.migration_audit.outcome != 'success' ||
+          steps.registry_validate_sweep.outcome != 'success')
         run: exit 1
