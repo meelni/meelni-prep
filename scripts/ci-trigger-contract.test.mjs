@@ -73,7 +73,7 @@ test("exact registry-only PRs use GitHub path suppression and trusted publicatio
         /node scripts\/registry-only-validate-ci\.mjs --sweep/g
       ) ?? []
     ).length,
-    4
+    5
   );
   assert.doesNotMatch(
     stackWorkflow,
@@ -131,7 +131,7 @@ test("pull request validation has one exact ignore while trusted main publishers
   assert.match(stackWorkflow, /- "\.github\/stacked-prs\.json"/);
   assert.match(
     stackWorkflow,
-    /if: github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
+    /revalidate-all:[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.operation == 'revalidate'/
   );
 });
 

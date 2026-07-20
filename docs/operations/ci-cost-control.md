@@ -88,31 +88,37 @@ visible green registry-only `Validate` result by itself as merge authority.
 
 ### Registry-only protected merge
 
-Read-only mode is useful for diagnosis from a clean, trusted default-branch
-checkout, but it deliberately returns `status: advisory` and
-`mergeAuthorized: false`:
+The library retains a read-only advisory mode for injected unit and integration
+harnesses; it deliberately returns `status: advisory` and
+`mergeAuthorized: false`. There is no operator-facing local CLI mode: repository
+code never invokes `gh auth token` or consumes an exported operator token. Never
+run local `--merge`. Dispatch the protected operation from any checkout or
+directory, binding the request to the exact current pull-request head SHA:
 
 ```bash
-GITHUB_TOKEN="$(gh auth token)" \
-GITHUB_REPOSITORY=meelni/meelni-prep \
-npm run preflight:registry-merge -- --pr <number>
+gh workflow run stack-topology.yml \
+  --repo meelni/meelni-prep \
+  --ref main \
+  -f operation=merge_registry \
+  -f registry_pr=<number> \
+  -f expected_head_sha=<exact-40-character-head-sha>
 ```
 
-Do not merge from that advisory result. The required operator path explicitly
-owns the merge:
+Only the default-branch `workflow_dispatch` job named `merge-registry` may use
+script merge mode. The script rejects local or forged modes before mutation,
+requires the canonical repository, workflow file/name, protected `main` ref,
+GitHub-hosted runner, job, workflow SHA, run ID/number/attempt, actor, and exact
+dispatch payload, and verifies that exact current run through the Actions API.
+It excludes only that verified self run from the shared publisher queue; every
+other queued or in-progress publisher remains blocking. Unknown, duplicate,
+missing, uppercase, or ambiguous arguments fail closed.
 
-```bash
-GITHUB_TOKEN="$(gh auth token)" \
-GITHUB_REPOSITORY=meelni/meelni-prep \
-npm run preflight:registry-merge -- --pr <number> --merge
-```
-
-The command recomputes the exact-head Git-object and live topology proof,
-requires the proof-bound `Validate` success to be less than ten minutes old,
-and checks that the globally serialized trusted publisher workflow queue is
-fully drained and its newest run succeeded. It verifies strict required checks,
-admin enforcement, disabled force-push/deletion, a clean mergeable PR, and
-disabled auto-merge. All three required contexts are read as exact-head
+The job recomputes the exact-head Git-object and live topology proof, requires
+the proof-bound `Validate` success to be less than ten minutes old, and checks
+that the serialized trusted publisher workflow queue is otherwise fully
+drained and its newest completed run succeeded. It verifies strict required
+checks, admin enforcement, disabled force-push/deletion, a clean mergeable PR,
+and disabled auto-merge. All three required contexts are read as exact-head
 successful Check Runs from their configured GitHub App; only `Validate` carries
 the independently recomputed proof-generation binding.
 
@@ -120,16 +126,34 @@ Merge mode repeats the PR proof and publisher-queue inventory, then performs a
 third final live read of PR state/head/base, auto-merge and mergeability, exact
 Git objects and topology, branch protection, required check inventory and apps,
 proof-bound `Validate` freshness, and the drained stable publisher queue. It
-rechecks expiry immediately before sending `PUT /pulls/<number>/merge` with the
-exact expected head SHA and normal `merge` semantics. An invalid merge response
-fails the command. No auto-merge or admin bypass is used.
+compares the required expected head at the initial, fresh, and final barriers,
+then rechecks expiry immediately before sending `PUT /pulls/<number>/merge`
+with that exact head and normal `merge` semantics. No auto-merge or admin
+bypass is used.
 
-GitHub cannot make multiple mutable PR refs plus the final merge one
-transaction. Owning the merge in the same command removes the unsafe manual
-window, minimizes the remaining API interval after the final serialized
-barrier, and makes candidate-head movement fail through the expected SHA. Any
-activity, provider incident, API uncertainty, or command failure requires a
-fresh run; never finish the merge manually from prior advisory output.
+Immediately before the merge API call, the step records a writable
+`merge_attempted=true` marker. After GitHub returns `merged: true`, it records
+`merge_performed=true` and the merge SHA before bounded read-after-write
+verification. If that second output write or verification fails, an always-run
+read-only recovery step uses the exact dispatch PR/head to discover the merge
+and recover its SHA. It verifies the exact merge commit, PR
+`merge_commit_sha`, and current `main` ref. Because mutations made with
+`GITHUB_TOKEN` do not recursively trigger new push or pull-request workflows,
+the same trusted job fetches and detaches at the returned merge SHA, confirms
+it is remote `main`, and explicitly reruns stack, migration, and registry-only
+publication from that merged checkout. If verification or any publication is
+uncertain, the job reports that the merge already occurred and requires
+recovery revalidation; it never pretends the merge was rolled back.
+
+GitHub cannot make the multiple mutable PR/dependency reads and final merge one
+transaction. A dependency can still move in the irreducible interval after the
+last read and before GitHub accepts the merge. The serialized trusted workflow
+removes competing publisher runs during that interval, while the expected-head
+merge prevents candidate-head movement; neither is a general cross-ref
+transaction. Immediate merged-state verification and explicit post-merge
+publication detect and repair resulting evidence, but cannot retroactively
+undo a completed merge. Any pre-merge activity or failure requires a fresh
+dispatch; never finish the merge manually from advisory output.
 
 This policy depends on live protection, not convention. As verified on July 19,
 2026, required status checks use strict up-to-date enforcement, protection
@@ -145,10 +169,11 @@ policy changes, restore the `push: main` trigger before relying on this policy.
 2. Run `npm run check:ci`, relevant provider/database harnesses, and
    `npm run build` locally before requesting final hosted evidence.
 3. After independent review is clean, mark the pull request Ready for review.
-4. For an exact registry-only PR, run the mandatory explicit `--merge` command
-   above; inspect its proof generation, publisher run, exact head, and returned
-   merge commit. Read-only advisory mode is not merge authorization. For every
-   other PR, confirm ordinary Validate ran.
+4. For an exact registry-only PR, dispatch the mandatory `merge_registry`
+   operation above; inspect its proof generation, verified current run, exact
+   head, returned merge commit, detached merged checkout, and all three
+   post-merge publications. Read-only advisory mode is not merge authorization.
+   For every other PR, confirm ordinary Validate ran.
 5. If the head changes, require a new exact-head green run before merge.
 
 Repository rules must require the exact `Validate` context on `main`. A skipped

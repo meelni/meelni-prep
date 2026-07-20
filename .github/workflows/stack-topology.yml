@@ -21,10 +21,29 @@ on:
       - "scripts/check-stacked-pr-ci.mjs"
       - "scripts/revalidate-stacked-prs-ci.mjs"
       - "scripts/registry-only-validate-ci.mjs"
+      - "scripts/registry-only-merge-preflight.mjs"
+      - "scripts/registry-only-merge-recovery.mjs"
       - "scripts/check-migration-collisions.mjs"
       - "scripts/check-migration-collisions-ci.mjs"
       - "scripts/check-migration-collisions-event-ci.mjs"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Trusted default-branch operation
+        required: true
+        default: revalidate
+        type: choice
+        options:
+          - revalidate
+          - merge_registry
+      registry_pr:
+        description: Registry-only pull request number (merge_registry only)
+        required: false
+        type: string
+      expected_head_sha:
+        description: Exact 40-character registry pull request head SHA
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -37,6 +56,140 @@ concurrency:
   queue: max
 
 jobs:
+  merge-registry:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.operation == 'merge_registry'
+    name: Protected Registry Merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      checks: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted default-branch merge authority
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - id: merge_registry
+        name: Verify and merge the exact registry head
+        run: >-
+          node scripts/registry-only-merge-preflight.mjs
+          --pr "$INPUT_REGISTRY_PR"
+          --merge
+          --expected-head-sha "$INPUT_EXPECTED_HEAD_SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_REGISTRY_PR: ${{ inputs.registry_pr }}
+          INPUT_EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+
+      - id: recover_merge
+        name: Recover an attempted merge after merge-step failure
+        if: >-
+          always() &&
+          steps.merge_registry.outputs.merge_attempted == 'true' &&
+          steps.merge_registry.outputs.merge_performed != 'true'
+        continue-on-error: true
+        run: >-
+          node scripts/registry-only-merge-recovery.mjs
+          --pr "$INPUT_REGISTRY_PR"
+          --expected-head-sha "$INPUT_EXPECTED_HEAD_SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_REGISTRY_PR: ${{ inputs.registry_pr }}
+          INPUT_EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+
+      - id: checkout_merged_main
+        name: Check out the verified merged main commit
+        if: >-
+          always() && (steps.merge_registry.outputs.merge_performed == 'true' ||
+          steps.recover_merge.outputs.merge_performed == 'true')
+        continue-on-error: true
+        run: |
+          merge_sha="${{ steps.merge_registry.outputs.merge_commit_sha || steps.recover_merge.outputs.merge_commit_sha }}"
+          git fetch --no-tags origin "$merge_sha"
+          git checkout --detach "$merge_sha"
+          test "$(git rev-parse HEAD)" = "$merge_sha"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$merge_sha"
+
+      # Merges made with GITHUB_TOKEN do not recursively create push or
+      # pull_request workflow runs. Refresh all dependent evidence explicitly
+      # in this same serialized trusted job.
+      - id: post_merge_stack_audit
+        name: Revalidate every open registered stack after merge
+        if: >-
+          always() &&
+          (steps.merge_registry.outputs.merge_performed == 'true' ||
+          steps.recover_merge.outputs.merge_performed == 'true') &&
+          steps.checkout_merged_main.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/revalidate-stacked-prs-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - id: post_merge_migration_audit
+        name: Revalidate migration ownership after merge
+        if: >-
+          always() &&
+          (steps.merge_registry.outputs.merge_performed == 'true' ||
+          steps.recover_merge.outputs.merge_performed == 'true') &&
+          steps.checkout_merged_main.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/check-migration-collisions-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - id: post_merge_registry_sweep
+        name: Refresh registry-only Validate snapshots after merge
+        if: >-
+          always() &&
+          (steps.merge_registry.outputs.merge_performed == 'true' ||
+          steps.recover_merge.outputs.merge_performed == 'true') &&
+          steps.checkout_merged_main.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/registry-only-validate-ci.mjs --sweep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Fail incomplete post-merge publication
+        if: >-
+          always() &&
+          (steps.merge_registry.outputs.merge_performed == 'true' ||
+          steps.recover_merge.outputs.merge_performed == 'true') &&
+          (steps.merge_registry.outcome != 'success' ||
+          steps.checkout_merged_main.outcome != 'success' ||
+          steps.post_merge_stack_audit.outcome != 'success' ||
+          steps.post_merge_migration_audit.outcome != 'success' ||
+          steps.post_merge_registry_sweep.outcome != 'success')
+        run: |
+          echo "::error::Registry merge completed, but trusted post-merge publication is incomplete. Recovery revalidation is required; the merge cannot be rolled back by this job."
+          exit 1
+
+      - name: Fail an unresolved attempted merge
+        if: >-
+          always() &&
+          steps.merge_registry.outputs.merge_attempted == 'true' &&
+          steps.merge_registry.outputs.merge_performed != 'true' &&
+          steps.recover_merge.outcome != 'success'
+        run: |
+          echo "::error::A protected merge was attempted, but its result could not be recovered. Inspect the exact PR head before any new action."
+          exit 1
+
   verify-stack:
     if: >-
       github.event_name == 'pull_request_target' &&
@@ -210,7 +363,10 @@ jobs:
           GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
   revalidate-all:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+      inputs.operation == 'revalidate')
     name: Revalidate Open Pull Requests
     runs-on: ubuntu-latest
     timeout-minutes: 10
