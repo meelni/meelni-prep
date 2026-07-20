@@ -26,8 +26,8 @@ absent.
 
 ## Baseline Evidence
 
-On 2026-07-18, the complete local Chromium baseline passed all 24 checks in
-42.8 seconds with one worker and zero retries. The run covered both viewports,
+On 2026-07-19, the complete local Chromium baseline passed all 24 checks in
+40.5 seconds with one worker and zero retries. The run covered both viewports,
 all nine representative surfaces, and the landing, Explore, and interview
 dialog-focus contracts. It used no provider credentials, customer data,
 Preview data, or Production data.
@@ -71,14 +71,16 @@ selectors, and failure summaries before enforcing the blocking threshold. Do
 not replace that evidence with aggregate counts: incomplete results can signal
 that Axe could not finish evaluating a launch-critical element.
 
-The only current incomplete-result exceptions are exact selectors scoped to
-closed Radix triggers, inactive items clipped by the horizontally scrollable
-mobile workspace navigation, landing-page gradients and decorative overlaps,
-the New Mock Interview selected-card and translucent-disclosure compositions,
-and the feedback gradient score card. Axe cannot resolve the unmounted popup
-target, clipped element background, or composited background in those states.
-The owner must remove or revalidate these selector-level exceptions through
-follow-up issue `SAV-265` by 2026-08-15. The test enforces that expiration;
+SAV-265 removed all 27 observed `color-contrast` incomplete-result allowances
+by making production foreground/background composition deterministic. The
+allowlist now rejects `color-contrast` entries as a contract, so future
+contrast uncertainty is blocking rather than silently grandfathered.
+
+The only current incomplete-result exceptions are three exact
+`aria-valid-attr-value` selectors scoped to closed Radix triggers on the mobile
+landing, Explore, and pricing surfaces. Axe cannot resolve a popup target that
+is mounted only while the menu or listbox is open. Follow-up issue `SAV-278`
+owns removal or revalidation by 2026-08-15. The test enforces that expiration;
 after the date, the selectors return to blocking status automatically. A new
 project, selector, rule, or surface is not covered and fails the matrix.
 

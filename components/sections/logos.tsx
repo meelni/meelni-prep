@@ -83,7 +83,7 @@ export function Logos() {
         <div className="hidden overflow-hidden rounded-lg border md:block">
           <div className="grid grid-cols-7">
             {/* First box - static intro text */}
-            <div className="from-accent/5 flex items-center justify-center border-r bg-gradient-to-br to-transparent p-6">
+            <div className="bg-card flex items-center justify-center border-r p-6">
               <p className="text-foreground/90 max-w-[140px] text-center text-sm leading-snug font-semibold tracking-tight">
                 Built for PMs interviewing&nbsp;at
               </p>
