@@ -310,6 +310,12 @@ Operational notes:
 - Vercel sensitive values can pull into `.env.local` as blank strings. `npm run env:pull` preserves existing nonblank local LiveKit values when Vercel returns blanks.
 - If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+- Require `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` in every
+  worker mode, including local development. An unnamed worker opts into
+  LiveKit automatic dispatch and can create an empty-name dispatch in any new
+  room. Room creation must carry one explicit `RoomAgentDispatch` atomically;
+  do not create a plain room and add a named dispatch afterward. Re-list and
+  require exactly one nonblank matching dispatch before exposing a token.
 
 ## Supabase
 

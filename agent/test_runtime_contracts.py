@@ -21,6 +21,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.dispatch import require_dispatch_name
 from shared.mock_interview_opening import (
     build_mock_interview_opening,
     speak_mock_interview_opening,
@@ -96,6 +97,37 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_every_worker_mode_requires_an_explicit_dispatch_name(self):
+        for variable in (
+            "LIVEKIT_INTERVIEW_AGENT_NAME",
+            "LIVEKIT_DEMO_AGENT_NAME",
+        ):
+            with self.subTest(variable=variable):
+                self.assertEqual(
+                    require_dispatch_name(variable, {variable: "  named-agent  "}),
+                    "named-agent",
+                )
+                for value in ("", "   "):
+                    with self.assertRaises(RuntimeError):
+                        require_dispatch_name(variable, {variable: value})
+                with self.assertRaises(RuntimeError):
+                    require_dispatch_name(variable, {})
+
+        interview_source = (
+            Path(__file__).parent / "interview" / "agent.py"
+        ).read_text()
+        demo_source = (Path(__file__).parent / "demo" / "agent.py").read_text()
+        self.assertIn(
+            'agent_name = require_dispatch_name("LIVEKIT_INTERVIEW_AGENT_NAME")',
+            interview_source,
+        )
+        self.assertEqual(interview_source.count("agent_name=agent_name"), 2)
+        self.assertIn(
+            'agent_name = require_dispatch_name("LIVEKIT_DEMO_AGENT_NAME")',
+            demo_source,
+        )
+        self.assertIn('"agent_name": agent_name', demo_source)
+
     def test_public_demo_uses_server_absolute_deadline_with_monotonic_waits(self):
         metadata = {
             "duration_seconds": 120,

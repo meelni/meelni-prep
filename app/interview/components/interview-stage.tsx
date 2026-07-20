@@ -7,21 +7,20 @@ import { InterviewControls } from "./interview-controls";
 import { AudioVisualizer } from "./audio-visualizer";
 import { useRef } from "react";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
-import type { HintMode } from "@meelni/core";
 
 type AgentState = "idle" | "listening" | "thinking" | "speaking";
 
 interface InterviewStageProps {
   agentState: AgentState;
   isMuted: boolean;
-  hintMode?: HintMode;
-  onHintModeChange?: (mode: HintMode) => void;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
 
 // Map our agent state to Orb's expected state type
-function mapAgentStateToOrbState(state: AgentState): "thinking" | "listening" | "talking" | null {
+function mapAgentStateToOrbState(
+  state: AgentState
+): "thinking" | "listening" | "talking" | null {
   switch (state) {
     case "thinking":
       return "thinking";
@@ -38,8 +37,6 @@ function mapAgentStateToOrbState(state: AgentState): "thinking" | "listening" | 
 export function InterviewStage({
   agentState,
   isMuted,
-  hintMode = "off",
-  onHintModeChange = () => {},
   onToggleMute,
   onEndSession,
 }: InterviewStageProps) {
@@ -50,7 +47,7 @@ export function InterviewStage({
   const isAgentActive = agentState === "speaking" || agentState === "thinking";
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-12rem)] gap-8 sm:gap-12 px-4">
+    <div className="flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center gap-8 px-4 sm:gap-12">
       {/* Agent State Badge */}
       <AgentStateBadge state={agentState} />
 
@@ -59,7 +56,7 @@ export function InterviewStage({
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="relative w-full max-w-[280px] sm:max-w-[320px] md:max-w-[400px] aspect-square"
+        className="relative aspect-square w-full max-w-[280px] sm:max-w-[320px] md:max-w-[400px]"
       >
         <Orb
           agentState={orbState}
@@ -67,7 +64,7 @@ export function InterviewStage({
           inputVolumeRef={userVolumeRef}
           outputVolumeRef={agentVolumeRef}
           colors={MEELNI_ORB_COLORS}
-          className="w-full h-full"
+          className="h-full w-full"
         />
       </motion.div>
 
@@ -95,8 +92,6 @@ export function InterviewStage({
       >
         <InterviewControls
           isMuted={isMuted}
-          hintMode={hintMode}
-          onHintModeChange={onHintModeChange}
           onToggleMute={onToggleMute}
           onEndSession={onEndSession}
         />

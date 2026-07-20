@@ -48,6 +48,9 @@ source ../venv/bin/activate
 python agent.py dev
 ```
 
+`LIVEKIT_DEMO_AGENT_NAME` is required locally as well as in Cloud so the worker
+accepts only explicit dispatches.
+
 ## Deployment
 
 Deploy to LiveKit Cloud:

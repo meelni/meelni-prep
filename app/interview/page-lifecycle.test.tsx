@@ -272,6 +272,51 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 
+  it("keeps full mock hints off for legacy gentle session metadata", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}`) {
+        return Response.json({
+          session: {
+            id: SESSION_ID,
+            livekitRoomName: "interview-room",
+            startedAt: "2099-07-15T21:00:00.000Z",
+            deadlineAt: "2099-07-15T22:00:00.000Z",
+            lifecycleState: "active",
+            lifecycleVersion: 3,
+            endedAt: null,
+            reconnectDeadlineAt: null,
+            feedbackReady: false,
+            roundType: "product_sense",
+            mode: "voice_video",
+            config: { difficulty: "intermediate", hintMode: "gentle" },
+          },
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onTranscriptUpdate).not.toBeNull());
+
+    await mocks.onTranscriptUpdate?.({
+      persistable: true,
+      eventId: "event-user-1",
+      sessionId: SESSION_ID,
+      speaker: "user",
+      text: "Synthetic answer without customer content.",
+      timestamp: new Date("2099-07-15T21:00:01.000Z"),
+    });
+
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/nudges/analyze"
+      )
+    ).toBe(false);
+  });
+
   it("disconnects and freezes the room after an ambiguous end transport failure", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -341,7 +386,10 @@ describe("active interview page lifecycle", () => {
   });
 });
 
-function activeInterviewResponse(input: RequestInfo | URL, _init?: RequestInit) {
+function activeInterviewResponse(
+  input: RequestInfo | URL,
+  _init?: RequestInit
+) {
   const url = String(input);
   if (url === `/api/session/${SESSION_ID}`) {
     return Response.json({

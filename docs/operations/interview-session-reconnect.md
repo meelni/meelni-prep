@@ -30,7 +30,8 @@ Never place an intermediary in front of the route that rewrites the body.
   actual `exp` is strictly later than a second PostgreSQL-time authorization
   snapshot and no later than the whole-second floor of the earlier reconnect
   or hard deadline.
-- Startup signs the participant token before room creation or agent dispatch.
+- Startup signs the participant token before the single atomic room-and-named-
+  dispatch creation request.
   The `created → connecting` CAS establishes a five-minute durable provisioning
   lease from PostgreSQL's clock before the first provider side effect.
 - Hard deadline: continues during reconnect and wins when earlier than or equal
@@ -118,11 +119,12 @@ ready:
     while the exact standard candidate and a distinct agent-kind participant
     are both listed. Verify arbitrary participants and stale join evidence are
     inert.
-15. Force room creation to succeed and agent dispatch to fail, then fail the
-    immediate teardown. Confirm `failed + provider_failure + cleanup_pending`
-    commits before credit release and terminal-room recovery later clears the
-    marker after provider-confirmed teardown. Repeat for deadline-schedule and
-    credit-consume failures.
+15. Make the atomic room-and-named-dispatch request report failure after a room
+    may have been created, then fail the immediate teardown. Confirm
+    `failed + provider_failure + cleanup_pending` commits before credit release
+    and terminal-room recovery later clears the marker after provider-confirmed
+    teardown. Repeat with an unnamed/duplicate dispatch reconciliation result,
+    then for deadline-schedule and credit-consume failures.
 16. Make token signing fail and confirm no room-create or dispatch call occurs.
     Then throw after room creation while lifecycle terminalization and immediate
     teardown both fail. After five minutes, confirm the stale provisioning
