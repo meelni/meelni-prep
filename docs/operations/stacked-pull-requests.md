@@ -179,23 +179,20 @@ events, draft branch/base movement, draft evidence-body edits, and trusted
 push/manual fan-out. A later-invalid generation completes the pending check as
 failure; a failure completing an already-created check leaves that check pending
 and blocking. A failure before a replacement check is created can leave an
-older cross-PR green result visible, so exact registry-only PRs must never use
-auto-merge or admin bypass. The only authorized path is the default-branch
-`merge_registry` workflow-dispatch operation documented in
-`docs/operations/ci-cost-control.md`; local `--merge` is rejected. The trusted
-job requires an exact expected head, verifies and excludes only its own Actions
-run from the shared queue, requires fresh proof-bound success and stable
-proof/queue snapshots, then performs a final live barrier and exact-head
-protected merge. Read-only mode is advisory and must never be followed by a
-manual merge. The same job verifies the returned merge commit, detaches at that
-new `main`, and explicitly republishes stack, migration, and registry evidence
-because `GITHUB_TOKEN` merge events do not recursively start workflows.
+older cross-PR green result visible. The result is validation evidence, not
+merge authorization. Exact registry-only PRs must never use repository-owned
+auto-merge, a custom write-token merge workflow, recovery inference, or admin
+bypass. After confirming the live base is `main`, the intended exact head is
+current, and all three required contexts are successful, the human owner uses
+GitHub's native protected pull-request merge as documented in
+`docs/operations/ci-cost-control.md`.
 
-GitHub cannot make multiple mutable PR/dependency refs and the merge one
-transaction. The expected SHA closes candidate-head movement and the serialized
-workflow removes competing publishers, but a dependency can still move after
-the final read. Post-merge verification and publication expose and recover
-evidence from that irreducible interval; they cannot undo a completed merge.
+This repository's merge queue is not currently configured, auto-merge is
+disabled, and CI does not support `merge_group`. GitHub's pull-request merge API
+can bind the head but not an expected base SHA, so repeated custom preflight
+reads cannot create atomic merge semantics. The bespoke merge and recovery
+surface is intentionally absent. A future native merge queue requires a
+separately reviewed repository-policy, validation-trigger, and cost change.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own
@@ -235,11 +232,12 @@ The check runs on non-draft open, reopen, synchronize, edit, and ready-for-revie
 events, plus close events and operator-controlled or filtered default-branch
 revalidation. Draft branch movement and base edits use one combined dependency
 audit; draft body and title edits do not run the migration audit (the separate
-registry refresh handles body evidence). Manual and default-branch runs target
-only migration or immutable-history owners; an identical completed
-result on the same exact head is reused, bounding Check Run churn. The workflow
-still checks out only default-branch code; it reads PR metadata and file names
-but never fetches or executes PR files for collision detection.
+registry refresh handles body evidence). Manual and default-branch full sweeps
+publish every open same-repository PR, replacing stale non-owner evidence with
+a neutral exact-head result. An identical completed result on the same exact
+head is reused, bounding Check Run churn. The workflow still checks out only
+default-branch code; it reads PR metadata and file names but never fetches or
+executes PR files for collision detection.
 
 Classic protection requires the stable `Migration Collision Publisher` Actions
 job, not the REST-created custom Check Run. The event job still inventories all

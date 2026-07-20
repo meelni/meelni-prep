@@ -73,7 +73,7 @@ test("exact registry-only PRs use GitHub path suppression and trusted publicatio
         /node scripts\/registry-only-validate-ci\.mjs --sweep/g
       ) ?? []
     ).length,
-    5
+    4
   );
   assert.doesNotMatch(
     stackWorkflow,
