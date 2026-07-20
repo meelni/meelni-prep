@@ -5,7 +5,7 @@ import {
   assertDialogFocusContract,
   assertExactPageLocation,
   assertLayoutAndPrimaryAction,
-  assertPopupAriaAccessibility,
+  assertPopupAccessibility,
   attachEvidence,
 } from "../support/assertions";
 import { BROWSER_QA_SURFACES } from "../support/matrix";
@@ -38,10 +38,172 @@ async function assertMobileNavigationPopupContract({
   expect(controlledId).toBeTruthy();
   expect(controlledId).toBe(dialogId);
 
-  const accessibility = await assertPopupAriaAccessibility(
+  if (surfaceId === "landing") {
+    const ownsCenterPoint = (locator: ReturnType<typeof page.locator>) =>
+      locator.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2
+        );
+        return hit === element || element.contains(hit);
+      });
+    const settlePaint = () =>
+      page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          })
+      );
+    const assertRejectedMutation = async (
+      label: string,
+      content: string,
+      assertMutationApplied?: () => Promise<void>
+    ) => {
+      const mutation = await page.addStyleTag({ content });
+      await settlePaint();
+      await assertMutationApplied?.();
+      await expect(
+        assertPopupAccessibility(
+          page,
+          testInfo,
+          `landing-open-popup-${label}-regression-proof`,
+          dialogId!,
+          { vaulDrawerPseudoReview: { surfaceId } }
+        )
+      ).rejects.toThrow(/Vaul review|color-contrast/u);
+      await mutation.evaluate((element) =>
+        element.parentNode?.removeChild(element)
+      );
+      await settlePaint();
+    };
+
+    await assertRejectedMutation(
+      "geometry-overlay",
+      `#${dialogId}::after { top: 0 !important; bottom: 0 !important; height: auto !important; z-index: 1 !important; }`
+    );
+    await assertRejectedMutation(
+      "outline-overlay",
+      `#${dialogId}::after { outline: 600px solid rgb(255, 0, 0) !important; outline-offset: 0 !important; }`
+    );
+    await assertRejectedMutation(
+      "rendered-contrast",
+      `#${dialogId} [data-vaul-review-node="description"] { -webkit-text-fill-color: rgb(255, 255, 255) !important; }`
+    );
+    const description = page.locator('[data-vaul-review-node="description"]');
+    expect(await ownsCenterPoint(description)).toBe(true);
+    await assertRejectedMutation(
+      "stacking-order",
+      `#${dialogId} [data-vaul-review-node="description"] { position: relative !important; z-index: -1 !important; }`,
+      async () => expect(await ownsCenterPoint(description)).toBe(false)
+    );
+    const activation = page.locator('[data-vaul-review-node="activation"]');
+    expect(await ownsCenterPoint(activation)).toBe(true);
+    await assertRejectedMutation(
+      "positioned-offset-interception",
+      `#${dialogId} a:has([data-vaul-review-node="title"]) { top: 307px !important; left: 80px !important; }`,
+      async () => expect(await ownsCenterPoint(activation)).toBe(false)
+    );
+    await assertRejectedMutation(
+      "painted-border-overlay",
+      `#${dialogId} [data-vaul-review-node="description"] { border: 300px solid rgb(255, 0, 0) !important; }`,
+      async () => {
+        const exceedsDrawer = await description.evaluate((element, id) => {
+          const drawer = document.getElementById(id);
+          if (!drawer) return false;
+          const elementRect = element.getBoundingClientRect();
+          const drawerRect = drawer.getBoundingClientRect();
+          return (
+            elementRect.left < drawerRect.left ||
+            elementRect.top < drawerRect.top ||
+            elementRect.right > drawerRect.right ||
+            elementRect.bottom > drawerRect.bottom
+          );
+        }, dialogId!);
+        expect(exceedsDrawer).toBe(true);
+      }
+    );
+    await assertRejectedMutation(
+      "non-hit-testable-paint-occlusion",
+      `#${dialogId} > div:first-child::before { content: ""; position: fixed; left: 17px; bottom: 17px; width: 356px; height: 44px; background: rgb(255, 0, 0); z-index: 100; pointer-events: none; }`,
+      async () => {
+        expect(await ownsCenterPoint(activation)).toBe(true);
+        const visuallyObscuresActivation = await page
+          .locator(`#${dialogId} > div:first-child`)
+          .evaluate((handle) => {
+            const style = getComputedStyle(handle, "::before");
+            const activation = document.querySelector(
+              '[data-vaul-review-node="activation"]'
+            );
+            if (!(activation instanceof HTMLElement)) return false;
+            const activationRect = activation.getBoundingClientRect();
+            const width = Number.parseFloat(style.width);
+            const height = Number.parseFloat(style.height);
+            const left = Number.parseFloat(style.left);
+            const bottom = Number.parseFloat(style.bottom);
+            const top = window.innerHeight - bottom - height;
+            const right = left + width;
+            return (
+              style.backgroundColor === "rgb(255, 0, 0)" &&
+              style.opacity === "1" &&
+              style.pointerEvents === "none" &&
+              style.position === "fixed" &&
+              style.zIndex === "100" &&
+              left <= activationRect.left &&
+              top <= activationRect.top &&
+              right >= activationRect.right &&
+              top + height >= activationRect.bottom
+            );
+          });
+        expect(visuallyObscuresActivation).toBe(true);
+      }
+    );
+    await assertRejectedMutation(
+      "same-background-partial-occlusion",
+      `#${dialogId} > div:first-child::after { content: ""; position: fixed; left: 17px; bottom: 17px; width: 200px; height: 44px; background: var(--primary); z-index: 100; pointer-events: none; }`,
+      async () => {
+        expect(await ownsCenterPoint(activation)).toBe(true);
+        const partialOcclusion = await page
+          .locator(`#${dialogId} > div:first-child`)
+          .evaluate((handle) => {
+            const style = getComputedStyle(handle, "::after");
+            const activation = document.querySelector(
+              '[data-vaul-review-node="activation"]'
+            );
+            if (!(activation instanceof HTMLElement)) return false;
+            const activationStyle = getComputedStyle(activation);
+            const activationRect = activation.getBoundingClientRect();
+            const width = Number.parseFloat(style.width);
+            const height = Number.parseFloat(style.height);
+            const overlapWidth = Math.max(
+              0,
+              Math.min(17 + width, activationRect.right) -
+                Math.max(17, activationRect.left)
+            );
+            const overlapHeight = Math.min(height, activationRect.height);
+            const overlapRatio =
+              (overlapWidth * overlapHeight) /
+              (activationRect.width * activationRect.height);
+            return (
+              style.backgroundColor === activationStyle.backgroundColor &&
+              style.pointerEvents === "none" &&
+              style.position === "fixed" &&
+              style.zIndex === "100" &&
+              overlapRatio > 0.5 &&
+              overlapRatio < 1
+            );
+          });
+        expect(partialOcclusion).toBe(true);
+      }
+    );
+  }
+
+  const accessibility = await assertPopupAccessibility(
     page,
     testInfo,
-    `${surfaceId}-open-popup`
+    `${surfaceId}-open-popup`,
+    dialogId!,
+    { vaulDrawerPseudoReview: { surfaceId } }
   );
 
   await page.keyboard.press("Escape");
@@ -85,10 +247,34 @@ async function assertExploreSelectPopupContract({
   expect(controlledId).toBeTruthy();
   expect(controlledId).toBe(listboxId);
 
-  const accessibility = await assertPopupAriaAccessibility(
+  if (testInfo.project.name.startsWith("mobile")) {
+    await listbox.evaluate((element) => {
+      const criticalRegression = document.createElement("img");
+      criticalRegression.id = "open-popup-critical-regression";
+      criticalRegression.src =
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E";
+      element.append(criticalRegression);
+    });
+    await expect(
+      assertPopupAccessibility(
+        page,
+        testInfo,
+        "explore-open-popup-regression-proof",
+        listboxId!
+      )
+    ).rejects.toThrow(/image-alt/u);
+    await page
+      .locator("#open-popup-critical-regression")
+      .evaluate((element) => {
+        element.remove();
+      });
+  }
+
+  const accessibility = await assertPopupAccessibility(
     page,
     testInfo,
-    "explore-open-popup"
+    "explore-open-popup",
+    listboxId!
   );
 
   await page.keyboard.press("Escape");
