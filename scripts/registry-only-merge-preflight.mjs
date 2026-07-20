@@ -11,7 +11,6 @@ import {
 } from "./registry-only-validate-ci.mjs";
 
 export const REGISTRY_MERGE_SUCCESS_MAX_AGE_MS = 10 * 60 * 1000;
-export const REGISTRY_MERGE_WINDOW_MS = 2 * 60 * 1000;
 
 const MAX_PAGES = 30;
 const REQUIRED_CONTEXTS = [
@@ -28,7 +27,44 @@ function stable(value) {
   return JSON.stringify(value);
 }
 
-function assertMergeState(pullRequest) {
+function stableRequiredApps(requiredApps) {
+  return stable([...requiredApps.entries()]);
+}
+
+function assertValidateFreshness({ completedAt, now, maxAgeMs }) {
+  const completedAtMilliseconds = Date.parse(completedAt ?? "");
+  const currentTime = now();
+  const age = currentTime - completedAtMilliseconds;
+  if (!Number.isFinite(completedAtMilliseconds) || age < 0 || age >= maxAgeMs) {
+    fail("registry_merge_validate_stale");
+  }
+  return {
+    completedAtMilliseconds,
+    currentTime,
+    expiresAt: new Date(completedAtMilliseconds + maxAgeMs).toISOString(),
+  };
+}
+
+function matchesRepository(repository, expected) {
+  return (
+    repository?.full_name === expected.fullName &&
+    repository?.id === expected.id
+  );
+}
+
+function assertMergeState(pullRequest, binding) {
+  const expected = binding.pullRequest;
+  if (
+    pullRequest?.number !== expected.number ||
+    pullRequest?.head?.sha !== expected.headSha ||
+    pullRequest?.head?.ref !== expected.headRef ||
+    !matchesRepository(pullRequest?.head?.repo, expected.headRepository) ||
+    pullRequest?.base?.sha !== expected.baseSha ||
+    pullRequest?.base?.ref !== expected.baseRef ||
+    !matchesRepository(pullRequest?.base?.repo, expected.baseRepository)
+  ) {
+    fail("registry_merge_pull_request_snapshot_changed");
+  }
   if (pullRequest?.auto_merge !== null) {
     fail("registry_merge_auto_merge_enabled");
   }
@@ -171,16 +207,39 @@ async function assertRequiredChecks({
   if (validate?.external_id !== externalId) {
     fail("registry_merge_validate_generation_missing");
   }
-  const completedAt = Date.parse(validate.completed_at ?? "");
-  const age = now() - completedAt;
-  if (!Number.isFinite(completedAt) || age < 0 || age > maxAgeMs) {
-    fail("registry_merge_validate_stale");
-  }
+  assertValidateFreshness({
+    completedAt: validate.completed_at,
+    now,
+    maxAgeMs,
+  });
   return {
     checkId: validate.id,
     completedAt: validate.completed_at,
     generation,
   };
+}
+
+async function mergeExactPullRequest({ classification, env, api, fetchImpl }) {
+  const binding = classification.binding;
+  const result = await api({
+    token: env.GITHUB_TOKEN,
+    repository: binding.repository.fullName,
+    path: `/pulls/${binding.pullRequest.number}/merge`,
+    method: "PUT",
+    body: {
+      sha: binding.pullRequest.headSha,
+      merge_method: "merge",
+    },
+    fetchImpl,
+  });
+  if (
+    result?.merged !== true ||
+    typeof result?.sha !== "string" ||
+    !/^[0-9a-f]{40}$/.test(result.sha)
+  ) {
+    fail("registry_merge_response_invalid");
+  }
+  return result;
 }
 
 async function proveRegistryGeneration({
@@ -205,7 +264,7 @@ async function proveRegistryGeneration({
     path: `/pulls/${classification.binding.pullRequest.number}`,
     fetchImpl,
   });
-  assertMergeState(current);
+  assertMergeState(current, classification.binding);
   const manifestContent = await fetchProposedRegistryManifest({
     classification,
     env,
@@ -235,6 +294,7 @@ export async function preflightRegistryOnlyMerge({
   resolveStack,
   now = Date.now,
   maxAgeMs = REGISTRY_MERGE_SUCCESS_MAX_AGE_MS,
+  merge = false,
 } = {}) {
   const first = await proveRegistryGeneration({
     eventContent,
@@ -289,24 +349,103 @@ export async function preflightRegistryOnlyMerge({
     fail("registry_merge_publisher_queue_changed");
   }
 
+  if (!merge) {
+    const freshness = assertValidateFreshness({
+      completedAt: validate.completedAt,
+      now,
+      maxAgeMs,
+    });
+    return {
+      status: "advisory",
+      mergeAuthorized: false,
+      pr: binding.pullRequest.number,
+      headSha: binding.pullRequest.headSha,
+      baseSha: binding.pullRequest.baseSha,
+      generation: validate.generation,
+      validateCheckId: validate.checkId,
+      validateCompletedAt: validate.completedAt,
+      publisherRunId: freshQueue.latestRunId,
+      evidenceExpiresAt: freshness.expiresAt,
+      instructions:
+        "Read-only evidence only; this result is not merge authorization. Run the explicit trusted --merge command so the final live barrier and exact-head protected merge happen in one operator flow.",
+    };
+  }
+
+  // The merge-owning path performs a third, final live barrier. This is
+  // intentionally redundant: the first two reads detect movement during the
+  // longer proof, while these reads minimize the remaining cross-PR interval
+  // before the expected-head protected merge request.
+  const final = await proveRegistryGeneration({
+    eventContent,
+    env,
+    repo,
+    remote,
+    api,
+    fetchImpl,
+    resolveStack,
+  });
+  if (
+    registryProofGeneration(final.proof) !==
+    registryProofGeneration(fresh.proof)
+  ) {
+    fail("registry_merge_generation_changed");
+  }
+  const finalProtection = inspectProtection(
+    await api({
+      token: env.GITHUB_TOKEN,
+      repository: binding.repository.fullName,
+      path: `/branches/${encodeURIComponent(binding.defaultBranch)}/protection`,
+      fetchImpl,
+    })
+  );
+  if (
+    stableRequiredApps(finalProtection) !== stableRequiredApps(requiredApps)
+  ) {
+    fail("registry_merge_protection_changed");
+  }
+  const finalValidate = await assertRequiredChecks({
+    classification: final.classification,
+    proof: final.proof,
+    requiredApps: finalProtection,
+    env,
+    api,
+    fetchImpl,
+    now,
+    maxAgeMs,
+  });
+  const finalQueue = inspectPublisherQueue(
+    await listPublisherRuns({ env, api, fetchImpl })
+  );
+  if (stable(finalQueue.generation) !== stable(freshQueue.generation)) {
+    fail("registry_merge_publisher_queue_changed");
+  }
+
+  const immediateFreshness = assertValidateFreshness({
+    completedAt: finalValidate.completedAt,
+    now,
+    maxAgeMs,
+  });
+  const mergeResult = await mergeExactPullRequest({
+    classification: final.classification,
+    env,
+    api,
+    fetchImpl,
+  });
+
   return {
-    status: "pass",
+    status: "merged",
+    mergeAuthorized: true,
     pr: binding.pullRequest.number,
     headSha: binding.pullRequest.headSha,
     baseSha: binding.pullRequest.baseSha,
-    generation: validate.generation,
-    validateCheckId: validate.checkId,
-    validateCompletedAt: validate.completedAt,
-    publisherRunId: freshQueue.latestRunId,
-    expiresAt: new Date(
-      Math.min(
-        Date.parse(validate.completedAt) + maxAgeMs,
-        now() + REGISTRY_MERGE_WINDOW_MS
-      )
-    ).toISOString(),
+    generation: finalValidate.generation,
+    validateCheckId: finalValidate.checkId,
+    validateCompletedAt: finalValidate.completedAt,
+    publisherRunId: finalQueue.latestRunId,
+    evidenceExpiresAt: immediateFreshness.expiresAt,
+    mergeCommitSha: mergeResult.sha,
     instructions:
-      "Freeze registry, stack branch/base, and evidence changes; merge immediately within the shorter reported window. " +
-      "Do not use auto-merge or admin bypass. Rerun after any activity, API uncertainty, or delay.",
+      "The exact registry PR head was merged through normal protected GitHub merge semantics. No auto-merge or admin bypass was used.",
   };
 }
 
@@ -319,11 +458,16 @@ function parsePrNumber(argv) {
   return number;
 }
 
+function mergeRequested(argv) {
+  return argv.includes("--merge");
+}
+
 async function main() {
   const repositoryName = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!repositoryName || !token) fail("registry_merge_environment_required");
-  const prNumber = parsePrNumber(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const prNumber = parsePrNumber(argv);
   const repository = await githubApi({
     token,
     repository: repositoryName,
@@ -354,7 +498,11 @@ async function main() {
     repository,
     pull_request: pullRequest,
   });
-  const result = await preflightRegistryOnlyMerge({ eventContent, env });
+  const result = await preflightRegistryOnlyMerge({
+    eventContent,
+    env,
+    merge: mergeRequested(argv),
+  });
   console.log(JSON.stringify(result, null, 2));
 }
 

@@ -5,7 +5,6 @@ import test from "node:test";
 import {
   preflightRegistryOnlyMerge,
   REGISTRY_MERGE_SUCCESS_MAX_AGE_MS,
-  REGISTRY_MERGE_WINDOW_MS,
 } from "./registry-only-merge-preflight.mjs";
 import {
   registryProofGeneration,
@@ -20,8 +19,8 @@ const ROOT_TREE_SHA = "1".repeat(40);
 const GITHUB_TREE_SHA = "2".repeat(40);
 const NOW = Date.parse("2026-07-19T20:00:00.000Z");
 
-function manifest() {
-  return `${JSON.stringify({ version: 2, repository: REPOSITORY, stacks: [] })}\n`;
+function manifest(stacks = []) {
+  return `${JSON.stringify({ version: 2, repository: REPOSITORY, stacks })}\n`;
 }
 
 function blobSha(content) {
@@ -74,16 +73,28 @@ function env() {
 
 function fixture({
   currentPull = pullRequest(),
+  proposedManifest = manifest(),
+  openPulls = [currentPull],
   completedAt = new Date(NOW - 60_000).toISOString(),
   workflowRuns,
   mutateSecondQueueRead,
+  mutateFinalQueueRead,
   protection,
   checkAppId = 15368,
   checkRuns,
+  mergeResponse = {
+    merged: true,
+    sha: "9".repeat(40),
+    message: "Pull Request successfully merged",
+  },
+  mutateFinalPullRead,
+  mutateFinalProtectionRead,
+  mutateFinalCheckRead,
+  proofOverride,
 } = {}) {
-  const content = manifest();
+  const content = proposedManifest;
   const expectedBlobSha = blobSha(content);
-  const proof = {
+  const proof = proofOverride ?? {
     repository: REPOSITORY,
     headSha: HEAD_SHA,
     baseSha: BASE_SHA,
@@ -104,9 +115,20 @@ function fixture({
   ];
   const calls = [];
   let queueReads = 0;
-  const api = async ({ path, method = "GET" }) => {
-    calls.push({ path, method });
-    if (path === "/pulls/368") return currentPull;
+  let pullReads = 0;
+  let protectionReads = 0;
+  let checkReads = 0;
+  const api = async ({ path, method = "GET", body }) => {
+    calls.push({ path, method, body });
+    if (path === "/pulls/368/merge" && method === "PUT") {
+      return mergeResponse;
+    }
+    if (path === "/pulls/368") {
+      pullReads += 1;
+      return mutateFinalPullRead && pullReads >= 5
+        ? mutateFinalPullRead(currentPull, pullReads)
+        : currentPull;
+    }
     if (path.startsWith("/pulls/368/files?")) {
       return [
         {
@@ -116,7 +138,7 @@ function fixture({
         },
       ];
     }
-    if (path.startsWith("/pulls?state=open&")) return [currentPull];
+    if (path.startsWith("/pulls?state=open&")) return openPulls;
     if (path === `/git/commits/${HEAD_SHA}`) {
       return { sha: HEAD_SHA, tree: { sha: ROOT_TREE_SHA } };
     }
@@ -158,33 +180,37 @@ function fixture({
       };
     }
     if (path === "/branches/main/protection") {
-      return (
-        protection ?? {
-          required_status_checks: {
-            strict: true,
-            checks: [
-              { context: "Validate", app_id: 15368 },
-              { context: "Trusted Publisher", app_id: 15368 },
-              { context: "Migration Collision Publisher", app_id: 15368 },
-            ],
-          },
-          enforce_admins: { enabled: true },
-          allow_force_pushes: { enabled: false },
-          allow_deletions: { enabled: false },
-        }
-      );
+      protectionReads += 1;
+      const resolvedProtection = protection ?? {
+        required_status_checks: {
+          strict: true,
+          checks: [
+            { context: "Validate", app_id: 15368 },
+            { context: "Trusted Publisher", app_id: 15368 },
+            { context: "Migration Collision Publisher", app_id: 15368 },
+          ],
+        },
+        enforce_admins: { enabled: true },
+        allow_force_pushes: { enabled: false },
+        allow_deletions: { enabled: false },
+      };
+      return mutateFinalProtectionRead && protectionReads > 1
+        ? mutateFinalProtectionRead(resolvedProtection)
+        : resolvedProtection;
     }
     if (path.startsWith("/actions/workflows/stack-topology.yml/runs?")) {
       queueReads += 1;
       const runs = workflowRuns ?? defaultRuns;
       return {
         workflow_runs:
-          mutateSecondQueueRead && queueReads > 1
+          (mutateSecondQueueRead && queueReads > 1) ||
+          (mutateFinalQueueRead && queueReads > 2)
             ? [{ ...runs[0], id: runs[0].id + 1 }]
             : runs,
       };
     }
     if (path.startsWith(`/commits/${HEAD_SHA}/check-runs?`)) {
+      checkReads += 1;
       const validate = {
         id: 901,
         name: "Validate",
@@ -198,7 +224,7 @@ function fixture({
         ),
         app: { id: checkAppId },
       };
-      const resolvedCheckRuns = checkRuns ?? [
+      let resolvedCheckRuns = checkRuns ?? [
         validate,
         {
           id: 902,
@@ -219,6 +245,9 @@ function fixture({
           app: { id: 15368 },
         },
       ];
+      if (mutateFinalCheckRead && checkReads > 1) {
+        resolvedCheckRuns = mutateFinalCheckRead(resolvedCheckRuns);
+      }
       return {
         total_count: resolvedCheckRuns.length,
         check_runs: resolvedCheckRuns,
@@ -229,7 +258,7 @@ function fixture({
   return { api, calls };
 }
 
-test("passes only a stable exact-head registry merge window", async () => {
+test("read-only mode returns advisory evidence that is not merge authorization", async () => {
   const state = fixture();
   const result = await preflightRegistryOnlyMerge({
     eventContent: event(),
@@ -241,20 +270,50 @@ test("passes only a stable exact-head registry merge window", async () => {
     now: () => NOW,
   });
 
-  assert.equal(result.status, "pass");
+  assert.equal(result.status, "advisory");
+  assert.equal(result.mergeAuthorized, false);
   assert.equal(result.pr, 368);
   assert.equal(result.headSha, HEAD_SHA);
   assert.equal(result.publisherRunId, 700);
   assert.equal(
-    result.expiresAt,
-    new Date(NOW + REGISTRY_MERGE_WINDOW_MS).toISOString()
+    result.evidenceExpiresAt,
+    new Date(NOW - 60_000 + REGISTRY_MERGE_SUCCESS_MAX_AGE_MS).toISOString()
   );
-  assert.match(result.instructions, /do not use auto-merge or admin bypass/i);
+  assert.match(result.instructions, /not merge authorization/i);
+  assert.equal(
+    state.calls.some((call) => call.path === "/pulls/368/merge"),
+    false
+  );
   assert.equal(
     state.calls.filter((call) => call.path.startsWith("/actions/workflows/"))
       .length,
     2
   );
+});
+
+test("explicit merge mode owns the final barrier and exact-head protected merge", async () => {
+  const state = fixture();
+  const result = await preflightRegistryOnlyMerge({
+    eventContent: event(),
+    env: env(),
+    api: state.api,
+    resolveStack: async () => {
+      throw new Error("must_not_resolve");
+    },
+    now: () => NOW,
+    merge: true,
+  });
+
+  assert.equal(result.status, "merged");
+  assert.equal(result.mergeAuthorized, true);
+  assert.equal(result.mergeCommitSha, "9".repeat(40));
+  assert.equal(
+    state.calls.filter((call) => call.path.startsWith("/actions/workflows/"))
+      .length,
+    3
+  );
+  const merge = state.calls.find((call) => call.path === "/pulls/368/merge");
+  assert.deepEqual(merge.body, { sha: HEAD_SHA, merge_method: "merge" });
 });
 
 test("refuses an old green check while the publisher queue is active", async () => {
@@ -298,7 +357,7 @@ test("refuses stale exact-head success", async () => {
   );
 });
 
-test("derives the merge deadline from an almost-stale Validate", async () => {
+test("reports the evidence expiry from an almost-stale Validate", async () => {
   const completedAt = new Date(
     NOW - REGISTRY_MERGE_SUCCESS_MAX_AGE_MS + 30_000
   ).toISOString();
@@ -309,7 +368,44 @@ test("derives the merge deadline from an almost-stale Validate", async () => {
     api: state.api,
     now: () => NOW,
   });
-  assert.equal(result.expiresAt, new Date(NOW + 30_000).toISOString());
+  assert.equal(result.evidenceExpiresAt, new Date(NOW + 30_000).toISOString());
+});
+
+test("read-only evidence fails if Validate expires during its second barrier", async () => {
+  const state = fixture();
+  let reads = 0;
+  await assert.rejects(
+    preflightRegistryOnlyMerge({
+      eventContent: event(),
+      env: env(),
+      api: state.api,
+      now: () => [NOW, NOW + 11 * 60_000][Math.min(reads++, 1)],
+    }),
+    /registry_merge_validate_stale/
+  );
+  assert.equal(
+    state.calls.some((call) => call.path === "/pulls/368/merge"),
+    false
+  );
+});
+
+test("merge mode rechecks expiry immediately before mutation", async () => {
+  const state = fixture();
+  let reads = 0;
+  await assert.rejects(
+    preflightRegistryOnlyMerge({
+      eventContent: event(),
+      env: env(),
+      api: state.api,
+      now: () => [NOW, NOW, NOW + 11 * 60_000][Math.min(reads++, 2)],
+      merge: true,
+    }),
+    /registry_merge_validate_stale/
+  );
+  assert.equal(
+    state.calls.some((call) => call.path === "/pulls/368/merge"),
+    false
+  );
 });
 
 test("selects the newest publisher run explicitly rather than trusting API order", async () => {
@@ -409,4 +505,212 @@ test("refuses a queue generation that changes across the freeze barrier", async 
     }),
     /registry_merge_publisher_queue_changed/
   );
+});
+
+test("merge mode never mutates after final PR or queue movement", async (t) => {
+  await t.test(
+    "live topology generation changes at the final proof",
+    async () => {
+      const entry = {
+        pr: 365,
+        parentPr: 363,
+        headRef: "child",
+        parentRef: "parent",
+      };
+      const child = pullRequest({
+        number: 365,
+        head: { sha: "e".repeat(40), ref: "child", repo: repository() },
+        base: { sha: "f".repeat(40), ref: "parent", repo: repository() },
+      });
+      const state = fixture({
+        proposedManifest: manifest([entry]),
+        openPulls: [pullRequest(), child],
+        proofOverride: {
+          repository: REPOSITORY,
+          headSha: HEAD_SHA,
+          baseSha: BASE_SHA,
+          stacks: [
+            {
+              pr: 365,
+              parentPr: 363,
+              head: "e".repeat(40),
+              parentHead: "f".repeat(40),
+              mergeBase: "f".repeat(40),
+            },
+          ],
+        },
+      });
+      let resolutions = 0;
+      await assert.rejects(
+        preflightRegistryOnlyMerge({
+          eventContent: event(),
+          env: env(),
+          api: state.api,
+          now: () => NOW,
+          merge: true,
+          resolveStack: async () => {
+            resolutions += 1;
+            return {
+              status: "pass",
+              head: resolutions >= 3 ? "7".repeat(40) : "e".repeat(40),
+              actualParentHead: "f".repeat(40),
+              mergeBase: "f".repeat(40),
+            };
+          },
+        }),
+        /registry_merge_generation_changed/
+      );
+      assert.equal(resolutions, 3);
+      assert.equal(
+        state.calls.some((call) => call.path === "/pulls/368/merge"),
+        false
+      );
+    }
+  );
+
+  await t.test("PR head moves before the final proof", async () => {
+    const state = fixture({
+      mutateFinalPullRead: (current) => ({
+        ...current,
+        head: { ...current.head, sha: "c".repeat(40) },
+      }),
+    });
+    await assert.rejects(
+      preflightRegistryOnlyMerge({
+        eventContent: event(),
+        env: env(),
+        api: state.api,
+        now: () => NOW,
+        merge: true,
+      }),
+      /registry_validate_head_changed/
+    );
+    assert.equal(
+      state.calls.some((call) => call.path === "/pulls/368/merge"),
+      false
+    );
+  });
+
+  await t.test(
+    "PR base moves between final classification and state read",
+    async () => {
+      const state = fixture({
+        mutateFinalPullRead: (current, pullReads) =>
+          pullReads === 6
+            ? {
+                ...current,
+                base: {
+                  ...current.base,
+                  sha: "d".repeat(40),
+                  ref: "other-base",
+                },
+              }
+            : current,
+      });
+      await assert.rejects(
+        preflightRegistryOnlyMerge({
+          eventContent: event(),
+          env: env(),
+          api: state.api,
+          now: () => NOW,
+          merge: true,
+        }),
+        /registry_merge_pull_request_snapshot_changed/
+      );
+      assert.equal(
+        state.calls.some((call) => call.path === "/pulls/368/merge"),
+        false
+      );
+    }
+  );
+
+  await t.test("publisher queue changes at the final barrier", async () => {
+    const state = fixture({ mutateFinalQueueRead: true });
+    await assert.rejects(
+      preflightRegistryOnlyMerge({
+        eventContent: event(),
+        env: env(),
+        api: state.api,
+        now: () => NOW,
+        merge: true,
+      }),
+      /registry_merge_publisher_queue_changed/
+    );
+    assert.equal(
+      state.calls.some((call) => call.path === "/pulls/368/merge"),
+      false
+    );
+  });
+
+  await t.test("protection changes at the final barrier", async () => {
+    const state = fixture({
+      mutateFinalProtectionRead: (current) => ({
+        ...current,
+        enforce_admins: { enabled: false },
+      }),
+    });
+    await assert.rejects(
+      preflightRegistryOnlyMerge({
+        eventContent: event(),
+        env: env(),
+        api: state.api,
+        now: () => NOW,
+        merge: true,
+      }),
+      /registry_merge_protection_invalid/
+    );
+    assert.equal(
+      state.calls.some((call) => call.path === "/pulls/368/merge"),
+      false
+    );
+  });
+
+  await t.test("required check changes at the final barrier", async () => {
+    const state = fixture({
+      mutateFinalCheckRead: (checks) =>
+        checks.map((check) =>
+          check.name === "Validate"
+            ? { ...check, conclusion: "failure" }
+            : check
+        ),
+    });
+    await assert.rejects(
+      preflightRegistryOnlyMerge({
+        eventContent: event(),
+        env: env(),
+        api: state.api,
+        now: () => NOW,
+        merge: true,
+      }),
+      /registry_merge_required_check_not_successful/
+    );
+    assert.equal(
+      state.calls.some((call) => call.path === "/pulls/368/merge"),
+      false
+    );
+  });
+});
+
+test("merge mode rejects an unverified GitHub merge response", async () => {
+  const state = fixture({
+    mergeResponse: { merged: false, sha: null, message: "Not merged" },
+  });
+  await assert.rejects(
+    preflightRegistryOnlyMerge({
+      eventContent: event(),
+      env: env(),
+      api: state.api,
+      now: () => NOW,
+      merge: true,
+    }),
+    /registry_merge_response_invalid/
+  );
+  const mergeCalls = state.calls.filter(
+    (call) => call.path === "/pulls/368/merge"
+  );
+  assert.equal(mergeCalls.length, 1);
+  assert.deepEqual(mergeCalls[0].body, {
+    sha: HEAD_SHA,
+    merge_method: "merge",
+  });
 });

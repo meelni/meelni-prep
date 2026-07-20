@@ -86,10 +86,11 @@ publisher opening a replacement check. A GitHub API or runner failure before
 that pending check is created cannot erase an older green check. Do not treat a
 visible green registry-only `Validate` result by itself as merge authority.
 
-### Registry-only merge window
+### Registry-only protected merge
 
-Run the read-only preflight from a clean, trusted default-branch checkout
-immediately before merging an exact registry-only PR:
+Read-only mode is useful for diagnosis from a clean, trusted default-branch
+checkout, but it deliberately returns `status: advisory` and
+`mergeAuthorized: false`:
 
 ```bash
 GITHUB_TOKEN="$(gh auth token)" \
@@ -97,26 +98,38 @@ GITHUB_REPOSITORY=meelni/meelni-prep \
 npm run preflight:registry-merge -- --pr <number>
 ```
 
-The preflight recomputes the exact-head Git-object and live topology proof,
-requires the proof-bound `Validate` success to be no more than ten minutes old,
-and checks that the trusted publisher workflow queue is fully drained and its
-newest run succeeded. It also verifies strict required checks, admin
-enforcement, disabled force-push/deletion, a clean mergeable PR, and disabled
-auto-merge. All three required contexts are directly re-read as exact-head
-successful Check Runs from their configured GitHub App; only `Validate` carries
-the independently recomputed proof-generation binding. Current cross-PR truth
-for the other publishers is supported by the clean mergeable state plus the
-drained, stable, newest-successful publisher queue, not by an atomic GitHub
-snapshot. The preflight repeats the PR proof and publisher-queue inventory
-across a freshness barrier.
+Do not merge from that advisory result. The required operator path explicitly
+owns the merge:
 
-After it passes, freeze registry, child/parent branch, base, and PR-body evidence
-changes and merge immediately within the reported deadline. That deadline is
-the earlier of two minutes after preflight or the proof-bound `Validate` check's
-ten-minute expiry; it does not grant a fresh ten-minute window. Do not enable
-auto-merge and do not use an admin bypass. Any delay, activity, provider
-incident, or API uncertainty invalidates the window; rerun the preflight. This
-narrows but cannot make the GitHub read and merge operation atomic.
+```bash
+GITHUB_TOKEN="$(gh auth token)" \
+GITHUB_REPOSITORY=meelni/meelni-prep \
+npm run preflight:registry-merge -- --pr <number> --merge
+```
+
+The command recomputes the exact-head Git-object and live topology proof,
+requires the proof-bound `Validate` success to be less than ten minutes old,
+and checks that the globally serialized trusted publisher workflow queue is
+fully drained and its newest run succeeded. It verifies strict required checks,
+admin enforcement, disabled force-push/deletion, a clean mergeable PR, and
+disabled auto-merge. All three required contexts are read as exact-head
+successful Check Runs from their configured GitHub App; only `Validate` carries
+the independently recomputed proof-generation binding.
+
+Merge mode repeats the PR proof and publisher-queue inventory, then performs a
+third final live read of PR state/head/base, auto-merge and mergeability, exact
+Git objects and topology, branch protection, required check inventory and apps,
+proof-bound `Validate` freshness, and the drained stable publisher queue. It
+rechecks expiry immediately before sending `PUT /pulls/<number>/merge` with the
+exact expected head SHA and normal `merge` semantics. An invalid merge response
+fails the command. No auto-merge or admin bypass is used.
+
+GitHub cannot make multiple mutable PR refs plus the final merge one
+transaction. Owning the merge in the same command removes the unsafe manual
+window, minimizes the remaining API interval after the final serialized
+barrier, and makes candidate-head movement fail through the expected SHA. Any
+activity, provider incident, API uncertainty, or command failure requires a
+fresh run; never finish the merge manually from prior advisory output.
 
 This policy depends on live protection, not convention. As verified on July 19,
 2026, required status checks use strict up-to-date enforcement, protection
@@ -132,9 +145,10 @@ policy changes, restore the `push: main` trigger before relying on this policy.
 2. Run `npm run check:ci`, relevant provider/database harnesses, and
    `npm run build` locally before requesting final hosted evidence.
 3. After independent review is clean, mark the pull request Ready for review.
-4. For an exact registry-only PR, run the mandatory read-only merge preflight
-   above; inspect its proof generation and publisher run, and confirm no full CI
-   runner started. For every other PR, confirm ordinary Validate ran.
+4. For an exact registry-only PR, run the mandatory explicit `--merge` command
+   above; inspect its proof generation, publisher run, exact head, and returned
+   merge commit. Read-only advisory mode is not merge authorization. For every
+   other PR, confirm ordinary Validate ran.
 5. If the head changes, require a new exact-head green run before merge.
 
 Repository rules must require the exact `Validate` context on `main`. A skipped
@@ -151,7 +165,7 @@ independent agent audit evidence is tracked in the PR and Linear workflow
 instead. This is classic branch protection; no general repository ruleset is
 currently configured.
 
-Verify the live configuration before a merge window:
+Verify the live configuration before an operator merge:
 
 ```bash
 gh api repos/meelni/meelni-prep/branches/main/protection \
