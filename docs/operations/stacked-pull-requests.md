@@ -167,15 +167,25 @@ For an exact one-file `modified` `.github/stacked-prs.json` pull request,
 GitHub suppresses ordinary full Validate and this same default-branch checkout
 may publish the protected `Validate` context after verifying the proposed
 manifest as inert data. The publisher binds repository, PR, head, and base
-identity; checks the complete open stack inventory and every declared topology
-twice; and creates a new exact-head pending check before the expensive proof so
-an older success cannot remain authoritative during revalidation. Forks, extra
+identity; traverses the exact commit/tree/blob chain and accepts only one
+non-truncated `100644 blob` whose SHA and bounded canonical bytes match every
+GitHub response; checks the complete open stack inventory and every declared
+topology twice; and creates a new exact-head pending check before the expensive
+proof. Forks, extra
 paths, added/removed/renamed registries, API errors, stale snapshots, and
 concurrent movement receive no synthetic success. The same non-cancelling
 publisher queue sweeps every open ready registry candidate on ready and close
 events, draft branch/base movement, draft evidence-body edits, and trusted
 push/manual fan-out. A later-invalid generation completes the pending check as
-failure; a completion outage leaves it pending and blocking.
+failure; a failure completing an already-created check leaves that check pending
+and blocking. A failure before a replacement check is created can leave an
+older cross-PR green result visible, so exact registry-only PRs must never use
+auto-merge or admin bypass. Immediately before merge, run the read-only
+`npm run preflight:registry-merge -- --pr <number>` procedure documented in
+`docs/operations/ci-cost-control.md`; it requires a fresh proof-bound success,
+a drained healthy publisher queue, stable proof/queue snapshots, and enforced
+protection. Rerun it after any activity or delay; GitHub reads and merge are not
+atomic.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own

@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { parse } from "yaml";
 
@@ -8,6 +19,8 @@ import {
   publishRegistryOnlyValidate,
   REGISTRY_PATH,
   REQUIRED_VALIDATE_CHECK_NAME,
+  registryProofGeneration,
+  registryValidateExternalId,
   sweepRegistryOnlyValidate,
   verifyProposedRegistryManifest,
 } from "./registry-only-validate-ci.mjs";
@@ -16,6 +29,16 @@ const REPOSITORY = "meelni/meelni-prep";
 const REPOSITORY_ID = 24680;
 const HEAD_SHA = "a".repeat(40);
 const BASE_SHA = "b".repeat(40);
+const ROOT_TREE_SHA = "1".repeat(40);
+const GITHUB_TREE_SHA = "2".repeat(40);
+
+function gitBlobSha(content) {
+  const bytes = Buffer.from(content);
+  return createHash("sha1")
+    .update(`blob ${bytes.length}\0`)
+    .update(bytes)
+    .digest("hex");
+}
 
 function repository(overrides = {}) {
   return { id: REPOSITORY_ID, full_name: REPOSITORY, ...overrides };
@@ -56,7 +79,12 @@ function env(eventName = "pull_request") {
 }
 
 function registryFile(overrides = {}) {
-  return { filename: REGISTRY_PATH, status: "modified", ...overrides };
+  return {
+    filename: REGISTRY_PATH,
+    status: "modified",
+    sha: gitBlobSha(manifest()),
+    ...overrides,
+  };
 }
 
 function manifest(stacks = []) {
@@ -66,8 +94,7 @@ function manifest(stacks = []) {
 function manifestPayload(content = manifest()) {
   const bytes = Buffer.from(content);
   return {
-    type: "file",
-    path: REGISTRY_PATH,
+    sha: gitBlobSha(content),
     encoding: "base64",
     size: bytes.length,
     content: bytes.toString("base64"),
@@ -76,14 +103,17 @@ function manifestPayload(content = manifest()) {
 
 function apiFixture({
   currentPull = pullRequest(),
-  files = [registryFile()],
+  files,
   proposedManifest = manifest(),
   openPulls = [pullRequest()],
   pullsByNumber = {},
   filesByNumber = {},
+  objectOverrides = {},
 } = {}) {
   const calls = [];
   let currentPullReads = 0;
+  const proposedBlobSha = gitBlobSha(proposedManifest);
+  const resolvedFiles = files ?? [registryFile({ sha: proposedBlobSha })];
   const api = async ({ path, method = "GET", body }) => {
     calls.push({ path, method, body });
     if (path === "/check-runs" && method === "POST") {
@@ -110,7 +140,7 @@ function apiFixture({
       );
     }
     const filesMatch = path.match(/^\/pulls\/(\d+)\/files\?/);
-    if (filesMatch?.[1] === "368") return files;
+    if (filesMatch?.[1] === "368") return resolvedFiles;
     if (filesMatch) {
       const number = Number(filesMatch[1]);
       return (
@@ -119,8 +149,48 @@ function apiFixture({
         ]
       );
     }
-    if (path.startsWith(`/contents/${REGISTRY_PATH}?ref=`)) {
-      return manifestPayload(proposedManifest);
+    if (path === `/git/commits/${HEAD_SHA}`) {
+      return {
+        sha: HEAD_SHA,
+        tree: { sha: ROOT_TREE_SHA },
+        ...objectOverrides.commit,
+      };
+    }
+    if (path === `/git/trees/${ROOT_TREE_SHA}`) {
+      return {
+        sha: ROOT_TREE_SHA,
+        truncated: false,
+        tree: [
+          {
+            path: ".github",
+            mode: "040000",
+            type: "tree",
+            sha: GITHUB_TREE_SHA,
+          },
+        ],
+        ...objectOverrides.rootTree,
+      };
+    }
+    if (path === `/git/trees/${GITHUB_TREE_SHA}`) {
+      return {
+        sha: GITHUB_TREE_SHA,
+        truncated: false,
+        tree: [
+          {
+            path: "stacked-prs.json",
+            mode: "100644",
+            type: "blob",
+            sha: proposedBlobSha,
+          },
+        ],
+        ...objectOverrides.githubTree,
+      };
+    }
+    if (path === `/git/blobs/${proposedBlobSha}`) {
+      return {
+        ...manifestPayload(proposedManifest),
+        ...objectOverrides.blob,
+      };
     }
     if (path.startsWith("/pulls?state=open&")) return openPulls;
     throw new Error(`unexpected_api_path:${method}:${path}`);
@@ -394,11 +464,287 @@ test("trusted publisher verifies two stable generations before exact-head succes
     (call) => call.path === "/check-runs/901"
   );
   assert.equal(completion.body.conclusion, "success");
+  assert.equal(
+    completion.body.external_id,
+    registryValidateExternalId(
+      result.proof && {
+        repository: { id: REPOSITORY_ID },
+        pullRequest: {
+          number: 368,
+          headSha: HEAD_SHA,
+          baseSha: BASE_SHA,
+        },
+      },
+      registryProofGeneration(result.proof)
+    )
+  );
   assert.match(completion.body.output.summary, /No pull-request code/);
   assert.ok(
     fixture.calls.indexOf(publication) <
-      fixture.calls.findIndex((call) => call.path.startsWith("/contents/"))
+      fixture.calls.findIndex((call) => call.path.startsWith("/git/commits/"))
   );
+});
+
+test("trusted publisher rejects a registry path backed by a symlink", async () => {
+  const fixture = apiFixture({
+    objectOverrides: {
+      githubTree: {
+        sha: GITHUB_TREE_SHA,
+        truncated: false,
+        tree: [
+          {
+            path: "stacked-prs.json",
+            mode: "120000",
+            type: "blob",
+            sha: gitBlobSha(manifest()),
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await publishRegistryOnlyValidate({
+    eventContent: JSON.stringify(event()),
+    env: env("pull_request_target"),
+    api: fixture.api,
+  });
+
+  assert.equal(result.status, "failure_published");
+  assert.match(result.error, /registry_validate_manifest_object_invalid/);
+});
+
+test("real Git symlink mode cannot pass trusted registry validation", async (t) => {
+  const repo = mkdtempSync(join(tmpdir(), "meelni-registry-symlink-"));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  git("init", "--initial-branch=main");
+  git("config", "user.name", "Fixture");
+  git("config", "user.email", "fixture@example.com");
+  mkdirSync(join(repo, ".github"));
+  writeFileSync(join(repo, "registry-target.json"), manifest());
+  symlinkSync("../registry-target.json", join(repo, REGISTRY_PATH));
+  git("add", ".");
+  git("commit", "-m", "symlink fixture");
+
+  const headSha = git("rev-parse", "HEAD");
+  const rootTreeSha = git("rev-parse", "HEAD^{tree}");
+  const githubTreeSha = git("rev-parse", "HEAD:.github");
+  const registryBlobSha = git("rev-parse", `HEAD:${REGISTRY_PATH}`);
+  const [mode, type] = git("ls-tree", "HEAD", REGISTRY_PATH)
+    .split(/\s+/)
+    .slice(0, 2);
+  assert.deepEqual([mode, type], ["120000", "blob"]);
+
+  const fixturePull = pullRequest({
+    head: {
+      sha: headSha,
+      ref: "codex/symlink-registry",
+      repo: repository(),
+    },
+  });
+  const calls = [];
+  const api = async ({ path, method = "GET", body }) => {
+    calls.push({ path, method, body });
+    if (path === "/pulls/368") return fixturePull;
+    if (path.startsWith("/pulls/368/files?")) {
+      return [registryFile({ sha: registryBlobSha })];
+    }
+    if (path === "/check-runs" && method === "POST") return { id: 901 };
+    if (path === "/check-runs/901" && method === "PATCH") return { id: 901 };
+    if (path === `/git/commits/${headSha}`) {
+      return { sha: headSha, tree: { sha: rootTreeSha } };
+    }
+    if (path === `/git/trees/${rootTreeSha}`) {
+      return {
+        sha: rootTreeSha,
+        truncated: false,
+        tree: [
+          {
+            path: ".github",
+            mode: "040000",
+            type: "tree",
+            sha: githubTreeSha,
+          },
+        ],
+      };
+    }
+    if (path === `/git/trees/${githubTreeSha}`) {
+      return {
+        sha: githubTreeSha,
+        truncated: false,
+        tree: [
+          {
+            path: "stacked-prs.json",
+            mode,
+            type,
+            sha: registryBlobSha,
+          },
+        ],
+      };
+    }
+    throw new Error(`unexpected_api_path:${method}:${path}`);
+  };
+
+  const result = await publishRegistryOnlyValidate({
+    eventContent: JSON.stringify(event({ pull_request: fixturePull })),
+    env: env("pull_request_target"),
+    api,
+  });
+  assert.equal(result.status, "failure_published");
+  assert.match(result.error, /registry_validate_manifest_object_invalid/);
+  assert.equal(
+    calls.some((call) => call.path.startsWith("/git/blobs/")),
+    false
+  );
+});
+
+test("registry object traversal rejects unsafe Git object shapes", async (t) => {
+  const normalEntry = {
+    path: "stacked-prs.json",
+    mode: "100644",
+    type: "blob",
+    sha: gitBlobSha(manifest()),
+  };
+  const cases = [
+    [
+      "executable registry",
+      {
+        githubTree: {
+          sha: GITHUB_TREE_SHA,
+          truncated: false,
+          tree: [{ ...normalEntry, mode: "100755" }],
+        },
+      },
+    ],
+    [
+      "gitlink registry",
+      {
+        githubTree: {
+          sha: GITHUB_TREE_SHA,
+          truncated: false,
+          tree: [{ ...normalEntry, mode: "160000", type: "commit" }],
+        },
+      },
+    ],
+    [
+      "missing registry",
+      { githubTree: { sha: GITHUB_TREE_SHA, truncated: false, tree: [] } },
+    ],
+    [
+      "ambiguous registry",
+      {
+        githubTree: {
+          sha: GITHUB_TREE_SHA,
+          truncated: false,
+          tree: [normalEntry, { ...normalEntry }],
+        },
+      },
+    ],
+    ["truncated root tree", { rootTree: { truncated: true } }],
+    ["truncated .github tree", { githubTree: { truncated: true } }],
+    ["wrong commit SHA", { commit: { sha: "9".repeat(40) } }],
+    ["wrong root-tree SHA", { rootTree: { sha: "9".repeat(40) } }],
+  ];
+
+  for (const [name, objectOverrides] of cases) {
+    await t.test(name, async () => {
+      const fixture = apiFixture({ objectOverrides });
+      const result = await publishRegistryOnlyValidate({
+        eventContent: JSON.stringify(event()),
+        env: env("pull_request_target"),
+        api: fixture.api,
+      });
+      assert.equal(result.status, "failure_published");
+      assert.match(result.error, /registry_validate_manifest_object_invalid/);
+      assert.equal(
+        fixture.calls.find((call) => call.path === "/check-runs/901").body
+          .conclusion,
+        "failure"
+      );
+    });
+  }
+});
+
+test("registry blob decoding rejects unbound or malformed bytes", async (t) => {
+  const cases = [
+    [
+      "tree SHA differs from Pull Files SHA",
+      {
+        files: [registryFile({ sha: "8".repeat(40) })],
+        expected: /registry_validate_manifest_sha_mismatch/,
+      },
+    ],
+    [
+      "blob response SHA differs from tree SHA",
+      {
+        objectOverrides: { blob: { sha: "8".repeat(40) } },
+        expected: /registry_validate_manifest_payload_invalid/,
+      },
+    ],
+    [
+      "declared size differs from decoded size",
+      {
+        objectOverrides: { blob: { size: 1 } },
+        expected: /registry_validate_manifest_size_mismatch/,
+      },
+    ],
+    [
+      "base64 is not canonical",
+      {
+        objectOverrides: { blob: { content: "!!!!" } },
+        expected: /registry_validate_manifest_base64_invalid/,
+      },
+    ],
+    [
+      "decoded bytes do not hash to the bound blob SHA",
+      {
+        objectOverrides: {
+          blob: {
+            content: Buffer.from(
+              manifest().replace("version", "versioN")
+            ).toString("base64"),
+          },
+        },
+        expected: /registry_validate_manifest_sha_mismatch/,
+      },
+    ],
+    [
+      "blob bytes are not valid UTF-8",
+      {
+        proposedManifest: Buffer.from([0xff]),
+        expected: /registry_validate_manifest_utf8_invalid/,
+      },
+    ],
+    [
+      "blob exceeds the byte bound",
+      {
+        proposedManifest: Buffer.alloc(256 * 1024 + 1, 0x61),
+        expected: /registry_validate_manifest_payload_invalid/,
+      },
+    ],
+  ];
+
+  for (const [name, options] of cases) {
+    await t.test(name, async () => {
+      const fixture = apiFixture(options);
+      const result = await publishRegistryOnlyValidate({
+        eventContent: JSON.stringify(event()),
+        env: env("pull_request_target"),
+        api: fixture.api,
+      });
+      assert.equal(result.status, "failure_published");
+      assert.match(result.error, options.expected);
+      assert.equal(
+        fixture.calls.some(
+          (call) =>
+            call.path === "/check-runs/901" &&
+            call.body?.conclusion === "success"
+        ),
+        false
+      );
+    });
+  }
 });
 
 test("trusted sweep refreshes every open exact-registry snapshot", async () => {
