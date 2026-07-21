@@ -7,6 +7,7 @@ const [
   checkoutReturn,
   checkoutReturnCookie,
   checkoutStatus,
+  checkoutStatusWorkflow,
   pricingPage,
   pricingSection,
   successPage,
@@ -21,6 +22,7 @@ const [
   readFile("app/api/checkout/return/route.ts", "utf8"),
   readFile("lib/billing/checkout-return-cookie.ts", "utf8"),
   readFile("app/api/checkout/status/route.ts", "utf8"),
+  readFile("lib/billing/checkout-success-status-route.ts", "utf8"),
   readFile("app/pricing/page.tsx", "utf8"),
   readFile("components/sections/pricing.tsx", "utf8"),
   readFile("app/pricing/success/page.tsx", "utf8"),
@@ -48,12 +50,14 @@ test("Checkout correlation stays out of every application URL", () => {
 });
 
 test("browser status is provider-free and accepts correlation only in a POST body", () => {
-  assert.doesNotMatch(checkoutStatus, /from ["']stripe["']/);
-  assert.doesNotMatch(checkoutStatus, /retrieveAuthoritativeCheckoutSession/);
+  for (const source of [checkoutStatus, checkoutStatusWorkflow]) {
+    assert.doesNotMatch(source, /from ["']stripe["']/);
+    assert.doesNotMatch(source, /retrieveAuthoritativeCheckoutSession/);
+    assert.doesNotMatch(source, /nextUrl\.searchParams/);
+  }
   assert.match(checkoutStatus, /leftJoin\(creditGrant/);
   assert.match(checkoutStatus, /export async function POST/);
-  assert.match(checkoutStatus, /await request\.json\(\)/);
-  assert.doesNotMatch(checkoutStatus, /nextUrl\.searchParams/);
+  assert.match(checkoutStatusWorkflow, /await request\.json\(\)/);
 });
 
 test("return correlation is concurrent-safe and covers delayed settlement", () => {
@@ -66,13 +70,13 @@ test("return correlation is concurrent-safe and covers delayed settlement", () =
     checkoutReturnCookie,
     /return `\$\{handle\}:\$\{sessionId\}:\$\{createdAtMs\}`/
   );
-  assert.match(checkoutStatus, /CHECKOUT_RETURN_COOKIE_NAMES\.flatMap/);
-  assert.match(checkoutStatus, /checkoutReturnCorrelationsNewestFirst/);
+  assert.match(checkoutStatusWorkflow, /CHECKOUT_RETURN_COOKIE_NAMES\.flatMap/);
+  assert.match(checkoutStatusWorkflow, /checkoutReturnCorrelationsNewestFirst/);
   assert.match(
     checkoutStatus,
     /inArray\(paymentHistory\.stripeCheckoutSessionId/
   );
-  assert.match(checkoutStatus, /checkoutSessionIdFromReturnCookie/);
+  assert.match(checkoutStatusWorkflow, /checkoutSessionIdFromReturnCookie/);
   assert.doesNotMatch(checkoutCreate, /request\.cookies\.getAll/);
 });
 

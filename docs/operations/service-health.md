@@ -55,7 +55,9 @@ Then:
 5. Restore configuration, verify healthy recovery, and record timestamps/codes
    without copying raw logs into Linear.
 
-Do not run this rehearsal against the currently shared Production database.
+Run this rehearsal only against the isolated staging/Preview identities proven
+by SAV-226. Abort when the environment-identity preflight cannot prove that the
+database and provider targets differ from Production.
 
 ## Initial Policy
 
