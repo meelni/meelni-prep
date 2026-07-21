@@ -17,7 +17,6 @@ import {
   sanitizeAnalyticsString,
   sanitizeAnalyticsValue,
 } from "./privacy-sanitizer";
-import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 let serverPostHog: PostHog | null = null;
 
@@ -74,10 +73,8 @@ export async function trackServerEvent(
       event,
       properties: sanitizeAnalyticsEventProperties(event, properties),
     });
-  } catch (error) {
-    console.error("[AnalyticsServer] Optional event delivery failed", {
-      ...toSafeErrorLog(error),
-    });
+  } catch {
+    console.error("analytics_server_event_tracking_failed");
   }
 }
 
@@ -102,10 +99,8 @@ export async function identifyServerUser(
       )
     );
     await client.flush();
-  } catch (error) {
-    console.error("[AnalyticsServer] Optional identity delivery failed", {
-      ...toSafeErrorLog(error),
-    });
+  } catch {
+    console.error("analytics_server_user_identification_failed");
   }
 }
 

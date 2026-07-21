@@ -20,6 +20,7 @@ Analyze recent changes (git diff), generate a conventional commit message, stage
    - `chore:` - Maintenance tasks
 
 4. Commit message format:
+
 ```
 <type>: <short description>
 
@@ -35,10 +36,16 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 5. Execute:
+
 ```bash
 git add -A
 git commit -m "MESSAGE"
-git push origin $(git branch --show-current)
+branch="$(git branch --show-current)"
+if [ -z "$branch" ] || [ "$branch" = "main" ]; then
+  echo "Refusing to push a detached HEAD or main; create a non-main feature branch first." >&2
+  exit 1
+fi
+git push origin "$branch"
 ```
 
 6. Show commit SHA and branch status
@@ -46,6 +53,7 @@ git push origin $(git branch --show-current)
 ## Example:
 
 If user says "ship it" or "commit and push":
+
 - Analyze changes
 - Generate descriptive commit message
 - Stage, commit, push

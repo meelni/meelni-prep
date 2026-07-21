@@ -107,10 +107,7 @@ export async function POST(req: NextRequest) {
     const interviewAgentName = getLiveKitAgentName("interview", process.env);
 
     if (!livekitEnv.ok) {
-      console.error(
-        "LiveKit demo configuration error:",
-        livekitEnv.error.message
-      );
+      console.error("livekit_demo_configuration_failed");
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },
         { status: 500 }
@@ -122,9 +119,7 @@ export async function POST(req: NextRequest) {
       !interviewAgentName.ok ||
       demoAgentName.data === interviewAgentName.data
     ) {
-      console.error(
-        "LiveKit demo configuration error: a distinct demo dispatch is required"
-      );
+      console.error("livekit_demo_dispatch_configuration_failed");
       return NextResponse.json(
         { error: "LiveKit credentials not configured" },
         { status: 500 }
@@ -165,8 +160,6 @@ export async function POST(req: NextRequest) {
         maxParticipants: 2, // Only user + agent
       });
 
-      console.log(`Demo room created: ${roomName}`);
-
       // Dispatch the LiveKit Cloud demo agent to this room
       try {
         // Use AgentDispatchClient from SDK
@@ -176,23 +169,16 @@ export async function POST(req: NextRequest) {
           livekitEnv.data.apiSecret
         );
 
-        const dispatch = await dispatchClient.createDispatch(
-          roomName,
-          demoAgentName.data
-        );
-        console.log(
-          `Demo agent (${demoAgentName.data}) dispatched to room: ${roomName}`,
-          dispatch
-        );
-      } catch (dispatchError) {
-        console.error("Agent dispatch error:", getErrorMessage(dispatchError));
+        await dispatchClient.createDispatch(roomName, demoAgentName.data);
+      } catch {
+        console.error("livekit_demo_agent_dispatch_failed");
         return NextResponse.json(
           { error: "Failed to dispatch demo agent" },
           { status: 503 }
         );
       }
-    } catch (error) {
-      console.error("Demo room creation error:", getErrorMessage(error));
+    } catch {
+      console.error("livekit_demo_room_creation_failed");
       return NextResponse.json(
         { error: "Failed to create demo room" },
         { status: 503 }
@@ -223,15 +209,11 @@ export async function POST(req: NextRequest) {
       url: livekitEnv.data.url,
       roomName, // Return room name for tracking
     });
-  } catch (error) {
-    console.error("Error generating demo token:", error);
+  } catch {
+    console.error("livekit_demo_token_generation_failed");
     return NextResponse.json(
       { error: "Failed to generate demo token" },
       { status: 500 }
     );
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
