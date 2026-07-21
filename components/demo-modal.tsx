@@ -581,7 +581,7 @@ function DemoControls({
                       analytics.track("cta_clicked", {
                         button_text: "Practice a full interview",
                         location: "voice_preview_complete",
-                        destination: "/dashboard/new-interview",
+                        destination: NEW_INTERVIEW_PATH,
                       });
                     }
                   }}
@@ -763,6 +763,7 @@ function DemoControls({
 export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const activation = usePublicActivationDecision();
   const activationOpen = isOpen && activation.canActivate;
+  const voiceDemoInterviewPath = `${NEW_INTERVIEW_PATH}?source=voice_demo`;
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [durationSeconds, setDurationSeconds] = useState(120);
@@ -985,7 +986,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                         : "Try Again"}
                     </Button>
                     <PublicActivationButton
-                      href="/dashboard/new-interview?source=voice_demo"
+                      href={voiceDemoInterviewPath}
                       variant="secondary"
                       size="lg"
                     >
