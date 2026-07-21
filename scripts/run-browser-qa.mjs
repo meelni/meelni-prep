@@ -38,6 +38,7 @@ const SAFE_PARENT_ENV_KEYS = [
   "USER",
   "XDG_CACHE_HOME",
 ];
+const SAFE_NODE_OPTIONS = /^--max[-_]old[-_]space[-_]size=\d+$/;
 
 export function isBrowserQaEnvironmentFile(path) {
   const name = basename(path);
@@ -74,10 +75,23 @@ export function createBrowserQaEnvironment(
     NODE_ENV: "production",
     VERCEL_ENV: "production",
   };
+  const safeNodeOptions = safeInheritedNodeOptions(parentEnv.NODE_OPTIONS);
+  if (!blockEgress && safeNodeOptions) {
+    browserQaEnvironment.NODE_OPTIONS = safeNodeOptions;
+  }
   if (blockEgress) {
     browserQaEnvironment.NODE_OPTIONS = `--import=${egressGuard}`;
   }
   return browserQaEnvironment;
+}
+
+function safeInheritedNodeOptions(value) {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  const options = value.trim().split(/\s+/).filter(Boolean);
+  const safeOptions = options.filter((option) =>
+    SAFE_NODE_OPTIONS.test(option)
+  );
+  return safeOptions.length > 0 ? safeOptions.join(" ") : undefined;
 }
 
 function sourcePaths(repoRoot = REPO_ROOT) {
