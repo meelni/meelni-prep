@@ -36,9 +36,14 @@ export type BrowserActivityGuard = {
   unexpected: string[];
 };
 
+type BrowserActivityGuardOptions = {
+  allowedConsoleErrors?: RegExp[];
+};
+
 export async function installBrowserActivityGuard(
   page: Page,
-  target: "next" | "harness"
+  target: "next" | "harness",
+  options: BrowserActivityGuardOptions = {}
 ): Promise<BrowserActivityGuard> {
   const unexpected: string[] = [];
   const allowedOrigin = target === "next" ? NEXT_ORIGIN : HARNESS_ORIGIN;
@@ -47,7 +52,12 @@ export async function installBrowserActivityGuard(
     unexpected.push(`pageerror:${error.name}:${error.message}`);
   });
   page.on("console", (message) => {
-    if (message.type() === "error") {
+    if (
+      message.type() === "error" &&
+      !options.allowedConsoleErrors?.some((pattern) =>
+        pattern.test(message.text())
+      )
+    ) {
       unexpected.push(`console:${message.text()}`);
     }
   });

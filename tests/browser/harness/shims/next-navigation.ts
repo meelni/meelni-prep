@@ -1,14 +1,15 @@
 const searchParams = new URLSearchParams();
+const router = {
+  back() {},
+  forward() {},
+  prefetch: async () => undefined,
+  push() {},
+  refresh() {},
+  replace() {},
+};
 
 export function useRouter() {
-  return {
-    back() {},
-    forward() {},
-    prefetch: async () => undefined,
-    push() {},
-    refresh() {},
-    replace() {},
-  };
+  return router;
 }
 
 export function usePathname() {

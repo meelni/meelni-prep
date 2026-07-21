@@ -10,11 +10,19 @@ import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout"
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { CompletedV2Review } from "@/components/feedback/feedback-completed-review";
-import type { HintMode } from "@meelni/core";
+import { FeedbackComparisonReview } from "@/components/feedback/feedback-comparison-review";
+import {
+  FeedbackLifecycleStatus,
+  FeedbackLoadingSkeleton,
+} from "@/components/feedback/feedback-lifecycle-status";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+import { Button } from "@/components/ui/button";
+import type { FeedbackViewState, HintMode } from "@meelni/core";
 
 import {
   completedFeedback,
   dashboardSessions,
+  partialFeedback,
   publicQuestions,
   transcriptTurns,
 } from "./fixtures";
@@ -25,6 +33,17 @@ export const HARNESS_SCENARIOS = [
   "new-interview",
   "interview",
   "feedback",
+  "feedback-partial",
+  "feedback-insufficient",
+  "feedback-loading",
+  "feedback-pending",
+  "feedback-processing",
+  "feedback-failed",
+  "feedback-unavailable",
+  "feedback-compare",
+  "consent-undecided",
+  "consent-accepted",
+  "consent-declined",
   "settings",
 ] as const;
 
@@ -156,6 +175,60 @@ function FeedbackScenario() {
   return <CompletedV2Review feedback={completedFeedback} partial={false} />;
 }
 
+function FeedbackPartialScenario() {
+  return <CompletedV2Review feedback={partialFeedback} partial />;
+}
+
+type FeedbackLifecycleScenarioState = Exclude<
+  FeedbackViewState,
+  | { kind: "completed-full" }
+  | { kind: "completed-partial" }
+  | { kind: "completed-legacy" }
+>;
+
+function FeedbackLifecycleScenario({
+  state,
+}: {
+  state: FeedbackLifecycleScenarioState;
+}) {
+  return (
+    <FeedbackLifecycleStatus
+      state={state}
+      recovering={false}
+      recoveryError={null}
+      onRecover={() => undefined}
+    />
+  );
+}
+
+const longLifecycleMessage =
+  "Your saved interview remains available while this intentionally long recovery message verifies strict responsive reflow without hiding the next action. " +
+  "recovery-evidence-segment-".repeat(18);
+
+function ConsentDecisionScenario() {
+  return (
+    <>
+      <CookieConsentBanner />
+      <main
+        aria-labelledby="consent-fixture-title"
+        className="mx-auto min-h-[70vh] w-full max-w-5xl space-y-4 px-4 py-8 sm:px-6"
+        data-consent-primary-content
+      >
+        <h1 id="consent-fixture-title" className="text-2xl font-semibold">
+          Consent layout fixture
+        </h1>
+        <p className="text-muted-foreground max-w-3xl leading-6 wrap-anywhere">
+          Synthetic primary content stays available without being covered by an
+          analytics decision notice.
+        </p>
+        <Button type="button" className="min-h-11">
+          Continue practice
+        </Button>
+      </main>
+    </>
+  );
+}
+
 function SettingsScenario() {
   return (
     <Shell activeSection="settings">
@@ -184,6 +257,55 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return <InterviewScenario />;
     case "feedback":
       return <FeedbackScenario />;
+    case "feedback-partial":
+      return <FeedbackPartialScenario />;
+    case "feedback-insufficient":
+      return (
+        <FeedbackLifecycleScenario
+          state={{
+            kind: "skipped-insufficient",
+            details: {
+              tier: "insufficient",
+              reasons: [longLifecycleMessage],
+              recommendations: [
+                "Start another mock interview and answer at least one complete prompt before ending the session.",
+              ],
+            },
+          }}
+        />
+      );
+    case "feedback-loading":
+      return <FeedbackLoadingSkeleton />;
+    case "feedback-pending":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "pending", retryable: true }}
+        />
+      );
+    case "feedback-processing":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "processing", retryable: true }}
+        />
+      );
+    case "feedback-failed":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "failed-retryable", message: longLifecycleMessage }}
+        />
+      );
+    case "feedback-unavailable":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "unavailable", message: longLifecycleMessage }}
+        />
+      );
+    case "feedback-compare":
+      return <FeedbackComparisonReview />;
+    case "consent-undecided":
+    case "consent-accepted":
+    case "consent-declined":
+      return <ConsentDecisionScenario />;
     case "settings":
       return <SettingsScenario />;
   }

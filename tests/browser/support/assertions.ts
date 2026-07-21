@@ -32,6 +32,13 @@ export type LayoutEvidence = {
   primaryActionTabSteps: number;
 };
 
+export type WidthEvidence = {
+  bodyClientWidth: number;
+  bodyScrollWidth: number;
+  documentClientWidth: number;
+  documentScrollWidth: number;
+};
+
 type PageLocation = {
   hash: string;
   origin: string;
@@ -326,19 +333,7 @@ export async function assertLayoutAndPrimaryAction({
     throw new Error("primary action must have a layout box");
   }
 
-  const layout = await page.evaluate(() => ({
-    bodyClientWidth: document.body.clientWidth,
-    bodyScrollWidth: document.body.scrollWidth,
-    documentClientWidth: document.documentElement.clientWidth,
-    documentScrollWidth: document.documentElement.scrollWidth,
-  }));
-
-  expect(layout.documentScrollWidth).toBeLessThanOrEqual(
-    layout.documentClientWidth + 1
-  );
-  expect(layout.bodyScrollWidth).toBeLessThanOrEqual(
-    layout.bodyClientWidth + 1
-  );
+  const layout = await assertNoHorizontalOverflow(page);
 
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("browser project must define a viewport");
@@ -359,6 +354,25 @@ export async function assertLayoutAndPrimaryAction({
   expect(centerIsAction, "primary action must not be covered").toBe(true);
 
   return { ...layout, primaryAction, primaryActionTabSteps };
+}
+
+export async function assertNoHorizontalOverflow(
+  page: Page
+): Promise<WidthEvidence> {
+  const layout = await page.evaluate(() => ({
+    bodyClientWidth: document.body.clientWidth,
+    bodyScrollWidth: document.body.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
+    documentScrollWidth: document.documentElement.scrollWidth,
+  }));
+
+  expect(layout.documentScrollWidth).toBeLessThanOrEqual(
+    layout.documentClientWidth + 1
+  );
+  expect(layout.bodyScrollWidth).toBeLessThanOrEqual(
+    layout.bodyClientWidth + 1
+  );
+  return layout;
 }
 
 export async function assertCriticalAccessibility(
