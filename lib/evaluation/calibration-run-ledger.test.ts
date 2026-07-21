@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import {
   createServer as createHttpsServer,
@@ -16,6 +16,18 @@ import test from "node:test";
 import { evaluationCalibrationCases } from "@meelni/test-fixtures";
 
 import { buildDelegatedEvaluationAdjudicationApproval } from "./calibration-approval";
+import {
+  CALIBRATION_OWNER_APPROVAL_DECISION,
+  CALIBRATION_OWNER_AUTHORIZATION_CONTRACT,
+  CALIBRATION_OWNER_ID,
+  CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT,
+  CALIBRATION_OWNER_ROLE,
+  SAV_248_V3_PREDECESSOR_AUTHORITIES,
+  calibrationOwnerAuthorizationSignatureMessage,
+  verifyCalibrationOwnerAuthorization,
+  type ApprovedCalibrationSpendAuthorization,
+  type CalibrationOwnerAuthorizationPayload,
+} from "./calibration-owner-authorization";
 import {
   assertCalibrationLiveStartupState,
   CALIBRATION_LIVE_DISALLOWED_ENV,
@@ -46,6 +58,7 @@ import {
   SAV_248_V3_REBASED_PLAN_HASH,
   SAV_248_V3_REBASED_PLAN_WORST_CASE_NANO_USD,
   activateCalibrationRun,
+  buildCalibrationAuthorizationGenesis,
   buildSAV248V3PlanProposal,
   buildCalibrationActivatedPlan,
   calibrationAuthorizationCommitMessage,
@@ -143,6 +156,66 @@ test("v3 plan remains a non-executable proposal until fresh exact owner approval
         githubToken: "must-not-be-used",
       }),
     /requires_fresh_exact_product_owner_authorization/
+  );
+});
+
+test("a verified owner handoff activates only the exact signed plan", async () => {
+  const ownerAuthorization = buildVerifiedOwnerAuthorization();
+  const options: ActivateCalibrationRunOptions = {
+    ownerAuthorization,
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: approvalFixture(),
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 2,
+    now: NOW,
+    activationId: "verified-owner-activation",
+  };
+  const plan = buildCalibrationActivatedPlan({
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: options.adjudicationApproval,
+    model: options.model,
+    repetitions: options.repetitions,
+    now: NOW,
+  });
+  const genesis = buildCalibrationAuthorizationGenesis(
+    plan,
+    ownerAuthorization.authorization
+  );
+  const state = createCanonicalState(genesis);
+
+  const authority =
+    await calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+      options,
+      new FakeGitHubClient(state)
+    );
+  assert.equal(authority.planHash, plan.planHash);
+  assert.equal(authority.authorizationId, plan.authorizationId);
+  assert.equal(state.refSha, authority.activationCommit);
+
+  await assert.rejects(
+    () =>
+      calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+        {
+          ...options,
+          adjudicationApproval: {
+            ...approvalFixture(),
+            reviewedAt: "2026-07-18T23:59:59.000Z",
+          },
+        },
+        new FakeGitHubClient(createCanonicalState(genesis))
+      ),
+    /plan_mismatch/
+  );
+  assert.throws(
+    () =>
+      calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+        {
+          ...options,
+          authorization: { ...ownerAuthorization.authorization },
+        },
+        new FakeGitHubClient(createCanonicalState(genesis))
+      ),
+    /provenance_unverified/
   );
 });
 
@@ -819,7 +892,13 @@ function activationOptions(
   };
 }
 
-function createCanonicalState(): FakeGitHubState {
+function createCanonicalState(
+  genesis: ReturnType<typeof buildCalibrationAuthorizationGenesis> = {
+    date: SAV_248_V3_GENESIS_DATE,
+    message: calibrationAuthorizationCommitMessage(),
+    oid: SAV_248_V3_GENESIS_COMMIT_OID,
+  }
+): FakeGitHubState {
   return {
     repository: {
       id: SAV_248_V3_GITHUB_REPOSITORY_ID,
@@ -836,8 +915,18 @@ function createCanonicalState(): FakeGitHubState {
     },
     rulesets: canonicalRulesets(),
     effectiveRuleTypes: ["creation", "deletion", "non_fast_forward", "update"],
-    refSha: SAV_248_V3_GENESIS_COMMIT_OID,
-    commits: new Map([[SAV_248_V3_GENESIS_COMMIT_OID, genesisCommit()]]),
+    refSha: genesis.oid,
+    commits: new Map([
+      [
+        genesis.oid,
+        genesisCommit({
+          sha: genesis.oid,
+          message: genesis.message,
+          author: commitIdentity(genesis.date),
+          committer: commitIdentity(genesis.date),
+        }),
+      ],
+    ]),
   };
 }
 
@@ -908,6 +997,97 @@ function assertPayloadFreeActivation(
 
 function approvalFixture() {
   return buildDelegatedEvaluationAdjudicationApproval();
+}
+
+function buildVerifiedOwnerAuthorization() {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const keyId = "owner-calibration-test";
+  const authorizedOn = NOW.toISOString();
+  const authorization: ApprovedCalibrationSpendAuthorization = {
+    contractVersion: "evaluation-calibration-spend-authorization.v3",
+    authorizationId: "sav248_v3_auth_0123456789abcdef0123456789abcdef",
+    runId: SAV_248_V3_APPROVED_RUN_ID,
+    authorizationStatus: "approved_by_human_product_owner",
+    authorizedOn,
+    authorizationSource: "external_product_owner_ed25519",
+    ownerId: CALIBRATION_OWNER_ID,
+    ownerRole: CALIBRATION_OWNER_ROLE,
+    ownerSigningKeyId: keyId,
+    reviewedSourceCommit: "b".repeat(40),
+    singleAggregateRun: true,
+    maximumProviderCalls: 96,
+    maximumPhysicalHttpAttempts: 96,
+    maximumSpendUsd: 3,
+    fixturePolicy: "synthetic_or_separately_approved_only",
+    customerTranscriptsAllowed: false,
+    productionDataAllowed: false,
+    historicalAuthoritiesReusable: false,
+    predecessorAuthorities: SAV_248_V3_PREDECESSOR_AUTHORITIES,
+  };
+  const plan = buildCalibrationActivatedPlan({
+    authorization,
+    adjudicationApproval: approvalFixture(),
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 2,
+    now: NOW,
+  });
+  const payload: CalibrationOwnerAuthorizationPayload = {
+    authorizationId: authorization.authorizationId,
+    runId: SAV_248_V3_APPROVED_RUN_ID,
+    ownerId: CALIBRATION_OWNER_ID,
+    ownerRole: CALIBRATION_OWNER_ROLE,
+    approvalDecision: CALIBRATION_OWNER_APPROVAL_DECISION,
+    ownerLaunchDecision: null,
+    signingKeyId: keyId,
+    reviewedSourceCommit: authorization.reviewedSourceCommit,
+    planHash: plan.planHash,
+    plannedProviderCalls: plan.plannedCalls,
+    plannedPhysicalHttpAttempts: plan.plannedCalls,
+    plannedWorstCaseNanoUsd: plan.plannedWorstCaseNanoUsd,
+    maximumProviderCalls: 96,
+    maximumPhysicalHttpAttempts: 96,
+    maximumSpendNanoUsd: 3_000_000_000,
+    singleAggregateRun: true,
+    fixturePolicy: "synthetic_or_separately_approved_only",
+    customerTranscriptsAllowed: false,
+    productionDataAllowed: false,
+    historicalAuthoritiesReusable: false,
+    predecessorAuthorities: SAV_248_V3_PREDECESSOR_AUTHORITIES,
+    issuedAt: authorizedOn,
+    expiresAt: new Date(NOW.getTime() + 15 * 60 * 1_000).toISOString(),
+  };
+  return verifyCalibrationOwnerAuthorization({
+    artifact: {
+      contract: CALIBRATION_OWNER_AUTHORIZATION_CONTRACT,
+      payload,
+      signature: {
+        algorithm: "ed25519",
+        keyId,
+        value: sign(
+          null,
+          calibrationOwnerAuthorizationSignatureMessage(payload),
+          privateKey
+        ).toString("base64"),
+      },
+    },
+    keyRegistry: {
+      contract: CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT,
+      ownerId: CALIBRATION_OWNER_ID,
+      keys: [
+        {
+          algorithm: "ed25519",
+          keyId,
+          status: "active",
+          notBefore: new Date(NOW.getTime() - 60_000).toISOString(),
+          notAfter: new Date(NOW.getTime() + 60 * 60 * 1_000).toISOString(),
+          publicKeyPem: publicKey
+            .export({ type: "spki", format: "pem" })
+            .toString(),
+        },
+      ],
+    },
+    now: NOW,
+  });
 }
 
 function deterministicGenesisOid(): string {
