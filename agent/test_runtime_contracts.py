@@ -915,8 +915,22 @@ class RuntimeContractTests(unittest.TestCase):
         )
 
         self.assertIn("two-minute product sense voice preview", demo_prompt)
-        self.assertIn("quick feedback", demo_prompt)
-        self.assertIn("Feedback (keep it punchy", demo_prompt)
+        self.assertNotIn("5-minute", demo_prompt)
+        self.assertIn("Ask exactly one realistic follow-up", demo_prompt)
+        self.assertIn(
+            "Base that follow-up only on something the participant actually said",
+            demo_prompt,
+        )
+        self.assertIn(
+            "Do not give feedback, evaluation, strengths, improvements",
+            demo_prompt,
+        )
+        self.assertIn(
+            "Only give the takeaway when the system explicitly asks for it",
+            demo_prompt,
+        )
+        self.assertNotIn("quick feedback", demo_prompt)
+        self.assertNotIn("Feedback (keep it punchy", demo_prompt)
         self.assertNotIn("two-minute product sense voice preview", full_prompt)
         self.assertNotIn("Feedback (keep it punchy", full_prompt)
         self.assertIn(

@@ -5,13 +5,15 @@ Two-minute voice preview agent for landing-page visitors.
 ## Overview
 
 This agent provides a short preview of live PM interview practice. It asks one
-PM-style question and gives one evidence-based takeaway inside a server-authored
+PM-style question, asks one grounded follow-up based on the participant's
+answer, and gives one evidence-based takeaway inside a server-authored
 two-minute deadline.
 
 ## Features
 
 - Two-minute server-authored hard deadline
 - Single question from question bank (or fallback questions)
+- One grounded follow-up with no early coaching or evaluation
 - Energetic, conversational tone
 - One concise, evidence-based takeaway
 - Local inference shutdown is awaited within a hard bound before LiveKit room deletion
@@ -73,8 +75,10 @@ Uses shared modules from `../shared/`:
    deadline.
 4. The worker arms cleanup before connecting, waits for that exact participant,
    and starts the voice pipeline only while time remains.
-5. At 90 seconds the worker requests one concise takeaway.
-6. Just before the absolute two-minute deadline it initiates immediate local
+5. The prompt allows one answer-grounded follow-up and forbids feedback before
+   the system-authored takeaway window.
+6. At 90 seconds the worker requests one concise takeaway.
+7. Just before the absolute two-minute deadline it initiates immediate local
    shutdown and awaits bounded model/audio closure; at the deadline it deletes
    the room with a bounded provider call and shuts down.
 
