@@ -294,6 +294,32 @@ before readiness, credential delivery, GitHub access, or provider access. The
 live CLI accepts neither an arbitrary run ID nor an operator-selected ledger
 path, so a process cannot mint another budget.
 
+The executable handoff is a separate
+`meelni.evaluation-calibration-owner-authorization.v1` JSON envelope stored
+outside every repository worktree. It must be an owner-owned, single-link,
+regular, non-symlink file with mode `0600` and at most 64 KiB. The only accepted
+decision is `APPROVE_BOUNDED_PAID_CALIBRATION` from owner `saviii` with role
+`human_product_owner`; `ownerLaunchDecision` must remain null. Its Ed25519
+signature is domain-separated by the contract identifier and verified against
+an active public key in `config/evaluation-calibration-owner-keys.json`. That
+registry contains public verification material only; private signing material
+must never enter source, chat, environment files, logs, or generated evidence.
+The registry is intentionally empty in the current handoff, so no artifact can
+become executable until a separately reviewed owner public key is enrolled.
+
+The signed payload binds one new v3 authorization ID, the exact 40-character
+reviewed source commit, exact regenerated plan hash, equal planned provider-call
+and physical-attempt counts, exact worst-case nano-USD, the 96-call/attempt and
+$3 ceilings, one aggregate run, synthetic or separately approved fixtures only,
+no customer transcripts, no Production data, and explicit non-reusability of
+both terminal predecessor authorities. It is valid for at most 30 minutes. The
+issue time must use a whole-second boundary because it also determines the Git
+authorization commit identity. The runtime rejects unknown fields,
+stale/future artifacts, revoked or out-of-window
+keys, signature/key mismatches, copied unverified authorization objects, and any
+source, plan, call-count, or spend drift before GitHub access. A v1/v2 artifact
+or run ID cannot satisfy this contract.
+
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
@@ -344,9 +370,11 @@ binary identities remain part of reviewed source,
 closing coherent bundle/manifest substitution and hash-to-spawn replacement.
 The sealed bootstrap attests empty `execArgv`, verifies the exact standalone
 runtime bundle contract, and launches that sealed bundle with a minimal
-credential-free environment and no package loader. The runtime validates
-executable authorization, the exact directly hashed reviewed Git checkout, and
-its private paths before it emits runtime readiness.
+credential-free environment and no package loader. The runtime loads and
+verifies the private external owner envelope, validates its executable
+authorization and exact plan binding, validates the exact directly hashed
+reviewed Git checkout, and validates its private paths before it emits runtime
+readiness.
 Only then does the bootstrap relay the exact readiness handshake over the
 private status pipe; the outer launcher derives and transmits credentials over
 a separate private pipe afterward. The runtime repeats its environment

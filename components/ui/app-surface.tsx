@@ -82,7 +82,7 @@ const statusPillVariants = cva(
     variants: {
       tone: {
         primary: "border-primary/20 bg-primary/10 text-primary",
-        muted: "border-border bg-background/50 text-muted-foreground",
+        muted: "border-border bg-card text-muted-foreground",
         warning: "border-warning/20 bg-warning/10 text-warning",
         success: "border-success/20 bg-success/10 text-success",
         danger: "border-destructive/25 bg-destructive/10 text-destructive",

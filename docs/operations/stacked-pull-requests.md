@@ -147,11 +147,13 @@ subscribes to `closed`: closing or deleting a parent PR revalidates its open
 registered children, and a deleted parent ref fails their checks closed.
 
 Draft branch movement and base changes run one combined dependency audit so a
-ready peer cannot retain stale migration or topology evidence. Draft body and
-title edits allocate no hosted runner; the latest body is evaluated when the PR
-becomes ready for review. Trusted checker or manifest changes on `main` and
-`workflow_dispatch` each provide one combined full fan-out without executing
-code from a proposed branch.
+ready peer cannot retain stale migration or topology evidence. Draft title
+edits allocate no hosted runner. Draft body edits run only the bounded registry
+snapshot refresh because evidence changes can invalidate a ready registry PR;
+the normal topology check evaluates the latest body when the draft becomes
+ready. Trusted checker or manifest changes on `main` and `workflow_dispatch`
+each provide one combined full fan-out without executing code from a proposed
+branch.
 
 Because the repository is private, the trusted checkout retains the job token
 long enough to fetch those two refs. Both jobs grant only `contents: read`,
@@ -160,6 +162,37 @@ permission to load current dependent-child metadata.
 The token is never made available to PR code because no PR-controlled file is
 checked out or executed, and checkout removes its stored credential during
 cleanup.
+
+For an exact one-file `modified` `.github/stacked-prs.json` pull request,
+GitHub suppresses ordinary full Validate and this same default-branch checkout
+may publish the protected `Validate` context after verifying the proposed
+manifest as inert data. The publisher binds repository, PR, head, and base
+identity; traverses the exact commit/tree/blob chain and accepts only one
+non-truncated `100644 blob` whose SHA and bounded canonical bytes match every
+GitHub response; checks the complete open stack inventory and every declared
+topology twice; and creates a new exact-head pending check before the expensive
+proof. Forks, extra
+paths, added/removed/renamed registries, API errors, stale snapshots, and
+concurrent movement receive no synthetic success. The same non-cancelling
+publisher queue sweeps every open ready registry candidate on ready and close
+events, draft branch/base movement, draft evidence-body edits, and trusted
+push/manual fan-out. A later-invalid generation completes the pending check as
+failure; a failure completing an already-created check leaves that check pending
+and blocking. A failure before a replacement check is created can leave an
+older cross-PR green result visible. The result is validation evidence, not
+merge authorization. Exact registry-only PRs must never use repository-owned
+auto-merge, a custom write-token merge workflow, recovery inference, or admin
+bypass. After confirming the live base is `main`, the intended exact head is
+current, and all three required contexts are successful, the human owner uses
+GitHub's native protected pull-request merge as documented in
+`docs/operations/ci-cost-control.md`.
+
+This repository's merge queue is not currently configured, auto-merge is
+disabled, and CI does not support `merge_group`. GitHub's pull-request merge API
+can bind the head but not an expected base SHA, so repeated custom preflight
+reads cannot create atomic merge semantics. The bespoke merge and recovery
+surface is intentionally absent. A future native merge queue requires a
+separately reviewed repository-policy, validation-trigger, and cost change.
 
 This separation is intentional. A normal `pull_request` job executes files from
 the proposed change, so it cannot be the authority that decides whether its own
@@ -198,11 +231,13 @@ does not guess that changing committed history is safe. Snapshot JSON and
 The check runs on non-draft open, reopen, synchronize, edit, and ready-for-review
 events, plus close events and operator-controlled or filtered default-branch
 revalidation. Draft branch movement and base edits use one combined dependency
-audit; draft body and title edits allocate no runner. Manual and default-branch
-runs target only migration or immutable-history owners; an identical completed
-result on the same exact head is reused, bounding Check Run churn. The workflow
-still checks out only default-branch code; it reads PR metadata and file names
-but never fetches or executes PR files for collision detection.
+audit; draft body and title edits do not run the migration audit (the separate
+registry refresh handles body evidence). Manual and default-branch full sweeps
+publish every open same-repository PR, replacing stale non-owner evidence with
+a neutral exact-head result. An identical completed result on the same exact
+head is reused, bounding Check Run churn. The workflow still checks out only
+default-branch code; it reads PR metadata and file names but never fetches or
+executes PR files for collision detection.
 
 Classic protection requires the stable `Migration Collision Publisher` Actions
 job, not the REST-created custom Check Run. The event job still inventories all

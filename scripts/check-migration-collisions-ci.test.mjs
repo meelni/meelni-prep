@@ -332,7 +332,7 @@ test("one incomplete file inventory fails every known exact PR head", async () =
   );
 });
 
-test("scheduled audits publish only migration or immutable-history owners", async () => {
+test("full sweeps replace stale non-owner checks with neutral exact-head results", async () => {
   const prs = [pullRequest(32), pullRequest(33)];
   const calls = [];
   const result = await auditOpenMigrationPullRequests({
@@ -372,7 +372,43 @@ test("scheduled audits publish only migration or immutable-history owners", asyn
   assert.equal(result.status, "pass");
   assert.deepEqual(
     result.results.map((entry) => entry.pr),
-    [32]
+    [32, 33]
+  );
+  assert.equal(calls.filter((call) => call.path === "/check-runs").length, 2);
+  assert.deepEqual(
+    calls
+      .filter((call) => call.path.startsWith("/check-runs/"))
+      .map((call) => call.body.conclusion),
+    ["success", "neutral"]
+  );
+});
+
+test("event-scoped audits do not fan out to unrelated non-owners", async () => {
+  const prs = [pullRequest(34), pullRequest(35)];
+  const calls = [];
+  const result = await auditOpenMigrationPullRequests({
+    env: { GITHUB_TOKEN: "token" },
+    repository,
+    api: checkApi(calls),
+    freshnessCheck: async () => {},
+    triggeringPrNumber: 34,
+    inventory: async () => ({
+      pullRequests: prs,
+      errors: [],
+      inventories: prs.map((pr) => ({
+        pr: pr.number,
+        headSha: pr.head.sha,
+        headRef: pr.head.ref,
+        baseRef: "main",
+        migrations: [],
+        violations: [],
+      })),
+    }),
+  });
+  assert.equal(result.status, "pass");
+  assert.deepEqual(
+    result.results.map((entry) => entry.pr),
+    [34]
   );
   assert.equal(calls.filter((call) => call.path === "/check-runs").length, 1);
 });
