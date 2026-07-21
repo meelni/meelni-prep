@@ -95,13 +95,17 @@ export async function POST(req: NextRequest) {
       trustedVercelDeployment: process.env.VERCEL === "1",
     });
   } catch (error) {
-    console.error("[PublicDemoAudit]", {
-      outcome: "failed",
-      reason:
-        error instanceof PublicDemoClientIpUnavailableError
-          ? "trusted_ip_unavailable"
-          : "identity_unavailable",
-    });
+    if (error instanceof PublicDemoClientIpUnavailableError) {
+      console.error("[PublicDemoAudit]", {
+        outcome: "failed",
+        reason: "trusted_ip_unavailable",
+      });
+    } else {
+      console.error("[PublicDemoAudit]", {
+        outcome: "failed",
+        reason: "identity_unavailable",
+      });
+    }
     return noStore(
       NextResponse.json(
         { error: "demo_temporarily_unavailable" },
