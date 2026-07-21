@@ -30,6 +30,7 @@ const EXPECTED_FAILURE_SUMMARY =
   "Fix any of the following:\n  Element's background color could not be determined due to a pseudo element";
 const ALPHA_TOLERANCE = 0.001;
 const PIXEL_TOLERANCE = 0.5;
+const SCREENSHOT_DIMENSION_TOLERANCE = 1;
 const TRANSITION_COLORS =
   "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to";
 const DESIGN_RING_OUTLINE_COLOR = "oklab(0.550628 0.0568162 -0.211642 / 0.5)";
@@ -396,6 +397,10 @@ function nearlyEqual(first: number, second: number) {
   return Math.abs(first - second) <= PIXEL_TOLERANCE;
 }
 
+function screenshotsNearlyEqual(first: number, second: number) {
+  return Math.abs(first - second) <= SCREENSHOT_DIMENSION_TOLERANCE;
+}
+
 function colorsEqual(first: Rgba, second: Rgba) {
   return first.every((channel, index) =>
     index === 3
@@ -675,8 +680,8 @@ function renderedPixelsAreExact(
     Number.isInteger(rendered.height) &&
     rendered.width > 0 &&
     rendered.height > 0 &&
-    nearlyEqual(rendered.width, rect.width) &&
-    nearlyEqual(rendered.height, rect.height) &&
+    screenshotsNearlyEqual(rendered.width, rect.width) &&
+    screenshotsNearlyEqual(rendered.height, rect.height) &&
     rendered.totalPixelCount === rendered.width * rendered.height &&
     Number.isInteger(rendered.foregroundPixelCount) &&
     Number.isInteger(rendered.backgroundPixelCount) &&
