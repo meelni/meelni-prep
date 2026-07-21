@@ -12,6 +12,7 @@ You are conducting a thorough code review to ensure quality and catch issues bef
 ### 1. **Identify Changed Files**
 
 Get the list of files that will be merged:
+
 ```bash
 # Compare with main branch
 git diff --name-only origin/main...HEAD
@@ -21,6 +22,7 @@ git diff origin/main...HEAD --stat
 ```
 
 Categorize changes:
+
 - Frontend code (React components, pages)
 - Backend code (API routes, services)
 - Database (schema, migrations)
@@ -30,6 +32,7 @@ Categorize changes:
 ### 2. **Architectural Review**
 
 Delegate to **architect-reviewer** agent:
+
 ```
 Use the Task tool with subagent_type="architect-reviewer"
 
@@ -55,6 +58,7 @@ Review the actual code changes and provide:
 ### 3. **Quality & Security Review**
 
 Delegate to **quality-reviewer** agent:
+
 ```
 Use the Task tool with subagent_type="quality-reviewer"
 
@@ -99,6 +103,7 @@ Review the actual code and provide:
 ### 4. **Test Coverage Check**
 
 Verify testing:
+
 ```bash
 # Check if tests exist for new code
 find . -name "*.test.ts" -o -name "*.test.tsx" -o -name "*.spec.ts"
@@ -113,6 +118,7 @@ npm run type-check 2>&1
 ### 5. **Documentation Check**
 
 Verify documentation updated:
+
 ```bash
 # Check if CLAUDE.md was updated
 git diff origin/main...HEAD .claude/CLAUDE.md
@@ -124,6 +130,7 @@ git diff origin/main...HEAD .claude/CLAUDE.md
 ### 6. **Dependency Check**
 
 Check for new dependencies:
+
 ```bash
 # Check package.json changes
 git diff origin/main...HEAD package.json
@@ -142,42 +149,52 @@ Provide a comprehensive review summary:
 ## 🔍 Code Review Complete
 
 ### Summary
+
 - **Branch**: [branch-name]
 - **Changed Files**: [count] files
 - **Lines Changed**: +[added] -[removed]
 
 ### Architectural Review
+
 **Status**: ✅ Pass / ⚠️ Concerns / ❌ Issues
 
 [Architect agent findings]
 
 **Issues**:
+
 - [ ] [Issue 1 if any]
 - [ ] [Issue 2 if any]
 
 ### Quality & Security Review
+
 **Status**: ✅ Pass / ⚠️ Concerns / ❌ Critical Issues
 
 **Critical Issues** (must fix):
+
 - [ ] [Critical issue 1]
 
 **Major Issues** (should fix):
+
 - [ ] [Major issue 1]
 
 **Minor Issues** (nice to fix):
+
 - [Minor issue 1]
 
 ### Test Coverage
+
 - ✅ / ❌ Tests exist for new functionality
 - ✅ / ❌ All tests passing
 - ✅ / ❌ Type check passing
 
 ### Documentation
+
 - ✅ / ❌ CLAUDE.md updated
 - ✅ / ❌ New files documented
 - ✅ / ❌ API changes documented
 
 ### Dependencies
+
 - ✅ / ❌ No new dependencies OR new dependencies justified
 - ✅ / ❌ No security vulnerabilities
 
@@ -190,15 +207,18 @@ Provide a comprehensive review summary:
 **Confidence**: High / Medium / Low
 
 **Next Steps**:
+
 1. [Action item 1]
 2. [Action item 2]
 
-**To merge**: Run `/merge` when all issues resolved
+**To merge**: Use GitHub's native protected pull-request merge when all issues
+are resolved and required checks pass.
 ```
 
 ## Review Criteria:
 
 ### 🟢 Ready to Merge
+
 - No critical issues
 - Architecture consistent with codebase
 - Tests passing (or N/A)
@@ -206,12 +226,14 @@ Provide a comprehensive review summary:
 - Minor issues acceptable
 
 ### 🟡 Needs Work
+
 - 1-3 major issues found
 - Documentation incomplete
 - Tests missing but not critical
 - Should fix before merge but not blocking
 
 ### 🔴 Blocked
+
 - Critical security vulnerabilities
 - Data loss risks
 - Breaking changes without migration plan
@@ -228,7 +250,7 @@ Provide a comprehensive review summary:
 
 ## When to Run:
 
-- Before running `/merge`
+- Before using GitHub's native protected pull-request merge
 - After completing a feature
 - Before creating a PR
 - When unsure about code quality
@@ -249,9 +271,11 @@ git checkout feature-branch
 
 - `/feature` should call `/review` automatically before creating PR
 - `/review` should suggest running `/docs-sync` if docs outdated
-- After `/review` passes, run `/merge` to complete the process
+- After `/review` passes and required checks succeed, complete the process in
+  GitHub's native protected pull-request merge experience
 
 ## Reference:
+
 - `.claude/CLAUDE.md` - Architectural patterns and standards
 - OWASP Top 10 - Security vulnerability checklist
 - Project coding standards

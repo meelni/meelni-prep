@@ -34,8 +34,12 @@ import {
   activateCalibrationRun,
   assertCalibrationSpendAuthorizationExecutable,
   buildCalibrationActivatedPlan,
-  SAV_248_V3_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
+import {
+  assertCalibrationOwnerAuthorizationMatchesPlan,
+  loadCalibrationOwnerAuthorization,
+  type VerifiedCalibrationOwnerAuthorization,
+} from "@/lib/evaluation/calibration-owner-authorization";
 import { assertCalibrationReviewedSourceCheckout } from "@/lib/evaluation/calibration-source-attestation";
 import {
   capturePrivateSyntheticOutput,
@@ -91,6 +95,7 @@ async function main() {
   let semanticCapture: PrivateSemanticCaptureHandle | undefined;
   let semanticPaths: CalibrationSemanticReviewPaths | undefined;
   let report: EvaluationCalibrationReport | undefined;
+  let ownerAuthorization: VerifiedCalibrationOwnerAuthorization | undefined;
   let semanticReviewPassed = executionKind !== "live_provider";
   let semanticTerminalReportPublished = false;
   let terminationStarted = false;
@@ -123,11 +128,18 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
+    if (!args.ownerAuthorization) {
+      throw new Error("live_calibration_requires_owner_authorization");
+    }
+    ownerAuthorization = await loadCalibrationOwnerAuthorization({
+      authorizationPath: args.ownerAuthorization,
+      repositoryRoot: process.cwd(),
+    });
     assertCalibrationSpendAuthorizationExecutable(
-      SAV_248_V3_SPEND_AUTHORIZATION
+      ownerAuthorization.authorization
     );
     assertCalibrationReviewedSourceCheckout(
-      SAV_248_V3_SPEND_AUTHORIZATION.reviewedSourceCommit
+      ownerAuthorization.authorization.reviewedSourceCommit
     );
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
@@ -136,12 +148,17 @@ async function main() {
     }
     const semantic = requireSemanticReviewArgs(args);
     const planned = buildCalibrationActivatedPlan({
-      authorization: SAV_248_V3_SPEND_AUTHORIZATION,
+      authorization: ownerAuthorization.authorization,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
       now: new Date(),
     });
+    assertCalibrationOwnerAuthorizationMatchesPlan(
+      ownerAuthorization,
+      planned,
+      new Date()
+    );
     semanticPaths = await prepareCalibrationSemanticReviewPaths({
       cwd: process.cwd(),
       ...semantic,
@@ -185,7 +202,8 @@ async function main() {
     try {
       runAuthority = await activateCalibrationRun(
         {
-          authorization: SAV_248_V3_SPEND_AUTHORIZATION,
+          ownerAuthorization,
+          authorization: ownerAuthorization.authorization,
           adjudicationApproval,
           model: modelVersion,
           repetitions,
@@ -297,24 +315,26 @@ async function main() {
             caseRef: caseId,
             runIndex: runIndex ?? -1,
           }));
-        const semanticReport = publishPrivateSemanticReviewBeforeTerminalReport({
-          capture: semanticCapture!,
-          publicReportPath: semanticPaths.semanticPublicReport,
-          canonicalMismatchCaseRuns,
-          trustedExecutionAuthority: artifacts.executionAuthority,
-          panels: [
-            {
-              taskPath:
-                artifacts.executionAuthority.verifiedExecutions[0].taskPath,
-              decisions: artifacts.panels[0].decisions,
-            },
-            {
-              taskPath:
-                artifacts.executionAuthority.verifiedExecutions[1].taskPath,
-              decisions: artifacts.panels[1].decisions,
-            },
-          ],
-        });
+        const semanticReport = publishPrivateSemanticReviewBeforeTerminalReport(
+          {
+            capture: semanticCapture!,
+            publicReportPath: semanticPaths.semanticPublicReport,
+            canonicalMismatchCaseRuns,
+            trustedExecutionAuthority: artifacts.executionAuthority,
+            panels: [
+              {
+                taskPath:
+                  artifacts.executionAuthority.verifiedExecutions[0].taskPath,
+                decisions: artifacts.panels[0].decisions,
+              },
+              {
+                taskPath:
+                  artifacts.executionAuthority.verifiedExecutions[1].taskPath,
+                decisions: artifacts.panels[1].decisions,
+              },
+            ],
+          }
+        );
         report = finalizeCalibrationReportWithSemanticReview(report, {
           gate: semanticReport.semanticAdjudication.gate,
           semanticAdjudicationSha256:
@@ -389,6 +409,7 @@ function parseArgs(argv: string[]): {
   output?: string;
   repetitions?: number;
   approval?: string;
+  ownerAuthorization?: string;
   semanticCaptureDirectory?: string;
   semanticPublicReport?: string;
   semanticReviewRequest?: string;
@@ -401,6 +422,7 @@ function parseArgs(argv: string[]): {
   let output: string | undefined;
   let repetitions: number | undefined;
   let approval: string | undefined;
+  let ownerAuthorization: string | undefined;
   let semanticCaptureDirectory: string | undefined;
   let semanticPublicReport: string | undefined;
   let semanticReviewRequest: string | undefined;
@@ -428,6 +450,11 @@ function parseArgs(argv: string[]): {
     } else if (argument === "--approval") {
       approval = argv[++index];
       if (!approval) throw new Error("--approval requires a path");
+    } else if (argument === "--owner-authorization") {
+      ownerAuthorization = argv[++index];
+      if (!ownerAuthorization) {
+        throw new Error("--owner-authorization requires a path");
+      }
     } else if (argument === "--semantic-capture-dir") {
       semanticCaptureDirectory = argv[++index];
       if (!semanticCaptureDirectory) {
@@ -478,6 +505,7 @@ function parseArgs(argv: string[]): {
     output,
     repetitions,
     approval,
+    ownerAuthorization,
     semanticCaptureDirectory,
     semanticPublicReport,
     semanticReviewRequest,

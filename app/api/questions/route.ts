@@ -146,8 +146,8 @@ export async function handleQuestionsListRequest(
       questions,
       pagination,
     });
-  } catch (error) {
-    console.error("Error fetching questions:", error);
+  } catch {
+    console.error("question_list_read_failed");
     return NextResponse.json(
       { error: "Failed to fetch questions" },
       { status: 500 }

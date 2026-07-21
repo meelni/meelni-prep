@@ -49,6 +49,13 @@ The event is constructed from a closed schema. Callers cannot attach exceptions,
 
 Durable provider/workflow stores retain only their separately documented stable identifiers and fixed error codes. This runtime event does not expand those retention contracts.
 
+Deployed API routes and launch-critical server modules must not write caught
+exception values directly to `console.*`. Fixed cause-free codes are allowed,
+as is the shared `toSafeErrorLog` classifier because it returns only a closed
+error-class enum. A project-wide raw log drain is not an operational-failure
+receiver: a future receiver must consume only this closed event boundary or
+pass a separately reviewed equivalent privacy boundary before transmission.
+
 ## Compatibility
 
 Consumers filter by `event` and `version`. Adding an operation or error code is backward compatible. Adding or removing fields requires a new version.
