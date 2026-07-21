@@ -13,6 +13,7 @@ import {
 import { createFocusedPracticeAttemptSourceFixtures } from "@meelni/test-fixtures";
 import {
   completeFocusedPracticeAttemptWorkflow,
+  readFocusedPracticeAttemptWorkflow,
   startFocusedPracticeAttemptWorkflow,
   transitionFocusedPracticeAttemptCompletion,
   type BoundedFocusedPracticeSource,
@@ -346,6 +347,54 @@ test("account deletion beginning during resume lookup withholds the snapshot", a
     reason: "account_deletion_pending",
   });
   assert.equal(harness.repository.sourceReads, 1);
+});
+
+test("reads only an owned attempt and withholds it when deletion wins the read race", async () => {
+  const sourceFixture = source();
+  const harness = createHarness(sourceFixture);
+  const started = await startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    harness.deps
+  );
+  assert.equal(started.ok, true);
+  if (!started.ok) return;
+
+  const owned = await readFocusedPracticeAttemptWorkflow(
+    {
+      userId: sourceFixture.userId,
+      attemptId: started.attempt.attemptId,
+    },
+    harness.deps
+  );
+  assert.equal(owned.ok, true);
+
+  const crossOwner = await readFocusedPracticeAttemptWorkflow(
+    {
+      userId: "different-user",
+      attemptId: started.attempt.attemptId,
+    },
+    harness.deps
+  );
+  const missing = await readFocusedPracticeAttemptWorkflow(
+    { userId: sourceFixture.userId, attemptId: "missing-attempt" },
+    harness.deps
+  );
+  assert.deepEqual(crossOwner, { ok: false, reason: "not_found" });
+  assert.deepEqual(missing, { ok: false, reason: "not_found" });
+
+  let checks = 0;
+  harness.deps.isDeletionPending = async () => ++checks === 2;
+  const raced = await readFocusedPracticeAttemptWorkflow(
+    {
+      userId: sourceFixture.userId,
+      attemptId: started.attempt.attemptId,
+    },
+    harness.deps
+  );
+  assert.deepEqual(raced, {
+    ok: false,
+    reason: "account_deletion_pending",
+  });
 });
 
 test("repository mutations atomically fence deletion accepted after workflow checks", async () => {

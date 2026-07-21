@@ -16,6 +16,7 @@ import {
   appUser,
   creditReservation,
   feedback,
+  focusedPracticeAttempt,
   interviewSession,
   livekitReconnectRateLimit,
   sessionQuestion,
@@ -798,6 +799,11 @@ export async function deleteUserApplicationData(userId: string) {
     await tx
       .delete(creditReservation)
       .where(eq(creditReservation.userId, userId));
+    // Attempts contain candidate-authored revisions plus immutable feedback
+    // snapshots. Remove them before their source feedback/session graph.
+    await tx
+      .delete(focusedPracticeAttempt)
+      .where(eq(focusedPracticeAttempt.userId, userId));
 
     for (const { id: sessionId } of sessions) {
       await tx.delete(feedback).where(eq(feedback.sessionId, sessionId));

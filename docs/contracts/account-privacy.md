@@ -3,7 +3,7 @@
 ## Account export
 
 `GET /api/user/export` requires a server-verified authenticated user and returns
-one JSON attachment scoped to that user. The payload version is `1.1.0` and is
+one JSON attachment scoped to that user. The payload version is `1.2.0` and is
 defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
@@ -11,6 +11,8 @@ The export includes:
 - account identity, profile, preferences, and frozen legacy streak records;
 - mock interviews, selected questions, transcripts, and feedback;
 - bookmarks, practice sets, frozen legacy achievement records, and saved progress insights;
+- durable focused-practice attempts, including their versioned plan, grounded
+  source finding, and candidate-authored completion when present;
 - subscription, usage, payment summaries, and credit-ledger summaries.
 
 The exported settings object contains only current, operative account and
@@ -47,7 +49,7 @@ Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
 
 Meelni no longer writes or derives streaks and achievements in active product
-workflows. Export schema `1.1.0` continues to return any historical values so a
+workflows. Export schema `1.2.0` continues to return any historical values so a
 product retirement does not silently discard user data. The legacy columns and
 table also remain covered by account deletion. Physical removal requires a
 separate retention decision, a versioned export-contract change, and a
@@ -97,7 +99,8 @@ The unconfirmed `DELETE` method returns `405`. Provider/admin error details are
 never returned to the client or stored in the tombstone; only stable categories
 are persisted.
 
-Application cleanup removes `user_insights` before its referenced interview
+Application cleanup removes focused-practice attempts before their referenced
+feedback/session graph and removes `user_insights` before its referenced interview
 session because `user_insights.last_session_id` is a `NO ACTION` foreign key.
 The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter

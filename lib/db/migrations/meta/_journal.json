@@ -197,6 +197,13 @@
       "when": 1784498774128,
       "tag": "0027_question_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784504240468,
+      "tag": "0028_focused_practice_attempts",
+      "breakpoints": true
     }
   ]
 }
