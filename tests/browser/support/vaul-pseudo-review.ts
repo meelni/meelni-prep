@@ -693,8 +693,7 @@ function renderedPixelsAreExact(
 
 function layerBoxIsExact(
   layer: VaulPseudoSnapshot["nodes"][number]["layers"][number],
-  expected: (typeof EXPECTED_LAYER_STACKING)[VaulReviewNodeKey][number],
-  drawerHeight: number
+  expected: (typeof EXPECTED_LAYER_STACKING)[VaulReviewNodeKey][number]
 ) {
   const expectedBorderWidth = layer.isDrawer ? "1px" : "0px";
   const borderWidths = [
@@ -717,20 +716,11 @@ function layerBoxIsExact(
   ];
   const horizontalBorder = layer.isDrawer ? 2 : 0;
   const verticalBorder = layer.isDrawer ? 2 : 0;
-  const layerTop = parsePixels(layer.top);
-  const expectedTop = parsePixels(expected[3]);
-  const topIsExact =
-    layer.top === expected[3] ||
-    (layer.isDrawer &&
-      layerTop !== null &&
-      expectedTop !== null &&
-      nearlyEqual(expectedTop, 328) &&
-      nearlyEqual(layerTop, drawerHeight));
   return (
     layer.position === expected[0] &&
     layer.zIndex === expected[1] &&
     layer.display === expected[2] &&
-    topIsExact &&
+    layer.top === expected[3] &&
     layer.right === expected[4] &&
     layer.bottom === expected[5] &&
     layer.left === expected[6] &&
@@ -896,11 +886,7 @@ export function classifyVaulPseudoContrastReview({
       node.layers.some(
         (layer, layerIndex) =>
           !layerPaintIsExact(layer) ||
-          !layerBoxIsExact(
-            layer,
-            expectedLayerStacking[layerIndex],
-            drawer.clientHeight
-          ) ||
+          !layerBoxIsExact(layer, expectedLayerStacking[layerIndex]) ||
           layer.isDrawer !== (layerIndex === expectedLayerStacking.length - 1)
       ) ||
       node.layers.at(-1)?.isDrawer !== true ||
@@ -908,8 +894,7 @@ export function classifyVaulPseudoContrastReview({
       node.targetHitOwnedCount !== node.targetHitSampleCount ||
       !renderedPixelsAreExact(node, expectedKey) ||
       !node.background ||
-      !Number.isFinite(node.fontSize) ||
-      !Number.isFinite(node.fontWeight)
+      Number.isFinite(node.fontSize) !== Number.isFinite(node.fontWeight)
     ) {
       return null;
     }
@@ -951,10 +936,12 @@ export function classifyVaulPseudoContrastReview({
       return null;
     }
 
-    const requiredRatio =
-      node.fontSize >= 24 || (node.fontSize >= 18.66 && node.fontWeight >= 700)
-        ? 3
-        : 4.5;
+    const hasLargeTextEvidence =
+      Number.isFinite(node.fontSize) &&
+      Number.isFinite(node.fontWeight) &&
+      (node.fontSize >= 24 ||
+        (node.fontSize >= 18.66 && node.fontWeight >= 700));
+    const requiredRatio = hasLargeTextEvidence ? 3 : 4.5;
     const ratio = contrastRatio(foreground, background);
     if (ratio + 0.001 < requiredRatio) return null;
 
