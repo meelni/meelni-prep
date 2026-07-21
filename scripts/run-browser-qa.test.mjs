@@ -29,12 +29,19 @@ test("browser QA child environment excludes inherited provider credentials", () 
   assert.equal(environment.MEELNI_BROWSER_QA_TURBOPACK_ROOT, "/tmp/browser-qa");
   assert.match(environment.NODE_OPTIONS, /block-server-egress\.mjs/);
 
-  const buildEnvironment = createBrowserQaEnvironment(
-    { PATH: "/usr/bin", NODE_OPTIONS: "--inspect" },
+  const unsafeBuildEnvironment = createBrowserQaEnvironment(
+    { PATH: "/usr/bin", NODE_OPTIONS: "--inspect --require=/tmp/unsafe.cjs" },
     "/tmp/browser-qa",
     { blockEgress: false }
   );
-  assert.equal(buildEnvironment.NODE_OPTIONS, undefined);
+  assert.equal(unsafeBuildEnvironment.NODE_OPTIONS, undefined);
+
+  const memoryBoundBuildEnvironment = createBrowserQaEnvironment(
+    { PATH: "/usr/bin", NODE_OPTIONS: "--max-old-space-size=4096 --inspect" },
+    "/tmp/browser-qa",
+    { blockEgress: false }
+  );
+  assert.equal(memoryBoundBuildEnvironment.NODE_OPTIONS, "--max-old-space-size=4096");
 });
 
 test("browser QA sandbox omits every loadable Next environment file", () => {
