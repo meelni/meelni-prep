@@ -65,8 +65,8 @@ export async function POST(
       status: upstreamResponse.status,
       headers: responseHeaders,
     });
-  } catch (error) {
-    console.error("[StatsigProxy] Failed to proxy request", error);
+  } catch {
+    console.error("statsig_proxy_request_failed");
     return NextResponse.json(
       { error: "Failed to proxy Statsig request" },
       { status: 502 }
