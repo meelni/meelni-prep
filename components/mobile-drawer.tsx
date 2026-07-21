@@ -53,7 +53,9 @@ export function MobileDrawer() {
             <Icons.logo className="h-10 w-auto" />
             <DrawerTitle>{siteConfig.name}</DrawerTitle>
           </Link>
-          <DrawerDescription>{siteConfig.description}</DrawerDescription>
+          <DrawerDescription className="bg-background">
+            {siteConfig.description}
+          </DrawerDescription>
         </DrawerHeader>
         <DrawerFooter className="space-y-3">
           <nav
