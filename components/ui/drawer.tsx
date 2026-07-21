@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
-import { MEELNI_VAUL_RUNTIME_VERSION } from "@/lib/vaul-runtime";
 import { cn } from "@/lib/utils";
 
 const Drawer = ({
@@ -43,16 +42,21 @@ const DrawerContent = React.forwardRef<
     <DrawerOverlay />
     <DrawerPrimitive.Content
       ref={ref}
-      data-meelni-vaul-version={MEELNI_VAUL_RUNTIME_VERSION}
       className={cn(
         "bg-background fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border",
         className
       )}
+      data-meelni-drawer-content=""
       {...props}
     >
       <div className="bg-muted mx-auto mt-4 h-2 w-[100px] rounded-full" />
       {children}
     </DrawerPrimitive.Content>
+    <div
+      aria-hidden="true"
+      data-meelni-drawer-overscroll-fill=""
+      className="bg-background pointer-events-none fixed inset-x-0 top-full z-40 h-[200vh]"
+    />
   </DrawerPortal>
 ));
 DrawerContent.displayName = "DrawerContent";
