@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   classifyDatabaseBootstrapCatalog,
@@ -11,6 +12,9 @@ import {
 } from "./database-bootstrap-preflight.mjs";
 
 const productionRef = "productionproject123";
+const scriptsDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = dirname(scriptsDir);
+const tsxCli = join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
 
 test("classifies an absent ledger and exactly empty public schema as a clean bootstrap", async () => {
   const result = await inspectDatabaseBootstrapState(
@@ -105,9 +109,9 @@ test("Preview preflight rejects a Production-marked canonical env file before co
 
   try {
     const result = spawnSync(
-      "npx",
+      process.execPath,
       [
-        "tsx",
+        tsxCli,
         new URL("./database-migration-preflight.ts", import.meta.url).pathname,
       ],
       {
