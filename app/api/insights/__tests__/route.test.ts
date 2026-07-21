@@ -11,7 +11,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET } from "../route";
-import { NextRequest } from "next/server";
 
 // Mock dependencies
 vi.mock("@/lib/supabase/server", () => ({
@@ -44,8 +43,7 @@ describe("GET /api/insights", () => {
         },
       });
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       expect(response.status).toBe(401);
       expect(response.headers.get("Cache-Control")).toBe(
@@ -65,8 +63,7 @@ describe("GET /api/insights", () => {
         },
       });
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       expect(response.status).toBe(401);
     });
@@ -128,8 +125,7 @@ describe("GET /api/insights", () => {
 
       (aggregateUserInsights as any).mockResolvedValue(mockInsights);
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       expect(response.status).toBe(200);
 
@@ -188,8 +184,7 @@ describe("GET /api/insights", () => {
 
       (aggregateUserInsights as any).mockResolvedValue(emptyInsights);
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       expect(response.status).toBe(200);
       const body = await response.json();
@@ -248,8 +243,7 @@ describe("GET /api/insights", () => {
     });
 
     it("prevents shared and browser caching of user-specific insights", async () => {
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       const cacheControl = response.headers.get("Cache-Control");
       expect(cacheControl).toBe("private, no-store, max-age=0");
@@ -258,8 +252,7 @@ describe("GET /api/insights", () => {
     });
 
     it("includes response time header", async () => {
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       const responseTime = response.headers.get("X-Response-Time");
       expect(responseTime).toMatch(/\d+ms/);
@@ -283,8 +276,7 @@ describe("GET /api/insights", () => {
         new Error("Database error")
       );
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      const response = await GET(req);
+      const response = await GET();
 
       expect(response.status).toBe(500);
       expect(response.headers.get("Cache-Control")).toBe(
@@ -303,8 +295,7 @@ describe("GET /api/insights", () => {
         new Error(`Failed query; params: ${mockUserId}`)
       );
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      await GET(req);
+      await GET();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[insights] Aggregation failed",
@@ -381,8 +372,7 @@ describe("GET /api/insights", () => {
         };
       });
 
-      const req = new NextRequest("http://localhost:3000/api/insights");
-      await GET(req);
+      await GET();
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringMatching(/Slow authenticated query/)

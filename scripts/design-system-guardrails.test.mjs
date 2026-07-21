@@ -653,7 +653,7 @@ test("setup difficulty selector uses one neutral selection tone", async () => {
   const content = await readFile(file, "utf8");
   const rawDifficultyTone =
     /\b(?:from|to|bg|text|border)-(?:emerald|green|orange|red|rose|yellow)-\d+(?:\/\d+)?\b/;
-  const requiredTokens = ["bg-primary/10", "text-primary"];
+  const requiredTokens = ["bg-dashboard-panel", "text-primary"];
   const violations = requiredTokens.filter((token) => !content.includes(token));
   for (const retiredTone of [
     "bg-success",
