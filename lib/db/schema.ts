@@ -10,12 +10,19 @@ import {
   check,
   boolean,
   index,
+  unique,
   uniqueIndex,
   primaryKey,
   foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
+import type {
+  FocusedPracticeAttemptCompletion,
+  FocusedPracticeFeedbackVersionSnapshot,
+  FocusedPracticeSourceFindingSnapshot,
+  AvailableFocusedPracticePlan,
+} from "@meelni/core";
 import type {
   QuestionQualityStatus,
   QuestionSourceKind,
@@ -585,6 +592,10 @@ export const feedback = pgTable(
     dispatchLastError: text("dispatch_last_error"),
   },
   (table) => ({
+    idSessionUnique: unique("feedback_id_session_uniq").on(
+      table.id,
+      table.sessionId
+    ),
     statusCheck: check(
       "feedback_status_check",
       sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'skipped')`
@@ -644,6 +655,112 @@ export const feedback = pgTable(
       table.dispatchStatus,
       table.dispatchClaimedAt
     ),
+  })
+);
+
+// A provider-neutral, candidate-authored practice attempt derived from one
+// owned completed feedback record. The immutable source snapshot is stored in
+// full so later feedback/question changes cannot rewrite an in-flight attempt.
+// Only the server workflow mutates this table; authenticated users receive
+// owner-scoped reads through RLS and the no-store API.
+export const focusedPracticeAttempt = pgTable(
+  "focused_practice_attempt",
+  {
+    id: uuid("id").primaryKey().notNull(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    sourceSessionId: uuid("source_session_id")
+      .references(() => interviewSession.id, { onDelete: "cascade" })
+      .notNull(),
+    sourceFeedbackId: uuid("source_feedback_id")
+      .references(() => feedback.id, { onDelete: "cascade" })
+      .notNull(),
+    contractVersion: text("contract_version").notNull(),
+    lifecycleVersion: integer("lifecycle_version").default(0).notNull(),
+    state: text("state").$type<"in_progress" | "completed">().notNull(),
+    feedbackVersion: jsonb("feedback_version")
+      .$type<FocusedPracticeFeedbackVersionSnapshot>()
+      .notNull(),
+    planContractVersion: text("plan_contract_version").notNull(),
+    planTemplateVersion: text("plan_template_version").notNull(),
+    planTemplateId: text("plan_template_id").notNull(),
+    plan: jsonb("plan").$type<AvailableFocusedPracticePlan>().notNull(),
+    sourceFinding: jsonb("source_finding")
+      .$type<FocusedPracticeSourceFindingSnapshot>()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completion: jsonb("completion").$type<FocusedPracticeAttemptCompletion>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    ownerSourceContractUnique: uniqueIndex(
+      "focused_practice_attempt_owner_source_contract_idx"
+    ).on(table.userId, table.sourceSessionId, table.contractVersion),
+    ownerAttemptUnique: unique("focused_practice_attempt_id_user_uniq").on(
+      table.id,
+      table.userId
+    ),
+    sourceSessionOwnerForeignKey: foreignKey({
+      name: "focused_practice_attempt_source_session_owner_fk",
+      columns: [table.sourceSessionId, table.userId],
+      foreignColumns: [interviewSession.id, interviewSession.userId],
+    }).onDelete("cascade"),
+    sourceFeedbackSessionForeignKey: foreignKey({
+      name: "focused_practice_attempt_source_feedback_session_fk",
+      columns: [table.sourceFeedbackId, table.sourceSessionId],
+      foreignColumns: [feedback.id, feedback.sessionId],
+    }).onDelete("cascade"),
+    contractVersionCheck: check(
+      "focused_practice_attempt_contract_version_check",
+      sql`${table.contractVersion} = 'focused-practice-attempt.v1'`
+    ),
+    planVersionCheck: check(
+      "focused_practice_attempt_plan_version_check",
+      sql`${table.planContractVersion} = 'focused-practice-plan.v1' AND ${table.planTemplateVersion} = 'focused-practice-templates.v1' AND length(trim(${table.planTemplateId})) > 0`
+    ),
+    snapshotVersionCheck: check(
+      "focused_practice_attempt_snapshot_version_check",
+      sql`jsonb_typeof(${table.feedbackVersion}) = 'object' AND
+        ${table.feedbackVersion}->>'schemaVersion' = 'feedback.v2' AND
+        ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.v2' AND
+        ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v2' AND
+        ${table.feedbackVersion}->>'evaluationState' IN ('full', 'partial') AND
+        jsonb_typeof(${table.plan}) = 'object' AND
+        ${table.plan}->>'state' = 'available' AND
+        ${table.plan}->>'contractVersion' = ${table.planContractVersion} AND
+        ${table.plan}->>'templateVersion' = ${table.planTemplateVersion} AND
+        ${table.plan}->>'templateId' = ${table.planTemplateId} AND
+        jsonb_typeof(${table.sourceFinding}) = 'object' AND
+        octet_length(${table.feedbackVersion}::text) <= 65536 AND
+        octet_length(${table.plan}::text) <= 65536 AND
+        octet_length(${table.sourceFinding}::text) <= 65536 AND
+        (${table.completion} IS NULL OR (jsonb_typeof(${table.completion}) = 'object' AND octet_length(${table.completion}::text) <= 65536))`
+    ),
+    lifecycleCheck: check(
+      "focused_practice_attempt_lifecycle_check",
+      sql`(
+        ${table.state} = 'in_progress' AND
+        ${table.lifecycleVersion} = 0 AND
+        ${table.completedAt} IS NULL AND
+        ${table.completion} IS NULL
+      ) OR (
+        ${table.state} = 'completed' AND
+        ${table.lifecycleVersion} = 1 AND
+        ${table.completedAt} IS NOT NULL AND
+        ${table.completedAt} >= ${table.startedAt} AND
+        ${table.completion} IS NOT NULL
+      )`
+    ),
+    ownerStateUpdatedIdx: index(
+      "focused_practice_attempt_owner_state_updated_idx"
+    ).on(table.userId, table.state, table.updatedAt),
   })
 );
 
@@ -1090,6 +1207,24 @@ export const feedbackRelations = relations(feedback, ({ one }) => ({
   }),
 }));
 
+export const focusedPracticeAttemptRelations = relations(
+  focusedPracticeAttempt,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [focusedPracticeAttempt.userId],
+      references: [appUser.id],
+    }),
+    sourceSession: one(interviewSession, {
+      fields: [focusedPracticeAttempt.sourceSessionId],
+      references: [interviewSession.id],
+    }),
+    sourceFeedback: one(feedback, {
+      fields: [focusedPracticeAttempt.sourceFeedbackId],
+      references: [feedback.id],
+    }),
+  })
+);
+
 export const transcriptTurnRelations = relations(transcriptTurn, ({ one }) => ({
   session: one(interviewSession, {
     fields: [transcriptTurn.sessionId],
@@ -1140,6 +1275,7 @@ export const transcriptRuntimeWriterRelations = relations(
 
 export const appUserRelations = relations(appUser, ({ many, one }) => ({
   sessions: many(interviewSession),
+  focusedPracticeAttempts: many(focusedPracticeAttempt),
   settings: one(userSettings, {
     fields: [appUser.id],
     references: [userSettings.userId],
