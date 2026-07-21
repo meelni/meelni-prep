@@ -444,12 +444,16 @@ async function verifyVaulPseudoContrastIncomplete({
   context,
   finding,
   page,
+  surfaceId,
   targetId,
+  testInfo,
 }: {
   context: VaulPseudoReviewContext;
   finding: VaulAxeFinding;
   page: Page;
+  surfaceId: string;
   targetId: string;
+  testInfo: TestInfo;
 }) {
   const selectors = extractVaulPseudoReviewSelectors(
     finding,
@@ -818,6 +822,73 @@ async function verifyVaulPseudoContrastIncomplete({
     snapshot: snapshotWithRenderedPixels,
     targetId,
   });
+  if (!review) {
+    await testInfo.attach(`vaul-pseudo-review-diagnostic-${surfaceId}`, {
+      body: Buffer.from(
+        JSON.stringify(
+          {
+            context,
+            finding: {
+              impact: finding.impact,
+              nodes: finding.nodes.map((node) => ({
+                failureSummary: node.failureSummary,
+                target: node.target,
+              })),
+              rule: finding.id,
+            },
+            selectors,
+            snapshot: {
+              drawer: snapshotWithRenderedPixels.drawer,
+              pseudo: snapshotWithRenderedPixels.pseudo,
+              nodes: snapshotWithRenderedPixels.nodes.map((node) => ({
+                approvedMatchCount: node.approvedMatchCount,
+                approvedMatchesTarget: node.approvedMatchesTarget,
+                approvedSelector: node.approvedSelector,
+                background: node.background,
+                foreground: node.foreground,
+                insideDrawer: node.insideDrawer,
+                layerCount: node.layers.length,
+                layers: node.layers.map((layer) => ({
+                  backgroundColor: layer.backgroundColor,
+                  borderBottomWidth: layer.borderBottomWidth,
+                  borderLeftWidth: layer.borderLeftWidth,
+                  borderRightWidth: layer.borderRightWidth,
+                  borderTopWidth: layer.borderTopWidth,
+                  boxSizing: layer.boxSizing,
+                  display: layer.display,
+                  isDrawer: layer.isDrawer,
+                  position: layer.position,
+                  rect: layer.rect,
+                  zIndex: layer.zIndex,
+                })),
+                matchCount: node.matchCount,
+                renderedCoverage: {
+                  background:
+                    node.renderedPixels.backgroundPixelCount /
+                    node.renderedPixels.totalPixelCount,
+                  foreground:
+                    node.renderedPixels.foregroundPixelCount /
+                    node.renderedPixels.totalPixelCount,
+                  unexpected:
+                    node.renderedPixels.unexpectedPixelCount /
+                    node.renderedPixels.totalPixelCount,
+                },
+                renderedPixels: node.renderedPixels,
+                reviewKey: node.reviewKey,
+                selector: node.selector,
+                targetHitOwnedCount: node.targetHitOwnedCount,
+                targetHitSampleCount: node.targetHitSampleCount,
+              })),
+            },
+            targetId,
+          },
+          null,
+          2
+        )
+      ),
+      contentType: "application/json",
+    });
+  }
   return review;
 }
 
@@ -869,7 +940,9 @@ export async function assertPopupAccessibility(
             },
             finding,
             page,
+            surfaceId,
             targetId,
+            testInfo,
           })
         )
       )
