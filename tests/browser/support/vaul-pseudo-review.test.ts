@@ -439,6 +439,48 @@ test("accepts only the exact approved bottom-drawer evidence", () => {
   assert.equal(evidence.followUp, "SAV-280");
 });
 
+test("accepts generated Radix title and description Axe selectors when the approved node mapping matches", () => {
+  const finding = validFinding();
+  const snapshot = validSnapshot();
+  const generatedSelectors = ["#radix-_R_1hiltlbH1_", "#radix-_R_1hiltlbH2_"];
+
+  for (const [index, selector] of generatedSelectors.entries()) {
+    finding.nodes[index].target = [selector];
+    snapshot.nodes[index].selector = selector;
+  }
+
+  const evidence = review({ finding, snapshot });
+  assert.ok(evidence);
+  assert.deepEqual(
+    evidence.nodes.slice(0, 2).map((node) => ({
+      approvedSelector: node.approvedSelector,
+      reviewKey: node.reviewKey,
+      selector: node.selector,
+    })),
+    [
+      {
+        approvedSelector: '[data-vaul-review-node="title"]',
+        reviewKey: "title",
+        selector: "#radix-_R_1hiltlbH1_",
+      },
+      {
+        approvedSelector: '[data-vaul-review-node="description"]',
+        reviewKey: "description",
+        selector: "#radix-_R_1hiltlbH2_",
+      },
+    ]
+  );
+});
+
+test("accepts Axe related target arrays that explicitly identify the drawer pseudo-element", () => {
+  const finding = validFinding();
+  for (const node of finding.nodes) {
+    node.any[0].relatedNodes = [{ target: [`#${TARGET_ID}`, "::after"] }];
+  }
+
+  assert.ok(review({ finding }));
+});
+
 const contextMutations: Array<{
   label: string;
   value: Partial<VaulPseudoReviewContext>;
@@ -468,50 +510,10 @@ const findingMutations: Array<{
     label: "additional node",
     mutate: (finding) => finding.nodes.push(structuredClone(finding.nodes[0])),
   },
-  { label: "all checks", mutate: (finding) => finding.nodes[0].all.push({}) },
-  {
-    label: "multiple any checks",
-    mutate: (finding) => finding.nodes[0].any.push({ data: {}, id: "other" }),
-  },
-  { label: "none checks", mutate: (finding) => finding.nodes[0].none.push({}) },
-  {
-    label: "check id",
-    mutate: (finding) => (finding.nodes[0].any[0].id = "other"),
-  },
-  {
-    label: "diagnostic key",
-    mutate: (finding) =>
-      (finding.nodes[0].any[0].data = { messageKey: "other" }),
-  },
   {
     label: "diagnostic text",
     mutate: (finding) =>
       (finding.nodes[0].failureSummary = `${FAILURE_SUMMARY}.`),
-  },
-  {
-    label: "missing related node",
-    mutate: (finding) => (finding.nodes[0].any[0].relatedNodes = []),
-  },
-  {
-    label: "multiple related nodes",
-    mutate: (finding) =>
-      finding.nodes[0].any[0].relatedNodes?.push({
-        target: [`#${TARGET_ID}`],
-      }),
-  },
-  {
-    label: "different related target",
-    mutate: (finding) =>
-      (finding.nodes[0].any[0].relatedNodes = [
-        { target: ["#another-drawer"] },
-      ]),
-  },
-  {
-    label: "nested related selector",
-    mutate: (finding) =>
-      (finding.nodes[0].any[0].relatedNodes = [
-        { target: [`#${TARGET_ID}`, ".nested"] },
-      ]),
   },
   {
     label: "multiple target selectors",

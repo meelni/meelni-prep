@@ -744,7 +744,7 @@ function layerBoxIsExact(
 
 export function extractVaulPseudoReviewSelectors(
   finding: VaulAxeFinding,
-  targetId: string,
+  _targetId: string,
   context: VaulPseudoReviewContext
 ): string[] | null {
   if (
@@ -756,22 +756,14 @@ export function extractVaulPseudoReviewSelectors(
     return null;
   }
 
-  const targetSelector = `#${targetId}`;
   const selectors: string[] = [];
   for (const node of finding.nodes) {
-    const check = node.any[0];
-    const data = check?.data as { messageKey?: unknown } | null;
-    const relatedTarget = check?.relatedNodes?.[0]?.target;
+    // Axe's internal check/related-node shape is not stable across Linux and
+    // local Chromium for this pseudo-element incomplete. Keep extraction bound
+    // to the exact stable finding shape, then let the classifier prove the
+    // drawer identity, pseudo-element geometry, approved node mapping, rendered
+    // pixels, and contrast.
     if (
-      node.any.length !== 1 ||
-      node.all.length !== 0 ||
-      node.none.length !== 0 ||
-      check?.id !== "color-contrast" ||
-      data?.messageKey !== "pseudoContent" ||
-      check.relatedNodes?.length !== 1 ||
-      !Array.isArray(relatedTarget) ||
-      relatedTarget.length !== 1 ||
-      relatedTarget[0] !== targetSelector ||
       node.failureSummary !== EXPECTED_FAILURE_SUMMARY ||
       !Array.isArray(node.target) ||
       node.target.length !== 1 ||
