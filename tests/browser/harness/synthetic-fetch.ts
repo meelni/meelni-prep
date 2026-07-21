@@ -1,6 +1,12 @@
-import { publicQuestions, transcriptTurns } from "./fixtures";
+import {
+  comparisonAttempts,
+  comparisonFor,
+  publicQuestions,
+  transcriptTurns,
+} from "./fixtures";
 
 const nativeFetch = window.fetch.bind(window);
+let comparisonRequests = 0;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -60,6 +66,28 @@ export function installSyntheticFetch() {
           offset: 0,
           hasMore: false,
         },
+      });
+    }
+    if (
+      url.pathname === "/api/feedback/browser-qa-session/attempts" &&
+      (!init?.method || init.method === "GET")
+    ) {
+      return json({
+        attempts: comparisonAttempts,
+        roundType: "product_sense",
+      });
+    }
+    if (url.pathname === "/api/feedback/compare" && init?.method === "POST") {
+      comparisonRequests += 1;
+      if (comparisonRequests === 1) {
+        return json({ error: "synthetic_comparison_unavailable" }, 503);
+      }
+      const body =
+        typeof init.body === "string"
+          ? (JSON.parse(init.body) as { sessionId1?: string })
+          : {};
+      return json({
+        comparison: comparisonFor(body.sessionId1 ?? ""),
       });
     }
     if (url.pathname.endsWith("/transcript")) {

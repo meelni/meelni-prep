@@ -587,6 +587,10 @@ test("authenticated product routes follow the product container taxonomy", async
     "app/feedback/[sessionId]/compare/page.tsx",
     "utf8"
   );
+  const feedbackComparisonReview = await readFile(
+    "components/feedback/feedback-comparison-review.tsx",
+    "utf8"
+  );
   const feedbackReview = await readFile(
     "components/feedback/feedback-review.tsx",
     "utf8"
@@ -647,9 +651,14 @@ test("authenticated product routes follow the product container taxonomy", async
   if (!feedbackResultPage.includes("FeedbackReview")) {
     violations.push("app/feedback/[sessionId]/page.tsx:FeedbackReview");
   }
-  if (!feedbackComparePage.includes("FeedbackReviewShell")) {
+  if (!feedbackComparePage.includes("FeedbackComparisonReview")) {
     violations.push(
-      "app/feedback/[sessionId]/compare/page.tsx:FeedbackReviewShell"
+      "app/feedback/[sessionId]/compare/page.tsx:FeedbackComparisonReview"
+    );
+  }
+  if (!feedbackComparisonReview.includes("FeedbackReviewShell")) {
+    violations.push(
+      "components/feedback/feedback-comparison-review.tsx:FeedbackReviewShell"
     );
   }
   if (!feedbackReview.includes("FeedbackStatusPage")) {
@@ -2502,7 +2511,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
       requiredImports: ["FeedbackSectionCard", "FeedbackActionItem"],
     },
     {
-      file: "app/feedback/[sessionId]/compare/page.tsx",
+      file: "components/feedback/feedback-comparison-review.tsx",
       requiredImports: [
         "FeedbackReviewShell",
         "FeedbackSectionCard",
@@ -2557,7 +2566,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     }
     if (
       [
-        "app/feedback/[sessionId]/compare/page.tsx",
+        "components/feedback/feedback-comparison-review.tsx",
         "components/feedback/feedback-completed-review.tsx",
         "components/feedback/feedback-lifecycle-status.tsx",
       ].includes(file) &&
@@ -2567,7 +2576,7 @@ test("priority feedback surfaces use shared feedback primitives", async () => {
     }
     if (
       [
-        "app/feedback/[sessionId]/compare/page.tsx",
+        "components/feedback/feedback-comparison-review.tsx",
         "components/feedback/feedback-completed-review.tsx",
         "components/feedback/feedback-lifecycle-status.tsx",
       ].includes(file) &&

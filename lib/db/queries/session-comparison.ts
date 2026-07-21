@@ -5,7 +5,7 @@
 import { db } from "@/lib/db";
 import { interviewSession, feedback, transcriptTurn } from "@/lib/db/schema";
 import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNotNull } from "drizzle-orm";
 import {
   SessionAttempt,
   SessionComparisonDetail,
@@ -42,7 +42,8 @@ export async function getSessionsByInterviewType(
     .where(
       and(
         eq(interviewSession.userId, userId),
-        eq(interviewSession.roundType, roundType)
+        eq(interviewSession.roundType, roundType),
+        isNotNull(interviewSession.startedAt)
       )
     )
     .orderBy(desc(interviewSession.startedAt))
@@ -50,7 +51,7 @@ export async function getSessionsByInterviewType(
 
   return sessions.map((session) => ({
     id: session.id,
-    startedAt: session.startedAt?.toISOString() || "",
+    startedAt: session.startedAt!.toISOString(),
     endedAt: session.endedAt?.toISOString() || null,
     roundType: session.roundType,
     mode: session.mode,
