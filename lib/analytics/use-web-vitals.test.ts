@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { EventProperties } from "./types";
@@ -124,4 +125,15 @@ test("disposing cancels the pending aggregate without emitting", () => {
   assert.equal(canceled.length, 1);
   reporter.record({ name: "FCP", value: 600 });
   assert.deepEqual(events, []);
+});
+
+test("web-vitals reporting stays bundled and never injects the legacy CDN script", () => {
+  const source = readFileSync(new URL("./use-web-vitals.ts", import.meta.url), {
+    encoding: "utf8",
+  });
+
+  assert.equal(source.includes("unpkg.com/web-vitals"), false);
+  assert.equal(source.includes("web-vitals.iife"), false);
+  assert.equal(/createElement\((["'])script\1\)/.test(source), false);
+  assert.match(source, /from "next\/web-vitals"/);
 });
