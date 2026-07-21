@@ -386,8 +386,8 @@ export async function recordQuestionUsage(
       sessionId,
       questionId,
     });
-  } catch (error) {
+  } catch {
     // Ignore duplicate errors (question already recorded for this session)
-    console.error("Error recording question usage:", error);
+    console.error("question_usage_recording_failed");
   }
 }

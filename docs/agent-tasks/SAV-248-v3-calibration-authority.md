@@ -21,13 +21,14 @@
 
 ## Scope
 
-- In scope: A new non-reusable run ID and protected ledger ref, current official pricing evidence, an exact deterministic plan below $3, zero SDK retries, one physical boundary per reservation, raw synthetic-output capture outside Git, two independent hash-bound semantic reviews, sanitized public reports, and terminal cleanup.
+- In scope: A new non-reusable run ID and protected ledger ref, current official pricing evidence, an exact deterministic plan below $3, an external exact-plan owner-authorization handoff, zero SDK retries, one physical boundary per reservation, raw synthetic-output capture outside Git, two independent hash-bound semantic reviews, sanitized public reports, and terminal cleanup.
 - Out of scope: Customer transcripts, Production data, Production mutations, feature-flag changes, launch GO/NO-GO, reusing or rewriting v1/v2 authorities, automatic retries, and retaining raw provider output after terminal review.
 - Authority: No fresh v3 spend authority currently exists. The earlier ≤96/$3 approval was consumed by v1/v2. The proposal records the intended maximums, but the runtime must stop before readiness or credential delivery until the product owner approves one exact post-merge source commit and freshly priced plan.
 
 ## Technical Plan
 
 - Version a new immutable spend-authorization and Git activation contract rather than changing the consumed v1/v2 refs.
+- Verify a short-lived, externally stored, Ed25519-signed human product-owner envelope before readiness. Bind it to the exact source commit, complete plan hash, planned call/attempt count, worst-case spend, synthetic-only data policy, and non-reusability of v1/v2. Keep the private signing key outside Git and admit only reviewed public keys from the source-bound registry.
 - Bind the exact model snapshot, official endpoint, default service tier, pricing hash, approved corpus, adjudication approval, prompt/schema/request-policy versions, final source commit, and complete case/run plan.
 - Integrate the SAV-252 private capture capability into the paid evaluator boundary so each decoded provider message-content byte sequence is captured before JSON parsing and is never written to logs or public evidence.
 - Require complete capture finalization, two decision-only panels, and separately operator-authored trusted execution authority before publishing a sanitized semantic report; bind legitimate alternatives to the exact automated mismatches, sync terminal v9 evidence, verify it, and only then delete the private capture.
@@ -38,7 +39,7 @@
 
 - Provider-free: reproducible runtime bundle verification, calibration preflight, deterministic self-test, exact plan/authorization tests, pricing freshness tests, GitHub authority mutation tests, private capture tests, scorer privacy tests, typechecks, lint/format, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when supported.
 - External read-only: verify canonical repository and owner IDs, current rulesets/ref state, GitHub viewer identity, and official OpenAI pricing without exposing credentials.
-- Paid execution: not authorized by this change. After all provider-free and hosted checks pass, refresh pricing and request fresh exact owner authorization for one merged source commit and regenerated plan; stop before any call that could exceed 96 attempts or $3.
+- Paid execution: not authorized by this change. The checked-in owner-key registry is intentionally empty, current pricing evidence is stale, and no signed v3 artifact exists. After all provider-free and hosted checks pass, enroll only the owner's reviewed public key, refresh pricing, regenerate the plan for one exact merged source commit, and obtain the owner's signature; stop before any call that could exceed 96 attempts or $3.
 
 ## Rollout
 

@@ -9,8 +9,8 @@ const REF_PATTERN = /^(?!\/)(?!.*(?:\.\.|\/\/))[A-Za-z0-9._/-]+$/;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const EVIDENCE_PATTERN = /<!--\s*meelni-stack-evidence\s*\n([\s\S]*?)\n\s*-->/m;
 
-export function loadStackManifest(path = DEFAULT_MANIFEST) {
-  const manifest = JSON.parse(readFileSync(path, "utf8"));
+export function parseStackManifest(content) {
+  const manifest = JSON.parse(content);
   if (
     manifest.version !== 2 ||
     !REPOSITORY_PATTERN.test(manifest.repository ?? "") ||
@@ -40,6 +40,10 @@ export function loadStackManifest(path = DEFAULT_MANIFEST) {
     seenPrs.add(entry.pr);
   }
   return manifest;
+}
+
+export function loadStackManifest(path = DEFAULT_MANIFEST) {
+  return parseStackManifest(readFileSync(path, "utf8"));
 }
 
 export function extractStackEvidence(content) {
