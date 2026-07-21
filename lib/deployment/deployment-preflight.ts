@@ -16,6 +16,7 @@ import {
   readSupabaseJwtClaims,
   supabaseJwtMatchesIdentity,
 } from "@/lib/supabase/supabase-jwt.mjs";
+import { isValidPublicDemoSecret } from "@/lib/security/public-demo-secret";
 export type DeploymentTarget = "preview" | "production";
 
 export const PRODUCTION_LIVEKIT_PROJECT_HOST = "meelni-ek4vaisp.livekit.cloud";
@@ -713,6 +714,7 @@ function validateLiveKitEnvironment({
   const required = [
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "DEMO_ABUSE_HMAC_SECRET",
     "LIVEKIT_INTERVIEW_AGENT_NAME",
     "LIVEKIT_DEMO_AGENT_NAME",
     ...INTERVIEW_RUNTIME_STRING_ENV_NAMES,
@@ -721,6 +723,13 @@ function validateLiveKitEnvironment({
   const complete = required
     .map((name) => requireValue(env, name, "livekit", failures))
     .every(Boolean);
+  const publicDemoSecret = normalizedValue(env.DEMO_ABUSE_HMAC_SECRET);
+  validateFormat({
+    area: "livekit",
+    check: "DEMO_ABUSE_HMAC_SECRET",
+    failures,
+    ok: !publicDemoSecret || isValidPublicDemoSecret(publicDemoSecret),
+  });
   for (const name of [
     "LIVEKIT_INTERVIEW_AGENT_NAME",
     "LIVEKIT_DEMO_AGENT_NAME",

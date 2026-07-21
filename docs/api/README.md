@@ -707,47 +707,50 @@ Issues a short-lived JWT access token for reconnecting to an existing, active in
 
 ### POST /api/livekit/demo-token
 
-Generates LiveKit access tokens specifically for 60-second demo conversations on the landing page. Creates ephemeral rooms that auto-delete after 2 minutes and dispatches a Cloud-hosted demo agent to conduct a brief product demo.
+Authorizes a server-bounded two-minute voice preview on the landing page. A first accepted request creates an ephemeral LiveKit room and dispatches the dedicated demo agent; one server-authorized recovery request may issue a second token for that same room without redispatching the agent.
 
-**Authentication**: Public (no authentication required - for landing page demo)
+**Authentication**: Public, with signed HttpOnly device/session cookies and shared server-side abuse limits
 
 **Request Body**:
 
 ```json
-{
-  "participantName": "Guest"
-}
+{}
 ```
 
 **Request Parameters**:
 
-| Field             | Type   | Required | Default | Description                                      |
-| ----------------- | ------ | -------- | ------- | ------------------------------------------------ |
-| `participantName` | string | ✅ Yes   | -       | Display name for the participant (e.g., "Guest") |
+No caller-supplied identity, room name, or dispatch identifier is accepted. The request must be same-origin JSON and its body must be exactly `{}`.
 
 **Response** (200 OK):
 
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "url": "wss://meelni-ek4vaisp.livekit.cloud",
-  "roomName": "demo-1699999999999-abc123"
+  "url": "wss://example.livekit.cloud",
+  "durationSeconds": 120
 }
 ```
 
 **Implementation Details**:
 
-- Room naming format: `demo-{timestamp}-{random}` for tracking and analytics
-- Room lifetime: Auto-deletes 2 minutes after last participant leaves
+- Room identity: Deterministic, opaque, and server-derived; never returned to the browser
+- Browser identity: A first zero-cost `409 demo_identity_initialized` handshake commits signed cookies before any database reservation or provider call; the client then repeats the empty request once
+- Session deadline: Absolute server-authored deadline, 2 minutes after authorization
+- Empty/departure cleanup: 30 seconds empty; 5 seconds after participant departure
 - Max participants: 2 (user + demo agent only)
-- Agent: Cloud-hosted demo agent (CA_Wp8bi3bRroE2) explicitly dispatched via AgentDispatchClient
-- Agent behavior: 60-second product demo with one quick question and feedback
-- Token TTL: 2 minutes (matches demo duration)
+- Agent: Dedicated Cloud-hosted demo agent, explicitly dispatched once
+- Agent behavior: One PM practice question with brief feedback, bounded by the server deadline
+- Token TTL: Every initial or recovery token expires at the same persisted absolute session deadline; recovery receives only the remaining time, and issuance/finalization fails closed unless at least five seconds remain for delivery
 
 **Errors**:
 
-- `400 Bad Request` - Missing `participantName`
-- `500 Internal Server Error` - LiveKit credentials not configured, room creation failed, or agent dispatch failed
+- `403 Forbidden` - Cross-site request rejected
+- `404 Not Found` - Public voice preview disabled by the relaunch gate
+- `400 Bad Request` - Body is malformed JSON or is not exactly `{}`
+- `409 Conflict` - Signed identity was initialized without provider work, or start is already in progress
+- `415 Unsupported Media Type` - Request is not `application/json`
+- `429 Too Many Requests` - A shared limit was reached; response includes `Retry-After`
+- `503 Service Unavailable` - Authorization, configuration, or LiveKit is unavailable
 
 ---
 

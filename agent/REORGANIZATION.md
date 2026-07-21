@@ -50,7 +50,7 @@ agent/
 
 ```
 agent/
-├── demo/                       # 5-minute demo agent
+├── demo/                       # Bounded voice-preview agent
 │   ├── agent.py                # Demo entrypoint
 │   ├── Dockerfile              # Demo Docker config
 │   ├── .dockerignore           # Demo ignore rules

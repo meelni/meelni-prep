@@ -31,10 +31,11 @@
 |    22 | `0022_server_owned_billing_privileges`   |
 |    23 | `0023_explicit_analytics_consent`        |
 |    24 | `0024_runtime_settlement_reconciliation` |
+|    25 | `0025_public_demo_limits`                |
 
 <!-- migration-journal:end -->
 
-This twenty-five-entry inventory is generated from the same ordered contract as
+This twenty-six-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -274,3 +275,13 @@ The historical path is allowed only when settlement rows, canonical version-2
 turns, and interruption markers are all empty. It then recreates the canonical
 writer-generation contract while preserving generic historical transcript
 rows. Any mixed, nonempty, or unknown shape aborts atomically.
+
+## Public voice preview limits
+
+Migration `0025_public_demo_limits` adds the shared Postgres authority for the
+anonymous two-minute voice preview. It stores only HMAC-derived IP/device
+identifiers, serializes global, IP, device, and signed-session admission, and
+reserves the single recovery token before signing. Identifier rows are created
+only for accepted reservations, so denied traffic cannot manufacture unbounded
+limiter rows. The service role is the only table/function caller, and expired
+pseudonymous data is eligible for pruning after 48 hours.

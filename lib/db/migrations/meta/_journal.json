@@ -176,6 +176,13 @@
       "when": 1784347830003,
       "tag": "0024_runtime_settlement_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784347831000,
+      "tag": "0025_public_demo_limits",
+      "breakpoints": true
     }
   ]
 }
