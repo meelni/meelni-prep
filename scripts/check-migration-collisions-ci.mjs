@@ -516,6 +516,7 @@ export async function auditOpenMigrationPullRequests({
   const { pullRequests, inventories, errors } = inventoryResult;
   const inventorySnapshot =
     inventoryResult.snapshot ?? pullRequests.map(pullRequestIdentity);
+  const fullSweep = !Number.isInteger(triggeringPrNumber);
 
   let results;
   if (errors.length > 0) {
@@ -534,6 +535,7 @@ export async function auditOpenMigrationPullRequests({
       .filter((pullRequest) => {
         const partial = inventoryByPr.get(pullRequest.number);
         return (
+          fullSweep ||
           failedPrs.has(pullRequest.number) ||
           partial?.migrations.length > 0 ||
           partial?.violations?.length > 0 ||
@@ -559,6 +561,7 @@ export async function auditOpenMigrationPullRequests({
     results = evaluateMigrationInventories(inventories)
       .filter(
         (result) =>
+          fullSweep ||
           result.migrations.length > 0 ||
           result.violations.length > 0 ||
           result.pr === triggeringPrNumber
