@@ -9,12 +9,6 @@
       "parentRef": "codex/sav-264-preview-runtime-reconciliation"
     },
     {
-      "pr": 332,
-      "parentPr": 324,
-      "headRef": "codex/sav-211-feedback-accessibility-reconvergence",
-      "parentRef": "codex/sav-180-consent-reconvergence"
-    },
-    {
       "pr": 349,
       "parentPr": 330,
       "headRef": "codex/sav-268-preview-lineage-reconciliation",
@@ -25,12 +19,6 @@
       "parentPr": 349,
       "headRef": "codex/sav-204-question-provenance-current",
       "parentRef": "codex/sav-268-preview-lineage-reconciliation"
-    },
-    {
-      "pr": 365,
-      "parentPr": 363,
-      "headRef": "codex/sav-216-health-evidence",
-      "parentRef": "codex/sav-215-close-raw-server-sinks"
     },
     {
       "pr": 366,
