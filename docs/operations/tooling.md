@@ -313,12 +313,13 @@ enforceable classic-protection context.
 The inventory fails closed. A malformed response, incomplete PR/file page,
 moving PR head, GitHub API error, or Check Run error prevents the workflow from
 claiming that collision absence was proved. When the open PR list is known, an
-incomplete file inventory publishes failure to every known migration or
-immutable-history owner, every PR whose diff failed, and the triggering PR. Any
-missing diff could collide with a known migration owner. On a PR event where
-the list itself fails, the triggering exact head receives failure. The combined
-full-revalidation job also fails so an operator cannot mistake missing checks
-for a clean inventory.
+incomplete file inventory publishes failure to every known open
+same-repository PR during a full sweep. Event-scoped runs publish failure to
+every known migration or immutable-history owner, every PR whose diff failed,
+and the triggering PR. Any missing diff could collide with a known migration
+owner. On a PR event where the list itself fails, the triggering exact head
+receives failure. The combined full-revalidation job also fails so an operator
+cannot mistake missing checks for a clean inventory.
 
 GitHub caps the pull-request files API at 3,000 files. Reaching that ceiling is
 treated as incomplete rather than assuming the unseen tail has no migration.
@@ -328,9 +329,10 @@ ready-for-review events refresh affected owners immediately. Draft branch/base
 movement uses one combined audit; draft body/title edits allocate no runner.
 Filtered trusted-checker or manifest pushes to `main` and manual dispatch are the
 recovery paths for default-branch movement or an intentionally requested full
-sweep. Full sweeps publish only migration or immutable-history owners, not every
-open PR, and reuse the latest completed Check Run when its exact head, GitHub
-Actions app identity, conclusion, and summary are unchanged.
+sweep. Full sweeps publish every open same-repository PR so a current neutral
+result replaces stale non-owner evidence. They reuse the latest completed Check
+Run when its exact head, GitHub Actions app identity, conclusion, and summary
+are unchanged.
 
 Event-driven, filtered default-branch, and manual migration publishers share the
 global

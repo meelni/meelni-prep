@@ -55,6 +55,7 @@ describe("POST /api/livekit/demo-token", () => {
     vi.spyOn(Date, "now").mockReturnValue(1_782_600_000_000);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
   it("rejects a disabled relaunch before any LiveKit provider work", async () => {
@@ -107,6 +108,7 @@ describe("POST /api/livekit/demo-token", () => {
       "demo-1782600000000-i",
       "meelni-preview-demo"
     );
+    expect(console.log).not.toHaveBeenCalled();
   });
 
   it("fails closed when demo and interview share one dispatch name", async () => {
@@ -147,4 +149,66 @@ describe("POST /api/livekit/demo-token", () => {
     expect(liveKitMocks.createRoom).not.toHaveBeenCalled();
     expect(liveKitMocks.createDispatch).not.toHaveBeenCalled();
   });
+
+  it("keeps LiveKit provider failures out of server logs", async () => {
+    const secret = "provider-secret-customer@example.com";
+    liveKitMocks.createRoom.mockRejectedValueOnce(new Error(secret));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Failed to create demo room",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "livekit_demo_room_creation_failed"
+    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
+      secret
+    );
+  });
+
+  it("keeps dispatch failures out of server logs", async () => {
+    const secret = "dispatch-secret-customer@example.com";
+    liveKitMocks.createDispatch.mockRejectedValueOnce(new Error(secret));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Failed to dispatch demo agent",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "livekit_demo_agent_dispatch_failed"
+    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
+      secret
+    );
+  });
+
+  it("keeps token-generation failures out of server logs", async () => {
+    const secret = "token-secret-customer@example.com";
+    liveKitMocks.toJwt.mockRejectedValueOnce(new Error(secret));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "Failed to generate demo token",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "livekit_demo_token_generation_failed"
+    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
+      secret
+    );
+  });
 });
+
+function request() {
+  return new NextRequest("http://localhost/api/livekit/demo-token", {
+    method: "POST",
+    body: JSON.stringify({ participantName: "Preview Guest" }),
+    headers: { "content-type": "application/json" },
+  });
+}

@@ -33,8 +33,8 @@ export async function GET() {
       .orderBy(desc(practiceSet.updatedAt));
 
     return NextResponse.json({ sets });
-  } catch (error) {
-    console.error("Error fetching practice sets:", error);
+  } catch {
+    console.error("practice_set_list_read_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
       .returning();
 
     return NextResponse.json({ set: newSet }, { status: 201 });
-  } catch (error) {
-    console.error("Error creating practice set:", error);
+  } catch {
+    console.error("practice_set_create_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

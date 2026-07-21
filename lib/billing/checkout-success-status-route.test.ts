@@ -7,7 +7,7 @@ import {
   handleCheckoutStatus,
   resolveCheckoutStatusAuthentication,
   type CheckoutStatusDependencies,
-} from "@/app/api/checkout/status/route";
+} from "./checkout-success-status-route";
 import {
   CHECKOUT_RETURN_COOKIE_NAMES,
   checkoutReturnCookieName,
