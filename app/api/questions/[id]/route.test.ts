@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/db/questions", () => ({ getQuestionById: vi.fn() }));
+vi.mock("@/lib/db/questions", () => ({ getActiveQuestionById: vi.fn() }));
 
-import { getQuestionById } from "@/lib/db/questions";
+import { getActiveQuestionById } from "@/lib/db/questions";
 
 import { GET } from "./route";
 
@@ -13,7 +13,7 @@ describe("GET /api/questions/[id]", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns an active selected question", async () => {
-    vi.mocked(getQuestionById).mockResolvedValue({
+    vi.mocked(getActiveQuestionById).mockResolvedValue({
       id: QUESTION_ID,
       questionText: "How would you improve a product?",
       questionType: "Product Sense",
@@ -47,7 +47,7 @@ describe("GET /api/questions/[id]", () => {
       },
       null,
     ]) {
-      vi.mocked(getQuestionById).mockResolvedValueOnce(question);
+      vi.mocked(getActiveQuestionById).mockResolvedValueOnce(question);
       const response = await GET(
         new NextRequest(`http://localhost/api/questions/${QUESTION_ID}`),
         { params: Promise.resolve({ id: QUESTION_ID }) }
@@ -65,6 +65,6 @@ describe("GET /api/questions/[id]", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(getQuestionById).not.toHaveBeenCalled();
+    expect(getActiveQuestionById).not.toHaveBeenCalled();
   });
 });

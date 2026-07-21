@@ -23,9 +23,9 @@ Unknown types are rejected at the API boundary or skipped by ingestion; they are
 
 ## List and pagination semantics
 
-`GET /api/questions` applies round and `activeOnly` filters before `limit` and `offset`. The response has these invariants:
+`GET /api/questions` is always the active published projection. The retired `activeOnly` query parameter is ignored for backward compatibility and can never opt a public caller into inactive history. Round and search filters apply before `limit` and `offset`. The response has these invariants:
 
-- `questions` contains only rows matching the complete filter.
+- `questions` contains only active published rows matching the complete filter.
 - `pagination.total` is the count of the complete filtered set, not the count of the current page.
 - `pagination.hasMore` is true when the current offset and returned row count have not reached that total.
 
@@ -68,7 +68,9 @@ failure for the new question.
 
 The public contract and all application decisions use the four canonical rounds. Until the historical migration baseline is reconciled, the storage adapter persists canonical Strategy questions with the database-compatible `Product Strategy` label. Reads normalize that label back to `Strategy` before it leaves the data boundary.
 
-Historical subtype cleanup belongs with the provenance and deduplication work. It must preserve the original source category before any legacy label is collapsed, and it must not be added to the Drizzle journal until the existing manually applied migration history is reconciled safely.
+The sync stores the original source category separately from the canonical storage label. Public APIs do not expose that category, the source fingerprint, quality status, or duplicate linkage. Existing rows begin with `source_kind = legacy`. Because that is not traceable evidence, migration `0027_question_provenance` changes previously active legacy rows to inactive `quarantined_unverified`; previously inactive rows become `retired_source_missing`. A successful approved live sync adopts matching canonical rows in place, attaches deterministic source evidence, and publishes them without changing bookmarks, sessions, or selected-question IDs.
+
+The question-provenance migration is currently stacked as `0027_question_provenance` on PR #349 exact head `bc019ecbec5cd5872ad514ad8ef58d445b58af65`. Its sequence, journal entry, snapshot, and schema fingerprint must be regenerated if that parent changes or another migration becomes the canonical predecessor.
 
 ## Sync authorization and execution
 
@@ -76,8 +78,13 @@ Historical subtype cleanup belongs with the provenance and deduplication work. I
 - The manual route requires a separate `QUESTION_SYNC_OPERATOR_SECRET`. A signed-in Meelni user session, including an ordinary authenticated user, never authorizes a live sync.
 - The only accepted manual option is an optional boolean `dryRun`. Unknown options and malformed payloads are rejected.
 - Provider rows are fetched and validated before the database transaction opens. The workflow then holds a PostgreSQL transaction-scoped advisory lock while the same transaction reads existing questions, builds the mutation plan, inserts, reactivates, and deactivates. An overlapping request receives `409 question_sync_in_progress` before database reads or writes begin.
-- Until the schema gains a provider row identifier, stable source identity is the normalized composite of question text, company, canonical storage type, and `askedAt` instant. Offset-less Google Forms timestamps are converted using `GOOGLE_SHEET_TIME_ZONE`, which accepts only `UTC` or a fixed `±HH:MM` offset; named zones are rejected to avoid daylight-saving ambiguity. Only exact composite duplicates collapse. An inactive exact match is reactivated; changed provenance creates a new row and retires the prior active identity. If legacy data contains multiple active rows for one composite identity, the lexicographically lowest UUID remains active and the surplus rows are deactivated atomically.
-- Inserts, reactivations, and deactivations are atomic. Any write or connection failure rolls back the complete mutation, and deactivation never proceeds after a failed insert.
+- Source provenance is internal-only: `source_kind` identifies the normalized provider class, `source_category` retains the upstream category before taxonomy mapping, and `source_fingerprint` is a SHA-256 digest of normalized non-private source fields. The fingerprint does not contain sheet IDs, URLs, comments, notes, credentials, or user identifiers. PostgreSQL grants anonymous and authenticated roles only the established public question columns; source, quality, and duplicate-link columns require the service role even for published rows.
+- Exact duplicates share one source fingerprint and collapse deterministically before planning, independent of provider row order. Near-duplicate automation is intentionally conservative: prompts must have the same company and canonical PM round and differ only by source occurrence time or explicitly normalized quote, sentence-ending punctuation, case, or spacing variation. Normalization uses Unicode NFC, not compatibility folding. Dashes, superscripts, circled numbers, comparison operators, percentages, currency symbols, arithmetic signs, and other meaning-bearing notation remain part of identity. Semantic similarity and edit-distance matching are not automatic quarantine signals.
+- One source-backed row per near-duplicate content group remains `published` and active. Additional occurrences are stored as inactive `quarantined_near_duplicate` rows linked to the canonical question. Unverified legacy rows remain `quarantined_unverified` until adopted by the sync; legacy surplus rows become `retired_exact_duplicate`; rows absent upstream become `retired_source_missing`.
+- An existing active canonical row wins over a new ID. This preserves bookmarks, session evidence, public question selection, and authentication handoff while its safe provenance fields are refreshed. If multiple legacy active rows match, the lexicographically lowest UUID remains canonical.
+- Offset-less Google Forms timestamps are converted using `GOOGLE_SHEET_TIME_ZONE`, which accepts only `UTC` or a fixed `±HH:MM` offset; named zones are rejected to avoid daylight-saving ambiguity.
+- `is_active` remains the publication projection and is database-constrained to `quality_status = published`. Public reads, by-ID lookup, new selected-question practice, filters, pagination totals, random selection, structured data, and company/question conversion continue to use that projection. Historical internal/session evidence can retain inactive IDs but must use an explicitly historical adapter. Quality and provenance fields are never added to public payloads.
+- Inserts, reactivations, and deactivations are atomic. Any write or connection failure rolls back the complete mutation, and deactivation never proceeds after a failed insert. The bulk-removal safety ratio counts every active-to-inactive transition, including duplicate retirement as well as source-missing retirement.
 - HTTP responses and structured audit events contain aggregate counts and stable error codes only. They must not include user identifiers, sheet identifiers, provider response bodies, credentials, or raw exception messages.
 
 The operational configuration and rollout procedure are in [Question sync operations](../operations/question-sync.md).

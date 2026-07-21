@@ -20,6 +20,7 @@ export interface QuestionBankRecord {
 
 export interface QuestionListOptions {
   roundType?: RoundType;
+  /** @deprecated Public question reads are always publication-filtered. */
   activeOnly?: boolean;
   limit?: number;
   offset?: number;
@@ -28,7 +29,6 @@ export interface QuestionListOptions {
 
 export interface QuestionListFilter {
   questionTypes?: readonly string[];
-  activeOnly: boolean;
   search?: string;
 }
 
@@ -43,9 +43,7 @@ export interface QuestionListStore {
 function buildQuestionListConditions(filter: QuestionListFilter) {
   const conditions = [];
 
-  if (filter.activeOnly) {
-    conditions.push(eq(interviewQuestion.isActive, true));
-  }
+  conditions.push(eq(interviewQuestion.isActive, true));
 
   if (filter.questionTypes?.length === 1) {
     conditions.push(
@@ -176,14 +174,13 @@ export async function getRandomQuestion(
 /**
  * Get all questions with optional filtering and pagination
  */
-export async function getQuestions(
+export async function getPublishedQuestions(
   options: QuestionListOptions = {},
   store: QuestionListStore = drizzleQuestionListStore
 ): Promise<{ questions: QuestionBankRecord[]; total: number }> {
   const limit = options.limit ?? 100;
   const offset = options.offset ?? 0;
   const filter: QuestionListFilter = {
-    activeOnly: options.activeOnly ?? false,
     search: options.search,
     questionTypes: options.roundType
       ? questionTypeStorageAliasesForRound(options.roundType)
@@ -204,10 +201,28 @@ export async function getQuestions(
 }
 
 /**
- * Get a question by ID
+ * Backward-compatible public reader. The historical activeOnly option is
+ * intentionally ignored: callers cannot opt into quarantined or retired rows.
  */
-export async function getQuestionById(
+export const getQuestions = getPublishedQuestions;
+
+/** Public lookup for a question that is currently eligible for new practice. */
+export async function getActiveQuestionById(
   questionId: string
+): Promise<QuestionBankRecord | null> {
+  return findQuestionById(questionId, true);
+}
+
+/** Internal historical lookup. Never use this for public reads or new practice. */
+export async function getQuestionByIdForHistory(
+  questionId: string
+): Promise<QuestionBankRecord | null> {
+  return findQuestionById(questionId, false);
+}
+
+async function findQuestionById(
+  questionId: string,
+  activeOnly: boolean
 ): Promise<QuestionBankRecord | null> {
   const [question] = await db
     .select({
@@ -220,7 +235,14 @@ export async function getQuestionById(
       createdAt: interviewQuestion.createdAt,
     })
     .from(interviewQuestion)
-    .where(eq(interviewQuestion.id, questionId))
+    .where(
+      activeOnly
+        ? and(
+            eq(interviewQuestion.id, questionId),
+            eq(interviewQuestion.isActive, true)
+          )
+        : eq(interviewQuestion.id, questionId)
+    )
     .limit(1);
 
   return question ? canonicalizeQuestionRecord(question) : null;

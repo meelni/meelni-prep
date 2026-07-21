@@ -33,10 +33,11 @@
 |    24 | `0024_runtime_settlement_reconciliation` |
 |    25 | `0025_public_demo_limits`                |
 |    26 | `0026_preview_lineage_reconciliation`    |
+|    27 | `0027_question_provenance`               |
 
 <!-- migration-journal:end -->
 
-This twenty-seven-entry inventory is generated from the same ordered contract as
+This twenty-eight-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 

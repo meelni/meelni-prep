@@ -23,7 +23,7 @@ import {
   type LiveKitInterviewProvider,
 } from "@/lib/internal/integrations";
 import {
-  getQuestionById,
+  getActiveQuestionById,
   getRandomQuestion,
   getRandomRecentQuestion,
   type QuestionBankRecord,
@@ -761,7 +761,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       await trackReservedCreditEvents(reservation, result.credit);
       return result.start;
     },
-    getQuestionById,
+    getQuestionById: getActiveQuestionById,
     getRandomQuestion,
     getRandomRecentQuestion,
     ensureTrialGrant: async (userId) => {

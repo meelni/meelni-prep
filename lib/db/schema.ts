@@ -16,6 +16,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
+import type {
+  QuestionQualityStatus,
+  QuestionSourceKind,
+} from "@/lib/question-sync/types";
 import { appUser } from "./schema-core";
 import { interviewSession } from "./schema-session";
 
@@ -653,7 +657,18 @@ export const interviewQuestion = pgTable(
     questionType: text("question_type").notNull(),
     difficulty: text("difficulty"),
     askedAt: timestamp("asked_at", { withTimezone: true }), // When the question was asked in a real interview
-    isActive: boolean("is_active").default(true).notNull(),
+    sourceKind: text("source_kind")
+      .$type<QuestionSourceKind>()
+      .default("legacy")
+      .notNull(),
+    sourceCategory: text("source_category"),
+    sourceFingerprint: text("source_fingerprint"),
+    qualityStatus: text("quality_status")
+      .$type<QuestionQualityStatus>()
+      .default("quarantined_unverified")
+      .notNull(),
+    duplicateOfQuestionId: uuid("duplicate_of_question_id"),
+    isActive: boolean("is_active").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
@@ -667,6 +682,35 @@ export const interviewQuestion = pgTable(
       "difficulty_check",
       sql`${table.difficulty} IS NULL OR ${table.difficulty} IN ('Easy', 'Medium', 'Hard')`
     ),
+    sourceKindCheck: check(
+      "interview_question_source_kind_check",
+      sql`${table.sourceKind} IN ('legacy', 'google_sheets')`
+    ),
+    sourceFingerprintCheck: check(
+      "interview_question_source_fingerprint_check",
+      sql`${table.sourceFingerprint} IS NULL OR ${table.sourceFingerprint} ~ '^[0-9a-f]{64}$'`
+    ),
+    qualityStatusCheck: check(
+      "interview_question_quality_status_check",
+      sql`${table.qualityStatus} IN ('published', 'quarantined_unverified', 'quarantined_near_duplicate', 'retired_exact_duplicate', 'retired_source_missing')`
+    ),
+    publicationProjectionCheck: check(
+      "interview_question_publication_projection_check",
+      sql`${table.isActive} = (${table.qualityStatus} = 'published')`
+    ),
+    duplicateDispositionCheck: check(
+      "interview_question_duplicate_disposition_check",
+      sql`(${table.qualityStatus} IN ('quarantined_near_duplicate', 'retired_exact_duplicate')) = (${table.duplicateOfQuestionId} IS NOT NULL)`
+    ),
+    duplicateNotSelfCheck: check(
+      "interview_question_duplicate_not_self_check",
+      sql`${table.duplicateOfQuestionId} IS NULL OR ${table.duplicateOfQuestionId} <> ${table.id}`
+    ),
+    duplicateQuestionFk: foreignKey({
+      columns: [table.duplicateOfQuestionId],
+      foreignColumns: [table.id],
+      name: "interview_question_duplicate_of_question_id_fk",
+    }),
     // Index for frequent filtering by question type
     questionTypeIdx: index("interview_question_question_type_idx").on(
       table.questionType
@@ -680,6 +724,9 @@ export const interviewQuestion = pgTable(
     ),
     // Index for filtering by when question was asked (for recent/trending questions)
     askedAtIdx: index("interview_question_asked_at_idx").on(table.askedAt),
+    qualityStatusIdx: index("interview_question_quality_status_idx").on(
+      table.qualityStatus
+    ),
   })
 );
 
