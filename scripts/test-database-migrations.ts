@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFile,
   mkdir,
@@ -59,6 +60,8 @@ const MIGRATIONS = join(ROOT, "lib/db/migrations");
 const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
 const RUNTIME_RECONCILIATION_DATABASE = "meelni_runtime_reconciliation_test";
+const PREVIEW_LINEAGE_RECONCILIATION_DATABASE =
+  "meelni_preview_lineage_reconciliation_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
 const SESSION_DELETION = "22222222-3333-4333-8333-222222222222";
@@ -150,12 +153,17 @@ void run()
   });
 
 async function run() {
+  await verifyHistoricalPreviewFixtureHashes();
   await verifyLatestSnapshotTypes();
   const cleanUrl = databaseUrl(baseUrl, CLEAN_DATABASE);
   const upgradeUrl = databaseUrl(baseUrl, UPGRADE_DATABASE);
   const runtimeReconciliationUrl = databaseUrl(
     baseUrl,
     RUNTIME_RECONCILIATION_DATABASE
+  );
+  const previewLineageReconciliationUrl = databaseUrl(
+    baseUrl,
+    PREVIEW_LINEAGE_RECONCILIATION_DATABASE
   );
   const admin = postgres(baseUrl, { max: 1, prepare: false });
   await admin.unsafe(
@@ -170,6 +178,12 @@ async function run() {
     `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
   );
   await admin.unsafe(`CREATE DATABASE "${RUNTIME_RECONCILIATION_DATABASE}"`);
+  await admin.unsafe(
+    `DROP DATABASE IF EXISTS "${PREVIEW_LINEAGE_RECONCILIATION_DATABASE}" WITH (FORCE)`
+  );
+  await admin.unsafe(
+    `CREATE DATABASE "${PREVIEW_LINEAGE_RECONCILIATION_DATABASE}"`
+  );
   const clean = postgres(cleanUrl, { max: 20, prepare: false });
 
   try {
@@ -433,9 +447,10 @@ async function run() {
         ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
         ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
         PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
+        PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 25; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 26; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -455,7 +470,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 26; found 22/
+            /Strict launch preflight requires the exact latest migration count 27; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -506,6 +521,9 @@ async function run() {
     }
 
     await verifyRuntimeSettlementReconciliation(runtimeReconciliationUrl);
+    await verifyHistoricalPreviewReconciliation(
+      previewLineageReconciliationUrl
+    );
 
     console.log("Database migration verification passed.");
   } finally {
@@ -519,7 +537,314 @@ async function run() {
     await admin.unsafe(
       `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
     );
+    await admin.unsafe(
+      `DROP DATABASE IF EXISTS "${PREVIEW_LINEAGE_RECONCILIATION_DATABASE}" WITH (FORCE)`
+    );
     await admin.end();
+  }
+}
+
+async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
+  const sql = postgres(databaseUrl, { max: 20, prepare: false });
+  const consentUsers = [
+    "e1000000-0000-4000-8000-000000000001",
+    "e1000000-0000-4000-8000-000000000002",
+    "e1000000-0000-4000-8000-000000000003",
+  ];
+  const historicalDemoSession = "e2000000-0000-4000-8000-000000000001";
+  try {
+    await installSupabaseTestSurface(sql);
+    const historicalFolder = await createHistoricalPreviewMigrationFolder();
+    try {
+      await migrate(drizzle(sql), { migrationsFolder: historicalFolder });
+    } finally {
+      await rm(historicalFolder, { recursive: true, force: true });
+    }
+
+    assert.equal(await migrationCount(sql), 26);
+    const historicalFingerprint = databaseSchemaFingerprint(
+      await getStableStartDatabaseSchemaContract(sql)
+    );
+    console.log(
+      `Historical Preview schema fingerprint: ${historicalFingerprint}`
+    );
+    assert.equal(
+      historicalFingerprint,
+      "8320f3c455a93395c27de612a8e55c57bfddd3ae86a564f5339a9a21d1726290"
+    );
+    const historicalPreflight = runPreflight(
+      databaseUrl,
+      true,
+      "preview_lineage_reconciliation_required"
+    )!;
+    assert.equal(historicalPreflight.previewTailLineage, "historical_preview");
+    assert.equal(historicalPreflight.previewLineageReconciliationPending, true);
+    assert.equal(
+      historicalPreflight.migrationLineage,
+      "legacy_runtime_settlement"
+    );
+
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = 'e7e821c5ad6d29c91c1c72d752b1bd907bd6afa2d31da3ac290bd296acb17047'
+      WHERE created_at = 1784277329897
+    `;
+    runLedgerMismatchPreflight(databaseUrl);
+    await assert.rejects(
+      () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+      /preview_lineage_reconciliation_unknown_ledger/
+    );
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = '4fc47aafade67f243276521d3541261adcbffd084f6c8e3be9eb33abc607b046'
+      WHERE created_at = 1784277329897
+    `;
+
+    for (const [index, userId] of consentUsers.entries()) {
+      await sql`
+        INSERT INTO app_user (id, email)
+        VALUES (
+          ${userId}::uuid,
+          ${`historical-consent-${index}@example.invalid`}
+        )
+      `;
+    }
+    await sql`
+      INSERT INTO user_settings (
+        user_id, analytics_consent, analytics_consent_version,
+        analytics_consent_source, analytics_consent_updated_at
+      ) VALUES
+        (${consentUsers[0]}::uuid, 'undecided', NULL, NULL, NULL),
+        (${consentUsers[1]}::uuid, 'accepted', 1, 'banner',
+          '2026-07-18T00:00:00Z'::timestamptz),
+        (${consentUsers[2]}::uuid, 'declined', 1, 'settings',
+          '2026-07-18T00:01:00Z'::timestamptz)
+    `;
+
+    const [historicalReservation] = await sql<
+      { decision: string; room_name: string }[]
+    >`
+      SELECT decision, room_name
+      FROM public.reserve_public_demo_session(
+        ${historicalDemoSession}::uuid,
+        'preview',
+        ${"c".repeat(64)},
+        ${"d".repeat(64)}
+      )
+    `;
+    assert.equal(historicalReservation?.decision, "provision");
+    const [oldDeadline] = await sql<
+      { created_at: Date | string; active_expires_at: Date | string }[]
+    >`
+      SELECT created_at, active_expires_at
+      FROM public_demo_session
+      WHERE id = ${historicalDemoSession}::uuid
+    `;
+    assert.ok(oldDeadline);
+    const historicalDeadlineMs =
+      databaseTimestamp(oldDeadline.active_expires_at).getTime() -
+      databaseTimestamp(oldDeadline.created_at).getTime();
+    assert.ok(historicalDeadlineMs >= 179_000);
+    assert.ok(historicalDeadlineMs <= 181_000);
+
+    await assert.rejects(
+      () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+      /preview_lineage_reconciliation_active_demo_session/
+    );
+    assert.equal(await migrationCount(sql), 26);
+
+    await sql`
+      UPDATE public_demo_session
+      SET status = 'failed',
+        active_expires_at = created_at + interval '3 minutes'
+      WHERE id = ${historicalDemoSession}::uuid
+    `;
+
+    await sql`GRANT SELECT ON public_demo_session TO authenticated`;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`REVOKE SELECT ON public_demo_session FROM authenticated`;
+    }
+
+    await sql`
+      GRANT EXECUTE ON FUNCTION prune_public_demo_abuse_data()
+      TO service_role WITH GRANT OPTION
+    `;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_public_demo_acl_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`
+        REVOKE GRANT OPTION FOR EXECUTE
+        ON FUNCTION prune_public_demo_abuse_data() FROM service_role
+      `;
+    }
+
+    await sql`
+      CREATE POLICY "Preview reconciliation unsafe probe"
+      ON public_demo_session FOR SELECT TO authenticated USING (true)
+    `;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`
+        DROP POLICY IF EXISTS "Preview reconciliation unsafe probe"
+        ON public_demo_session
+      `;
+    }
+
+    await sql`
+      DROP POLICY "Service role has full access to public_demo_session"
+      ON public_demo_session
+    `;
+    await sql`
+      CREATE POLICY "Service role has full access to public_demo_session"
+      ON public_demo_session AS RESTRICTIVE FOR ALL TO service_role
+      USING (true) WITH CHECK (true)
+    `;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`
+        DROP POLICY "Service role has full access to public_demo_session"
+        ON public_demo_session
+      `;
+      await sql`
+        CREATE POLICY "Service role has full access to public_demo_session"
+        ON public_demo_session FOR ALL TO service_role
+        USING (true) WITH CHECK (true)
+      `;
+    }
+
+    await sql`ALTER TABLE public_demo_session FORCE ROW LEVEL SECURITY`;
+    try {
+      await assert.rejects(
+        () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+        /preview_lineage_reconciliation_shared_contract_mismatch/
+      );
+      assert.equal(await migrationCount(sql), 26);
+    } finally {
+      await sql`ALTER TABLE public_demo_session NO FORCE ROW LEVEL SECURITY`;
+    }
+
+    await sql.unsafe("DROP ROLE IF EXISTS preview_owner_probe");
+    await sql`CREATE ROLE preview_owner_probe NOLOGIN`;
+    let ledgerBefore: { hash: string; created_at: string }[] = [];
+    try {
+      await sql`
+        ALTER TABLE transcript_runtime_writer OWNER TO preview_owner_probe
+      `;
+      const ownerDriftPreflight = runPreflight(
+        databaseUrl,
+        true,
+        "preview_lineage_reconciliation_required"
+      )!;
+      assert.equal(
+        ownerDriftPreflight.previewLineageReconciliationPending,
+        true
+      );
+
+      ledgerBefore = await sql<{ hash: string; created_at: string }[]>`
+        SELECT hash, created_at::text
+        FROM drizzle.__drizzle_migrations
+        ORDER BY created_at
+      `;
+      await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
+      assert.equal(await migrationCount(sql), 27);
+    } finally {
+      await sql`
+        ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
+      `;
+      await sql.unsafe("DROP ROLE IF EXISTS preview_owner_probe");
+    }
+    const ledgerAfter = await sql<{ hash: string; created_at: string }[]>`
+      SELECT hash, created_at::text
+      FROM drizzle.__drizzle_migrations
+      ORDER BY created_at
+    `;
+    assert.deepEqual(
+      Array.from(ledgerAfter.slice(0, 26)),
+      Array.from(ledgerBefore)
+    );
+    const consentRows = await sql<
+      {
+        analytics_consent: string;
+        analytics_consent_revision: number;
+        analytics_consent_source: string | null;
+      }[]
+    >`
+      SELECT analytics_consent,
+        analytics_consent_revision::int AS analytics_consent_revision,
+        analytics_consent_source
+      FROM user_settings
+      WHERE user_id = ANY(${consentUsers}::uuid[])
+      ORDER BY analytics_consent
+    `;
+    assert.deepEqual(Array.from(consentRows), [
+      {
+        analytics_consent: "accepted",
+        analytics_consent_revision: 1,
+        analytics_consent_source: "banner",
+      },
+      {
+        analytics_consent: "declined",
+        analytics_consent_revision: 1,
+        analytics_consent_source: "settings",
+      },
+      {
+        analytics_consent: "undecided",
+        analytics_consent_revision: 0,
+        analytics_consent_source: null,
+      },
+    ]);
+    const [reconciledDeadline] = await sql<
+      { created_at: Date | string; active_expires_at: Date | string }[]
+    >`
+      SELECT created_at, active_expires_at
+      FROM public_demo_session
+      WHERE id = ${historicalDemoSession}::uuid
+    `;
+    assert.ok(reconciledDeadline);
+    assert.equal(
+      databaseTimestamp(reconciledDeadline.active_expires_at).getTime() -
+        databaseTimestamp(reconciledDeadline.created_at).getTime(),
+      120_000
+    );
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
+    );
+    const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
+    assert.equal(finalPreflight.previewTailLineage, "historical_preview");
+    assert.equal(finalPreflight.previewLineageReconciliationPending, false);
+    const strictPreflight = runStrictPreflight(databaseUrl);
+    assert.equal(
+      strictPreflight.status,
+      0,
+      `Historical reconciliation strict preflight failed:\n${strictPreflight.stdout}\n${strictPreflight.stderr}`
+    );
+    runAnalyticsConsentAdapterVerification(databaseUrl);
+    await verifyPublicDemoLimits(sql);
+  } finally {
+    await sql.end();
   }
 }
 
@@ -750,7 +1075,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 26; found 25/
+      /exact latest migration count 27; found 25/
     );
 
     const genericRows = await sql<
@@ -849,7 +1174,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 26);
+    assert.equal(await migrationCount(sql), 27);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.startingContract, "public_demo_limits");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
@@ -900,6 +1225,23 @@ async function verifyLatestSnapshotTypes() {
       .type,
     "bigint"
   );
+}
+
+async function verifyHistoricalPreviewFixtureHashes() {
+  const expected = [
+    "4fc47aafade67f243276521d3541261adcbffd084f6c8e3be9eb33abc607b046",
+    "1e69634a9abef39e5787369005278f81abf80896ec9318bb86e3eb4b61ed782d",
+    "cc11ee565d384af9f5adc65197245dbce92b1a9f408af4874c7d0f0fe405775b",
+  ];
+  for (const [offset, expectedHash] of expected.entries()) {
+    const body = await readFile(
+      join(
+        ROOT,
+        `packages/test-fixtures/database/historical-preview-${String(offset + 23).padStart(4, "0")}.sql`
+      )
+    );
+    assert.equal(createHash("sha256").update(body).digest("hex"), expectedHash);
+  }
 }
 
 async function seedLegacyInvoiceDuplicateFixtures(sql: postgres.Sql) {
@@ -1569,6 +1911,19 @@ function runBlockedBootstrapPreflight(databaseUrl: string) {
   assert.match(result.stderr, /public application schema is not empty/);
 }
 
+function runLedgerMismatchPreflight(databaseUrl: string) {
+  const result = spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /Migration ledger mismatch at position (23|24|25)/
+  );
+}
+
 function runStrictPreflight(databaseUrl: string) {
   return spawnSync("npm", ["run", "db:preflight"], {
     cwd: ROOT,
@@ -1593,6 +1948,8 @@ interface MigrationPreflightResult {
   schemaContract: string;
   startingContract: string;
   migrationLineage: "canonical" | "legacy_runtime_settlement";
+  previewTailLineage: "canonical" | "historical_preview";
+  previewLineageReconciliationPending: boolean;
   runtimeSettlementReconciliationPending: boolean;
   tables: number;
   rls_tables: number;
@@ -1796,6 +2153,29 @@ async function createLegacyRuntimeMigrationFolderThrough(
       "packages/test-fixtures/database/legacy-runtime-settlement-0013.sql"
     ),
     join(folder, "0013_runtime_settlement.sql")
+  );
+  return folder;
+}
+
+async function createHistoricalPreviewMigrationFolder(): Promise<string> {
+  const folder = await createLegacyRuntimeMigrationFolderThrough(25);
+  await Promise.all(
+    [23, 24, 25].map((index) =>
+      copyFile(
+        join(
+          ROOT,
+          `packages/test-fixtures/database/historical-preview-${String(index).padStart(4, "0")}.sql`
+        ),
+        join(
+          folder,
+          [
+            "0023_explicit_analytics_consent.sql",
+            "0024_runtime_settlement_reconciliation.sql",
+            "0025_public_demo_limits.sql",
+          ][index - 23]
+        )
+      )
+    )
   );
   return folder;
 }
@@ -6273,7 +6653,7 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 26);
+  assert.equal(await migrationCount(sql), 27);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name

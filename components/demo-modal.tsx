@@ -31,7 +31,10 @@ import {
   type DemoStartError,
 } from "@/lib/demo/public-demo-client";
 import { PublicActivationButton } from "@/components/public-activation-action";
-import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import {
+  buildNewInterviewHref,
+  NEW_INTERVIEW_PATH,
+} from "@/lib/navigation/interview-launch";
 import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
 // Transcript message type
@@ -763,7 +766,6 @@ function DemoControls({
 export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const activation = usePublicActivationDecision();
   const activationOpen = isOpen && activation.canActivate;
-  const voiceDemoInterviewPath = `${NEW_INTERVIEW_PATH}?source=voice_demo`;
   const [token, setToken] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [durationSeconds, setDurationSeconds] = useState(120);
@@ -986,7 +988,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                         : "Try Again"}
                     </Button>
                     <PublicActivationButton
-                      href={voiceDemoInterviewPath}
+                      href={buildNewInterviewHref("source=voice_demo")}
                       variant="secondary"
                       size="lg"
                     >
