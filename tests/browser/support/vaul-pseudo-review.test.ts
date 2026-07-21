@@ -439,6 +439,28 @@ test("accepts only the exact approved bottom-drawer evidence", () => {
   assert.equal(evidence.followUp, "SAV-280");
 });
 
+test("accepts responsive drawer-layer top geometry tied to the measured drawer height", () => {
+  const snapshot = validSnapshot();
+  snapshot.drawer.clientHeight = 418;
+  snapshot.pseudo.top = "418px";
+  snapshot.pseudo.bottom = "-836px";
+  snapshot.pseudo.height = "836px";
+
+  for (const node of snapshot.nodes) {
+    const drawerLayer = node.layers.at(-1);
+    assert.ok(drawerLayer);
+    drawerLayer.top = "418px";
+    drawerLayer.clientHeight = 418;
+    drawerLayer.offsetHeight = 420;
+    drawerLayer.rect.height = 420;
+    drawerLayer.rect.bottom = drawerLayer.rect.top + 420;
+  }
+
+  const evidence = review({ snapshot });
+  assert.ok(evidence);
+  assert.equal(evidence.geometry.drawerHeight, 418);
+});
+
 test("accepts generated Radix title and description Axe selectors when the approved node mapping matches", () => {
   const finding = validFinding();
   const snapshot = validSnapshot();
