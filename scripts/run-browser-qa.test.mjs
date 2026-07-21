@@ -41,7 +41,10 @@ test("browser QA child environment excludes inherited provider credentials", () 
     "/tmp/browser-qa",
     { blockEgress: false }
   );
-  assert.equal(memoryBoundBuildEnvironment.NODE_OPTIONS, "--max-old-space-size=4096");
+  assert.equal(
+    memoryBoundBuildEnvironment.NODE_OPTIONS,
+    "--max-old-space-size=4096"
+  );
 });
 
 test("browser QA sandbox omits every loadable Next environment file", () => {
