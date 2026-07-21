@@ -23,8 +23,8 @@ const SelectableCard = React.forwardRef<HTMLButtonElement, SelectableCardProps>(
       className={cn(
         "group focus-visible:ring-ring relative h-full w-full cursor-pointer overflow-hidden rounded-lg border-2 p-4 text-left transition-all duration-200 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         selected
-          ? "border-primary bg-primary/5 ring-primary/20 shadow-md ring-2"
-          : "border-border hover:border-primary/50 hover:bg-accent/50",
+          ? "border-primary bg-card ring-primary/20 shadow-md ring-2"
+          : "border-border bg-card hover:border-primary/50 hover:bg-accent",
         locked && "hover:bg-background opacity-60",
         className
       )}
@@ -94,7 +94,7 @@ function SelectableCardLockOverlay({
   return (
     <div
       className={cn(
-        "bg-background/50 absolute inset-0 flex items-center justify-center rounded-lg backdrop-blur-[2px]",
+        "bg-background absolute inset-0 flex items-center justify-center rounded-lg",
         className
       )}
       {...props}

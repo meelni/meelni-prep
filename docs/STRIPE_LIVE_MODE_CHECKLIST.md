@@ -72,7 +72,12 @@ Production endpoint:
 https://www.meelni.com/api/webhooks/stripe
 ```
 
-Subscribe the endpoint to:
+Subscribe the endpoint to every required event in the executable contract.
+Do not use wildcard delivery.
+
+<!-- stripe-webhook-event-contract:start -->
+
+Required events (16):
 
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
@@ -82,11 +87,27 @@ Subscribe the endpoint to:
 - `customer.subscription.deleted`
 - `invoice.payment_succeeded`
 - `invoice.payment_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
 - `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.funds_withdrawn`
+- `charge.dispute.funds_reinstated`
+- `charge.dispute.closed`
 
-Optional future event:
+Optional events (1):
 
 - `customer.subscription.trial_will_end`
+<!-- stripe-webhook-event-contract:end -->
+
+Generate the allowlist or verify a sanitized endpoint export without provider
+access:
+
+```bash
+npm run stripe:webhook-events -- --format=json
+npm run stripe:webhook-events -- --verify-enabled-events-file=/absolute/path/to/sanitized-endpoint.json
+```
 
 After creating the endpoint, copy its signing secret into `STRIPE_WEBHOOK_SECRET` in the matching Vercel environment.
 

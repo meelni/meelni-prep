@@ -58,7 +58,7 @@ test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
   assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /md:block/);
 });
 
-test("dashboard shell provides a horizontally scrollable mobile workspace navigation", () => {
+test("dashboard shell provides a stable mobile workspace navigation grid", () => {
   const html = renderToStaticMarkup(
     <DashboardLayout
       activeSection="analytics"
@@ -69,8 +69,9 @@ test("dashboard shell provides a horizontally scrollable mobile workspace naviga
   );
   const mobileNavigation = getMobileWorkspaceNavigation(html);
 
-  assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /overflow-x-auto/);
+  assert.doesNotMatch(DASHBOARD_MOBILE_NAV_CLASS_NAME, /overflow-x-auto/);
   assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /md:hidden/);
+  assert.match(mobileNavigation, /grid-cols-3/);
   assert.match(mobileNavigation, /href="\/dashboard\/history"/);
   assert.match(mobileNavigation, /href="\/dashboard\/questions"/);
   assert.match(
