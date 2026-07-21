@@ -57,45 +57,18 @@ const AXE_INCOMPLETE_ALLOWLIST: Record<string, AxeIncompleteAllowance[]> = {
   landing: [
     {
       expires: "2026-08-15",
-      owner: "SAV-265",
+      owner: "SAV-278",
       projects: ["mobile-chromium"],
       reason:
         "The closed Radix mobile navigation trigger references popup content that is mounted only while the menu is open.",
       rule: "aria-valid-attr-value",
       selector: ".min-h-11",
     },
-    ...[
-      "h1",
-      ".text-body",
-      ".border-primary\\/40",
-      ".h-auto.hover\\:bg-transparent.py-3:nth-child(1) > .md\\:text-base.z-10.gap-2 > .whitespace-nowrap",
-      ".text-info",
-      ".leading-relaxed:nth-child(1) > .text-foreground",
-      ".leading-relaxed:nth-child(2) > .font-semibold.text-primary",
-      ".leading-relaxed:nth-child(2) > .text-foreground",
-    ].map((selector) => ({
-      expires: "2026-08-15",
-      owner: "SAV-265",
-      projects: ["mobile-chromium", "desktop-chromium"],
-      reason:
-        "Axe cannot determine the composited background through the landing page gradient or decorative overlap.",
-      rule: "color-contrast",
-      selector,
-    })),
-    {
-      expires: "2026-08-15",
-      owner: "SAV-265",
-      projects: ["desktop-chromium"],
-      reason:
-        "Axe cannot determine the composited background through the landing page gradient.",
-      rule: "color-contrast",
-      selector: ".max-w-\\[140px\\]",
-    },
   ],
   explore: [
     {
       expires: "2026-08-15",
-      owner: "SAV-265",
+      owner: "SAV-278",
       projects: ["mobile-chromium"],
       reason:
         "The closed Radix Select trigger references popup content that is mounted only while the listbox is open.",
@@ -103,66 +76,10 @@ const AXE_INCOMPLETE_ALLOWLIST: Record<string, AxeIncompleteAllowance[]> = {
       selector: ".min-w-11",
     },
   ],
-  dashboard: [
-    '.hover\\:bg-dashboard-muted\\/10.min-h-11[data-browser-qa-href$="history"] > span',
-  ].map((selector) => ({
-    expires: "2026-08-15",
-    owner: "SAV-265",
-    projects: ["mobile-chromium"],
-    reason:
-      "Axe cannot calculate contrast for an inactive item that is intentionally clipped by the horizontally scrollable mobile workspace navigation.",
-    rule: "color-contrast",
-    selector,
-  })),
-  "new-interview": [
-    ".bg-background\\/50",
-    ".ring-primary\\/20.shadow-md.ring-2 > .flex-col.relative.h-full > h3",
-    ".ring-primary\\/20.shadow-md.ring-2 > .flex-col.relative.h-full > .mt-1.font-medium",
-    ".ring-primary\\/20.shadow-md.ring-2 > .flex-col.relative.h-full > .mt-1\\.5.min-h-8.flex-1",
-    ".max-w-xl > span",
-  ].map((selector) => ({
-    expires: "2026-08-15",
-    owner: "SAV-265",
-    projects:
-      selector === ".max-w-xl > span"
-        ? ["mobile-chromium", "desktop-chromium"]
-        : ["desktop-chromium"],
-    reason:
-      "Axe cannot determine the composited background through the selected-card overlay or translucent disclosure container.",
-    rule: "color-contrast",
-    selector,
-  })),
-  "new-interview-nav": [
-    '.min-h-11.hover\\:text-dashboard-foreground[data-browser-qa-href$="history"] > span',
-    '.min-h-11.hover\\:text-dashboard-foreground[data-browser-qa-href$="questions"] > span',
-    '.min-h-11.hover\\:text-dashboard-foreground[data-browser-qa-href$="analytics"] > span',
-    '.min-h-11.hover\\:text-dashboard-foreground[data-browser-qa-href$="settings"] > span',
-  ].map((selector) => ({
-    expires: "2026-08-15",
-    owner: "SAV-265",
-    projects: ["mobile-chromium"],
-    reason:
-      "Axe cannot calculate contrast for an inactive item that is intentionally clipped by the horizontally scrollable mobile workspace navigation.",
-    rule: "color-contrast",
-    selector,
-  })),
-  feedback: [
-    ".text-6xl",
-    ".mx-auto.max-w-2xl.space-y-3 > h2",
-    ".mx-auto.max-w-2xl.space-y-3 > p",
-  ].map((selector) => ({
-    expires: "2026-08-15",
-    owner: "SAV-265",
-    projects: ["mobile-chromium", "desktop-chromium"],
-    reason:
-      "Axe cannot calculate text contrast against the tokenized gradient FeedbackScoreCard background.",
-    rule: "color-contrast",
-    selector,
-  })),
   pricing: [
     {
       expires: "2026-08-15",
-      owner: "SAV-265",
+      owner: "SAV-278",
       projects: ["mobile-chromium"],
       reason:
         "The closed Radix mobile navigation trigger references popup content that is mounted only while the menu is open.",
@@ -170,18 +87,11 @@ const AXE_INCOMPLETE_ALLOWLIST: Record<string, AxeIncompleteAllowance[]> = {
       selector: ".min-h-11",
     },
   ],
-  settings: [
-    '.gap-2.hover\\:bg-dashboard-muted\\/10[data-browser-qa-href$="history"] > span',
-  ].map((selector) => ({
-    expires: "2026-08-15",
-    owner: "SAV-265",
-    projects: ["mobile-chromium"],
-    reason:
-      "Axe cannot calculate contrast for an inactive item that is intentionally clipped by the horizontally scrollable mobile workspace navigation.",
-    rule: "color-contrast",
-    selector,
-  })),
 };
+
+const colorContrastAllowances = Object.values(AXE_INCOMPLETE_ALLOWLIST)
+  .flat()
+  .filter((allowance) => allowance.rule === "color-contrast");
 
 async function countTabbableElements(page: Page): Promise<number> {
   return page.locator(TABBABLE_SELECTOR).evaluateAll(
@@ -335,10 +245,18 @@ export async function assertCriticalAccessibility(
   testInfo: TestInfo,
   surfaceId: string
 ) {
+  expect(
+    colorContrastAllowances,
+    "color-contrast incomplete results must never be allowlisted"
+  ).toEqual([]);
   await page.evaluate(async () => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    document.querySelectorAll<HTMLElement>("*").forEach((element) => {
+      if (element.scrollLeft !== 0) element.scrollLeft = 0;
+      if (element.scrollTop !== 0) element.scrollTop = 0;
+    });
     window.scrollTo({ left: 0, top: 0, behavior: "auto" });
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
@@ -364,12 +282,7 @@ export async function assertCriticalAccessibility(
     finding: (typeof result.incomplete)[number],
     selector: string
   ) =>
-    [
-      ...(AXE_INCOMPLETE_ALLOWLIST[surfaceId] ?? []),
-      ...(surfaceId === "new-interview"
-        ? (AXE_INCOMPLETE_ALLOWLIST["new-interview-nav"] ?? [])
-        : []),
-    ].find(
+    (AXE_INCOMPLETE_ALLOWLIST[surfaceId] ?? []).find(
       (allowance) =>
         allowance.rule === finding.id &&
         allowance.selector === selector &&
