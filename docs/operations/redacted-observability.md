@@ -18,6 +18,13 @@ until a separate replay privacy boundary is implemented and verified.
 
 The relaunch gate remains off until a controlled isolated-Preview failure proves the selected operator receives, acknowledges, and recovers the paired SAV-215 event and SAV-216 health alert.
 
+Do not substitute a broad project-wide Runtime Log drain for the closed event
+receiver. Deployed API and launch-critical server boundaries reject direct
+logging of caught exceptions, but unrelated logs are not part of the versioned
+event contract. Any future receiver must select only
+`meelni_operational_failure@1` before external retention or pass a separate
+privacy review for every additional source.
+
 ## Finding Failures
 
 Filter Runtime Logs for:

@@ -24,8 +24,8 @@ export async function GET() {
     // Return array of question IDs for easy lookup
     const questionIds = bookmarks.map(b => b.questionId);
     return NextResponse.json({ questionIds });
-  } catch (error) {
-    console.error("Error fetching bookmarks:", error);
+  } catch {
+    console.error("question_bookmark_read_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
     }).onConflictDoNothing();
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error bookmarking question:", error);
+  } catch {
+    console.error("question_bookmark_create_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -86,8 +86,8 @@ export async function DELETE(request: NextRequest) {
     );
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error removing bookmark:", error);
+  } catch {
+    console.error("question_bookmark_delete_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
