@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import {
+  createProductionActionOwnerSigningKey,
   DEFAULT_EXECUTOR_IDENTITY_PATH,
   DEFAULT_OWNER_PRIVATE_KEY_PATH,
   enrollProductionActionOwner,
+  inspectProductionActionOwnerPublicEntry,
   prepareUnsignedProductionAction,
   runSyntheticProductionActionDryRun,
   signProductionActionPayload,
@@ -46,6 +48,43 @@ export async function runProductionActionOwnerCli({
     });
     // Enrollment is the only command that emits material, and that material is
     // the public registry entry intended for reviewed source control.
+    stdout.write(`${JSON.stringify(result.publicRegistryEntry, null, 2)}\n`);
+    return 0;
+  }
+
+  if (command === "rotate-key") {
+    assertNoUnknownOptions(options, [
+      "key-id",
+      "not-after",
+      "not-before",
+      "private-key-path",
+    ]);
+    const result = await createProductionActionOwnerSigningKey({
+      keyId: required(options, "key-id"),
+      notBefore: required(options, "not-before"),
+      notAfter: required(options, "not-after"),
+      privateKeyPath: required(options, "private-key-path"),
+      repoRoot,
+    });
+    stdout.write(`${JSON.stringify(result.publicRegistryEntry, null, 2)}\n`);
+    return 0;
+  }
+
+  if (command === "public-entry") {
+    assertNoUnknownOptions(options, [
+      "key-id",
+      "not-after",
+      "not-before",
+      "private-key-path",
+    ]);
+    const result = await inspectProductionActionOwnerPublicEntry({
+      keyId: required(options, "key-id"),
+      notBefore: required(options, "not-before"),
+      notAfter: required(options, "not-after"),
+      privateKeyPath:
+        options["private-key-path"] ?? DEFAULT_OWNER_PRIVATE_KEY_PATH,
+      repoRoot,
+    });
     stdout.write(`${JSON.stringify(result.publicRegistryEntry, null, 2)}\n`);
     return 0;
   }
@@ -179,6 +218,8 @@ function usage() {
     "",
     "Commands:",
     "  enroll --key-id ID --not-before ISO --not-after ISO [private paths]",
+    "  rotate-key --key-id ID --not-before ISO --not-after ISO --private-key-path PATH",
+    "  public-entry --key-id ID --not-before ISO --not-after ISO [private key path]",
     "  prepare --action ACTION --configuration-sha256 HASH --target-fingerprint HASH --output-path PATH",
     "  sign --payload-path PATH --artifact-path PATH --key-id ID [private key path]",
     "  verify --artifact-path PATH --action ACTION --configuration-sha256 HASH --target-fingerprint HASH",

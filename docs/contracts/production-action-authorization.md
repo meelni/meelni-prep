@@ -60,6 +60,21 @@ payload and signed-artifact commands emit fixed success codes rather than their
 contents. Signing verifies the result against the reviewed public registry
 before writing it to a new external mode-`0600` file.
 
+Every private input and output path must be outside the current repository's
+Git common directory and every registered linked worktree, including paths that
+reach a worktree through a symlinked ancestor. Prospective output paths are
+resolved against their nearest existing ancestor before any directory is
+created, then checked again after directory creation. A failed create-only
+write removes the partial file so a clean retry remains possible.
+
+The public-entry inspection command derives only the public Ed25519 entry from
+an existing private key and owner-supplied key ID and validity window. It is the
+safe recovery path when enrollment's public stdout was not retained; it never
+prints the private key or executor. Signing-key rotation creates a new key at a
+new explicit external path while preserving the canonical executor identity
+and consumption ledger. Executor rotation is a separate unsupported
+maintenance operation, not part of routine signing-key rotation.
+
 The tooling's generic preparation and signing path rejects
 `relaunch-default-on`. It therefore cannot create or imply launch GO. A future
 launch-decision workflow must remain separate and require the human owner's

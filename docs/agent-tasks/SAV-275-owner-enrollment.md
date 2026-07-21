@@ -28,7 +28,9 @@
 - In scope: external mode-`0600` Ed25519 private key and executor enrollment;
   public registry output; exact-bound unsigned payload preparation; local
   signing and verification; synthetic exact-binding, mutation, expiry, and
-  replay proof; owner runbook and revocation guidance.
+  replay proof; all-worktree/Git-common-dir path custody; recoverable public
+  entry inspection; signing-key-only rotation; owner runbook and revocation
+  guidance.
 - Out of scope: enrolling the real owner key, changing the tracked key registry,
   making provider/Production calls, consuming a real authorization, enabling
   relaunch default-on, or making a launch decision.
@@ -60,7 +62,8 @@
   paths before real enrollment.
 - Fixtures or regression tests needed: temporary synthetic Ed25519 material,
   exact candidate/config/target binding, mutation, expiry, permissions, and
-  replay rejection.
+  replay rejection; Git common-directory, sibling-worktree, symlinked-ancestor,
+  partial-write retry, public-entry recovery, and signing-key rotation cases.
 
 ## Rollout
 
