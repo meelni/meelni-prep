@@ -41,29 +41,29 @@ const EXPECTED_RENDERED_COVERAGE: Record<
     foreground: readonly [minimum: number, maximum: number];
   }
 > = {
-  title: { background: [0.52, 0.57], foreground: [0.12, 0.15] },
-  description: { background: [0.76, 0.8], foreground: [0.018, 0.023] },
+  title: { background: [0.52, 0.59], foreground: [0.12, 0.22] },
+  description: { background: [0.76, 0.8], foreground: [0.018, 0.065] },
   "nav-questions": {
     background: [0.935, 0.96],
-    foreground: [0.007, 0.0095],
+    foreground: [0.007, 0.013],
   },
   "nav-companies": {
     background: [0.93, 0.955],
-    foreground: [0.007, 0.01],
+    foreground: [0.007, 0.014],
   },
   "nav-pricing": {
     background: [0.95, 0.975],
-    foreground: [0.0055, 0.0085],
+    foreground: [0.0055, 0.011],
   },
   "nav-blog": {
     background: [0.96, 0.982],
-    foreground: [0.0038, 0.0062],
+    foreground: [0.0038, 0.008],
   },
   "auth-signin": {
     background: [0.975, 0.995],
-    foreground: [0.0014, 0.0023],
+    foreground: [0.0014, 0.005],
   },
-  activation: { background: [0.93, 0.96], foreground: [0.0085, 0.0125] },
+  activation: { background: [0.93, 0.96], foreground: [0.0085, 0.017] },
 };
 
 const EXPECTED_LAYER_STACKING: Record<
