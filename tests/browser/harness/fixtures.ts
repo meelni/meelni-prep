@@ -4,6 +4,11 @@ import {
   FEEDBACK_SCHEMA_VERSION,
   type FeedbackV2View,
 } from "@meelni/core";
+import type {
+  ComparisonData,
+  SessionAttempt,
+  SessionComparisonDetail,
+} from "@/lib/types/comparison";
 
 export const BROWSER_QA_SESSION_ID = "7b464305-948d-42c5-889f-f030c7db33bd";
 
@@ -86,6 +91,67 @@ export const completedFeedback: FeedbackV2View = {
   ],
 };
 
+const longEvidenceSegment = "evidence-segment-".repeat(24);
+
+export const partialFeedback: FeedbackV2View = {
+  ...completedFeedback,
+  id: "browser-qa-partial-feedback",
+  evaluationState: "partial",
+  summary: `The recorded portion supports a limited observation while this intentionally long token verifies strict reflow: ${longEvidenceSegment}`,
+  strengths: completedFeedback.strengths.map((finding) => ({
+    ...finding,
+    nextStep: `Preserve the clear audience definition while testing a longer responsive action: ${longEvidenceSegment}`,
+  })),
+  improvements: completedFeedback.improvements.map((finding) => ({
+    ...finding,
+    observation: `The recorded portion did not establish a complete decision threshold: ${longEvidenceSegment}`,
+  })),
+};
+
+export const comparisonAttempts: SessionAttempt[] = [
+  comparisonAttempt("browser-qa-attempt-latest", "2026-07-17T17:00:00.000Z", 8),
+  comparisonAttempt("browser-qa-attempt-middle", "2026-07-10T17:00:00.000Z", 7),
+  comparisonAttempt(
+    "browser-qa-attempt-earliest",
+    "2026-07-03T17:00:00.000Z",
+    6
+  ),
+];
+
+export function comparisonFor(earlierId: string): ComparisonData {
+  const earlier = comparisonAttempts.find(
+    (attempt) => attempt.id === earlierId
+  );
+  const latest = comparisonAttempts[0];
+  if (!earlier || !latest) {
+    throw new Error(`Unknown synthetic comparison attempt: ${earlierId}`);
+  }
+
+  const session1 = comparisonDetail(earlier);
+  const session2 = comparisonDetail(latest);
+  return {
+    session1,
+    session2,
+    scoreDelta: {
+      overall: scoreDelta(session1.scores.overall, session2.scores.overall),
+      structure: scoreDelta(
+        session1.scores.structure,
+        session2.scores.structure
+      ),
+      clarity: scoreDelta(session1.scores.clarity, session2.scores.clarity),
+      insight: scoreDelta(session1.scores.insight, session2.scores.insight),
+      communication: scoreDelta(
+        session1.scores.communication,
+        session2.scores.communication
+      ),
+      leadership: scoreDelta(
+        session1.scores.leadership,
+        session2.scores.leadership
+      ),
+    },
+  };
+}
+
 export const transcriptTurns = [
   {
     eventId: "browser-qa-interviewer-1",
@@ -123,3 +189,52 @@ export const publicQuestions = [
     isActive: true,
   },
 ];
+
+function comparisonAttempt(
+  id: string,
+  startedAt: string,
+  score: number
+): SessionAttempt {
+  return {
+    id,
+    startedAt,
+    endedAt: startedAt,
+    roundType: "product_sense",
+    mode: "voice_video",
+    overallScore: score,
+    structureScore: score,
+    clarityScore: score,
+    insightScore: score,
+    communicationScore: score,
+    leadershipScore: score,
+  };
+}
+
+function comparisonDetail(attempt: SessionAttempt): SessionComparisonDetail {
+  const score = attempt.overallScore;
+  return {
+    id: attempt.id,
+    startedAt: attempt.startedAt,
+    endedAt: attempt.endedAt,
+    roundType: attempt.roundType,
+    mode: attempt.mode,
+    scores: {
+      overall: score,
+      structure: score,
+      clarity: score,
+      insight: score,
+      communication: score,
+      leadership: score,
+    },
+    feedback: {
+      strengths: ["The answer named a specific candidate problem."],
+      improvements: ["State the decision threshold before comparing options."],
+      summary: `Synthetic comparison summary for ${attempt.id}.`,
+    },
+    keyQuotes: ["Focus on new parents and their late-night support needs."],
+  };
+}
+
+function scoreDelta(earlier: number | null, latest: number | null) {
+  return earlier === null || latest === null ? null : latest - earlier;
+}

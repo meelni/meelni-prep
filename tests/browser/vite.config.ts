@@ -17,6 +17,10 @@ const config = {
         replacement: shim("auth-provider.tsx"),
       },
       {
+        find: "@/app/providers/analytics-consent-provider",
+        replacement: shim("analytics-consent-provider.tsx"),
+      },
+      {
         find: "@/lib/analytics/analytics-service",
         replacement: shim("analytics-service.ts"),
       },

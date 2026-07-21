@@ -69,7 +69,7 @@ export function FeedbackFindingCard({
                     type="button"
                     variant="link"
                     size="sm"
-                    className="h-auto min-h-8 px-0"
+                    className="h-auto min-h-11 max-w-full px-0 [overflow-wrap:anywhere] whitespace-normal"
                     onClick={() => onEvidenceSelect(evidence)}
                   >
                     View in transcript
