@@ -57,6 +57,7 @@ const ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "lib/db/migrations");
 const CLEAN_DATABASE = "meelni_clean_test";
 const UPGRADE_DATABASE = "meelni_upgrade_test";
+const RUNTIME_RECONCILIATION_DATABASE = "meelni_runtime_reconciliation_test";
 const USER_ONE = "11111111-1111-4111-8111-111111111111";
 const USER_TWO = "22222222-2222-4222-8222-222222222222";
 const SESSION_DELETION = "22222222-3333-4333-8333-222222222222";
@@ -151,6 +152,10 @@ async function run() {
   await verifyLatestSnapshotTypes();
   const cleanUrl = databaseUrl(baseUrl, CLEAN_DATABASE);
   const upgradeUrl = databaseUrl(baseUrl, UPGRADE_DATABASE);
+  const runtimeReconciliationUrl = databaseUrl(
+    baseUrl,
+    RUNTIME_RECONCILIATION_DATABASE
+  );
   const admin = postgres(baseUrl, { max: 1, prepare: false });
   await admin.unsafe(
     `DROP DATABASE IF EXISTS "${CLEAN_DATABASE}" WITH (FORCE)`
@@ -160,6 +165,10 @@ async function run() {
     `DROP DATABASE IF EXISTS "${UPGRADE_DATABASE}" WITH (FORCE)`
   );
   await admin.unsafe(`CREATE DATABASE "${UPGRADE_DATABASE}"`);
+  await admin.unsafe(
+    `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
+  );
+  await admin.unsafe(`CREATE DATABASE "${RUNTIME_RECONCILIATION_DATABASE}"`);
   const clean = postgres(cleanUrl, { max: 20, prepare: false });
 
   try {
@@ -420,9 +429,10 @@ async function run() {
         FEEDBACK_V2_SCHEMA_FINGERPRINT,
         SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
         ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
+        ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 23; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 24; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -442,7 +452,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 24; found 22/
+            /Strict launch preflight requires the exact latest migration count 25; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -492,6 +502,8 @@ async function run() {
       await upgrade.end();
     }
 
+    await verifyRuntimeSettlementReconciliation(runtimeReconciliationUrl);
+
     console.log("Database migration verification passed.");
   } finally {
     await clean.end();
@@ -501,14 +513,331 @@ async function run() {
     await admin.unsafe(
       `DROP DATABASE IF EXISTS "${UPGRADE_DATABASE}" WITH (FORCE)`
     );
+    await admin.unsafe(
+      `DROP DATABASE IF EXISTS "${RUNTIME_RECONCILIATION_DATABASE}" WITH (FORCE)`
+    );
     await admin.end();
   }
 }
 
+async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
+  const sql = postgres(databaseUrl, { max: 4, prepare: false });
+  const reconciliationSql = await readFile(
+    join(MIGRATIONS, "0024_runtime_settlement_reconciliation.sql"),
+    "utf8"
+  );
+  try {
+    await installSupabaseTestSurface(sql);
+
+    const throughTranscriptPrivacy = await createMigrationFolderThrough(12);
+    try {
+      await migrate(drizzle(sql), {
+        migrationsFolder: throughTranscriptPrivacy,
+      });
+    } finally {
+      await rm(throughTranscriptPrivacy, { recursive: true, force: true });
+    }
+
+    await seedAuthorizationFixtures(sql);
+    await sql`
+      UPDATE interview_session
+      SET status = 'completed',
+        lifecycle_state = 'completed',
+        terminal_reason = 'legacy_unknown',
+        ending_at = '2026-07-10T05:01:00.000Z'::timestamptz,
+        ended_at = '2026-07-10T05:01:00.000Z'::timestamptz
+      WHERE id = ${SESSION_ONE}::uuid
+    `;
+    await sql`
+      INSERT INTO transcript_turn (
+        session_id, speaker, started_at, ended_at, text, audio_ms, section
+      ) VALUES (
+        ${SESSION_ONE}::uuid,
+        'user',
+        '2026-07-10T05:00:00.000Z'::timestamptz,
+        '2026-07-10T05:00:01.000Z'::timestamptz,
+        'Generic legacy transcript row',
+        1000,
+        'answer'
+      )
+    `;
+
+    const legacyThrough0022 =
+      await createLegacyRuntimeMigrationFolderThrough(22);
+    try {
+      await migrate(drizzle(sql), { migrationsFolder: legacyThrough0022 });
+    } finally {
+      await rm(legacyThrough0022, { recursive: true, force: true });
+    }
+
+    const [legacyLedger] = await sql<{ hash: string; created_at: string }[]>`
+      SELECT hash, created_at::text
+      FROM drizzle.__drizzle_migrations
+      WHERE created_at = 1783892420196
+    `;
+    assert.deepEqual(legacyLedger, {
+      hash: "39a7508699f29fb5ab5619088ca09d900d49f9b5afac9b86e64c0db894b372e2",
+      created_at: "1783892420196",
+    });
+    const legacyThrough0022Preflight = runPreflight(
+      databaseUrl,
+      true,
+      "runtime_settlement_reconciliation_required"
+    )!;
+    assert.equal(legacyThrough0022Preflight.migrationCount, 23);
+    assert.equal(legacyThrough0022Preflight.tables, 29);
+    assert.equal(legacyThrough0022Preflight.rls_tables, 29);
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      "ca1f6074c933164b9b26425e8b835123dc14363efe19c03c96829ce5d09aa013"
+    );
+
+    const legacyThrough0023 =
+      await createLegacyRuntimeMigrationFolderThrough(23);
+    try {
+      await migrate(drizzle(sql), { migrationsFolder: legacyThrough0023 });
+    } finally {
+      await rm(legacyThrough0023, { recursive: true, force: true });
+    }
+    const legacyConsentFingerprint = databaseSchemaFingerprint(
+      await getStableStartDatabaseSchemaContract(sql)
+    );
+    assert.equal(
+      legacyConsentFingerprint,
+      "9fc4bbd34c87e1617110348ce88bbb1c068859a07fdc48ff10c9138d04f92056"
+    );
+    const legacyThrough0023Preflight = runPreflight(
+      databaseUrl,
+      true,
+      "runtime_settlement_reconciliation_required"
+    )!;
+    assert.equal(legacyThrough0023Preflight.migrationCount, 24);
+    assert.equal(legacyThrough0023Preflight.tables, 29);
+    assert.equal(legacyThrough0023Preflight.rls_tables, 29);
+    assert.equal(
+      legacyThrough0023Preflight.schemaContract,
+      legacyConsentFingerprint
+    );
+
+    await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_turn OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_unknown_legacy_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(`ALTER TABLE transcript_turn OWNER TO CURRENT_USER`);
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
+
+    await sql`
+      ALTER TABLE transcript_turn ADD COLUMN writer_generation integer
+    `;
+    await assert.rejects(
+      () => migrate(drizzle(sql), { migrationsFolder: MIGRATIONS }),
+      /runtime_settlement_reconciliation_mixed_shape/
+    );
+    assert.equal(await migrationCount(sql), 24);
+    await sql`
+      ALTER TABLE transcript_turn DROP COLUMN writer_generation
+    `;
+
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN delivery_state SET DEFAULT 'delivered'
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_legacy_shape/
+    );
+    await sql`
+      ALTER TABLE transcript_turn ALTER COLUMN delivery_state DROP DEFAULT
+    `;
+
+    await sql.unsafe(`
+      DROP POLICY "Service role has full access to transcript_interruption_marker"
+      ON transcript_interruption_marker
+    `);
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_legacy_shape/
+    );
+    await sql.unsafe(`
+      CREATE POLICY "Service role has full access to transcript_interruption_marker"
+      ON transcript_interruption_marker FOR ALL TO service_role
+      USING (true) WITH CHECK (true)
+    `);
+
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = repeat('0', 64)
+      WHERE created_at = 1783892420196
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_unknown_ledger/
+    );
+    await sql`
+      UPDATE drizzle.__drizzle_migrations
+      SET hash = '39a7508699f29fb5ab5619088ca09d900d49f9b5afac9b86e64c0db894b372e2'
+      WHERE created_at = 1783892420196
+    `;
+
+    await sql`
+      INSERT INTO transcript_runtime_settlement (
+        session_id, contract_version, room_name, writer_id, state, settled_at
+      ) VALUES (
+        ${SESSION_ONE}::uuid, 1, 'legacy-room', 'legacy-writer', 'settled',
+        '2026-07-10T05:01:00.000Z'::timestamptz
+      )
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_nonempty_legacy_evidence/
+    );
+    await sql`DELETE FROM transcript_runtime_settlement`;
+
+    await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
+    assert.equal(await migrationCount(sql), 25);
+    const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
+    const strictPreflight = runStrictPreflight(databaseUrl);
+    assert.equal(
+      strictPreflight.status,
+      0,
+      `Reconciled strict preflight failed:\n${strictPreflight.stdout}\n${strictPreflight.stderr}`
+    );
+    assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
+    assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
+    assert.equal(finalPreflight.tables, 30);
+    assert.equal(finalPreflight.rls_tables, 30);
+    assert.equal(
+      databaseSchemaFingerprint(
+        await getStableStartDatabaseSchemaContract(sql)
+      ),
+      ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+    );
+
+    const genericRows = await sql<
+      {
+        text: string | null;
+        contract_version: number | null;
+        writer_generation: number | null;
+      }[]
+    >`
+      SELECT text, contract_version, writer_generation
+      FROM transcript_turn
+      WHERE session_id = ${SESSION_ONE}::uuid
+        AND text = 'Generic legacy transcript row'
+    `;
+    assert.deepEqual(Array.from(genericRows), [
+      {
+        text: "Generic legacy transcript row",
+        contract_version: null,
+        writer_generation: null,
+      },
+    ]);
+
+    await sql.begin(async (tx) => {
+      await tx.unsafe(`SET LOCAL search_path TO public, pg_catalog`);
+      const [before] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      await tx.unsafe(reconciliationSql);
+      const [after] = await tx<{ search_path: string }[]>`
+        SELECT current_setting('search_path') AS search_path
+      `;
+      assert.equal(after?.search_path, before?.search_path);
+    });
+    assert.equal(await migrationCount(sql), 25);
+
+    await sql.unsafe(`CREATE ROLE runtime_owner_probe NOLOGIN`);
+    try {
+      await sql.unsafe(
+        `ALTER TABLE transcript_runtime_writer OWNER TO runtime_owner_probe`
+      );
+      try {
+        await assert.rejects(
+          () => sql.unsafe(reconciliationSql),
+          /runtime_settlement_reconciliation_partial_current_shape/
+        );
+        runOwnershipBlockedPreflight(databaseUrl);
+      } finally {
+        await sql.unsafe(
+          `ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER`
+        );
+      }
+    } finally {
+      await sql.unsafe(`DROP ROLE IF EXISTS runtime_owner_probe`);
+    }
+
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN writer_generation SET DEFAULT 1
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`
+      ALTER TABLE transcript_turn
+      ALTER COLUMN writer_generation DROP DEFAULT
+    `;
+
+    await sql`
+      GRANT SELECT ON transcript_runtime_writer TO authenticated
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`
+      REVOKE SELECT ON transcript_runtime_writer FROM authenticated
+    `;
+
+    await sql`DROP INDEX transcript_turn_chronological_idx`;
+    await sql`
+      CREATE INDEX transcript_turn_chronological_idx
+      ON transcript_turn (session_id, started_at)
+    `;
+    await assert.rejects(
+      () => sql.unsafe(reconciliationSql),
+      /runtime_settlement_reconciliation_partial_current_shape/
+    );
+    await sql`DROP INDEX transcript_turn_chronological_idx`;
+    await sql`
+      CREATE INDEX transcript_turn_chronological_idx ON transcript_turn (
+        session_id, started_at, writer_generation, writer_id, sequence,
+        event_id, id
+      )
+    `;
+    await sql.unsafe(reconciliationSql);
+  } finally {
+    await sql.end();
+  }
+}
+
 async function verifyLatestSnapshotTypes() {
+  const journal = JSON.parse(
+    await readFile(join(ROOT, "lib/db/migrations/meta/_journal.json"), "utf8")
+  ) as { entries: Array<{ idx: number }> };
+  const latestIndex = journal.entries.at(-1)?.idx;
+  assert.notEqual(latestIndex, undefined);
   const snapshot = JSON.parse(
     await readFile(
-      join(ROOT, "lib/db/migrations/meta/0023_snapshot.json"),
+      join(
+        ROOT,
+        `lib/db/migrations/meta/${String(latestIndex).padStart(4, "0")}_snapshot.json`
+      ),
       "utf8"
     )
   ) as {
@@ -1121,6 +1450,19 @@ function runCliMigration(databaseUrl: string) {
   assert.match(result.stdout, /Database target fingerprint:/);
 }
 
+function runOwnershipBlockedPreflight(databaseUrl: string) {
+  const result = spawnSync("npm", ["run", "db:preflight"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
+  assert.equal(result.status, 1);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /Reconciled database does not satisfy the launch schema contract/
+  );
+}
+
 function runAnalyticsConsentAdapterVerification(databaseUrl: string) {
   const result = spawnSync(
     "npm",
@@ -1202,6 +1544,10 @@ interface MigrationPreflightResult {
   migrationCount: number;
   schemaContract: string;
   startingContract: string;
+  migrationLineage: "canonical" | "legacy_runtime_settlement";
+  runtimeSettlementReconciliationPending: boolean;
+  tables: number;
+  rls_tables: number;
   invoice_status_duplicate_rows: number;
   lifecycleBackfill: {
     phase: "not_ready" | "preview" | "applied";
@@ -1388,6 +1734,21 @@ async function createMigrationFolderThrough(maxIndex: number): Promise<string> {
     )
   );
   await writeFile(join(meta, "_journal.json"), JSON.stringify(journal));
+  return folder;
+}
+
+async function createLegacyRuntimeMigrationFolderThrough(
+  maxIndex: number
+): Promise<string> {
+  assert.ok(maxIndex >= 13);
+  const folder = await createMigrationFolderThrough(maxIndex);
+  await copyFile(
+    join(
+      ROOT,
+      "packages/test-fixtures/database/legacy-runtime-settlement-0013.sql"
+    ),
+    join(folder, "0013_runtime_settlement.sql")
+  );
   return folder;
 }
 
@@ -5464,7 +5825,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "server_owned_billing_privileges"
+      "runtime_settlement_reconciled"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -5867,7 +6228,7 @@ async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 24);
+  assert.equal(await migrationCount(sql), 25);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
