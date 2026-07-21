@@ -3,11 +3,13 @@ import test from "node:test";
 
 import {
   escapeLikePattern,
-  getQuestions,
+  getPublishedQuestions,
   type QuestionBankRecord,
   type QuestionListFilter,
   type QuestionListStore,
 } from "@/lib/db/questions";
+import { handleQuestionsListRequest } from "@/app/api/questions/route";
+import { NextRequest } from "next/server";
 import { mapQuestionType } from "@/scripts/sync-questions-from-sheet";
 import { getQuestionSyncSafetyError } from "@/lib/question-sync/safety";
 import { parseIntegerParam } from "@/app/api/questions/route";
@@ -23,6 +25,8 @@ const records: QuestionBankRecord[] = [
   question("strategy-1", "Strategy", true),
   question("strategy-legacy", "Product Strategy", true),
   question("inactive", "Execution", false),
+  question("quarantined", "Execution", false),
+  question("retired", "Behavioral", false),
 ];
 
 test("question listing resolves every canonical round and legacy stored aliases", async () => {
@@ -39,10 +43,9 @@ test("question listing resolves every canonical round and legacy stored aliases"
   } as const;
 
   for (const [roundType, ids] of Object.entries(expectedIds)) {
-    const result = await getQuestions(
+    const result = await getPublishedQuestions(
       {
         roundType: roundType as keyof typeof expectedIds,
-        activeOnly: true,
         limit: 20,
       },
       createMemoryStore(records)
@@ -57,10 +60,9 @@ test("question listing resolves every canonical round and legacy stored aliases"
 });
 
 test("active filtering happens before pagination and returns the true total", async () => {
-  const result = await getQuestions(
+  const result = await getPublishedQuestions(
     {
       roundType: "execution",
-      activeOnly: true,
       limit: 2,
       offset: 1,
     },
@@ -75,8 +77,8 @@ test("active filtering happens before pagination and returns the true total", as
 });
 
 test("question listing applies search before pagination and count", async () => {
-  const result = await getQuestions(
-    { activeOnly: true, search: "pricing", limit: 1 },
+  const result = await getPublishedQuestions(
+    { search: "pricing", limit: 1 },
     createMemoryStore(records)
   );
 
@@ -88,8 +90,8 @@ test("question listing applies search before pagination and count", async () => 
 });
 
 test("legacy labels are canonicalized in question API records", async () => {
-  const result = await getQuestions(
-    { activeOnly: true, limit: 20 },
+  const result = await getPublishedQuestions(
+    { limit: 20 },
     createMemoryStore(records)
   );
 
@@ -97,6 +99,35 @@ test("legacy labels are canonicalized in question API records", async () => {
     new Set(result.questions.map((record) => record.questionType)),
     new Set(["Product Sense", "Behavioral", "Execution", "Strategy"])
   );
+});
+
+test("public question route cannot opt into inactive historical rows", async () => {
+  for (const suffix of ["", "?activeOnly=false", "?activeOnly=true"]) {
+    const response = await handleQuestionsListRequest(
+      new NextRequest(`http://localhost/api/questions${suffix}`),
+      {
+        getPublishedQuestions: (options) =>
+          getPublishedQuestions(options, createMemoryStore(records)),
+      }
+    );
+    const body = (await response.json()) as {
+      questions: QuestionBankRecord[];
+      pagination: { total: number };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      body.questions.every((question) => question.isActive),
+      true
+    );
+    assert.equal(body.pagination.total, 9);
+    assert.deepEqual(
+      body.questions
+        .map((question) => question.id)
+        .filter((id) => ["inactive", "quarantined", "retired"].includes(id)),
+      []
+    );
+  }
 });
 
 test("sheet ingestion writes database-compatible four-round labels", () => {
@@ -176,7 +207,7 @@ function createMemoryStore(source: QuestionBankRecord[]): QuestionListStore {
   function applyFilter(filter: QuestionListFilter) {
     return source.filter(
       (record) =>
-        (!filter.activeOnly || record.isActive) &&
+        record.isActive &&
         (!filter.search ||
           record.questionText
             .toLowerCase()

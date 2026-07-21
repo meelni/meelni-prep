@@ -2,15 +2,14 @@
  * Questions List API
  *
  * Retrieves a list of questions from the question bank with optional filtering
- * and pagination. This endpoint will be used for the admin UI to manage questions.
+ * and pagination. It exposes only the active published collection.
  *
  * @route GET /api/questions
- * @access Public (for now - will be admin-protected in future)
+ * @access Public
  *
  * @query {string} type Optional - Filter by question type (behavioral | product_sense | execution | strategy)
  * @query {number} limit Optional - Maximum number of results per page (1-500, default: 100)
  * @query {number} offset Optional - Number of results to skip (default: 0)
- * @query {boolean} activeOnly Optional - Return only active questions (default: false)
  * @query {string} search Optional - Search question text or company
  *
  * @response {Object} response - Questions data with pagination
@@ -52,24 +51,43 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getQuestions } from "@/lib/db/questions";
+import {
+  getPublishedQuestions,
+  type QuestionListOptions,
+  type QuestionBankRecord,
+} from "@/lib/db/questions";
 import { normalizeQuestionRound, QUESTION_ROUND_TYPES } from "@meelni/core";
 
 const MAX_QUESTION_OFFSET = 100_000;
 
+interface QuestionsListRouteDependencies {
+  getPublishedQuestions(
+    options: QuestionListOptions
+  ): Promise<{ questions: QuestionBankRecord[]; total: number }>;
+}
+
+const defaultDependencies: QuestionsListRouteDependencies = {
+  getPublishedQuestions,
+};
+
 export async function GET(req: NextRequest) {
+  return handleQuestionsListRequest(req);
+}
+
+export async function handleQuestionsListRequest(
+  req: NextRequest,
+  dependencies: QuestionsListRouteDependencies = defaultDependencies
+) {
   try {
     // Parse query parameters
     const searchParams = req.nextUrl.searchParams;
     const type = searchParams.get("type");
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
-    const activeOnlyParam = searchParams.get("activeOnly");
     const search = searchParams.get("search")?.trim() || undefined;
 
     const limit = parseIntegerParam(limitParam, 100);
     const offset = parseIntegerParam(offsetParam, 0);
-    const activeOnly = activeOnlyParam === "true";
 
     if (limit === null || offset === null) {
       return NextResponse.json(
@@ -107,9 +125,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Get questions with pagination
-    const { questions, total } = await getQuestions({
+    // Publication is a server-owned projection. The retired activeOnly query
+    // parameter is ignored so old clients cannot opt into historical rows.
+    const { questions, total } = await dependencies.getPublishedQuestions({
       roundType: roundType ?? undefined,
-      activeOnly,
       limit,
       offset,
       search,

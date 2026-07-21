@@ -56,11 +56,19 @@ unsupported.
 
 ## Concurrency and retry behavior
 
-Provider fetch and validation finish before the database transaction opens. The workflow then uses a PostgreSQL transaction-scoped advisory lock while that same transaction reads existing rows, builds the plan, inserts, reactivates, and deactivates. A connection or write failure rolls the complete mutation back. It works with transaction pooling and releases automatically when the transaction finishes. No schema migration is required.
+Provider fetch and validation finish before the database transaction opens. The workflow then uses a PostgreSQL transaction-scoped advisory lock while that same transaction reads existing rows, builds the plan, inserts, reactivates, and deactivates. A connection or write failure rolls the complete mutation back. It works with transaction pooling and releases automatically when the transaction finishes. Migration `0027_question_provenance` supplies the internal provenance and quality columns, publication constraint, and safe column-level grants required by this workflow.
 
 An overlapping request may finish its provider fetch, but returns `409 question_sync_in_progress` with `Retry-After: 60` before database reads or writes begin. Wait until the active mutation finishes, then retry.
 
-The current schema has no provider row id. Its accepted stable source identity is the normalized tuple of question text, company, canonical storage type, and `askedAt` instant. Timestamp parsing is independent of the CLI or Vercel process timezone. Only exact composite duplicates collapse. An inactive exact match is reactivated; a provenance change creates a new identity and deactivates the old active identity. Multiple active rows for the same identity converge deterministically on the lexicographically lowest UUID. Sequential retries converge on that composite identity.
+The provider has no durable row ID. The sync therefore hashes normalized non-private source fields into `source_fingerprint`, retains the original category in `source_category`, and records only the provider class in `source_kind`. Logs and responses expose aggregate counts, never those values.
+
+Exact fingerprints collapse deterministically before planning, regardless of provider row order. Sheet fingerprinting and runtime planning use one shared Unicode NFC vocabulary. A near duplicate must have the same normalized prompt, company, and canonical PM round while differing only in provenance, quote style, terminal sentence punctuation, case, or spacing. Compatibility folding is forbidden: dashes, superscripts, circled numbers, comparison operators, percentages, currency, arithmetic signs, and other meaning-bearing symbols remain distinct. One existing active row remains canonical whenever possible; additional occurrences are stored inactive with `quality_status = quarantined_near_duplicate` and a canonical link. The database enforces that only `published` rows are active. Fuzzy semantic matching is intentionally out of scope and must not silently quarantine questions.
+
+Migration `0027_question_provenance` fails closed for historical data: every previously active row without deterministic source evidence becomes inactive `quarantined_unverified`, while an already inactive row becomes `retired_source_missing`. The first approved live sync can adopt matching rows in place, attach a source fingerprint, and publish the canonical occurrence without changing its ID. Do not enable public activation between applying the migration and completing the reviewed sync.
+
+The 25% bulk-removal guard counts every active row that would become inactive, whether it is source-missing or retired as a duplicate. A dry run that exceeds the guard fails instead of treating duplicate cleanup as exempt.
+
+Dry-run and live responses report `invalidRows`, `exactDuplicateRows`, `nearDuplicateRowsQuarantined`, and `duplicateRecordsRetired` alongside the existing add/update/deactivate totals. Repeating the same source snapshot must produce no new rows or canonical IDs.
 
 ## Responses and audit events
 
@@ -82,14 +90,17 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 
 1. Keep the global relaunch feature gate off while validating the sync path.
 2. Generate independent Preview credentials and configure the Preview cron and operator secrets.
-3. Deploy to Preview. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
-4. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive exact identity is reactivated.
-5. Generate new, independent Production credentials and run a Production dry
+3. Deploy to Preview and apply the canonical migration chain through `0027_question_provenance`. Confirm strict preflight reports 28 migrations and the question-provenance schema fingerprint recorded in the migration runbook.
+4. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
+5. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive unverified identity is adopted and published in place.
+6. Generate new, independent Production credentials and run a Production dry
    run. `vercel.json` declares the trigger, but the Production route returns
    `403 production_question_sync_activation_required` before the workflow.
    Enable live scheduled mutation only after the controlled owner-authorized
    adapter exists; do not bypass this through a direct dashboard or CLI mutation.
-6. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
+7. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
+
+The current migration is `0027_question_provenance`, generated from stacked parent PR #349 at exact head `bc019ecbec5cd5872ad514ad8ef58d445b58af65`. If that parent changes or another migration lands first, regenerate the SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 

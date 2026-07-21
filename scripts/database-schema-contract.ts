@@ -47,6 +47,10 @@ export const ANALYTICS_CONSENT_SCHEMA_FINGERPRINT =
   "d6b855e326a11e0f44732bcbb4a25b0565af76074a4976d3caec750877bd9701";
 export const PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT =
   "82586c6f559387b1a1b98f955565b9e7efbf91265a36234adac41079d4d381ba";
+// Refreshed by the clean PostgreSQL migration acceptance test whenever the
+// canonical migration lineage changes.
+export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =
+  "6089186d1df02b3d47f78d9926859a3f6b2aac90e935c9e3d7e56f88fed36af3";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

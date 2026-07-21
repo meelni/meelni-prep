@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getQuestionById } from "@/lib/db/questions";
+import { getActiveQuestionById } from "@/lib/db/questions";
 
 const QUESTION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -27,7 +27,7 @@ export async function GET(
       );
     }
 
-    const question = await getQuestionById(id);
+    const question = await getActiveQuestionById(id);
 
     if (!question || !question.isActive) {
       return NextResponse.json(

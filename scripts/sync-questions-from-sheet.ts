@@ -22,6 +22,7 @@ import {
 } from "@/lib/google-sheets-client";
 import { fetchSheetViaAPI } from "@/lib/google-sheets-api";
 import { deduplicateQuestionSyncSource } from "@/lib/question-sync/source";
+import { normalizeQuestionIdentityText } from "@/lib/question-sync/normalization";
 import type {
   PreparedQuestionSync,
   ProcessedQuestion,
@@ -31,6 +32,7 @@ import {
   canonicalQuestionTypeLabel,
   type CanonicalQuestionType,
 } from "@meelni/core";
+import { createHash } from "node:crypto";
 
 // Question type mapping from Google Sheet to database
 // Maps various input formats to canonical database types
@@ -451,6 +453,8 @@ export async function prepareQuestionSyncSource(): Promise<PreparedQuestionSync>
     questions,
     sourceRows: sheetRows.length,
     validRows: validatedQuestions.length,
+    invalidRows,
+    exactDuplicateRows: duplicates,
     questionsSkipped: invalidRows + duplicates,
   };
 }
@@ -544,8 +548,31 @@ function processSheetRow(
       questionText,
       questionType: mappedType,
       askedAt,
+      sourceKind: "google_sheets",
+      sourceCategory: row.questionType.trim(),
+      sourceFingerprint: questionSourceFingerprint({
+        company,
+        questionText,
+        sourceCategory: row.questionType,
+        askedAt,
+      }),
     },
   };
+}
+
+export function questionSourceFingerprint(input: {
+  company: string | null;
+  questionText: string;
+  sourceCategory: string;
+  askedAt: Date | null;
+}): string {
+  const normalized = JSON.stringify([
+    normalizeQuestionIdentityText(input.questionText),
+    normalizeQuestionIdentityText(input.company ?? "") || null,
+    normalizeQuestionIdentityText(input.sourceCategory),
+    input.askedAt?.toISOString() ?? null,
+  ]);
+  return createHash("sha256").update(normalized, "utf8").digest("hex");
 }
 
 /**
