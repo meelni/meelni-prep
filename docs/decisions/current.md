@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Explicit Analytics Consent](2026-07-17-explicit-analytics-consent.md): Optional browser analytics use one versioned tri-state opt-in; undecided/declined states fail closed, replay/autocapture stay disabled, and the operational server relaunch gate remains consent-independent with logging disabled.
 - [Human-Owned Launch Decision](2026-07-13-human-owned-launch-decision.md): Only the human product owner makes the final launch GO/NO-GO; agents and automated gates provide evidence and a readiness recommendation, and Production/default-on action requires explicit owner authorization.
 - [Dynamic Stacked Parent Resolution](2026-07-12-dynamic-stacked-parent-resolution.md): Store immutable PR/ref identities, resolve current heads in trusted CI, and keep dependent-child topology failures off a valid parent's stable context.
 - [Live PM Interview Practice Positioning](2026-07-09-live-pm-interview-practice-positioning.md): Position Meelni as live PM interview practice, remove the fitness metaphor, and treat routes, analytics, and progress claims as explicit compatibility contracts.

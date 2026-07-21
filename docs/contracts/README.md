@@ -28,5 +28,6 @@ Good candidates:
 - [required and optional Stripe webhook endpoint events](./stripe-webhook-events.md);
 - [deployment provider and rehearsal authority](./deployment-preflight.md);
 - [public Terms and Privacy engineering-draft truth and indexing gates](./public-legal-draft.md);
+- [explicit optional-analytics consent, provider lifecycle, and payload boundaries](./analytics-consent.md);
 - subscription entitlement and usage quota states;
 - analytics event schemas.

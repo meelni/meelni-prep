@@ -1500,7 +1500,7 @@ async function handlePaymentSucceeded(
     postCommitEffects = result.postCommitEffects;
   });
   if (postCommitEffects) {
-    emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
+    await emitSubscriptionRenewalPostCommitEffects(postCommitEffects);
   }
 }
 

@@ -657,7 +657,20 @@ export const userSettings = pgTable(
       .notNull(),
     // Deprecated compatibility column. Analytics consent is owned by the
     // explicit consent contract, not this historical setting.
-    shareAnonymousData: boolean("share_anonymous_data").default(true).notNull(),
+    shareAnonymousData: boolean("share_anonymous_data")
+      .default(false)
+      .notNull(),
+    analyticsConsent: text("analytics_consent").default("undecided").notNull(),
+    analyticsConsentVersion: integer("analytics_consent_version"),
+    analyticsConsentSource: text("analytics_consent_source"),
+    analyticsConsentUpdatedAt: timestamp("analytics_consent_updated_at", {
+      withTimezone: true,
+    }),
+    analyticsConsentRevision: bigint("analytics_consent_revision", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
     // Deprecated compatibility column. Canonical transcripts are persisted for
     // feedback and review regardless of this historical preference.
     saveTranscripts: boolean("save_transcripts").default(true).notNull(),
@@ -682,6 +695,14 @@ export const userSettings = pgTable(
     themeCheck: check(
       "theme_check",
       sql`${table.theme} IS NULL OR ${table.theme} IN ('light', 'dark', 'system')`
+    ),
+    analyticsConsentCheck: check(
+      "analytics_consent_check",
+      sql`${table.analyticsConsent} IN ('undecided', 'accepted', 'declined')`
+    ),
+    analyticsConsentMetadataCheck: check(
+      "analytics_consent_metadata_check",
+      sql`(${table.analyticsConsent} = 'undecided' AND ${table.analyticsConsentVersion} IS NULL AND ${table.analyticsConsentSource} IS NULL AND ${table.analyticsConsentUpdatedAt} IS NULL AND ${table.analyticsConsentRevision} = 0) OR (${table.analyticsConsent} IN ('accepted', 'declined') AND ${table.analyticsConsentVersion} > 0 AND ${table.analyticsConsentSource} IN ('banner', 'settings', 'legacy_decline', 'account_sync') AND ${table.analyticsConsentUpdatedAt} IS NOT NULL AND ${table.analyticsConsentRevision} > 0)`
     ),
     // Index for looking up settings by user
     userIdIdx: index("user_settings_user_id_idx").on(table.userId),

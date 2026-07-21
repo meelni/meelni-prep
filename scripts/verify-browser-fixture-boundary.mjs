@@ -34,6 +34,13 @@ export async function findBrowserFixtureBoundaryViolations(
   const browserRoot = join(repoRoot, "tests/browser");
   const playwrightConfigPath = join(repoRoot, "playwright.config.ts");
   const playwrightConfig = await readFile(playwrightConfigPath, "utf8");
+  const packageJson = JSON.parse(
+    await readFile(join(repoRoot, "package.json"), "utf8")
+  );
+  const browserQaRunner = await readFile(
+    join(repoRoot, "scripts/run-browser-qa.mjs"),
+    "utf8"
+  );
 
   for (const [pattern, reason] of UNSAFE_BROWSER_SERVER_CONFIG) {
     if (pattern.test(playwrightConfig)) {
@@ -57,6 +64,28 @@ export async function findBrowserFixtureBoundaryViolations(
   ]) {
     if (!playwrightConfig.includes(required)) {
       violations.push(`playwright.config.ts:missing:${required}`);
+    }
+  }
+  if (
+    packageJson.scripts?.["build:browser:qa"] !==
+    "node scripts/run-browser-qa.mjs build"
+  ) {
+    violations.push("package.json:browser-qa-build-bypasses-clean-runner");
+  }
+  if (
+    !packageJson.scripts?.["test:browser:qa"]?.includes(
+      "node scripts/run-browser-qa.mjs test"
+    )
+  ) {
+    violations.push("package.json:browser-qa-test-bypasses-clean-runner");
+  }
+  for (const required of [
+    "SAFE_PARENT_ENV_KEYS",
+    "isBrowserQaEnvironmentFile",
+    "browser-qa-workspace",
+  ]) {
+    if (!browserQaRunner.includes(required)) {
+      violations.push(`scripts/run-browser-qa.mjs:missing:${required}`);
     }
   }
 

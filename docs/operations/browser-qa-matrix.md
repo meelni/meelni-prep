@@ -179,10 +179,17 @@ npm run test:browser:qa
 ```
 
 `test:browser:install` installs only the Chromium runtime required by the
-matrix. `build:browser:qa` produces the normal production artifact with a
-process-local synthetic launched deployment context, the local relaunch
-fallback, and inert public fixture values supplied for this test process; it
-does not mutate the Statsig gate or any Vercel environment.
+matrix. `build:browser:qa` produces the normal production artifact inside a
+disposable `.context/browser-qa-workspace` mirror. The mirror copies the
+current Git working tree while excluding every loadable `.env*` file, links
+only the local dependency installation, and launches the build with an
+explicit non-secret environment allowlist. `test:browser:qa` refuses a stale
+source fingerprint and runs Playwright from the same sanitized mirror, so
+Playwright's implicit child-environment merge cannot inherit provider
+credentials. It copies only browser QA artifacts back to the repository root.
+The sandbox uses a process-local synthetic launched deployment context, the
+local relaunch fallback, and inert public fixture values; it does not mutate
+the Statsig gate or any Vercel environment.
 Because the local QA server uses plain HTTP, that artifact alone omits the CSP
 `upgrade-insecure-requests` directive; normal Preview and Production builds
 retain it. This prevents same-origin Next.js prefetches from being rewritten to

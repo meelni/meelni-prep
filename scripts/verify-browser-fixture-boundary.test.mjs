@@ -30,6 +30,21 @@ async function fixtureRoot() {
     join(root, "playwright.config.ts"),
     'const config = { command: "next start --strictPort block-server-egress.mjs", env: { NODE_ENV: "production" }, reuseExistingServer: false };\nvoid config;\n'
   );
+  await mkdir(join(root, "scripts"), { recursive: true });
+  await writeFile(
+    join(root, "scripts/run-browser-qa.mjs"),
+    'const SAFE_PARENT_ENV_KEYS = [];\nfunction isBrowserQaEnvironmentFile() {}\nconst workspace = "browser-qa-workspace";\nvoid SAFE_PARENT_ENV_KEYS; void isBrowserQaEnvironmentFile; void workspace;\n'
+  );
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({
+      scripts: {
+        "build:browser:qa": "node scripts/run-browser-qa.mjs build",
+        "test:browser:qa":
+          "node scripts/verify-browser-fixture-boundary.mjs && node scripts/run-browser-qa.mjs test",
+      },
+    })
+  );
   return root;
 }
 
@@ -74,6 +89,26 @@ test("rejects inherited credentials and reusable browser servers", async () => {
     violations.includes("playwright.config.ts:inherits-process-environment")
   );
   assert.ok(violations.includes("playwright.config.ts:reuses-existing-server"));
+});
+
+test("rejects browser commands that bypass the sanitized workspace", async () => {
+  const root = await fixtureRoot();
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({
+      scripts: {
+        "build:browser:qa": "npm run build",
+        "test:browser:qa": "playwright test",
+      },
+    })
+  );
+  const violations = await findBrowserFixtureBoundaryViolations(root);
+  assert.ok(
+    violations.includes("package.json:browser-qa-build-bypasses-clean-runner")
+  );
+  assert.ok(
+    violations.includes("package.json:browser-qa-test-bypasses-clean-runner")
+  );
 });
 
 test("server egress guard terminates non-loopback provider traffic", () => {

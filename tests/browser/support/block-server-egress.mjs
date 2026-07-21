@@ -7,8 +7,9 @@ function hostnameFromRequest(input) {
   if (input instanceof URL) return input.hostname;
   if (typeof input === "string") return new URL(input).hostname;
   if (!input || typeof input !== "object") return "localhost";
+  if (input.socketPath) return "localhost";
   if (typeof input.url === "string") return new URL(input.url).hostname;
-  return input.hostname ?? input.host?.split(":")[0] ?? "localhost";
+  return input.hostname || input.host?.split(":")[0] || "localhost";
 }
 
 function assertLoopback(input) {

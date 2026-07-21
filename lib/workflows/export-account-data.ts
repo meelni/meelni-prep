@@ -26,6 +26,11 @@ export interface AccountExportSource {
     feedbackReadyEmail: boolean;
     weeklyProgressReport: boolean;
     theme: string | null;
+    analyticsConsent: string;
+    analyticsConsentVersion: number | null;
+    analyticsConsentSource: string | null;
+    analyticsConsentUpdatedAt: DateValue;
+    analyticsConsentRevision: number;
     createdAt: DateValue;
     updatedAt: DateValue;
   } | null;
@@ -191,9 +196,33 @@ function createSafeSettingsExport(
     feedbackReadyEmail: settings.feedbackReadyEmail,
     weeklyProgressReport: settings.weeklyProgressReport,
     theme: settings.theme,
+    analyticsConsent: {
+      decision:
+        settings.analyticsConsent === "accepted" ||
+        settings.analyticsConsent === "declined"
+          ? settings.analyticsConsent
+          : "undecided",
+      policyVersion: settings.analyticsConsentVersion,
+      source: isAnalyticsConsentSource(settings.analyticsConsentSource)
+        ? settings.analyticsConsentSource
+        : null,
+      decidedAt: isoDate(settings.analyticsConsentUpdatedAt),
+      revision: settings.analyticsConsentRevision,
+    },
     createdAt: isoDate(settings.createdAt),
     updatedAt: isoDate(settings.updatedAt),
   };
+}
+
+function isAnalyticsConsentSource(
+  value: string | null
+): value is NonNullable<AccountExportSettingsV1["analyticsConsent"]["source"]> {
+  return (
+    value === "banner" ||
+    value === "settings" ||
+    value === "legacy_decline" ||
+    value === "account_sync"
+  );
 }
 
 const SENSITIVE_KEY =

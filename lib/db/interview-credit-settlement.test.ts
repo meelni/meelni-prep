@@ -22,7 +22,9 @@ test("deferred settlement analytics run only after the outer transaction resolve
       order.push("outer_transaction_committed");
       return "committed";
     },
-    () => order.push("analytics")
+    () => {
+      order.push("analytics");
+    }
   );
 
   assert.equal(result, "committed");
@@ -42,7 +44,9 @@ test("an outer transaction rollback discards nested settlement analytics", async
         defer(evidence);
         throw new Error("outer_commit_failed");
       },
-      (completed) => tracked.push(completed)
+      (completed) => {
+        tracked.push(completed);
+      }
     ),
     /outer_commit_failed/
   );

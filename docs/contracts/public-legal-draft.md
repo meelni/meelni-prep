@@ -40,7 +40,7 @@ schema field, provider marketing page, or aspirational roadmap.
 | Account data is erased within a fixed number of days                 | Local deletion is asynchronous and completed tombstones have intentionally undefined retention                         | Describe workflow truth and promise no exact date                          |
 | Human review of automated feedback is available                      | No human-review workflow is implemented                                                                                | Do not offer this control until an owned workflow exists                   |
 | Regional rights, transfers, age rules, and governing law are settled | No accountable policy decision is recorded                                                                             | Keep in the owner/legal decision list                                      |
-| Browser analytics consent is approved                                | Current PostHog/Statsig and cookie-banner behavior require separate consent remediation and owner review               | Disclose current engineering behavior without declaring compliance         |
+| Browser analytics consent is legally approved                        | Engineering now implements explicit opt-in and disables replay/autocapture; accountable legal/owner review remains     | Disclose reviewed engineering behavior without declaring legal compliance  |
 
 ## Billing boundary
 
@@ -127,15 +127,19 @@ be copied onto the public holding pages merely because those pages are
 
 ### Analytics, replay, and browser storage
 
-- When configured, PostHog and Statsig browser clients can process an anonymous
-  identifier, page and feature events, and signed-in account traits such as the
-  account identifier, email domain, signup method, and account creation time.
-- The repository includes automatic-capture and session-replay paths.
-- Current PostHog behavior tracks until the browser user declines. Statsig
-  initialization is separate and does not read that PostHog choice.
-- Consent, replay, cookie classification, provider retention, and launch
-  behavior remain owned by SAV-180 and accountable review. These implementation
-  gaps must not be published as customer-facing policy language.
+- Optional PostHog and browser Statsig clients do not initialize until a
+  current explicit acceptance is resolved for the current browser/account
+  subject. Undecided, declined, stale, malformed, and provider-error states
+  fail closed.
+- Browser autocapture and session replay are disabled. Analytics events use
+  explicit property allowlists; authenticated identifiers use a keyed
+  pseudonym rather than a raw account identifier.
+- The consent-independent server relaunch gate uses a non-identifying
+  operational subject with Statsig event logging disabled. Consent does not
+  determine product access.
+- Isolated Preview network evidence, provider retention, cookie
+  classification, and accountable legal/owner approval remain open. The
+  engineering behavior must not be published as a legal-compliance claim.
 
 ### Provider and retention review
 

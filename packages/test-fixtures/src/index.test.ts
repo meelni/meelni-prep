@@ -14,8 +14,15 @@ import {
 test("account export fixture is versioned and contains no provider payloads", () => {
   const fixture = createAccountDataExportFixture();
 
-  assert.equal(fixture.schemaVersion, "1.0.0");
+  assert.equal(fixture.schemaVersion, "1.1.0");
   assert.equal(fixture.account.id, "fixture-account-user-1");
+  assert.deepEqual(fixture.settings?.analyticsConsent, {
+    decision: "undecided",
+    policyVersion: null,
+    source: null,
+    decidedAt: null,
+    revision: 0,
+  });
   assert.equal(JSON.stringify(fixture).includes("stripeEventId"), false);
   assert.equal(JSON.stringify(fixture).includes("serviceRoleKey"), false);
 });

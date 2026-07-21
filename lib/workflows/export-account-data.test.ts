@@ -34,6 +34,11 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
         feedbackReadyEmail: true,
         weeklyProgressReport: false,
         theme: "system",
+        analyticsConsent: "declined",
+        analyticsConsentVersion: 1,
+        analyticsConsentSource: "settings",
+        analyticsConsentUpdatedAt: new Date("2026-07-10T15:59:00.000Z"),
+        analyticsConsentRevision: 3,
         createdAt: new Date("2026-06-01T12:00:00.000Z"),
         updatedAt: new Date("2026-07-10T16:00:00.000Z"),
       },
@@ -88,7 +93,7 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
   });
 
-  assert.equal(result.schemaVersion, "1.0.0");
+  assert.equal(result.schemaVersion, "1.1.0");
   assert.equal(result.account.id, "user-one");
   assert.deepEqual(result.account.streak, {
     current: 4,
@@ -122,6 +127,13 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     feedbackReadyEmail: true,
     weeklyProgressReport: false,
     theme: "system",
+    analyticsConsent: {
+      decision: "declined",
+      policyVersion: 1,
+      source: "settings",
+      decidedAt: "2026-07-10T15:59:00.000Z",
+      revision: 3,
+    },
     createdAt: "2026-06-01T12:00:00.000Z",
     updatedAt: "2026-07-10T16:00:00.000Z",
   });

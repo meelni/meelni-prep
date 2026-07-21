@@ -22,6 +22,11 @@ const isBrowserQaBuild = process.env.MEELNI_BROWSER_QA === "true";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@meelni/agent", "@meelni/core", "@meelni/integrations"],
+  turbopack: isBrowserQaBuild
+    ? {
+        root: process.env.MEELNI_BROWSER_QA_TURBOPACK_ROOT || process.cwd(),
+      }
+    : undefined,
   async redirects() {
     return [
       {

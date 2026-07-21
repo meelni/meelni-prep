@@ -73,8 +73,8 @@ export function getAnalyticsConfig(): AnalyticsConfig {
     enabled: !!apiKey && !isTest,
     debug: isDevelopment,
     sessionRecording: {
-      // Keep recording off globally until DOM snapshots have a separately
-      // verified privacy boundary; ordinary event sanitization is insufficient.
+      // Replay remains disabled for the relaunch. Route-level masking is not a
+      // sufficient boundary for live interview audio and transcript content.
       enabled: false,
       sampleRate: 0,
       maskTextInputs: true,

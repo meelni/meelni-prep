@@ -162,6 +162,13 @@
       "when": 1783936979855,
       "tag": "0022_server_owned_billing_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784277329897,
+      "tag": "0023_explicit_analytics_consent",
+      "breakpoints": true
     }
   ]
 }
