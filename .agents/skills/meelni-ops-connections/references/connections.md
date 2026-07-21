@@ -429,6 +429,15 @@ Webhook guidance:
 - Local development can use `stripe listen --forward-to http://localhost:3000/api/webhooks/stripe`.
 - Production webhooks should target the production app URL, usually `/api/webhooks/stripe`.
 - Treat webhook signing secrets as secrets. Do not paste them into chat or Linear.
+- Generate the canonical 16-required/one-optional endpoint allowlist with
+  `npm run stripe:webhook-events -- --format=json`. Verify a sanitized endpoint
+  export with
+  `npm run stripe:webhook-events -- --verify-enabled-events-file=/absolute/path/to/sanitized-endpoint.json`.
+  The evidence file should contain only an event array or `enabled_events`;
+  never include the endpoint signing secret, credentials, or delivery payloads.
+- A successful payment receipt is not proof that refund and dispute events are
+  configured. Missing required events, wildcard delivery, or unrelated enabled
+  events fail the executable contract and stop billing rehearsal acceptance.
 
 ## Inngest
 

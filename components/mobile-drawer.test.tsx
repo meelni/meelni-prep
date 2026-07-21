@@ -61,6 +61,9 @@ describe("MobileDrawer account navigation", () => {
   it("keeps Log In available while new practice is paused", () => {
     render(<MobileDrawer />);
 
+    expect(
+      screen.getByRole("button", { name: "Open navigation menu" })
+    ).not.toHaveAttribute("aria-controls");
     expect(screen.getByRole("link", { name: "Log In" })).toHaveAttribute(
       "href",
       "/auth/signin"
