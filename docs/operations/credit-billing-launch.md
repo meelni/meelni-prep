@@ -1,6 +1,6 @@
 # Credit Billing Launch Runbook
 
-Updated: 2026-07-12
+Updated: 2026-07-19
 
 This runbook must be completed before enabling the credit-based billing catalog in production.
 
@@ -31,8 +31,10 @@ MIGRATION_TEST_DATABASE_URL=postgresql://... npm run test:database-migrations
 `creditLedgerIntegrity` and payment-reversal correlation counts under
 `billingAdjustmentIntegrity`. Before relaunch, all counts must be zero on the
 isolated Preview database. The report must not contain user IDs, Stripe IDs,
-balances, or other customer data. Preview currently shares Production data, so
-do not run the rehearsal until SAV-226 establishes an isolated environment.
+balances, or other customer data. SAV-226 established dedicated Preview
+Supabase and provider identities. Pull and preflight that exact isolated target
+before every rehearsal; any Production identity, missing identity marker, or
+uncertain provenance still stops the run.
 
 Migration `0015` adds `creditRecoveryIntegrity` and
 `creditRecoveryLaunchReady`. Strict launch preflight fails when a version-1
@@ -166,6 +168,48 @@ HAVING COUNT(*) > 1;
 ```
 
 The duplicate-idempotency query must return zero rows.
+
+## Webhook Endpoint Event Gate
+
+Every staging or Production Stripe endpoint must pass the executable event
+contract before its delivery receipts count as launch evidence. A successful
+payment or renewal receipt does not prove refund and dispute coverage.
+
+<!-- stripe-webhook-event-contract:start -->
+
+Required events (16):
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.payment_succeeded`
+- `invoice.payment_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.funds_withdrawn`
+- `charge.dispute.funds_reinstated`
+- `charge.dispute.closed`
+
+Optional events (1):
+
+- `customer.subscription.trial_will_end`
+<!-- stripe-webhook-event-contract:end -->
+
+Verify a sanitized endpoint export without sending an event or exposing its
+URL or signing secret:
+
+```bash
+npm run stripe:webhook-events -- --verify-enabled-events-file=/absolute/path/to/sanitized-endpoint.json
+```
+
+Wildcard delivery, a missing required event, or an unrelated enabled event is
+a hard stop. Keep Preview/staging and Production endpoint evidence separate.
 
 ## Preview Validation Checklist
 
