@@ -337,6 +337,15 @@
     @apply bg-background text-foreground font-sans;
   }
 
+  [data-meelni-drawer-content]::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  body:has([data-vaul-drawer][data-state="open"]) main[aria-hidden="true"] {
+    visibility: hidden;
+  }
+
   /* Ensure all interactive elements have pointer cursor */
   button,
   a,

@@ -51,11 +51,9 @@ export function MobileDrawer() {
             className="relative mr-6 flex items-center space-x-2"
           >
             <Icons.logo className="h-10 w-auto" />
-            <DrawerTitle data-vaul-review-node="title">
-              {siteConfig.name}
-            </DrawerTitle>
+            <DrawerTitle>{siteConfig.name}</DrawerTitle>
           </Link>
-          <DrawerDescription data-vaul-review-node="description">
+          <DrawerDescription className="bg-background">
             {siteConfig.description}
           </DrawerDescription>
         </DrawerHeader>
@@ -68,7 +66,6 @@ export function MobileDrawer() {
               <Link
                 key={item.href}
                 href={item.href}
-                data-vaul-review-node={`nav-${item.label.toLowerCase()}`}
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
                   "min-h-11 rounded-lg"
@@ -118,7 +115,6 @@ export function MobileDrawer() {
             <>
               <Link
                 href="/auth/signin"
-                data-vaul-review-node="auth-signin"
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
                   "min-h-11 rounded-lg"
@@ -128,7 +124,6 @@ export function MobileDrawer() {
               </Link>
               <PublicActivationButton
                 href={NEW_INTERVIEW_PATH}
-                data-vaul-review-node="activation"
                 variant={activation.canActivate ? "default" : "outline"}
                 className={cn(
                   "min-h-11 rounded-lg",
