@@ -70,26 +70,53 @@ describe("Statsig consent proxy", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("forwards evaluation initialization only after current acceptance", async () => {
+  it.each([
+    {
+      endpoint: "initialize",
+      upstream: "https://statsigapi.net/v1/initialize",
+    },
+    {
+      endpoint: "sdk_exception",
+      upstream: "https://statsigapi.net/v1/sdk_exception",
+    },
+  ])(
+    "forwards $endpoint only after current acceptance",
+    async ({ endpoint, upstream: upstreamUrl }) => {
+      mocks.resolveTrustedAnalyticsConsentState.mockResolvedValue({
+        resolved: true,
+        consent: accepted,
+      });
+      const upstream = vi.fn(async (_input: RequestInfo | URL) =>
+        Response.json({ feature_gates: {} }, { status: 200 })
+      );
+      vi.stubGlobal("fetch", upstream);
+
+      const response = await POST(request(endpoint), params(endpoint));
+
+      expect(response.status).toBe(200);
+      expect(upstream).toHaveBeenCalledOnce();
+      expect(String(upstream.mock.calls[0]?.[0])).toBe(upstreamUrl);
+    }
+  );
+
+  it("keeps sdk exception reports provider-silent before consent", async () => {
     mocks.resolveTrustedAnalyticsConsentState.mockResolvedValue({
       resolved: true,
-      consent: accepted,
+      consent: { ...accepted, decision: "declined" },
     });
-    const upstream = vi.fn(async (_input: RequestInfo | URL) =>
-      Response.json({ feature_gates: {} }, { status: 200 })
-    );
+    const upstream = vi.fn();
     vi.stubGlobal("fetch", upstream);
 
-    const response = await POST(request("initialize"), params("initialize"));
-
-    expect(response.status).toBe(200);
-    expect(upstream).toHaveBeenCalledOnce();
-    expect(String(upstream.mock.calls[0]?.[0])).toBe(
-      "https://statsigapi.net/v1/initialize"
+    const response = await POST(
+      request("sdk_exception"),
+      params("sdk_exception")
     );
+
+    expect(response.status).toBe(204);
+    expect(upstream).not.toHaveBeenCalled();
   });
 
-  it.each(["rgstr", "sdk_exception"])(
+  it.each(["rgstr", "download_config_specs"])(
     "rejects non-evaluation endpoint %s before consent or upstream work",
     async (endpoint) => {
       const upstream = vi.fn();

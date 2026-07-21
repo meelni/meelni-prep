@@ -143,6 +143,23 @@ Successful and failed runs write diagnostics beneath:
 These directories are gitignored and must never contain secrets or real user
 data.
 
+## Telemetry And Headless Runtime Noise
+
+Browser QA should fail on unmocked provider traffic, but it should not confuse
+same-origin telemetry plumbing with product regressions. Web-vitals reporting
+must use Next.js' bundled `next/web-vitals` integration; do not reintroduce the
+legacy `unpkg.com/web-vitals` loader or broaden CSP for it. Statsig browser
+traffic remains consent-gated and same-origin through `/api/statsig/*`; the
+proxy supports only evaluation initialization and SDK exception reporting so
+headless runs do not emit CSP-blocked `statsigapi.net/v1/sdk_exception`
+console errors after consent.
+
+LiveKit audio capture and disconnect messages can still appear in purely
+headless/local checks when the scenario intentionally mounts voice-session
+surfaces without a real browser audio device or cloud room. Treat those as
+fixture/runtime-environment evidence, not a product pass, and keep the expected
+messages documented with the scenario that produces them.
+
 ## GitHub Actions Integration
 
 Browser QA is a step inside the existing required `Validate` job. It is not a

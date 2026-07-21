@@ -6,7 +6,7 @@ import {
 } from "@/lib/analytics/consent-contract";
 import { resolveTrustedAnalyticsConsentState } from "@/lib/analytics/trusted-consent";
 
-const ALLOWED_STATSIG_ENDPOINTS = new Set(["initialize"]);
+const ALLOWED_STATSIG_ENDPOINTS = new Set(["initialize", "sdk_exception"]);
 const STATSIG_API_BASE_URL = "https://statsigapi.net/v1";
 
 function copyStatsigHeaders(request: NextRequest) {
