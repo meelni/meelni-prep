@@ -330,10 +330,10 @@ export async function resolveRegisteredStack({
   repo = process.cwd(),
   remote = "origin",
   manifestPath,
+  manifest = loadStackManifest(manifestPath),
   api = githubApi,
   fetchImpl,
 } = {}) {
-  const manifest = loadStackManifest(manifestPath);
   const entry = manifest.stacks.find((candidate) => candidate.pr === prNumber);
   const token = env.GITHUB_TOKEN;
   const child = await api({
