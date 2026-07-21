@@ -484,6 +484,19 @@ test("accepts missing font metric evidence by requiring small-text contrast", ()
   assert.equal(evidence.nodes[0].requiredRatio, 4.5);
 });
 
+test("accepts subpixel screenshot dimensions within one device pixel", () => {
+  const snapshot = validSnapshot();
+  snapshot.nodes[0].layers[0].clientWidth = 99;
+  snapshot.nodes[0].layers[0].offsetWidth = 99;
+  snapshot.nodes[0].layers[0].rect.width = 99.3125;
+  snapshot.nodes[0].layers[0].rect.right =
+    snapshot.nodes[0].layers[0].rect.left + 99.3125;
+
+  const evidence = review({ snapshot });
+  assert.ok(evidence);
+  assert.equal(evidence.nodes[0].renderedPixels.width, 100);
+});
+
 test("accepts Axe related target arrays that explicitly identify the drawer pseudo-element", () => {
   const finding = validFinding();
   for (const node of finding.nodes) {
