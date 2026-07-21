@@ -31,8 +31,8 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting practice set:", error);
+  } catch {
+    console.error("practice_set_delete_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
@@ -82,8 +82,8 @@ export async function PATCH(
     }
 
     return NextResponse.json({ set: result[0] });
-  } catch (error) {
-    console.error("Error updating practice set:", error);
+  } catch {
+    console.error("practice_set_update_failed");
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

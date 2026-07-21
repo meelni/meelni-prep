@@ -914,10 +914,10 @@ class RuntimeContractTests(unittest.TestCase):
             {"text": "How would you improve Spotify?"},
         )
 
-        self.assertIn("5-minute product sense demo", demo_prompt)
+        self.assertIn("two-minute product sense voice preview", demo_prompt)
         self.assertIn("quick feedback", demo_prompt)
         self.assertIn("Feedback (keep it punchy", demo_prompt)
-        self.assertNotIn("5-minute product sense demo", full_prompt)
+        self.assertNotIn("two-minute product sense voice preview", full_prompt)
         self.assertNotIn("Feedback (keep it punchy", full_prompt)
         self.assertIn(
             "Feedback is delivered after the completed interview, never during it",

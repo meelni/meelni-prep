@@ -158,21 +158,53 @@ zero model calls. Its proposed envelope remains at most 96 physical attempts and
 $3 total estimated committed spend, but those numbers are not an authorization.
 The v1 and v2 refs are terminal historical authorities and cannot be reused.
 
+The repository contains the fail-closed verifier for a future external owner
+handoff. It does not contain an approval: the public-key registry at
+`config/evaluation-calibration-owner-keys.json` is intentionally empty, no
+signed v3 envelope exists, and private signing material must never be placed in
+Git, chat, environment files, logs, or generated evidence. Enrolling an owner
+public key requires a reviewed source change and runtime-bundle regeneration.
+
 `docs/evidence/sav-248-v3-paid-run-authorization-proposal.json` truthfully
 records `pending_explicit_product_owner_approval`, null authorization source and
 date, and a null `reviewedSourceCommit`. It cannot authorize a provider request,
 GitHub mutation, or credential delivery. Before any future run, the product
 owner must approve one exact post-merge source commit and a regenerated plan
-after the official pricing review is refreshed. That reviewed change must then
-replace the pending proposal; historical approval for v1/v2 cannot be reused.
+after the official pricing review is refreshed. The signed approval remains an
+external input; the historical pending proposal remains non-executable evidence
+and historical approval for v1/v2 cannot be reused.
 
-The executable replacement must not trust `reviewedSourceCommit` as data alone.
+The executable handoff must not trust `reviewedSourceCommit` as data alone.
 Before readiness, the runtime resolves the repository containing its source,
 compares the actual 40-character `HEAD` to the approved commit, independently
 hashes every tracked working-tree blob against the `HEAD` tree, and rejects any
 tracked, staged, or untracked worktree change. This direct content check also
 rejects changes hidden by Git `assume-unchanged` or `skip-worktree` flags.
 Launcher owner/mode checks do not satisfy this source-binding requirement.
+
+The future owner envelope must be an absolute path outside every repository
+worktree, owned by the invoking user, mode `0600`, one hard link, a regular
+non-symlink file, and no larger than 64 KiB. It uses contract
+`meelni.evaluation-calibration-owner-authorization.v1` and an Ed25519 signature
+over the UTF-8 bytes of the contract name, one NUL byte, and the repository's
+canonical JSON serialization of `payload`. The signature key ID must select one
+active public key in the reviewed registry. The payload includes only the human
+product-owner approval decision—not a launch decision—and binds the exact
+source commit, plan hash, planned call/attempt count, worst-case nano-USD,
+96-call/attempt and $3 ceilings, synthetic-only fixture policy, no customer or
+Production data, and both non-reusable predecessor authorities. Issue and
+expiry timestamps must be canonical ISO strings, the issue time must be on a
+whole-second boundary, and the lifetime must be no longer than 30 minutes.
+
+Prepare the later handoff in this order: merge the reviewed public-key/runtime
+and fresh-pricing source; select one new `sav248_v3_auth_` identifier plus the
+issue/expiry window; build the inner v3 authorization from those fixed values;
+regenerate the exact plan against that authorization and merged commit; place
+its hash/count/cost in the outer payload; then have the human product owner sign
+that exact payload outside Git. Any change to source, authorization metadata,
+plan, count, or cost requires a new envelope. The verifier brands the parsed
+authorization in memory; copying or reconstructing its fields does not preserve
+authority.
 
 Local calibration bundle construction and verification first run
 `npm run runtime:check`, which requires the exact version in `.node-version`
@@ -183,7 +215,7 @@ privileged launcher's independently reviewed binary digest and signature pin.
 
 The live child does not execute through `tsx` or import from mutable
 `node_modules`. `npm run calibration:build-runtime` reproducibly bundles the
-complete 358-input runtime into
+complete 363-input runtime into
 `scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
 remain external. `npm run calibration:verify-runtime` must reproduce the exact
 tracked bundle and `docs/evidence/sav-248-v3-runtime-manifest.json`. Before
@@ -279,15 +311,16 @@ The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
-but leaves the reviewed source commit null. It must change after the final
-source commit and refreshed pricing are bound; treat it as review input, never
-as an accepted or executable plan.
+but leaves the reviewed source commit null. A future exact plan must change
+after the final source commit and refreshed pricing are bound; treat this
+proposal as historical review input, never as an accepted or executable plan.
 
 ### Durable single-run GitHub activation
 
-Paid execution remains disabled. Only after a fresh exact authorization and
-reviewed replacement of the proposal may repository owners configure the two
-exact active repository rulesets below for:
+Paid execution remains disabled. Only after the reviewed public-key/runtime and
+fresh-pricing source is merged and a fresh exact external authorization is
+verified may repository owners configure the two exact active repository
+rulesets below for:
 
 ```text
 refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3
@@ -307,8 +340,9 @@ both rulesets before creating the ref. This PR intentionally does not create,
 configure, query, or activate the real ledger ref during tests.
 
 The current code computes the following proposal-only genesis. Do not create it.
-After a fresh exact authorization is merged, recompute and independently verify
-the final authorization message and OID before any GitHub mutation:
+After a fresh exact external authorization is generated and independently
+verified, recompute the final authorization message and OID before any GitHub
+mutation:
 
 ```text
 repository: meelni/meelni-prep (1089904588)
@@ -369,12 +403,14 @@ xtrace. Do not export `GITHUB_TOKEN` or `OPENAI_API_KEY`: the launcher
 rejects both so they cannot appear in inherited process environments. It
 sanitizes PATH and provider configuration, derives the short-lived GitHub token
 through the authenticated GitHub CLI, and reads the OpenAI key from Keychain
-only after readiness. The following is the future invocation shape after a
-fresh exact authorization is merged; do not run it against the pending proposal:
+only after readiness. The following is the future invocation shape after the
+reviewed source is merged and a fresh exact external authorization is issued;
+do not run it against the pending proposal:
 
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
+  --owner-authorization /secure/external/path/sav-248-v3-owner-authorization.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \

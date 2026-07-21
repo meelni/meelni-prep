@@ -52,6 +52,34 @@ only active public keys in `config/production-action-owner-keys.json`. The
 private key stays outside the repository and must never be pasted into chat,
 Linear, a PR, logs, or a provider environment.
 
+The provider-free owner tooling contract,
+`meelni.production-action-owner-tooling.v1`, creates the Ed25519 private key and
+random executor identity only in new external mode-`0600` files. Enrollment may
+emit only the public registry entry for a separate reviewed change. Unsigned
+payload and signed-artifact commands emit fixed success codes rather than their
+contents. Signing verifies the result against the reviewed public registry
+before writing it to a new external mode-`0600` file.
+
+Every private input and output path must be outside the current repository's
+Git common directory and every registered linked worktree, including paths that
+reach a worktree through a symlinked ancestor. Prospective output paths are
+resolved against their nearest existing ancestor before any directory is
+created, then checked again after directory creation. A failed create-only
+write removes the partial file so a clean retry remains possible.
+
+The public-entry inspection command derives only the public Ed25519 entry from
+an existing private key and owner-supplied key ID and validity window. It is the
+safe recovery path when enrollment's public stdout was not retained; it never
+prints the private key or executor. Signing-key rotation creates a new key at a
+new explicit external path while preserving the canonical executor identity
+and consumption ledger. Executor rotation is a separate unsupported
+maintenance operation, not part of routine signing-key rotation.
+
+The tooling's generic preparation and signing path rejects
+`relaunch-default-on`. It therefore cannot create or imply launch GO. A future
+launch-decision workflow must remain separate and require the human owner's
+explicit GO bound to the exact candidate.
+
 `relaunch-default-on` uniquely requires `ownerLaunchDecision: "GO"`. A GO for
 another candidate, a readiness recommendation, a passed automated gate, a
 provider rehearsal, or authorization for another Production action cannot
@@ -83,3 +111,14 @@ The repository guard prevents accidental or delegated execution through
 supported tooling. Credential custody, provider roles, branch protection, and
 review remain the outer security boundary because an operator with direct
 provider credentials can bypass repository wrappers.
+
+## Synthetic proof
+
+`meelni.production-action-synthetic-proof.v1` exercises the same enrollment,
+preparation, signing, verification, and local consumption code with temporary
+synthetic inputs. A passing proof must demonstrate exact binding, candidate and
+artifact mutation rejection, expiry rejection, and replay rejection while
+reporting zero provider calls and zero Production calls. All temporary private
+material is removed at completion. This proof validates the repository
+contract; it does not enroll the owner, authorize a real action, or establish
+launch readiness.

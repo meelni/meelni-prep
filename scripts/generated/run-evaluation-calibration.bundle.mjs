@@ -9,13 +9,13 @@ import { createHash as createHash8, randomBytes as randomBytes2 } from "node:cry
 import {
   link,
   mkdir as mkdir2,
-  open as open2,
+  open as open3,
   readFile,
   rename,
   unlink,
   writeFile
 } from "node:fs/promises";
-import { closeSync as closeSync2, constants as constants3, createReadStream as createReadStream2, writeFileSync as writeFileSync2 } from "node:fs";
+import { closeSync as closeSync2, constants as constants4, createReadStream as createReadStream2, writeFileSync as writeFileSync2 } from "node:fs";
 import { basename as basename3, dirname as dirname5, join as join4, resolve as resolve4 } from "node:path";
 
 // packages/core/src/interview.ts
@@ -9797,7 +9797,7 @@ var src_default = Postgres;
 function Postgres(a, b2) {
   const options = parseOptions(a, b2), subscribe = options.no_subscribe || Subscribe(Postgres, { ...options });
   let ending = false;
-  const queries = queue_default(), connecting = queue_default(), reserved = queue_default(), closed = queue_default(), ended = queue_default(), open3 = queue_default(), busy = queue_default(), full = queue_default(), queues = { connecting, reserved, closed, ended, open: open3, busy, full };
+  const queries = queue_default(), connecting = queue_default(), reserved = queue_default(), closed = queue_default(), ended = queue_default(), open4 = queue_default(), busy = queue_default(), full = queue_default(), queues = { connecting, reserved, closed, ended, open: open4, busy, full };
   const connections = [...Array(options.max)].map(() => connection_default(options, queues, { onopen, onend, onclose }));
   const sql2 = Sql(handler);
   Object.assign(sql2, {
@@ -9910,7 +9910,7 @@ function Postgres(a, b2) {
   }
   async function reserve() {
     const queue = queue_default();
-    const c = open3.length ? open3.shift() : await new Promise((resolve5, reject) => {
+    const c = open4.length ? open4.shift() : await new Promise((resolve5, reject) => {
       const query = { reserve: resolve5, reject };
       queries.push(query);
       closed.length && connect(closed.shift(), query);
@@ -9983,7 +9983,7 @@ function Postgres(a, b2) {
     c.queue.remove(c);
     queue.push(c);
     c.queue = queue;
-    queue === open3 ? c.idleTimer.start() : c.idleTimer.cancel();
+    queue === open4 ? c.idleTimer.start() : c.idleTimer.cancel();
     return c;
   }
   function json2(x) {
@@ -9997,8 +9997,8 @@ function Postgres(a, b2) {
   function handler(query) {
     if (ending)
       return query.reject(Errors.connection("CONNECTION_ENDED", options, options));
-    if (open3.length)
-      return go(open3.shift(), query);
+    if (open4.length)
+      return go(open4.shift(), query);
     if (closed.length)
       return connect(closed.shift(), query);
     busy.length ? go(busy.shift(), query) : queries.push(query);
@@ -10043,7 +10043,7 @@ function Postgres(a, b2) {
   }
   function onopen(c) {
     if (queries.length === 0)
-      return move(c, open3);
+      return move(c, open4);
     let max = Math.ceil(queries.length / (connecting.length + 1)), ready = true;
     while (ready && queries.length && max-- > 0) {
       const query = queries.shift();
@@ -30153,8 +30153,398 @@ async function readCalibrationLiveCredentials(stream, timeoutMs = 1e4) {
   return Object.freeze({ githubToken, openaiKey, acknowledgement });
 }
 
-// lib/evaluation/calibration-run-ledger.ts
+// lib/evaluation/calibration-owner-authorization.ts
+import { createPublicKey, verify as verifySignature } from "node:crypto";
+import { constants } from "node:fs";
+import { open, realpath } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
+
+// config/evaluation-calibration-owner-keys.json
+var evaluation_calibration_owner_keys_default = {
+  contract: "meelni.evaluation-calibration-owner-key-registry.v1",
+  ownerId: "saviii",
+  keys: []
+};
+
+// lib/evaluation/calibration-owner-authorization.ts
+var CALIBRATION_OWNER_AUTHORIZATION_CONTRACT = "meelni.evaluation-calibration-owner-authorization.v1";
+var CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT = "meelni.evaluation-calibration-owner-key-registry.v1";
+var CALIBRATION_OWNER_ID = "saviii";
+var CALIBRATION_OWNER_ROLE = "human_product_owner";
+var CALIBRATION_OWNER_APPROVAL_DECISION = "APPROVE_BOUNDED_PAID_CALIBRATION";
+var CALIBRATION_OWNER_AUTHORIZATION_MAX_TTL_MS = 30 * 60 * 1e3;
+var CALIBRATION_OWNER_AUTHORIZATION_MAX_BYTES = 64 * 1024;
 var SAV_248_V3_APPROVED_RUN_ID = "sav-248-authorized-paid-calibration.v3";
+var SAV_248_V3_PREDECESSOR_AUTHORITIES = Object.freeze([
+  Object.freeze({
+    runId: "sav-198-authorized-paid-calibration.v1",
+    ref: "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
+    activationCommit: "4acdf549eecad5fe88d685c28fbc98d7475b8f05"
+  }),
+  Object.freeze({
+    runId: "sav-248-authorized-paid-calibration.v2",
+    ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2",
+    activationCommit: "d0c4fc4c028b10d8616fdde337be150315a7798c"
+  })
+]);
+var ARTIFACT_KEYS = ["contract", "payload", "signature"];
+var PAYLOAD_KEYS = [
+  "approvalDecision",
+  "authorizationId",
+  "customerTranscriptsAllowed",
+  "expiresAt",
+  "fixturePolicy",
+  "historicalAuthoritiesReusable",
+  "issuedAt",
+  "maximumPhysicalHttpAttempts",
+  "maximumProviderCalls",
+  "maximumSpendNanoUsd",
+  "ownerId",
+  "ownerLaunchDecision",
+  "ownerRole",
+  "plannedPhysicalHttpAttempts",
+  "plannedProviderCalls",
+  "plannedWorstCaseNanoUsd",
+  "planHash",
+  "predecessorAuthorities",
+  "productionDataAllowed",
+  "reviewedSourceCommit",
+  "runId",
+  "signingKeyId",
+  "singleAggregateRun"
+];
+var SIGNATURE_KEYS = ["algorithm", "keyId", "value"];
+var REGISTRY_KEYS = ["contract", "keys", "ownerId"];
+var REGISTRY_ENTRY_KEYS = [
+  "algorithm",
+  "keyId",
+  "notAfter",
+  "notBefore",
+  "publicKeyPem",
+  "status"
+];
+var SHA256 = /^[0-9a-f]{64}$/;
+var COMMIT_SHA = /^[0-9a-f]{40}$/;
+var AUTHORIZATION_ID = /^sav248_v3_auth_[0-9a-f]{32}$/;
+var KEY_ID = /^[A-Za-z0-9._-]{1,80}$/;
+var BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+var verifiedSpendAuthorizations = /* @__PURE__ */ new WeakSet();
+var verifiedOwnerAuthorizations = /* @__PURE__ */ new WeakSet();
+function canonicalCalibrationOwnerAuthorizationJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalCalibrationOwnerAuthorizationJson(entry)).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value).sort().map(
+      (key) => `${JSON.stringify(key)}:${canonicalCalibrationOwnerAuthorizationJson(
+        value[key]
+      )}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function calibrationOwnerAuthorizationSignatureMessage(payload) {
+  return Buffer.from(
+    `${CALIBRATION_OWNER_AUTHORIZATION_CONTRACT}\0${canonicalCalibrationOwnerAuthorizationJson(
+      payload
+    )}`
+  );
+}
+function verifyCalibrationOwnerAuthorization(input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) {
+    throw new Error("calibration_owner_authorization_clock_invalid");
+  }
+  const artifact = parseArtifact(input.artifact);
+  const registry = parseRegistry(input.keyRegistry ?? evaluation_calibration_owner_keys_default);
+  const payload = artifact.payload;
+  if (typeof payload.authorizationId !== "string" || !AUTHORIZATION_ID.test(payload.authorizationId)) {
+    throw new Error("calibration_owner_authorization_id_invalid");
+  }
+  if (payload.runId !== SAV_248_V3_APPROVED_RUN_ID) {
+    throw new Error("calibration_owner_authorization_run_invalid");
+  }
+  if (payload.ownerId !== CALIBRATION_OWNER_ID || payload.ownerRole !== CALIBRATION_OWNER_ROLE || payload.approvalDecision !== CALIBRATION_OWNER_APPROVAL_DECISION) {
+    throw new Error("calibration_owner_authorization_provenance_invalid");
+  }
+  if (payload.ownerLaunchDecision !== null) {
+    throw new Error("calibration_owner_authorization_launch_out_of_scope");
+  }
+  if (typeof payload.signingKeyId !== "string" || !KEY_ID.test(payload.signingKeyId) || payload.signingKeyId !== artifact.signature.keyId) {
+    throw new Error("calibration_owner_authorization_key_id_invalid");
+  }
+  if (typeof payload.reviewedSourceCommit !== "string" || !COMMIT_SHA.test(payload.reviewedSourceCommit)) {
+    throw new Error("calibration_owner_authorization_source_commit_invalid");
+  }
+  if (typeof payload.planHash !== "string" || !SHA256.test(payload.planHash)) {
+    throw new Error("calibration_owner_authorization_plan_hash_invalid");
+  }
+  if (!Number.isSafeInteger(payload.plannedProviderCalls) || payload.plannedProviderCalls < 1 || payload.plannedProviderCalls > 96 || payload.plannedPhysicalHttpAttempts !== payload.plannedProviderCalls || !Number.isSafeInteger(payload.plannedWorstCaseNanoUsd) || payload.plannedWorstCaseNanoUsd < 1 || payload.plannedWorstCaseNanoUsd > 3e9) {
+    throw new Error("calibration_owner_authorization_plan_scope_invalid");
+  }
+  assertBoundedScope(payload);
+  if (canonicalCalibrationOwnerAuthorizationJson(
+    payload.predecessorAuthorities
+  ) !== canonicalCalibrationOwnerAuthorizationJson(
+    SAV_248_V3_PREDECESSOR_AUTHORITIES
+  )) {
+    throw new Error(
+      "calibration_owner_authorization_predecessor_authority_invalid"
+    );
+  }
+  const issuedAt = parseTimestamp(
+    payload.issuedAt,
+    "calibration_owner_authorization_issued_at_invalid"
+  );
+  const expiresAt = parseTimestamp(
+    payload.expiresAt,
+    "calibration_owner_authorization_expires_at_invalid"
+  );
+  if (issuedAt.getTime() > nowMs) {
+    throw new Error("calibration_owner_authorization_not_yet_valid");
+  }
+  if (expiresAt.getTime() <= nowMs) {
+    throw new Error("calibration_owner_authorization_expired");
+  }
+  if (expiresAt.getTime() <= issuedAt.getTime() || expiresAt.getTime() - issuedAt.getTime() > CALIBRATION_OWNER_AUTHORIZATION_MAX_TTL_MS) {
+    throw new Error("calibration_owner_authorization_ttl_invalid");
+  }
+  if (issuedAt.getUTCMilliseconds() !== 0) {
+    throw new Error("calibration_owner_authorization_issued_at_invalid");
+  }
+  if (artifact.signature.algorithm !== "ed25519" || typeof artifact.signature.keyId !== "string" || !KEY_ID.test(artifact.signature.keyId) || typeof artifact.signature.value !== "string" || !BASE64.test(artifact.signature.value)) {
+    throw new Error("calibration_owner_authorization_signature_invalid");
+  }
+  const key = registry.keys.find(
+    ({ keyId }) => keyId === artifact.signature.keyId
+  );
+  if (!key || key.status !== "active") {
+    throw new Error("calibration_owner_authorization_signing_key_untrusted");
+  }
+  const keyNotBefore = parseTimestamp(
+    key.notBefore,
+    "calibration_owner_authorization_key_window_invalid"
+  );
+  const keyNotAfter = parseTimestamp(
+    key.notAfter,
+    "calibration_owner_authorization_key_window_invalid"
+  );
+  if (issuedAt.getTime() < keyNotBefore.getTime() || issuedAt.getTime() >= keyNotAfter.getTime() || nowMs < keyNotBefore.getTime() || nowMs >= keyNotAfter.getTime() || expiresAt.getTime() > keyNotAfter.getTime()) {
+    throw new Error(
+      "calibration_owner_authorization_signing_key_outside_window"
+    );
+  }
+  let publicKey;
+  try {
+    publicKey = createPublicKey(key.publicKeyPem);
+  } catch {
+    throw new Error("calibration_owner_authorization_signing_key_invalid");
+  }
+  if (publicKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("calibration_owner_authorization_signing_key_invalid");
+  }
+  const signature = Buffer.from(artifact.signature.value, "base64");
+  if (signature.length !== 64 || !verifySignature(
+    null,
+    calibrationOwnerAuthorizationSignatureMessage(payload),
+    publicKey,
+    signature
+  )) {
+    throw new Error("calibration_owner_authorization_signature_mismatch");
+  }
+  const authorization = Object.freeze({
+    contractVersion: "evaluation-calibration-spend-authorization.v3",
+    authorizationId: payload.authorizationId,
+    runId: SAV_248_V3_APPROVED_RUN_ID,
+    authorizationStatus: "approved_by_human_product_owner",
+    authorizedOn: payload.issuedAt,
+    authorizationSource: "external_product_owner_ed25519",
+    ownerId: CALIBRATION_OWNER_ID,
+    ownerRole: CALIBRATION_OWNER_ROLE,
+    ownerSigningKeyId: payload.signingKeyId,
+    reviewedSourceCommit: payload.reviewedSourceCommit,
+    singleAggregateRun: true,
+    maximumProviderCalls: 96,
+    maximumPhysicalHttpAttempts: 96,
+    maximumSpendUsd: 3,
+    fixturePolicy: "synthetic_or_separately_approved_only",
+    customerTranscriptsAllowed: false,
+    productionDataAllowed: false,
+    historicalAuthoritiesReusable: false,
+    predecessorAuthorities: SAV_248_V3_PREDECESSOR_AUTHORITIES
+  });
+  verifiedSpendAuthorizations.add(authorization);
+  const verified = Object.freeze({
+    authorization,
+    approvedPlan: Object.freeze({
+      planHash: payload.planHash,
+      plannedProviderCalls: payload.plannedProviderCalls,
+      plannedPhysicalHttpAttempts: payload.plannedPhysicalHttpAttempts,
+      plannedWorstCaseNanoUsd: payload.plannedWorstCaseNanoUsd
+    }),
+    approvalExpiresAt: payload.expiresAt
+  });
+  verifiedOwnerAuthorizations.add(verified);
+  return verified;
+}
+function assertCalibrationOwnerAuthorizationWasVerified(authorization) {
+  if (!verifiedSpendAuthorizations.has(authorization)) {
+    throw new Error("calibration_owner_authorization_provenance_unverified");
+  }
+}
+function assertCalibrationOwnerAuthorizationMatchesPlan(verified, plan, now = /* @__PURE__ */ new Date()) {
+  if (!verifiedOwnerAuthorizations.has(verified)) {
+    throw new Error("calibration_owner_authorization_handoff_unverified");
+  }
+  if (!Number.isFinite(now.getTime()) || new Date(verified.approvalExpiresAt).getTime() <= now.getTime()) {
+    throw new Error("calibration_owner_authorization_expired");
+  }
+  if (verified.approvedPlan.planHash !== plan.planHash || verified.approvedPlan.plannedProviderCalls !== plan.plannedCalls || verified.approvedPlan.plannedPhysicalHttpAttempts !== plan.plannedCalls || verified.approvedPlan.plannedWorstCaseNanoUsd !== plan.plannedWorstCaseNanoUsd || verified.authorization.reviewedSourceCommit !== plan.reviewedSourceCommit) {
+    throw new Error("calibration_owner_authorization_plan_mismatch");
+  }
+}
+async function loadCalibrationOwnerAuthorization(input) {
+  const repositoryRoot = await realpath(input.repositoryRoot ?? process.cwd());
+  const contents = await readPrivateExternalAuthorizationFile(
+    input.authorizationPath,
+    repositoryRoot
+  );
+  let artifact;
+  try {
+    artifact = JSON.parse(contents);
+  } catch {
+    throw new Error("calibration_owner_authorization_artifact_invalid");
+  }
+  return verifyCalibrationOwnerAuthorization({
+    artifact,
+    keyRegistry: input.keyRegistry,
+    now: input.now
+  });
+}
+function parseArtifact(value) {
+  assertPlainObject(value, "calibration_owner_authorization_artifact_invalid");
+  assertExactKeys(
+    value,
+    ARTIFACT_KEYS,
+    "calibration_owner_authorization_artifact_invalid"
+  );
+  if (value.contract !== CALIBRATION_OWNER_AUTHORIZATION_CONTRACT) {
+    throw new Error("calibration_owner_authorization_contract_invalid");
+  }
+  assertPlainObject(
+    value.payload,
+    "calibration_owner_authorization_payload_invalid"
+  );
+  assertExactKeys(
+    value.payload,
+    PAYLOAD_KEYS,
+    "calibration_owner_authorization_payload_invalid"
+  );
+  assertPlainObject(
+    value.signature,
+    "calibration_owner_authorization_signature_invalid"
+  );
+  assertExactKeys(
+    value.signature,
+    SIGNATURE_KEYS,
+    "calibration_owner_authorization_signature_invalid"
+  );
+  return value;
+}
+function parseRegistry(value) {
+  assertPlainObject(
+    value,
+    "calibration_owner_authorization_key_registry_invalid"
+  );
+  assertExactKeys(
+    value,
+    REGISTRY_KEYS,
+    "calibration_owner_authorization_key_registry_invalid"
+  );
+  if (value.contract !== CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT || value.ownerId !== CALIBRATION_OWNER_ID || !Array.isArray(value.keys)) {
+    throw new Error("calibration_owner_authorization_key_registry_invalid");
+  }
+  const keyIds = /* @__PURE__ */ new Set();
+  for (const entry of value.keys) {
+    assertPlainObject(
+      entry,
+      "calibration_owner_authorization_key_registry_invalid"
+    );
+    assertExactKeys(
+      entry,
+      REGISTRY_ENTRY_KEYS,
+      "calibration_owner_authorization_key_registry_invalid"
+    );
+    if (entry.algorithm !== "ed25519" || typeof entry.keyId !== "string" || !KEY_ID.test(entry.keyId) || entry.status !== "active" && entry.status !== "revoked" || typeof entry.notBefore !== "string" || typeof entry.notAfter !== "string" || typeof entry.publicKeyPem !== "string" || keyIds.has(entry.keyId)) {
+      throw new Error("calibration_owner_authorization_key_registry_invalid");
+    }
+    keyIds.add(entry.keyId);
+  }
+  return value;
+}
+function assertBoundedScope(payload) {
+  if (payload.maximumProviderCalls !== 96 || payload.maximumPhysicalHttpAttempts !== 96 || payload.maximumSpendNanoUsd !== 3e9 || payload.singleAggregateRun !== true || payload.fixturePolicy !== "synthetic_or_separately_approved_only" || payload.customerTranscriptsAllowed !== false || payload.productionDataAllowed !== false || payload.historicalAuthoritiesReusable !== false) {
+    throw new Error("calibration_owner_authorization_scope_invalid");
+  }
+}
+async function readPrivateExternalAuthorizationFile(path2, repositoryRoot) {
+  if (!path2 || !isAbsolute(path2)) {
+    throw new Error("calibration_owner_authorization_file_path_invalid");
+  }
+  let handle;
+  try {
+    handle = await open(path2, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch {
+    throw new Error("calibration_owner_authorization_file_insecure");
+  }
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile() || stats.nlink !== 1 || (stats.mode & 511) !== 384 || process.getuid !== void 0 && stats.uid !== process.getuid()) {
+      throw new Error("calibration_owner_authorization_file_insecure");
+    }
+    if (stats.size > CALIBRATION_OWNER_AUTHORIZATION_MAX_BYTES) {
+      throw new Error("calibration_owner_authorization_file_too_large");
+    }
+    const canonicalPath = await realpath(path2);
+    const fromRepository = relative(repositoryRoot, canonicalPath);
+    if (fromRepository === "" || !fromRepository.startsWith("..") && !isAbsolute(fromRepository)) {
+      throw new Error("calibration_owner_authorization_file_must_be_external");
+    }
+    const contents = await handle.readFile({ encoding: "utf8" });
+    if (Buffer.byteLength(contents) > CALIBRATION_OWNER_AUTHORIZATION_MAX_BYTES) {
+      throw new Error("calibration_owner_authorization_file_too_large");
+    }
+    return contents;
+  } finally {
+    await handle.close();
+  }
+}
+function parseTimestamp(value, code) {
+  if (typeof value !== "string") throw new Error(code);
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error(code);
+  }
+  return parsed;
+}
+function assertPlainObject(value, code) {
+  if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error(code);
+  }
+}
+function assertExactKeys(value, expected, code) {
+  const actual = Object.keys(value).sort();
+  const required = [...expected].sort();
+  if (actual.length !== required.length || actual.some((key, index2) => key !== required[index2])) {
+    throw new Error(code);
+  }
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// lib/evaluation/calibration-run-ledger.ts
 var SAV_248_V3_AUTHORIZATION_ID = "sav-248-pending-paid-calibration-authorization.v3";
 var SAV_248_V3_GITHUB_OWNER = "meelni";
 var SAV_248_V3_GITHUB_REPOSITORY = "meelni-prep";
@@ -30170,18 +30560,6 @@ var SAV_248_V3_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
 var SAV_248_V3_GENESIS_COMMIT_OID = "d9dbb6b0b6d203e7a5e0c92d868451bbc5f2d9f2";
 var SAV_248_V3_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v3 calibration ledger immutable";
 var SAV_248_V3_ACTOR_RULESET_NAME = "Meelni SAV-248 v3 calibration activation actor";
-var SAV_248_V3_PREDECESSOR_AUTHORITIES = [
-  {
-    runId: "sav-198-authorized-paid-calibration.v1",
-    ref: "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
-    activationCommit: "4acdf549eecad5fe88d685c28fbc98d7475b8f05"
-  },
-  {
-    runId: "sav-248-authorized-paid-calibration.v2",
-    ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2",
-    activationCommit: "d0c4fc4c028b10d8616fdde337be150315a7798c"
-  }
-];
 var GITHUB_API_VERSION = "2022-11-28";
 var GITHUB_API_HOST = "api.github.com";
 var GITHUB_API_PORT = 443;
@@ -30220,9 +30598,9 @@ var ActivatedCalibrationRunAuthority = class {
     this.github = github;
     this.durable = true;
     this.runId = SAV_248_V3_APPROVED_RUN_ID;
-    this.authorizationId = SAV_248_V3_AUTHORIZATION_ID;
     this.active = true;
     this.spend = createEmptyCalibrationSpendState();
+    this.authorizationId = plan.authorizationId;
     this.authorizationHash = plan.authorizationHash;
     this.planHash = plan.planHash;
     this.plannedCalls = plan.plannedCalls;
@@ -30327,7 +30705,7 @@ function buildCalibrationActivatedPlan(input) {
   const withoutHash = {
     contractVersion: "evaluation-calibration-activated-plan.v2",
     runId: SAV_248_V3_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V3_AUTHORIZATION_ID,
+    authorizationId: authorization.authorizationId,
     authorizationHash,
     ...adjudicationHashes,
     approvalHash,
@@ -30353,6 +30731,9 @@ function buildCalibrationActivatedPlan(input) {
 }
 async function activateCalibrationRun(options, credentials) {
   assertCalibrationSpendAuthorizationExecutable(options.authorization);
+  if (!options.ownerAuthorization || options.ownerAuthorization.authorization !== options.authorization) {
+    throw new Error("calibration_owner_authorization_handoff_invalid");
+  }
   return await activateCalibrationRunWithClient(
     options,
     createProductionGitHubCasClient(credentials.githubToken),
@@ -30361,12 +30742,12 @@ async function activateCalibrationRun(options, credentials) {
 }
 function assertCalibrationSpendAuthorizationExecutable(value) {
   const authorization = parseCalibrationSpendAuthorization(value);
-  if (authorization.authorizationStatus === "pending_explicit_product_owner_approval" || authorization.authorizedOn === null || authorization.authorizationSource === null || authorization.reviewedSourceCommit === null) {
+  if (authorization.authorizationStatus !== "approved_by_human_product_owner") {
     throw new Error(
       "calibration_v3_requires_fresh_exact_product_owner_authorization"
     );
   }
-  throw new Error("calibration_v3_spend_authorization_not_executable");
+  assertCalibrationOwnerAuthorizationWasVerified(authorization);
 }
 async function activateCalibrationRunWithClient(options, github, mode) {
   if (mode === "executable") {
@@ -30380,24 +30761,38 @@ async function activateCalibrationRunWithClient(options, github, mode) {
     repetitions: options.repetitions,
     now
   });
+  if (mode === "executable") {
+    if (!options.ownerAuthorization || options.ownerAuthorization.authorization !== options.authorization) {
+      throw new Error("calibration_owner_authorization_handoff_invalid");
+    }
+    assertCalibrationOwnerAuthorizationMatchesPlan(
+      options.ownerAuthorization,
+      plan,
+      now
+    );
+  }
+  const authorization = parseCalibrationSpendAuthorization(
+    options.authorization
+  );
+  const genesis = buildCalibrationAuthorizationGenesis(plan, authorization);
   await assertCanonicalGitHubAuthority(github);
   const currentRef = await github.getRef();
   if (currentRef.ref !== SAV_248_V3_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
-  if (currentRef.sha !== SAV_248_V3_GENESIS_COMMIT_OID) {
+  if (currentRef.sha !== genesis.oid) {
     const current = await github.getCommit(currentRef.sha);
-    if (isValidActivationCommit(current)) {
+    if (isValidActivationCommit(current, plan, genesis)) {
       throw new Error("calibration_authorized_run_is_already_activated");
     }
     throw new Error("calibration_git_authorization_genesis_oid_mismatch");
   }
-  assertPinnedGenesisCommit(await github.getCommit(currentRef.sha));
+  assertPinnedGenesisCommit(await github.getCommit(currentRef.sha), genesis);
   const activationId = options.activationId ?? randomUUID();
   const activationMessage = stableJson({
     contractVersion: "evaluation-calibration-git-activation.v1",
     runId: SAV_248_V3_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V3_AUTHORIZATION_ID,
+    authorizationId: plan.authorizationId,
     authorizationHash: plan.authorizationHash,
     planHash: plan.planHash,
     activationId
@@ -30406,10 +30801,10 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   const activation = await github.createCommit({
     message: activationMessage,
     treeSha: SAV_248_V3_EMPTY_TREE_OID,
-    parents: [SAV_248_V3_GENESIS_COMMIT_OID],
+    parents: [genesis.oid],
     date: activationDate
   });
-  if (!isValidActivationCommit(activation) || activation.message !== activationMessage || !isCommitIdentity(activation.author, activationDate) || !isCommitIdentity(activation.committer, activationDate)) {
+  if (!isValidActivationCommit(activation, plan, genesis) || activation.message !== activationMessage || !isCommitIdentity(activation.author, activationDate) || !isCommitIdentity(activation.committer, activationDate)) {
     throw new Error("calibration_github_activation_commit_invalid");
   }
   await assertCanonicalGitHubAuthority(github);
@@ -30427,7 +30822,48 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   }
   return new ActivatedCalibrationRunAuthority(activation.sha, plan, github);
 }
-function calibrationAuthorizationCommitMessage() {
+function buildCalibrationAuthorizationGenesis(plan, authorization) {
+  if (authorization.authorizationStatus === "pending_explicit_product_owner_approval") {
+    return {
+      date: SAV_248_V3_GENESIS_DATE,
+      message: calibrationAuthorizationCommitMessage(),
+      oid: SAV_248_V3_GENESIS_COMMIT_OID
+    };
+  }
+  const date2 = authorization.authorizedOn;
+  const message = calibrationAuthorizationCommitMessage(plan, authorization);
+  const timestamp2 = Math.floor(new Date(date2).getTime() / 1e3);
+  if (!Number.isSafeInteger(timestamp2)) {
+    throw new Error("calibration_git_authorization_date_invalid");
+  }
+  const body = [
+    `tree ${SAV_248_V3_EMPTY_TREE_OID}`,
+    `author ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
+    `committer ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
+    "",
+    message,
+    ""
+  ].join("\n");
+  return {
+    date: date2,
+    message,
+    oid: createHash4("sha1").update(`commit ${Buffer.byteLength(body)}\0`).update(body).digest("hex")
+  };
+}
+function calibrationAuthorizationCommitMessage(plan, authorization) {
+  if (plan && authorization) {
+    return stableJson({
+      contractVersion: "evaluation-calibration-git-authorization.v1",
+      runId: plan.runId,
+      authorizationId: plan.authorizationId,
+      authorizationHash: plan.authorizationHash,
+      planHash: plan.planHash,
+      plannedCalls: plan.plannedCalls,
+      plannedWorstCaseNanoUsd: plan.plannedWorstCaseNanoUsd,
+      reviewedSourceCommit: plan.reviewedSourceCommit,
+      predecessorAuthorities: authorization.predecessorAuthorities
+    });
+  }
   return stableJson({
     contractVersion: "evaluation-calibration-git-authorization-proposal.v1",
     runId: SAV_248_V3_APPROVED_RUN_ID,
@@ -30440,18 +30876,50 @@ function calibrationAuthorizationCommitMessage() {
   });
 }
 function parseCalibrationSpendAuthorization(value) {
-  if (!isRecord(value)) {
+  if (!isRecord2(value)) {
     throw new Error("calibration_spend_authorization_invalid");
   }
-  assertExactKeys(value, Object.keys(SAV_248_V3_SPEND_AUTHORIZATION));
-  for (const [key, expected] of Object.entries(
-    SAV_248_V3_SPEND_AUTHORIZATION
-  )) {
-    if (stableJson(value[key]) !== stableJson(expected)) {
-      throw new Error(`calibration_spend_authorization_${key}_mismatch`);
+  if (value.authorizationStatus === "pending_explicit_product_owner_approval") {
+    assertExactKeys2(value, Object.keys(SAV_248_V3_SPEND_AUTHORIZATION));
+    for (const [key, expected] of Object.entries(
+      SAV_248_V3_SPEND_AUTHORIZATION
+    )) {
+      if (stableJson(value[key]) !== stableJson(expected)) {
+        throw new Error(`calibration_spend_authorization_${key}_mismatch`);
+      }
     }
+    return { ...SAV_248_V3_SPEND_AUTHORIZATION };
   }
-  return { ...SAV_248_V3_SPEND_AUTHORIZATION };
+  return parseApprovedCalibrationSpendAuthorization(value);
+}
+function parseApprovedCalibrationSpendAuthorization(value) {
+  const expectedKeys = [
+    "authorizationId",
+    "authorizationSource",
+    "authorizationStatus",
+    "authorizedOn",
+    "contractVersion",
+    "customerTranscriptsAllowed",
+    "fixturePolicy",
+    "historicalAuthoritiesReusable",
+    "maximumPhysicalHttpAttempts",
+    "maximumProviderCalls",
+    "maximumSpendUsd",
+    "ownerId",
+    "ownerRole",
+    "ownerSigningKeyId",
+    "predecessorAuthorities",
+    "productionDataAllowed",
+    "reviewedSourceCommit",
+    "runId",
+    "singleAggregateRun"
+  ];
+  assertExactKeys2(value, expectedKeys);
+  const authorization = value;
+  if (authorization.contractVersion !== "evaluation-calibration-spend-authorization.v3" || !/^sav248_v3_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) || authorization.runId !== SAV_248_V3_APPROVED_RUN_ID || authorization.authorizationStatus !== "approved_by_human_product_owner" || authorization.authorizationSource !== "external_product_owner_ed25519" || !Number.isFinite(new Date(authorization.authorizedOn).getTime()) || authorization.ownerId !== "saviii" || authorization.ownerRole !== "human_product_owner" || !/^[A-Za-z0-9._-]{1,80}$/.test(authorization.ownerSigningKeyId) || !/^[0-9a-f]{40}$/.test(authorization.reviewedSourceCommit) || authorization.singleAggregateRun !== true || authorization.maximumProviderCalls !== 96 || authorization.maximumPhysicalHttpAttempts !== 96 || authorization.maximumSpendUsd !== 3 || authorization.fixturePolicy !== "synthetic_or_separately_approved_only" || authorization.customerTranscriptsAllowed !== false || authorization.productionDataAllowed !== false || authorization.historicalAuthoritiesReusable !== false || stableJson(authorization.predecessorAuthorities) !== stableJson(SAV_248_V3_PREDECESSOR_AUTHORITIES)) {
+    throw new Error("calibration_spend_authorization_approved_invalid");
+  }
+  return authorization;
 }
 async function assertCanonicalGitHubAuthority(github) {
   const repository = await github.getRepository();
@@ -30507,18 +30975,18 @@ function isExactRepositoryRuleset(ruleset) {
 function hasExactStrings(actual, expected) {
   return actual.length === expected.length && expected.every((value) => actual.includes(value));
 }
-function assertPinnedGenesisCommit(commit) {
-  if (commit.sha !== SAV_248_V3_GENESIS_COMMIT_OID || commit.message !== calibrationAuthorizationCommitMessage() || commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, SAV_248_V3_GENESIS_DATE) || !isCommitIdentity(commit.committer, SAV_248_V3_GENESIS_DATE)) {
+function assertPinnedGenesisCommit(commit, genesis) {
+  if (commit.sha !== genesis.oid || commit.message !== genesis.message || commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, genesis.date) || !isCommitIdentity(commit.committer, genesis.date)) {
     throw new Error("calibration_git_authorization_commit_invalid");
   }
 }
-function isValidActivationCommit(commit) {
-  if (commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID || commit.parents.length !== 1 || commit.parents[0] !== SAV_248_V3_GENESIS_COMMIT_OID || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+function isValidActivationCommit(commit, plan, genesis) {
+  if (commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID || commit.parents.length !== 1 || commit.parents[0] !== genesis.oid || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
     return false;
   }
   try {
     const parsed = JSON.parse(commit.message);
-    return parsed.contractVersion === "evaluation-calibration-git-activation.v1" && parsed.runId === SAV_248_V3_APPROVED_RUN_ID && parsed.authorizationId === SAV_248_V3_AUTHORIZATION_ID && parsed.authorizationHash === sha2563(stableJson(SAV_248_V3_SPEND_AUTHORIZATION)) && parsed.planHash === SAV_248_V3_REBASED_PLAN_HASH && typeof parsed.activationId === "string" && parsed.activationId.length > 0;
+    return parsed.contractVersion === "evaluation-calibration-git-activation.v1" && parsed.runId === SAV_248_V3_APPROVED_RUN_ID && parsed.authorizationId === plan.authorizationId && parsed.authorizationHash === plan.authorizationHash && parsed.planHash === plan.planHash && typeof parsed.activationId === "string" && parsed.activationId.length > 0;
   } catch {
     return false;
   }
@@ -30850,7 +31318,7 @@ function cloneSpendState(state) {
 }
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (isRecord(value)) {
+  if (isRecord2(value)) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
@@ -30858,7 +31326,7 @@ function stableJson(value) {
 function sha2563(value) {
   return createHash4("sha256").update(value).digest("hex");
 }
-function assertExactKeys(value, expected) {
+function assertExactKeys2(value, expected) {
   const actual = Object.keys(value).sort();
   const wanted = [...expected].sort();
   if (actual.length !== wanted.length || actual.some((key, index2) => key !== wanted[index2])) {
@@ -30866,7 +31334,7 @@ function assertExactKeys(value, expected) {
   }
 }
 function requireRecord3(value, field) {
-  if (!isRecord(value)) {
+  if (!isRecord2(value)) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
   return value;
@@ -30903,7 +31371,7 @@ function normalizeTimestamp(value) {
   }
   return parsed.toISOString();
 }
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -30918,12 +31386,12 @@ import {
 } from "node:fs";
 import { dirname as dirname2, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-var COMMIT_SHA = /^[a-f0-9]{40}$/;
+var COMMIT_SHA2 = /^[a-f0-9]{40}$/;
 var REPOSITORY_ROOT = realpathSync(
   process.env.MEELNI_CALIBRATION_REPOSITORY_ROOT ?? resolve(dirname2(fileURLToPath(import.meta.url)), "../..")
 );
 function assertCalibrationReviewedSourceState(reviewedSourceCommit, state, expectedRepositoryRoot = REPOSITORY_ROOT) {
-  if (!reviewedSourceCommit || !COMMIT_SHA.test(reviewedSourceCommit) || realpathSync(state.repositoryRoot) !== realpathSync(expectedRepositoryRoot) || state.headCommit !== reviewedSourceCommit || state.porcelainStatus !== "" || !state.trackedTreeMatchesHead) {
+  if (!reviewedSourceCommit || !COMMIT_SHA2.test(reviewedSourceCommit) || realpathSync(state.repositoryRoot) !== realpathSync(expectedRepositoryRoot) || state.headCommit !== reviewedSourceCommit || state.porcelainStatus !== "" || !state.trackedTreeMatchesHead) {
     throw new Error("calibration_reviewed_source_checkout_mismatch");
   }
 }
@@ -31011,7 +31479,7 @@ import { createHash as createHash7, randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
-  constants,
+  constants as constants2,
   existsSync,
   fsyncSync,
   linkSync,
@@ -31025,11 +31493,11 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname as dirname3, isAbsolute, join as join2, resolve as resolve2, sep as sep2 } from "node:path";
+import { basename, dirname as dirname3, isAbsolute as isAbsolute2, join as join2, resolve as resolve2, sep as sep2 } from "node:path";
 
 // lib/evaluation/calibration-semantic-adjudication.ts
 import { createHash as createHash6 } from "node:crypto";
-var SHA256 = /^[a-f0-9]{64}$/;
+var SHA2562 = /^[a-f0-9]{64}$/;
 var SAFE_ID = /^[a-z0-9](?:[a-z0-9._:-]{0,126}[a-z0-9])?$/;
 var OPAQUE_CASE_ID = /^case_[a-f0-9]{32}$/;
 var OPAQUE_OUTPUT_ID = /^out_[a-f0-9]{32}$/;
@@ -31137,7 +31605,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   const reviewInput = parseReviewInput(unknownReviewInput);
   assertAuthorityCoverage(authority, reviewInput);
   const artifact = requireRecord4(unknownArtifact, "artifact");
-  assertExactKeys2(
+  assertExactKeys3(
     artifact,
     [
       "contractVersion",
@@ -31232,7 +31700,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
 }
 function parseReviewInput(input) {
   const record = requireRecord4(input, "reviewInput");
-  assertExactKeys2(
+  assertExactKeys3(
     record,
     [
       "contractVersion",
@@ -31305,7 +31773,7 @@ function parseReviewInput(input) {
 }
 function parseAuthorityEnvelope(input) {
   const record = requireRecord4(input, "authorityEnvelope");
-  assertExactKeys2(
+  assertExactKeys3(
     record,
     [
       "contractVersion",
@@ -31385,7 +31853,7 @@ function assertAuthorityCoverage(authority, reviewInput) {
 }
 function parsePanel(input, reviewInput, authority, index2) {
   const panel = requireRecord4(input, `panel:${index2}`);
-  assertExactKeys2(
+  assertExactKeys3(
     panel,
     [
       "contractVersion",
@@ -31445,7 +31913,7 @@ function parseDecisions(input) {
   }
   const decisions = input.map((unknownDecision, index2) => {
     const decision = requireRecord4(unknownDecision, `decision:${index2}`);
-    assertExactKeys2(
+    assertExactKeys3(
       decision,
       [
         "sanitizedOutputId",
@@ -31568,7 +32036,7 @@ function parseOutputManifest(input) {
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
     const output = requireRecord4(unknownOutput, `output:${index2}`);
-    assertExactKeys2(
+    assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex", "responseSha256"],
       `output:${index2}`
@@ -31626,7 +32094,7 @@ function parseExpectedOutputs(input) {
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
     const output = requireRecord4(unknownOutput, `authorityOutput:${index2}`);
-    assertExactKeys2(
+    assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex"],
       `authorityOutput:${index2}`
@@ -31683,7 +32151,7 @@ function parsePanelExecutions(input) {
       unknownExecution,
       `panelExecution:${index2}`
     );
-    assertExactKeys2(
+    assertExactKeys3(
       execution,
       ["taskPath", "executionReceiptSha256", "verified"],
       `panelExecution:${index2}`
@@ -31709,7 +32177,7 @@ function parsePanelExecutions(input) {
 }
 function parseVersionedHash(input, field) {
   const record = requireRecord4(input, field);
-  assertExactKeys2(record, ["version", "sha256"], field);
+  assertExactKeys3(record, ["version", "sha256"], field);
   return {
     version: requireText2(record.version, `${field}.version`),
     sha256: requireSha2562(record.sha256, `${field}.sha256`)
@@ -31742,7 +32210,7 @@ function requireRunIndex(input, field) {
   return input;
 }
 function requireSha2562(input, field) {
-  if (typeof input !== "string" || !SHA256.test(input)) {
+  if (typeof input !== "string" || !SHA2562.test(input)) {
     throw new Error(`Invalid semantic adjudication ${field}`);
   }
   return input;
@@ -31765,7 +32233,7 @@ function requireRecord4(input, field) {
   }
   return input;
 }
-function assertExactKeys2(input, allowed, field) {
+function assertExactKeys3(input, allowed, field) {
   const actual = Object.keys(input).sort();
   const expected = [...allowed].sort();
   if (actual.length !== expected.length || actual.some((key, index2) => key !== expected[index2])) {
@@ -31790,7 +32258,7 @@ function canonicalJson(value) {
 }
 
 // lib/evaluation/calibration-semantic-capture.ts
-var SHA2562 = /^[a-f0-9]{64}$/;
+var SHA2563 = /^[a-f0-9]{64}$/;
 var TASK_PATH = /^\/root\/[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*$/;
 var EXECUTION_ID = /^exec_[a-f0-9]{32}$/;
 var PRIVATE_MANIFEST = "capture.private.json";
@@ -32174,7 +32642,7 @@ function verifyExecutionReceipt(receipt, decisions, reviewInput, index2) {
   return rebuilt;
 }
 function parseExecutionReceipt(receipt, index2) {
-  assertExactKeys3(
+  assertExactKeys4(
     receipt,
     [
       "contractVersion",
@@ -32228,7 +32696,7 @@ function parseExecutionReceipt(receipt, index2) {
   };
 }
 function parseTrustedExecutionAuthority(authority, reviewInputSha256) {
-  assertExactKeys3(
+  assertExactKeys4(
     authority,
     [
       "contractVersion",
@@ -32327,7 +32795,7 @@ function parsePrivateManifest(input) {
     throw new Error("Invalid semantic capture manifest");
   }
   const manifest = input;
-  assertExactKeys3(
+  assertExactKeys4(
     manifest,
     [
       "contractVersion",
@@ -32358,7 +32826,7 @@ function parsePrivateManifest(input) {
       throw new Error(`Invalid semantic capture caseRun:${index2}`);
     }
     const caseRun = unknownCaseRun;
-    assertExactKeys3(
+    assertExactKeys4(
       caseRun,
       ["caseRefSha256", "sanitizedCaseId", "runIndex", "output"],
       `caseRun:${index2}`
@@ -32383,7 +32851,7 @@ function parsePrivateManifest(input) {
         throw new Error(`Invalid semantic capture caseRun:${index2}.output`);
       }
       const candidate2 = caseRun.output;
-      assertExactKeys3(
+      assertExactKeys4(
         candidate2,
         ["sanitizedOutputId", "fileName", "responseSha256"],
         `caseRun:${index2}.output`
@@ -32532,7 +33000,7 @@ function assertPublishedSemanticReport(path2, expected) {
 }
 function assertTerminalCalibrationReport(pathInput, sha2566) {
   const path2 = requireAbsolutePath(pathInput, "terminal report path");
-  if (!SHA2562.test(sha2566)) {
+  if (!SHA2563.test(sha2566)) {
     throw new Error("Terminal calibration report hash is invalid");
   }
   assertPrivateRegularFile(path2);
@@ -32567,7 +33035,7 @@ function assertPrivateRegularFile(path2) {
 function writeSyncedFile(path2, contents) {
   const fd = openSync(
     path2,
-    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+    constants2.O_CREAT | constants2.O_EXCL | constants2.O_WRONLY,
     384
   );
   try {
@@ -32579,7 +33047,7 @@ function writeSyncedFile(path2, contents) {
   chmodSync(path2, 384);
 }
 function syncDirectory(path2) {
-  const fd = openSync(path2, constants.O_RDONLY);
+  const fd = openSync(path2, constants2.O_RDONLY);
   try {
     fsyncSync(fd);
   } finally {
@@ -32645,7 +33113,7 @@ function requireVersionedHash(input, field) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error(`Invalid semantic capture ${field}`);
   }
-  assertExactKeys3(
+  assertExactKeys4(
     input,
     ["version", "sha256"],
     field
@@ -32655,7 +33123,7 @@ function requireVersionedHash(input, field) {
     sha256: requireSha2563(input?.sha256, `${field}.sha256`)
   };
 }
-function assertExactKeys3(input, allowed, field) {
+function assertExactKeys4(input, allowed, field) {
   const actual = Object.keys(input).sort();
   const expected = [...allowed].sort();
   if (actual.length !== expected.length || actual.some((key, index2) => key !== expected[index2])) {
@@ -32663,7 +33131,7 @@ function assertExactKeys3(input, allowed, field) {
   }
 }
 function requireSha2563(input, field) {
-  if (typeof input !== "string" || !SHA2562.test(input)) {
+  if (typeof input !== "string" || !SHA2563.test(input)) {
     throw new Error(`Invalid semantic capture ${field}`);
   }
   return input;
@@ -32689,7 +33157,7 @@ function requireIsoTimestamp(input, field) {
 }
 function requireAbsolutePath(input, field) {
   const value = requireText3(input, field);
-  if (!isAbsolute(value) || resolve2(value) !== value) {
+  if (!isAbsolute2(value) || resolve2(value) !== value) {
     throw new Error(`Semantic ${field} must be an absolute normalized path`);
   }
   return value;
@@ -32710,14 +33178,14 @@ function canonicalJson2(value) {
 }
 
 // lib/evaluation/calibration-live-semantic-review.ts
-import { constants as constants2 } from "node:fs";
-import { mkdir, open, realpath, stat } from "node:fs/promises";
+import { constants as constants3 } from "node:fs";
+import { mkdir, open as open2, realpath as realpath2, stat } from "node:fs/promises";
 import {
   basename as basename2,
   dirname as dirname4,
-  isAbsolute as isAbsolute2,
+  isAbsolute as isAbsolute3,
   join as join3,
-  relative,
+  relative as relative2,
   resolve as resolve3
 } from "node:path";
 var MAX_REVIEW_FILE_BYTES = 2 * 1024 * 1024;
@@ -32732,15 +33200,15 @@ async function prepareCalibrationSemanticReviewPaths(input) {
     input.executionAuthority,
     input.output
   ].map(
-    (path2) => isAbsolute2(path2) ? resolve3(path2) : resolve3(input.cwd, path2)
+    (path2) => isAbsolute3(path2) ? resolve3(path2) : resolve3(input.cwd, path2)
   );
   assertDistinctAndOutsideCapture(requestedCapture, requestedFiles);
   const requestedCaptureParent = dirname4(requestedCapture);
   assertSemanticPathOutsideGitWorktree(
-    await realpath(await nearestExistingAncestor(requestedCaptureParent))
+    await realpath2(await nearestExistingAncestor(requestedCaptureParent))
   );
   await mkdir(requestedCaptureParent, { recursive: true, mode: 448 });
-  assertSemanticPathOutsideGitWorktree(await realpath(requestedCaptureParent));
+  assertSemanticPathOutsideGitWorktree(await realpath2(requestedCaptureParent));
   const captureDirectory = resolvePrivateSemanticCaptureDirectory(requestedCapture);
   const paths = {
     captureDirectory,
@@ -32827,7 +33295,7 @@ async function readSemanticExecutionAuthority(path2, reviewInputSha256) {
   return parseTrustedSemanticExecutionAuthority(parsed, reviewInputSha256);
 }
 async function readPrivateJsonFile(path2) {
-  const handle = await open(path2, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  const handle = await open2(path2, constants3.O_RDONLY | constants3.O_NOFOLLOW);
   try {
     const before = await handle.stat();
     if (!before.isFile() || (before.mode & 511) !== 384 || before.uid !== process.getuid?.() || before.nlink !== 1 || before.size <= 0 || before.size > MAX_REVIEW_FILE_BYTES) {
@@ -32844,7 +33312,7 @@ async function readPrivateJsonFile(path2) {
     } catch {
       throw new Error("calibration_semantic_review_json_invalid");
     }
-    if (!isRecord2(parsed)) {
+    if (!isRecord3(parsed)) {
       throw new Error("calibration_semantic_review_shape_invalid");
     }
     return parsed;
@@ -32853,12 +33321,12 @@ async function readPrivateJsonFile(path2) {
   }
 }
 async function canonicalFutureFile(cwd, path2) {
-  const requested = isAbsolute2(path2) ? path2 : resolve3(cwd, path2);
+  const requested = isAbsolute3(path2) ? path2 : resolve3(cwd, path2);
   const requestedParent = dirname4(requested);
   const existingAncestor = await nearestExistingAncestor(requestedParent);
-  assertSemanticPathOutsideGitWorktree(await realpath(existingAncestor));
+  assertSemanticPathOutsideGitWorktree(await realpath2(existingAncestor));
   await mkdir(requestedParent, { recursive: true, mode: 448 });
-  const canonicalParent = await realpath(requestedParent);
+  const canonicalParent = await realpath2(requestedParent);
   assertSemanticPathOutsideGitWorktree(canonicalParent);
   return join3(canonicalParent, basename2(requested));
 }
@@ -32885,7 +33353,7 @@ async function assertPrivateOwnedDirectory(path2) {
 }
 async function assertPathAbsent(path2, label) {
   try {
-    const handle = await open(path2, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+    const handle = await open2(path2, constants3.O_RDONLY | constants3.O_NOFOLLOW);
     await handle.close();
   } catch (error) {
     if (isMissingPathError(error)) return;
@@ -32904,8 +33372,8 @@ function assertDistinctAndOutsideCapture(captureDirectory, filePaths) {
   }
 }
 function isContainedBy(parent, candidate2) {
-  const child = relative(parent, candidate2);
-  return child === "" || !child.startsWith("..") && !isAbsolute2(child);
+  const child = relative2(parent, candidate2);
+  return child === "" || !child.startsWith("..") && !isAbsolute3(child);
 }
 function isMissingPathError(error) {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -32918,7 +33386,7 @@ async function readIfPresent(read) {
     throw error;
   }
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -32961,6 +33429,7 @@ async function main() {
   let semanticCapture;
   let semanticPaths;
   let report;
+  let ownerAuthorization;
   let semanticReviewPassed = executionKind !== "live_provider";
   let semanticTerminalReportPublished = false;
   let terminationStarted = false;
@@ -32992,11 +33461,18 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
+    if (!args.ownerAuthorization) {
+      throw new Error("live_calibration_requires_owner_authorization");
+    }
+    ownerAuthorization = await loadCalibrationOwnerAuthorization({
+      authorizationPath: args.ownerAuthorization,
+      repositoryRoot: process.cwd()
+    });
     assertCalibrationSpendAuthorizationExecutable(
-      SAV_248_V3_SPEND_AUTHORIZATION
+      ownerAuthorization.authorization
     );
     assertCalibrationReviewedSourceCheckout(
-      SAV_248_V3_SPEND_AUTHORIZATION.reviewedSourceCommit
+      ownerAuthorization.authorization.reviewedSourceCommit
     );
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
@@ -33005,12 +33481,17 @@ async function main() {
     }
     const semantic = requireSemanticReviewArgs(args);
     const planned = buildCalibrationActivatedPlan({
-      authorization: SAV_248_V3_SPEND_AUTHORIZATION,
+      authorization: ownerAuthorization.authorization,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
       now: /* @__PURE__ */ new Date()
     });
+    assertCalibrationOwnerAuthorizationMatchesPlan(
+      ownerAuthorization,
+      planned,
+      /* @__PURE__ */ new Date()
+    );
     semanticPaths = await prepareCalibrationSemanticReviewPaths({
       cwd: process.cwd(),
       ...semantic
@@ -33052,7 +33533,8 @@ async function main() {
     try {
       runAuthority = await activateCalibrationRun(
         {
-          authorization: SAV_248_V3_SPEND_AUTHORIZATION,
+          ownerAuthorization,
+          authorization: ownerAuthorization.authorization,
           adjudicationApproval,
           model: modelVersion,
           repetitions
@@ -33155,22 +33637,24 @@ async function main() {
           caseRef: caseId,
           runIndex: runIndex ?? -1
         }));
-        const semanticReport = publishPrivateSemanticReviewBeforeTerminalReport({
-          capture: semanticCapture,
-          publicReportPath: semanticPaths.semanticPublicReport,
-          canonicalMismatchCaseRuns,
-          trustedExecutionAuthority: artifacts.executionAuthority,
-          panels: [
-            {
-              taskPath: artifacts.executionAuthority.verifiedExecutions[0].taskPath,
-              decisions: artifacts.panels[0].decisions
-            },
-            {
-              taskPath: artifacts.executionAuthority.verifiedExecutions[1].taskPath,
-              decisions: artifacts.panels[1].decisions
-            }
-          ]
-        });
+        const semanticReport = publishPrivateSemanticReviewBeforeTerminalReport(
+          {
+            capture: semanticCapture,
+            publicReportPath: semanticPaths.semanticPublicReport,
+            canonicalMismatchCaseRuns,
+            trustedExecutionAuthority: artifacts.executionAuthority,
+            panels: [
+              {
+                taskPath: artifacts.executionAuthority.verifiedExecutions[0].taskPath,
+                decisions: artifacts.panels[0].decisions
+              },
+              {
+                taskPath: artifacts.executionAuthority.verifiedExecutions[1].taskPath,
+                decisions: artifacts.panels[1].decisions
+              }
+            ]
+          }
+        );
         report = finalizeCalibrationReportWithSemanticReview(report, {
           gate: semanticReport.semanticAdjudication.gate,
           semanticAdjudicationSha256: semanticAdjudicationReportSha256(semanticReport),
@@ -33226,6 +33710,7 @@ function parseArgs(argv) {
   let output;
   let repetitions;
   let approval;
+  let ownerAuthorization;
   let semanticCaptureDirectory;
   let semanticPublicReport;
   let semanticReviewRequest;
@@ -33252,6 +33737,11 @@ function parseArgs(argv) {
     } else if (argument === "--approval") {
       approval = argv[++index2];
       if (!approval) throw new Error("--approval requires a path");
+    } else if (argument === "--owner-authorization") {
+      ownerAuthorization = argv[++index2];
+      if (!ownerAuthorization) {
+        throw new Error("--owner-authorization requires a path");
+      }
     } else if (argument === "--semantic-capture-dir") {
       semanticCaptureDirectory = argv[++index2];
       if (!semanticCaptureDirectory) {
@@ -33298,6 +33788,7 @@ function parseArgs(argv) {
     output,
     repetitions,
     approval,
+    ownerAuthorization,
     semanticCaptureDirectory,
     semanticPublicReport,
     semanticReviewRequest,
@@ -33351,7 +33842,7 @@ async function writePrivateFileAtomicNew(target, contents) {
   }
 }
 async function writePrivateFileAtomicReplace(target, contents) {
-  const current = await open2(target, constants3.O_RDONLY | constants3.O_NOFOLLOW);
+  const current = await open3(target, constants4.O_RDONLY | constants4.O_NOFOLLOW);
   try {
     const currentStat = await current.stat();
     if (!currentStat.isFile() || (currentStat.mode & 511) !== 384 || currentStat.uid !== process.getuid?.() || currentStat.nlink !== 1) {
@@ -33374,7 +33865,7 @@ async function writeSyncedPrivateTemporary(target, contents) {
     dirname5(target),
     `.${basename3(target)}.${randomBytes2(16).toString("hex")}.tmp`
   );
-  const handle = await open2(temporary, "wx", 384);
+  const handle = await open3(temporary, "wx", 384);
   try {
     await handle.writeFile(contents, { encoding: "utf8" });
     await handle.sync();
@@ -33387,7 +33878,7 @@ async function writeSyncedPrivateTemporary(target, contents) {
   return temporary;
 }
 async function syncDirectory2(path2) {
-  const directory = await open2(path2, "r");
+  const directory = await open3(path2, "r");
   try {
     await directory.sync();
   } finally {

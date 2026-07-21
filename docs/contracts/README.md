@@ -25,6 +25,7 @@ Good candidates:
 - [account export, recent-auth deletion, and retention boundaries](./account-privacy.md);
 - [subscription entitlement convergence across Stripe webhook delivery order](./subscription-entitlement.md);
 - [paid one-time Stripe Checkout fulfillment and replay behavior](./stripe-checkout-fulfillment.md);
+- [required and optional Stripe webhook endpoint events](./stripe-webhook-events.md);
 - [deployment provider and rehearsal authority](./deployment-preflight.md);
 - [public Terms and Privacy engineering-draft truth and indexing gates](./public-legal-draft.md);
 - [explicit optional-analytics consent, provider lifecycle, and payload boundaries](./analytics-consent.md);

@@ -37,8 +37,8 @@ export async function GET(
     }
 
     return NextResponse.json(question);
-  } catch (error) {
-    console.error("Error fetching question:", error);
+  } catch {
+    console.error("question_read_failed");
     return NextResponse.json(
       { error: "Failed to fetch question" },
       { status: 500 }
