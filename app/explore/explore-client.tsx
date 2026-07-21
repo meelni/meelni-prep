@@ -23,7 +23,7 @@ import {
   ChevronRight as BreadcrumbArrow,
 } from "lucide-react";
 import { useDebounce } from "@/lib/hooks/use-debounce";
-import { usePostHog } from "posthog-js/react";
+import { analytics } from "@/lib/analytics/analytics-service";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/auth-provider";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
@@ -51,7 +51,6 @@ export function ExploreClient({
   initialTotal,
   initialLoadError,
 }: ExploreClientProps) {
-  const posthog = usePostHog();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -81,11 +80,11 @@ export function ExploreClient({
   // Track page view
   useEffect(() => {
     if (loadState === "success") {
-      posthog?.capture("explore_page_viewed", {
+      analytics.track("explore_page_viewed", {
         total_questions: totalQuestions,
       });
     }
-  }, [loadState, posthog, totalQuestions]);
+  }, [loadState, totalQuestions]);
 
   // Fetch questions
   useEffect(() => {
@@ -172,23 +171,21 @@ export function ExploreClient({
   // Track search queries
   useEffect(() => {
     if (debouncedSearchQuery && loadState === "success") {
-      posthog?.capture("explore_search", {
-        query_length: Math.min(debouncedSearchQuery.length, 200),
-        has_results: totalQuestions > 0,
+      analytics.track("explore_search", {
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, loadState, posthog, totalQuestions]);
+  }, [debouncedSearchQuery, loadState, totalQuestions]);
 
   // Track filter changes
   useEffect(() => {
     if (selectedType !== "All Types" && loadState === "success") {
-      posthog?.capture("explore_filter_type", {
+      analytics.track("explore_filter_type", {
         filter_type: selectedType,
         results_count: totalQuestions,
       });
     }
-  }, [loadState, selectedType, posthog, totalQuestions]);
+  }, [loadState, selectedType, totalQuestions]);
 
   const handleQuestionClick = (
     question: PublicQuestion,
@@ -204,8 +201,7 @@ export function ExploreClient({
       return;
     }
 
-    posthog?.capture("explore_question_clicked", {
-      question_id: question.id,
+    analytics.track("explore_question_clicked", {
       question_type: question.questionType,
       company: question.company,
       page: currentPage,
@@ -230,7 +226,7 @@ export function ExploreClient({
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     window.scrollTo(0, 0);
-    posthog?.capture("explore_page_changed", {
+    analytics.track("explore_page_changed", {
       page,
       total_pages: totalPages,
     });

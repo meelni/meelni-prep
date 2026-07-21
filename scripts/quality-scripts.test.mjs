@@ -95,16 +95,17 @@ test("the default test typecheck includes every test directory", () => {
 });
 
 test("browser QA exposes one pinned Chromium entrypoint", () => {
-  assert.match(scripts["build:browser:qa"], /MEELNI_BROWSER_QA=true/);
-  assert.match(scripts["build:browser:qa"], /MEELNI_REACTIVATION_DEFAULT=true/);
-  assert.match(scripts["build:browser:qa"], /MEELNI_RELAUNCH_PHASE=launched/);
+  assert.equal(
+    scripts["build:browser:qa"],
+    "node scripts/run-browser-qa.mjs build"
+  );
   assert.equal(
     scripts["test:browser:install"],
     "playwright install --with-deps chromium"
   );
   assert.equal(
     scripts["test:browser:qa"],
-    "node scripts/verify-browser-fixture-boundary.mjs && playwright test --config=playwright.config.ts"
+    "node scripts/verify-browser-fixture-boundary.mjs && node scripts/run-browser-qa.mjs test"
   );
   assert.match(
     scripts["test:quality"],

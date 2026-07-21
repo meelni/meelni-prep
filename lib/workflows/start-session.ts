@@ -758,7 +758,7 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
         reservation,
         currentTime: new Date(),
       });
-      trackReservedCreditEvents(reservation, result.credit);
+      await trackReservedCreditEvents(reservation, result.credit);
       return result.start;
     },
     getQuestionById,

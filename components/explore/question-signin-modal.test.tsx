@@ -7,6 +7,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Button } from "@/components/ui/button";
+import { AnalyticsConsentProvider } from "@/app/providers/analytics-consent-provider";
+import { ANONYMOUS_CONSENT_SUBJECT } from "@/lib/analytics/consent-contract";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
 import { QuestionSignInModal } from "./question-signin-modal";
@@ -23,7 +25,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/app/providers/auth-provider", () => ({
-  useAuth: () => ({ signInWithGoogle: mocks.signInWithGoogle }),
+  useAuth: () => ({
+    isLoading: false,
+    signInWithGoogle: mocks.signInWithGoogle,
+    user: null,
+  }),
 }));
 
 function ModalHarness({ enabled = true }: { enabled?: boolean }) {
@@ -31,22 +37,26 @@ function ModalHarness({ enabled = true }: { enabled?: boolean }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <StatsigProvider
-      initialGateValues={{
-        [FEATURE_GATES.meelniReactivationAccess]: enabled,
-      }}
+    <AnalyticsConsentProvider
+      initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
     >
-      <Button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
-        Choose question
-      </Button>
-      <QuestionSignInModal
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        questionId="question-1"
-        questionText="How would you improve Stripe Checkout?"
-        returnFocusRef={triggerRef}
-      />
-    </StatsigProvider>
+      <StatsigProvider
+        initialGateValues={{
+          [FEATURE_GATES.meelniReactivationAccess]: enabled,
+        }}
+      >
+        <Button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
+          Choose question
+        </Button>
+        <QuestionSignInModal
+          isOpen={open}
+          onClose={() => setOpen(false)}
+          questionId="question-1"
+          questionText="How would you improve Stripe Checkout?"
+          returnFocusRef={triggerRef}
+        />
+      </StatsigProvider>
+    </AnalyticsConsentProvider>
   );
 }
 

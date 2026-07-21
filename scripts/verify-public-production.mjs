@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -21,6 +22,16 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   ".."
 );
+const browserQaBuildRoot = path.join(
+  repoRoot,
+  ".context",
+  "browser-qa-workspace"
+);
+const buildRoot =
+  process.env.PUBLIC_SURFACE_BUILD_ROOT ??
+  (existsSync(path.join(repoRoot, ".next", "BUILD_ID"))
+    ? repoRoot
+    : browserQaBuildRoot);
 const port = process.env.PUBLIC_SURFACE_PORT ?? "3217";
 const baseUrl = `http://127.0.0.1:${port}`;
 const nextBin = path.join(
@@ -37,7 +48,7 @@ const server = spawn(
   process.execPath,
   [nextBin, "start", "--hostname", "127.0.0.1", "--port", port],
   {
-    cwd: repoRoot,
+    cwd: buildRoot,
     env: {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: "1",
@@ -223,7 +234,7 @@ try {
   );
 
   const knownRoutes = await readBuildManifestRoutes(
-    path.join(repoRoot, ".next", "server", "app-paths-manifest.json")
+    path.join(buildRoot, ".next", "server", "app-paths-manifest.json")
   );
   const result = await crawlPublicSurface(baseUrl, {
     knownRoutes,

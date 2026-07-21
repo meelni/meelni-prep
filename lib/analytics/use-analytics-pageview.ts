@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { analytics } from "./analytics-service";
+import { usePostHogRuntimeReady } from "./posthog-provider";
 
 /**
  * Hook to track pageviews automatically
@@ -19,9 +20,10 @@ import { analytics } from "./analytics-service";
 export function useAnalyticsPageview() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const runtimeReady = usePostHogRuntimeReady();
 
   useEffect(() => {
-    if (pathname) {
+    if (runtimeReady && pathname) {
       // Build full URL with sanitized query params
       const params = searchParams ? searchParams.toString() : "";
       const url = params ? `${pathname}?${params}` : pathname;
@@ -29,5 +31,5 @@ export function useAnalyticsPageview() {
       // Track pageview
       analytics.pageview(url);
     }
-  }, [pathname, searchParams]);
+  }, [pathname, runtimeReady, searchParams]);
 }

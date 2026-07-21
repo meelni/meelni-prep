@@ -12,6 +12,8 @@ import {
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 
 import { AuthProvider } from "@/app/providers/auth-provider";
+import { AnalyticsConsentProvider } from "@/app/providers/analytics-consent-provider";
+import { ANONYMOUS_CONSENT_SUBJECT } from "@/lib/analytics/consent-contract";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
 import { ExploreClient } from "./explore-client";
@@ -31,28 +33,32 @@ test("Explore server render exposes the initial corpus, count, and schema", () =
       <PathnameContext.Provider value="/explore">
         <SearchParamsContext.Provider value={new URLSearchParams()}>
           <AuthProvider>
-            <StatsigProvider
-              initialGateValues={{
-                [FEATURE_GATES.meelniReactivationAccess]: false,
-              }}
+            <AnalyticsConsentProvider
+              initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
             >
-              <ExploreClient
-                initialLoadError={null}
-                initialTotal={41}
-                initialQuestions={[
-                  {
-                    id: "question-1",
-                    company: "Example Company",
-                    questionText:
-                      "How would you measure success for a new PM product?",
-                    questionType: "Execution",
-                    askedAt: "2025-11-20T00:00:00.000Z",
-                    isActive: true,
-                    createdAt: null,
-                  },
-                ]}
-              />
-            </StatsigProvider>
+              <StatsigProvider
+                initialGateValues={{
+                  [FEATURE_GATES.meelniReactivationAccess]: false,
+                }}
+              >
+                <ExploreClient
+                  initialLoadError={null}
+                  initialTotal={41}
+                  initialQuestions={[
+                    {
+                      id: "question-1",
+                      company: "Example Company",
+                      questionText:
+                        "How would you measure success for a new PM product?",
+                      questionType: "Execution",
+                      askedAt: "2025-11-20T00:00:00.000Z",
+                      isActive: true,
+                      createdAt: null,
+                    },
+                  ]}
+                />
+              </StatsigProvider>
+            </AnalyticsConsentProvider>
           </AuthProvider>
         </SearchParamsContext.Provider>
       </PathnameContext.Provider>
@@ -74,27 +80,31 @@ test("Explore server render keeps question activation available when relaunch is
       <PathnameContext.Provider value="/explore">
         <SearchParamsContext.Provider value={new URLSearchParams()}>
           <AuthProvider>
-            <StatsigProvider
-              initialGateValues={{
-                [FEATURE_GATES.meelniReactivationAccess]: true,
-              }}
+            <AnalyticsConsentProvider
+              initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
             >
-              <ExploreClient
-                initialLoadError={null}
-                initialTotal={1}
-                initialQuestions={[
-                  {
-                    id: "question-1",
-                    company: "Example Company",
-                    questionText: "How would you improve activation?",
-                    questionType: "Product Sense",
-                    askedAt: null,
-                    isActive: true,
-                    createdAt: null,
-                  },
-                ]}
-              />
-            </StatsigProvider>
+              <StatsigProvider
+                initialGateValues={{
+                  [FEATURE_GATES.meelniReactivationAccess]: true,
+                }}
+              >
+                <ExploreClient
+                  initialLoadError={null}
+                  initialTotal={1}
+                  initialQuestions={[
+                    {
+                      id: "question-1",
+                      company: "Example Company",
+                      questionText: "How would you improve activation?",
+                      questionType: "Product Sense",
+                      askedAt: null,
+                      isActive: true,
+                      createdAt: null,
+                    },
+                  ]}
+                />
+              </StatsigProvider>
+            </AnalyticsConsentProvider>
           </AuthProvider>
         </SearchParamsContext.Provider>
       </PathnameContext.Provider>
@@ -116,17 +126,21 @@ test("Explore server failure never invents corpus facts or schema", () => {
       <PathnameContext.Provider value="/explore">
         <SearchParamsContext.Provider value={new URLSearchParams()}>
           <AuthProvider>
-            <StatsigProvider
-              initialGateValues={{
-                [FEATURE_GATES.meelniReactivationAccess]: false,
-              }}
+            <AnalyticsConsentProvider
+              initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
             >
-              <ExploreClient
-                initialLoadError="Questions are temporarily unavailable."
-                initialTotal={0}
-                initialQuestions={[]}
-              />
-            </StatsigProvider>
+              <StatsigProvider
+                initialGateValues={{
+                  [FEATURE_GATES.meelniReactivationAccess]: false,
+                }}
+              >
+                <ExploreClient
+                  initialLoadError="Questions are temporarily unavailable."
+                  initialTotal={0}
+                  initialQuestions={[]}
+                />
+              </StatsigProvider>
+            </AnalyticsConsentProvider>
           </AuthProvider>
         </SearchParamsContext.Provider>
       </PathnameContext.Provider>

@@ -32,6 +32,7 @@ import { stripeSubscriptionCursorIsNewer } from "../lib/db/stripe-subscription-e
 import { subscription } from "../lib/db/schema";
 
 import {
+  ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
   BILLING_TRUTH_SCHEMA_FINGERPRINT,
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
@@ -147,6 +148,7 @@ void run()
   });
 
 async function run() {
+  await verifyLatestSnapshotTypes();
   const cleanUrl = databaseUrl(baseUrl, CLEAN_DATABASE);
   const upgradeUrl = databaseUrl(baseUrl, UPGRADE_DATABASE);
   const admin = postgres(baseUrl, { max: 1, prepare: false });
@@ -203,6 +205,7 @@ async function run() {
     );
     await seedAuthorizationFixtures(clean);
     await verifyDatabase(clean);
+    runAnalyticsConsentAdapterVerification(cleanUrl);
     await verifyCleanLifecycleDefaults(clean);
     await verifyLifecycleConcurrency(clean);
     await verifyProviderStartCleanupOwnership(clean, cleanUrl);
@@ -233,10 +236,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, ANALYTICS_CONSENT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -419,9 +419,10 @@ async function run() {
         DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
         FEEDBACK_V2_SCHEMA_FINGERPRINT,
         SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
+        ANALYTICS_CONSENT_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 22; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 23; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -441,7 +442,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 23; found 22/
+            /Strict launch preflight requires the exact latest migration count 24; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -451,6 +452,11 @@ async function run() {
               credit_rollover_lot_allocation
             TO anon, authenticated, service_role
           `);
+        }
+        if (maxIndex === 22) {
+          await upgrade`
+            UPDATE user_settings SET share_anonymous_data = true
+          `;
         }
       }
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -497,6 +503,26 @@ async function run() {
     );
     await admin.end();
   }
+}
+
+async function verifyLatestSnapshotTypes() {
+  const snapshot = JSON.parse(
+    await readFile(
+      join(ROOT, "lib/db/migrations/meta/0023_snapshot.json"),
+      "utf8"
+    )
+  ) as {
+    tables: Record<string, { columns: Record<string, { type: string }> }>;
+  };
+  assert.equal(
+    snapshot.tables["public.account_deletion_request"].columns.attempts.type,
+    "integer"
+  );
+  assert.equal(
+    snapshot.tables["public.user_settings"].columns.analytics_consent_revision
+      .type,
+    "bigint"
+  );
 }
 
 async function seedLegacyInvoiceDuplicateFixtures(sql: postgres.Sql) {
@@ -1093,6 +1119,23 @@ function runCliMigration(databaseUrl: string) {
     `CLI migration failed:\n${result.stderr}\n${result.stdout}`
   );
   assert.match(result.stdout, /Database target fingerprint:/);
+}
+
+function runAnalyticsConsentAdapterVerification(databaseUrl: string) {
+  const result = spawnSync(
+    "npm",
+    ["exec", "--", "tsx", "scripts/verify-analytics-consent-adapter.ts"],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Analytics consent adapter verification failed:\n${result.stderr}\n${result.stdout}`
+  );
 }
 
 function runPreflight(
@@ -5573,7 +5616,9 @@ async function verifyProviderCreditRecovery(
             },
             databases[0]!
           ),
-        (evidence) => trackedAfterRollback.push(evidence)
+        (evidence) => {
+          trackedAfterRollback.push(evidence);
+        }
       ),
       /forced_outer_commit_rollback/
     );
@@ -5709,8 +5754,120 @@ async function verifyProviderCreditRecovery(
   }
 }
 
+async function verifyAnalyticsConsentSchema(sql: postgres.Sql) {
+  const userId = "18181818-1818-4818-8818-181818181818";
+  const [{ retained_soft_opt_in: retainedSoftOptIn }] = await sql<
+    { retained_soft_opt_in: number }[]
+  >`
+    SELECT count(*)::int AS retained_soft_opt_in
+    FROM user_settings WHERE share_anonymous_data = true
+  `;
+  assert.equal(retainedSoftOptIn, 0);
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${userId}::uuid, 'analytics-consent-test@meelni.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO user_settings (user_id)
+    VALUES (${userId}::uuid)
+    ON CONFLICT (user_id) DO NOTHING
+  `;
+
+  const defaults = await sql<
+    {
+      analytics_consent: string;
+      analytics_consent_source: string | null;
+      analytics_consent_updated_at: Date | null;
+      analytics_consent_version: number | null;
+      analytics_consent_revision: number;
+      share_anonymous_data: boolean;
+    }[]
+  >`
+    SELECT analytics_consent, analytics_consent_version,
+      analytics_consent_source, analytics_consent_updated_at,
+      analytics_consent_revision::int AS analytics_consent_revision,
+      share_anonymous_data
+    FROM user_settings WHERE user_id = ${userId}::uuid
+  `;
+  assert.deepEqual(defaults[0], {
+    analytics_consent: "undecided",
+    analytics_consent_version: null,
+    analytics_consent_source: null,
+    analytics_consent_updated_at: null,
+    analytics_consent_revision: 0,
+    share_anonymous_data: false,
+  });
+
+  await assert.rejects(
+    sql`
+      UPDATE user_settings SET analytics_consent = 'accepted'
+      WHERE user_id = ${userId}::uuid
+    `
+  );
+  await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 0
+  `;
+  await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'declined', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision >= 1
+  `;
+  const staleAcceptance = await sql`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 1
+    RETURNING analytics_consent
+  `;
+  assert.equal(staleAcceptance.length, 0);
+  const [withdrawn] = await sql<
+    { analytics_consent: string; analytics_consent_revision: number }[]
+  >`
+    SELECT analytics_consent,
+      analytics_consent_revision::int AS analytics_consent_revision
+    FROM user_settings WHERE user_id = ${userId}::uuid
+  `;
+  assert.deepEqual(withdrawn, {
+    analytics_consent: "declined",
+    analytics_consent_revision: 2,
+  });
+  const freshAcceptance = await sql<
+    { analytics_consent: string; analytics_consent_revision: number }[]
+  >`
+    UPDATE user_settings
+    SET analytics_consent = 'accepted', analytics_consent_version = 1,
+      analytics_consent_source = 'settings',
+      analytics_consent_updated_at = clock_timestamp(),
+      analytics_consent_revision = analytics_consent_revision + 1
+    WHERE user_id = ${userId}::uuid
+      AND analytics_consent_revision = 2
+    RETURNING analytics_consent,
+      analytics_consent_revision::int AS analytics_consent_revision
+  `;
+  assert.deepEqual(freshAcceptance[0], {
+    analytics_consent: "accepted",
+    analytics_consent_revision: 3,
+  });
+  await sql`DELETE FROM user_settings WHERE user_id = ${userId}::uuid`;
+  await sql`DELETE FROM app_user WHERE id = ${userId}::uuid`;
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 23);
+  assert.equal(await migrationCount(sql), 24);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -5754,6 +5911,8 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "account_deletion_request")
   );
+
+  await verifyAnalyticsConsentSchema(sql);
 
   const lifecycleColumns = await sql<{ column_name: string }[]>`
     SELECT column_name

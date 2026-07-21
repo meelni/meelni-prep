@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains twenty-three entries, from
-`0000_many_nocturne` through `0022_server_owned_billing_privileges`. The migration-history
+The current committed journal contains twenty-four entries, from
+`0000_many_nocturne` through `0023_explicit_analytics_consent`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -81,14 +81,14 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with twenty-three
+six ledger entries. Expected post-migration status is `reconciled` with twenty-four
 ledger entries, 30 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
 transcript-privacy, runtime-settlement, stable-start, provider-credit-recovery,
 billing-truth, webhook-convergence, invoice-convergence,
 subscription-resource-convergence, durable LiveKit deletion, feedback-v2, and
-server-owned billing privilege contract fingerprints. The four server-owned
+server-owned billing privilege, and explicit-analytics-consent contract fingerprints. The four server-owned
 billing provenance tables must expose zero table privileges to `PUBLIC`,
 `anon`, and `authenticated`, while `service_role` retains all seven PostgreSQL
 table privileges on each table. Preflight keeps distinct accepted fingerprints
@@ -160,8 +160,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 23`, and schema fingerprint
-   `90ac6ee5a1b9e26b0de15bbbeef4019bb54233247397ea976a8a8f4b095fe185`.
+   `migrationCount: 24`, and explicit-analytics-consent schema fingerprint
+   `d6ed5885b3d5f4deab2d84bcaee55a7227ee0be8a628379b0616895782a4f362`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

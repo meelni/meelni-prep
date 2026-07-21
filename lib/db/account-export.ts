@@ -53,6 +53,11 @@ export async function loadAccountExportSource(
       feedbackReadyEmail: userSettings.feedbackReadyEmail,
       weeklyProgressReport: userSettings.weeklyProgressReport,
       theme: userSettings.theme,
+      analyticsConsent: userSettings.analyticsConsent,
+      analyticsConsentVersion: userSettings.analyticsConsentVersion,
+      analyticsConsentSource: userSettings.analyticsConsentSource,
+      analyticsConsentUpdatedAt: userSettings.analyticsConsentUpdatedAt,
+      analyticsConsentRevision: userSettings.analyticsConsentRevision,
       createdAt: userSettings.createdAt,
       updatedAt: userSettings.updatedAt,
     })

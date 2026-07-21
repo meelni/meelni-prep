@@ -103,10 +103,10 @@ test("both pricing clients hand correlation through same-tab storage", () => {
 
 test("analytics clients retain the Checkout privacy boundary", () => {
   assert.match(posthogProvider, /before_send/);
-  assert.match(posthogProvider, /sanitizeAnalyticsValue/);
+  assert.match(posthogProvider, /sanitizePostHogCaptureEnvelope/);
   assert.doesNotMatch(statsigProvider, /@statsig\/session-replay/);
   assert.doesNotMatch(statsigProvider, /@statsig\/web-analytics/);
-  assert.match(statsigProvider, /sanitizeAnalyticsValue/);
+  assert.match(statsigProvider, /logEvent: \(\) => undefined/);
   assert.match(posthogConfig, /enabled: false/);
   assert.match(posthogConfig, /sampleRate: 0/);
   assert.match(posthogProvider, /disable_session_recording: true/);

@@ -76,6 +76,42 @@ test("design tokens are not wrapped in legacy hsl()/rgb() color functions", asyn
   assert.deepEqual(violations, []);
 });
 
+test("analytics privacy actions preserve the 44px touch-target contract", async () => {
+  const banner = await readFile("components/cookie-consent-banner.tsx", "utf8");
+  const settings = await readFile(
+    "components/dashboard/sections/settings.tsx",
+    "utf8"
+  );
+
+  for (const label of [
+    "Read the privacy draft",
+    "Decline",
+    "Allow analytics",
+  ]) {
+    const labelIndex = banner.indexOf(label);
+    assert.notEqual(labelIndex, -1, `missing consent banner action: ${label}`);
+    assert.match(
+      banner.slice(Math.max(0, labelIndex - 500), labelIndex + 100),
+      /min-h-11/,
+      `${label} must retain a 44px minimum target`
+    );
+  }
+
+  for (const label of ["Retry account sync", "Turn off", '"Allow"']) {
+    const labelIndex = settings.lastIndexOf(label);
+    assert.notEqual(
+      labelIndex,
+      -1,
+      `missing privacy settings action: ${label}`
+    );
+    assert.match(
+      settings.slice(Math.max(0, labelIndex - 500), labelIndex + 100),
+      /min-h-11/,
+      `${label} must retain a 44px minimum target`
+    );
+  }
+});
+
 test("ui source tree does not keep tracked backup files", async () => {
   const violations = [];
 

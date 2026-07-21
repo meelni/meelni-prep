@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 
 import type { BillingCatalogId } from "@meelni/core";
 
+import { toSafeAnalyticsErrorCode } from "@/lib/analytics/event-policy";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
+import { readUserAnalyticsConsent } from "@/lib/db/analytics-consent";
+import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import type { CreditGrantSource, CreditTransactionType } from "./credits";
 
-interface BillingCreditEventInput {
+export interface BillingCreditEventInput {
   userId: string;
   catalogId?: BillingCatalogId;
   creditSource?: CreditGrantSource;
@@ -25,94 +28,112 @@ interface BillingCreditEventInput {
 }
 
 export function trackBillingCreditGranted(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_granted", input);
+  return trackBillingEvent("billing_credit_granted", input);
 }
 
 export function trackBillingCreditReserved(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_reserved", input);
+  return trackBillingEvent("billing_credit_reserved", input);
 }
 
 export function trackBillingCreditConsumed(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_consumed", input);
+  return trackBillingEvent("billing_credit_consumed", input);
 }
 
 export function trackBillingCreditReleased(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_released", input);
+  return trackBillingEvent("billing_credit_released", input);
 }
 
 export function trackBillingCreditRefunded(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_refunded", input);
+  return trackBillingEvent("billing_credit_refunded", input);
 }
 
 export function trackBillingCreditExpired(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_credit_expired", input);
+  return trackBillingEvent("billing_credit_expired", input);
 }
 
 export function trackBillingCreditRolloverCreated(
   input: BillingCreditEventInput
 ) {
-  trackBillingEvent("billing_credit_rollover_created", input);
+  return trackBillingEvent("billing_credit_rollover_created", input);
 }
 
 export function trackBillingNoCredits(input: BillingCreditEventInput) {
-  trackBillingEvent("billing_no_credits", input);
+  return trackBillingEvent("billing_no_credits", input);
 }
 
 export function trackBillingPaymentAdjusted(input: BillingCreditEventInput) {
-  if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-    return;
-  }
-  const event = buildBillingPaymentAdjustedAnalytics(input);
-  trackServerEvent(event.event, event.properties, event.distinctId);
+  return trackBillingEvent("billing_credit_payment_adjusted", input);
 }
 
+/**
+ * Retained for deterministic billing tests. The delivery path below uses the
+ * consent contract's keyed pseudonym rather than this compatibility digest.
+ */
 export function buildBillingPaymentAdjustedAnalytics(
   input: BillingCreditEventInput
 ) {
   return {
     event: "billing_credit_payment_adjusted",
-    distinctId: pseudonymizeBillingUser(input.userId),
-    properties: {
-      credits: input.credits,
-      reason: input.reason,
-      duplicate: input.duplicate,
-      reserved_credits: input.reservedCredits,
-      consumed_credits: input.consumedCredits,
-      unrecoverable_credits: input.unrecoverableCredits,
-    },
+    distinctId: createHash("sha256")
+      .update(`meelni:billing-settlement-analytics:v1:${input.userId}`)
+      .digest("hex"),
+    properties: buildBillingAnalyticsProperties(input),
   };
 }
 
-function pseudonymizeBillingUser(userId: string) {
-  return createHash("sha256")
-    .update(`meelni:billing-settlement-analytics:v1:${userId}`)
-    .digest("hex");
-}
-
-function trackBillingEvent(event: string, input: BillingCreditEventInput) {
+async function trackBillingEvent(
+  event: string,
+  input: BillingCreditEventInput
+): Promise<void> {
   if (!process.env.POSTHOG_SERVER_KEY && !process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     return;
   }
+  if (!process.env.ANALYTICS_PSEUDONYM_KEY) return;
 
-  trackServerEvent(
-    event,
-    {
-      catalog_id: input.catalogId,
-      credit_source: input.creditSource,
-      transaction_type: input.transactionType,
-      credits: input.credits,
-      balance_after: input.balanceAfter,
-      idempotency_key: input.idempotencyKey,
-      source_id: input.sourceId,
-      session_id: input.sessionId,
-      grant_id: input.grantId,
-      reservation_id: input.reservationId,
-      reason: input.reason,
-      duplicate: input.duplicate,
-      reserved_credits: input.reservedCredits,
-      consumed_credits: input.consumedCredits,
-      unrecoverable_credits: input.unrecoverableCredits,
-    },
-    input.userId
-  );
+  await deliverBillingAnalytics(event, input, {
+    readConsent: readUserAnalyticsConsent,
+    track: trackServerEvent,
+  });
+}
+
+export async function deliverBillingAnalytics(
+  event: string,
+  input: BillingCreditEventInput,
+  deps: {
+    readConsent: typeof readUserAnalyticsConsent;
+    track: typeof trackServerEvent;
+  }
+): Promise<void> {
+  try {
+    const consent = await deps.readConsent(input.userId);
+    await deps.track(
+      event,
+      buildBillingAnalyticsProperties(input),
+      { userId: input.userId },
+      consent
+    );
+  } catch (error) {
+    console.error("[BillingAnalytics] Optional delivery failed", {
+      ...toSafeErrorLog(error),
+    });
+  }
+}
+
+export function buildBillingAnalyticsProperties(
+  input: BillingCreditEventInput
+): Record<string, unknown> {
+  return {
+    catalog_id: input.catalogId,
+    credit_source: input.creditSource,
+    transaction_type: input.transactionType,
+    credits: input.credits,
+    balance_after: input.balanceAfter,
+    reason_code: input.reason
+      ? toSafeAnalyticsErrorCode(input.reason)
+      : undefined,
+    duplicate: input.duplicate,
+    reserved_credits: input.reservedCredits,
+    consumed_credits: input.consumedCredits,
+    unrecoverable_credits: input.unrecoverableCredits,
+  };
 }

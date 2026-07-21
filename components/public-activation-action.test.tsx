@@ -3,7 +3,9 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { AnalyticsConsentProvider } from "@/app/providers/analytics-consent-provider";
 import { AuthProvider } from "@/app/providers/auth-provider";
+import { ANONYMOUS_CONSENT_SUBJECT } from "@/lib/analytics/consent-contract";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { StatsigProvider } from "@/lib/feature-flags/statsig-provider";
 import {
@@ -14,15 +16,19 @@ import {
 function renderActivation(enabled: boolean) {
   return renderToStaticMarkup(
     <AuthProvider>
-      <StatsigProvider
-        initialGateValues={{
-          [FEATURE_GATES.meelniReactivationAccess]: enabled,
-        }}
+      <AnalyticsConsentProvider
+        initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
       >
-        <PublicActivationButton href="/dashboard/new-interview?questionId=q-1">
-          Start selected question
-        </PublicActivationButton>
-      </StatsigProvider>
+        <StatsigProvider
+          initialGateValues={{
+            [FEATURE_GATES.meelniReactivationAccess]: enabled,
+          }}
+        >
+          <PublicActivationButton href="/dashboard/new-interview?questionId=q-1">
+            Start selected question
+          </PublicActivationButton>
+        </StatsigProvider>
+      </AnalyticsConsentProvider>
     </AuthProvider>
   );
 }
@@ -30,18 +36,22 @@ function renderActivation(enabled: boolean) {
 function renderInlineActivation(enabled: boolean) {
   return renderToStaticMarkup(
     <AuthProvider>
-      <StatsigProvider
-        initialGateValues={{
-          [FEATURE_GATES.meelniReactivationAccess]: enabled,
-        }}
+      <AnalyticsConsentProvider
+        initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
       >
-        <PublicActivationInlineLink
-          href="/dashboard/new-interview"
-          className="text-primary hover:text-primary/80 underline"
+        <StatsigProvider
+          initialGateValues={{
+            [FEATURE_GATES.meelniReactivationAccess]: enabled,
+          }}
         >
-          Start from article
-        </PublicActivationInlineLink>
-      </StatsigProvider>
+          <PublicActivationInlineLink
+            href="/dashboard/new-interview"
+            className="text-primary hover:text-primary/80 underline"
+          >
+            Start from article
+          </PublicActivationInlineLink>
+        </StatsigProvider>
+      </AnalyticsConsentProvider>
     </AuthProvider>
   );
 }

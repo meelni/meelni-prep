@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { usePostHog } from "posthog-js/react";
+import { analytics } from "@/lib/analytics/analytics-service";
 import { PUBLIC_ACTIVATION_PAUSED_LABEL } from "@/lib/feature-flags/public-activation";
 import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
@@ -15,12 +15,11 @@ interface ConversionCTAProps {
 
 export function ConversionCTA({ index }: ConversionCTAProps) {
   const router = useRouter();
-  const posthog = usePostHog();
   const activation = usePublicActivationDecision();
   const [isDismissed, setIsDismissed] = useState(false);
 
   const handleDismiss = () => {
-    posthog?.capture("explore_cta_dismissed", {
+    analytics.track("explore_cta_dismissed", {
       cta_position: index,
     });
     setIsDismissed(true);
@@ -28,7 +27,7 @@ export function ConversionCTA({ index }: ConversionCTAProps) {
 
   const handleSignUpClick = () => {
     if (!activation.canActivate) return;
-    posthog?.capture("explore_cta_clicked", {
+    analytics.track("explore_cta_clicked", {
       cta_position: index,
     });
     router.push("/auth/signin?redirectTo=/explore");

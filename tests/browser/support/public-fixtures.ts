@@ -135,6 +135,33 @@ export async function installPublicNetworkFixtures(page: Page) {
     });
   };
 
+  await page.route("**/api/analytics/consent", async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        analyticsPseudonym: null,
+        consent: {
+          decision: "declined",
+          policyVersion: 1,
+          source: "legacy_decline",
+          decidedAt: "2026-07-18T00:00:00.000Z",
+          scope: "anonymous",
+        },
+        persistence: {
+          browser: true,
+          account: false,
+          browserOnly: true,
+        },
+      }),
+    });
+  });
+
   await page.route(
     "https://cdn.magicui.design/companies/*.svg",
     async (route) => {
