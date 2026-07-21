@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CreditCard, Mail } from "lucide-react";
+import { ArrowLeft, CreditCard, Mail, ShieldCheck } from "lucide-react";
 
+import { ContactForm } from "@/components/contact/contact-form";
 import {
   MarketingCard,
   MarketingEyebrow,
@@ -32,19 +33,21 @@ export default function ContactPage() {
         <MarketingHero
           eyebrow={<MarketingEyebrow icon={Mail}>Support</MarketingEyebrow>}
           title="Contact Meelni"
-          description="We’re rebuilding our support workflow so messages are not accepted without reliable delivery."
+          description="Send a support request for account, billing, interview, feedback, or privacy questions."
         />
 
         <div className="grid gap-6 md:grid-cols-2">
-          <MarketingCard className="border-warning/30 bg-warning/5">
-            <AlertTriangle className="text-warning mb-4 h-6 w-6" />
-            <AppSurfaceTitle>
-              Contact form temporarily unavailable
-            </AppSurfaceTitle>
+          <MarketingCard className="md:col-span-2">
+            <ShieldCheck className="text-primary mb-4 h-6 w-6" />
+            <AppSurfaceTitle>Message Meelni support</AppSurfaceTitle>
             <AppSurfaceDescription className="mt-2">
-              We are not collecting support messages on this page right now.
-              Please check back after the support workflow is restored.
+              We store the request before showing success. A receipt confirms
+              intake for support triage; it does not promise an automated email,
+              response time, or refund decision.
             </AppSurfaceDescription>
+            <div className="mt-6">
+              <ContactForm />
+            </div>
           </MarketingCard>
 
           <MarketingCard>

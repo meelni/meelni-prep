@@ -218,6 +218,92 @@ export const publicDemoSession = pgTable(
   })
 );
 
+// Durable public contact intake. Raw contact PII is stored only in this support
+// queue; abuse and idempotency controls use domain-separated HMAC digests.
+export const supportSubmission = pgTable(
+  "support_submission",
+  {
+    id: uuid("id").defaultRandom().primaryKey().notNull(),
+    idempotencyHash: text("idempotency_hash").notNull().unique(),
+    emailHash: text("email_hash").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    reason: text("reason").notNull(),
+    message: text("message").notNull(),
+    status: text("status").default("received").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    idempotencyHashCheck: check(
+      "support_submission_idempotency_hash_check",
+      sql`${table.idempotencyHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    emailHashCheck: check(
+      "support_submission_email_hash_check",
+      sql`${table.emailHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    ipHashCheck: check(
+      "support_submission_ip_hash_check",
+      sql`${table.ipHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    reasonCheck: check(
+      "support_submission_reason_check",
+      sql`${table.reason} IN ('account', 'billing', 'interview', 'feedback', 'privacy', 'other')`
+    ),
+    statusCheck: check(
+      "support_submission_status_check",
+      sql`${table.status} IN ('received', 'reviewing', 'closed')`
+    ),
+    emailCreatedIdx: index("support_submission_email_created_idx").on(
+      table.emailHash,
+      table.createdAt
+    ),
+    statusCreatedIdx: index("support_submission_status_created_idx").on(
+      table.status,
+      table.createdAt
+    ),
+  })
+);
+
+export const supportSubmissionRateLimit = pgTable(
+  "support_submission_rate_limit",
+  {
+    scope: text("scope").notNull(),
+    identifierHash: text("identifier_hash").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true })
+      .array()
+      .default(sql`ARRAY[]::timestamptz[]`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "support_submission_rate_limit_pkey",
+      columns: [table.scope, table.identifierHash],
+    }),
+    scopeCheck: check(
+      "support_submission_rate_limit_scope_check",
+      sql`${table.scope} IN ('global', 'ip', 'email')`
+    ),
+    hashCheck: check(
+      "support_submission_rate_limit_hash_check",
+      sql`${table.identifierHash} ~ '^[0-9a-f]{64}$'`
+    ),
+    capacityCheck: check(
+      "support_submission_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 100`
+    ),
+  })
+);
+
 // Durable tombstone/outbox for cross-provider account deletion. It has no
 // app_user FK so retries remain possible after application data is removed.
 export const accountDeletionRequest = pgTable(
