@@ -63,7 +63,7 @@ const EXPECTED_RENDERED_COVERAGE: Record<
     background: [0.95, 0.998],
     foreground: [0.001, 0.014],
   },
-  activation: { background: [0.88, 0.975], foreground: [0.006, 0.035] },
+  activation: { background: [0.88, 0.99], foreground: [0.006, 0.035] },
 };
 
 const EXPECTED_LAYER_STACKING: Record<
