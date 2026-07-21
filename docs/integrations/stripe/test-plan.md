@@ -1,7 +1,7 @@
 # Stripe Credit Billing Test Plan
 
 **Status**: Test mode
-**Updated**: 2026-06-29
+**Updated**: 2026-07-19
 **Stripe docs**: https://docs.stripe.com/testing
 
 ## Overview
@@ -17,7 +17,8 @@ The free full-interview experience is deprecated. Trial access is local product 
 ## Prerequisites
 
 1. Stripe test keys are configured with `pk_test_` and `sk_test_`.
-2. Webhook secret is configured in `STRIPE_WEBHOOK_SECRET`.
+2. Webhook secret is configured in `STRIPE_WEBHOOK_SECRET`, and the endpoint
+   passes the executable allowlist below.
 3. Stripe price env vars are configured:
 
 ```bash
@@ -37,6 +38,41 @@ STRIPE_SECRET_KEY=sk_test_... npm run stripe:setup-catalog
 
 ```bash
 stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
+```
+
+## Webhook Endpoint Contract
+
+<!-- stripe-webhook-event-contract:start -->
+
+Required events (16):
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.payment_succeeded`
+- `invoice.payment_failed`
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.funds_withdrawn`
+- `charge.dispute.funds_reinstated`
+- `charge.dispute.closed`
+
+Optional events (1):
+
+- `customer.subscription.trial_will_end`
+<!-- stripe-webhook-event-contract:end -->
+
+Export only the endpoint's `enabled_events` field into a sanitized local JSON
+file, then verify it without sending an event:
+
+```bash
+npm run stripe:webhook-events -- --verify-enabled-events-file=/absolute/path/to/sanitized-endpoint.json
 ```
 
 ## Test Cards
@@ -404,7 +440,7 @@ Expected:
 - [ ] Snapshot existing production subscription and credit state before any backfill.
 - [ ] Confirm any active legacy paid users have an explicit migration treatment.
 - [ ] Live `STRIPE_*_PRICE_ID` values are configured for Interview Pass, Starter monthly, and Pro monthly.
-- [ ] Live webhook endpoint is configured for Checkout, subscription, invoice, and refund events.
+- [ ] Live webhook endpoint passes the executable 16-required-event contract; the optional trial reminder is recorded separately.
 - [ ] Webhook signing secret is correct.
 - [ ] Customer Portal is configured for Starter and Pro subscription management.
 - [ ] A real low-value payment has been tested and refunded.

@@ -713,7 +713,7 @@ export function SetupContent() {
           <motion.section
             aria-label="Interview summary"
             variants={fadeInUp}
-            className="border-dashboard-panel-border bg-dashboard-panel -mx-5 border-t p-5 sm:sticky sm:bottom-0 sm:-mx-8 sm:px-8"
+            className="border-dashboard-panel-border bg-dashboard-panel -mx-5 border-t p-5 sm:-mx-8 sm:px-8"
           >
             <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
