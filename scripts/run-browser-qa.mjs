@@ -88,7 +88,9 @@ export function createBrowserQaEnvironment(
 function safeInheritedNodeOptions(value) {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
   const options = value.trim().split(/\s+/).filter(Boolean);
-  const safeOptions = options.filter((option) => SAFE_NODE_OPTIONS.test(option));
+  const safeOptions = options.filter((option) =>
+    SAFE_NODE_OPTIONS.test(option)
+  );
   return safeOptions.length > 0 ? safeOptions.join(" ") : undefined;
 }
 
