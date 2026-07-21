@@ -3481,7 +3481,6 @@ export interface ReserveCreditTransactionResult extends ReserveCreditResult {
 export async function reserveCreditInTransaction({
   store,
   input,
-  currentTime: _currentTime,
 }: {
   store: CreditLedgerTransaction;
   input: ReserveCreditInput;
