@@ -67,14 +67,36 @@ npm run production-action:owner -- enroll \
   > /tmp/meelni-owner-public-entry.json
 ```
 
-The command refuses repository paths and existing files. It creates the
-private key and executor ID with mode `0600`; stdout contains only the public
-registry entry. Review that public entry locally, add only that entry to the
-`keys` array in `config/production-action-owner-keys.json`, and merge it through
-a separate reviewed PR. Delete the temporary public-entry file afterward. Do
-not add the private key, executor ID, unsigned payload, signed artifact, or
-consumption ledger to Git, GitHub, Linear, chat, CI artifacts, or provider
-environments.
+The command refuses existing files, the repository's Git common directory,
+and every registered linked worktree, including a worktree reached through a
+symlinked ancestor. It proves the path boundary before creating a directory and
+checks it again afterward. It creates the private key and executor ID with mode
+`0600`; stdout contains only the public registry entry. Review that public entry
+locally, add only that entry to the `keys` array in
+`config/production-action-owner-keys.json`, and merge it through a separate
+reviewed PR. Delete the temporary public-entry file afterward. Do not add the
+private key, executor ID, unsigned payload, signed artifact, or consumption
+ledger to Git, GitHub, Linear, chat, CI artifacts, or provider environments.
+
+If the public stdout file is lost after enrollment succeeds, do not delete or
+recreate the private key or executor. Re-derive the same public entry by
+supplying the original key ID and validity window:
+
+```bash
+umask 077
+npm run production-action:owner -- public-entry \
+  --key-id meelni-owner-2026-01 \
+  --not-before 2026-07-01T00:00:00.000Z \
+  --not-after 2027-07-01T00:00:00.000Z \
+  > /tmp/meelni-owner-public-entry.json
+```
+
+This read-only command verifies that the external mode-`0600` private file is
+an Ed25519 key and emits only the public registry entry. It cannot recover an
+unknown key ID or validity window, so retain those non-secret enrollment inputs
+in the reviewed owner handoff. A caught partial file write removes its new file
+before returning failure; rerun only after confirming the command's fixed error
+code and that no canonical file exists.
 
 Enrollment is complete only after the reviewed public-key change is present on
 the exact clean candidate that will be authorized. The owner must inspect the
@@ -142,7 +164,7 @@ below consumes it immediately before starting its provider adapter. Generic
 owner tooling refuses `relaunch-default-on`; launch GO/NO-GO remains an
 explicit, separate, human-owner-only decision and has no generic signing path.
 
-### Revocation and rotation
+### Revocation and signing-key rotation
 
 To revoke a key, change only its public registry entry from `active` to
 `revoked` in a reviewed PR. Do not delete the entry or the consumption ledger.
@@ -150,10 +172,31 @@ Move the private key out of service or destroy it through the workstation's
 approved secure-storage process. Any outstanding artifact from that key then
 fails closed once the revoked registry is on the executing candidate.
 
-Rotate by enrolling a new key ID and private executor deliberately, merging the
-new public entry, and only then revoking the old key. Executor rotation changes
-the bound fingerprint, so every outstanding artifact must be discarded and
-re-issued. Never rotate or delete the executor/ledger merely to bypass replay
+Routine rotation changes only the signing key. Preserve the canonical executor
+identity and consumption ledger so outstanding replay evidence and the
+executor-bound action boundary remain intact. Create the replacement key at a
+new explicit external path:
+
+```bash
+umask 077
+npm run production-action:owner -- rotate-key \
+  --key-id meelni-owner-2027-01 \
+  --not-before 2027-06-15T00:00:00.000Z \
+  --not-after 2028-07-01T00:00:00.000Z \
+  --private-key-path "$HOME/.config/meelni/production-actions/owner-ed25519-private-2027.pem" \
+  > /tmp/meelni-owner-2027-public-entry.json
+```
+
+Merge the new active public entry before using the new private-key path with
+`sign --private-key-path ...`. After every artifact signed by the old key has
+expired, change the old public entry to `revoked` in a reviewed PR and retire
+the old private key through the approved workstation process. Do not overwrite
+the old key in place.
+
+Executor rotation is not supported by this tooling. It would invalidate every
+outstanding artifact and change the identity consumed by all guarded Production
+wrappers, so it requires a separately reviewed, staged maintenance workflow.
+Never rotate or delete the executor or ledger merely to bypass replay
 protection.
 
 ## Execution
