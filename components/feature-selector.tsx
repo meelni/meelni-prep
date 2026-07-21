@@ -180,20 +180,13 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
                 key={option.id}
                 variant="ghost"
                 onClick={() => setSelectedIndex(index)}
-                className={`group relative h-auto rounded-xl px-4 py-3 font-medium transition-all duration-300 hover:bg-transparent ${
+                className={`group relative h-auto rounded-xl border px-4 py-3 font-medium transition-all duration-300 ${
                   selectedIndex === index
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "border-primary bg-card text-primary shadow-lg"
+                    : "bg-background text-muted-foreground hover:bg-card hover:text-foreground border-transparent"
                 }`}
               >
-                {selectedIndex === index && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="from-primary/15 via-primary/10 to-primary/5 border-primary/50 shadow-primary/20 absolute inset-0 rounded-xl border-2 bg-gradient-to-br shadow-lg"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <span className="relative z-10 flex items-center justify-center gap-2 text-sm md:text-base">
+                <span className="flex items-center justify-center gap-2 text-sm md:text-base">
                   {Icon && <Icon className="h-4 w-4" />}
                   <span className="whitespace-nowrap">{option.title}</span>
                 </span>
@@ -204,9 +197,9 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
       </div>
 
       {/* Modern Chat Interface */}
-      <div className="border-border/60 from-card/50 to-card/30 relative overflow-hidden rounded-2xl border bg-gradient-to-br shadow-2xl backdrop-blur-md">
+      <div className="border-border/60 bg-card relative overflow-hidden rounded-2xl border shadow-2xl">
         {/* Playback Controls */}
-        <div className="border-border/60 bg-background/40 flex items-center justify-between border-b px-6 py-3 backdrop-blur-sm">
+        <div className="border-border/60 bg-background flex items-center justify-between border-b px-6 py-3">
           <div className="flex items-center gap-2">
             <div className="bg-destructive/80 h-3 w-3 rounded-full" />
             <div className="bg-warning/80 h-3 w-3 rounded-full" />
@@ -292,10 +285,6 @@ export const FeatureSelector: React.FC<FeatureSelectorProps> = ({
             })}
           </div>
         </div>
-
-        {/* Gradient Overlays for depth */}
-        <div className="from-background/20 pointer-events-none absolute top-[60px] right-0 left-0 h-20 bg-gradient-to-b to-transparent" />
-        <div className="from-background/40 pointer-events-none absolute right-0 bottom-0 left-0 h-20 bg-gradient-to-t to-transparent" />
       </div>
     </div>
   );

@@ -351,9 +351,12 @@ function FeedbackScoreCard({
 }: FeedbackScoreCardProps) {
   return (
     <AppSurface
-      variant="accent"
+      variant="default"
       size="lg"
-      className={cn("text-center", className)}
+      className={cn(
+        "border-primary bg-card ring-primary/20 text-center shadow-md ring-1",
+        className
+      )}
       {...props}
     >
       <div className="mx-auto max-w-2xl space-y-3">

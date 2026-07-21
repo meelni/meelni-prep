@@ -58,14 +58,9 @@ export function DifficultySelector({
               >
                 <SelectableCard
                   selected={isSelected}
-                  className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/10 bg-transparent p-5 hover:scale-[1.01]"
+                  className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground hover:bg-dashboard-muted/10 p-5 hover:scale-[1.01]"
                   onClick={() => onSelect(difficulty)}
                 >
-                  {/* Semantic selection background */}
-                  <div
-                    className={`bg-primary/10 absolute inset-0 rounded-xl opacity-0 transition-opacity duration-200 ${isSelected ? "opacity-100" : ""} `}
-                  />
-
                   <div className="relative flex h-full flex-col">
                     {/* Icon and badge */}
                     <div className="flex items-center justify-between">
