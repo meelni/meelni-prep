@@ -144,8 +144,8 @@ export async function GET(req: NextRequest) {
       pagination,
       stats,
     });
-  } catch (error) {
-    console.error("Error fetching sessions:", error);
+  } catch {
+    console.error("session_list_read_failed");
     return NextResponse.json(
       { error: "Failed to fetch sessions" },
       { status: 500 }

@@ -135,8 +135,8 @@ export async function GET(
       }
       throw error;
     }
-  } catch (error) {
-    console.error("Error fetching session:", error);
+  } catch {
+    console.error("session_read_failed");
     return NextResponse.json(
       { error: "Failed to fetch session" },
       { status: 500 }

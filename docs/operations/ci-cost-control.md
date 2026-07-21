@@ -9,7 +9,8 @@ gate when a change becomes merge-ready.
 - Draft pull requests do not allocate a Validate runner or publish the required
   `Validate` context; they use a distinct lifecycle check name.
 - Opening a non-draft pull request, marking a draft ready, or pushing a new
-  commit to a ready pull request runs Validate for that exact head.
+  commit to a ready pull request runs Validate for that exact head, except for
+  the exact registry-only fast path below.
 - Converting a ready pull request back to draft cancels superseded work without
   allocating a new Validate runner.
 - Closing a pull request also cancels any queued or running Validate work without
@@ -27,13 +28,99 @@ gate when a change becomes merge-ready.
   `Validate` requirement.
 - Concurrency cancellation stops superseded runs for the same pull request/ref.
 
-The trigger policy changes frequency without reducing merge-ready coverage.
-Validate still installs a clean dependency graph, starts PostgreSQL, verifies
+The trigger policy changes frequency while preserving risk-matched merge-ready
+coverage. Ordinary Validate still installs a clean dependency graph, starts PostgreSQL, verifies
 clean and upgrade migration paths, runs repository skills and Node/Python
 contracts, executes the full quality/regression suite, and builds the production
-application. Pull-request validation remains path-unfiltered. Manual dispatch
-remains the break-glass clean-machine verification path, but never substitutes
-for merge-ref validation.
+application. Pull-request path suppression has one exact exception:
+`.github/stacked-prs.json`. Manual dispatch remains the break-glass
+clean-machine verification path, but never substitutes for merge-ref
+validation.
+
+### Exact registry-only fast path
+
+GitHub, not pull-request code, applies the one-entry `paths-ignore`. A proposed
+change to any app, workflow, verifier, publisher, or other path therefore still
+starts ordinary Validate. The PR cannot edit a classifier to suppress its own
+full gate.
+
+For the ignored exact-registry case, default-branch `pull_request_target` code
+is the sole authority allowed to create the required `Validate` success. It
+requires exactly one `modified` `.github/stacked-prs.json` file; matching
+repository IDs and names; a same-repository head and default-branch base; and
+fresh event/API PR number, ref, head SHA, and base SHA. It fetches the proposed
+manifest as inert data by traversing the exact head commit and non-truncated Git
+trees. The registry must be one unambiguous `100644 blob`; symlinks, gitlinks,
+executables, missing entries, and mismatched Pull Files/tree/blob SHAs fail.
+The blob response must have canonical base64, the exact declared and decoded
+size within the 256 KiB bound, its recomputed Git object SHA, and fatal UTF-8
+decoding. The publisher never checks out or executes PR code. It verifies
+manifest shape, the complete open stacked-PR
+inventory, every declared child/parent snapshot and ancestry, and current
+PR-body evidence twice across a freshness barrier. After exact eligibility and
+before that work begins, it creates a new exact-head `Validate` check in
+progress. It completes that same check success or failure and binds success to
+a SHA-256 generation of the exact repository/head/base/topology proof. A
+failure while completing an already-created check leaves that new check pending
+and blocking.
+
+Forks, extra files, additions, deletions, renames, stale snapshots, malformed
+manifests, missing declarations, topology failures, incomplete pagination, API
+errors, and concurrent movement receive no synthetic success. Extra paths run
+ordinary Validate. An exact registry deletion can be suppressed by GitHub's
+path filter, but its `removed` status is ineligible, so the required check stays
+absent and protection blocks the PR.
+
+The trusted publisher sweeps all open ready exact-registry candidates on ready
+PR and close events, draft branch/base movement, draft stack-evidence body
+edits, and trusted publisher/manifest push or manual fan-out. Drafts, forks,
+non-default bases, malformed list rows, and ordinary PRs are rejected before
+candidate classification. This refreshes or invalidates prior registry
+`Validate` snapshots when a declared child or parent moves, closes, or changes
+evidence. Unrelated `main` changes do not run this publisher; strict up-to-date
+protection forces the registry branch to update before merge, and that new head
+receives the pull-request sweep.
+
+There is an unavoidable cross-PR interval between a dependency event and the
+publisher opening a replacement check. A GitHub API or runner failure before
+that pending check is created cannot erase an older green check. Do not treat a
+visible green registry-only `Validate` result by itself as merge authority.
+
+### Registry-only native protected merge handoff
+
+The trusted result is validation evidence, not merge authorization. SAV-279 has
+no write-token merge workflow, repository-owned merge command, recovery probe,
+auto-merge, or admin bypass. After reviewing the current PR target, exact head,
+and all required checks, the human owner may use GitHub's native protected
+pull-request merge. GitHub evaluates the current PR and branch-protection state
+at that native mutation boundary.
+
+As verified read-only on July 19, 2026, the repository's merge queue is not
+currently configured, auto-merge is disabled, and the CI workflow does not
+support `merge_group`. A queue therefore cannot be enabled safely by this
+source-only cost-control change. Adding one requires a separately reviewed
+repository-policy change, a `merge_group` validation design, and explicit cost
+evidence.
+
+The owner handoff is:
+
+1. Open the pull request in GitHub and confirm it is still open and ready.
+2. Confirm the base is `main` and the displayed head is the intended candidate.
+3. Confirm GitHub says the branch is current with `main`.
+4. Require successful `Validate`, `Trusted Publisher`, and
+   `Migration Collision Publisher` checks for that head.
+5. Use GitHub's native protected pull-request merge. Do not run a local or
+   repository-scripted merge and do not infer authority from an earlier
+   advisory snapshot.
+
+GitHub's pull-request merge API accepts an expected head SHA but no expected
+base SHA. A custom privileged workflow cannot make the candidate, target branch,
+and mutable cross-PR dependency evidence one transaction. Post-merge checks can
+detect a wrong-base mutation but cannot undo it. Removing the bespoke mutation
+and recovery attack surface is safer than presenting repeated reads as atomic.
+The native protected experience owns current branch-protection enforcement; a
+future native merge queue is the platform mechanism for rebuilding and checking
+a queued candidate against the latest target branch.
 
 This policy depends on live protection, not convention. As verified on July 19,
 2026, required status checks use strict up-to-date enforcement, protection
@@ -49,7 +136,9 @@ policy changes, restore the `push: main` trigger before relying on this policy.
 2. Run `npm run check:ci`, relevant provider/database harnesses, and
    `npm run build` locally before requesting final hosted evidence.
 3. After independent review is clean, mark the pull request Ready for review.
-4. Confirm exactly one current-head Validate run starts and passes.
+4. For an exact registry-only PR, confirm the trusted publisher created the
+   exact-head result and follow the native protected merge handoff above. For
+   every other PR, confirm ordinary Validate ran.
 5. If the head changes, require a new exact-head green run before merge.
 
 Repository rules must require the exact `Validate` context on `main`. A skipped
@@ -66,7 +155,7 @@ independent agent audit evidence is tracked in the PR and Linear workflow
 instead. This is classic branch protection; no general repository ruleset is
 currently configured.
 
-Verify the live configuration before a merge window:
+Verify the live configuration before an operator merge:
 
 ```bash
 gh api repos/meelni/meelni-prep/branches/main/protection \
@@ -91,8 +180,9 @@ API above.
 
 To roll back the cost-control workflow itself, revert its commit through a PR;
 keep `Validate`, `Trusted Publisher`, and `Migration Collision Publisher`
-required and restore the `push: main` full-CI trigger. Never leave a skipped
-lifecycle context named `Validate`.
+required and restore the `push: main` full-CI trigger. To roll back only the
+registry fast path, remove its exact `paths-ignore` and publisher step through a
+protected PR. Never leave a skipped lifecycle context named `Validate`.
 
 Vercel, GitGuardian, and local results remain complementary evidence; none
 replaces hosted Validate.
@@ -101,14 +191,22 @@ replaces hosted Validate.
 
 The stack and migration publishers use their two required contexts for
 merge-ready PR events and closes that can invalidate dependent evidence. Draft
-branch movement and base changes use one combined dependency audit; draft body
-and title edits allocate no runner. There is no unattended schedule. Manual and
+branch movement and base changes use one combined dependency audit. Draft title
+edits allocate no runner; draft body edits run only the bounded registry
+snapshot refresh because stack evidence can invalidate an open registry PR.
+There is no unattended schedule. Manual and
 trusted-checker/default-branch full revalidation run topology and migration
 publication in one hosted job. A `main` change to `.github/stacked-prs.json`
 continues to trigger `Relaunch Integration Gates`, which checks out trusted
 default-branch code and revalidates every open registered stack plus migration
 ownership. Removing CI's general `main` push trigger does not change publisher
 permissions, required contexts, or branch protection.
+
+On qualifying pull-request, close, trusted push, and manual events, that same
+trusted checkout sweeps the exact registry-only fast path after normal topology
+revalidation. Only this default-branch publisher may replace the full PR run
+with a `Validate` success; ordinary stack and migration publishers retain their
+separate required names.
 
 ## Budget operations
 
@@ -125,3 +223,8 @@ additional minutes while retaining final independent proof. Removing the
 post-merge duplicate saves one further full run for every protected merge—9m48s
 for PR #353—while retaining merge-ref Validate, strict protection, manual
 dispatch, and trusted stack/migration publication.
+
+The exact registry-only path saves the full 12m12s observed on PR #368 for each
+future eligible ready head. The smaller trusted publisher still runs because
+registry changes alter CI trust metadata and must be checked against live stack
+state.

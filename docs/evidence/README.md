@@ -61,6 +61,13 @@ feature-flag, or launch action. After merge and a fresh pricing check, it must b
 regenerated and explicitly approved against one exact source commit before any
 paid run can become executable.
 
+The repository now defines an external Ed25519 owner-authorization handoff, but
+that mechanism is not itself approval evidence. The checked-in owner public-key
+registry is empty, no private signing key is stored here, and no signed v3
+authorization artifact exists. Any future artifact must remain outside Git and
+bind the exact post-merge source commit and freshly regenerated plan; the
+historical v1/v2 artifacts remain unusable.
+
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are immutable v7 local evidence only. Their historical `launchAcceptance`
 field is the technical predecessor of current v9

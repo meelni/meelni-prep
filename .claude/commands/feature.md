@@ -12,6 +12,7 @@ You are orchestrating complete feature development from request to production-re
 ### 1. **Understand the Feature Request**
 
 First, clarify what needs to be built:
+
 - Read the user's feature description
 - Ask clarifying questions if requirements are ambiguous
 - Identify affected systems (frontend, backend, database, agents)
@@ -19,6 +20,7 @@ First, clarify what needs to be built:
 ### 2. **Architectural Design Phase**
 
 Delegate to the **architect** agent:
+
 ```
 Use the Task tool with subagent_type="architect"
 
@@ -44,6 +46,7 @@ Return:
 ### 3. **Implementation Phase**
 
 Delegate to the **developer** agent:
+
 ```
 Use the Task tool with subagent_type="developer"
 
@@ -69,6 +72,7 @@ Return:
 ### 4. **Quality Review Phase**
 
 Delegate to **quality-reviewer** agent:
+
 ```
 Use the Task tool with subagent_type="quality-reviewer"
 
@@ -93,6 +97,7 @@ Run the `/docs-sync` command to update documentation automatically.
 ### 6. **Testing Phase**
 
 Run tests and verify the feature works:
+
 ```bash
 # Run type check
 npm run type-check
@@ -107,6 +112,7 @@ npm run test
 ### 7. **Create Pull Request**
 
 If everything passes:
+
 - Stage all changes
 - Create conventional commit message
 - Push to feature branch
@@ -136,19 +142,23 @@ Provide a summary at the end:
 **Architecture**: [Link to ADR or design doc]
 
 **Implementation**:
+
 - ✅ Backend: [What was built]
 - ✅ Frontend: [What was built]
 - ✅ Database: [Schema changes]
 - ✅ Tests: [Test coverage]
 
 **Quality Review**:
+
 - Critical issues: [Count] (all resolved)
 - Improvements: [Count] (addressed or documented)
 
 **Next Steps**:
+
 1. Review the changes in your editor
 2. Test manually: [Specific test instructions]
-3. Merge when satisfied: `/merge`
+3. When satisfied, use GitHub's native protected pull-request merge after all
+   required checks pass.
 ```
 
 ## Important Notes:
@@ -160,10 +170,12 @@ Provide a summary at the end:
 - **User visibility**: Use TodoWrite to show progress throughout the process
 
 ## Reference Documentation:
+
 - `.claude/CLAUDE.md` - Project standards and patterns
 - Current tech stack, coding conventions, file boundaries
 
 **Usage Examples:**
+
 ```bash
 # Simple feature
 /feature "Add pagination to interview history table"
