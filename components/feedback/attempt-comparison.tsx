@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import {
   FeedbackActionItem,
@@ -12,6 +12,8 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Check,
+  ArrowRight,
   Calendar,
   MessageSquare,
   Lightbulb,
@@ -27,6 +29,7 @@ interface AttemptComparisonProps {
 
 export function AttemptComparison({ comparison }: AttemptComparisonProps) {
   const { session1, session2, scoreDelta } = comparison;
+  const shouldReduceMotion = useReducedMotion();
 
   // Helper function to render score delta badge
   const renderScoreDelta = (delta: number | null) => {
@@ -86,9 +89,12 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
         <div className="bg-muted/30 h-2 overflow-hidden rounded-full">
           <motion.div
             className={`h-full ${colorClass}`}
-            initial={{ width: 0 }}
+            initial={shouldReduceMotion ? false : { width: 0 }}
             animate={{ width: `${percentage}%` }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+            transition={{
+              duration: shouldReduceMotion ? 0 : 0.5,
+              ease: "easeOut",
+            }}
           />
         </div>
       </div>
@@ -208,7 +214,12 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
                 key={idx}
                 tone="success"
                 className="border-0 bg-transparent p-0 text-xs"
-                icon={<span className="text-success mt-0.5">✓</span>}
+                icon={
+                  <Check
+                    className="text-success mt-0.5 h-4 w-4"
+                    aria-hidden="true"
+                  />
+                }
               >
                 {strength}
               </FeedbackActionItem>
@@ -230,7 +241,12 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
                   key={idx}
                   tone="warning"
                   className="border-0 bg-transparent p-0 text-xs"
-                  icon={<span className="text-warning mt-0.5">→</span>}
+                  icon={
+                    <ArrowRight
+                      className="text-warning mt-0.5 h-4 w-4"
+                      aria-hidden="true"
+                    />
+                  }
                 >
                   {improvement}
                 </FeedbackActionItem>
@@ -244,7 +260,7 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
   return (
     <motion.div
       variants={staggerContainer}
-      initial="initial"
+      initial={shouldReduceMotion ? false : "initial"}
       animate="animate"
       className="space-y-6"
     >

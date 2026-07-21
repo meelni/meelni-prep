@@ -38,6 +38,7 @@ export default defineConfig({
   projects: [
     {
       name: "mobile-chromium",
+      testIgnore: /sav-211-strict-reflow\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 390, height: 844 },
@@ -47,9 +48,20 @@ export default defineConfig({
     },
     {
       name: "desktop-chromium",
+      testIgnore: /sav-211-strict-reflow\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 1000 },
+      },
+    },
+    {
+      name: "sav-211-reflow-chromium",
+      testMatch: /sav-211-strict-reflow\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 195, height: 422 },
+        isMobile: true,
+        hasTouch: true,
       },
     },
   ],

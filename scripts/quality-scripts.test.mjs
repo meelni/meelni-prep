@@ -29,6 +29,7 @@ test("package scripts expose the aggregate quality gates", () => {
     "typecheck:tests:all",
     "test:quality",
     "test:stack",
+    "test:ui",
   ]) {
     assert.equal(
       typeof scripts[scriptName],
@@ -40,6 +41,22 @@ test("package scripts expose the aggregate quality gates", () => {
 
 test("CI includes deterministic stacked PR regression fixtures", () => {
   assert.match(scripts["check:ci"], /npm\s+run\s+test:stack/);
+});
+
+test("CI includes feedback and consent accessibility regression fixtures", () => {
+  assert.match(scripts["check:ci"], /npm\s+run\s+test:ui/);
+  assert.match(
+    scripts["test:ui"],
+    /components\/feedback\/\*\.test\.ts(?:\s|$)/
+  );
+  assert.match(
+    scripts["test:ui"],
+    /tsx\s+--test[\s\S]*&&\s+vitest\s+run\s+['"]app\/feedback\/\[sessionId\]\/page\.test\.tsx['"]/
+  );
+  assert.match(
+    scripts["test:ui"],
+    /vitest\s+run[\s\S]*['"]app\/feedback\/\[sessionId\]\/compare\/page\.test\.tsx['"]/
+  );
 });
 
 test("the default test typecheck includes every test directory", () => {
