@@ -90,18 +90,13 @@ export function RoundSelector({
               disabled={disabled}
               className={
                 disabled
-                  ? "border-dashboard-panel-border text-dashboard-foreground cursor-not-allowed bg-transparent opacity-60"
+                  ? "border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground cursor-not-allowed opacity-60"
                   : isLocked
-                    ? "border-dashboard-panel-border text-dashboard-foreground bg-transparent"
-                    : "border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/10 bg-transparent hover:scale-[1.01]"
+                    ? "border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground"
+                    : "border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground hover:bg-dashboard-muted/10 hover:scale-[1.01]"
               }
               onClick={handleClick}
             >
-              {/* Gradient background on hover/select */}
-              <div
-                className={`absolute inset-0 rounded-xl bg-gradient-to-br opacity-0 transition-opacity duration-200 ${config.color} ${isSelected ? "opacity-5" : "group-hover:opacity-5"} `}
-              />
-
               <div className="relative flex h-full flex-col">
                 {/* Icon */}
                 <SelectableCardIcon selected={isSelected}>

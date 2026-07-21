@@ -12,8 +12,13 @@ to the right owner.
   workflow regression tests.
 - `npm run quality`: runs Biome, Knip, Dependency Cruiser, Semgrep, and the
   quality-script regression test.
-- `npm run typecheck:tests:all`: stricter backlog command that also includes
-  older `__tests__` files.
+- `npm run typecheck:tests`: complete tracked TypeScript test typecheck,
+  including colocated `.test.*` and `.spec.*` files plus older `__tests__`
+  directories. The quality regression compares the resolved TypeScript project
+  with tracked test sources so a newly tracked test using these conventions
+  cannot silently escape.
+- `npm run typecheck:tests:all`: compatibility alias for the same complete test
+  scope; it must not be broader than the default CI gate.
 
 ## Prerequisites
 

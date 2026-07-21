@@ -114,12 +114,12 @@ export async function GET(req: NextRequest) {
       questionType: question.questionType,
       askedAt: question.askedAt,
     });
-  } catch (error) {
-    console.error("Error fetching random question:", error);
+  } catch {
+    console.error("random_question_read_failed");
     return NextResponse.json(
       {
         error: "Failed to fetch random question",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: "Unable to load a question right now.",
       },
       { status: 500 }
     );

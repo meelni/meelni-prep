@@ -1,11 +1,3 @@
 {
-  "extends": "./tsconfig.tests.json",
-  "include": [
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/__tests__/**/*.ts",
-    "**/__tests__/**/*.tsx",
-    "scripts/*.test.mjs"
-  ],
-  "exclude": ["node_modules", ".next", "agent/venv"]
+  "extends": "./tsconfig.tests.json"
 }
