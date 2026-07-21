@@ -39,9 +39,19 @@ import {
   FEEDBACK_CALIBRATION_REQUEST_POLICY_VERSION,
   getFeedbackCalibrationRequestPolicyHash,
 } from "./calibration-request-policy";
+import {
+  SAV_248_V3_APPROVED_RUN_ID,
+  SAV_248_V3_PREDECESSOR_AUTHORITIES,
+  assertCalibrationOwnerAuthorizationMatchesPlan,
+  assertCalibrationOwnerAuthorizationWasVerified,
+  type ApprovedCalibrationSpendAuthorization,
+  type VerifiedCalibrationOwnerAuthorization,
+} from "./calibration-owner-authorization";
 
-export const SAV_248_V3_APPROVED_RUN_ID =
-  "sav-248-authorized-paid-calibration.v3";
+export {
+  SAV_248_V3_APPROVED_RUN_ID,
+  SAV_248_V3_PREDECESSOR_AUTHORITIES,
+} from "./calibration-owner-authorization";
 export const SAV_248_V3_AUTHORIZATION_ID =
   "sav-248-pending-paid-calibration-authorization.v3";
 export const SAV_248_V3_GITHUB_OWNER = "meelni";
@@ -65,19 +75,6 @@ export const SAV_248_V3_IMMUTABLE_RULESET_NAME =
   "Meelni SAV-248 v3 calibration ledger immutable";
 export const SAV_248_V3_ACTOR_RULESET_NAME =
   "Meelni SAV-248 v3 calibration activation actor";
-export const SAV_248_V3_PREDECESSOR_AUTHORITIES = [
-  {
-    runId: "sav-198-authorized-paid-calibration.v1",
-    ref: "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
-    activationCommit: "4acdf549eecad5fe88d685c28fbc98d7475b8f05",
-  },
-  {
-    runId: "sav-248-authorized-paid-calibration.v2",
-    ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2",
-    activationCommit: "d0c4fc4c028b10d8616fdde337be150315a7798c",
-  },
-] as const;
-
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_API_PORT = 443;
@@ -91,7 +88,7 @@ const COMMIT_IDENTITY = {
   email: "calibration-ledger@meelni.invalid",
 } as const;
 
-export interface CalibrationSpendAuthorization {
+export interface PendingCalibrationSpendAuthorization {
   contractVersion: "evaluation-calibration-spend-authorization.v2";
   authorizationId: typeof SAV_248_V3_AUTHORIZATION_ID;
   runId: typeof SAV_248_V3_APPROVED_RUN_ID;
@@ -110,24 +107,29 @@ export interface CalibrationSpendAuthorization {
   predecessorAuthorities: typeof SAV_248_V3_PREDECESSOR_AUTHORITIES;
 }
 
-export const SAV_248_V3_SPEND_AUTHORIZATION: CalibrationSpendAuthorization = {
-  contractVersion: "evaluation-calibration-spend-authorization.v2",
-  authorizationId: SAV_248_V3_AUTHORIZATION_ID,
-  runId: SAV_248_V3_APPROVED_RUN_ID,
-  authorizationStatus: "pending_explicit_product_owner_approval",
-  authorizedOn: null,
-  authorizationSource: null,
-  reviewedSourceCommit: null,
-  singleAggregateRun: true,
-  maximumProviderCalls: 96,
-  maximumPhysicalHttpAttempts: 96,
-  maximumSpendUsd: 3,
-  fixturePolicy: "synthetic_or_separately_approved_only",
-  customerTranscriptsAllowed: false,
-  productionDataAllowed: false,
-  historicalAuthoritiesReusable: false,
-  predecessorAuthorities: SAV_248_V3_PREDECESSOR_AUTHORITIES,
-};
+export type CalibrationSpendAuthorization =
+  | PendingCalibrationSpendAuthorization
+  | ApprovedCalibrationSpendAuthorization;
+
+export const SAV_248_V3_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorization =
+  {
+    contractVersion: "evaluation-calibration-spend-authorization.v2",
+    authorizationId: SAV_248_V3_AUTHORIZATION_ID,
+    runId: SAV_248_V3_APPROVED_RUN_ID,
+    authorizationStatus: "pending_explicit_product_owner_approval",
+    authorizedOn: null,
+    authorizationSource: null,
+    reviewedSourceCommit: null,
+    singleAggregateRun: true,
+    maximumProviderCalls: 96,
+    maximumPhysicalHttpAttempts: 96,
+    maximumSpendUsd: 3,
+    fixturePolicy: "synthetic_or_separately_approved_only",
+    customerTranscriptsAllowed: false,
+    productionDataAllowed: false,
+    historicalAuthoritiesReusable: false,
+    predecessorAuthorities: SAV_248_V3_PREDECESSOR_AUTHORITIES,
+  };
 
 export const SAV_248_V3_REBASED_PLAN_WORST_CASE_NANO_USD = 2_247_265_000;
 export const SAV_248_V3_REBASED_PLAN_HASH =
@@ -144,7 +146,7 @@ export interface CalibrationActivatedPlanCall {
 export interface CalibrationActivatedPlan {
   contractVersion: "evaluation-calibration-activated-plan.v2";
   runId: typeof SAV_248_V3_APPROVED_RUN_ID;
-  authorizationId: typeof SAV_248_V3_AUTHORIZATION_ID;
+  authorizationId: string;
   authorizationHash: string;
   candidateArtifactHash: string;
   corpusHash: string;
@@ -161,7 +163,7 @@ export interface CalibrationActivatedPlan {
   responseFormatHash: string;
   requestPolicyVersion: typeof FEEDBACK_CALIBRATION_REQUEST_POLICY_VERSION;
   requestPolicyHash: string;
-  reviewedSourceCommit: null;
+  reviewedSourceCommit: string | null;
   repetitions: 2;
   plannedCalls: number;
   plannedWorstCaseNanoUsd: number;
@@ -248,6 +250,7 @@ export function buildSAV248V3PlanProposal(adjudicationApproval: unknown) {
 
 export interface ActivateCalibrationRunOptions {
   authorization: unknown;
+  ownerAuthorization?: VerifiedCalibrationOwnerAuthorization;
   adjudicationApproval: unknown;
   model: string;
   repetitions: number;
@@ -329,7 +332,7 @@ export class ActivatedCalibrationRunAuthority
 {
   readonly durable = true as const;
   readonly runId = SAV_248_V3_APPROVED_RUN_ID;
-  readonly authorizationId = SAV_248_V3_AUTHORIZATION_ID;
+  readonly authorizationId: string;
   readonly authorizationHash: string;
   readonly planHash: string;
   readonly plannedCalls: number;
@@ -343,6 +346,7 @@ export class ActivatedCalibrationRunAuthority
     readonly plan: CalibrationActivatedPlan,
     private readonly github: CalibrationGitHubCasClient
   ) {
+    this.authorizationId = plan.authorizationId;
     this.authorizationHash = plan.authorizationHash;
     this.planHash = plan.planHash;
     this.plannedCalls = plan.plannedCalls;
@@ -468,8 +472,7 @@ export function buildCalibrationActivatedPlan(input: {
   const withoutHash = {
     contractVersion: "evaluation-calibration-activated-plan.v2" as const,
     runId: SAV_248_V3_APPROVED_RUN_ID as typeof SAV_248_V3_APPROVED_RUN_ID,
-    authorizationId:
-      SAV_248_V3_AUTHORIZATION_ID as typeof SAV_248_V3_AUTHORIZATION_ID,
+    authorizationId: authorization.authorizationId,
     authorizationHash,
     ...adjudicationHashes,
     approvalHash,
@@ -499,6 +502,12 @@ export async function activateCalibrationRun(
   credentials: { githubToken: string }
 ): Promise<ActivatedCalibrationRunAuthority> {
   assertCalibrationSpendAuthorizationExecutable(options.authorization);
+  if (
+    !options.ownerAuthorization ||
+    options.ownerAuthorization.authorization !== options.authorization
+  ) {
+    throw new Error("calibration_owner_authorization_handoff_invalid");
+  }
   return await activateCalibrationRunWithClient(
     options,
     createProductionGitHubCasClient(credentials.githubToken),
@@ -508,20 +517,14 @@ export async function activateCalibrationRun(
 
 export function assertCalibrationSpendAuthorizationExecutable(
   value: unknown
-): void {
+): asserts value is ApprovedCalibrationSpendAuthorization {
   const authorization = parseCalibrationSpendAuthorization(value);
-  if (
-    authorization.authorizationStatus ===
-      "pending_explicit_product_owner_approval" ||
-    authorization.authorizedOn === null ||
-    authorization.authorizationSource === null ||
-    authorization.reviewedSourceCommit === null
-  ) {
+  if (authorization.authorizationStatus !== "approved_by_human_product_owner") {
     throw new Error(
       "calibration_v3_requires_fresh_exact_product_owner_authorization"
     );
   }
-  throw new Error("calibration_v3_spend_authorization_not_executable");
+  assertCalibrationOwnerAuthorizationWasVerified(authorization);
 }
 
 async function activateCalibrationRunWithClient(
@@ -540,26 +543,43 @@ async function activateCalibrationRunWithClient(
     repetitions: options.repetitions,
     now,
   });
+  if (mode === "executable") {
+    if (
+      !options.ownerAuthorization ||
+      options.ownerAuthorization.authorization !== options.authorization
+    ) {
+      throw new Error("calibration_owner_authorization_handoff_invalid");
+    }
+    assertCalibrationOwnerAuthorizationMatchesPlan(
+      options.ownerAuthorization,
+      plan,
+      now
+    );
+  }
+  const authorization = parseCalibrationSpendAuthorization(
+    options.authorization
+  );
+  const genesis = buildCalibrationAuthorizationGenesis(plan, authorization);
   await assertCanonicalGitHubAuthority(github);
 
   const currentRef = await github.getRef();
   if (currentRef.ref !== SAV_248_V3_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
-  if (currentRef.sha !== SAV_248_V3_GENESIS_COMMIT_OID) {
+  if (currentRef.sha !== genesis.oid) {
     const current = await github.getCommit(currentRef.sha);
-    if (isValidActivationCommit(current)) {
+    if (isValidActivationCommit(current, plan, genesis)) {
       throw new Error("calibration_authorized_run_is_already_activated");
     }
     throw new Error("calibration_git_authorization_genesis_oid_mismatch");
   }
-  assertPinnedGenesisCommit(await github.getCommit(currentRef.sha));
+  assertPinnedGenesisCommit(await github.getCommit(currentRef.sha), genesis);
 
   const activationId = options.activationId ?? randomUUID();
   const activationMessage = stableJson({
     contractVersion: "evaluation-calibration-git-activation.v1",
     runId: SAV_248_V3_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V3_AUTHORIZATION_ID,
+    authorizationId: plan.authorizationId,
     authorizationHash: plan.authorizationHash,
     planHash: plan.planHash,
     activationId,
@@ -568,11 +588,11 @@ async function activateCalibrationRunWithClient(
   const activation = await github.createCommit({
     message: activationMessage,
     treeSha: SAV_248_V3_EMPTY_TREE_OID,
-    parents: [SAV_248_V3_GENESIS_COMMIT_OID],
+    parents: [genesis.oid],
     date: activationDate,
   });
   if (
-    !isValidActivationCommit(activation) ||
+    !isValidActivationCommit(activation, plan, genesis) ||
     activation.message !== activationMessage ||
     !isCommitIdentity(activation.author, activationDate) ||
     !isCommitIdentity(activation.committer, activationDate)
@@ -610,11 +630,78 @@ export const calibrationRunLedgerTestSeam = {
       github,
       "pending_proposal_test_simulation"
     ),
+  activateVerifiedOwnerAuthorizationWithClient: (
+    options: ActivateCalibrationRunOptions,
+    github: CalibrationGitHubCasClient
+  ) => {
+    assertCalibrationSpendAuthorizationExecutable(options.authorization);
+    return activateCalibrationRunWithClient(options, github, "executable");
+  },
   createGitHubClient: createTestGitHubCasClient,
   nodeRequestOptions: buildNodeGitHubRequestOptions,
 };
 
-export function calibrationAuthorizationCommitMessage(): string {
+export interface CalibrationAuthorizationGenesis {
+  date: string;
+  message: string;
+  oid: string;
+}
+
+export function buildCalibrationAuthorizationGenesis(
+  plan: CalibrationActivatedPlan,
+  authorization: CalibrationSpendAuthorization
+): CalibrationAuthorizationGenesis {
+  if (
+    authorization.authorizationStatus ===
+    "pending_explicit_product_owner_approval"
+  ) {
+    return {
+      date: SAV_248_V3_GENESIS_DATE,
+      message: calibrationAuthorizationCommitMessage(),
+      oid: SAV_248_V3_GENESIS_COMMIT_OID,
+    };
+  }
+  const date = authorization.authorizedOn;
+  const message = calibrationAuthorizationCommitMessage(plan, authorization);
+  const timestamp = Math.floor(new Date(date).getTime() / 1_000);
+  if (!Number.isSafeInteger(timestamp)) {
+    throw new Error("calibration_git_authorization_date_invalid");
+  }
+  const body = [
+    `tree ${SAV_248_V3_EMPTY_TREE_OID}`,
+    `author ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp} +0000`,
+    `committer ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp} +0000`,
+    "",
+    message,
+    "",
+  ].join("\n");
+  return {
+    date,
+    message,
+    oid: createHash("sha1")
+      .update(`commit ${Buffer.byteLength(body)}\0`)
+      .update(body)
+      .digest("hex"),
+  };
+}
+
+export function calibrationAuthorizationCommitMessage(
+  plan?: CalibrationActivatedPlan,
+  authorization?: CalibrationSpendAuthorization
+): string {
+  if (plan && authorization) {
+    return stableJson({
+      contractVersion: "evaluation-calibration-git-authorization.v1",
+      runId: plan.runId,
+      authorizationId: plan.authorizationId,
+      authorizationHash: plan.authorizationHash,
+      planHash: plan.planHash,
+      plannedCalls: plan.plannedCalls,
+      plannedWorstCaseNanoUsd: plan.plannedWorstCaseNanoUsd,
+      reviewedSourceCommit: plan.reviewedSourceCommit,
+      predecessorAuthorities: authorization.predecessorAuthorities,
+    });
+  }
   return stableJson({
     contractVersion: "evaluation-calibration-git-authorization-proposal.v1",
     runId: SAV_248_V3_APPROVED_RUN_ID,
@@ -633,15 +720,73 @@ export function parseCalibrationSpendAuthorization(
   if (!isRecord(value)) {
     throw new Error("calibration_spend_authorization_invalid");
   }
-  assertExactKeys(value, Object.keys(SAV_248_V3_SPEND_AUTHORIZATION));
-  for (const [key, expected] of Object.entries(
-    SAV_248_V3_SPEND_AUTHORIZATION
-  )) {
-    if (stableJson(value[key]) !== stableJson(expected)) {
-      throw new Error(`calibration_spend_authorization_${key}_mismatch`);
+  if (value.authorizationStatus === "pending_explicit_product_owner_approval") {
+    assertExactKeys(value, Object.keys(SAV_248_V3_SPEND_AUTHORIZATION));
+    for (const [key, expected] of Object.entries(
+      SAV_248_V3_SPEND_AUTHORIZATION
+    )) {
+      if (stableJson(value[key]) !== stableJson(expected)) {
+        throw new Error(`calibration_spend_authorization_${key}_mismatch`);
+      }
     }
+    return { ...SAV_248_V3_SPEND_AUTHORIZATION };
   }
-  return { ...SAV_248_V3_SPEND_AUTHORIZATION };
+  return parseApprovedCalibrationSpendAuthorization(value);
+}
+
+function parseApprovedCalibrationSpendAuthorization(
+  value: Record<string, unknown>
+): ApprovedCalibrationSpendAuthorization {
+  const expectedKeys = [
+    "authorizationId",
+    "authorizationSource",
+    "authorizationStatus",
+    "authorizedOn",
+    "contractVersion",
+    "customerTranscriptsAllowed",
+    "fixturePolicy",
+    "historicalAuthoritiesReusable",
+    "maximumPhysicalHttpAttempts",
+    "maximumProviderCalls",
+    "maximumSpendUsd",
+    "ownerId",
+    "ownerRole",
+    "ownerSigningKeyId",
+    "predecessorAuthorities",
+    "productionDataAllowed",
+    "reviewedSourceCommit",
+    "runId",
+    "singleAggregateRun",
+  ];
+  assertExactKeys(value, expectedKeys);
+  const authorization =
+    value as unknown as ApprovedCalibrationSpendAuthorization;
+  if (
+    authorization.contractVersion !==
+      "evaluation-calibration-spend-authorization.v3" ||
+    !/^sav248_v3_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) ||
+    authorization.runId !== SAV_248_V3_APPROVED_RUN_ID ||
+    authorization.authorizationStatus !== "approved_by_human_product_owner" ||
+    authorization.authorizationSource !== "external_product_owner_ed25519" ||
+    !Number.isFinite(new Date(authorization.authorizedOn).getTime()) ||
+    authorization.ownerId !== "saviii" ||
+    authorization.ownerRole !== "human_product_owner" ||
+    !/^[A-Za-z0-9._-]{1,80}$/.test(authorization.ownerSigningKeyId) ||
+    !/^[0-9a-f]{40}$/.test(authorization.reviewedSourceCommit) ||
+    authorization.singleAggregateRun !== true ||
+    authorization.maximumProviderCalls !== 96 ||
+    authorization.maximumPhysicalHttpAttempts !== 96 ||
+    authorization.maximumSpendUsd !== 3 ||
+    authorization.fixturePolicy !== "synthetic_or_separately_approved_only" ||
+    authorization.customerTranscriptsAllowed !== false ||
+    authorization.productionDataAllowed !== false ||
+    authorization.historicalAuthoritiesReusable !== false ||
+    stableJson(authorization.predecessorAuthorities) !==
+      stableJson(SAV_248_V3_PREDECESSOR_AUTHORITIES)
+  ) {
+    throw new Error("calibration_spend_authorization_approved_invalid");
+  }
+  return authorization;
 }
 
 async function assertCanonicalGitHubAuthority(
@@ -745,24 +890,31 @@ function hasExactStrings(actual: string[], expected: string[]): boolean {
   );
 }
 
-function assertPinnedGenesisCommit(commit: GitHubCommit): void {
+function assertPinnedGenesisCommit(
+  commit: GitHubCommit,
+  genesis: CalibrationAuthorizationGenesis
+): void {
   if (
-    commit.sha !== SAV_248_V3_GENESIS_COMMIT_OID ||
-    commit.message !== calibrationAuthorizationCommitMessage() ||
+    commit.sha !== genesis.oid ||
+    commit.message !== genesis.message ||
     commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID ||
     commit.parents.length !== 0 ||
-    !isCommitIdentity(commit.author, SAV_248_V3_GENESIS_DATE) ||
-    !isCommitIdentity(commit.committer, SAV_248_V3_GENESIS_DATE)
+    !isCommitIdentity(commit.author, genesis.date) ||
+    !isCommitIdentity(commit.committer, genesis.date)
   ) {
     throw new Error("calibration_git_authorization_commit_invalid");
   }
 }
 
-function isValidActivationCommit(commit: GitHubCommit): boolean {
+function isValidActivationCommit(
+  commit: GitHubCommit,
+  plan: CalibrationActivatedPlan,
+  genesis: CalibrationAuthorizationGenesis
+): boolean {
   if (
     commit.treeSha !== SAV_248_V3_EMPTY_TREE_OID ||
     commit.parents.length !== 1 ||
-    commit.parents[0] !== SAV_248_V3_GENESIS_COMMIT_OID ||
+    commit.parents[0] !== genesis.oid ||
     !isCommitIdentity(commit.author, commit.author.date) ||
     !isCommitIdentity(commit.committer, commit.author.date)
   ) {
@@ -773,10 +925,9 @@ function isValidActivationCommit(commit: GitHubCommit): boolean {
     return (
       parsed.contractVersion === "evaluation-calibration-git-activation.v1" &&
       parsed.runId === SAV_248_V3_APPROVED_RUN_ID &&
-      parsed.authorizationId === SAV_248_V3_AUTHORIZATION_ID &&
-      parsed.authorizationHash ===
-        sha256(stableJson(SAV_248_V3_SPEND_AUTHORIZATION)) &&
-      parsed.planHash === SAV_248_V3_REBASED_PLAN_HASH &&
+      parsed.authorizationId === plan.authorizationId &&
+      parsed.authorizationHash === plan.authorizationHash &&
+      parsed.planHash === plan.planHash &&
       typeof parsed.activationId === "string" &&
       parsed.activationId.length > 0
     );

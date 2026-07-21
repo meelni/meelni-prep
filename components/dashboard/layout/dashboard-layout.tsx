@@ -52,7 +52,7 @@ export function getSidebarCollapsedForViewport({
 export const DASHBOARD_SIDEBAR_SHELL_CLASS_NAME = "hidden md:block";
 
 export const DASHBOARD_MOBILE_NAV_CLASS_NAME =
-  "border-dashboard-panel-border bg-dashboard-canvas shrink-0 overflow-x-auto border-b px-3 py-2 md:hidden";
+  "border-dashboard-panel-border bg-dashboard-canvas shrink-0 border-b px-3 py-2 md:hidden";
 
 export function DashboardLayout({
   children,
@@ -133,7 +133,7 @@ export function DashboardLayout({
       <div className="bg-overlay/50 fixed inset-0 z-40 hidden md:hidden" />
 
       <nav aria-label="Workspace" className={DASHBOARD_MOBILE_NAV_CLASS_NAME}>
-        <div className="flex min-w-max gap-1 py-0.5">
+        <div className="grid grid-cols-3 gap-1 py-0.5">
           <Link
             ref={
               activeSection === "new-interview"
@@ -145,13 +145,13 @@ export function DashboardLayout({
               activeSection === "new-interview" ? "page" : undefined
             }
             className={cn(
-              "focus-visible:ring-ring flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "focus-visible:ring-ring flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-center text-xs leading-tight font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
               activeSection === "new-interview"
                 ? "bg-primary text-primary-foreground"
-                : "bg-primary/90 text-primary-foreground hover:bg-primary"
+                : "bg-dashboard-panel text-dashboard-foreground hover:bg-dashboard-muted"
             )}
           >
-            <Mic className="h-4 w-4" aria-hidden="true" />
+            <Mic className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>New Mock Interview</span>
           </Link>
           {DASHBOARD_NAVIGATION_ITEMS.map((item) => {
@@ -164,13 +164,13 @@ export function DashboardLayout({
                 href={item.href}
                 aria-current={selected ? "page" : undefined}
                 className={cn(
-                  "focus-visible:ring-ring flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+                  "focus-visible:ring-ring bg-dashboard-canvas flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-center text-xs leading-tight font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
                   selected
-                    ? "bg-dashboard-muted/15 text-dashboard-foreground"
+                    ? "bg-dashboard-panel text-dashboard-foreground"
                     : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground"
                 )}
               >
-                <item.icon className="h-4 w-4" aria-hidden="true" />
+                <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{item.label}</span>
               </Link>
             );

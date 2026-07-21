@@ -11,6 +11,8 @@ on:
         synchronize,
         closed,
       ]
+    paths-ignore:
+      - ".github/stacked-prs.json"
   workflow_dispatch:
 
 permissions:
