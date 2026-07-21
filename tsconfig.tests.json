@@ -3,6 +3,14 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["**/*.test.ts", "**/*.test.tsx", "scripts/*.test.mjs"],
-  "exclude": ["node_modules", ".next", "agent/venv", "**/__tests__/**"]
+  "include": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**/*.ts",
+    "**/__tests__/**/*.tsx",
+    "scripts/*.test.mjs"
+  ],
+  "exclude": ["node_modules", ".next", "agent/venv"]
 }

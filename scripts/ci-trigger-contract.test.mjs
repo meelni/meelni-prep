@@ -46,6 +46,53 @@ test("hosted Validate runs for merge-ready PRs or manual dispatch", () => {
   );
 });
 
+test("exact registry-only PRs use GitHub path suppression and trusted publication", () => {
+  assert.match(pullRequestTrigger, /paths-ignore:/);
+  assert.match(pullRequestTrigger, /- "\.github\/stacked-prs\.json"/);
+  assert.doesNotMatch(workflow, /classify-registry-only:/);
+  assert.doesNotMatch(workflow, /Registry-only \/ Trusted Validate pending/);
+  assert.match(
+    stackWorkflow,
+    /Verify exact stacked PR topology and dependents[\s\S]*Refresh trusted registry-only Validate snapshots/
+  );
+  assert.match(
+    stackWorkflow,
+    /Refresh trusted registry-only Validate snapshots[\s\S]*node scripts\/registry-only-validate-ci\.mjs --sweep/
+  );
+  assert.match(
+    stackWorkflow,
+    /verify-stack:[\s\S]*github\.event\.action == 'closed'[\s\S]*Refresh trusted registry-only Validate snapshots/
+  );
+  assert.match(
+    stackWorkflow,
+    /push:[\s\S]*- "scripts\/registry-only-validate-ci\.mjs"/
+  );
+  assert.equal(
+    (
+      stackWorkflow.match(
+        /node scripts\/registry-only-validate-ci\.mjs --sweep/g
+      ) ?? []
+    ).length,
+    4
+  );
+  assert.doesNotMatch(
+    stackWorkflow,
+    /registry-only-validate-ci\.mjs --publish/
+  );
+  assert.match(
+    stackWorkflow,
+    /audit-draft-impact:[\s\S]*registry_validate_sweep[\s\S]*steps\.registry_validate_sweep\.outcome != 'success'/
+  );
+  assert.match(
+    stackWorkflow,
+    /refresh-registry-body-edits:[\s\S]*github\.event\.pull_request\.draft == true[\s\S]*github\.event\.changes\.body != null[\s\S]*github\.event\.changes\.base == null/
+  );
+  assert.match(
+    stackWorkflow,
+    /revalidate-all:[\s\S]*Revalidate registry-only Validate snapshots[\s\S]*steps\.registry_validate_sweep\.outcome != 'success'/
+  );
+});
+
 test("cost control preserves exact-head cancellation and the complete validation gate", () => {
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 30/);
@@ -73,13 +120,18 @@ test("protected branch merges cannot start a duplicate push-triggered Validate r
   assert.doesNotMatch(triggerBlock, /branches:/);
 });
 
-test("pull request validation stays unfiltered while trusted main publishers remain active", () => {
-  assert.doesNotMatch(pullRequestTrigger, /\bpaths(?:-ignore)?:/);
+test("pull request validation has one exact ignore while trusted main publishers remain active", () => {
+  assert.doesNotMatch(pullRequestTrigger, /^\s+paths:\s*$/m);
+  assert.equal((pullRequestTrigger.match(/paths-ignore:/g) ?? []).length, 1);
+  assert.equal(
+    (pullRequestTrigger.match(/- "\.github\/stacked-prs\.json"/g) ?? []).length,
+    1
+  );
   assert.match(stackWorkflow, /^  push:\n    branches: \[main\]/m);
   assert.match(stackWorkflow, /- "\.github\/stacked-prs\.json"/);
   assert.match(
     stackWorkflow,
-    /if: github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'/
+    /revalidate-all:[\s\S]*github\.event_name == 'push'[\s\S]*github\.event_name == 'workflow_dispatch'[\s\S]*inputs\.operation == 'revalidate'/
   );
 });
 

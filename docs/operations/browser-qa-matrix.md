@@ -17,6 +17,16 @@ feedback, and settings at these fixed viewports:
 - Mobile: `390 x 844`.
 - Desktop: `1440 x 1000`.
 
+The matrix also verifies the mobile navigation dialog and Explore question-type
+listbox in both closed and open states. Closed triggers must not publish a
+reference to an unmounted popup. Open triggers must reference the exact mounted
+dialog or listbox ID, preserve the expected expanded state, pass the same
+WCAG-tagged serious/critical/contrast gate scoped to the exact mounted popup,
+close with Escape, and restore focus to the trigger. A synthetic image without
+alternative text proves that a critical defect mounted only while the popup is
+open blocks the gate. The ordinary closed-state scan remains the broad page
+gate and has no accessibility allowlist.
+
 The public tests run the built production Next.js application. Authenticated
 compositions use production components with approved synthetic fixture data
 through the browser-QA fixture
@@ -26,8 +36,8 @@ absent.
 
 ## Baseline Evidence
 
-On 2026-07-18, the complete local Chromium baseline passed all 24 checks in
-42.8 seconds with one worker and zero retries. The run covered both viewports,
+On 2026-07-19, the complete local Chromium baseline passed all 24 checks in
+40.5 seconds with one worker and zero retries. The run covered both viewports,
 all nine representative surfaces, and the landing, Explore, and interview
 dialog-focus contracts. It used no provider credentials, customer data,
 Preview data, or Production data.
@@ -61,26 +71,100 @@ the assertion or fixture boundary; do not hide it with retries, sleeps, broad
 console allowlists, global accessibility-rule suppression, or pixel-diff
 baselines.
 
-An intentional accessibility exception must identify the exact rule and
-selector, explain why it is safe, name an owner, and include an expiration or
-follow-up issue. Screenshots are evidence and diagnostics, not pixel-perfect
-blocking snapshots.
+Any serious or critical incomplete result is blocking, as is any
+`color-contrast` incomplete result regardless of impact. The only temporary
+review bridge is the exact Vaul drawer overscroll pseudo-element described
+below. Screenshots are evidence and diagnostics, not pixel-perfect blocking
+baselines. The Vaul review uses target-clipped screenshots only for the bounded
+rendered-color/occlusion contract described below.
 
 Every Axe run attaches its incomplete rule IDs, impacts, help text, node
 selectors, and failure summaries before enforcing the blocking threshold. Do
 not replace that evidence with aggregate counts: incomplete results can signal
 that Axe could not finish evaluating a launch-critical element.
 
-The only current incomplete-result exceptions are exact selectors scoped to
-closed Radix triggers, inactive items clipped by the horizontally scrollable
-mobile workspace navigation, landing-page gradients and decorative overlaps,
-the New Mock Interview selected-card and translucent-disclosure compositions,
-and the feedback gradient score card. Axe cannot resolve the unmounted popup
-target, clipped element background, or composited background in those states.
-The owner must remove or revalidate these selector-level exceptions through
-follow-up issue `SAV-265` by 2026-08-15. The test enforces that expiration;
-after the date, the selectors return to blocking status automatically. A new
-project, selector, rule, or surface is not covered and fails the matrix.
+SAV-265 removed all 27 observed `color-contrast` incomplete-result allowances
+by making production foreground/background composition deterministic.
+SAV-278 removed the final three `aria-valid-attr-value` allowances: the mobile
+navigation trigger now exposes `aria-controls` only while its dialog is open,
+and Radix Select 2.3.4 applies the same mounted-popup contract to the Explore
+listbox. The matrix retains raw incomplete evidence and blocks every serious,
+critical, or contrast result rather than grandfathering a rule, selector,
+surface, or browser project, except for the exact evidence-reviewed Vaul
+condition below.
+
+The repository pins Vaul 1.1.2 exactly and exposes that runtime identity on the
+mounted drawer. Vaul renders the mobile drawer's overscroll fill with an empty, opaque
+`[data-vaul-drawer]::after` pseudo-element. Axe cannot determine descendant
+contrast whenever that pseudo-element exists, even when an explicit opaque
+background is applied. The open-drawer gate may review only the single
+`color-contrast` incomplete at index zero in Chromium's mobile project on the
+landing or pricing surface. Its eight nodes must appear in the approved order,
+resolve one-to-one to stable drawer review markers, carry Axe's exact
+`pseudoContent` diagnostic, and point to the exact mounted Vaul dialog. The
+package, browser context, surface, finding count/index, runtime version, and
+node set are all part of the classifier identity.
+
+The classifier then fails closed unless the pseudo-element is still empty,
+absolute, opaque, image-free, and the same computed background as the drawer.
+It requires Vaul's exact non-custom bottom-drawer overscroll geometry: the
+pseudo-element starts at the drawer content-box bottom, extends two drawer
+heights below it, and spans the exact drawer width. It also captures and checks
+the complete relevant paint/compositing contract for the pseudo-element and
+every target-to-drawer ancestor: animations and transitions, stacking and
+transforms, outlines, shadows, backgrounds, filters and backdrop filters,
+opacity, blend and isolation, clipping, containment, masks, overflow,
+visibility, text fill/stroke/shadow, and zoom. That includes the exact finished
+Vaul drawer animation identity. Each approved node has an exact ancestor count
+and exact per-layer computed `position`/`z-index`/`display`/inset sequence
+through the fixed `z-index: 50` drawer. It binds border paint, border-box
+client/offset arithmetic, finite rectangles, child-within-parent containment,
+non-overlapping approved targets, and nine owned interior hit-test samples per
+target. The contract also binds backface visibility, container
+type, float/order, perspective, pointer events, individual rotate/scale/
+translate properties, and transform style, so alternate stacking contexts or
+paint order cannot retain the review. An opaque child background does not
+truncate the ancestry proof. An independent layer-composition calculation must recover
+each rendered opaque background, and the rendered text fill/stroke contract
+must match the foreground used for the required WCAG ratio. The raw Axe
+finding, exact geometry, every accepted layer contract, hit topology, and each
+computed ratio remain attached as evidence. A target-clipped PNG is decoded to
+raw pixels and every pixel must remain within the bounded foreground,
+background, and border-color blend palette derived from that accepted target
+chain. Each reviewed node must remain inside its own narrow foreground and
+background occupancy bands; there is no generic minimum that a mostly covered
+target can satisfy. This catches opaque or translucent paint-only sibling and
+pseudo-element occlusion even when `pointer-events: none` leaves DOM hit
+ownership unchanged; it is not a stored cross-platform screenshot baseline.
+Any other context, version, rule, diagnostic, related target, node identity,
+style, geometry, stacking behavior, or insufficient ratio is blocking.
+
+The 494 deterministic classifier tests mutate every accepted boundary and
+require the review to fail closed, including context and version identity,
+finding and node shape, diagnostic, related target, content, paint and
+compositing fields, direction, custom-container mode, geometry, background,
+contrast ratio, rendered-pixel coverage, non-finite time, and expiration.
+Position, z-index, combined stacking, insets, display, painted borders,
+box-model arithmetic, geometry, and hit topology are mutated for every target
+and ancestor layer in every approved node path. Eight landing-drawer browser
+sentinels independently move the Vaul pseudo-element over the content, add a
+600px painted outline, replace rendered text fill with insufficient contrast,
+position the description at `z-index: -1`, move the title link to
+`top: 307px; left: 80px` so it intercepts the activation CTA, paint a 300px red
+description border outside the drawer, and paint an opaque fixed 356x44 red
+drawer-handle `::before` over the CTA at `z-index: 100` with
+`pointer-events: none`, and overlay the left 200x44 portion of that CTA with its
+own primary background color. The final same-palette sentinel preserves all
+nine hit samples while covering more than half of the CTA and erasing most of
+its label. The relevant sentinel first proves the real hit target, geometry, or
+non-hit-testable visual coverage changed, then requires the real open-popup
+gate to reject the identical Axe incomplete shape before the exact Vaul style
+is restored and the clean scan runs.
+
+This narrow bridge is owned by `SAV-278`, expires after 2026-08-15, and is
+tracked for removal in `SAV-280`. It does not apply to the closed global scan,
+the Explore listbox, any non-contrast result, or any different pseudo-element
+condition.
 
 ## Local Operation
 
