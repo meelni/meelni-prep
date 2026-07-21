@@ -1,18 +1,20 @@
 # Demo Agent
 
-Quick 5-minute demo agent for landing page visitors.
+Two-minute voice preview agent for landing-page visitors.
 
 ## Overview
 
-This agent provides a short, engaging demo experience for prospective users on the landing page. It asks one quick PM interview question and provides immediate feedback within a 5-minute time window.
+This agent provides a short preview of live PM interview practice. It asks one
+PM-style question and gives one evidence-based takeaway inside a server-authored
+two-minute deadline.
 
 ## Features
 
-- 5-minute time-boxed demo sessions
+- Two-minute server-authored hard deadline
 - Single question from question bank (or fallback questions)
 - Energetic, conversational tone
-- Quick feedback (2-3 observations)
-- Automatic time warnings and session termination
+- One concise, evidence-based takeaway
+- Local inference shutdown is awaited within a hard bound before LiveKit room deletion
 
 ## Configuration
 
@@ -25,6 +27,7 @@ This agent provides a short, engaging demo experience for prospective users on t
 ## Files
 
 - `agent.py` - Main demo agent entrypoint
+- `runtime.py` - Pure timing and bounded-operation contract
 - `Dockerfile` - Docker configuration for Cloud deployment
 - `.dockerignore` - Files to exclude from Docker build
 - `livekit.toml` - LiveKit agent configuration
@@ -58,26 +61,30 @@ cd demo
 
 Uses shared modules from `../shared/`:
 
-- (Demo agent is self-contained, no shared dependencies currently)
+- `shared/candidate_presence.py` for exact participant gating
+- `shared/safe_logging.py` for content-safe exception reporting
 
 ## How It Works
 
-1. User clicks "Try Demo" on landing page
-2. Frontend calls `/api/livekit/demo-token` to create room + dispatch agent
-3. Agent joins room and starts 5-minute timer
-4. Agent greets user and asks one question
-5. User responds (max 25 seconds encouraged)
-6. Agent provides quick feedback (2-3 points)
-7. At 4:45 mark, agent sends time warning
-8. At 5:00 mark, agent delivers closing CTA and disconnects
-9. Room auto-deletes 2 minutes after last participant leaves
+1. The default-off relaunch gate resolves before any limiter or provider work.
+2. Postgres atomically authorizes one signed session, one room, one dispatch,
+   and at most one server-finalized recovery token.
+3. The room metadata carries the opaque participant identity and absolute
+   deadline.
+4. The worker arms cleanup before connecting, waits for that exact participant,
+   and starts the voice pipeline only while time remains.
+5. At 90 seconds the worker requests one concise takeaway.
+6. Just before the absolute two-minute deadline it initiates immediate local
+   shutdown and awaits bounded model/audio closure; at the deadline it deletes
+   the room with a bounded provider call and shuts down.
 
 ## Customization
 
 To change demo behavior:
 
 - **Question selection**: Modify `build_demo_instructions()` in `agent.py`
-- **Time limits**: Adjust `WARNING_TIME` and `END_TIME` in `monitor_session_time()`
+- **Time limits**: Change only the shared web/runtime contract and its tests;
+  the hard maximum remains 120 seconds.
 - **Personality**: Edit base instructions in `build_demo_instructions()`
 - **Models**: Update model strings in `entrypoint()` function
 
@@ -95,10 +102,10 @@ To change demo behavior:
 - Check runtime logs: `lk agent logs`
 - Ensure greeting is being sent in entrypoint
 
-**Session cuts off early**:
+**Session ends immediately**:
 
-- Check time monitoring logic in `monitor_session_time()`
-- Verify timer starts correctly when `demo_agent.start_time` is set
+- Verify room metadata includes a valid `deadline_at` and
+  `participant_identity`. Missing or expired authority fails closed.
 
 ## Related Documentation
 

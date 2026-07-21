@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains twenty-five entries, from
-`0000_many_nocturne` through `0024_runtime_settlement_reconciliation`. The migration-history
+The current committed journal contains twenty-six entries, from
+`0000_many_nocturne` through `0025_public_demo_limits`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -81,15 +81,16 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with twenty-five
-ledger entries, 30 RLS-enabled tables, three unique contracts, zero unsafe
+six ledger entries. Expected post-migration status is `reconciled` with twenty-six
+ledger entries, 32 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
 transcript-privacy, runtime-settlement, stable-start, provider-credit-recovery,
 billing-truth, webhook-convergence, invoice-convergence,
-subscription-resource-convergence, durable LiveKit deletion, feedback-v2, and
+subscription-resource-convergence, durable LiveKit deletion, feedback-v2,
 server-owned billing privilege, explicit-analytics-consent, and
-runtime-settlement-reconciliation contract fingerprints. The four server-owned
+runtime-settlement-reconciliation, and public-demo-limit contract fingerprints.
+The four server-owned
 billing provenance tables must expose zero table privileges to `PUBLIC`,
 `anon`, and `authenticated`, while `service_role` retains all seven PostgreSQL
 table privileges on each table. Preflight keeps distinct accepted fingerprints
@@ -168,8 +169,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 25`, and the converged schema fingerprint
-   `d6ed5885b3d5f4deab2d84bcaee55a7227ee0be8a628379b0616895782a4f362`.
+   `migrationCount: 26`, and public-demo-limit schema fingerprint
+   `82586c6f559387b1a1b98f955565b9e7efbf91265a36234adac41079d4d381ba`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

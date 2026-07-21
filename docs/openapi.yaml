@@ -397,45 +397,53 @@ paths:
     post:
       tags:
         - LiveKit
-      summary: Generate demo token
-      description: Generates LiveKit tokens for 60-second demo sessions with Cloud agent
+      summary: Start or recover the public voice preview
+      description: Authorizes a bounded two-minute voice preview and returns a LiveKit participant token. The body must be exactly an empty JSON object; signed HttpOnly cookies and shared server-side limits are authoritative.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - participantName
-              properties:
-                participantName:
-                  type: string
-                  description: Participant display name
-                  default: Guest
-            example:
-              participantName: "Guest"
+              additionalProperties: false
+            example: {}
       responses:
         "200":
-          description: Demo token generated successfully
+          description: Voice-preview token issued successfully
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - token
+                  - url
+                  - durationSeconds
                 properties:
                   token:
                     type: string
-                    description: JWT access token (2 min TTL)
+                    description: Short-lived LiveKit participant JWT
                   url:
                     type: string
                     format: uri
                     description: LiveKit server WebSocket URL
-                  roomName:
-                    type: string
-                    description: Generated demo room name
+                  durationSeconds:
+                    type: integer
+                    enum: [120]
+                    description: Server-authoritative preview duration
+        "403":
+          description: Cross-site request rejected
         "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
+          description: Body must be exactly an empty JSON object
+        "404":
+          description: Public voice preview is disabled
+        "409":
+          description: Signed identity was initialized without provider work, or a preview start is already in progress
+        "415":
+          description: Request must use application/json
+        "429":
+          description: Shared preview limit exceeded; retry according to Retry-After
+        "503":
+          description: Preview authorization, configuration, or LiveKit is temporarily unavailable
 
   /api/cartesia/voices:
     get:
