@@ -122,6 +122,11 @@ Guidelines:
 - Preview/Development can use Stripe test keys and test price IDs.
 - Production must use live Stripe keys and live price IDs.
 - After env changes, redeploy the affected environment before assuming runtime behavior changed.
+- Do not use a broad project Runtime Log drain as the SAV-215 operational-event
+  receiver. Vercel drains forward every selected log source, not only the
+  closed `meelni_operational_failure@1` event. A receiver must select that
+  closed event before external retention, or every additional selected server
+  log source requires a separate privacy review.
 
 ## GitHub
 
