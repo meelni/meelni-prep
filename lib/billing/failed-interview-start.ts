@@ -1,8 +1,6 @@
 import { createDrizzleCreditLedgerStore } from "./credit-ledger-store";
-import {
-  createCreditLedgerService,
-  type CreditLedgerReadStore,
-} from "./credits";
+import type { CreditLedgerReadStore } from "./credit-ledger-contracts";
+import { createCreditLedgerService } from "./credit-ledger-service";
 import {
   createLocalDevCreditLedgerService,
   isLocalDevCreditBypassEnabled,

@@ -1,10 +1,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
-import {
-  createCreditLedgerService,
-  type BillingAdjustmentType,
-} from "@/lib/billing/credits";
+import { createCreditLedgerService } from "@/lib/billing/credit-ledger-service";
+import { type BillingAdjustmentType } from "@/lib/billing/credit-ledger-payment-adjustments";
 import { db } from "@/lib/db";
 import { creditGrant, paymentHistory } from "@/lib/db/schema";
 
@@ -52,10 +50,7 @@ export function resolveStripePaymentCorrelation(input: {
   const backfillCharge = Boolean(
     input.chargeId && input.chargeMatches.length === 0
   );
-  if (
-    backfillCharge &&
-    (!input.paymentIntentId || match.chargeId !== null)
-  ) {
+  if (backfillCharge && (!input.paymentIntentId || match.chargeId !== null)) {
     throw new Error("billing_adjustment_correlation_required");
   }
   return { match, backfillCharge };
@@ -102,13 +97,14 @@ export async function reconcileStripeBillingAdjustment(
           .limit(2)
       : [];
 
-    const { match: resolved, backfillCharge } =
-      resolveStripePaymentCorrelation({
+    const { match: resolved, backfillCharge } = resolveStripePaymentCorrelation(
+      {
         paymentIntentId: input.paymentIntentId,
         chargeId: input.chargeId,
         paymentIntentMatches,
         chargeMatches,
-      });
+      }
+    );
 
     const paymentIntentId = input.paymentIntentId;
     if (input.chargeId && paymentIntentId && backfillCharge) {

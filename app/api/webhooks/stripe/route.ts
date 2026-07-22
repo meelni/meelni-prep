@@ -9,11 +9,11 @@ import {
   stripeCustomerMapping,
 } from "@/lib/db/schema";
 import { eq, and, isNull, or, sql } from "drizzle-orm";
+import { createCreditLedgerService } from "@/lib/billing/credit-ledger-service";
 import {
-  createCreditLedgerService,
   emitSubscriptionRenewalPostCommitEffects,
   type SubscriptionRenewalPostCommitEffects,
-} from "@/lib/billing/credits";
+} from "@/lib/billing/credit-ledger-subscriptions";
 import {
   createDrizzleCreditLedgerStore,
   createDrizzleCreditLedgerStoreForLockedTransaction,

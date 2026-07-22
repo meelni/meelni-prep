@@ -7,7 +7,7 @@ import {
 import {
   settleReservationInTransaction,
   trackCompletedReservationEvent,
-} from "@/lib/billing/credits";
+} from "@/lib/billing/credit-ledger-reservations";
 import {
   convergeInterviewCreditSettlement,
   type InterviewCreditSettlementEvidence,

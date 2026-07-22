@@ -4,7 +4,7 @@ import type {
   CreditReservationStatus,
   ReserveCreditInput,
   ReserveCreditResult,
-} from "./credits";
+} from "./credit-ledger-contracts";
 
 export interface LocalDevBypassEnv {
   NODE_ENV?: string;

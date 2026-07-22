@@ -38,11 +38,11 @@ import {
   type StableInterviewStartInput,
 } from "@/lib/db/interview-starts";
 import { upsertUser } from "@/lib/db/users";
+import { createCreditLedgerService } from "@/lib/billing/credit-ledger-service";
 import {
-  createCreditLedgerService,
   trackReservedCreditEvents,
   type ReserveCreditInput,
-} from "@/lib/billing/credits";
+} from "@/lib/billing/credit-ledger-reservations";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import {
   createLocalDevCreditLedgerService,

@@ -1,11 +1,7 @@
 import type { BillingCatalogId } from "@meelni/core";
 
-import type {
-  SubscriptionRenewalPostCommitEffects,
-  createCreditLedgerService,
-} from "./credits";
-
-type CreditLedgerService = ReturnType<typeof createCreditLedgerService>;
+import type { SubscriptionRenewalPostCommitEffects } from "./credit-ledger-subscriptions";
+import type { CreditLedgerService } from "./credit-ledger-service";
 
 export interface SubscriptionInvoiceState {
   status: string;
