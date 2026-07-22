@@ -1,6 +1,6 @@
 # Focused-Practice Attempt Contract
 
-Status: durable authenticated API integration implemented for SAV-277; feedback-workspace UI remains a separate slice
+Status: durable authenticated API integration implemented for SAV-277; feedback-workspace UI integration started in SAV-276
 
 ## Purpose
 
@@ -103,5 +103,7 @@ feedback/session graph.
 
 This integration adds no model call, LiveKit room, Inngest job, credit mutation,
 analytics event, provider/environment action, or relaunch-flag change. The
-feedback-workspace UI is a separate slice and must preserve the same
-customer-language and non-scoring boundaries.
+SAV-276 feedback-workspace UI preserves the same customer-language and
+non-scoring boundaries: starting focused practice from feedback does not start
+another interview, use another credit, create a model evaluation, or claim
+interview readiness.
