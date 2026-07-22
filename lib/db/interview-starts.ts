@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "./index";
 import { interviewQuestion, interviewSession, sessionQuestion } from "./schema";
 import type { QuestionBankRecord } from "./questions";
-import { reserveCreditInTransaction } from "@/lib/billing/credits";
+import { reserveCreditInTransaction } from "@/lib/billing/credit-ledger-reservations";
 import type {
   ReserveCreditInput,
   ReserveCreditTransactionResult,

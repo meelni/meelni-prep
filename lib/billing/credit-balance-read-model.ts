@@ -2,7 +2,7 @@ import {
   getTrialGrantIdempotencyKey,
   isCreditGrantAvailable,
   type CreditLedgerStore,
-} from "./credits";
+} from "./credit-ledger-trial";
 
 export interface CreditBalanceGrantReadModel {
   id: string;
