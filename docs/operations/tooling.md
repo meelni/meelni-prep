@@ -211,6 +211,12 @@ prepare the review-settings mutation and evidence packet, but the provider
 mutation itself requires explicit owner approval and must not enable the gate or
 change targeting rules.
 
+The ordered prelaunch execution checklist is tracked in
+[Relaunch Readiness Execution](./relaunch-readiness-execution.md). Use it to
+sequence the `SAV-198` calibration guardrails, `SAV-126` Stripe/Vercel catalog
+setup, `SAV-283` Statsig governance evidence, and `SAV-186` Preview golden path
+without treating any technical gate as launch GO.
+
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
 ## Local Inngest Feedback
