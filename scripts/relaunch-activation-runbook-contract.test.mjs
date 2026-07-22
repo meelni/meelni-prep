@@ -5,6 +5,8 @@ import test from "node:test";
 const RUNBOOK_PATH = "docs/operations/relaunch-activation-runbook.md";
 const READINESS_EXECUTION_PATH =
   "docs/operations/relaunch-readiness-execution.md";
+const EVALUATION_CALIBRATION_RUNBOOK_PATH =
+  "docs/operations/evaluation-calibration.md";
 
 test("relaunch activation runbook keeps owner authority and rollback contract explicit", async () => {
   const runbook = await readFile(RUNBOOK_PATH, "utf8");
@@ -112,6 +114,26 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     runbook,
     /Default-off and emergency-disable rollback remain available without launch GO/i
   );
+});
+
+test("evaluation calibration runbook uses v4 owner authorization artifact names", async () => {
+  const runbook = await readFile(EVALUATION_CALIBRATION_RUNBOOK_PATH, "utf8");
+
+  for (const required of [
+    "sav-248-v4-owner-authorization-request.json",
+    "sav-248-v4-owner-authorization.json",
+    "sav-248-v4-owner-authorization-report.json",
+  ]) {
+    assert.match(runbook, escapeForRegex(required));
+  }
+
+  for (const stale of [
+    "sav-248-v3-owner-authorization-request.json",
+    "sav-248-v3-owner-authorization.json",
+    "sav-248-v3-owner-authorization-report.json",
+  ]) {
+    assert.doesNotMatch(runbook, escapeForRegex(stale));
+  }
 });
 
 function escapeForRegex(value) {
