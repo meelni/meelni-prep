@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import Stripe from "stripe";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -49,7 +48,7 @@ const catalog = [
 export async function runStripeCatalogSetup({
   argv = process.argv.slice(2),
   env = process.env,
-  StripeClient = Stripe,
+  StripeClient,
   authorizeProductionAction = consumeProductionActionAuthorization,
   log = console.log,
 } = {}) {
@@ -100,7 +99,8 @@ export async function runStripeCatalogSetup({
     });
   }
 
-  const stripe = new StripeClient(secretKey, {
+  const ResolvedStripeClient = StripeClient ?? (await import("stripe")).default;
+  const stripe = new ResolvedStripeClient(secretKey, {
     apiVersion: STRIPE_API_VERSION,
   });
   if (keyMode === "live") {
