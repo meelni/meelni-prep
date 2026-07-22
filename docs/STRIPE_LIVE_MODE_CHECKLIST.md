@@ -1,7 +1,7 @@
 # Stripe Live Mode Checklist
 
-Updated: 2026-07-13
-Status: Credit billing setup required; owner authorization key not enrolled
+Updated: 2026-07-22
+Status: Credit billing setup required; owner key enrolled, live catalog authorization and provider receipt still pending
 
 Use this checklist when moving Meelni's credit-based billing catalog from test mode to live mode. Do not commit real Stripe API keys, webhook signing secrets, or live price IDs to this repository.
 
@@ -36,8 +36,11 @@ STRIPE_SECRET_KEY=rk_live_... npm run stripe:setup-catalog -- --confirm-live
 `--confirm-live` is necessary but insufficient. Live catalog setup also
 requires one signed, exact `stripe-live-catalog` Production action artifact.
 The verifier consumes it before constructing the Stripe client. See
-`docs/operations/production-action-authorization.md`. No owner key is enrolled
-yet, so live setup currently fails closed.
+`docs/operations/production-action-authorization.md`. The active owner public
+key `meelni-owner-2026-07` is enrolled in
+`config/production-action-owner-keys.json`, but the live setup still fails
+closed until the owner signs a fresh, exact `stripe-live-catalog` artifact for
+the reviewed candidate and target.
 
 For local or preview test mode, omit `--confirm-live` and use an `sk_test_...` key.
 

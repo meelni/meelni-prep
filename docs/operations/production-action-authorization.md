@@ -8,8 +8,10 @@ policy ignores every Vercel Git build except Preview, and the already-declared
 scheduled route is source-fenced for any future owner-authorized first
 activation. Production promotion, live schedule activation, and relaunch
 default-on remain unsupported rather than exposing an unguarded command. Owner
-enrollment and artifact preparation tooling is available, but no owner public
-key is enrolled yet, so guarded Production paths intentionally fail closed. Preview,
+enrollment and artifact preparation tooling is available, and the active owner
+public key `meelni-owner-2026-07` is enrolled. Guarded Production paths still
+fail closed unless the owner signs a fresh exact artifact for the reviewed
+action, candidate configuration, target fingerprint, and bounded TTL. Preview,
 local development and ordinary customer/runtime actions are unchanged.
 
 Provider-state evidence recorded on 2026-07-17: the correct Vercel project,
@@ -34,11 +36,17 @@ instead of merging both changes together.
 
 ## Enrollment State
 
-`config/production-action-owner-keys.json` is intentionally empty. Before any
-supported Production action can run, the owner must enroll an Ed25519 public
-key through a reviewed change and create a private executor ID on the
-authorized workstation. Keep the private signing key and executor ID outside
-the repository in mode-`0600` files. Never send either value through chat.
+`config/production-action-owner-keys.json` contains the active Ed25519 public
+key `meelni-owner-2026-07`, valid from `2026-07-21T00:00:00.000Z` through
+`2027-07-21T00:00:00.000Z`. The corresponding private key and executor ID must
+remain outside the repository on the authorized workstation in mode-`0600`
+files. Never send either value through chat.
+
+Provider-free proof recorded on 2026-07-22: `npm run
+production-action:synthetic-dry-run` returned `result: "pass"` with
+`productionCalls: 0`, `providerCalls: 0`, and proofs for exact binding,
+candidate mutation rejection, artifact mutation rejection, expiry rejection,
+and replay rejection.
 
 The canonical private files are:
 
