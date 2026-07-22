@@ -168,9 +168,10 @@ deadline.
    The allow flag is necessary but insufficient. Production migration also
    consumes one signed `production-database-migrate` artifact bound to the
    exact Git candidate, migration-set hash, database target fingerprint, and
-   enrolled executor before Drizzle starts. Owner tooling now exists, but no
-   owner key is enrolled yet, so this Production command currently fails
-   closed. Preview migrations do not require owner Production authorization.
+   enrolled executor before Drizzle starts. The active owner key
+   `meelni-owner-2026-07` is enrolled, but the Production command still fails
+   closed unless the owner signs a fresh exact artifact for this migration
+   target. Preview migrations do not require owner Production authorization.
 
    Preview rehearsal uses the distinct alias and applies the same explicit
    confirmation:
