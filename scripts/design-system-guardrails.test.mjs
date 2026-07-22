@@ -1250,9 +1250,9 @@ test("priority dashboard cards use shared dashboard surface primitives", async (
       "components/dashboard/sections/settings.tsx:DashboardPage"
     );
   }
-  if (!settingsSource.includes("SETTINGS_CATEGORY_ORDER")) {
+  if (!settingsSource.includes("SETTINGS_NAV_ITEMS")) {
     missingImports.push(
-      "components/dashboard/sections/settings.tsx:SETTINGS_CATEGORY_ORDER"
+      "components/dashboard/sections/settings.tsx:SETTINGS_NAV_ITEMS"
     );
   }
 
