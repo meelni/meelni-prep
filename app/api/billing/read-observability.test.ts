@@ -17,7 +17,7 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
-vi.mock("@/lib/billing/credit-balance-read-model", () => ({
+vi.mock("@/lib/billing/credit-ledger-reporting", () => ({
   getCreditBalanceReadModel: mocks.getBalance,
 }));
 vi.mock("@/lib/billing/credit-ledger-store", () => ({

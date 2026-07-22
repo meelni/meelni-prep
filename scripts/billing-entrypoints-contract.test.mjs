@@ -8,11 +8,15 @@ const scannedRoots = ["app", "lib", "components", "packages"];
 
 const directCreditsImport =
   /from\s+["'](?:@\/lib\/billing\/credits|(?:\.\.?\/)+billing\/credits|\.\/credits)["']/;
+const directCreditBalanceReadModelImport =
+  /from\s+["'](?:@\/lib\/billing\/credit-balance-read-model|(?:\.\.?\/)+billing\/credit-balance-read-model|\.\/credit-balance-read-model)["']/;
 
 const allowedFiles = new Set([
+  "lib/billing/credit-balance-read-model.ts",
   "lib/billing/credits.test.ts",
   "lib/billing/credits.ts",
   "lib/billing/credit-ledger-contracts.ts",
+  "lib/billing/credit-ledger-reporting.ts",
   "lib/billing/credit-ledger-reservations.ts",
   "lib/billing/credit-ledger-service.ts",
   "lib/billing/credit-ledger-subscriptions.ts",
@@ -29,7 +33,10 @@ test("runtime billing callers use explicit credit-ledger entrypoints", () => {
     if (allowedFiles.has(relativeFile)) continue;
 
     const source = readFileSync(file, "utf8");
-    if (directCreditsImport.test(source)) {
+    if (
+      directCreditsImport.test(source) ||
+      directCreditBalanceReadModelImport.test(source)
+    ) {
       offenders.push(relativeFile);
     }
   }
