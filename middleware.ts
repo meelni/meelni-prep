@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getAccountAccessDecision } from "@/lib/auth/account-access";
 import { buildInternalRequestDestination } from "@/lib/auth/safe-redirect";
+import { matchesPathSegment } from "@/lib/navigation/path-segments";
 import { withNoindexHeader } from "@/lib/seo/robots-header";
 
 export async function middleware(request: NextRequest) {
@@ -12,13 +13,19 @@ export async function middleware(request: NextRequest) {
   // Protected routes that require authentication
   const protectedRoutes = ["/dashboard", "/setup", "/interview"];
 
-  // Public routes that don't require authentication
-  const publicRoutes = ["/explore", "/browse"];
+  // Public routes that don't require authentication. Keep SEO route families
+  // explicit so public question pages cannot be caught by protected prefixes.
+  const publicRoutes = [
+    "/explore",
+    "/browse",
+    "/interview-types",
+    "/questions",
+  ];
 
   // Check if the current path is a protected route (excluding public routes)
   const isProtectedRoute =
-    protectedRoutes.some((route) => pathname.startsWith(route)) &&
-    !publicRoutes.some((route) => pathname.startsWith(route));
+    protectedRoutes.some((route) => matchesPathSegment(pathname, route)) &&
+    !publicRoutes.some((route) => matchesPathSegment(pathname, route));
 
   const checksAuthenticatedAccess =
     isProtectedRoute || pathname.startsWith("/api/");

@@ -5,6 +5,7 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import nextConfig from "@/next.config";
 import { metadata as contactMetadata } from "@/app/contact/page";
+import { matchesPathSegment } from "@/lib/navigation/path-segments";
 import { ROBOTS_NOINDEX_HEADER, withNoindexHeader } from "./robots-header";
 import { PUBLIC_ORIGIN, publicMetadata, publicUrl } from "./public-metadata";
 
@@ -27,12 +28,20 @@ test("Preview indexing fails closed while Production lets crawlers observe noind
   }
 });
 
-test("the sitemap enumerates canonical public routes without invented freshness", () => {
-  const entries = sitemap();
+test("the sitemap enumerates canonical public routes without invented freshness", async () => {
+  const entries = await sitemap();
   const urls = new Set(entries.map((entry) => entry.url));
 
   for (const route of ["", "/explore", "/companies", "/pricing", "/blog"]) {
     assert.ok(urls.has(publicUrl(route || "/")), route || "/");
+  }
+  for (const route of [
+    "/interview-types/product_sense",
+    "/interview-types/behavioral",
+    "/interview-types/execution",
+    "/interview-types/strategy",
+  ]) {
+    assert.ok(urls.has(publicUrl(route)), route);
   }
   assert.ok([...urls].some((url) => url.startsWith(`${PUBLIC_ORIGIN}/blog/`)));
   assert.ok(
@@ -109,6 +118,23 @@ test("protected and checkout-result routes emit a noindex response header", asyn
     if (previous === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = previous;
   }
+});
+
+test("protected route matching is segment-bound so SEO routes stay public", () => {
+  assert.equal(matchesPathSegment("/interview", "/interview"), true);
+  assert.equal(matchesPathSegment("/interview/live", "/interview"), true);
+  assert.equal(
+    matchesPathSegment("/interview-types/product_sense", "/interview-types"),
+    true
+  );
+  assert.equal(
+    matchesPathSegment("/questions/q-product-1", "/questions"),
+    true
+  );
+  assert.equal(
+    matchesPathSegment("/interview-types/product_sense", "/interview"),
+    false
+  );
 });
 
 function isNoindexHeader(header: { key: string; value: string }) {
