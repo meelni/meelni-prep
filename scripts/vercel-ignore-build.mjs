@@ -3,7 +3,14 @@
 import { pathToFileURL } from "node:url";
 
 export function shouldIgnoreVercelBuild(env = process.env) {
-  return env.VERCEL_ENV !== "preview";
+  if (env.VERCEL_ENV === "preview") return false;
+  if (
+    env.VERCEL_ENV === "production" &&
+    env.VERCEL_GIT_COMMIT_REF === "main"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 if (
@@ -13,7 +20,7 @@ if (
   const ignored = shouldIgnoreVercelBuild();
   if (ignored) {
     process.stderr.write(
-      "Vercel build ignored: only Preview builds are enabled by repository policy.\n"
+      "Vercel build ignored: only Preview builds and Production main builds are enabled by repository policy.\n"
     );
   }
   // Vercel continues a build on exit 1 and cancels it on exit 0.
