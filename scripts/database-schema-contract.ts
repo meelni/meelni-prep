@@ -53,6 +53,8 @@ export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =
   "6089186d1df02b3d47f78d9926859a3f6b2aac90e935c9e3d7e56f88fed36af3";
 export const FOCUSED_PRACTICE_SCHEMA_FINGERPRINT =
   "e78473ada45f32f6e453b7987876ae97021310020b7dc8cbf513f80464affc91";
+export const DURABLE_CONTACT_SCHEMA_FINGERPRINT =
+  "53a6b8b16ce3a17ef7d243c8f7b9102ae193efb5b67ca0e462c1a1b2655a6acf";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -163,10 +165,17 @@ export async function getDatabaseSchemaContract(sql: Queryable) {
 }
 
 export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
-  const [schema, stableEvidenceFunctions, stableEvidenceTriggers] =
-    await Promise.all([
-      getDatabaseSchemaContract(sql),
-      sql`
+  const [
+    schema,
+    stableEvidenceFunctions,
+    stableEvidenceTriggers,
+    contactTriageRole,
+    contactTriagePrivileges,
+    contactTriageFunctions,
+    contactTriageTableGrants,
+  ] = await Promise.all([
+    getDatabaseSchemaContract(sql),
+    sql`
         SELECT p.proname, p.prosecdef, p.provolatile,
           pg_get_function_identity_arguments(p.oid) AS arguments,
           pg_get_function_result(p.oid) AS result,
@@ -184,11 +193,16 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
             'enforce_interview_credit_evidence_immutable',
             'enforce_billing_adjustment_immutable',
             'enforce_focused_practice_attempt_transition',
-            'can_read_owned_focused_practice_attempt'
+            'can_read_owned_focused_practice_attempt',
+            'consume_contact_submission_rate_limit',
+            'cleanup_contact_submission_rate_limits',
+            'list_contact_submissions',
+            'read_contact_submission',
+            'set_contact_submission_triage_state'
           )
         ORDER BY p.proname, arguments
       `,
-      sql`
+    sql`
         SELECT event_object_table AS table_name, trigger_name,
           action_timing, event_manipulation,
           action_orientation, action_statement
@@ -202,9 +216,91 @@ export async function getStableStartDatabaseSchemaContract(sql: Queryable) {
           )
         ORDER BY event_object_table, trigger_name, event_manipulation
       `,
-    ]);
+    sql`
+        SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb,
+          rolcanlogin, rolreplication, rolbypassrls,
+          pg_has_role('anon', oid, 'MEMBER') AS anon_member,
+          pg_has_role('authenticated', oid, 'MEMBER') AS authenticated_member,
+          pg_has_role('service_role', oid, 'MEMBER') AS service_member,
+          CASE
+            WHEN to_regrole('authenticator') IS NULL THEN false
+            ELSE pg_has_role('authenticator', oid, 'MEMBER')
+          END AS authenticator_member
+        FROM pg_catalog.pg_roles
+        WHERE rolname = 'meelni_contact_triage'
+          AND to_regclass('public.contact_submission') IS NOT NULL
+      `,
+    sql`
+        SELECT
+          has_schema_privilege(
+            'meelni_contact_triage', 'public', 'USAGE'
+          ) AS schema_usage,
+          has_table_privilege(
+            'meelni_contact_triage', 'public.contact_submission', 'SELECT'
+          ) AS submission_select,
+          has_table_privilege(
+            'meelni_contact_triage',
+            'public.contact_submission_access_audit',
+            'SELECT'
+          ) AS audit_select,
+          has_table_privilege(
+            'meelni_contact_triage',
+            'public.contact_submission_rate_limit',
+            'SELECT'
+          ) AS limiter_select
+        WHERE to_regclass('public.contact_submission') IS NOT NULL
+      `,
+    sql`
+        SELECT p.proname,
+          has_function_privilege(
+            'service_role', p.oid, 'EXECUTE'
+          ) AS service_execute,
+          has_function_privilege(
+            'meelni_contact_triage', p.oid, 'EXECUTE'
+          ) AS contact_triage_execute
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND to_regclass('public.contact_submission') IS NOT NULL
+          AND p.proname IN (
+            'consume_contact_submission_rate_limit',
+            'cleanup_contact_submission_rate_limits',
+            'list_contact_submissions',
+            'read_contact_submission',
+            'set_contact_submission_triage_state'
+          )
+        ORDER BY p.proname
+      `,
+    sql`
+        SELECT table_name,
+          array_agg(privilege_type ORDER BY privilege_type) AS privileges
+        FROM information_schema.role_table_grants
+        WHERE table_schema = 'public'
+          AND grantee = 'meelni_contact_triage'
+          AND table_name IN (
+            'contact_submission',
+            'contact_submission_access_audit',
+            'contact_submission_rate_limit'
+          )
+        GROUP BY table_name
+        ORDER BY table_name
+      `,
+  ]);
 
-  return { schema, stableEvidenceFunctions, stableEvidenceTriggers };
+  const stableContract = {
+    schema,
+    stableEvidenceFunctions,
+    stableEvidenceTriggers,
+  };
+  return contactTriageRole.length === 0
+    ? stableContract
+    : {
+        ...stableContract,
+        contactTriageRole,
+        contactTriagePrivileges,
+        contactTriageFunctions,
+        contactTriageTableGrants,
+      };
 }
 
 export function databaseSchemaFingerprint(contract: unknown): string {

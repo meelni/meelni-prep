@@ -11,6 +11,7 @@ export const OPERATIONAL_FAILURE_OPERATIONS = [
   "billing_read",
   "billing_portal",
   "checkout_confirmation",
+  "contact_submission",
 ] as const;
 
 export const OPERATIONAL_FAILURE_ERROR_CODES = [
@@ -31,6 +32,11 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "billing_usage_read_failed",
   "checkout_confirmation_auth_failed",
   "checkout_confirmation_settlement_read_failed",
+  "contact_submission_access_check_failed",
+  "contact_submission_attempt_budget_failed",
+  "contact_submission_auth_link_failed",
+  "contact_submission_security_configuration_failed",
+  "contact_submission_storage_failed",
   "feedback_dispatch_failed",
   "feedback_generation_failed",
   "feedback_integrity_invalid",

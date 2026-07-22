@@ -5,6 +5,7 @@
 
 import { isPlaceholderEnvValue } from "./local-env.mjs";
 import { getSupabaseEnvironmentIdentityPolicy } from "./supabase-environment-guard.mjs";
+import { isValidServerSecret } from "../lib/security/server-secret";
 
 interface EnvVarConfig {
   name: string;
@@ -14,6 +15,12 @@ interface EnvVarConfig {
 }
 
 const envVars: EnvVarConfig[] = [
+  {
+    name: "CONTACT_RATE_LIMIT_HMAC_SECRET",
+    required: false,
+    description: "Server-only contact rate-limit HMAC secret",
+    pattern: /^.{32,}$/,
+  },
   // Database
   {
     name: "DATABASE_URL",
@@ -174,6 +181,19 @@ function validateEnvironment(): ValidationResult {
   }
 
   const environment = sharedEnvironment(process.env);
+  const contactRateLimitSecret = process.env.CONTACT_RATE_LIMIT_HMAC_SECRET;
+  if (environment && !isValidServerSecret(contactRateLimitSecret)) {
+    errors.push(
+      "❌ CONTACT_RATE_LIMIT_HMAC_SECRET must be configured for Preview and Production and satisfy the server-secret contract"
+    );
+  } else if (
+    contactRateLimitSecret !== undefined &&
+    !isValidServerSecret(contactRateLimitSecret)
+  ) {
+    errors.push(
+      "❌ CONTACT_RATE_LIMIT_HMAC_SECRET must satisfy the server-secret contract when configured"
+    );
+  }
   const vercelEnvironment = recognizedSharedEnvironment(process.env.VERCEL_ENV);
   const identityPolicy = getSupabaseEnvironmentIdentityPolicy({
     databaseUrl: process.env.DATABASE_URL,

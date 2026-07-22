@@ -56,6 +56,7 @@ export interface AccountExportSource {
   bookmarks: Array<{ userId: string } & Record<string, unknown>>;
   practiceSets: Array<{ userId: string } & Record<string, unknown>>;
   focusedPracticeAttempts: Array<{ userId: string } & Record<string, unknown>>;
+  contactSubmissions: Array<{ userId: string } & Record<string, unknown>>;
   achievements: Array<{ userId: string } & Record<string, unknown>>;
   insights: Array<{ userId: string } & Record<string, unknown>>;
   subscription: ({ userId: string } & Record<string, unknown>) | null;
@@ -71,6 +72,7 @@ export const ACCOUNT_EXPORT_INCLUDED = [
   "Mock interviews, selected questions, transcripts, and feedback",
   "Bookmarks, practice sets, frozen legacy achievement records, and saved progress insights",
   "Focused-practice attempts, candidate responses, and deterministic self-reviews",
+  "Account-linked support requests and their current triage state",
   "Subscription, usage, payment summaries, and credit-ledger summaries",
 ] as const;
 
@@ -166,6 +168,12 @@ export function createAccountDataExport(input: {
       ),
       achievements: sanitizeOwnedRows(input.source.achievements, userId),
       insights: sanitizeOwnedRows(input.source.insights, userId),
+    },
+    communications: {
+      contactSubmissions: sanitizeOwnedRows(
+        input.source.contactSubmissions,
+        userId
+      ),
     },
     billing: {
       subscription: sanitizeOwnedRecord(input.source.subscription, userId),

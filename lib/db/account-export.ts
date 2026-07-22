@@ -9,6 +9,7 @@ import {
   creditGrant,
   creditReservation,
   creditTransaction,
+  contactSubmission,
   feedback,
   focusedPracticeAttempt,
   interviewQuestion,
@@ -243,6 +244,23 @@ export async function loadAccountExportSource(
     .where(eq(focusedPracticeAttempt.userId, userId))
     .orderBy(asc(focusedPracticeAttempt.startedAt));
 
+  const contactSubmissions = await db
+    .select({
+      userId: contactSubmission.userId,
+      receiptId: contactSubmission.id,
+      name: contactSubmission.name,
+      email: contactSubmission.email,
+      reason: contactSubmission.reason,
+      subject: contactSubmission.subject,
+      message: contactSubmission.message,
+      persistenceState: contactSubmission.persistenceState,
+      triageState: contactSubmission.triageState,
+      createdAt: contactSubmission.createdAt,
+    })
+    .from(contactSubmission)
+    .where(eq(contactSubmission.userId, userId))
+    .orderBy(asc(contactSubmission.createdAt));
+
   const insights = await db
     .select({
       userId: userInsights.userId,
@@ -376,6 +394,10 @@ export async function loadAccountExportSource(
       ),
     })),
     focusedPracticeAttempts,
+    contactSubmissions: contactSubmissions.map((row) => ({
+      ...row,
+      userId: row.userId!,
+    })),
     achievements,
     insights,
     subscription: subscriptionRow ?? null,

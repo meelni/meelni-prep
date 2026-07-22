@@ -54,6 +54,9 @@ export function createAccountDataExportFixture(): AccountDataExportV1 {
       achievements: [],
       insights: [],
     },
+    communications: {
+      contactSubmissions: [],
+    },
     billing: {
       subscription: { tier: "free", status: "active" },
       usage: [],

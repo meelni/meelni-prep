@@ -17,6 +17,7 @@ import {
   supabaseJwtMatchesIdentity,
 } from "@/lib/supabase/supabase-jwt.mjs";
 import { isValidPublicDemoSecret } from "@/lib/security/public-demo-secret";
+import { isValidServerSecret } from "@/lib/security/server-secret";
 export type DeploymentTarget = "preview" | "production";
 
 export const PRODUCTION_LIVEKIT_PROJECT_HOST = "meelni-ek4vaisp.livekit.cloud";
@@ -73,7 +74,14 @@ export type DeploymentPreflightFailureCode =
   | "stripe_price_mismatch";
 
 export interface DeploymentPreflightFailure {
-  area: "inngest" | "openai" | "livekit" | "statsig" | "stripe" | "supabase";
+  area:
+    | "contact"
+    | "inngest"
+    | "openai"
+    | "livekit"
+    | "statsig"
+    | "stripe"
+    | "supabase";
   code: DeploymentPreflightFailureCode;
   check: string;
   message: string;
@@ -150,6 +158,16 @@ export async function runDeploymentPreflight({
     target,
   });
   validateStatsigEnvironment({ env, failures, target, passedChecks });
+  validateContactEnvironment({ env, failures, passedChecks });
+
+  if (failures.some((failure) => failure.area === "contact")) {
+    return {
+      failures,
+      ok: false,
+      target,
+      passedChecks,
+    };
+  }
 
   if (!failures.some((failure) => failure.area === "supabase")) {
     if (!supabaseProjectReader) {
@@ -263,6 +281,29 @@ export async function runDeploymentPreflight({
     target,
     passedChecks,
   };
+}
+
+function validateContactEnvironment({
+  env,
+  failures,
+  passedChecks,
+}: ValidationContext) {
+  const initialFailureCount = failures.length;
+  const secret = requireValue(
+    env,
+    "CONTACT_RATE_LIMIT_HMAC_SECRET",
+    "contact",
+    failures
+  );
+  validateFormat({
+    area: "contact",
+    check: "CONTACT_RATE_LIMIT_HMAC_SECRET",
+    failures,
+    ok: !secret || isValidServerSecret(secret),
+  });
+  if (secret && failures.length === initialFailureCount) {
+    passedChecks.push("contact.rate_limit_hmac_secret");
+  }
 }
 
 function validateSupabaseEnvironment({

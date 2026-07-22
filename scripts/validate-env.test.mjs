@@ -58,6 +58,73 @@ test("environment validation rejects conflicting Meelni and Vercel markers", () 
   );
 });
 
+test("production validation uses the runtime secret-strength contract", () => {
+  const base = {
+    DATABASE_URL: databaseUrl(productionRef),
+    MEELNI_ENV_PULL_ENVIRONMENT: "production",
+    MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
+    NEXT_PUBLIC_SUPABASE_URL: `https://${productionRef}.supabase.co`,
+    NODE_ENV: "production",
+    VERCEL_ENV: "production",
+  };
+  const weak = validateWith({
+    ...base,
+    CONTACT_RATE_LIMIT_HMAC_SECRET: "a".repeat(64),
+  });
+  assert.equal(weak.status, 1);
+  assert.match(
+    `${weak.stdout}\n${weak.stderr}`,
+    /CONTACT_RATE_LIMIT_HMAC_SECRET/
+  );
+
+  const absent = validateWith(base);
+  assert.equal(absent.status, 1);
+  assert.match(
+    `${absent.stdout}\n${absent.stderr}`,
+    /CONTACT_RATE_LIMIT_HMAC_SECRET/
+  );
+
+  for (const invalid of ['""', "change-me-contact-secret-1234567890"]) {
+    const result = validateWith({
+      ...base,
+      CONTACT_RATE_LIMIT_HMAC_SECRET: invalid,
+    });
+    assert.equal(result.status, 1);
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /CONTACT_RATE_LIMIT_HMAC_SECRET/
+    );
+  }
+
+  const strong = validateWith({
+    ...base,
+    CONTACT_RATE_LIMIT_HMAC_SECRET: "dedicated-secret-82^fQm19!contact-HMAC",
+  });
+  assert.equal(strong.status, 0, `${strong.stdout}\n${strong.stderr}`);
+});
+
+test("Preview validation also requires the strong contact HMAC secret", () => {
+  const base = {
+    DATABASE_URL: databaseUrl(previewRef),
+    MEELNI_ENV_PULL_ENVIRONMENT: "preview",
+    MEELNI_PRODUCTION_SUPABASE_PROJECT_REF: productionRef,
+    NEXT_PUBLIC_SUPABASE_URL: `https://${previewRef}.supabase.co`,
+    VERCEL_ENV: "preview",
+  };
+  const absent = validateWith(base);
+  assert.equal(absent.status, 1);
+  assert.match(
+    `${absent.stdout}\n${absent.stderr}`,
+    /CONTACT_RATE_LIMIT_HMAC_SECRET/
+  );
+
+  const strong = validateWith({
+    ...base,
+    CONTACT_RATE_LIMIT_HMAC_SECRET: "dedicated-secret-82^fQm19!contact-HMAC",
+  });
+  assert.equal(strong.status, 0, `${strong.stdout}\n${strong.stderr}`);
+});
+
 function validateWith(overrides) {
   return spawnSync(
     "npx",

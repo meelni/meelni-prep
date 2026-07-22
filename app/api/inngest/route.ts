@@ -30,6 +30,7 @@ import {
 import { recoverInterviewStarts } from "@/lib/inngest/functions/recover-interview-starts";
 import { recoverInterviewCredits } from "@/lib/inngest/functions/recover-interview-credits";
 import { prunePublicDemo } from "@/lib/inngest/functions/prune-public-demo";
+import { cleanupContactSubmissionRateLimits } from "@/lib/inngest/functions/cleanup-contact-rate-limits";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -62,5 +63,6 @@ export const { GET, POST, PUT } = serve({
     recoverInterviewStarts, // Fences stale starts and releases stranded credits
     recoverInterviewCredits, // Refunds provider/integrity failures and stale credits
     prunePublicDemo, // Removes expired pseudonymous public-preview limiter data
+    cleanupContactSubmissionRateLimits, // Bounded stale contact limiter cleanup
   ],
 });

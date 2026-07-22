@@ -9,8 +9,8 @@ import {
 
 const NOW = new Date("2026-07-10T16:00:00.000Z");
 
-test("account export version includes operative analytics consent", () => {
-  assert.equal(ACCOUNT_EXPORT_SCHEMA_VERSION, "1.2.0");
+test("account export version includes consent, focused practice, and linked contact data", () => {
+  assert.equal(ACCOUNT_EXPORT_SCHEMA_VERSION, "1.3.0");
 });
 
 test("account deletion accepts a recent server-verified sign-in", () => {
