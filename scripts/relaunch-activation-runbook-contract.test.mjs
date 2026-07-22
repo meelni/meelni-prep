@@ -7,6 +7,8 @@ const READINESS_EXECUTION_PATH =
   "docs/operations/relaunch-readiness-execution.md";
 const EVALUATION_CALIBRATION_RUNBOOK_PATH =
   "docs/operations/evaluation-calibration.md";
+const STATSIG_GOVERNANCE_RUNBOOK_PATH =
+  "docs/operations/statsig-relaunch-governance.md";
 
 test("relaunch activation runbook keeps owner authority and rollback contract explicit", async () => {
   const runbook = await readFile(RUNBOOK_PATH, "utf8");
@@ -134,6 +136,40 @@ test("evaluation calibration runbook uses v4 owner authorization artifact names"
   ]) {
     assert.doesNotMatch(runbook, escapeForRegex(stale));
   }
+});
+
+test("Statsig governance runbook keeps current provider gap explicit", async () => {
+  const runbook = await readFile(STATSIG_GOVERNANCE_RUNBOOK_PATH, "utf8");
+
+  for (const required of [
+    "Read-only Statsig checks on 2026-07-22 returned",
+    "Gate `meelni_reactivation_access`",
+    "Dynamic config `meelni_preview_rehearsal_authority`",
+    '`reviewSettings.requiredReview: false`',
+    "`defaultValue.active: false`",
+    "retained historical rehearsal metadata",
+    "inactive and expired",
+    "requires review for gate changes",
+    "requires review for dynamic-config\n   changes",
+    "do not activate Preview rehearsal authority",
+    "do not change enabled state, dynamic config active state",
+    "defaultValue.active: false",
+  ]) {
+    assert.match(runbook, escapeForRegex(required));
+  }
+
+  assert.match(
+    runbook,
+    /both controls are safely off[\s\S]*Statsig still does\s+not enforce the accepted owner-only launch authority/i
+  );
+  assert.match(
+    runbook,
+    /Do not propose `is_enabled: true` or `default_value\.active: true`/i
+  );
+  assert.match(
+    runbook,
+    /The mutation does not change `isEnabled`, `status`, `rules`, `idType`,\s+targeting, fallback defaults, retained inactive rehearsal metadata, or\s+release state/i
+  );
 });
 
 function escapeForRegex(value) {
