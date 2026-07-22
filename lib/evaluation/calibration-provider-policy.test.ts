@@ -308,6 +308,67 @@ test("capture failure preserves usage and performs no provider retry", async () 
   assert.deepEqual(order, ["authorize", "dispatch", "capture"]);
 });
 
+test("provider HTTP errors become bounded invocation diagnostics", async () => {
+  const fixture = evaluationCalibrationCases.find(
+    ({ expectedCompletionState }) => expectedCompletionState === "full"
+  )!;
+  const originalFetch = globalThis.fetch;
+  const originalModel = process.env.OPENAI_FEEDBACK_MODEL;
+  const providerControlledMessage =
+    "provider-controlled-message-must-not-survive";
+  const order: string[] = [];
+  process.env.OPENAI_FEEDBACK_MODEL = CALIBRATION_PRICING_CONTRACT.model;
+  globalThis.fetch = async () => {
+    order.push("dispatch");
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: providerControlledMessage,
+          type: "invalid_request_error",
+          code: "invalid_request_error",
+        },
+      }),
+      { status: 400, headers: { "content-type": "application/json" } }
+    );
+  };
+
+  try {
+    await assert.rejects(
+      generateFeedbackWithUsage(fixture.roundType, fixture.transcript, "full", {
+        calibrationPaidMode: true,
+        calibrationCredentials: { openaiApiKey: TEST_API_KEY },
+        maxCompletionTokens: 2_000,
+        beforePhysicalRequest: () => {
+          order.push("authorize");
+        },
+        onRawSyntheticOutput: () => undefined,
+      }),
+      (error) => {
+        assert.ok(error instanceof FeedbackProviderInvocationError);
+        assert.equal(error.code, "evaluation_provider_invocation_failed");
+        assert.deepEqual(error.diagnostic, {
+          kind: "provider_bad_request",
+          httpStatus: 400,
+        });
+        assert.equal(error.usage, undefined);
+        assert.equal(
+          JSON.stringify(error.diagnostic).includes(providerControlledMessage),
+          false
+        );
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalModel === undefined) {
+      delete process.env.OPENAI_FEEDBACK_MODEL;
+    } else {
+      process.env.OPENAI_FEEDBACK_MODEL = originalModel;
+    }
+  }
+  assert.deepEqual(order, ["authorize", "dispatch"]);
+});
+
 test("guarded transport validates authorization at actual fetch dispatch", async () => {
   const order: string[] = [];
   const guardedFetch = createGuardedCalibrationFetch(

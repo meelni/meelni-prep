@@ -81,6 +81,17 @@ Every current command emits `evaluation-calibration-report.v9` JSON with:
 - a semantic-review state and sanitized semantic-report hash/count binding;
 - case-level failure codes and unresolved blockers.
 
+Live `evaluation_provider_invocation_failed` failure records may include only
+the bounded `providerDiagnostic` object. It contains a normalized `kind` such
+as `provider_bad_request`, `provider_authentication`, `provider_permission`,
+`provider_not_found`, `provider_unprocessable`, `provider_rate_limited`,
+`provider_timeout`, `provider_network`, `provider_aborted`,
+`provider_server_error`, or `provider_unknown`, plus a numeric `httpStatus`
+when the SDK exposed one. It must never include raw provider messages, request
+bodies, response bodies, object paths, headers, prompt text, transcript text, or
+credentials. Older v9 reports without this object remain valid but less
+diagnostic.
+
 Live reports also include `execution.cost`, an
 `evaluation-calibration-cost-report.v5` object with the fixed authorized run,
 Git activation commit, exact activated-plan hash and worst-case reservation,
