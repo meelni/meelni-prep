@@ -169,7 +169,8 @@ Use existing motion presets from `lib/animations.ts` for app surfaces. Motion sh
 - Public marketing: landing, pricing, blog, companies, docs, contact.
 - Auth: sign in, sign up, reset, forgot password.
 - Activation: setup and question-bank entry points.
-- Interview: live room, transcript, controls, nudges, end-session modal.
+- Interview: live room, transcript, controls, and end-session modal. Full mock
+  interviews do not expose guided hints.
 - Feedback: loading, result, compare, partial/insufficient/abandoned states.
 - Dashboard: overview, history, questions, analytics, settings, billing states.
 

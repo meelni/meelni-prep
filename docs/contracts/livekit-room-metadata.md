@@ -80,6 +80,22 @@ documented legacy question aliases (`question_id`, `question_text`, and
 missing session ID, or an invalid round type is a runtime-start failure. It must
 not silently create an uncorrelated default interview.
 
+## Agent Dispatch
+
+The web adapter creates a full-interview room and its one explicit named agent
+dispatch atomically with `RoomAgentDispatch`. It never creates a plain room
+before a second dispatch request. After creation, the adapter requires exactly
+one dispatch with a nonblank ID, the configured
+`LIVEKIT_INTERVIEW_AGENT_NAME`, and the exact room name. An automatic unnamed
+dispatch, an extra dispatch, or any mismatch is a start failure and enters the
+durable failed-start cleanup workflow.
+
+Both Python workers require their dispatch-name environment variable in every
+mode, including local development. Omitting the name must stop the worker
+before registration; otherwise LiveKit automatic dispatch could attach that
+worker to unrelated rooms. The demo uses `LIVEKIT_DEMO_AGENT_NAME`; the full
+interview uses `LIVEKIT_INTERVIEW_AGENT_NAME`; the names must remain distinct.
+
 ## Duration And Runtime Deadline
 
 `packages/core/src/session-deadline.ts` owns the provider-neutral duration and
@@ -132,6 +148,13 @@ also overwrite legacy feedback timing after caller-provided settings are
 merged, so newly serialized rooms always carry `end_only`. The short public
 demo is a separate runtime and may provide a brief feedback preview; its
 behavior must not be used as the authenticated mock-interview contract.
+
+The authenticated full-interview UI follows the same contract: it does not
+offer a hints toggle, call the nudge-analysis endpoint, or render a nudge
+overlay. Legacy `gentle` or `coach` values read from an older session remain
+inert. Therefore a `hint shown` event is not a valid full-mock analytics event;
+display telemetry belongs with a future, separately accepted guided-practice
+surface that can supply a real supported hint mode.
 
 ## Runtime Lifecycle Events
 

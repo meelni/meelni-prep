@@ -36,8 +36,9 @@ from livekit.plugins.turn_detector.english import EnglishModel
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.config import parse_room_metadata
 from shared.candidate_presence import wait_for_candidate_before_greeting
+from shared.config import parse_room_metadata
+from shared.dispatch import resolve_cli_dispatch_name
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.runtime_config import get_model_config, get_tts_config
 from shared.runtime_events import (
@@ -1020,12 +1021,13 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    # Detect if running on LiveKit Cloud (Cloud provides LIVEKIT_URL automatically)
+    # Asset builds use a non-routable sentinel; every worker command still
+    # requires its environment-owned explicit dispatch name.
+    agent_name = resolve_cli_dispatch_name("LIVEKIT_INTERVIEW_AGENT_NAME")
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
     # Cloud doesn't support num_idle_processes or load_threshold
     if is_cloud:
-        agent_name = get_required_env("LIVEKIT_INTERVIEW_AGENT_NAME")
         cli.run_app(
             WorkerOptions(
                 entrypoint_fnc=entrypoint,
@@ -1038,6 +1040,7 @@ if __name__ == "__main__":
             WorkerOptions(
                 entrypoint_fnc=entrypoint,
                 prewarm_fnc=prewarm,
+                agent_name=agent_name,
                 num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
                 load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
             ),

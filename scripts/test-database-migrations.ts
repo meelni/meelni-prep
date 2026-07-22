@@ -8939,11 +8939,14 @@ async function verifyDurableContactSubmission(
       stripeSubjects: [],
     });
     await waitForAccountIdentityLock(databaseUrl, DELETION_WINS_RACE_USER);
-    const rejectedContact = stores[1]!.accept(deletionWinsInput);
+    const rejectedContact = assert.rejects(
+      stores[1]!.accept(deletionWinsInput),
+      /contact_account_unavailable/
+    );
     await deletionWinsBarrier.release();
 
     await deletionBeforeContact;
-    await assert.rejects(rejectedContact, /contact_account_unavailable/);
+    await rejectedContact;
     const [deletionWinsState] = await sql<
       { remaining: number; tombstones: number }[]
     >`

@@ -68,7 +68,10 @@ Current route:
 Implementation notes:
 
 - Persisted interview links carry only `sessionId`. The room normalizes the `/api/session/:id` response, then requests fresh short-lived credentials from `/api/livekit/token`; LiveKit JWTs, URLs, and room names must not enter browser history. The API returns a `{ session }` envelope with camel-case database fields; the client room uses its existing snake-case runtime shape.
-- Global consent UI should not render inside `/interview`. The focused room needs uncontested microphone, hint, end-session, timer, and transcript controls.
+- Global consent UI should not render inside `/interview`. The focused room
+  needs uncontested microphone, end-session, timer, and transcript controls.
+  Full mock interviews do not expose guided hints; any future guided-practice
+  surface needs its own accepted product and analytics contract.
 
 ### Auth Flow
 

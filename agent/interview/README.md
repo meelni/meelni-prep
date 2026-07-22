@@ -51,6 +51,8 @@ python agent.py dev
 
 The agent reads accepted interview preferences from room metadata and resolves
 provider, model, and voice tuning from server environment.
+`LIVEKIT_INTERVIEW_AGENT_NAME` is required locally as well as in Cloud so the
+worker accepts only explicit dispatches.
 
 ## Deployment
 

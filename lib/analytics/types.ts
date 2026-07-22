@@ -70,8 +70,6 @@ export type AnalyticsEvent =
   | "interview_completed"
   | "interview_error"
   | "mic_toggled"
-  | "hint_mode_changed"
-  | "hint_dismissed"
   // Dashboard Events
   | "dashboard_viewed"
   | "ftue_cta_clicked"
@@ -307,16 +305,6 @@ interface InterviewProperties {
   mic_toggled: {
     session_id: string;
     new_state: "muted" | "unmuted";
-  };
-  hint_mode_changed: {
-    session_id: string;
-    hint_mode: "off" | "gentle" | "coach";
-    interview_type?: string;
-  };
-  hint_dismissed: {
-    session_id: string;
-    hint_type: string;
-    hint_mode: "off" | "gentle" | "coach";
   };
 }
 

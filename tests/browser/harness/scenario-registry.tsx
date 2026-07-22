@@ -17,7 +17,7 @@ import {
 } from "@/components/feedback/feedback-lifecycle-status";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { Button } from "@/components/ui/button";
-import type { FeedbackViewState, HintMode } from "@meelni/core";
+import type { FeedbackViewState } from "@meelni/core";
 
 import {
   completedFeedback,
@@ -112,7 +112,6 @@ function NewInterviewScenario() {
 }
 
 function InterviewScenario() {
-  const [hintMode, setHintMode] = useState<HintMode>("off");
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const endTriggerRef = useRef<HTMLElement | null>(null);
@@ -129,8 +128,6 @@ function InterviewScenario() {
         controls={
           <InterviewControls
             isMuted={isMuted}
-            hintMode={hintMode}
-            onHintModeChange={setHintMode}
             onToggleMute={() => setIsMuted((current) => !current)}
             onEndSession={() => {
               endTriggerRef.current = document.activeElement as HTMLElement;
@@ -139,7 +136,6 @@ function InterviewScenario() {
           />
         }
         deadlineReached={false}
-        hintMode={hintMode}
         mediaVisualizer={
           <div
             role="img"

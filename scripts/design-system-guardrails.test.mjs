@@ -1573,7 +1573,6 @@ test("interview runtime indicators use semantic status tokens", async () => {
     "app/interview/components/connection-indicator.tsx",
     "app/interview/components/end-session-modal.tsx",
     "app/interview/components/interview-controls.tsx",
-    "components/interview/nudge-overlay.tsx",
   ];
   const messageFiles = [
     "app/interview/components/transcript-panel.tsx",
@@ -1654,9 +1653,8 @@ test("demo modal status indicators use semantic status tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("overlay dismiss actions use shared button primitives", async () => {
+test("dismiss actions use shared button primitives", async () => {
   const files = [
-    "components/interview/nudge-overlay.tsx",
     "components/cookie-consent-banner.tsx",
     "components/demo-modal.tsx",
   ];
@@ -1678,7 +1676,6 @@ test("overlay dismiss actions use shared button primitives", async () => {
 test("priority microcopy uses shared type scale utilities", async () => {
   const files = [
     "components/demo-modal.tsx",
-    "components/interview/nudge-overlay.tsx",
     "components/dashboard/charts/glowing-radar-chart.tsx",
   ];
   const arbitraryMicrocopy = /\btext-\[(?:9px|10px|0\.70rem)\]\b/;
@@ -1815,22 +1812,11 @@ test("chart trend badges use semantic badge variants", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("test demo surfaces use shared controls and semantic tones", async () => {
-  const files = [
-    "components/interview/nudge-overlay.test-demo.tsx",
-    "components/ui/animated-number.tsx",
-  ];
+test("animated number demo uses shared controls and semantic tones", async () => {
+  const files = ["components/ui/animated-number.tsx"];
   const rawDemoTone =
     /\b(?:bg|text|border|hover:bg|hover:text|hover:border)-(?:amber|blue|green|purple|red)-500(?:\/\d+)?\b/;
-  const requiredTokens = [
-    "Button",
-    "text-info",
-    "bg-info",
-    "text-warning",
-    "bg-warning",
-    "text-success",
-    "text-destructive",
-  ];
+  const requiredTokens = ["Button", "text-success", "text-destructive"];
   const violations = [];
   const source = [];
 

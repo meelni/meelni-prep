@@ -43,6 +43,7 @@ from demo.runtime import (
     stop_then_run_bounded,
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
+from shared.dispatch import resolve_cli_dispatch_name
 from shared.safe_logging import log_exception_class
 
 load_dotenv()
@@ -65,14 +66,6 @@ def configure_livekit_worker_env() -> None:
 
 
 configure_livekit_worker_env()
-
-
-def get_required_env(name: str) -> str:
-    """Read required deployment config without embedding account-specific IDs."""
-    value = os.getenv(name)
-    if not value or not value.strip():
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value.strip()
 
 
 def build_demo_instructions(question: dict = None) -> str:
@@ -529,14 +522,14 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
-    agent_name = get_required_env("LIVEKIT_DEMO_AGENT_NAME") if is_cloud else None
+    # Asset builds use a non-routable sentinel; every worker command still
+    # requires its environment-owned explicit dispatch name.
+    agent_name = resolve_cli_dispatch_name("LIVEKIT_DEMO_AGENT_NAME")
 
     options = {
         "entrypoint_fnc": entrypoint,
         "prewarm_fnc": prewarm,
+        "agent_name": agent_name,
     }
-    if agent_name:
-        options["agent_name"] = agent_name
 
     cli.run_app(WorkerOptions(**options))

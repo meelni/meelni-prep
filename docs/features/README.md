@@ -7,6 +7,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 ### ✅ Implemented Features
 
 #### [Authentication System](./authentication.md)
+
 - Google OAuth authentication
 - Email/Password authentication with verification
 - Password reset flow
@@ -15,6 +16,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 - Related ADRs: [ADR-020](../architecture/adrs/ADR-020-google-oauth-authentication.md), [ADR-026](../architecture/adrs/ADR-026-email-password-authentication.md)
 
 #### [Interview Session](./interview-session.md)
+
 - Real-time voice conversation with LiveKit
 - Question bank integration (2,879 PM questions)
 - Transcript capture and persistence
@@ -22,6 +24,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 - Related ADRs: [ADR-007](../architecture/adrs/ADR-007-livekit-voice-interview.md), [ADR-018](../architecture/adrs/ADR-018-demo-modal-livekit-cloud.md), [ADR-022](../architecture/adrs/ADR-022-main-interview-agent-cloud.md)
 
 #### [Feedback Engine](./feedback-engine.md)
+
 - AI-powered evaluation with GPT-4 Turbo
 - Difficulty-aware coaching (Junior/Intermediate/Senior)
 - Framework-based scoring (Product Sense, Analytical, Leadership, Strategy)
@@ -29,6 +32,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 - Related ADRs: [ADR-023](../architecture/adrs/ADR-023-enhanced-prompt-system.md)
 
 #### [Question Bank](./question-bank.md)
+
 - 2,879 curated PM interview questions
 - Recency filtering (Current Trends / Broader Practice / All Questions)
 - Google Sheets sync via cron jobs
@@ -36,6 +40,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 - See: `docs/integrations/google-sheets.md`
 
 #### [Dashboard](./dashboard.md)
+
 - Tactical command-interface design
 - Sidebar navigation with 5 sections
 - Interview history with session details
@@ -45,7 +50,7 @@ This directory contains deep-dive documentation for major features in the Meelni
 
 ### 🚧 Planned Features
 
-- Real-time nudges during interviews
+- Guided practice only after a separately accepted product/runtime contract
 - Advanced analytics and insights
 - Custom company interview loops
 - Coding/whiteboard IDE integration

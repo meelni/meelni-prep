@@ -14,13 +14,18 @@ import re
 import sys
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.dispatch import (
+    BUILD_ASSET_DISPATCH_NAME,
+    require_dispatch_name,
+    resolve_cli_dispatch_name,
+)
 from shared.mock_interview_opening import (
     build_mock_interview_opening,
     speak_mock_interview_opening,
@@ -96,6 +101,81 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_every_worker_mode_requires_an_explicit_dispatch_name(self):
+        for variable in (
+            "LIVEKIT_INTERVIEW_AGENT_NAME",
+            "LIVEKIT_DEMO_AGENT_NAME",
+        ):
+            with self.subTest(variable=variable):
+                self.assertEqual(
+                    require_dispatch_name(variable, {variable: "  named-agent  "}),
+                    "named-agent",
+                )
+                for value in ("", "   "):
+                    with self.assertRaises(RuntimeError):
+                        require_dispatch_name(variable, {variable: value})
+                with self.assertRaises(RuntimeError):
+                    require_dispatch_name(variable, {})
+
+                for command in ("dev", "start", "connect", "console"):
+                    with self.assertRaises(RuntimeError):
+                        resolve_cli_dispatch_name(
+                            variable,
+                            ["agent.py", command],
+                            {},
+                        )
+
+                self.assertEqual(
+                    resolve_cli_dispatch_name(
+                        variable,
+                        ["agent.py", "download-files"],
+                        {},
+                    ),
+                    BUILD_ASSET_DISPATCH_NAME,
+                )
+
+    def test_download_files_executes_both_cli_entrypoints_without_runtime_secrets(self):
+        for relative_path, variable in (
+            ("interview/agent.py", "LIVEKIT_INTERVIEW_AGENT_NAME"),
+            ("demo/agent.py", "LIVEKIT_DEMO_AGENT_NAME"),
+        ):
+            with self.subTest(relative_path=relative_path):
+                path = Path(__file__).parent / relative_path
+                tree = ast.parse(path.read_text())
+                cli_block = next(
+                    node
+                    for node in reversed(tree.body)
+                    if isinstance(node, ast.If)
+                    and isinstance(node.test, ast.Compare)
+                    and isinstance(node.test.left, ast.Name)
+                    and node.test.left.id == "__name__"
+                )
+                isolated_module = ast.fix_missing_locations(
+                    ast.Module(body=[cli_block], type_ignores=[])
+                )
+                run_app = Mock()
+                namespace = {
+                    "__name__": "__main__",
+                    "cli": SimpleNamespace(run_app=run_app),
+                    "entrypoint": object(),
+                    "os": os,
+                    "prewarm": object(),
+                    "resolve_cli_dispatch_name": resolve_cli_dispatch_name,
+                    "WorkerOptions": lambda **options: SimpleNamespace(**options),
+                }
+                with (
+                    patch.dict(os.environ, {variable: ""}),
+                    patch.object(sys, "argv", [str(path), "download-files"]),
+                ):
+                    exec(compile(isolated_module, str(path), "exec"), namespace)
+
+                run_app.assert_called_once()
+                worker_options = run_app.call_args.args[0]
+                self.assertEqual(
+                    worker_options.agent_name,
+                    BUILD_ASSET_DISPATCH_NAME,
+                )
+
     def test_public_demo_uses_server_absolute_deadline_with_monotonic_waits(self):
         metadata = {
             "duration_seconds": 120,
