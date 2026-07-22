@@ -322,6 +322,14 @@ keys, signature/key mismatches, copied unverified authorization objects, and any
 source, plan, call-count, or spend drift before GitHub access. A v1/v2 artifact
 or run ID cannot satisfy this contract.
 
+The supported owner handoff is
+`npm run calibration:owner-authorization -- prepare|sign|verify`. That helper
+is provider-free and ledger-free: it derives the exact signed payload and
+sanitized verification report, but it cannot execute model calls, activate the
+protected GitHub ref, touch Production data, or encode a launch decision. The
+separate production-action owner tooling signs a different contract and is not
+valid for calibration spend approval.
+
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):

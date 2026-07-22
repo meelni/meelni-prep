@@ -207,6 +207,42 @@ plan, count, or cost requires a new envelope. The verifier brands the parsed
 authorization in memory; copying or reconstructing its fields does not preserve
 authority.
 
+Use the provider-free owner helper for that external handoff. It derives and
+verifies only the calibration-specific
+`meelni.evaluation-calibration-owner-authorization.v1` contract; it does not
+call the provider, mutate the GitHub ledger, touch Production data, or make a
+launch decision.
+
+```bash
+npm run calibration:owner-authorization -- prepare \
+  --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
+  --authorization-id sav248_v3_auth_<32 lowercase hex characters> \
+  --reviewed-source-commit <final reviewed 40-character source commit> \
+  --signing-key-id meelni-owner-2026-07 \
+  --issued-at <whole-second ISO timestamp> \
+  --ttl-minutes 30 \
+  --output-path /secure/external/path/sav-248-v3-owner-authorization-request.json
+
+npm run calibration:owner-authorization -- sign \
+  --payload-path /secure/external/path/sav-248-v3-owner-authorization-request.json \
+  --artifact-path /secure/external/path/sav-248-v3-owner-authorization.json \
+  --key-id meelni-owner-2026-07 \
+  --private-key-path /secure/external/path/meelni-owner-private-key.pem
+
+npm run calibration:owner-authorization -- verify \
+  --artifact-path /secure/external/path/sav-248-v3-owner-authorization.json \
+  --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
+  --reviewed-source-commit <final reviewed 40-character source commit> \
+  --output-path /secure/external/path/sav-248-v3-owner-authorization-report.json
+```
+
+The private key and signed artifact paths must be absolute paths outside every
+repository worktree, regular non-symlink files, owned by the invoking user,
+mode `0600`, single-link, and at most 64 KiB. The sanitized verification report
+contains hashes, counts, cost ceilings, and genesis metadata only; it records
+`providerCallsExecuted: false`, `ledgerActivated: false`, and
+`launchAuthorized: false`.
+
 Local calibration bundle construction and verification first run
 `npm run runtime:check`, which requires the exact version in `.node-version`
 (`22.22.0`). This prevents a wrong host runtime from producing or verifying a
