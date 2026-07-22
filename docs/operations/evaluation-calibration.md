@@ -221,19 +221,19 @@ npm run calibration:owner-authorization -- prepare \
   --signing-key-id meelni-owner-2026-07 \
   --issued-at <whole-second ISO timestamp> \
   --ttl-minutes 30 \
-  --output-path /secure/external/path/sav-248-v3-owner-authorization-request.json
+  --output-path /secure/external/path/sav-248-v4-owner-authorization-request.json
 
 npm run calibration:owner-authorization -- sign \
-  --payload-path /secure/external/path/sav-248-v3-owner-authorization-request.json \
-  --artifact-path /secure/external/path/sav-248-v3-owner-authorization.json \
+  --payload-path /secure/external/path/sav-248-v4-owner-authorization-request.json \
+  --artifact-path /secure/external/path/sav-248-v4-owner-authorization.json \
   --key-id meelni-owner-2026-07 \
   --private-key-path /secure/external/path/meelni-owner-private-key.pem
 
 npm run calibration:owner-authorization -- verify \
-  --artifact-path /secure/external/path/sav-248-v3-owner-authorization.json \
+  --artifact-path /secure/external/path/sav-248-v4-owner-authorization.json \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
   --reviewed-source-commit <final reviewed 40-character source commit> \
-  --output-path /secure/external/path/sav-248-v3-owner-authorization-report.json
+  --output-path /secure/external/path/sav-248-v4-owner-authorization-report.json
 ```
 
 The private key and signed artifact paths must be absolute paths outside every
@@ -447,7 +447,7 @@ do not run it against the pending proposal:
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
-  --owner-authorization /secure/external/path/sav-248-v3-owner-authorization.json \
+  --owner-authorization /secure/external/path/sav-248-v4-owner-authorization.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \
