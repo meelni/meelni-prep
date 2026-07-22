@@ -1,4 +1,4 @@
-# SAV-248 v3 Calibration Authority
+# SAV-248 v4 Calibration Authority
 
 ## Intent
 
@@ -23,7 +23,7 @@
 
 - In scope: A new non-reusable run ID and protected ledger ref, current official pricing evidence, an exact deterministic plan below $3, an external exact-plan owner-authorization handoff, zero SDK retries, one physical boundary per reservation, raw synthetic-output capture outside Git, two independent hash-bound semantic reviews, sanitized public reports, and terminal cleanup.
 - Out of scope: Customer transcripts, Production data, Production mutations, feature-flag changes, launch GO/NO-GO, reusing or rewriting v1/v2 authorities, automatic retries, and retaining raw provider output after terminal review.
-- Authority: No fresh v3 spend authority currently exists. The earlier ≤96/$3 approval was consumed by v1/v2. The proposal records the intended maximums, but the runtime must stop before readiness or credential delivery until the product owner approves one exact post-merge source commit and freshly priced plan.
+- Authority: No fresh v4 spend authority currently exists. The earlier ≤96/$3 approval was consumed by v1/v2. The proposal records the intended maximums, but the runtime must stop before readiness or credential delivery until the product owner approves one exact post-merge source commit and freshly priced plan.
 
 ## Technical Plan
 

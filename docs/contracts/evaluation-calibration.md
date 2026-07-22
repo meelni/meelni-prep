@@ -184,7 +184,7 @@ hash to two independent unanimous agent panels with null human identity. It
 forbids reviewer prose and fails closed on hash/coverage mutations,
 contradictory decisions, disagreement, and unreviewed alternatives. Its public
 report contains only hashes, closed decisions, aggregate counts, and opaque
-output IDs. It is not a v3 authorization and cannot reinterpret the terminal
+output IDs. It is not a v4 authorization and cannot reinterpret the terminal
 SAV-248 result.
 
 Every out-of-band score records case, run, dimension, actual score, and expected
@@ -238,15 +238,15 @@ includes valid usage, the report preserves its identity and token totals,
 reconciles known cost, and then stops. Only absent or invalid usage retains an
 unresolved worst-case reservation.
 
-The current non-executable v3 proposal contains exactly 64 calls: two symmetric runs for
+The current non-executable v4 proposal contains exactly 64 calls: two symmetric runs for
 each of the 32 scored fixtures. Its deterministic worst-case reservation is
 2,247,265,000 nano-USD ($2.247265), below the unchanged $3 hard cap. The
 current feedback prompt makes the former 96-call reservation exceed $3, so it
 is not authorized. The proposal hash is
-`5fc174a44d8fd42d0e59c8c9c5da033a2d6dc485d33b603d9703ad7e54bfa8b6`.
+`3e0078f436182b282ad2b9aabdde33647373b9f3e2ec32625f3f18ecba06b6c1`.
 It binds request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
-and the terminal v1/v2 authorities, but its authorization status is pending and
+and the terminal v1/v2/v3 authorities, but its authorization status is pending and
 its reviewed source commit is null. The existing ≤96/$3 approval was consumed
 by historical v1/v2 attempts and cannot authorize v3. A future exact owner
 approval must bind the final post-merge commit and a freshly priced regenerated
@@ -259,9 +259,9 @@ readiness. The credential-bearing process is a checked-in, reproducible ESM
 bundle, not `tsx` or mutable `node_modules`; its exact bytes, size, build
 contract, package-lock digest, platform, architecture, Node version, and
 built-in-only external imports are recorded in
-`docs/evidence/sav-248-v3-runtime-manifest.json` and verified before spawn.
+`docs/evidence/sav-248-v4-runtime-manifest.json` and verified before spawn.
 
-Proposed live v3 responses use the strict `feedback-provider-response-format.v1` JSON
+Proposed live v4 responses use the strict `feedback-provider-response-format.v1` JSON
 schema. The scorer rejects refusals, incomplete finish states, and malformed
 schema output. It passes the exact UTF-8 bytes of the decoded provider message
 content to the authenticated private capture before JSON parsing; these are not
@@ -296,8 +296,8 @@ overhead for operator/watchdog purge.
 
 ## Paid-run authorization and ledger contract
 
-There is no approved v3 spend. The proposal in
-`docs/evidence/sav-248-v3-paid-run-authorization-proposal.json` records at most
+There is no approved v4 spend. The proposal in
+`docs/evidence/sav-248-v4-paid-run-authorization-proposal.json` records at most
 96 provider calls/physical attempts and $3 using synthetic or separately
 approved fixtures, but explicitly records pending owner approval, null approval
 source/date, and null reviewed source commit. The executable path rejects it
@@ -320,7 +320,7 @@ until a fresh exact owner authorization is signed outside Git and verified
 against the final post-merge source commit, regenerated plan, and current
 pricing/runtime hashes.
 
-The signed payload binds one new v3 authorization ID, the exact 40-character
+The signed payload binds one new v4 authorization ID, the exact 40-character
 reviewed source commit, exact regenerated plan hash, equal planned provider-call
 and physical-attempt counts, exact worst-case nano-USD, the 96-call/attempt and
 $3 ceilings, one aggregate run, synthetic or separately approved fixtures only,
@@ -330,7 +330,7 @@ issue time must use a whole-second boundary because it also determines the Git
 authorization commit identity. The runtime rejects unknown fields,
 stale/future artifacts, revoked or out-of-window
 keys, signature/key mismatches, copied unverified authorization objects, and any
-source, plan, call-count, or spend drift before GitHub access. A v1/v2 artifact
+source, plan, call-count, or spend drift before GitHub access. A v1/v2/v3 artifact
 or run ID cannot satisfy this contract.
 
 The supported owner handoff is
@@ -344,10 +344,10 @@ valid for calibration spend approval.
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
-`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`482fd78ce5f17837be1b61699c04e6f4b4ebeeac`; it must not be created and will
+`a38fbfad71ed319f9cff30ff26655c54bc5a1040`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates
