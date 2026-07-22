@@ -39,7 +39,7 @@
 
 - Provider-free: reproducible runtime bundle verification, calibration preflight, deterministic self-test, exact plan/authorization tests, pricing freshness tests, GitHub authority mutation tests, private capture tests, scorer privacy tests, typechecks, lint/format, `npm run check:ci`, `npm run build`, and `npm run verify:agent` when supported.
 - External read-only: verify canonical repository and owner IDs, current rulesets/ref state, GitHub viewer identity, and official OpenAI pricing without exposing credentials.
-- Paid execution: not authorized by this change. The checked-in owner-key registry is intentionally empty, current pricing evidence is stale, and no signed v3 artifact exists. After all provider-free and hosted checks pass, enroll only the owner's reviewed public key, refresh pricing, regenerate the plan for one exact merged source commit, and obtain the owner's signature; stop before any call that could exceed 96 attempts or $3.
+- Paid execution: not authorized by this change. The follow-up path is to enroll only the owner's reviewed public key, refresh pricing, regenerate the plan for one exact merged source commit, and obtain the owner's signature; stop before any call that could exceed 96 attempts or $3.
 
 ## Rollout
 
