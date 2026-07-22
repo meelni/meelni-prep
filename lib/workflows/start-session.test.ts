@@ -9,7 +9,7 @@ import {
   type PersistedStableInterviewStart,
   type StableInterviewStartInput,
 } from "@/lib/db/interview-starts";
-import type { ReserveCreditInput } from "@/lib/billing/credits";
+import type { ReserveCreditInput } from "@/lib/billing/credit-ledger-contracts";
 import { resolveInterviewRuntimeConfig } from "@meelni/agent";
 
 import {

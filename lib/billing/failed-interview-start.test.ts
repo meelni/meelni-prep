@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { LedgerCreditReservation } from "./credits";
+import type { LedgerCreditReservation } from "./credit-ledger-contracts";
 import { settleFailedInterviewStartReservation } from "./failed-interview-start";
 
 test("failed start releases an active reservation idempotently", async () => {

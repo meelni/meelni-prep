@@ -6,7 +6,10 @@ import { toSafeAnalyticsErrorCode } from "@/lib/analytics/event-policy";
 import { trackServerEvent } from "@/lib/analytics/posthog-server";
 import { readUserAnalyticsConsent } from "@/lib/db/analytics-consent";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
-import type { CreditGrantSource, CreditTransactionType } from "./credits";
+import type {
+  CreditGrantSource,
+  CreditTransactionType,
+} from "./credit-ledger-contracts";
 
 export interface BillingCreditEventInput {
   userId: string;
