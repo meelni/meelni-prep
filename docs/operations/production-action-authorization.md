@@ -69,9 +69,9 @@ Choose a stable key ID and a bounded validity window:
 ```bash
 umask 077
 npm run production-action:owner -- enroll \
-  --key-id meelni-owner-2026-01 \
-  --not-before 2026-07-01T00:00:00.000Z \
-  --not-after 2027-07-01T00:00:00.000Z \
+  --key-id meelni-owner-2026-07 \
+  --not-before 2026-07-21T00:00:00.000Z \
+  --not-after 2027-07-21T00:00:00.000Z \
   > /tmp/meelni-owner-public-entry.json
 ```
 
@@ -93,9 +93,9 @@ supplying the original key ID and validity window:
 ```bash
 umask 077
 npm run production-action:owner -- public-entry \
-  --key-id meelni-owner-2026-01 \
-  --not-before 2026-07-01T00:00:00.000Z \
-  --not-after 2027-07-01T00:00:00.000Z \
+  --key-id meelni-owner-2026-07 \
+  --not-before 2026-07-21T00:00:00.000Z \
+  --not-after 2027-07-21T00:00:00.000Z \
   > /tmp/meelni-owner-public-entry.json
 ```
 
@@ -151,7 +151,7 @@ The human owner reviews that external mode-`0600` payload and signs it locally:
 npm run production-action:owner -- sign \
   --payload-path "$HOME/.config/meelni/production-actions/database-migrate-unsigned.json" \
   --artifact-path "$HOME/.config/meelni/production-actions/database-migrate-authorization.json" \
-  --key-id meelni-owner-2026-01
+  --key-id meelni-owner-2026-07
 ```
 
 Signing first checks that the selected private key matches the active reviewed
