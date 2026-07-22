@@ -7,6 +7,8 @@ const READINESS_EXECUTION_PATH =
   "docs/operations/relaunch-readiness-execution.md";
 const EVALUATION_CALIBRATION_RUNBOOK_PATH =
   "docs/operations/evaluation-calibration.md";
+const PRODUCTION_ACTION_AUTHORIZATION_RUNBOOK_PATH =
+  "docs/operations/production-action-authorization.md";
 const STATSIG_GOVERNANCE_RUNBOOK_PATH =
   "docs/operations/statsig-relaunch-governance.md";
 
@@ -170,6 +172,27 @@ test("Statsig governance runbook keeps current provider gap explicit", async () 
     runbook,
     /The mutation does not change `isEnabled`, `status`, `rules`, `idType`,\s+targeting, fallback defaults, retained inactive rehearsal metadata, or\s+release state/i
   );
+});
+
+test("production action runbook uses the active owner key", async () => {
+  const runbook = await readFile(
+    PRODUCTION_ACTION_AUTHORIZATION_RUNBOOK_PATH,
+    "utf8"
+  );
+
+  for (const required of [
+    "active owner\npublic key `meelni-owner-2026-07`",
+    "valid from `2026-07-21T00:00:00.000Z` through\n`2027-07-21T00:00:00.000Z`",
+    "--key-id meelni-owner-2026-07",
+    "--not-before 2026-07-21T00:00:00.000Z",
+    "--not-after 2027-07-21T00:00:00.000Z",
+  ]) {
+    assert.match(runbook, escapeForRegex(required));
+  }
+
+  assert.doesNotMatch(runbook, /meelni-owner-2026-01/);
+  assert.doesNotMatch(runbook, /2026-07-01T00:00:00\.000Z/);
+  assert.doesNotMatch(runbook, /2027-07-01T00:00:00\.000Z/);
 });
 
 function escapeForRegex(value) {
