@@ -160,10 +160,11 @@ The v1 and v2 refs are terminal historical authorities and cannot be reused.
 
 The repository contains the fail-closed verifier for a future external owner
 handoff. It does not contain an approval: the public-key registry at
-`config/evaluation-calibration-owner-keys.json` is intentionally empty, no
-signed v3 envelope exists, and private signing material must never be placed in
-Git, chat, environment files, logs, or generated evidence. Enrolling an owner
-public key requires a reviewed source change and runtime-bundle regeneration.
+`config/evaluation-calibration-owner-keys.json` contains only reviewed public
+verification material, no signed v3 envelope exists, and private signing
+material must never be placed in Git, chat, environment files, logs, or
+generated evidence. Rotating or enrolling another owner public key requires a
+reviewed source change and runtime-bundle regeneration.
 
 `docs/evidence/sav-248-v3-paid-run-authorization-proposal.json` truthfully
 records `pending_explicit_product_owner_approval`, null authorization source and

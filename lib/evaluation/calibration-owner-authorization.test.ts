@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import checkedInOwnerKeyRegistry from "../../config/evaluation-calibration-owner-keys.json";
 import {
   CALIBRATION_OWNER_APPROVAL_DECISION,
   CALIBRATION_OWNER_AUTHORIZATION_CONTRACT,
@@ -34,6 +35,7 @@ import { assertCalibrationSpendAuthorizationExecutable } from "./calibration-run
 
 const NOW = new Date("2026-07-20T00:10:00.000Z");
 const KEY_ID = "owner-calibration-2026-01";
+const CHECKED_IN_KEY_ID = "meelni-owner-2026-07";
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 
 test("an active human-owner signature authorizes only its exact bounded plan", () => {
@@ -151,6 +153,34 @@ test("schema and signature mutations fail closed", () => {
       })
     );
   }
+});
+
+test("the checked-in calibration owner registry trusts only public verification material", () => {
+  const payload = {
+    ...validPayload(),
+    signingKeyId: CHECKED_IN_KEY_ID,
+    issuedAt: "2026-07-22T00:00:00.000Z",
+    expiresAt: "2026-07-22T00:30:00.000Z",
+  };
+  const artifact: CalibrationOwnerAuthorizationArtifact = {
+    contract: CALIBRATION_OWNER_AUTHORIZATION_CONTRACT,
+    payload,
+    signature: {
+      algorithm: "ed25519",
+      keyId: CHECKED_IN_KEY_ID,
+      value: Buffer.alloc(64).toString("base64"),
+    },
+  };
+
+  assert.throws(
+    () =>
+      verifyCalibrationOwnerAuthorization({
+        artifact,
+        keyRegistry: checkedInOwnerKeyRegistry,
+        now: new Date("2026-07-22T00:10:00.000Z"),
+      }),
+    /signature_mismatch/
+  );
 });
 
 test("even a valid owner signature cannot widen the accepted run contract", () => {
