@@ -186,7 +186,7 @@ For live runs, `execution.modelVersion` must be the pinned snapshot
 `evaluation-calibration-pricing.v1` binds that model to
 `https://api.openai.com/v1`, the explicit `default` service tier, zero SDK
 retries, and redirect rejection. It records the Standard pricing re-verified
-against the official model page at `2026-07-18T19:00:00.000Z`: $1.25 per
+against the official model page at `2026-07-22T03:31:58.000Z`: $1.25 per
 million uncached input tokens, $0.125 per million cached input tokens, and $10
 per million output tokens. The review expires after 24 hours; future-dated or
 stale review timestamps fail before call one.
@@ -232,7 +232,7 @@ each of the 32 scored fixtures. Its deterministic worst-case reservation is
 2,247,265,000 nano-USD ($2.247265), below the unchanged $3 hard cap. The
 current feedback prompt makes the former 96-call reservation exceed $3, so it
 is not authorized. The proposal hash is
-`a0ca65f49bcbf6f0140701a1eb2e58d018b916e18a5bf80b3c438938d4062363`.
+`5fc174a44d8fd42d0e59c8c9c5da033a2d6dc485d33b603d9703ad7e54bfa8b6`.
 It binds request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
 and the terminal v1/v2 authorities, but its authorization status is pending and
@@ -326,7 +326,7 @@ organization owner ID `302571838`):
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`d9dbb6b0b6d203e7a5e0c92d868451bbc5f2d9f2`; it must not be created and will
+`482fd78ce5f17837be1b61699c04e6f4b4ebeeac`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates
