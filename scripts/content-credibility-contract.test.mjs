@@ -103,7 +103,7 @@ test("Explore failures cannot emit exact-zero copy or schema", async () => {
 });
 
 test("unsupported company-process articles remain unpublished", async () => {
-  const text = await source("lib/blog-data.ts");
+  const text = await source("lib/blog/posts.ts");
   const ids = [
     "product-sense-volunteering-meta",
     "product-sense-education-meta",

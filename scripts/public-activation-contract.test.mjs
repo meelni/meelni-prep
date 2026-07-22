@@ -90,7 +90,7 @@ test("public source limits raw launch links to routed blog content and the bound
     ...(await Promise.all(publicSourceRoots.map(sourceFiles))).flat(),
     "components/demo-modal.tsx",
     "components/mobile-drawer.tsx",
-    "lib/blog-data.ts",
+    "lib/blog/posts.ts",
   ];
   const rawLaunchOwners = [];
 
@@ -101,7 +101,7 @@ test("public source limits raw launch links to routed blog content and the bound
 
   assert.deepEqual(rawLaunchOwners, [
     "app/pricing/success/checkout-success-client.tsx",
-    "lib/blog-data.ts",
+    "lib/blog/posts.ts",
   ]);
 
   const checkoutSuccess = await source(
@@ -114,7 +114,7 @@ test("public source limits raw launch links to routed blog content and the bound
   assert.match(task, /SAV-272/);
   assert.match(task, /exact `main`/);
 
-  const blogData = await source("lib/blog-data.ts");
+  const blogData = await source("lib/blog/posts.ts");
   assert.equal(blogData.split(`](${CANONICAL_LAUNCH_PATH})`).length - 1, 9);
 
   const blogRoute = await source("app/blog/[id]/page.tsx");
