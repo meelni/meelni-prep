@@ -111,7 +111,9 @@ Use marketing/content primitives instead of the authenticated product container.
 Current route families:
 
 - Landing and marketing: `/`, `/pricing`, `/pricing/success`, `/pricing/canceled`.
-- Question/content discovery: `/explore`, `/blog`, `/blog/[id]`, `/companies`, `/companies/[slug]`.
+- Question/content discovery: `/explore`, `/questions/[questionId]`,
+  `/interview-types/[roundType]`, `/blog`, `/blog/[id]`, `/companies`,
+  `/companies/[slug]`.
 - Utility and legal: `/contact`, `/privacy`, `/terms`.
 
 ## Production Route Inventory
@@ -125,6 +127,8 @@ Every production `app/**/page.tsx` route is classified here so future agents can
 | `app/pricing/success/page.tsx`              | `/pricing/success`              | Public/content            | Public-page status surface                                |
 | `app/pricing/canceled/page.tsx`             | `/pricing/canceled`             | Public/content            | Public-page status surface                                |
 | `app/explore/page.tsx`                      | `/explore`                      | Public/content            | Question-bank and shared form/action primitives           |
+| `app/questions/[questionId]/page.tsx`       | `/questions/[questionId]`       | Public/content            | Marketing article and question-practice primitives        |
+| `app/interview-types/[roundType]/page.tsx`  | `/interview-types/[roundType]`  | Public/content            | Marketing/content listing primitives                      |
 | `app/blog/page.tsx`                         | `/blog`                         | Public/content            | Marketing/content listing primitives                      |
 | `app/blog/[id]/page.tsx`                    | `/blog/[id]`                    | Public/content            | Marketing article primitives                              |
 | `app/companies/page.tsx`                    | `/companies`                    | Public/content            | Marketing/content listing primitives                      |

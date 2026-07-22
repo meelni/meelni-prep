@@ -28,8 +28,8 @@ test("Terms and Privacy drafts are explicitly unindexed and unpromoted", () => {
   }
 });
 
-test("Terms and Privacy drafts are absent from the sitemap", () => {
-  const urls = sitemap().map(({ url }) => new URL(url).pathname);
+test("Terms and Privacy drafts are absent from the sitemap", async () => {
+  const urls = (await sitemap()).map(({ url }) => new URL(url).pathname);
 
   assert.equal(urls.includes("/terms"), false);
   assert.equal(urls.includes("/privacy"), false);
