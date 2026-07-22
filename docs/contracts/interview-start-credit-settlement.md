@@ -20,10 +20,12 @@ closed without revealing another user's session.
 
 ## Provider Provisioning
 
-Provisioning uses a fenced, recoverable lease. The LiveKit adapter validates the
-deterministic room's exact metadata and requires exactly one matching agent
-dispatch before acknowledging readiness. It re-lists after dispatch creation so
-concurrent duplicates fail closed. A ready replay performs no provider or
+Provisioning uses a fenced, recoverable lease. The LiveKit adapter creates the
+deterministic room and its one named `RoomAgentDispatch` in the same provider
+request; it never creates a plain room and adds a dispatch afterward. The
+adapter then validates the exact room metadata and re-lists dispatches before
+acknowledging readiness. Zero, multiple, blank-name, mismatched-name, empty-ID,
+or wrong-room dispatches fail closed. A ready replay performs no provider or
 deadline creation and mints only a fresh participant token after a new durable
 authorization. Provisioning lease and hard-deadline predicates use
 PostgreSQL's `clock_timestamp()` when the locked write is evaluated, so waiting
@@ -32,11 +34,15 @@ lease or deadline. A transient authorization read failure withholds the token
 and remains retryable; it is not durable evidence that a healthy ready room
 should be deleted or its credit settled.
 
-Expired leases are never taken over for new provider work because LiveKit does
-not expose a caller-supplied dispatch idempotency key. A five-minute recovery
-scan fences stale pending/provisioning/failed starts, commits a provider-failure
-terminal outcome, converges the active reservation to release, and leaves room
-cleanup as durable retryable intent. This also repairs terminal version-1 rows
+Every demo and interview worker requires its explicit dispatch-name environment
+variable in local and hosted modes. A worker never registers unnamed, because
+LiveKit assigns unnamed workers to every newly created room through automatic
+dispatch. Expired leases are never taken over for new provider work because
+LiveKit does not expose a caller-supplied dispatch idempotency key. A five-minute
+recovery scan fences stale pending/provisioning/failed starts, commits a
+provider-failure terminal outcome, converges the active reservation to release,
+and leaves room cleanup as durable retryable intent. This also repairs terminal
+version-1 rows
 whose ledger settlement was interrupted.
 
 The room metadata includes the authenticated candidate identity. The Python

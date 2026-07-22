@@ -89,8 +89,6 @@ const ALLOWED_PROPERTIES: Record<string, readonly string[]> = {
   interview_completed: ["duration_seconds", "turn_count"],
   interview_error: ["error_code"],
   mic_toggled: ["new_state"],
-  hint_mode_changed: ["hint_mode", "interview_type"],
-  hint_dismissed: ["hint_type", "hint_mode"],
   dashboard_viewed: ["section"],
   ftue_cta_clicked: ["source"],
   ftue_viewed: [],

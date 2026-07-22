@@ -333,6 +333,11 @@ export function createLiveKitInterviewProvider({
           emptyTimeout: 3600,
           maxParticipants: 2,
           departureTimeout: INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS,
+          agents: [
+            new RoomAgentDispatch({
+              agentName: input.agentName,
+            }),
+          ],
         });
       } catch (error) {
         const message = getErrorMessage(error);
@@ -382,55 +387,19 @@ export function createLiveKitInterviewProvider({
           input.roomName
         );
 
-        if (existingDispatches.length > 1) {
+        if (
+          existingDispatches.length !== 1 ||
+          typeof existingDispatches[0].id !== "string" ||
+          !existingDispatches[0].id.trim() ||
+          existingDispatches[0].agentName !== input.agentName ||
+          existingDispatches[0].room !== input.roomName
+        ) {
           return providerFailure("livekit", {
             code: "livekit_agent_dispatch_conflict",
-            message: "Interview room has multiple agent dispatches.",
+            message:
+              "Interview room does not have exactly one matching named dispatch.",
             retryable: false,
           });
-        }
-
-        if (existingDispatches.length === 1) {
-          const existing = existingDispatches[0];
-          if (
-            existing.agentName !== input.agentName ||
-            existing.room !== input.roomName
-          ) {
-            return providerFailure("livekit", {
-              code: "livekit_agent_dispatch_conflict",
-              message:
-                "Interview room dispatch does not match the start request.",
-              retryable: false,
-            });
-          }
-        } else {
-          const created = await dispatchClient.createDispatch(
-            input.roomName,
-            input.agentName
-          );
-          if (
-            created.agentName !== input.agentName ||
-            created.room !== input.roomName
-          ) {
-            return providerFailure("livekit", {
-              code: "livekit_agent_dispatch_conflict",
-              message: "LiveKit created a mismatched interview dispatch.",
-              retryable: false,
-            });
-          }
-          const reconciled = await dispatchClient.listDispatch(input.roomName);
-          if (
-            reconciled.length !== 1 ||
-            reconciled[0].agentName !== input.agentName ||
-            reconciled[0].room !== input.roomName
-          ) {
-            return providerFailure("livekit", {
-              code: "livekit_agent_dispatch_conflict",
-              message:
-                "Interview room dispatch could not be reconciled uniquely.",
-              retryable: false,
-            });
-          }
         }
       } catch (error) {
         return providerFailure("livekit", {

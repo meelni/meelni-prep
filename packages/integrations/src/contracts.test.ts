@@ -1135,7 +1135,7 @@ test("buildInterviewRoomName creates deterministic interview room names for test
   assert.match(name, /^interview-1782600000000-/);
 });
 
-test("LiveKit provider creates and reconciles one interview room and dispatch", async () => {
+test("LiveKit provider creates and reconciles one atomically named interview dispatch", async () => {
   const fixture = createLiveKitStartFixture();
   const calls: string[] = [];
   const roomInputs: unknown[] = [];
@@ -1157,6 +1157,12 @@ test("LiveKit provider creates and reconciles one interview room and dispatch", 
       createRoom: async (input) => {
         roomInputs.push(input);
         calls.push("room");
+        const agent = input.agents?.[0];
+        dispatches.push({
+          id: "dispatch-1",
+          room: input.name,
+          agentName: agent?.agentName ?? "",
+        });
       },
       listRooms: async () => [
         {
@@ -1175,21 +1181,24 @@ test("LiveKit provider creates and reconciles one interview room and dispatch", 
     assert.equal(result.data.url, fixture.input.env.url);
     assert.ok(result.data.token);
   }
-  assert.deepEqual(calls, [
-    "room",
-    "list-dispatch",
-    "dispatch",
-    "list-dispatch",
-  ]);
-  assert.deepEqual(roomInputs, [
-    {
-      name: fixture.input.roomName,
-      metadata: JSON.stringify(fixture.input.metadata),
-      emptyTimeout: 3600,
-      maxParticipants: 2,
-      departureTimeout: 60,
-    },
-  ]);
+  assert.deepEqual(calls, ["room", "list-dispatch"]);
+  assert.equal(calls.includes("dispatch"), false);
+  assert.equal(roomInputs.length, 1);
+  const roomInput = roomInputs[0] as {
+    name: string;
+    metadata: string;
+    emptyTimeout: number;
+    maxParticipants: number;
+    departureTimeout: number;
+    agents: Array<{ agentName: string }>;
+  };
+  assert.equal(roomInput.name, fixture.input.roomName);
+  assert.equal(roomInput.metadata, JSON.stringify(fixture.input.metadata));
+  assert.equal(roomInput.emptyTimeout, 3600);
+  assert.equal(roomInput.maxParticipants, 2);
+  assert.equal(roomInput.departureTimeout, 60);
+  assert.equal(roomInput.agents.length, 1);
+  assert.equal(roomInput.agents[0].agentName, fixture.input.agentName);
 });
 
 test("LiveKit provider reuses the one matching room dispatch", async () => {
@@ -1282,30 +1291,19 @@ test("LiveKit provider fails closed for duplicate or mismatched dispatches", asy
   }
 });
 
-test("LiveKit provider verifies dispatch uniqueness after creation", async () => {
+test("LiveKit provider rejects unnamed dispatches created by an automatic worker", async () => {
   const fixture = createLiveKitStartFixture();
-  let listCalls = 0;
   const provider = createLiveKitInterviewProvider({
     agentDispatchClientFactory: () => ({
-      listDispatch: async () => {
-        listCalls += 1;
-        return listCalls === 1
-          ? []
-          : [
-              {
-                id: "dispatch-1",
-                room: fixture.input.roomName,
-                agentName: fixture.input.agentName,
-              },
-              {
-                id: "dispatch-race",
-                room: fixture.input.roomName,
-                agentName: fixture.input.agentName,
-              },
-            ];
-      },
+      listDispatch: async () => [
+        {
+          id: "dispatch-automatic",
+          room: fixture.input.roomName,
+          agentName: "",
+        },
+      ],
       createDispatch: async (room, agentName) => ({
-        id: "dispatch-1",
+        id: "unexpected",
         room,
         agentName,
       }),
@@ -1326,6 +1324,7 @@ test("LiveKit provider verifies dispatch uniqueness after creation", async () =>
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.error.code, "livekit_agent_dispatch_conflict");
+    assert.equal(result.error.retryable, false);
   }
 });
 

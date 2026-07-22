@@ -10,7 +10,6 @@ import {
   StatusPill,
 } from "@/components/ui/app-surface";
 import type { InterviewConnectionStatus } from "@/components/interview/session-recovery";
-import type { HintMode } from "@meelni/core";
 
 export interface InterviewRoomSurfaceProps {
   agentState: "idle" | "listening" | "thinking" | "speaking";
@@ -19,7 +18,6 @@ export interface InterviewRoomSurfaceProps {
   connectionStatus: InterviewConnectionStatus;
   controls?: ReactNode;
   deadlineReached: boolean;
-  hintMode: HintMode;
   mediaVisualizer?: ReactNode;
   question?: string | null;
   recoveringConnection: boolean;
@@ -36,7 +34,6 @@ export function InterviewRoomSurface({
   connectionStatus,
   controls,
   deadlineReached,
-  hintMode,
   mediaVisualizer,
   question,
   recoveringConnection,
@@ -76,9 +73,7 @@ export function InterviewRoomSurface({
         <section className="flex min-h-[620px] flex-col items-center justify-between py-6 lg:min-h-[calc(100vh-6rem)] lg:pr-6">
           <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-8 text-center">
             <div className="space-y-3">
-              <StatusPill tone={hintMode === "off" ? "muted" : "primary"}>
-                {hintMode === "off" ? "Real interview" : "Gentle hints on"}
-              </StatusPill>
+              <StatusPill tone="muted">Real interview</StatusPill>
               <StatusPill tone="muted">
                 {agentState.charAt(0).toUpperCase() + agentState.slice(1)}
               </StatusPill>

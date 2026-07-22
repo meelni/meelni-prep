@@ -16,7 +16,6 @@ import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
 import { EndSessionModal } from "./components/end-session-modal";
 import { ConnectionIndicator } from "./components/connection-indicator";
-import { NudgeOverlay, Nudge } from "@/components/interview/nudge-overlay";
 import { InterviewRoomSurface } from "./components/interview-room-surface";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
@@ -33,7 +32,6 @@ import { requireInterviewResumeTiming } from "@/lib/interview/resume-session";
 import { compareTranscriptOrdering } from "@/lib/workflows/ingest-transcript-event";
 import { canNavigateToInterviewFeedback } from "@/lib/interview/deadline-view";
 import { analytics } from "@/lib/analytics/analytics-service";
-import { shouldAnalyzeNudges, type HintMode } from "@meelni/core";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
@@ -134,8 +132,6 @@ export function InterviewPageContent() {
     "healthy" | "retrying" | "degraded"
   >("healthy");
   const transcriptFlushRef = useRef<FlushRuntimeTranscript | null>(null);
-  const [currentNudge, setCurrentNudge] = useState<Nudge | null>(null);
-  const [hintMode, setHintMode] = useState<HintMode>("off");
   const [agentState, setAgentState] = useState<
     "idle" | "listening" | "thinking" | "speaking"
   >("idle");
@@ -201,8 +197,6 @@ export function InterviewPageContent() {
     setTranscript([]);
     setIsMuted(false);
     setTranscriptIntegrity("healthy");
-    setCurrentNudge(null);
-    setHintMode("off");
     setAgentState("idle");
     setSessionStartTime(null);
     setDeadlineReached(false);
@@ -228,13 +222,6 @@ export function InterviewPageContent() {
     },
     []
   );
-
-  useEffect(() => {
-    const configuredHintMode = session?.config?.hintMode;
-    if (isHintMode(configuredHintMode)) {
-      setHintMode(configuredHintMode);
-    }
-  }, [session?.config?.hintMode]);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -408,16 +395,6 @@ export function InterviewPageContent() {
     // adapter rejects replayed identities before this callback, so the browser
     // renders each accepted turn once without owning a second write path.
     setTranscript((prev) => mergeTranscriptTurns(prev, [turn]));
-
-    // Analyze for nudges (only when user finishes speaking)
-    if (
-      turn.speaker === "user" &&
-      callbackSessionId &&
-      session?.config?.roundType &&
-      shouldAnalyzeNudges(hintMode)
-    ) {
-      void analyzeForNudges(turn, callbackOwnerId, callbackSessionId);
-    }
   };
 
   useEffect(() => {
@@ -512,64 +489,6 @@ export function InterviewPageContent() {
     };
   }, [activeSessionId, connectionOwnerId, connectionStatus]);
 
-  const analyzeForNudges = async (
-    turn: TranscriptTurn,
-    requestOwnerId: string,
-    requestSessionId: string
-  ) => {
-    if (ownerIdRef.current !== requestOwnerId || !session) return;
-    const requestStartedAt = session.started_at;
-    const requestRoundType = session.config.roundType;
-    try {
-      const timeElapsed = Math.floor(
-        (new Date().getTime() - new Date(requestStartedAt).getTime()) / 1000
-      );
-
-      const response = await fetch("/api/nudges/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: requestSessionId,
-          interviewType: requestRoundType,
-          hintMode,
-          currentTurn: {
-            speaker: turn.speaker,
-            text: turn.text,
-            timestamp: turn.timestamp,
-          },
-          timeElapsed,
-        }),
-      });
-
-      if (ownerIdRef.current !== requestOwnerId) return;
-
-      if (!response.ok) {
-        console.warn("[Interview] nudge_analysis_failed", {
-          code: "nudge_analysis_failed",
-          status: response.status,
-        });
-        return;
-      }
-
-      const data = await response.json();
-      if (ownerIdRef.current !== requestOwnerId) return;
-
-      // Display nudge if applicable
-      if (data.shouldNudge && data.nudgeType && data.message) {
-        setCurrentNudge({
-          type: data.nudgeType,
-          message: data.message,
-        });
-      }
-    } catch (error) {
-      console.error("[Interview] nudge_analysis_failed", {
-        code: "nudge_analysis_failed",
-        ...toSafeErrorLog(error),
-      });
-      // Don't show error to user - nudges are optional enhancement
-    }
-  };
-
   const handleAgentStateChange = useCallback(
     (state: string) => {
       if (!connectionOwnerId || connectionOwnerId !== ownerIdRef.current) {
@@ -637,7 +556,6 @@ export function InterviewPageContent() {
       setRecoveringConnection(false);
       setShowEndModal(false);
       setEndSessionError(null);
-      setCurrentNudge(null);
       return;
     }
 
@@ -675,7 +593,6 @@ export function InterviewPageContent() {
       setConnectionStatus(state);
       if (state === "reconnecting" || state === "disconnected") {
         setRecoveringConnection(true);
-        setCurrentNudge(null);
       }
 
       if (state === "disconnected") {
@@ -714,7 +631,6 @@ export function InterviewPageContent() {
     setDeadlineReached(true);
     setShowEndModal(false);
     setEndSessionError(null);
-    setCurrentNudge(null);
     setIsMuted(true);
     analytics.track("interview_deadline_reached", {
       session_id: activeSessionId,
@@ -1047,20 +963,11 @@ export function InterviewPageContent() {
         transcript={transcript}
         agentState={agentState}
         isMuted={isMuted}
-        hintMode={hintMode}
         transcriptIntegrity={transcriptIntegrity}
         deadlineReached={deadlineReached}
         connectionStatus={connectionStatus}
         recoveringConnection={recoveringConnection}
         onDeadlineReached={handleDeadlineReached}
-        onHintModeChange={(mode) => {
-          setHintMode(mode);
-          analytics.track("hint_mode_changed", {
-            session_id: activeSessionId,
-            hint_mode: mode,
-            interview_type: session.config?.roundType,
-          });
-        }}
         onToggleMute={() => {
           const newMutedState = !isMuted;
           setIsMuted(newMutedState);
@@ -1078,19 +985,6 @@ export function InterviewPageContent() {
                 : null;
             setShowEndModal(true);
           }
-        }}
-      />
-      <NudgeOverlay
-        nudge={deadlineReached ? null : currentNudge}
-        onDismiss={() => {
-          if (currentNudge) {
-            analytics.track("hint_dismissed", {
-              session_id: activeSessionId,
-              hint_type: currentNudge.type,
-              hint_mode: hintMode,
-            });
-          }
-          setCurrentNudge(null);
         }}
       />
       <EndSessionModal
@@ -1120,13 +1014,11 @@ interface InterviewRoomContentProps {
   transcript: TranscriptTurn[];
   agentState: "idle" | "listening" | "thinking" | "speaking";
   isMuted: boolean;
-  hintMode: HintMode;
   transcriptIntegrity: "healthy" | "retrying" | "degraded";
   deadlineReached: boolean;
   connectionStatus: InterviewConnectionStatus;
   recoveringConnection: boolean;
   onDeadlineReached: () => void;
-  onHintModeChange: (mode: HintMode) => void;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
@@ -1136,13 +1028,11 @@ function InterviewRoomContent({
   transcript,
   agentState,
   isMuted,
-  hintMode,
   transcriptIntegrity,
   deadlineReached,
   connectionStatus,
   recoveringConnection,
   onDeadlineReached,
-  onHintModeChange,
   onToggleMute,
   onEndSession,
 }: InterviewRoomContentProps) {
@@ -1167,14 +1057,11 @@ function InterviewRoomContent({
       controls={
         <InterviewControls
           isMuted={isMuted}
-          hintMode={hintMode}
-          onHintModeChange={onHintModeChange}
           onToggleMute={onToggleMute}
           onEndSession={onEndSession}
         />
       }
       deadlineReached={deadlineReached}
-      hintMode={hintMode}
       mediaVisualizer={<AudioVisualizer />}
       question={session.question?.text}
       recoveringConnection={recoveringConnection}
@@ -1416,10 +1303,6 @@ function normalizePersistedSession(
     },
     question: null,
   };
-}
-
-function isHintMode(value: unknown): value is HintMode {
-  return value === "off" || value === "gentle" || value === "coach";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

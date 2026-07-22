@@ -131,6 +131,10 @@ cd interview
 python agent.py dev
 ```
 
+Both local commands require their corresponding dispatch name from the
+environment. The workers intentionally fail startup instead of registering
+unnamed and becoming eligible for LiveKit automatic dispatch.
+
 ---
 
 ## 🚀 Deployment

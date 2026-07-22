@@ -1,27 +1,20 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Lightbulb, Mic, MicOff, PhoneOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { motion } from "framer-motion";
-import type { HintMode } from "@meelni/core";
 
 interface InterviewControlsProps {
   isMuted: boolean;
-  hintMode: HintMode;
   onToggleMute: () => void;
-  onHintModeChange: (mode: HintMode) => void;
   onEndSession: () => void;
 }
 
 export function InterviewControls({
   isMuted,
-  hintMode,
   onToggleMute,
-  onHintModeChange,
   onEndSession,
 }: InterviewControlsProps) {
-  const hintsEnabled = hintMode !== "off";
-
   return (
     <div className="relative">
       {/* Mute indicator (above controls) */}
@@ -59,24 +52,6 @@ export function InterviewControls({
             {/* Active indicator when not muted */}
             {!isMuted && (
               <div className="bg-success absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full" />
-            )}
-          </Button>
-
-          {/* Hints Mode Button */}
-          <Button
-            variant={hintsEnabled ? "default" : "outline"}
-            size="lg"
-            onClick={() => onHintModeChange(hintsEnabled ? "off" : "gentle")}
-            className="relative h-14 w-14 rounded-full p-0 transition-all duration-300 hover:scale-105 active:scale-95"
-            title={hintsEnabled ? "Turn hints off" : "Turn gentle hints on"}
-            aria-label={
-              hintsEnabled ? "Turn hints off" : "Turn gentle hints on"
-            }
-            aria-pressed={hintsEnabled}
-          >
-            <Lightbulb className="h-6 w-6" />
-            {hintsEnabled && (
-              <div className="bg-success absolute -top-1 -right-1 h-3 w-3 rounded-full" />
             )}
           </Button>
 
