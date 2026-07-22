@@ -28,8 +28,8 @@ const CONTRACT_FILES = [
   "lib/dashboard/analytics-contracts.ts",
 ];
 const CUSTOMER_COPY_FILES = [
-  "lib/blog-data.ts",
-  "lib/data/companies.ts",
+  "lib/blog/posts.ts",
+  "lib/data/company-guides/records.ts",
   "lib/seo/home-metadata.ts",
 ];
 const GENERATED_CUSTOMER_COPY_FILES = [
