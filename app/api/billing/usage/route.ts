@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCreditBalanceReadModel } from "@/lib/billing/credit-balance-read-model";
+import { getCreditBalanceReadModel } from "@/lib/billing/credit-ledger-reporting";
 import { createDrizzleCreditLedgerStore } from "@/lib/billing/credit-ledger-store";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
