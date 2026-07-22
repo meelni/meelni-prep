@@ -50,7 +50,11 @@ test("completed v2 review hides technical version metadata", () => {
   );
   assert.match(html, /Transcript evidence/);
   assert.match(html, /Next action/);
+  assert.match(html, /Focused practice/);
+  assert.match(html, /does not start another interview/);
   assert.doesNotMatch(html, /Feedback v2/);
+  assert.doesNotMatch(html, /\bgym\b/i);
+  assert.doesNotMatch(html, /\breps\b/i);
 });
 
 test("legacy review stays explicitly historical", () => {

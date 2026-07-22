@@ -2,6 +2,7 @@
 
 import { CheckCircle2, TrendingUp } from "lucide-react";
 
+import { FocusedPracticeWorkspace } from "./focused-practice-workspace";
 import { FeedbackFindingCard } from "./feedback-finding-card";
 import { FeedbackDashboardLink } from "./feedback-navigation";
 import { FeedbackScoreSummary } from "./feedback-score-summary";
@@ -58,6 +59,8 @@ export function CompletedV2Review({
             {feedback.summary}
           </p>
         </FeedbackSectionCard>
+
+        <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
 
         <FeedbackScoreSummary scores={feedback.scores} />
 
