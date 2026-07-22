@@ -394,7 +394,10 @@ Status:
 - Added guardrail coverage for the contact page to prevent `ui/card`, raw buttons, raw textarea markup, and raw red/green status utilities from returning.
 - Company detail pages now use shared marketing page, article header, eyebrow, meta-row, CTA-card, and button primitives for the core public SEO shell, show-more controls, mini CTA, final CTA, and back link; local arbitrary text sizes and inline SVG arrows were removed from the renderer.
 - Added guardrail coverage for the company detail renderer to prevent raw buttons, inline SVG arrows, and page-local arbitrary text sizes from returning.
-- Remaining P2 work: migrate docs/legal/pricing pages and lower-level landing sections onto the same public-page vocabulary.
+- 2026-07-22 update: SAV-154 refreshed the public/content route inventory after
+  `/docs` removal in `docs/design/2026-07-22-public-content-surface-audit.md`.
+  No launch-blocking public marketing-surface drift remains; future public
+  polish should be filed as route-specific follow-ups instead of a broad audit.
 
 ## Acceptance Criteria
 
