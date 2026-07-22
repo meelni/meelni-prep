@@ -28760,6 +28760,7 @@ var FeedbackProviderInvocationError = class extends Error {
     this.observedModel = observedModel;
     this.observedServiceTier = observedServiceTier;
     this.name = "FeedbackProviderInvocationError";
+    this.diagnostic = options?.diagnostic;
     Object.defineProperty(this, "feedbackRejectionCode", {
       configurable: false,
       enumerable: false,
@@ -28923,7 +28924,7 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       void 0,
       void 0,
       void 0,
-      { cause: error }
+      { cause: error, diagnostic: classifyProviderInvocationFailure(error) }
     );
   }
 }
@@ -28993,6 +28994,57 @@ function normalizeFeedbackV2Recommendations(result) {
     );
   }
   return { ...result, drills: recommendations };
+}
+function classifyProviderInvocationFailure(error) {
+  const status = getProviderHttpStatus(error);
+  if (status !== void 0) {
+    if (status === 400)
+      return { kind: "provider_bad_request", httpStatus: status };
+    if (status === 401)
+      return { kind: "provider_authentication", httpStatus: status };
+    if (status === 403)
+      return { kind: "provider_permission", httpStatus: status };
+    if (status === 404)
+      return { kind: "provider_not_found", httpStatus: status };
+    if (status === 408) return { kind: "provider_timeout", httpStatus: status };
+    if (status === 409)
+      return { kind: "provider_conflict", httpStatus: status };
+    if (status === 422)
+      return { kind: "provider_unprocessable", httpStatus: status };
+    if (status === 429)
+      return { kind: "provider_rate_limited", httpStatus: status };
+    if (status >= 500 && status <= 599) {
+      return { kind: "provider_server_error", httpStatus: status };
+    }
+    return { kind: "provider_unknown", httpStatus: status };
+  }
+  const name = getProviderErrorName(error);
+  switch (name) {
+    case "APIConnectionTimeoutError":
+    case "TimeoutError":
+      return { kind: "provider_timeout" };
+    case "APIConnectionError":
+      return { kind: "provider_network" };
+    case "APIUserAbortError":
+    case "AbortError":
+      return { kind: "provider_aborted" };
+    default:
+      return { kind: "provider_unknown" };
+  }
+}
+function getProviderHttpStatus(error) {
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return void 0;
+  }
+  const status = error.status;
+  return Number.isInteger(status) && typeof status === "number" && status >= 100 && status <= 599 ? status : void 0;
+}
+function getProviderErrorName(error) {
+  if (typeof error !== "object" || error === null || !("name" in error)) {
+    return void 0;
+  }
+  const name = error.name;
+  return typeof name === "string" ? name : void 0;
 }
 function getOpenAI() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -30246,8 +30298,12 @@ function getSanitizedEvaluationFailure(error, executionKind) {
     case "evaluation_provider_returned_no_content":
     case "evaluation_provider_returned_invalid_json":
     case "evaluation_provider_usage_missing":
-    case "evaluation_provider_invocation_failed":
       return { code };
+    case "evaluation_provider_invocation_failed":
+      return {
+        code,
+        providerDiagnostic: error.diagnostic
+      };
     case "evaluation_provider_returned_invalid_feedback": {
       const authenticatedCode = getAuthenticatedFeedbackRejectionCode(error);
       return {

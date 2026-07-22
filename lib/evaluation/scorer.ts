@@ -64,6 +64,25 @@ export const FEEDBACK_PROVIDER_FAILURE_CODES = [
 export type FeedbackProviderFailureCode =
   (typeof FEEDBACK_PROVIDER_FAILURE_CODES)[number];
 
+export type FeedbackProviderInvocationDiagnosticKind =
+  | "provider_bad_request"
+  | "provider_authentication"
+  | "provider_permission"
+  | "provider_not_found"
+  | "provider_conflict"
+  | "provider_unprocessable"
+  | "provider_rate_limited"
+  | "provider_timeout"
+  | "provider_network"
+  | "provider_aborted"
+  | "provider_server_error"
+  | "provider_unknown";
+
+export interface FeedbackProviderInvocationDiagnostic {
+  kind: FeedbackProviderInvocationDiagnosticKind;
+  httpStatus?: number;
+}
+
 const feedbackRejectionCodesByError = new WeakMap<
   FeedbackProviderInvocationError,
   FeedbackV2RejectionCode
@@ -77,16 +96,21 @@ export class FeedbackProviderInvocationError extends Error {
     readonly usage?: FeedbackProviderUsage,
     readonly observedModel?: string,
     readonly observedServiceTier?: string | null,
-    options?: ErrorOptions
+    options?: ErrorOptions & {
+      diagnostic?: FeedbackProviderInvocationDiagnostic;
+    }
   ) {
     super(code, options);
     this.name = "FeedbackProviderInvocationError";
+    this.diagnostic = options?.diagnostic;
     Object.defineProperty(this, "feedbackRejectionCode", {
       configurable: false,
       enumerable: false,
       get: () => feedbackRejectionCodesByError.get(this),
     });
   }
+
+  readonly diagnostic?: FeedbackProviderInvocationDiagnostic;
 }
 
 export function getAuthenticatedFeedbackRejectionCode(
@@ -310,7 +334,7 @@ export async function generateFeedbackWithUsage(
       undefined,
       undefined,
       undefined,
-      { cause: error }
+      { cause: error, diagnostic: classifyProviderInvocationFailure(error) }
     );
   }
 }
@@ -439,6 +463,68 @@ function isInvalidOpenAIKeyError(error: unknown): boolean {
     safeFields.code === "invalid_api_key" ||
     safeFields.name === "AuthenticationError"
   );
+}
+
+function classifyProviderInvocationFailure(
+  error: unknown
+): FeedbackProviderInvocationDiagnostic {
+  const status = getProviderHttpStatus(error);
+  if (status !== undefined) {
+    if (status === 400)
+      return { kind: "provider_bad_request", httpStatus: status };
+    if (status === 401)
+      return { kind: "provider_authentication", httpStatus: status };
+    if (status === 403)
+      return { kind: "provider_permission", httpStatus: status };
+    if (status === 404)
+      return { kind: "provider_not_found", httpStatus: status };
+    if (status === 408) return { kind: "provider_timeout", httpStatus: status };
+    if (status === 409)
+      return { kind: "provider_conflict", httpStatus: status };
+    if (status === 422)
+      return { kind: "provider_unprocessable", httpStatus: status };
+    if (status === 429)
+      return { kind: "provider_rate_limited", httpStatus: status };
+    if (status >= 500 && status <= 599) {
+      return { kind: "provider_server_error", httpStatus: status };
+    }
+    return { kind: "provider_unknown", httpStatus: status };
+  }
+
+  const name = getProviderErrorName(error);
+  switch (name) {
+    case "APIConnectionTimeoutError":
+    case "TimeoutError":
+      return { kind: "provider_timeout" };
+    case "APIConnectionError":
+      return { kind: "provider_network" };
+    case "APIUserAbortError":
+    case "AbortError":
+      return { kind: "provider_aborted" };
+    default:
+      return { kind: "provider_unknown" };
+  }
+}
+
+function getProviderHttpStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return undefined;
+  }
+  const status = (error as { status?: unknown }).status;
+  return Number.isInteger(status) &&
+    typeof status === "number" &&
+    status >= 100 &&
+    status <= 599
+    ? status
+    : undefined;
+}
+
+function getProviderErrorName(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("name" in error)) {
+    return undefined;
+  }
+  const name = (error as { name?: unknown }).name;
+  return typeof name === "string" ? name : undefined;
 }
 
 function getOpenAI() {
