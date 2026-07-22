@@ -144,5 +144,7 @@ Conflict rule: Meelni's product behavior, route taxonomy, shared primitives, sem
 - Keep authenticated screenshot evidence current when route shells change; the first desktop/mobile set lives in `docs/design/screenshots/2026-07-08-authenticated-qa/`.
 - Run a manual Impeccable detector/audit pilot before enabling hooks or CI.
 - Tighten observability/runtime noise separately from design-system structure: local CSP currently blocks the web-vitals CDN script, Statsig may emit SDK exception calls in dev, and headless LiveKit checks report expected audio support/disconnect messages.
-- Continue the public/content audit in `SAV-154`.
+- Public/content audit evidence lives in
+  `docs/design/2026-07-22-public-content-surface-audit.md`; future public polish
+  should be route-specific rather than another broad catch-all audit.
 - Consider a small `ActionBar` or `PageActions` primitive only after repeated action clusters stabilize.
