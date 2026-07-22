@@ -44,6 +44,7 @@ from demo.runtime import (
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.dispatch import resolve_cli_dispatch_name
+from shared.prompt_contracts import DEMO_PROMPT_CONTRACT, PromptContract
 from shared.safe_logging import log_exception_class
 
 load_dotenv()
@@ -68,7 +69,10 @@ def configure_livekit_worker_env() -> None:
 configure_livekit_worker_env()
 
 
-def build_demo_instructions(question: dict = None) -> str:
+def build_demo_instructions(
+    question: dict = None,
+    prompt_contract: PromptContract = DEMO_PROMPT_CONTRACT,
+) -> str:
     """
     Build demo agent instructions with optional question from question bank.
 
@@ -78,6 +82,9 @@ def build_demo_instructions(question: dict = None) -> str:
     Returns:
         Complete demo instructions string
     """
+    if prompt_contract != DEMO_PROMPT_CONTRACT:
+        raise ValueError("Unsupported public demo prompt contract")
+
     # Base demo prompt - designed to feel spontaneous, not scripted
     base_instructions = """You're Meelni, an AI interview coach conducting a two-minute product sense voice preview.
 

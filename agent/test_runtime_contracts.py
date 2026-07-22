@@ -30,6 +30,11 @@ from shared.mock_interview_opening import (
     build_mock_interview_opening,
     speak_mock_interview_opening,
 )
+from shared.prompt_contracts import (
+    DEMO_PROMPT_CONTRACT,
+    FULL_INTERVIEW_PROMPT_CONTRACT,
+    PromptContract,
+)
 from shared.safe_logging import log_exception_class
 from shared.utils.prompt_builder import build_agent_prompt
 from shared.candidate_presence import wait_for_candidate_before_greeting
@@ -981,7 +986,10 @@ class RuntimeContractTests(unittest.TestCase):
         isolated_module = ast.fix_missing_locations(
             ast.Module(body=[demo_builder], type_ignores=[])
         )
-        namespace = {}
+        namespace = {
+            "DEMO_PROMPT_CONTRACT": DEMO_PROMPT_CONTRACT,
+            "PromptContract": PromptContract,
+        }
         exec(compile(isolated_module, str(demo_path), "exec"), namespace)
 
         demo_prompt = namespace["build_demo_instructions"]({
@@ -1017,6 +1025,84 @@ class RuntimeContractTests(unittest.TestCase):
             "Feedback is delivered after the completed interview, never during it",
             full_prompt,
         )
+
+    def test_voice_prompt_contract_versions_keep_demo_and_full_interview_distinct(self):
+        self.assertEqual(
+            FULL_INTERVIEW_PROMPT_CONTRACT.version,
+            "full_interview_prompt_v1",
+        )
+        self.assertEqual(DEMO_PROMPT_CONTRACT.version, "public_demo_prompt_v1")
+        self.assertNotEqual(
+            FULL_INTERVIEW_PROMPT_CONTRACT.version,
+            DEMO_PROMPT_CONTRACT.version,
+        )
+        self.assertEqual(
+            FULL_INTERVIEW_PROMPT_CONTRACT.feedback_timing,
+            "post_interview_only",
+        )
+        self.assertEqual(
+            DEMO_PROMPT_CONTRACT.feedback_timing,
+            "explicit_takeaway_only",
+        )
+        self.assertEqual(
+            FULL_INTERVIEW_PROMPT_CONTRACT.follow_up_policy,
+            "adaptive_grounded_follow_ups",
+        )
+        self.assertEqual(
+            DEMO_PROMPT_CONTRACT.follow_up_policy,
+            "exactly_one_grounded_follow_up",
+        )
+
+    def test_prompt_builders_reject_unreviewed_contract_versions(self):
+        unreviewed_full_contract = PromptContract(
+            version="full_interview_prompt_v2",
+            mode=FULL_INTERVIEW_PROMPT_CONTRACT.mode,
+            round_family=FULL_INTERVIEW_PROMPT_CONTRACT.round_family,
+            question_policy=FULL_INTERVIEW_PROMPT_CONTRACT.question_policy,
+            follow_up_policy=FULL_INTERVIEW_PROMPT_CONTRACT.follow_up_policy,
+            feedback_timing=FULL_INTERVIEW_PROMPT_CONTRACT.feedback_timing,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, "Unsupported full interview prompt contract"
+        ):
+            build_agent_prompt(
+                "product_sense",
+                normalize_runtime_config({}),
+                prompt_contract=unreviewed_full_contract,
+            )
+
+        demo_path = Path(__file__).parent / "demo" / "agent.py"
+        demo_tree = ast.parse(demo_path.read_text())
+        demo_builder = next(
+            node
+            for node in demo_tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "build_demo_instructions"
+        )
+        isolated_module = ast.fix_missing_locations(
+            ast.Module(body=[demo_builder], type_ignores=[])
+        )
+        namespace = {
+            "DEMO_PROMPT_CONTRACT": DEMO_PROMPT_CONTRACT,
+            "PromptContract": PromptContract,
+        }
+        exec(compile(isolated_module, str(demo_path), "exec"), namespace)
+
+        unreviewed_demo_contract = PromptContract(
+            version="public_demo_prompt_v2",
+            mode=DEMO_PROMPT_CONTRACT.mode,
+            round_family=DEMO_PROMPT_CONTRACT.round_family,
+            question_policy=DEMO_PROMPT_CONTRACT.question_policy,
+            follow_up_policy=DEMO_PROMPT_CONTRACT.follow_up_policy,
+            feedback_timing=DEMO_PROMPT_CONTRACT.feedback_timing,
+        )
+        with self.assertRaisesRegex(
+            ValueError, "Unsupported public demo prompt contract"
+        ):
+            namespace["build_demo_instructions"](
+                prompt_contract=unreviewed_demo_contract
+            )
 
     def test_default_full_interview_prompts_preserve_mock_interviewer_contract(self):
         config = normalize_runtime_config({})

@@ -14,11 +14,20 @@ from shared.mock_interview_opening import (
     build_mock_interview_opening,
     selected_question_text,
 )
+from shared.prompt_contracts import (
+    FULL_INTERVIEW_PROMPT_CONTRACT,
+    PromptContract,
+)
 
 logger = logging.getLogger("prompt-builder")
 
 
-def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[str, Any] = None) -> str:
+def build_agent_prompt(
+    round_type: str,
+    config: Dict[str, Any],
+    question: Dict[str, Any] = None,
+    prompt_contract: PromptContract = FULL_INTERVIEW_PROMPT_CONTRACT,
+) -> str:
     """
     Build agent system prompt based on round type and configuration.
 
@@ -40,6 +49,9 @@ def build_agent_prompt(round_type: str, config: Dict[str, Any], question: Dict[s
     Raises:
         ValueError: If round_type is not recognized
     """
+    if prompt_contract != FULL_INTERVIEW_PROMPT_CONTRACT:
+        raise ValueError("Unsupported full interview prompt contract")
+
     # Map old round_type names to new interview_type names
     interview_type_map = {
         "behavioral": "leadership_drive",
@@ -204,6 +216,7 @@ DO NOT wait for them to speak first. YOU initiate the conversation.
             "round_type": round_type,
             "difficulty": difficulty,
             "has_question": bool(question_text),
+            "prompt_contract_version": prompt_contract.version,
         },
     )
     return base_prompt
