@@ -47,6 +47,7 @@ import {
 import {
   FeedbackProviderInvocationError,
   getAuthenticatedFeedbackRejectionCode,
+  type FeedbackProviderInvocationDiagnostic,
 } from "./scorer";
 
 export type CalibrationExecutionKind =
@@ -99,6 +100,7 @@ export interface CalibrationFailure {
   observedModelVersion?: string;
   expectedModelVersion?: string;
   feedbackRejectionCode?: FeedbackV2RejectionCode;
+  providerDiagnostic?: FeedbackProviderInvocationDiagnostic;
 }
 
 export interface EvaluationCalibrationReport {
@@ -1247,7 +1249,10 @@ function getObservedServiceTierFromError(
 function getSanitizedEvaluationFailure(
   error: unknown,
   executionKind: CalibrationExecutionKind
-): Pick<CalibrationFailure, "code" | "feedbackRejectionCode"> {
+): Pick<
+  CalibrationFailure,
+  "code" | "feedbackRejectionCode" | "providerDiagnostic"
+> {
   if (
     executionKind !== "live_provider" ||
     !(error instanceof FeedbackProviderInvocationError)
@@ -1260,8 +1265,12 @@ function getSanitizedEvaluationFailure(
     case "evaluation_provider_returned_no_content":
     case "evaluation_provider_returned_invalid_json":
     case "evaluation_provider_usage_missing":
-    case "evaluation_provider_invocation_failed":
       return { code };
+    case "evaluation_provider_invocation_failed":
+      return {
+        code,
+        providerDiagnostic: error.diagnostic,
+      };
     case "evaluation_provider_returned_invalid_feedback": {
       const authenticatedCode = getAuthenticatedFeedbackRejectionCode(error);
       return {

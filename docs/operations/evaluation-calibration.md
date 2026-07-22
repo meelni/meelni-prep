@@ -573,10 +573,14 @@ If a live run fails or crashes, keep calibration evidence acceptance failed or
 pending and retain a `not ready` launch-readiness recommendation. Inspect
 available case/run/dimension failure records. For invalid-feedback failures,
 use only the closed `feedbackRejectionCode` to identify the failed invariant.
-Do not add raw
-provider output, parser messages or causes, transcript text, evidence text,
-unknown keys, object paths, or customer data to a report, log, PR, or ticket. A
-`parser_internal_failure` requires a provider-free parser investigation before
-any new authorization. Update the evaluator or adjudication deliberately, and
-obtain a separate new authorization before any paid retry.
+For provider invocation failures, use only the optional bounded
+`providerDiagnostic.kind` and numeric `providerDiagnostic.httpStatus` to triage
+the transport/request category. Do not add raw provider output, provider error
+messages, parser messages or causes, transcript text, evidence text, unknown
+keys, object paths, headers, request bodies, response bodies, or customer data
+to a report, log, PR, or ticket. A `parser_internal_failure` requires a
+provider-free parser investigation before any new authorization. An invocation
+failure without a bounded diagnostic requires a provider-free diagnostics fix
+before another paid authorization package. Update the evaluator or adjudication
+deliberately, and obtain a separate new authorization before any paid retry.
 The activated SAV-198 run never resumes.

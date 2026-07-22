@@ -473,6 +473,54 @@ test("provider-error tier identity and known usage survive sanitization", async 
   );
 });
 
+test("provider invocation failures expose only bounded diagnostics", async () => {
+  const secret = "provider-controlled-message-must-not-survive";
+  const report = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    adjudicationApproval: approvalFixture(),
+    spendGuard: liveGuard(),
+    evaluator: async (input) => {
+      await input.beforePhysicalRequest?.();
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_invocation_failed",
+        undefined,
+        undefined,
+        undefined,
+        {
+          cause: new Error(secret),
+          diagnostic: {
+            kind: "provider_bad_request",
+            httpStatus: 400,
+          },
+        }
+      );
+    },
+  });
+
+  assert.deepEqual(report.failures[0], {
+    caseId: "product_sense:01:caregiver-planning",
+    runIndex: 0,
+    code: "evaluation_provider_invocation_failed",
+    providerDiagnostic: {
+      kind: "provider_bad_request",
+      httpStatus: 400,
+    },
+  });
+  assert.equal(report.execution.cost?.attemptedCalls, 1);
+  assert.equal(report.execution.cost?.completedCalls, 0);
+  assert.equal(report.execution.cost?.stopReason, "missing_provider_usage");
+  assert.equal(report.execution.cost?.actualCostComplete, false);
+  assert.equal(
+    JSON.stringify(report).includes(secret),
+    false,
+    "provider-controlled diagnostics must not appear in the public report"
+  );
+});
+
 test("invalid feedback reports one authenticated invariant while preserving exact known cost", async () => {
   const secret = "private-provider-output-must-never-survive";
   const usage = {
