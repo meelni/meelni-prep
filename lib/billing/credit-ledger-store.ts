@@ -32,7 +32,7 @@ import type {
   LedgerCreditReservation,
   LedgerCreditTransaction,
   LedgerReservationAllocation,
-} from "./credits";
+} from "./credit-ledger-contracts";
 
 export type CreditLedgerDatabase = typeof db;
 export type CreditLedgerTransactionDatabase = Parameters<

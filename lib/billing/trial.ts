@@ -1,5 +1,9 @@
-import type { CreditLedgerStore, GrantCreditsResult } from "./credits";
-import { getTrialGrantIdempotencyKey, type GrantCreditsInput } from "./credits";
+import type {
+  CreditLedgerStore,
+  GrantCreditsInput,
+  GrantCreditsResult,
+} from "./credit-ledger-contracts";
+import { getTrialGrantIdempotencyKey } from "./credits";
 
 export interface TrialGrantService {
   grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult>;
