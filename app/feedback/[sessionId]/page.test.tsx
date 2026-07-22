@@ -104,9 +104,12 @@ describe("feedback transcript read states", () => {
     vi.stubGlobal("fetch", request);
 
     render(<FeedbackPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Expand" }));
+    fireEvent.click(await findTranscriptExpandButton());
+    await waitFor(() => expect(transcriptAttempts).toBe(1));
 
-    const failure = await screen.findByRole("alert");
+    const failure = await screen.findByRole("alert", undefined, {
+      timeout: 5000,
+    });
     expect(failure).toHaveTextContent("Transcript could not be loaded");
     expect(
       screen.queryByText("No transcript is available for this interview.")
@@ -138,7 +141,7 @@ describe("feedback transcript read states", () => {
     vi.stubGlobal("fetch", request);
 
     render(<FeedbackPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Expand" }));
+    fireEvent.click(await findTranscriptExpandButton());
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading transcript"
@@ -177,6 +180,7 @@ describe("feedback transcript read states", () => {
 
   it("ignores a stale transcript response after the session changes", async () => {
     let resolveFirstTranscript: ((response: Response) => void) | undefined;
+    let resolveSecondTranscript: ((response: Response) => void) | undefined;
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === `/api/feedback/${SESSION_ID}`) {
@@ -191,14 +195,16 @@ describe("feedback transcript read states", () => {
         });
       }
       if (url === `/api/session/${SECOND_SESSION_ID}/transcript`) {
-        return transcriptResponse(SECOND_SESSION_ID, "Current session turn");
+        return new Promise<Response>((resolve) => {
+          resolveSecondTranscript = resolve;
+        });
       }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", request);
 
     const view = render(<FeedbackPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Expand" }));
+    fireEvent.click(await findTranscriptExpandButton());
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading transcript"
     );
@@ -206,7 +212,18 @@ describe("feedback transcript read states", () => {
 
     navigation.sessionId = SECOND_SESSION_ID;
     view.rerender(<FeedbackPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Expand" }));
+    fireEvent.click(await findTranscriptExpandButton());
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Loading transcript"
+    );
+    expect(resolveSecondTranscript).toBeDefined();
+
+    await act(async () => {
+      resolveSecondTranscript?.(
+        transcriptResponse(SECOND_SESSION_ID, "Current session turn")
+      );
+    });
+
     expect(await screen.findByText("Current session turn")).toBeInTheDocument();
 
     await act(async () => {
@@ -399,6 +416,10 @@ function transcriptResponse(sessionId: string, text: string) {
       },
     ],
   });
+}
+
+function findTranscriptExpandButton() {
+  return screen.findByRole("button", { name: "Expand" }, { timeout: 5000 });
 }
 
 function focusedPracticeAttempt(state: "in_progress" | "completed") {

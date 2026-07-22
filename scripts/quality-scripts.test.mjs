@@ -51,7 +51,7 @@ test("CI includes feedback and consent accessibility regression fixtures", () =>
   );
   assert.match(
     scripts["test:ui"],
-    /tsx\s+--test[\s\S]*&&\s+vitest\s+run\s+['"]app\/feedback\/\[sessionId\]\/page\.test\.tsx['"]/
+    /tsx\s+--test[\s\S]*&&\s+vitest\s+run\s+--fileParallelism=false\s+['"]app\/feedback\/\[sessionId\]\/page\.test\.tsx['"]/
   );
   assert.match(
     scripts["test:ui"],
