@@ -161,13 +161,14 @@ test("v3 plan remains a non-executable proposal until fresh exact owner approval
 
 test("a verified owner handoff activates only the exact signed plan", async () => {
   const ownerAuthorization = buildVerifiedOwnerAuthorization();
+  const activationNow = new Date(NOW.getTime() + 524);
   const options: ActivateCalibrationRunOptions = {
     ownerAuthorization,
     authorization: ownerAuthorization.authorization,
     adjudicationApproval: approvalFixture(),
     model: CALIBRATION_PRICING_CONTRACT.model,
     repetitions: 2,
-    now: NOW,
+    now: activationNow,
     activationId: "verified-owner-activation",
   };
   const plan = buildCalibrationActivatedPlan({
@@ -175,7 +176,7 @@ test("a verified owner handoff activates only the exact signed plan", async () =
     adjudicationApproval: options.adjudicationApproval,
     model: options.model,
     repetitions: options.repetitions,
-    now: NOW,
+    now: activationNow,
   });
   const genesis = buildCalibrationAuthorizationGenesis(
     plan,
@@ -191,6 +192,10 @@ test("a verified owner handoff activates only the exact signed plan", async () =
   assert.equal(authority.planHash, plan.planHash);
   assert.equal(authority.authorizationId, plan.authorizationId);
   assert.equal(state.refSha, authority.activationCommit);
+  assert.equal(
+    state.commits.get(authority.activationCommit)?.author.date,
+    NOW.toISOString()
+  );
 
   await assert.rejects(
     () =>
@@ -842,14 +847,19 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     parents: string[];
     date: string;
   }): GitHubCommit {
-    const sha = createHash("sha1").update(JSON.stringify(input)).digest("hex");
+    const normalizedDate = new Date(
+      Math.floor(new Date(input.date).getTime() / 1_000) * 1_000
+    ).toISOString();
+    const sha = createHash("sha1")
+      .update(JSON.stringify({ ...input, date: normalizedDate }))
+      .digest("hex");
     const commit: GitHubCommit = {
       sha,
       message: input.message,
       treeSha: input.treeSha,
       parents: [...input.parents],
-      author: commitIdentity(input.date),
-      committer: commitIdentity(input.date),
+      author: commitIdentity(normalizedDate),
+      committer: commitIdentity(normalizedDate),
     };
     this.state.commits.set(sha, commit);
     return structuredClone(commit);
