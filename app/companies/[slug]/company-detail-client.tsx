@@ -19,10 +19,30 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { normalizeQuestionRound } from "@meelni/core";
+
 import { Header } from "@/components/sections/header";
 import type { PublicCompanyGuide } from "@/lib/data/public-company";
 import { PublicActivationButton } from "@/components/public-activation-action";
-import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
+import {
+  buildNewInterviewHref,
+  NEW_INTERVIEW_PATH,
+} from "@/lib/navigation/interview-launch";
+
+function buildCompanyRoundPracticeHref(
+  company: PublicCompanyGuide,
+  category: string
+): string {
+  const searchParams = new URLSearchParams({
+    company: company.name,
+    returnTo: `/companies/${company.slug}`,
+  });
+  const roundType = normalizeQuestionRound(category);
+  if (roundType) {
+    searchParams.set("interview_type", roundType);
+  }
+  return buildNewInterviewHref(searchParams);
+}
 
 export function CompanyDetailClient({
   company,
@@ -179,6 +199,22 @@ export function CompanyDetailClient({
                       )}
                     </Button>
                   )}
+                  <div className="border-border/40 flex flex-col gap-3 border-t px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-muted-foreground text-xs">
+                      Practice this company tag and round type in setup.
+                    </p>
+                    <PublicActivationButton
+                      href={buildCompanyRoundPracticeHref(
+                        company,
+                        category.category
+                      )}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Practice {category.category}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </PublicActivationButton>
+                  </div>
                 </div>
               );
             })}
