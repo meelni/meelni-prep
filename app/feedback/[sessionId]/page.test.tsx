@@ -258,6 +258,84 @@ describe("feedback transcript read states", () => {
       screen.queryByText("Stale prior session summary")
     ).not.toBeInTheDocument();
   });
+
+  it("starts and completes focused practice from completed feedback", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/feedback/${SESSION_ID}`) {
+        return completedFeedbackResponse();
+      }
+      if (url === "/api/focused-practice/attempts/start") {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          sourceSessionId: SESSION_ID,
+        });
+        return Response.json({
+          disposition: "created",
+          attempt: focusedPracticeAttempt("in_progress"),
+        });
+      }
+      if (
+        url ===
+        "/api/focused-practice/attempts/focused-practice-attempt-1/complete"
+      ) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          contractVersion: "focused-practice-completion.v1",
+          practicedAloud: true,
+          response: {
+            kind: "revised_answer",
+            text: "I would revise the answer by naming the user, problem, and priority first.",
+          },
+        });
+        return Response.json({
+          disposition: "completed",
+          attempt: focusedPracticeAttempt("completed"),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start focused practice" })
+    );
+
+    expect(
+      await screen.findByText("Strengthen the Product Sense structure")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/does not start another interview, use another credit/i)
+    ).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByLabelText("Your revised answer"),
+      {
+        target: {
+          value:
+            "I would revise the answer by naming the user, problem, and priority first.",
+        },
+      }
+    );
+    fireEvent.click(
+      screen.getByLabelText(
+        "I practiced this answer out loud before saving the self-review."
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save self-review" }));
+
+    expect(
+      await screen.findByText("Completed focused practice")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Your saved self-review")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "I would revise the answer by naming the user, problem, and priority first."
+      )
+    ).toBeInTheDocument();
+  });
 });
 
 function completedFeedbackResponse(
@@ -321,4 +399,93 @@ function transcriptResponse(sessionId: string, text: string) {
       },
     ],
   });
+}
+
+function focusedPracticeAttempt(state: "in_progress" | "completed") {
+  const base = {
+    attemptId: "focused-practice-attempt-1",
+    sourceSessionId: SESSION_ID,
+    contractVersion: "focused-practice-attempt.v1",
+    feedbackVersion: {
+      schemaVersion: "feedback.v2",
+      promptVersion: "feedback.prompt.v2",
+      rubricVersion: "pm-feedback-rubric.v2",
+      modelVersion: "synthetic-fixture-model",
+      evaluationState: "full",
+    },
+    plan: {
+      state: "available",
+      contractVersion: "focused-practice-plan.v1",
+      templateVersion: "focused-practice-templates.v1",
+      durationMinutes: 5,
+      templateId:
+        "focused-practice:focused-practice-templates.v1:product_sense:structure:grounded_full",
+      title: "Strengthen the Product Sense structure",
+      objective:
+        "Connect the user goal, problem, solution choice, and prioritization in a clear sequence.",
+      instructions: [
+        "Replay the original question and answer the same prompt aloud.",
+        "Rewrite only the part named in the feedback so the success criterion is clear.",
+      ],
+      successCriterion:
+        "The revision moves from one target user and problem to a prioritized solution with an explicit product rationale.",
+      selfReviewPrompt:
+        "Can a listener follow the path from target user to problem, solution, and priority without filling in a missing step?",
+      source: {
+        questionId: "question-1",
+        questionText: "Design a product for working parents.",
+        recommendationId:
+          "focused-practice:focused-practice-templates.v1:product_sense:structure:grounded_full",
+        roundType: "product_sense",
+        focusDimension: "structure",
+        evidenceGap: "grounded_full",
+        transcriptRefs: ["turn-2"],
+        confidence: 0.8,
+      },
+    },
+    sourceFinding: {
+      dimension: "structure",
+      observation: "Synthetic structure observation",
+      nextStep: "State the user, problem, and priority before solutions.",
+      transcriptRefs: ["turn-2"],
+      confidence: 0.8,
+    },
+    startedAt: "2099-07-15T21:00:00.000Z",
+  };
+
+  if (state === "in_progress") {
+    return {
+      ...base,
+      state,
+      lifecycleVersion: 0,
+      completedAt: null,
+      completion: null,
+    };
+  }
+
+  return {
+    ...base,
+    state,
+    lifecycleVersion: 1,
+    completedAt: "2099-07-15T21:05:00.000Z",
+    completion: {
+      contractVersion: "focused-practice-completion.v1",
+      practicedAloud: true,
+      selfReview: {
+        version: "focused-practice-self-review.v1",
+        kind: "self_review",
+        focusDimension: "structure",
+        sourceObservation: "Synthetic structure observation",
+        sourceNextStep: "State the user, problem, and priority before solutions.",
+        successCriterion:
+          "The revision moves from one target user and problem to a prioritized solution with an explicit product rationale.",
+        prompt:
+          "Can a listener follow the path from target user to problem, solution, and priority without filling in a missing step?",
+        response: {
+          kind: "revised_answer",
+          text: "I would revise the answer by naming the user, problem, and priority first.",
+        },
+      },
+    },
+  };
 }
