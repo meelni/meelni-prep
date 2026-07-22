@@ -31023,7 +31023,9 @@ async function activateCalibrationRunWithClient(options, github, mode) {
     planHash: plan.planHash,
     activationId
   });
-  const activationDate = now.toISOString();
+  const activationDate = new Date(
+    Math.floor(now.getTime() / 1e3) * 1e3
+  ).toISOString();
   const activation = await github.createCommit({
     message: activationMessage,
     treeSha: SAV_248_V3_EMPTY_TREE_OID,
