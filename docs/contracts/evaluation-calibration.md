@@ -304,8 +304,10 @@ signature is domain-separated by the contract identifier and verified against
 an active public key in `config/evaluation-calibration-owner-keys.json`. That
 registry contains public verification material only; private signing material
 must never enter source, chat, environment files, logs, or generated evidence.
-The registry is intentionally empty in the current handoff, so no artifact can
-become executable until a separately reviewed owner public key is enrolled.
+The registry alone is not approval evidence: no artifact can become executable
+until a fresh exact owner authorization is signed outside Git and verified
+against the final post-merge source commit, regenerated plan, and current
+pricing/runtime hashes.
 
 The signed payload binds one new v3 authorization ID, the exact 40-character
 reviewed source commit, exact regenerated plan hash, equal planned provider-call

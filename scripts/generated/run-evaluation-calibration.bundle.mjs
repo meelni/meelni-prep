@@ -30380,7 +30380,16 @@ import { isAbsolute, relative } from "node:path";
 var evaluation_calibration_owner_keys_default = {
   contract: "meelni.evaluation-calibration-owner-key-registry.v1",
   ownerId: "saviii",
-  keys: []
+  keys: [
+    {
+      algorithm: "ed25519",
+      keyId: "meelni-owner-2026-07",
+      notAfter: "2027-07-21T00:00:00.000Z",
+      notBefore: "2026-07-21T00:00:00.000Z",
+      publicKeyPem: "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAguXkGRMaBZqRAscj2aZ6J7rT22AmqcMQPqZscICNazI=\n-----END PUBLIC KEY-----\n",
+      status: "active"
+    }
+  ]
 };
 
 // lib/evaluation/calibration-owner-authorization.ts
