@@ -13,8 +13,7 @@ print("TESTING DEMO AGENT - Import Verification")
 print("=" * 80)
 print()
 
-print("Demo agent is standalone and doesn't use shared modules.")
-print("It only requires LiveKit SDK imports.")
+print("Demo agent keeps its runtime standalone but may import shared contracts.")
 print()
 
 # Verify the demo agent file exists and has correct structure
@@ -30,10 +29,28 @@ if demo_agent_file.exists():
         else:
             print("⚠️  Warning: Demo agent missing sys.path setup (may not be needed)")
 
-        if 'from shared' in content:
-            print("⚠️  Warning: Demo agent imports from shared (not expected)")
+        allowed_shared_imports = {
+            'from shared.candidate_presence import wait_for_candidate_before_greeting',
+            'from shared.dispatch import resolve_cli_dispatch_name',
+            'from shared.prompt_contracts import DEMO_PROMPT_CONTRACT, PromptContract',
+            'from shared.safe_logging import log_exception_class',
+        }
+        shared_imports = {
+            line.strip()
+            for line in content.splitlines()
+            if line.strip().startswith("from shared")
+        }
+        unexpected_shared_imports = shared_imports - allowed_shared_imports
+
+        if unexpected_shared_imports:
+            print("❌ Demo agent has unexpected shared imports:")
+            for shared_import in sorted(unexpected_shared_imports):
+                print(f"   - {shared_import}")
+            sys.exit(1)
+        elif shared_imports:
+            print("✅ Demo agent uses only allowed shared runtime/contract imports")
         else:
-            print("✅ Demo agent is standalone (no shared imports)")
+            print("✅ Demo agent has no shared imports")
 else:
     print(f"❌ Demo agent file not found: {demo_agent_file}")
     sys.exit(1)
