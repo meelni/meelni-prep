@@ -4,10 +4,10 @@
   "decisionSource": null,
   "humanReviewerIdentity": null,
   "proposedAt": "2026-07-22T03:32:00.000Z",
-  "acceptanceBasis": "fresh_v3_authorization_and_exact_source_commit_still_required",
+  "acceptanceBasis": "fresh_v4_authorization_and_exact_source_commit_still_required",
   "authorization": {
-    "authorizationId": "sav-248-pending-paid-calibration-authorization.v3",
-    "runId": "sav-248-authorized-paid-calibration.v3",
+    "authorizationId": "sav-248-pending-paid-calibration-authorization.v4",
+    "runId": "sav-248-authorized-paid-calibration.v4",
     "authorizationStatus": "pending_explicit_product_owner_approval",
     "authorizedOn": null,
     "authorizationSource": null,
@@ -27,11 +27,16 @@
         "runId": "sav-248-authorized-paid-calibration.v2",
         "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2",
         "activationCommit": "d0c4fc4c028b10d8616fdde337be150315a7798c"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v3",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3",
+        "activationCommit": "1baee0b82c61cb6d89dbe9dc23cee1beccf72b31"
       }
     ]
   },
   "proposedPlan": {
-    "planHash": "5fc174a44d8fd42d0e59c8c9c5da033a2d6dc485d33b603d9703ad7e54bfa8b6",
+    "planHash": "3e0078f436182b282ad2b9aabdde33647373b9f3e2ec32625f3f18ecba06b6c1",
     "plannedCalls": 64,
     "plannedWorstCaseNanoUsd": 2247265000,
     "plannedWorstCaseUsd": 2.247265,
