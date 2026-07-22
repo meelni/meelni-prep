@@ -213,6 +213,48 @@ Production guardrails:
   `OPENAI_API_KEY`, xtrace, preload, proxy, and TLS override state are rejected
   or stripped before Node starts.
 
+## Statsig
+
+Canonical target:
+
+- Project ID: `01k0KuJePjFDEf80vuH61R`
+- Relaunch gate: `meelni_reactivation_access`
+- Gate owner: `Savi Singh <contact@meelni.com>`
+- Owner Statsig user ID: `7spxjTLm7lyPibNJavcTmx`
+- Gate URL:
+  `https://console.statsig.com/01k0KuJePjFDEf80vuH61R/gates/meelni_reactivation_access`
+
+Safe read-only verification:
+
+- Read gate details for `meelni_reactivation_access`.
+- List gate eligible reviewers.
+- List gate reviews.
+
+Current SAV-283 evidence from 2026-07-21:
+
+- Gate status: `Disabled`
+- `isEnabled: false`
+- Rules: empty
+- Owner: `contact@meelni.com`
+- `reviewSettings.requiredReview: false`
+- `reviewSettings.allowedReviewers: []`
+- Eligible reviewers: `everyone_eligible: true`, with no enumerated users or
+  groups
+- Reviews: none
+
+Production guardrails:
+
+- SAV-283 itself does not authorize mutating Statsig. Get explicit owner
+  approval before creating, approving, committing, or cancelling gate reviews.
+- Do not use direct full-gate update APIs for relaunch-governance work unless a
+  provider limitation makes the review API impossible and the owner has approved
+  that exact fallback.
+- Do not enable `meelni_reactivation_access`, add targeting rules, change
+  fallback defaults, or authorize launch while configuring review governance.
+- If Statsig cannot restrict allowed reviewers to `contact@meelni.com`, stop and
+  record the exact limitation; do not accept `everyone_eligible` as owner-only
+  launch governance.
+
 ## LiveKit
 
 Canonical target:
