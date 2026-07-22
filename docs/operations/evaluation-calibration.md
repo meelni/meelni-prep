@@ -261,7 +261,7 @@ attested runtime environment. That exact snapshot is bound to the repository's
 reviewed `evaluation-calibration-pricing.v1` contract; a moving alias or any
 other model fails before call one. The current proposal's pricing contract was
 re-verified against the official OpenAI GPT-5.1 model page at
-`2026-07-18T19:00:00.000Z` and uses Standard rates of $1.25/M uncached input,
+`2026-07-22T03:31:58.000Z` and uses Standard rates of $1.25/M uncached input,
 $0.125/M cached input, and $10/M output tokens. The review is valid for only 24
 hours and is not expected to remain current through merge. Refresh the reviewed
 timestamp in code only after rechecking the official page, then regenerate the
@@ -306,7 +306,7 @@ npm run calibration:plan-proposal -- \
 
 The current proposal is 64 physical calls (two symmetric runs for each of 32
 scored fixtures), 2,247,265,000 nano-USD ($2.247265) worst case, and hash
-`a0ca65f49bcbf6f0140701a1eb2e58d018b916e18a5bf80b3c438938d4062363`.
+`5fc174a44d8fd42d0e59c8c9c5da033a2d6dc485d33b603d9703ad7e54bfa8b6`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
@@ -352,7 +352,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: d9dbb6b0b6d203e7a5e0c92d868451bbc5f2d9f2
+proposal commit: 482fd78ce5f17837be1b61699c04e6f4b4ebeeac
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
