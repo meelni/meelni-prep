@@ -4,7 +4,6 @@ import {
   memo,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -43,9 +42,6 @@ import {
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { SettingsNotice } from "@/components/dashboard/settings-notice";
 import {
-  SETTINGS_CATEGORY_LABELS,
-  SETTINGS_CATEGORY_ORDER,
-  initialsForUser,
   labelForDifficulty,
   labelForInterviewType,
   labelForQuestionRecency,
@@ -60,23 +56,17 @@ import {
   type AccountDeletionResult,
   type SettingsLoadState,
 } from "@/lib/dashboard/settings-actions";
+import {
+  SETTINGS_NAV_ITEMS,
+  buildSettingsAccountViewModel,
+  buildSettingsPlanSummary,
+  resolveSettingsCategory,
+  type SettingsCreditSummary,
+  type SettingsSubscriptionSummary,
+} from "@/lib/dashboard/settings-view-model";
 import { scrubRetiredTranscriptBrowserStorage } from "@/lib/privacy/transcript-browser-storage";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { cn } from "@/lib/utils";
-
-interface SubscriptionSummary {
-  tier?: string;
-  status?: string;
-  planName?: string;
-  currentPeriodEnd?: string | null;
-  cancelAtPeriodEnd?: boolean;
-}
-
-interface CreditSummary {
-  availableCredits?: number;
-  reservedCredits?: number;
-  nextCreditExpiresAt?: string | null;
-}
 
 type LoadState = SettingsLoadState;
 
@@ -94,19 +84,14 @@ export const SettingsSection = memo(function SettingsSection() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<LoadState>("idle");
   const [billingState, setBillingState] = useState<LoadState>("idle");
-  const [subscription, setSubscription] = useState<SubscriptionSummary | null>(
-    null
-  );
-  const [credits, setCredits] = useState<CreditSummary | null>(null);
+  const [subscription, setSubscription] =
+    useState<SettingsSubscriptionSummary | null>(null);
+  const [credits, setCredits] = useState<SettingsCreditSummary | null>(null);
 
   useEffect(() => {
-    const requestedCategory = searchParams.get("section");
-    if (
-      requestedCategory &&
-      SETTINGS_CATEGORY_ORDER.includes(requestedCategory as SettingsCategoryId)
-    ) {
-      setActiveCategory(requestedCategory as SettingsCategoryId);
-    }
+    setActiveCategory((currentCategory) =>
+      resolveSettingsCategory(searchParams.get("section"), currentCategory)
+    );
   }, [searchParams]);
 
   useEffect(() => {
@@ -167,8 +152,8 @@ export const SettingsSection = memo(function SettingsSection() {
         }
 
         const [subscriptionData, creditData] = await Promise.all([
-          subscriptionResponse.json() as Promise<SubscriptionSummary>,
-          creditsResponse.json() as Promise<CreditSummary>,
+          subscriptionResponse.json() as Promise<SettingsSubscriptionSummary>,
+          creditsResponse.json() as Promise<SettingsCreditSummary>,
         ]);
 
         if (!cancelled) {
@@ -194,21 +179,6 @@ export const SettingsSection = memo(function SettingsSection() {
       cancelled = true;
     };
   }, []);
-
-  const accountName = settings.displayName || fallbackName || "User";
-  const signInMethod = useMemo(() => {
-    const provider = user?.app_metadata?.provider;
-
-    if (provider === "google") {
-      return "Google sign-in";
-    }
-
-    if (provider === "email") {
-      return "Email sign-in";
-    }
-
-    return "Email sign-in";
-  }, [user?.app_metadata?.provider]);
 
   const updateSettings = (patch: Partial<DashboardSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
@@ -268,16 +238,16 @@ export const SettingsSection = memo(function SettingsSection() {
             aria-label="Settings"
             className="-mx-1 mt-5 grid grid-cols-2 gap-2 px-1 pb-2 lg:mx-0 lg:flex lg:flex-col lg:px-0 lg:pb-0"
           >
-            {SETTINGS_CATEGORY_ORDER.map((category) => {
-              const selected = activeCategory === category;
+            {SETTINGS_NAV_ITEMS.map((category) => {
+              const selected = activeCategory === category.id;
 
               return (
                 <DashboardSidebarNavItem
-                  key={category}
+                  key={category.id}
                   selected={selected}
-                  onClick={() => setActiveCategory(category)}
+                  onClick={() => setActiveCategory(category.id)}
                 >
-                  <span>{SETTINGS_CATEGORY_LABELS[category]}</span>
+                  <span>{category.label}</span>
                 </DashboardSidebarNavItem>
               );
             })}
@@ -295,16 +265,16 @@ export const SettingsSection = memo(function SettingsSection() {
 
           {activeCategory === "account" && (
             <AccountPane
-              accountName={accountName}
-              email={user?.email || ""}
-              initials={initialsForUser(accountName, user?.email)}
-              signInMethod={signInMethod}
-              sessionStartedAt={
-                session?.expires_at
-                  ? "Signed in on this device"
-                  : "Active session"
-              }
-              displayName={settings.displayName}
+              account={buildSettingsAccountViewModel({
+                settings,
+                fallbackName,
+                email: user?.email,
+                provider:
+                  typeof user?.app_metadata?.provider === "string"
+                    ? user.app_metadata.provider
+                    : null,
+                sessionExpiresAt: session?.expires_at,
+              })}
               onDisplayNameChange={(displayName) =>
                 updateSettings({ displayName })
               }
@@ -355,23 +325,13 @@ export const SettingsSection = memo(function SettingsSection() {
 });
 
 function AccountPane({
-  accountName,
-  email,
-  initials,
-  signInMethod,
-  sessionStartedAt,
-  displayName,
+  account,
   onDisplayNameChange,
   onSave,
   onSignOut,
   saveState,
 }: {
-  accountName: string;
-  email: string;
-  initials: string;
-  signInMethod: string;
-  sessionStartedAt: string;
-  displayName: string;
+  account: ReturnType<typeof buildSettingsAccountViewModel>;
   onDisplayNameChange: (value: string) => void;
   onSave: () => void;
   onSignOut: () => void;
@@ -388,14 +348,16 @@ function AccountPane({
           <div className="flex min-w-0 items-center gap-4">
             <div className="border-primary/40 bg-primary/10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
               <span className="text-dashboard-foreground text-sm font-bold">
-                {initials}
+                {account.initials}
               </span>
             </div>
             <div className="min-w-0">
               <p className="text-dashboard-foreground truncate text-sm font-bold">
-                {accountName}
+                {account.accountName}
               </p>
-              <p className="text-dashboard-muted truncate text-sm">{email}</p>
+              <p className="text-dashboard-muted truncate text-sm">
+                {account.email}
+              </p>
             </div>
           </div>
           <div className="w-full sm:w-64">
@@ -404,7 +366,7 @@ function AccountPane({
             </Label>
             <Input
               id="display-name"
-              value={displayName}
+              value={account.displayName}
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Display name"
               className="border-dashboard-panel-border text-dashboard-foreground placeholder:text-dashboard-muted bg-transparent"
@@ -418,15 +380,15 @@ function AccountPane({
 
       <SettingsGroup label="Access">
         <SettingsActionRow
-          title={signInMethod}
-          description={email}
+          title={account.signInMethod}
+          description={account.email}
           actionLabel="Managed"
           disabled
         />
         <SettingsActionRow
           title="Password"
           description={
-            signInMethod === "Google sign-in"
+            account.signInMethod === "Google sign-in"
               ? "Managed by your Google account"
               : "Use password reset from the sign-in screen"
           }
@@ -435,7 +397,7 @@ function AccountPane({
         />
         <SettingsActionRow
           title="Current session"
-          description={sessionStartedAt}
+          description={account.sessionStartedAt}
           actionLabel="Sign out"
           onClick={onSignOut}
         />
@@ -518,10 +480,11 @@ function PlanCreditsPane({
   credits,
 }: {
   billingState: LoadState;
-  subscription: SubscriptionSummary | null;
-  credits: CreditSummary | null;
+  subscription: SettingsSubscriptionSummary | null;
+  credits: SettingsCreditSummary | null;
 }) {
   const [portalState, setPortalState] = useState<LoadState>("idle");
+  const summaryTiles = buildSettingsPlanSummary({ subscription, credits });
 
   const openBillingPortal = async () => {
     setPortalState("loading");
@@ -581,25 +544,14 @@ function PlanCreditsPane({
       )}
 
       <div className="border-dashboard-panel-border grid gap-0 border-y md:grid-cols-3">
-        <SummaryTile
-          label="Plan"
-          value={subscription?.planName || subscription?.tier || "Unavailable"}
-          description={subscription?.status || "Current status not loaded"}
-        />
-        <SummaryTile
-          label="Available credits"
-          value={String(credits?.availableCredits ?? "0")}
-          description={`${credits?.reservedCredits ?? 0} reserved`}
-        />
-        <SummaryTile
-          label="Next expiration"
-          value={formatDateLabel(credits?.nextCreditExpiresAt)}
-          description={
-            subscription?.cancelAtPeriodEnd
-              ? "Subscription ending"
-              : "Credit-based access"
-          }
-        />
+        {summaryTiles.map((tile) => (
+          <SummaryTile
+            key={tile.label}
+            label={tile.label}
+            value={tile.value}
+            description={tile.description}
+          />
+        ))}
       </div>
 
       <SettingsGroup label="Billing actions">
@@ -1334,15 +1286,4 @@ function SummaryTile({
       <p className="text-dashboard-muted mt-1 text-sm">{description}</p>
     </div>
   );
-}
-
-function formatDateLabel(value?: string | null) {
-  if (!value) {
-    return "None";
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
 }
