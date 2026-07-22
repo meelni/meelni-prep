@@ -259,6 +259,34 @@ test("shared environment refreshes require a valid Production project declaratio
   );
 });
 
+test("shared environment refreshes require a strong contact HMAC secret", () => {
+  const valid = scopedEnv(previewRef);
+  assert.doesNotThrow(() => validateRefreshedEnv(valid, "preview"));
+
+  const absent = valid.replace(/^CONTACT_RATE_LIMIT_HMAC_SECRET=.*\n/m, "");
+  assert.throws(
+    () => validateRefreshedEnv(absent, "preview"),
+    /CONTACT_RATE_LIMIT_HMAC_SECRET/
+  );
+
+  for (const invalid of [
+    '""',
+    "a".repeat(64),
+    "change-me-contact-secret-1234567890",
+  ]) {
+    assert.throws(
+      () =>
+        validateRefreshedEnv(
+          scopedEnv(previewRef, {
+            CONTACT_RATE_LIMIT_HMAC_SECRET: invalid,
+          }),
+          "preview"
+        ),
+      /CONTACT_RATE_LIMIT_HMAC_SECRET/
+    );
+  }
+});
+
 test("a same-project service-role JWT is rejected as a browser anon key", () => {
   const env = scopedEnv(previewRef, {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: anonJwt(previewRef, "service_role"),
@@ -712,6 +740,7 @@ async function fixtureRoot(t) {
 function scopedEnv(ref, overrides = {}, environment = "preview") {
   return (
     Object.entries({
+      CONTACT_RATE_LIMIT_HMAC_SECRET: "dedicated-secret-82^fQm19!contact-HMAC",
       DATABASE_URL: databaseUrl(ref, "secret"),
       DEMO_ABUSE_HMAC_SECRET: "d".repeat(43),
       LIVEKIT_API_KEY: "livekit-api-key",

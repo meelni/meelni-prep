@@ -27,11 +27,13 @@ import {
   readSupabaseJwtClaims,
   supabaseJwtIssuerMatchesProject,
 } from "../lib/supabase/supabase-jwt.mjs";
+import { isValidServerSecret } from "../lib/security/server-secret.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const PRESERVE_WHEN_ENCRYPTED_KEYS = [
   "CONTACT_NOTIFICATION_EMAIL",
+  "CONTACT_RATE_LIMIT_HMAC_SECRET",
   "CRON_SECRET",
   "DATABASE_URL",
   "DEMO_ABUSE_HMAC_SECRET",
@@ -70,6 +72,7 @@ export const PRESERVE_WHEN_ENCRYPTED_KEYS = [
 ];
 
 const REQUIRED_RUNTIME_KEYS = [
+  "CONTACT_RATE_LIMIT_HMAC_SECRET",
   "DATABASE_URL",
   "DEMO_ABUSE_HMAC_SECRET",
   "LIVEKIT_API_KEY",
@@ -212,6 +215,14 @@ export function validateRefreshedEnv(env, environment) {
       `Vercel ${environment} did not provide usable ${missing.join(
         ", "
       )}. The existing file was kept. Restore the missing ${environment} value from its provider dashboard or rotate it in Vercel, then retry.`
+    );
+  }
+
+  if (
+    !isValidServerSecret(readEnvValue(env, "CONTACT_RATE_LIMIT_HMAC_SECRET"))
+  ) {
+    throw new Error(
+      `Vercel ${environment} CONTACT_RATE_LIMIT_HMAC_SECRET does not satisfy the server-secret contract. The existing file was kept.`
     );
   }
 

@@ -2419,8 +2419,8 @@ test("blog detail page uses shared marketing article primitives", async () => {
   assert.deepEqual([...missingExports, ...violations], []);
 });
 
-test("contact unavailable state uses shared marketing and action primitives", async () => {
-  const file = "app/contact/page.tsx";
+test("contact states use shared marketing, form, and action primitives", async () => {
+  const file = "components/contact/contact-page-client.tsx";
   const content = await readFile(file, "utf8");
   const violations = [];
 
@@ -2430,6 +2430,10 @@ test("contact unavailable state uses shared marketing and action primitives", as
     "MarketingEyebrow",
     "MarketingCard",
     "@/components/ui/button",
+    "@/components/ui/input",
+    "@/components/ui/textarea",
+    "@/components/ui/selectable-card",
+    "usePublicActivationDecision",
   ];
 
   for (const importName of requiredImports) {
@@ -2442,9 +2446,6 @@ test("contact unavailable state uses shared marketing and action primitives", as
   }
   if (content.includes("<button")) {
     violations.push(`${file}:button`);
-  }
-  if (content.includes("<form")) {
-    violations.push(`${file}:form`);
   }
   if (/\b(?:bg|text|border)-(?:red|green)-500/.test(content)) {
     violations.push(`${file}:raw-status-color`);

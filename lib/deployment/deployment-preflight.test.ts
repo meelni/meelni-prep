@@ -57,6 +57,7 @@ test("accepts a complete Preview contract with read-only test catalog evidence",
     "openai.credential_shape_and_model_pin",
     "livekit.configuration_contract",
     "statsig.credential_shape_proxy_and_phase_fallback",
+    "contact.rate_limit_hmac_secret",
     "supabase.credentials.read_only",
     "openai.model.read_only",
     "livekit.project.read_only",
@@ -135,6 +136,61 @@ test("rejects malformed public demo HMAC secrets before provider reads", async (
     result.failures.map(({ check, code }) => ({ check, code })),
     [{ check: "DEMO_ABUSE_HMAC_SECRET", code: "invalid_format" }]
   );
+});
+
+test("requires a strong contact HMAC secret before provider reads", async () => {
+  for (const [value, expectedCode] of [
+    [undefined, "blank_or_missing"],
+    ['""', "blank_or_missing"],
+    ["a".repeat(64), "invalid_format"],
+    ["change-me-contact-secret-1234567890", "invalid_format"],
+  ] as const) {
+    let providerReads = 0;
+    const result = await runDeploymentPreflight({
+      env: {
+        ...validEnvironment("preview"),
+        CONTACT_RATE_LIMIT_HMAC_SECRET: value,
+      },
+      liveKitProjectReader: {
+        async verifyProjectAccess() {
+          providerReads += 1;
+        },
+      },
+      openAiModelReader: {
+        async verifyModelAccess() {
+          providerReads += 1;
+        },
+      },
+      supabaseProjectReader: {
+        async verifyAnonKey() {
+          providerReads += 1;
+        },
+        async verifyServiceRoleKey() {
+          providerReads += 1;
+        },
+      },
+      stripeCatalogReader: {
+        async readAccountId() {
+          providerReads += 1;
+          return CANONICAL_STRIPE_ACCOUNT_ID;
+        },
+        async readPrice() {
+          providerReads += 1;
+          return evidence("interview_pass", false);
+        },
+      },
+      target: "preview",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(providerReads, 0);
+    assert.deepEqual(
+      result.failures
+        .filter(({ area }) => area === "contact")
+        .map(({ check, code }) => ({ check, code })),
+      [{ check: "CONTACT_RATE_LIMIT_HMAC_SECRET", code: expectedCode }]
+    );
+  }
 });
 
 test("rejects mixed Stripe keys and target-mode mismatches before provider reads", async () => {
@@ -928,6 +984,7 @@ function validEnvironment(
   const productionRef = "rarrrwkjuhfyfatcmrkw";
   const projectRef = target === "production" ? productionRef : previewRef;
   return {
+    CONTACT_RATE_LIMIT_HMAC_SECRET: "dedicated-secret-82^fQm19!contact-HMAC",
     DATABASE_URL: `postgresql://postgres.${projectRef}:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres`,
     DEMO_ABUSE_HMAC_SECRET: "d".repeat(43),
     INNGEST_EVENT_KEY: "inngest-event-key-valid",

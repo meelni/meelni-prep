@@ -86,6 +86,21 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
           response: { text: "Do not export this attempt" },
         },
       ],
+      contactSubmissions: [
+        {
+          userId: "user-one",
+          receiptId: "contact-one",
+          email: "candidate@example.com",
+          subject: "Billing question",
+          message: "Please help with my plan.",
+          idempotencyKey: "never-export",
+        },
+        {
+          userId: "user-two",
+          receiptId: "contact-other",
+          message: "Do not export another user's message",
+        },
+      ],
       achievements: [
         {
           userId: "user-one",
@@ -108,7 +123,7 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
   });
 
-  assert.equal(result.schemaVersion, "1.2.0");
+  assert.equal(result.schemaVersion, "1.3.0");
   assert.equal(result.account.id, "user-one");
   assert.deepEqual(result.account.streak, {
     current: 4,
@@ -138,6 +153,14 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
       sourceFeedbackId: "feedback-one",
       state: "completed",
       response: { kind: "reflection", text: "I changed the tradeoff." },
+    },
+  ]);
+  assert.deepEqual(result.communications.contactSubmissions, [
+    {
+      receiptId: "contact-one",
+      email: "candidate@example.com",
+      subject: "Billing question",
+      message: "Please help with my plan.",
     },
   ]);
   assert.equal(

@@ -35,10 +35,11 @@
 |    26 | `0026_preview_lineage_reconciliation`    |
 |    27 | `0027_question_provenance`               |
 |    28 | `0028_focused_practice_attempts`         |
+|    29 | `0029_durable_contact_submission`        |
 
 <!-- migration-journal:end -->
 
-This twenty-nine-entry inventory is generated from the same ordered contract as
+This thirty-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -302,3 +303,21 @@ shortened to the canonical two-minute bound. The migration never updates or
 deletes migration history. It blocks until every old `provisioning` or `ready`
 public-demo deadline has passed, because a database update cannot revoke an
 already-issued three-minute LiveKit token.
+
+## Question provenance, focused practice, and durable contact
+
+Migration `0027_question_provenance` adds canonical source and verification
+evidence for question-bank records. Migration `0028_focused_practice_attempts`
+adds the deterministic focused-practice attempt contract on the exact stacked
+parent lineage.
+
+Migration `0029_durable_contact_submission` adds durable contact requests,
+idempotent receipts, HMAC-only rate-limit state, account-linked privacy
+behavior, and append-only access auditing. It creates the hardened
+`meelni_contact_triage` `NOLOGIN` capability group. Only individually named
+PostgreSQL login roles approved by database operations may receive membership
+and use `SET LOCAL ROLE`; Supabase `service_role`, PostgREST `authenticator`,
+and browser roles cannot execute PII triage functions. Runtime limiter and
+bounded cleanup execution remain separately scoped to `service_role`, which
+has no direct contact-table privileges. Preview and Production validation also
+require the dedicated contact HMAC secret before a deployment may proceed.

@@ -22,7 +22,12 @@
 }
 ```
 
-Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, `interview_recovery`, `billing_read`, `billing_portal`, and `checkout_confirmation`.
+Allowed operations are `auth_callback`, `interview_token`, `interview_start`, `interview_end`, `feedback_dispatch`, `stripe_webhook`, `question_sync`, `account_deletion`, `interview_recovery`, `billing_read`, `billing_portal`, `checkout_confirmation`, and `contact_submission`.
+
+Contact submission failures use fixed codes for relaunch access resolution,
+durable attempt-budget access, authentication linking, security configuration,
+and storage. They never include contact fields, receipt IDs, client addresses,
+rate-limit identities, request bodies, or provider/database exception text.
 
 Billing read and portal failures use fixed route-level error codes. They do not
 include Stripe customer identifiers, database messages, exception strings, or

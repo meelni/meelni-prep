@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   copyFile,
   mkdir,
@@ -39,6 +39,7 @@ import {
   databaseSchemaFingerprint,
   CLEAN_0001_SCHEMA_FINGERPRINT,
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
+  DURABLE_CONTACT_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
@@ -119,6 +120,14 @@ const FOCUSED_PRACTICE_OTHER_USER = "f5000000-0000-4000-8000-000000000002";
 const FOCUSED_PRACTICE_SESSION = "f5000000-0000-4000-8000-000000000003";
 const FOCUSED_PRACTICE_FEEDBACK = "f5000000-0000-4000-8000-000000000004";
 const FOCUSED_PRACTICE_ATTEMPT = "f5000000-0000-4000-8000-000000000005";
+const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
+const CONTACT_DELETE_SESSION = "15151515-1515-4515-8515-151515151515";
+const CONTACT_WINS_RACE_USER = "16161616-1616-4616-8616-161616161616";
+const DELETION_WINS_RACE_USER = "17171717-1717-4717-8717-171717171717";
+const CONTACT_TRIAGE_ROLE = "meelni_contact_triage";
+const CONTACT_OPERATOR_ONE = `meelni_contact_operator_one_${process.pid}`;
+const CONTACT_OPERATOR_TWO = `meelni_contact_operator_two_${process.pid}`;
+const CONTACT_OPERATOR_TEST_PASSWORD = randomUUID();
 
 type StripeResourceWinnerRow = {
   stripe_subscription_id: string;
@@ -259,6 +268,7 @@ async function run() {
     await verifyDeletionWebhookConcurrency(clean, cleanUrl);
     await verifyDeletionTombstone(clean);
     await verifySharedLimiter(clean);
+    await verifyDurableContactSubmission(clean, cleanUrl, true);
     await verifyPublicDemoLimits(clean);
     await verifyAtomicCreditLedger(clean, cleanUrl, "clean");
     assertZeroCreditLedgerIntegrity(
@@ -275,7 +285,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, FOCUSED_PRACTICE_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, DURABLE_CONTACT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -465,9 +475,10 @@ async function run() {
         PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
         QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
         FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
+        DURABLE_CONTACT_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 28; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 29; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -487,7 +498,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 29; found 22/
+            /Strict launch preflight requires the exact latest migration count 30; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -518,6 +529,7 @@ async function run() {
       await verifyReconnectTimeoutRuntimeIntegrity(upgrade, upgradeUrl);
       await verifyFeedbackV2VersionTuple(upgrade);
       await verifyAuthorization(upgrade);
+      await verifyDurableContactSubmission(upgrade, upgradeUrl, false);
       await verifyAtomicCreditLedger(upgrade, upgradeUrl, "upgrade");
       await verifyStableStartContract(upgrade);
       const finalUpgradePreflight = runPreflight(
@@ -559,6 +571,8 @@ async function run() {
     await admin.unsafe(
       `DROP DATABASE IF EXISTS "${PREVIEW_LINEAGE_RECONCILIATION_DATABASE}" WITH (FORCE)`
     );
+    await admin.unsafe(`DROP ROLE IF EXISTS ${CONTACT_OPERATOR_ONE}`);
+    await admin.unsafe(`DROP ROLE IF EXISTS ${CONTACT_OPERATOR_TWO}`);
     await admin.end();
   }
 }
@@ -785,7 +799,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 29);
+      assert.equal(await migrationCount(sql), 30);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -849,7 +863,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
+      DURABLE_CONTACT_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1094,7 +1108,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 29; found 25/
+      /exact latest migration count 30; found 25/
     );
 
     const genericRows = await sql<
@@ -1193,18 +1207,21 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 29);
+    assert.equal(await migrationCount(sql), 30);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "focused_practice_attempts");
+    assert.equal(
+      finalPreflight.startingContract,
+      "durable_contact_submissions"
+    );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 33);
-    assert.equal(finalPreflight.rls_tables, 33);
+    assert.equal(finalPreflight.tables, 36);
+    assert.equal(finalPreflight.rls_tables, 36);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
+      DURABLE_CONTACT_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6274,7 +6291,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "focused_practice_attempts"
+      "durable_contact_submissions"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7093,7 +7110,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 29);
+  assert.equal(await migrationCount(sql), 30);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -7101,7 +7118,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 33);
+  assert.equal(tables.length, 36);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -7140,6 +7157,47 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(({ table_name }) => table_name === "focused_practice_attempt")
   );
+  for (const table of [
+    "contact_submission",
+    "contact_submission_access_audit",
+    "contact_submission_rate_limit",
+  ]) {
+    assert.ok(tables.some(({ table_name }) => table_name === table));
+  }
+
+  const contactContracts = await sql<{ name: string }[]>`
+    SELECT conname AS name
+    FROM pg_constraint
+    WHERE conname IN (
+      'contact_submission_user_id_app_user_id_fk',
+      'contact_submission_reason_check',
+      'contact_submission_name_bounds_check',
+      'contact_submission_email_bounds_check',
+      'contact_submission_subject_bounds_check',
+      'contact_submission_message_bounds_check',
+      'contact_submission_persistence_state_check',
+      'contact_submission_triage_state_check',
+      'contact_submission_access_audit_type_check',
+      'contact_submission_access_audit_actor_reference_check',
+      'contact_submission_rate_limit_identity_hash_check',
+      'contact_submission_rate_limit_request_count_check'
+    )
+  `;
+  assert.equal(contactContracts.length, 12);
+
+  const contactIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'contact_submission_idempotency_key_idx',
+        'contact_submission_created_at_idx',
+        'contact_submission_user_id_idx',
+        'contact_submission_access_audit_submission_created_idx',
+        'contact_submission_rate_limit_window_started_idx'
+      )
+  `;
+  assert.equal(contactIndexes.length, 5);
 
   await verifyAnalyticsConsentSchema(sql);
 
@@ -7509,8 +7567,25 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 33);
+  assert.equal(rls.length, 36);
   assert.ok(rls.every((table) => table.enabled));
+
+  const contactRls = await sql<
+    { relname: string; enabled: boolean; forced: boolean }[]
+  >`
+    SELECT relname, relrowsecurity AS enabled, relforcerowsecurity AS forced
+    FROM pg_class
+    JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+    WHERE pg_namespace.nspname = 'public'
+      AND relname IN (
+        'contact_submission',
+        'contact_submission_access_audit',
+        'contact_submission_rate_limit'
+      )
+    ORDER BY relname
+  `;
+  assert.equal(contactRls.length, 3);
+  assert.ok(contactRls.every(({ enabled, forced }) => enabled && forced));
 
   const unsafePolicies = await sql<{ count: number }[]>`
     SELECT count(*)::int AS count
@@ -7696,6 +7771,162 @@ async function verifyDatabase(sql: postgres.Sql) {
       ],
     }))
   );
+
+  const contactTableGrants = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count
+    FROM information_schema.table_privileges
+    WHERE table_schema = 'public'
+      AND table_name IN (
+        'contact_submission',
+        'contact_submission_access_audit',
+        'contact_submission_rate_limit'
+      )
+      AND grantee IN ('PUBLIC', 'anon', 'authenticated', 'service_role')
+  `;
+  assert.equal(contactTableGrants[0]?.count, 0);
+
+  const contactFunctionPrivileges = await sql<
+    {
+      proname: string;
+      security_definer: boolean;
+      config: string[];
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+      contact_triage_execute: boolean;
+    }[]
+  >`
+    SELECT p.proname,
+      p.prosecdef AS security_definer,
+      p.proconfig AS config,
+      has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
+      has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        AS authenticated_execute,
+      has_function_privilege('service_role', p.oid, 'EXECUTE')
+        AS service_execute,
+      has_function_privilege('meelni_contact_triage', p.oid, 'EXECUTE')
+        AS contact_triage_execute
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'consume_contact_submission_rate_limit',
+        'cleanup_contact_submission_rate_limits',
+        'list_contact_submissions',
+        'read_contact_submission',
+        'set_contact_submission_triage_state'
+      )
+    ORDER BY p.proname
+  `;
+  assert.equal(contactFunctionPrivileges.length, 5);
+  for (const privilege of contactFunctionPrivileges) {
+    const runtimeFunction = [
+      "cleanup_contact_submission_rate_limits",
+      "consume_contact_submission_rate_limit",
+    ].includes(privilege.proname);
+    assert.equal(privilege.security_definer, true);
+    assert.ok(privilege.config.includes('search_path=""'));
+    assert.equal(privilege.anon_execute, false);
+    assert.equal(privilege.authenticated_execute, false);
+    assert.equal(privilege.service_execute, runtimeFunction);
+    assert.equal(privilege.contact_triage_execute, !runtimeFunction);
+  }
+
+  const [contactTriageRole] = await sql<
+    {
+      rolname: string;
+      rolsuper: boolean;
+      rolinherit: boolean;
+      rolcreaterole: boolean;
+      rolcreatedb: boolean;
+      rolcanlogin: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+      anon_member: boolean;
+      authenticated_member: boolean;
+      service_member: boolean;
+      authenticator_member: boolean;
+    }[]
+  >`
+    SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb,
+      rolcanlogin, rolreplication, rolbypassrls,
+      pg_has_role('anon', oid, 'MEMBER') AS anon_member,
+      pg_has_role('authenticated', oid, 'MEMBER') AS authenticated_member,
+      pg_has_role('service_role', oid, 'MEMBER') AS service_member,
+      CASE
+        WHEN to_regrole('authenticator') IS NULL THEN false
+        ELSE pg_has_role('authenticator', oid, 'MEMBER')
+      END AS authenticator_member
+    FROM pg_catalog.pg_roles
+    WHERE rolname = 'meelni_contact_triage'
+  `;
+  assert.deepEqual(contactTriageRole, {
+    rolname: CONTACT_TRIAGE_ROLE,
+    rolsuper: false,
+    rolinherit: false,
+    rolcreaterole: false,
+    rolcreatedb: false,
+    rolcanlogin: false,
+    rolreplication: false,
+    rolbypassrls: false,
+    anon_member: false,
+    authenticated_member: false,
+    service_member: false,
+    authenticator_member: false,
+  });
+
+  const [contactTriageGrants] = await sql<
+    {
+      schema_usage: boolean;
+      submission_select: boolean;
+      submission_insert: boolean;
+      submission_update: boolean;
+      audit_select: boolean;
+      audit_insert: boolean;
+      limiter_select: boolean;
+      limiter_update: boolean;
+    }[]
+  >`
+    SELECT
+      has_schema_privilege(
+        'meelni_contact_triage', 'public', 'USAGE'
+      ) AS schema_usage,
+      has_table_privilege(
+        'meelni_contact_triage', 'public.contact_submission', 'SELECT'
+      ) AS submission_select,
+      has_table_privilege(
+        'meelni_contact_triage', 'public.contact_submission', 'INSERT'
+      ) AS submission_insert,
+      has_table_privilege(
+        'meelni_contact_triage', 'public.contact_submission', 'UPDATE'
+      ) AS submission_update,
+      has_table_privilege(
+        'meelni_contact_triage',
+        'public.contact_submission_access_audit', 'SELECT'
+      ) AS audit_select,
+      has_table_privilege(
+        'meelni_contact_triage',
+        'public.contact_submission_access_audit', 'INSERT'
+      ) AS audit_insert,
+      has_table_privilege(
+        'meelni_contact_triage', 'public.contact_submission_rate_limit',
+        'SELECT'
+      ) AS limiter_select,
+      has_table_privilege(
+        'meelni_contact_triage', 'public.contact_submission_rate_limit',
+        'UPDATE'
+      ) AS limiter_update
+  `;
+  assert.deepEqual(contactTriageGrants, {
+    schema_usage: true,
+    submission_select: false,
+    submission_insert: false,
+    submission_update: false,
+    audit_select: false,
+    audit_insert: false,
+    limiter_select: false,
+    limiter_update: false,
+  });
 }
 
 async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
@@ -8186,6 +8417,765 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
       ?.decision,
     "issue_token"
   );
+}
+
+async function verifyDurableContactSubmission(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  includeApplicationAdapters: boolean
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    {
+      consumeContactSubmissionAttemptBudget,
+      createDrizzleContactSubmissionStore,
+    },
+    { deleteUserApplicationData, requestAccountDeletion },
+    { loadAccountExportSource },
+    schema,
+  ] = await Promise.all([
+    import("../lib/db/contact-submissions"),
+    import("../lib/db/account-deletions"),
+    import("../lib/db/account-export"),
+    import("../lib/db/schema"),
+  ]);
+  await installContactTriageTestOperators(sql);
+  const clients = Array.from({ length: 8 }, () =>
+    postgres(databaseUrl, { max: 1, prepare: false })
+  );
+  const operatorClients = [CONTACT_OPERATOR_ONE, CONTACT_OPERATOR_TWO].map(
+    (role) =>
+      postgres(databaseUrlForRole(databaseUrl, role), {
+        max: 1,
+        prepare: false,
+      })
+  );
+  const stores = clients.map((client) =>
+    createDrizzleContactSubmissionStore(drizzle(client, { schema }))
+  );
+  const databases = clients.map((client) => drizzle(client, { schema }));
+  const rateLimitIdentities = {
+    attempt: "d".repeat(64),
+    client: "a".repeat(64),
+    email: "b".repeat(64),
+    global: "c".repeat(64),
+  };
+  const guessableEmailHash = createHash("sha256")
+    .update("migration-test@example.invalid")
+    .digest("hex");
+  const baseInput = {
+    idempotencyKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    userId: USER_ONE,
+    name: "Migration Test",
+    email: "migration-test@example.invalid",
+    reason: "support" as const,
+    subject: "Durable contact migration",
+    message: "This disposable fixture verifies durable contact behavior.",
+    rateLimitIdentities,
+  };
+  const accept = async (index: number, input: typeof baseInput) => {
+    const attempt = await consumeContactSubmissionAttemptBudget(
+      input.rateLimitIdentities.attempt,
+      databases[index]
+    );
+    return attempt.allowed
+      ? stores[index]!.accept(input)
+      : {
+          disposition: "rate_limited" as const,
+          retryAfterSeconds: attempt.retryAfterSeconds,
+        };
+  };
+
+  try {
+    const concurrent = await Promise.all(
+      stores.map((_, index) => accept(index, baseInput))
+    );
+    const receiptIds = concurrent.flatMap((decision) =>
+      decision.disposition === "stored" || decision.disposition === "replayed"
+        ? [decision.receiptId]
+        : []
+    );
+    assert.equal(receiptIds.length, stores.length);
+    assert.equal(new Set(receiptIds).size, 1);
+    assert.equal(
+      concurrent.filter(({ disposition }) => disposition === "stored").length,
+      1
+    );
+    assert.equal(
+      concurrent.filter(({ disposition }) => disposition === "replayed").length,
+      stores.length - 1
+    );
+
+    assert.deepEqual(
+      await accept(0, {
+        ...baseInput,
+        subject: "Changed payload",
+      }),
+      { disposition: "idempotency_conflict" }
+    );
+
+    for (const [index, idempotencyKey] of [
+      "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    ].entries()) {
+      const decision = await accept(index, {
+        ...baseInput,
+        idempotencyKey,
+      });
+      assert.equal(decision.disposition, "stored");
+    }
+
+    const limited = await accept(0, {
+      ...baseInput,
+      idempotencyKey: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    });
+    assert.equal(limited.disposition, "rate_limited");
+    if (limited.disposition === "rate_limited") {
+      assert.ok(limited.retryAfterSeconds >= 1);
+      assert.ok(limited.retryAfterSeconds <= 3600);
+    }
+
+    for (let index = 0; index < 48; index += 1) {
+      assert.equal(
+        (
+          await accept(index % stores.length, {
+            ...baseInput,
+            subject: `conflict-${index}`,
+          })
+        ).disposition,
+        "idempotency_conflict"
+      );
+    }
+    assert.equal(
+      (
+        await accept(0, {
+          ...baseInput,
+          subject: "attempt-budget-exhausted",
+        })
+      ).disposition,
+      "rate_limited"
+    );
+
+    const state = await sql<
+      {
+        submissions: number;
+        email_budget: number;
+        attempt_budget: number;
+        raw_email_hashes: number;
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission) AS submissions,
+        (SELECT request_count::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${rateLimitIdentities.email}) AS email_budget,
+        (SELECT request_count::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${rateLimitIdentities.attempt}) AS attempt_budget,
+        (SELECT count(*)::int FROM contact_submission_rate_limit
+          WHERE identity_hash = ${guessableEmailHash}) AS raw_email_hashes
+    `;
+    assert.deepEqual(state[0], {
+      submissions: 3,
+      email_budget: 3,
+      attempt_budget: 60,
+      raw_email_hashes: 0,
+    });
+
+    const receiptId = receiptIds[0]!;
+    for (const role of ["anon", "authenticated", "service_role"] as const) {
+      await assertContactTriageDenied(sql, role, receiptId);
+    }
+    await assert.rejects(
+      () =>
+        operatorClients[0]!`
+          SELECT * FROM public.list_contact_submissions(10)
+        `,
+      /permission denied/
+    );
+
+    const operatorIdentities = await Promise.all(
+      operatorClients.map((client) =>
+        asContactTriageOperator(
+          client,
+          (tx) =>
+            tx<{ session_user: string; current_user: string }[]>`
+              SELECT session_user::text AS session_user,
+                current_user::text AS current_user
+            `
+        )
+      )
+    );
+    assert.deepEqual(
+      operatorIdentities.map((rows) => rows[0]),
+      [
+        {
+          session_user: CONTACT_OPERATOR_ONE,
+          current_user: CONTACT_TRIAGE_ROLE,
+        },
+        {
+          session_user: CONTACT_OPERATOR_TWO,
+          current_user: CONTACT_TRIAGE_ROLE,
+        },
+      ]
+    );
+
+    const queue = await asContactTriageOperator(
+      operatorClients[0]!,
+      (tx) =>
+        tx<
+          {
+            receipt_id: string;
+            reason: string;
+            triage_state: string;
+          }[]
+        >`SELECT receipt_id, reason, triage_state FROM public.list_contact_submissions(10)`
+    );
+    assert.equal(queue.length, 3);
+    assert.ok(queue.every(({ triage_state }) => triage_state === "new"));
+
+    const privateResult = await asContactTriageOperator(
+      operatorClients[0]!,
+      (tx) =>
+        tx<
+          { receipt_id: string; email: string; persistence_state: string }[]
+        >`SELECT receipt_id, email, persistence_state
+          FROM public.read_contact_submission(
+            ${receiptId}::uuid
+          )`
+    );
+    assert.deepEqual(privateResult[0], {
+      receipt_id: receiptId,
+      email: baseInput.email,
+      persistence_state: "stored",
+    });
+
+    assert.equal(
+      (
+        await asContactTriageOperator(
+          operatorClients[0]!,
+          (tx) =>
+            tx<{ changed: boolean }[]>`
+              SELECT public.set_contact_submission_triage_state(
+                ${receiptId}::uuid,
+                'claimed'
+              ) AS changed
+            `
+        )
+      )[0]?.changed,
+      true
+    );
+    assert.equal(
+      (
+        await asContactTriageOperator(
+          operatorClients[1]!,
+          (tx) =>
+            tx<{ changed: boolean }[]>`
+              SELECT public.set_contact_submission_triage_state(
+                ${receiptId}::uuid,
+                'resolved'
+              ) AS changed
+            `
+        )
+      )[0]?.changed,
+      true
+    );
+    await assert.rejects(
+      () =>
+        asContactTriageOperator(
+          operatorClients[0]!,
+          (tx) => tx`
+            SELECT public.set_contact_submission_triage_state(
+              ${receiptId}::uuid,
+              'claimed'
+            )
+          `
+        ),
+      /contact_triage_state_regression/
+    );
+    const missingTriage = await asContactTriageOperator(
+      operatorClients[0]!,
+      (tx) => tx<{ changed: boolean }[]>`
+        SELECT public.set_contact_submission_triage_state(
+          '99999999-1111-4111-8111-999999999999'::uuid,
+          'claimed'
+        ) AS changed
+      `
+    );
+    assert.equal(missingTriage[0]?.changed, false);
+    await assert.rejects(
+      () =>
+        asContactTriageOperator(
+          operatorClients[0]!,
+          (tx) => tx`
+            SELECT public.set_contact_submission_triage_state(
+              ${receiptId}::uuid,
+              'new'
+            )
+          `
+        ),
+      /invalid_contact_triage_state/
+    );
+    assert.equal(
+      (
+        await asContactTriageOperator(
+          operatorClients[1]!,
+          (tx) =>
+            tx<{ changed: boolean }[]>`
+              SELECT public.set_contact_submission_triage_state(
+                ${receiptId}::uuid,
+                'resolved'
+              ) AS changed
+            `
+        )
+      )[0]?.changed,
+      true
+    );
+
+    const [auditState] = await sql<
+      {
+        audit_rows: number;
+        state: string;
+        actors: string[];
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission_access_audit
+          WHERE submission_id = ${receiptId}::uuid) AS audit_rows,
+        (SELECT triage_state FROM contact_submission
+          WHERE id = ${receiptId}::uuid) AS state,
+        (SELECT array_agg(
+            DISTINCT actor_reference ORDER BY actor_reference
+          )
+          FROM contact_submission_access_audit
+          WHERE submission_id = ${receiptId}::uuid) AS actors
+    `;
+    assert.ok(auditState);
+    const expectedActors = [CONTACT_OPERATOR_ONE, CONTACT_OPERATOR_TWO]
+      .map((role) => createHash("md5").update(role).digest("hex"))
+      .sort();
+    assert.deepEqual(auditState, {
+      audit_rows: 3,
+      state: "resolved",
+      actors: expectedActors,
+    });
+
+    const staleIdentities = Array.from({ length: 7 }, (_, index) =>
+      index.toString(16).padStart(64, "0")
+    );
+    await sql`
+      INSERT INTO contact_submission_rate_limit (
+        identity_hash, window_started_at, request_count
+      )
+      SELECT identity_hash, now() - interval '25 hours', 1
+      FROM unnest(${staleIdentities}::text[]) identity_hash
+    `;
+    const cleanupBatch = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<{ deleted: number }[]>`
+          SELECT public.cleanup_contact_submission_rate_limits(3) AS deleted
+        `
+    );
+    assert.equal(cleanupBatch[0]?.deleted, 3);
+    const cleanupRemainder = await asRole(
+      sql,
+      "service_role",
+      (tx) =>
+        tx<{ deleted: number }[]>`
+          SELECT public.cleanup_contact_submission_rate_limits(5000) AS deleted
+        `
+    );
+    assert.equal(cleanupRemainder[0]?.deleted, 4);
+    const [limiterState] = await sql<{ stale: number; active: number }[]>`
+      SELECT
+        count(*) FILTER (
+          WHERE window_started_at < date_trunc('hour', now()) - interval '24 hours'
+        )::int AS stale,
+        count(*) FILTER (
+          WHERE window_started_at >= date_trunc('hour', now())
+        )::int AS active
+      FROM contact_submission_rate_limit
+    `;
+    assert.deepEqual(limiterState, { stale: 0, active: 4 });
+
+    await verifyContactSubmissionDatabaseBounds(sql);
+
+    if (!includeApplicationAdapters) return;
+
+    await sql`
+      INSERT INTO app_user (id, email)
+      VALUES (${CONTACT_DELETE_USER}::uuid, 'delete-contact@example.invalid')
+    `;
+    await sql`
+      INSERT INTO contact_submission (
+        idempotency_key, user_id, name, email, reason, subject, message
+      ) VALUES
+      ('13131313-1313-4313-8313-131313131313'::uuid,
+        ${CONTACT_DELETE_USER}::uuid, 'Linked',
+        'delete-contact@example.invalid', 'support', 'Linked request',
+        'This request is linked to the authenticated account.'),
+      ('14141414-1414-4414-8414-141414141414'::uuid,
+        NULL, 'Unlinked', 'delete-contact@example.invalid', 'support',
+        'Unlinked request',
+        'This request must not be deleted by matching email text.')
+    `;
+    const contactExport = await loadAccountExportSource(CONTACT_DELETE_USER);
+    assert.equal(contactExport.contactSubmissions.length, 1);
+    assert.deepEqual(
+      Object.keys(contactExport.contactSubmissions[0] ?? {}).sort(),
+      [
+        "createdAt",
+        "email",
+        "message",
+        "name",
+        "persistenceState",
+        "reason",
+        "receiptId",
+        "subject",
+        "triageState",
+        "userId",
+      ]
+    );
+    assert.equal(
+      contactExport.contactSubmissions[0]?.email,
+      "delete-contact@example.invalid"
+    );
+    await sql`
+      INSERT INTO interview_session (id, user_id, round_type, mode)
+      VALUES (
+        ${CONTACT_DELETE_SESSION}::uuid,
+        ${CONTACT_DELETE_USER}::uuid,
+        'product_sense',
+        'text'
+      )
+    `;
+    await sql`
+      INSERT INTO user_insights (
+        user_id, overall_stats, by_interview_type, by_difficulty, trends,
+        competency_breakdown, last_session_id
+      ) VALUES (
+        ${CONTACT_DELETE_USER}::uuid,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        '{}'::jsonb,
+        ${CONTACT_DELETE_SESSION}::uuid
+      )
+    `;
+    await deleteUserApplicationData(CONTACT_DELETE_USER);
+    const [privacyDeletion] = await sql<
+      {
+        insights: number;
+        linked: number;
+        sessions: number;
+        unlinked: number;
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM user_insights
+          WHERE user_id = ${CONTACT_DELETE_USER}::uuid) AS insights,
+        count(*) FILTER (WHERE user_id = ${CONTACT_DELETE_USER}::uuid)::int AS linked,
+        count(*) FILTER (
+          WHERE idempotency_key = '14141414-1414-4414-8414-141414141414'::uuid
+        )::int AS unlinked,
+        (SELECT count(*)::int FROM interview_session
+          WHERE id = ${CONTACT_DELETE_SESSION}::uuid) AS sessions
+      FROM contact_submission
+    `;
+    assert.deepEqual(privacyDeletion, {
+      insights: 0,
+      linked: 0,
+      sessions: 0,
+      unlinked: 1,
+    });
+
+    await sql`
+      INSERT INTO app_user (id, email)
+      VALUES
+        (${CONTACT_WINS_RACE_USER}::uuid, 'contact-wins@example.invalid'),
+        (${DELETION_WINS_RACE_USER}::uuid, 'deletion-wins@example.invalid')
+    `;
+
+    const contactWinsInput = contactRaceInput({
+      userId: CONTACT_WINS_RACE_USER,
+      idempotencyKey: "18181818-1818-4818-8818-181818181818",
+      identitySeed: "1",
+    });
+    const contactWinsBarrier = await holdIdempotencyLock(
+      databaseUrl,
+      contactWinsInput.idempotencyKey
+    );
+    const contactWins = stores[0]!.accept(contactWinsInput);
+    await waitForAccountIdentityLock(databaseUrl, CONTACT_WINS_RACE_USER);
+    const deletionAfterContact = requestAccountDeletion({
+      userId: CONTACT_WINS_RACE_USER,
+      stripeSubjects: [],
+    });
+    await contactWinsBarrier.release();
+
+    const contactWinsDecision = await contactWins;
+    assert.equal(contactWinsDecision.disposition, "stored");
+    await deletionAfterContact;
+    await deleteUserApplicationData(CONTACT_WINS_RACE_USER);
+    const [contactWinsState] = await sql<{ remaining: number }[]>`
+      SELECT count(*)::int AS remaining
+      FROM contact_submission
+      WHERE user_id = ${CONTACT_WINS_RACE_USER}::uuid
+    `;
+    assert.equal(contactWinsState?.remaining, 0);
+
+    const deletionWinsInput = contactRaceInput({
+      userId: DELETION_WINS_RACE_USER,
+      idempotencyKey: "19191919-1919-4919-8919-191919191919",
+      identitySeed: "2",
+    });
+    const deletionWinsBarrier = await holdAppUserRowLock(
+      databaseUrl,
+      DELETION_WINS_RACE_USER
+    );
+    const deletionBeforeContact = requestAccountDeletion({
+      userId: DELETION_WINS_RACE_USER,
+      stripeSubjects: [],
+    });
+    await waitForAccountIdentityLock(databaseUrl, DELETION_WINS_RACE_USER);
+    const rejectedContact = stores[1]!.accept(deletionWinsInput);
+    await deletionWinsBarrier.release();
+
+    await deletionBeforeContact;
+    await assert.rejects(rejectedContact, /contact_account_unavailable/);
+    const [deletionWinsState] = await sql<
+      { remaining: number; tombstones: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM contact_submission
+          WHERE user_id = ${DELETION_WINS_RACE_USER}::uuid) AS remaining,
+        (SELECT count(*)::int FROM account_deletion_request
+          WHERE user_id = ${DELETION_WINS_RACE_USER}::uuid) AS tombstones
+    `;
+    assert.deepEqual(deletionWinsState, { remaining: 0, tombstones: 1 });
+
+    await assert.rejects(
+      stores[2]!.accept(
+        contactRaceInput({
+          userId: "20202020-2020-4020-8020-202020202020",
+          idempotencyKey: "21212121-2121-4121-8121-212121212121",
+          identitySeed: "3",
+        })
+      ),
+      /contact_account_unavailable/
+    );
+  } finally {
+    await Promise.all(
+      [...clients, ...operatorClients].map((client) => client.end())
+    );
+  }
+}
+
+async function verifyContactSubmissionDatabaseBounds(sql: postgres.Sql) {
+  const invalidRows = [
+    {
+      key: "31313131-3131-4131-8131-313131313131",
+      name: " Untrimmed",
+      email: "valid@example.invalid",
+      subject: "Valid subject",
+      message: "A valid contact message.",
+      error: /contact_submission_name_bounds_check/,
+    },
+    {
+      key: "32323232-3232-4232-8232-323232323232",
+      name: `Control${String.fromCharCode(1)}`,
+      email: "valid@example.invalid",
+      subject: "Valid subject",
+      message: "A valid contact message.",
+      error: /contact_submission_name_bounds_check/,
+    },
+    {
+      key: "33333333-3333-4333-8333-333333333333",
+      name: "Valid name",
+      email: "Uppercase@Example.invalid",
+      subject: "Valid subject",
+      message: "A valid contact message.",
+      error: /contact_submission_email_bounds_check/,
+    },
+    {
+      key: "34343434-3434-4434-8434-343434343434",
+      name: "Valid name",
+      email: "valid@example.invalid",
+      subject: "x".repeat(201),
+      message: "A valid contact message.",
+      error: /contact_submission_subject_bounds_check/,
+    },
+    {
+      key: "35353535-3535-4535-8535-353535353535",
+      name: "Valid name",
+      email: "valid@example.invalid",
+      subject: "Valid subject",
+      message: "too short",
+      error: /contact_submission_message_bounds_check/,
+    },
+    {
+      key: "36363636-3636-4636-8636-363636363636",
+      name: "Valid name",
+      email: "valid@example.invalid",
+      subject: "Valid subject",
+      message: `Invalid${String.fromCharCode(1)} message`,
+      error: /contact_submission_message_bounds_check/,
+    },
+  ] as const;
+
+  await sql.begin(async (tx) => {
+    for (const [index, row] of invalidRows.entries()) {
+      await assert.rejects(
+        tx.savepoint(
+          `invalid_contact_${index}`,
+          (savepoint) =>
+            savepoint`
+            INSERT INTO contact_submission (
+              idempotency_key, name, email, reason, subject, message
+            ) VALUES (
+              ${row.key}::uuid,
+              ${row.name},
+              ${row.email},
+              'support',
+              ${row.subject},
+              ${row.message}
+            )
+          `
+        ),
+        row.error
+      );
+    }
+
+    await assert.rejects(
+      tx.savepoint(
+        "orphan_contact_user",
+        (savepoint) => savepoint`
+        INSERT INTO contact_submission (
+          idempotency_key, user_id, name, email, reason, subject, message
+        ) VALUES (
+          '37373737-3737-4737-8737-373737373737'::uuid,
+          '38383838-3838-4838-8838-383838383838'::uuid,
+          'Valid name',
+          'valid@example.invalid',
+          'support',
+          'Valid subject',
+          'A valid contact message.'
+        )
+      `
+      ),
+      /contact_submission_user_id_app_user_id_fk/
+    );
+  });
+}
+
+function contactRaceInput({
+  userId,
+  idempotencyKey,
+  identitySeed,
+}: {
+  userId: string;
+  idempotencyKey: string;
+  identitySeed: string;
+}) {
+  return {
+    idempotencyKey,
+    userId,
+    name: "Deletion Race",
+    email: `${identitySeed}@example.invalid`,
+    reason: "support" as const,
+    subject: "Concurrent deletion",
+    message: "This disposable fixture verifies deletion serialization.",
+    rateLimitIdentities: {
+      attempt: identitySeed.repeat(64),
+      client: (Number(identitySeed) + 3).toString(16).repeat(64),
+      email: (Number(identitySeed) + 6).toString(16).repeat(64),
+      global: (Number(identitySeed) + 9).toString(16).repeat(64),
+    },
+  };
+}
+
+async function holdIdempotencyLock(
+  databaseUrl: string,
+  idempotencyKey: string
+) {
+  const client = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseBarrier!: () => void;
+  let signalReady!: () => void;
+  const release = new Promise<void>((resolve) => {
+    releaseBarrier = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    signalReady = resolve;
+  });
+  const transaction = client.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))
+    `;
+    signalReady();
+    await release;
+  });
+  await ready;
+
+  return {
+    async release() {
+      releaseBarrier();
+      await transaction;
+      await client.end();
+    },
+  };
+}
+
+async function holdAppUserRowLock(databaseUrl: string, userId: string) {
+  const client = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseBarrier!: () => void;
+  let signalReady!: () => void;
+  const release = new Promise<void>((resolve) => {
+    releaseBarrier = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    signalReady = resolve;
+  });
+  const transaction = client.begin(async (tx) => {
+    await tx`
+      SELECT id FROM app_user WHERE id = ${userId}::uuid FOR UPDATE
+    `;
+    signalReady();
+    await release;
+  });
+  await ready;
+
+  return {
+    async release() {
+      releaseBarrier();
+      await transaction;
+      await client.end();
+    },
+  };
+}
+
+async function waitForAccountIdentityLock(databaseUrl: string, userId: string) {
+  const probe = postgres(databaseUrl, { max: 1, prepare: false });
+  try {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const acquired = await probe.begin(async (tx) => {
+        const [row] = await tx<{ acquired: boolean }[]>`
+          SELECT pg_try_advisory_xact_lock(
+            hashtextextended(
+              ${userId},
+              ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+            )
+          ) AS acquired
+        `;
+        return row?.acquired ?? false;
+      });
+      if (!acquired) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  } finally {
+    await probe.end();
+  }
+  throw new Error(`Timed out waiting for account identity lock: ${userId}`);
 }
 
 async function verifyAtomicCreditLedger(
@@ -10025,6 +11015,68 @@ async function consumeRateLimit(sql: postgres.Sql, userId: string) {
   return rows[0];
 }
 
+async function installContactTriageTestOperators(sql: postgres.Sql) {
+  for (const role of [CONTACT_OPERATOR_ONE, CONTACT_OPERATOR_TWO]) {
+    await sql.unsafe(`
+      DO $$
+      BEGIN
+        CREATE ROLE ${role}
+          LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
+    `);
+    await sql.unsafe(`
+      ALTER ROLE ${role}
+        LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOREPLICATION NOBYPASSRLS
+        PASSWORD '${CONTACT_OPERATOR_TEST_PASSWORD}'
+    `);
+    await sql.unsafe(`
+      DO $$
+      BEGIN
+        IF NOT pg_has_role(
+          '${role}', '${CONTACT_TRIAGE_ROLE}', 'MEMBER'
+        ) THEN
+          GRANT ${CONTACT_TRIAGE_ROLE} TO ${role};
+        END IF;
+      END $$
+    `);
+  }
+}
+
+async function assertContactTriageDenied(
+  sql: postgres.Sql,
+  role: "anon" | "authenticated" | "service_role",
+  receiptId: string
+) {
+  for (const operation of [
+    (tx: postgres.TransactionSql) =>
+      tx`SELECT * FROM public.list_contact_submissions(10)`,
+    (tx: postgres.TransactionSql) =>
+      tx`SELECT * FROM public.read_contact_submission(${receiptId}::uuid)`,
+    (tx: postgres.TransactionSql) =>
+      tx`SELECT public.set_contact_submission_triage_state(
+        ${receiptId}::uuid, 'claimed'
+      )`,
+  ]) {
+    await assert.rejects(
+      () => asRole(sql, role, operation),
+      /permission denied/
+    );
+  }
+}
+
+async function asContactTriageOperator<T>(
+  sql: postgres.Sql,
+  operation: (tx: postgres.TransactionSql) => Promise<T>
+): Promise<T> {
+  return sql.begin(async (tx) => {
+    await tx.unsafe(`SET LOCAL ROLE ${CONTACT_TRIAGE_ROLE}`);
+    return operation(tx);
+  }) as Promise<T>;
+}
+
 async function asAuthenticated<T>(
   sql: postgres.Sql,
   operation: (tx: postgres.TransactionSql) => Promise<T>
@@ -10075,5 +11127,12 @@ async function protectedRowCounts(sql: postgres.Sql) {
 function databaseUrl(url: string, database: string): string {
   const next = new URL(url);
   next.pathname = `/${database}`;
+  return next.toString();
+}
+
+function databaseUrlForRole(url: string, role: string): string {
+  const next = new URL(url);
+  next.username = role;
+  next.password = CONTACT_OPERATOR_TEST_PASSWORD;
   return next.toString();
 }

@@ -3,7 +3,7 @@
 ## Account export
 
 `GET /api/user/export` requires a server-verified authenticated user and returns
-one JSON attachment scoped to that user. The payload version is `1.2.0` and is
+one JSON attachment scoped to that user. The payload version is `1.3.0` and is
 defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
@@ -13,6 +13,8 @@ The export includes:
 - bookmarks, practice sets, frozen legacy achievement records, and saved progress insights;
 - durable focused-practice attempts, including their versioned plan, grounded
   source finding, and candidate-authored completion when present;
+- account-linked contact submissions with explicit content, receipt, persistence,
+  triage, and created-time fields;
 - subscription, usage, payment summaries, and credit-ledger summaries.
 
 The exported settings object contains only current, operative account and
@@ -36,7 +38,7 @@ The export excludes:
 - raw Stripe webhook payloads, provider/admin errors, receipt URLs, metadata,
   idempotency keys, and background dispatch state;
 - rate-limit state, deletion tombstones, one-way provider fingerprints, logs,
-  and backup contents;
+  contact operator-access audits, and backup contents;
 - other users and the full shared question bank.
 
 The database adapter selects allowed fields rather than selecting whole rows and
@@ -49,7 +51,7 @@ Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
 
 Meelni no longer writes or derives streaks and achievements in active product
-workflows. Export schema `1.2.0` continues to return any historical values so a
+workflows. Export schema `1.3.0` continues to return any historical values so a
 product retirement does not silently discard user data. The legacy columns and
 table also remain covered by account deletion. Physical removal requires a
 separate retention decision, a versioned export-contract change, and a

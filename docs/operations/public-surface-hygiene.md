@@ -9,7 +9,7 @@ Meelni's production build must not expose internal visual test pages, copied dev
 - Any directly served asset outside the explicit public-file allowlist, or an allowed text asset containing inherited placeholder markers.
 - Known inherited markers such as `humans@conductor.build`, `github.com/your-repo`, and the old Mockmate domains.
 
-Internal engineering docs remain in `docs/`; they are repository memory, not a public product surface. Until SAV-182 makes contact delivery durable, observable, and PII-safe, `/contact` presents an unavailable noindex state without canonical or social promotion, stays outside the sitemap, and `/api/contact` returns `503` without reading or logging a request body. Legal holding pages do not direct visitors to that unavailable route. The contact-identity and delivery acceptance criteria remain blocked.
+Internal engineering docs remain in `docs/`; they are repository memory, not a public product surface. SAV-182 provides a durable, observable, PII-safe storage path, but the relaunch gate remains off until target-environment operations are proven. While off, `/contact` presents an unavailable noindex state with direct support and billing email fallbacks, stays outside the sitemap, and `/api/contact` returns `403 contact_unavailable` before deriving identity or reading/logging a request body. Legal holding pages do not direct visitors to that gated route.
 
 ## Automated checks
 
