@@ -205,6 +205,12 @@ executable default-on command. Do not change the Statsig global gate or
 artifacts, default-on must contain the owner's explicit `GO` bound to the exact
 candidate. Default-off and emergency disable remain available without GO.
 
+Statsig provider governance for the gate is tracked separately in
+[Statsig Relaunch Governance](./statsig-relaunch-governance.md). SAV-283 may
+prepare the review-settings mutation and evidence packet, but the provider
+mutation itself requires explicit owner approval and must not enable the gate or
+change targeting rules.
+
 In local development, the feature-flag menu stores an on/off cookie and reloads the page so the server-rendered body, metadata, and client controls use the same state.
 
 ## Local Inngest Feedback
