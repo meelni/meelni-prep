@@ -3,7 +3,7 @@ import type {
   GrantCreditsInput,
   GrantCreditsResult,
 } from "./credit-ledger-contracts";
-import { getTrialGrantIdempotencyKey } from "./credits";
+import { getTrialGrantIdempotencyKey } from "./credit-ledger-trial";
 
 export interface TrialGrantService {
   grantCredits(input: GrantCreditsInput): Promise<GrantCreditsResult>;

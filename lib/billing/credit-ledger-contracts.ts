@@ -1,6 +1,8 @@
 export type {
   BillingAdjustmentDirection,
   BillingAdjustmentType,
+  CompleteReservationInput,
+  CompleteReservationResult,
   CreateCreditLedgerServiceInput,
   CreditBalance,
   CreditGrantSource,
@@ -30,6 +32,7 @@ export type {
   ReinstatePaidGrantInput,
   RenewSubscriptionCreditsInput,
   RenewSubscriptionCreditsResult,
+  ReservationSettlementTransactionOutcome,
   ReserveCreditInput,
   ReserveCreditResult,
   ReserveCreditTransactionResult,
