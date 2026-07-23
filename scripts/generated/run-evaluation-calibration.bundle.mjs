@@ -31063,7 +31063,28 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   );
   const genesis = buildCalibrationAuthorizationGenesis(plan, authorization);
   await assertCanonicalGitHubAuthority(github);
-  const currentRef = await github.getRef();
+  let currentRef = await github.getRefIfPresent();
+  if (!currentRef) {
+    const seeded = await github.createCommit({
+      message: genesis.message,
+      treeSha: SAV_248_V4_EMPTY_TREE_OID,
+      parents: [],
+      date: genesis.date
+    });
+    assertPinnedGenesisCommit(seeded, genesis);
+    await assertCanonicalGitHubAuthority(github);
+    try {
+      currentRef = await github.createRef({
+        ref: SAV_248_V4_GIT_LEDGER_REF,
+        sha: genesis.oid
+      });
+    } catch (error) {
+      throw new Error("calibration_git_authorization_seed_lost_concurrent_cas", {
+        cause: error
+      });
+    }
+    await assertCanonicalGitHubAuthority(github);
+  }
   if (currentRef.ref !== SAV_248_V4_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
@@ -31358,22 +31379,22 @@ var DirectCalibrationGitHubCasClient = class {
       (rule) => requireString(requireRecord3(rule, "effective.rule").type, "rule.type")
     );
   }
-  async getRef() {
-    const record = requireRecord3(
-      await this.api(
-        "GET",
-        `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V4_GIT_LEDGER_API_REF}`
-      ),
-      "ref"
+  async getRefIfPresent() {
+    const response = await this.api(
+      "GET",
+      `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V4_GIT_LEDGER_API_REF}`,
+      void 0,
+      { allowNotFound: true }
     );
-    const object = requireRecord3(record.object, "ref.object");
-    if (object.type !== "commit") {
-      throw new Error("calibration_github_ledger_ref_not_commit");
+    if (response === null) return null;
+    return parseGitHubRef(response, "ref");
+  }
+  async getRef() {
+    const response = await this.getRefIfPresent();
+    if (!response) {
+      throw new Error("calibration_github_ledger_ref_missing");
     }
-    return {
-      ref: requireString(record.ref, "ref.ref"),
-      sha: requireOid(object.sha, "ref.object.sha")
-    };
+    return response;
   }
   async getCommit(sha) {
     return parseGitHubCommit(
@@ -31398,6 +31419,17 @@ var DirectCalibrationGitHubCasClient = class {
       )
     );
   }
+  async createRef(input) {
+    const record = requireRecord3(
+      await this.api(
+        "POST",
+        `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/refs`,
+        input
+      ),
+      "createdRef"
+    );
+    return parseGitHubRef(record, "createdRef");
+  }
   async updateRef(input) {
     const record = requireRecord3(
       await this.api(
@@ -31413,7 +31445,7 @@ var DirectCalibrationGitHubCasClient = class {
       sha: requireOid(object.sha, "updatedRef.object.sha")
     };
   }
-  async api(method, path2, body) {
+  async api(method, path2, body, options = {}) {
     this.attestStartup();
     assertGitHubTransportEnvironment(this.#env);
     if (this.#env.GITHUB_TOKEN?.trim() !== this.#token) {
@@ -31444,6 +31476,9 @@ var DirectCalibrationGitHubCasClient = class {
       });
       if (response.statusCode >= 300 && response.statusCode < 400) {
         throw new Error("calibration_github_api_redirect_rejected");
+      }
+      if (options.allowNotFound && response.statusCode === 404) {
+        return null;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw new Error("calibration_github_api_status_invalid");
@@ -31571,6 +31606,17 @@ function parseGitHubRuleset(value) {
     ruleTypes: record.rules.map(
       (value2) => requireString(requireRecord3(value2, "ruleset.rule").type, "rule.type")
     )
+  };
+}
+function parseGitHubRef(value, field) {
+  const record = requireRecord3(value, field);
+  const object = requireRecord3(record.object, `${field}.object`);
+  if (object.type !== "commit") {
+    throw new Error("calibration_github_ledger_ref_not_commit");
+  }
+  return {
+    ref: requireString(record.ref, `${field}.ref`),
+    sha: requireOid(object.sha, `${field}.object.sha`)
   };
 }
 function parseGitHubCommit(value) {
