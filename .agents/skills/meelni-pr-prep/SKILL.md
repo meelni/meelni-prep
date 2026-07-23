@@ -135,6 +135,15 @@ Check whether the branch needs any of these, and say why:
 
 Do not create decision records for routine implementation details. Do update durable memory for local tooling, deployment, provider setup, contracts, and accepted tradeoffs future agents should not rediscover.
 
+Before opening or updating a PR, identify whether the Linear issue is the
+PR-sized deliverable or a long-running owner-gated parent. For repo-only,
+docs-only, guardrail, and tooling increments beneath a parent such as `SAV-198`,
+use a child issue in the PR title/body and keep the parent as contextual
+tracking only. Do not use `closes`, `fixes`, or `resolves` for a parent unless
+the PR completes every parent acceptance criterion. Preferred wording:
+`Closes SAV-293. Parent: SAV-198 remains open until owner-gated calibration
+criteria complete.`
+
 ## Phase 5: PR Body Quality
 
 Draft or verify a PR body that a reviewer can act on quickly:
@@ -195,6 +204,9 @@ Run this phase after validation and PR body prep unless the user explicitly aske
 - If no open PR exists, create one against the repo default branch unless the user specified a base branch.
 - Use a draft PR by default. Create a ready PR only when the user explicitly requested it and validation is clean enough to support that.
 - Include validation failures honestly in the PR body. Known unrelated failures must include exact command names and failing files/tests.
+- After merging a PR linked to a child of a long-running owner-gated parent,
+  verify both Linear states: the child may move to Done, but the parent must
+  remain non-terminal until its own acceptance criteria are complete.
 - After PR creation or update, report the PR URL, branch, commit, base branch, draft/readiness state, and validation status.
 
 ### Publish Blockers
