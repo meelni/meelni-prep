@@ -24,6 +24,7 @@ const REQUIRED_RULESETS = {
     bypassActors: [
       {
         actor_id: SAVIII_GITHUB_USER_ID,
+        actor_type: "User",
         bypass_mode: "always",
       },
     ],
@@ -259,6 +260,7 @@ function bypassActorsMatch(actual, expected) {
     actual.some(
       (actor) =>
         actor.actor_id === requiredActor.actor_id &&
+        actor.actor_type === requiredActor.actor_type &&
         actor.bypass_mode === requiredActor.bypass_mode
     )
   );

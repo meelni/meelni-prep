@@ -72,7 +72,32 @@ test("relaunch readiness snapshot marks non-exact rulesets as not ready", async 
   );
 });
 
-function fixtureRunner({ ledgerRefPresent, rulesetsExact }) {
+test("relaunch readiness snapshot rejects a non-user activation bypass actor", async () => {
+  const snapshot = await buildRelaunchReadinessSnapshot({
+    fetch: false,
+    runCommand: fixtureRunner({
+      ledgerRefPresent: true,
+      rulesetsExact: true,
+      activationActorType: "RepositoryRole",
+    }),
+  });
+
+  assert.equal(snapshot.calibrationV4Guardrails.rulesets.allExact, false);
+  assert.equal(
+    snapshot.calibrationV4Guardrails.rulesets.required.activationActor.exact,
+    false
+  );
+  assert.equal(
+    snapshot.calibrationV4Guardrails.readyForOwnerAuthorizedCalibration,
+    false
+  );
+});
+
+function fixtureRunner({
+  ledgerRefPresent,
+  rulesetsExact,
+  activationActorType = "User",
+}) {
   return async (file, args) => {
     const command = [file, ...args].join(" ");
 
@@ -95,7 +120,12 @@ function fixtureRunner({ ledgerRefPresent, rulesetsExact }) {
       return "[]";
     }
     if (command.includes("/rulesets?")) {
-      return JSON.stringify(buildRulesets({ exact: rulesetsExact }));
+      return JSON.stringify(
+        buildRulesets({
+          exact: rulesetsExact,
+          activationActorType,
+        })
+      );
     }
     if (command.includes("/git/ref/heads/meelni-ledger/")) {
       if (!ledgerRefPresent) {
@@ -117,7 +147,7 @@ function fixtureRunner({ ledgerRefPresent, rulesetsExact }) {
   };
 }
 
-function buildRulesets({ exact }) {
+function buildRulesets({ exact, activationActorType }) {
   return [
     {
       id: 101,
@@ -147,7 +177,7 @@ function buildRulesets({ exact }) {
       bypass_actors: [
         {
           actor_id: 24397508,
-          actor_type: "RepositoryRole",
+          actor_type: activationActorType,
           bypass_mode: "always",
         },
       ],

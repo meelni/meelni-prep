@@ -98,8 +98,8 @@ The required rulesets are:
    - exact ref include;
    - no excludes;
    - rule types: `creation`, `update`;
-   - exactly one `always` bypass actor: GitHub user `saviii`, user ID
-     `24397508`.
+   - exactly one `always` bypass actor: GitHub user `saviii`, actor type
+     `User`, user ID `24397508`.
 
 Verify without mutating first:
 
