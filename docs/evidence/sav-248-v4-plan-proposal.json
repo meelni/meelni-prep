@@ -3,7 +3,7 @@
   "decision": "pending_explicit_product_owner_approval",
   "decisionSource": null,
   "humanReviewerIdentity": null,
-  "proposedAt": "2026-07-22T03:32:00.000Z",
+  "proposedAt": "2026-07-23T05:13:31.000Z",
   "acceptanceBasis": "fresh_v4_authorization_and_exact_source_commit_still_required",
   "authorization": {
     "authorizationId": "sav-248-pending-paid-calibration-authorization.v4",
@@ -36,7 +36,7 @@
     ]
   },
   "proposedPlan": {
-    "planHash": "3e0078f436182b282ad2b9aabdde33647373b9f3e2ec32625f3f18ecba06b6c1",
+    "planHash": "4ec2affcbfe24d3f4a0de311fe6871ab37fb255de2cc3f29ab08e561f25483da",
     "plannedCalls": 64,
     "plannedWorstCaseNanoUsd": 2247265000,
     "plannedWorstCaseUsd": 2.247265,
@@ -47,7 +47,7 @@
     "endpoint": "https://api.openai.com/v1",
     "serviceTier": "default",
     "repetitions": 2,
-    "pricingHash": "5f4d56a33396a955506c9dcb9a63bf898dd19c9f4f20021f7033da2fc4c187b0",
+    "pricingHash": "d1754331f913ed694eaa2b588271465e473aff095928360111794a1a6f29cae0",
     "promptVersion": "feedback.prompt.v2",
     "promptHash": "ebc9fe3d69550cac71e9b7fcdade5c1df5a8d0fd59fd2e323894877595306945",
     "responseFormatVersion": "feedback-provider-response-format.v1",
