@@ -105,6 +105,17 @@ authorized the GitHub ruleset mutation. Do not manually create the v4 ledger
 ref; the calibration runtime owns the single activation commit after the
 signed authorization is verified.
 
+Prepare the non-mutating ruleset payloads from the reviewed source when an
+operator needs a fresh packet:
+
+```bash
+npm run calibration:github-guardrails -- \
+  --output-dir /secure/external/path/sav-248-v4-github-guardrails
+```
+
+This command writes local JSON/README files only. It does not mutate GitHub or
+authorize the paid run.
+
 ### 2. Sign and verify calibration authorization
 
 Prepare, sign, and verify the calibration authorization with the

@@ -376,6 +376,19 @@ The runtime also requires GitHub's effective branch-rule endpoint to return
 both rulesets before creating the ref. This PR intentionally does not create,
 configure, query, or activate the real ledger ref during tests.
 
+Generate the exact non-mutating ruleset payload packet from the reviewed source
+instead of reusing ad hoc temporary files:
+
+```bash
+npm run calibration:github-guardrails -- \
+  --output-dir /secure/external/path/sav-248-v4-github-guardrails
+```
+
+The command writes only local JSON payloads and a README with the current source
+commit and exact `gh api` apply/verify commands. It does not call GitHub, create
+rulesets, create the ledger ref, sign owner authorization, call the provider, or
+authorize launch.
+
 The current code computes the following proposal-only genesis. Do not create it.
 After a fresh exact external authorization is generated and independently
 verified, recompute the final authorization message and OID before any GitHub
