@@ -157,6 +157,15 @@ owner-gated calibration criteria complete.` After merging a child PR, re-check
 the parent issue state in Linear and restore it to the correct non-terminal
 state if automation moved it to Done prematurely.
 
+Linear can also close an issue when a merged PR is titled with that issue key,
+uses the key as the only linked issue, or uses a head branch whose generated
+name begins with the parent key. For small repo-only, docs-only, guardrail, or
+tooling increments beneath an owner-gated parent, create or reuse a PR-sized
+child issue and put that child key in the PR title and branch. Mention the
+parent only as neutral context, for example: `Parent: SAV-198 remains open`.
+Never make `SAV-198`, `SAV-167`, `SAV-168`, or `SAV-186` the PR title key or
+sole linked issue unless the PR completes every parent acceptance criterion.
+
 The doctor fails when required local runtime envs are missing or contain placeholder values such as `https://xxx.supabase.co`, `wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional: provider placeholders can otherwise look valid until login, LiveKit, or feedback generation fails at runtime.
 
 ## Development
