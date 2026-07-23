@@ -240,10 +240,10 @@ unresolved worst-case reservation.
 
 The current non-executable v4 proposal contains exactly 64 calls: two symmetric runs for
 each of the 32 scored fixtures. Its deterministic worst-case reservation is
-2,247,265,000 nano-USD ($2.247265), below the unchanged $3 hard cap. The
+2,273,985,000 nano-USD ($2.273985), below the unchanged $3 hard cap. The
 current feedback prompt makes the former 96-call reservation exceed $3, so it
 is not authorized. The proposal hash is
-`3e0078f436182b282ad2b9aabdde33647373b9f3e2ec32625f3f18ecba06b6c1`.
+`1ec69fbd7baf76423f05b9a3919683244f793a056eb959a9a1b1785869889bf0`.
 It binds request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
 and the terminal v1/v2/v3 authorities, but its authorization status is pending and
@@ -347,7 +347,7 @@ organization owner ID `302571838`):
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`a38fbfad71ed319f9cff30ff26655c54bc5a1040`; it must not be created and will
+`6659581c21c8b543e31d88e1420a2913fe31a384`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates

@@ -53,7 +53,7 @@ test("an active human-owner signature authorizes only its exact bounded plan", (
     planHash: "a".repeat(64),
     plannedProviderCalls: 64,
     plannedPhysicalHttpAttempts: 64,
-    plannedWorstCaseNanoUsd: 2_247_265_000,
+    plannedWorstCaseNanoUsd: 2_273_985_000,
   });
   assert.equal(
     verified.authorization.authorizationStatus,
@@ -311,25 +311,25 @@ test("plan mutations cannot reuse one valid owner approval", () => {
     {
       planHash: "b".repeat(64),
       plannedCalls: 64,
-      plannedWorstCaseNanoUsd: 2_247_265_000,
+      plannedWorstCaseNanoUsd: 2_273_985_000,
       reviewedSourceCommit: "b".repeat(40),
     },
     {
       planHash: "a".repeat(64),
       plannedCalls: 63,
-      plannedWorstCaseNanoUsd: 2_247_265_000,
+      plannedWorstCaseNanoUsd: 2_273_985_000,
       reviewedSourceCommit: "b".repeat(40),
     },
     {
       planHash: "a".repeat(64),
       plannedCalls: 64,
-      plannedWorstCaseNanoUsd: 2_247_264_999,
+      plannedWorstCaseNanoUsd: 2_273_984_999,
       reviewedSourceCommit: "b".repeat(40),
     },
     {
       planHash: "a".repeat(64),
       plannedCalls: 64,
-      plannedWorstCaseNanoUsd: 2_247_265_000,
+      plannedWorstCaseNanoUsd: 2_273_985_000,
       reviewedSourceCommit: "c".repeat(40),
     },
   ]) {
@@ -346,7 +346,7 @@ test("plan mutations cannot reuse one valid owner approval", () => {
         {
           planHash: "a".repeat(64),
           plannedCalls: 64,
-          plannedWorstCaseNanoUsd: 2_247_265_000,
+          plannedWorstCaseNanoUsd: 2_273_985_000,
           reviewedSourceCommit: "b".repeat(40),
         },
         new Date("2026-07-20T00:30:00.000Z")
@@ -451,7 +451,7 @@ function validPayload(): CalibrationOwnerAuthorizationPayload {
     planHash: "a".repeat(64),
     plannedProviderCalls: 64,
     plannedPhysicalHttpAttempts: 64,
-    plannedWorstCaseNanoUsd: 2_247_265_000,
+    plannedWorstCaseNanoUsd: 2_273_985_000,
     maximumProviderCalls: 96,
     maximumPhysicalHttpAttempts: 96,
     maximumSpendNanoUsd: 3_000_000_000,

@@ -20,7 +20,7 @@ test("delegated agent authorization accepts only bounded non-launch scope", () =
   assert.equal(verified.delegatedTo, "codex");
   assert.equal(verified.actionClass, "synthetic_calibration_retry");
   assert.equal(verified.maximumProviderCalls, 64);
-  assert.equal(verified.maximumSpendNanoUsd, 2_247_265_000);
+  assert.equal(verified.maximumSpendNanoUsd, 2_273_985_000);
 });
 
 test("delegated agent authorization is not a human owner signature", () => {
@@ -78,7 +78,7 @@ function delegatedArtifact(payloadPatch: Record<string, unknown> = {}) {
       reviewedSourcePolicy: "merged_repo_only_guardrail_repairs_allowed",
       maximumProviderCalls: 64,
       maximumPhysicalHttpAttempts: 64,
-      maximumSpendNanoUsd: 2_247_265_000,
+      maximumSpendNanoUsd: 2_273_985_000,
       customerTranscriptsAllowed: false,
       productionDataAllowed: false,
       launchDecision: null,
