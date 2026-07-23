@@ -230,7 +230,7 @@ Safe read-only verification:
 - List gate eligible reviewers.
 - List gate reviews.
 
-Current SAV-283 evidence from 2026-07-21:
+Current SAV-283 evidence from 2026-07-23:
 
 - Gate status: `Disabled`
 - `isEnabled: false`
@@ -238,22 +238,31 @@ Current SAV-283 evidence from 2026-07-21:
 - Owner: `contact@meelni.com`
 - `reviewSettings.requiredReview: false`
 - `reviewSettings.allowedReviewers: []`
-- Eligible reviewers: `everyone_eligible: true`, with no enumerated users or
-  groups
-- Reviews: none
+- Eligible reviewers: `everyone_eligible: false`, owner user
+  `7spxjTLm7lyPibNJavcTmx` / `contact@meelni.com`, groups empty
+- Gate review `6Uip5thkTs2D7ascrYKYkQ` committed an `allowed_reviewers`
+  change limiting gate reviewers to the owner account
+- Dynamic config `meelni_preview_rehearsal_authority` remains disabled with
+  `defaultValue.active: false`; review `QHCBMD2kK9ZIwA4hXmdzP` committed an
+  `allowed_reviewers` change limiting config reviewers to the owner account
+- Caveat: the gate detail endpoint still reports
+  `reviewSettings.requiredReview: false`, so required-review enforcement is not
+  proven even though the eligible-reviewers endpoint now returns owner-only.
 
 Production guardrails:
 
-- SAV-283 itself does not authorize mutating Statsig. Get explicit owner
-  approval before creating, approving, committing, or cancelling gate reviews.
+- Get explicit owner approval before creating, approving, committing, or
+  cancelling future gate/config reviews. The owner-only reviewer mutations above
+  were committed on 2026-07-23; future launch rehearsal or enablement still
+  requires a separate owner authorization.
 - Do not use direct full-gate update APIs for relaunch-governance work unless a
   provider limitation makes the review API impossible and the owner has approved
   that exact fallback.
 - Do not enable `meelni_reactivation_access`, add targeting rules, change
   fallback defaults, or authorize launch while configuring review governance.
-- If Statsig cannot restrict allowed reviewers to `contact@meelni.com`, stop and
-  record the exact limitation; do not accept `everyone_eligible` as owner-only
-  launch governance.
+- Owner-only eligible reviewers are now configured. If Statsig cannot separately
+  require review while preserving that owner-only constraint, stop and record
+  the exact limitation; do not claim SAV-283 complete from eligibility alone.
 
 ## LiveKit
 
