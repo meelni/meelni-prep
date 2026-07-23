@@ -1055,7 +1055,6 @@ function fakeCommitSha(input: {
     `committer Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
     "",
     input.message,
-    "",
   ].join("\n");
   return createHash("sha1")
     .update(`commit ${Buffer.byteLength(body)}\0`)
@@ -1204,7 +1203,6 @@ function deterministicGenesisOid(): string {
     `committer Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
     "",
     calibrationAuthorizationCommitMessage(),
-    "",
   ].join("\n");
   return createHash("sha1")
     .update(`commit ${Buffer.byteLength(body)}\0`)
