@@ -47,6 +47,7 @@ import {
   type ApprovedCalibrationSpendAuthorization,
   type VerifiedCalibrationOwnerAuthorization,
 } from "./calibration-owner-authorization";
+import type { VerifiedDelegatedAgentAuthorization } from "@/lib/operations/delegated-agent-authorization";
 
 export {
   SAV_248_V4_APPROVED_RUN_ID,
@@ -143,11 +144,18 @@ export interface CalibrationActivatedPlanCall {
   worstCaseNanoUsd: number;
 }
 
-export interface CalibrationActivatedPlan {
-  contractVersion: "evaluation-calibration-activated-plan.v2";
+export interface CalibrationRunSpendPlan {
   runId: typeof SAV_248_V4_APPROVED_RUN_ID;
   authorizationId: string;
   authorizationHash: string;
+  plannedCalls: number;
+  plannedWorstCaseNanoUsd: number;
+  calls: CalibrationActivatedPlanCall[];
+  planHash: string;
+}
+
+export interface CalibrationActivatedPlan extends CalibrationRunSpendPlan {
+  contractVersion: "evaluation-calibration-activated-plan.v2";
   candidateArtifactHash: string;
   corpusHash: string;
   approvalHash: string;
@@ -165,10 +173,6 @@ export interface CalibrationActivatedPlan {
   requestPolicyHash: string;
   reviewedSourceCommit: string | null;
   repetitions: 2;
-  plannedCalls: number;
-  plannedWorstCaseNanoUsd: number;
-  calls: CalibrationActivatedPlanCall[];
-  planHash: string;
 }
 
 export function buildSAV248V4PlanProposal(adjudicationApproval: unknown) {
@@ -256,6 +260,13 @@ export interface ActivateCalibrationRunOptions {
   repetitions: number;
   now?: Date;
   activationId?: string;
+}
+
+export interface ResumeDelegatedCalibrationRunOptions {
+  delegatedAuthorization: VerifiedDelegatedAgentAuthorization;
+  model: string;
+  repetitions: number;
+  now?: Date;
 }
 
 export interface GitHubRepositoryIdentity {
@@ -348,7 +359,7 @@ export class ActivatedCalibrationRunAuthority
 
   constructor(
     readonly activationCommit: string,
-    readonly plan: CalibrationActivatedPlan,
+    readonly plan: CalibrationRunSpendPlan,
     private readonly github: CalibrationGitHubCasClient
   ) {
     this.authorizationId = plan.authorizationId;
@@ -421,20 +432,7 @@ export function buildCalibrationActivatedPlan(input: {
       expectedCompletionState === "full" ||
       expectedCompletionState === "partial"
   );
-  const calls = scoredCases.flatMap<CalibrationActivatedPlanCall>((fixture) => {
-    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
-    const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
-      inputTokenCeiling,
-      CALIBRATION_MAX_COMPLETION_TOKENS,
-      CALIBRATION_PRICING_CONTRACT
-    );
-    return Array.from({ length: input.repetitions }, (_, runIndex) => ({
-      callKey: `${fixture.id}:${runIndex}`,
-      inputTokenCeiling,
-      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
-      worstCaseNanoUsd,
-    }));
-  });
+  const calls = buildCalibrationActivatedPlanCalls(input.repetitions);
   const plannedWorstCaseNanoUsd = calls.reduce(
     (total, call) => total + call.worstCaseNanoUsd,
     0
@@ -502,6 +500,30 @@ export function buildCalibrationActivatedPlan(input: {
   return { ...withoutHash, planHash: sha256(stableJson(withoutHash)) };
 }
 
+function buildCalibrationActivatedPlanCalls(
+  repetitions: number
+): CalibrationActivatedPlanCall[] {
+  const scoredCases = evaluationCalibrationCases.filter(
+    ({ expectedCompletionState }) =>
+      expectedCompletionState === "full" ||
+      expectedCompletionState === "partial"
+  );
+  return scoredCases.flatMap<CalibrationActivatedPlanCall>((fixture) => {
+    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
+    const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
+      inputTokenCeiling,
+      CALIBRATION_MAX_COMPLETION_TOKENS,
+      CALIBRATION_PRICING_CONTRACT
+    );
+    return Array.from({ length: repetitions }, (_, runIndex) => ({
+      callKey: `${fixture.id}:${runIndex}`,
+      inputTokenCeiling,
+      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
+      worstCaseNanoUsd,
+    }));
+  });
+}
+
 export async function activateCalibrationRun(
   options: ActivateCalibrationRunOptions,
   credentials: { githubToken: string }
@@ -517,6 +539,16 @@ export async function activateCalibrationRun(
     options,
     createProductionGitHubCasClient(credentials.githubToken),
     "executable"
+  );
+}
+
+export async function resumeDelegatedActivatedCalibrationRun(
+  options: ResumeDelegatedCalibrationRunOptions,
+  credentials: { githubToken: string }
+): Promise<ActivatedCalibrationRunAuthority> {
+  return await resumeDelegatedActivatedCalibrationRunWithClient(
+    options,
+    createProductionGitHubCasClient(credentials.githubToken)
   );
 }
 
@@ -648,6 +680,61 @@ async function activateCalibrationRunWithClient(
   return new ActivatedCalibrationRunAuthority(activation.sha, plan, github);
 }
 
+async function resumeDelegatedActivatedCalibrationRunWithClient(
+  options: ResumeDelegatedCalibrationRunOptions,
+  github: CalibrationGitHubCasClient
+): Promise<ActivatedCalibrationRunAuthority> {
+  assertDelegatedCalibrationRetryAuthority(options);
+  await assertCanonicalGitHubAuthority(github);
+  const currentRef = await github.getRef();
+  if (currentRef.ref !== SAV_248_V4_GIT_LEDGER_REF) {
+    throw new Error("calibration_github_ledger_ref_invalid");
+  }
+  const activation = await github.getCommit(currentRef.sha);
+  const activationMessage = parseCalibrationActivationMessage(activation);
+  const authorization = await github.getCommit(activation.parents[0]!);
+  const authorizationMessage =
+    parseCalibrationAuthorizationLedgerMessage(authorization);
+  if (
+    activationMessage.runId !== authorizationMessage.runId ||
+    activationMessage.authorizationId !== authorizationMessage.authorizationId ||
+    activationMessage.authorizationHash !==
+      authorizationMessage.authorizationHash ||
+    activationMessage.planHash !== authorizationMessage.planHash
+  ) {
+    throw new Error("calibration_delegated_resume_ledger_mismatch");
+  }
+  const calls = buildCalibrationActivatedPlanCalls(options.repetitions);
+  const plannedWorstCaseNanoUsd = calls.reduce(
+    (total, call) => total + call.worstCaseNanoUsd,
+    0
+  );
+  if (
+    authorizationMessage.plannedCalls !== calls.length ||
+    authorizationMessage.plannedWorstCaseNanoUsd !== plannedWorstCaseNanoUsd ||
+    calls.length > options.delegatedAuthorization.maximumProviderCalls ||
+    calls.length > options.delegatedAuthorization.maximumPhysicalHttpAttempts ||
+    plannedWorstCaseNanoUsd >
+      options.delegatedAuthorization.maximumSpendNanoUsd
+  ) {
+    throw new Error("calibration_delegated_resume_plan_exceeds_authority");
+  }
+  await assertCanonicalGitHubAuthority(github);
+  return new ActivatedCalibrationRunAuthority(
+    activation.sha,
+    {
+      runId: SAV_248_V4_APPROVED_RUN_ID,
+      authorizationId: activationMessage.authorizationId,
+      authorizationHash: activationMessage.authorizationHash,
+      planHash: activationMessage.planHash,
+      plannedCalls: authorizationMessage.plannedCalls,
+      plannedWorstCaseNanoUsd: authorizationMessage.plannedWorstCaseNanoUsd,
+      calls,
+    },
+    github
+  );
+}
+
 export const calibrationRunLedgerTestSeam = {
   simulatePendingProposalActivationWithClient: (
     options: ActivateCalibrationRunOptions,
@@ -665,6 +752,8 @@ export const calibrationRunLedgerTestSeam = {
     assertCalibrationSpendAuthorizationExecutable(options.authorization);
     return activateCalibrationRunWithClient(options, github, "executable");
   },
+  resumeDelegatedActivatedCalibrationRunWithClient:
+    resumeDelegatedActivatedCalibrationRunWithClient,
   createGitHubClient: createTestGitHubCasClient,
   nodeRequestOptions: buildNodeGitHubRequestOptions,
 };
@@ -960,6 +1049,144 @@ function isValidActivationCommit(
     );
   } catch {
     return false;
+  }
+}
+
+function assertDelegatedCalibrationRetryAuthority(
+  options: ResumeDelegatedCalibrationRunOptions
+): void {
+  if (
+    options.delegatedAuthorization.actionClass !==
+    "synthetic_calibration_retry"
+  ) {
+    throw new Error("calibration_delegated_resume_action_invalid");
+  }
+  if (options.model !== CALIBRATION_PRICING_CONTRACT.model) {
+    throw new Error("calibration_git_activation_model_mismatch");
+  }
+  if (options.repetitions !== 2) {
+    throw new Error("calibration_git_activation_repetitions_mismatch");
+  }
+  validateCalibrationPricingFreshness(options.now ?? new Date());
+}
+
+interface CalibrationActivationLedgerMessage {
+  contractVersion: "evaluation-calibration-git-activation.v1";
+  runId: typeof SAV_248_V4_APPROVED_RUN_ID;
+  authorizationId: string;
+  authorizationHash: string;
+  planHash: string;
+  activationId: string;
+}
+
+interface CalibrationAuthorizationLedgerMessage {
+  contractVersion: "evaluation-calibration-git-authorization.v1";
+  runId: typeof SAV_248_V4_APPROVED_RUN_ID;
+  authorizationId: string;
+  authorizationHash: string;
+  planHash: string;
+  plannedCalls: number;
+  plannedWorstCaseNanoUsd: number;
+  reviewedSourceCommit: string;
+  predecessorAuthorities: typeof SAV_248_V4_PREDECESSOR_AUTHORITIES;
+}
+
+function parseCalibrationActivationMessage(
+  commit: GitHubCommit
+): CalibrationActivationLedgerMessage {
+  if (
+    commit.treeSha !== SAV_248_V4_EMPTY_TREE_OID ||
+    commit.parents.length !== 1 ||
+    !isCommitIdentity(commit.author, commit.author.date) ||
+    !isCommitIdentity(commit.committer, commit.author.date)
+  ) {
+    throw new Error("calibration_delegated_resume_activation_commit_invalid");
+  }
+  const parsed = parseLedgerMessage(
+    commit.message,
+    "calibration_delegated_resume_activation_message_invalid"
+  );
+  assertExactKeys(parsed, [
+    "activationId",
+    "authorizationHash",
+    "authorizationId",
+    "contractVersion",
+    "planHash",
+    "runId",
+  ]);
+  if (
+    parsed.contractVersion !== "evaluation-calibration-git-activation.v1" ||
+    parsed.runId !== SAV_248_V4_APPROVED_RUN_ID ||
+    typeof parsed.authorizationId !== "string" ||
+    typeof parsed.authorizationHash !== "string" ||
+    typeof parsed.planHash !== "string" ||
+    typeof parsed.activationId !== "string" ||
+    parsed.authorizationId.length === 0 ||
+    !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) ||
+    !/^[0-9a-f]{64}$/.test(parsed.planHash) ||
+    parsed.activationId.length === 0
+  ) {
+    throw new Error("calibration_delegated_resume_activation_message_invalid");
+  }
+  return parsed as unknown as CalibrationActivationLedgerMessage;
+}
+
+function parseCalibrationAuthorizationLedgerMessage(
+  commit: GitHubCommit
+): CalibrationAuthorizationLedgerMessage {
+  if (
+    commit.treeSha !== SAV_248_V4_EMPTY_TREE_OID ||
+    commit.parents.length !== 0 ||
+    !isCommitIdentity(commit.author, commit.author.date) ||
+    !isCommitIdentity(commit.committer, commit.author.date)
+  ) {
+    throw new Error("calibration_delegated_resume_authorization_commit_invalid");
+  }
+  const parsed = parseLedgerMessage(
+    commit.message,
+    "calibration_delegated_resume_authorization_message_invalid"
+  );
+  assertExactKeys(parsed, [
+    "authorizationHash",
+    "authorizationId",
+    "contractVersion",
+    "planHash",
+    "plannedCalls",
+    "plannedWorstCaseNanoUsd",
+    "predecessorAuthorities",
+    "reviewedSourceCommit",
+    "runId",
+  ]);
+  if (
+    parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" ||
+    parsed.runId !== SAV_248_V4_APPROVED_RUN_ID ||
+    typeof parsed.authorizationId !== "string" ||
+    typeof parsed.authorizationHash !== "string" ||
+    typeof parsed.planHash !== "string" ||
+    !Number.isSafeInteger(parsed.plannedCalls) ||
+    !Number.isSafeInteger(parsed.plannedWorstCaseNanoUsd) ||
+    typeof parsed.reviewedSourceCommit !== "string" ||
+    !/^[0-9a-f]{40}$/.test(parsed.reviewedSourceCommit) ||
+    !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) ||
+    !/^[0-9a-f]{64}$/.test(parsed.planHash) ||
+    stableJson(parsed.predecessorAuthorities) !==
+      stableJson(SAV_248_V4_PREDECESSOR_AUTHORITIES)
+  ) {
+    throw new Error("calibration_delegated_resume_authorization_message_invalid");
+  }
+  return parsed as unknown as CalibrationAuthorizationLedgerMessage;
+}
+
+function parseLedgerMessage(
+  message: string,
+  code: string
+): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(message);
+    if (!isRecord(parsed)) throw new Error(code);
+    return parsed;
+  } catch {
+    throw new Error(code);
   }
 }
 

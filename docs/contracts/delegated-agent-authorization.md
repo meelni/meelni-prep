@@ -75,3 +75,26 @@ does not grant:
 
 If a supported wrapper cannot distinguish delegated authority from human-owner
 authority, it must fail closed until the wrapper is updated and tested.
+
+## Calibration retry consumption
+
+The SAV-198/SAV-248 live calibration runner may consume delegated authorization
+only as a resume of an already activated human-owner ledger ref. The delegated
+artifact must use action class `synthetic_calibration_retry`, and the caller
+must also supply the previous terminal v9 report. The runner accepts that
+previous report only when it records a paid provider attempt with zero
+completed calls and zero reconciled actual spend.
+
+The delegated retry path:
+
+- reads and validates the existing protected GitHub activation and its parent
+  authorization commit;
+- verifies the activation and authorization messages agree on run ID,
+  authorization ID/hash, and plan hash;
+- checks the current deterministic call list against the delegated provider
+  call, physical-attempt, and nano-USD caps;
+- uses the activated ledger as spend authority for request reservations.
+
+It does not create a new ledger ref, update the activated ref, reuse the
+human-owner private key, or accept delegated artifacts for owner-only launch or
+Production actions.
