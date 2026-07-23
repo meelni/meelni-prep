@@ -39,11 +39,11 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
   );
   assert.match(
     runbook,
-    /SAV-198\/SAV-248 v6 terminal calibration evidence is recorded truthfully/i
+    /SAV-198\/SAV-248 v7 terminal calibration evidence is recorded truthfully/i
   );
   assert.match(
     runbook,
-    /consumed SAV-285\/v3 lane is historical failure evidence, not the current\s+terminal calibration path/i
+    /consumed v3 through v6 lanes are historical failure evidence, not the\s+current terminal calibration path/i
   );
   assert.doesNotMatch(
     runbook,
@@ -89,9 +89,9 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     "SAV-283",
     "SAV-186",
     "SAV-223",
-    "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6",
-    "Meelni SAV-248 v6 calibration ledger immutable",
-    "Meelni SAV-248 v6 calibration activation actor",
+    "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v7",
+    "Meelni SAV-248 v7 calibration ledger immutable",
+    "Meelni SAV-248 v7 calibration activation actor",
     "GitHub user `saviii`, actor type\n     `User`, user ID `24397508`",
     "meelni_interview_pass_usd",
     "meelni_starter_monthly_usd",
@@ -118,7 +118,7 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     /A broad "looks good" or "signed" message is not enough/i
   );
   assert.match(runbook, /Do not point Production at test-mode price IDs/i);
-  assert.match(runbook, /Do not manually create the v6 ledger\s+ref/i);
+  assert.match(runbook, /Do not manually create the v7 ledger\s+ref/i);
   assert.match(runbook, /Stop before total spend\s+can exceed \$3/i);
   assert.match(runbook, /Do not print secret values/i);
   assert.match(runbook, /no customer transcripts;\s+- no Production data/i);
@@ -128,13 +128,13 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
   );
 });
 
-test("evaluation calibration runbook uses v6 owner authorization artifact names", async () => {
+test("evaluation calibration runbook uses v7 owner authorization artifact names", async () => {
   const runbook = await readFile(EVALUATION_CALIBRATION_RUNBOOK_PATH, "utf8");
 
   for (const required of [
-    "sav-248-v6-owner-authorization-request.json",
-    "sav-248-v6-owner-authorization.json",
-    "sav-248-v6-owner-authorization-report.json",
+    "sav-248-v7-owner-authorization-request.json",
+    "sav-248-v7-owner-authorization.json",
+    "sav-248-v7-owner-authorization-report.json",
     "GitHub user `saviii`, actor type `User`, user ID `24397508`",
   ]) {
     assert.match(runbook, escapeForRegex(required));
