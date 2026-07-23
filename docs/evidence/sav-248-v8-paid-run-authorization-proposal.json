@@ -1,7 +1,7 @@
 {
   "contractVersion": "evaluation-calibration-spend-authorization.v2",
-  "authorizationId": "sav-248-pending-paid-calibration-authorization.v7",
-  "runId": "sav-248-authorized-paid-calibration.v7",
+  "authorizationId": "sav-248-pending-paid-calibration-authorization.v8",
+  "runId": "sav-248-authorized-paid-calibration.v8",
   "authorizationStatus": "pending_explicit_product_owner_approval",
   "authorizedOn": null,
   "authorizationSource": null,
@@ -44,6 +44,11 @@
       "runId": "sav-248-authorized-paid-calibration.v6",
       "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6",
       "activationCommit": "b23e5d54fb21d72e1043a4404fea1ac691e31a89"
+    },
+    {
+      "runId": "sav-248-authorized-paid-calibration.v7",
+      "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v7",
+      "activationCommit": "52f7e105db37ab0a48d3b4a2e5a692d0e1ccd840"
     }
   ]
 }
