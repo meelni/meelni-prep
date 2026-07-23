@@ -187,7 +187,10 @@ describe("feedback transcript read states", () => {
         return completedFeedbackResponse(SESSION_ID);
       }
       if (url === `/api/feedback/${SECOND_SESSION_ID}`) {
-        return completedFeedbackResponse(SECOND_SESSION_ID);
+        return completedFeedbackResponse(
+          SECOND_SESSION_ID,
+          "Second session summary"
+        );
       }
       if (url === `/api/session/${SESSION_ID}/transcript`) {
         return new Promise<Response>((resolve) => {
@@ -205,18 +208,13 @@ describe("feedback transcript read states", () => {
 
     const view = render(<FeedbackPage />);
     await expandTranscript();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Loading transcript"
-    );
-    expect(resolveFirstTranscript).toBeDefined();
+    await waitFor(() => expect(resolveFirstTranscript).toBeDefined());
 
     navigation.sessionId = SECOND_SESSION_ID;
     view.rerender(<FeedbackPage />);
+    expect(await screen.findByText("Second session summary")).toBeVisible();
     await expandTranscript();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Loading transcript"
-    );
-    expect(resolveSecondTranscript).toBeDefined();
+    await waitFor(() => expect(resolveSecondTranscript).toBeDefined());
 
     await act(async () => {
       resolveSecondTranscript?.(
