@@ -112,10 +112,14 @@ export function getFeedbackProviderResponseFormat(
           strengths: {
             type: "array" as const,
             items: finding,
+            minItems: 2,
+            maxItems: 2,
           },
           improvements: {
             type: "array" as const,
             items: finding,
+            minItems: 2,
+            maxItems: 2,
           },
           drills: {
             type: "array" as const,

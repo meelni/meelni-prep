@@ -62,6 +62,12 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /same-turn ranges are pairwise disjoint/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
+    /Return exactly two strengths and exactly two improvements/
+  );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /strengths\.length === 2/);
+  assert.match(EVALUATION_SYSTEM_PROMPT, /improvements\.length === 2/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
     /remove or rewrite that finding rather than reusing evidence/
   );
   assert.match(

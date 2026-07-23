@@ -148,18 +148,18 @@ test("paid feedback uses a deterministic strict response schema", () => {
   );
   assert.equal(
     getFeedbackProviderResponseFormatContractHash(),
-    "66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073"
+    "403729b9e246f85eabd50284dae905218c250bdd1785b2d58b27fa77424e8eb9"
   );
   assert.equal(
     Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
-    2_424
+    2_476
   );
   assert.equal(
     Buffer.byteLength(
       serializeFeedbackProviderResponseFormat("partial"),
       "utf8"
     ),
-    2_430
+    2_482
   );
   const full = getFeedbackProviderResponseFormat("full");
   const partial = getFeedbackProviderResponseFormat("partial");
@@ -173,6 +173,10 @@ test("paid feedback uses a deterministic strict response schema", () => {
   assert.deepEqual(partial.json_schema.schema.properties.evaluationState.enum, [
     "partial",
   ]);
+  assert.equal(full.json_schema.schema.properties.strengths.minItems, 2);
+  assert.equal(full.json_schema.schema.properties.strengths.maxItems, 2);
+  assert.equal(full.json_schema.schema.properties.improvements.minItems, 2);
+  assert.equal(full.json_schema.schema.properties.improvements.maxItems, 2);
 });
 
 test("paid request policy pins every non-prompt provider control", () => {
@@ -194,11 +198,11 @@ test("paid request policy pins every non-prompt provider control", () => {
     requestTimeoutMs: 300_000,
     responseFormatVersion: "feedback-provider-response-format.v1",
     responseFormatHash:
-      "66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073",
+      "403729b9e246f85eabd50284dae905218c250bdd1785b2d58b27fa77424e8eb9",
   });
   assert.equal(
     getFeedbackCalibrationRequestPolicyHash(),
-    "884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db"
+    "5da35139f3f910970f9f60bf699168604eae592ebd621d212f4959b6bbae866a"
   );
 });
 

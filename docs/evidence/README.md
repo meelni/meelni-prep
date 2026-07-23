@@ -36,13 +36,13 @@ nano-USD ($2.052925) deterministic worst case, and plan hash
 This historical artifact cannot revive the consumed v1 authority. It performs
 no provider call or ledger activation and grants no launch authority.
 
-`sav-248-v7-paid-run-authorization-proposal.json` is deliberately not an
+`sav-248-v8-paid-run-authorization-proposal.json` is deliberately not an
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current 64-call proposal has a $2.344225
+reviewed source commit. The current 64-call proposal has a $2.375425
 deterministic worst case and proposal hash
-`b0bbff39c8bc50cd8a3eb4eaa350bdb4781bb87c87f725e9d388365a77c84449`.
+`dca9d7cf3996bd1fdbbd7248ebc388ffe75bd423ec880a234c33681d9cbb3243`.
 It explicitly records the correct v1 through v6 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
@@ -57,11 +57,11 @@ activation commits:
 `78295d40c19ba366a64956010af9535b283aaf44`, and
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6` at
 `b23e5d54fb21d72e1043a4404fea1ac691e31a89`. Its proposal authorization hash is
-source-derived and must be regenerated after merge. No v7 Git ledger exists or
+source-derived and must be regenerated after merge. No v8 Git ledger exists or
 is authorized. The proposal-only deterministic genesis is
-`11d1307cc1c8098163bbb8986ac3ca0635ece9f0` and must not be created.
+`37f582dedce74202e078aeaec0f8572f2683eba0` and must not be created.
 
-`sav-248-v7-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
+`sav-248-v8-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
@@ -72,7 +72,7 @@ paid run can become executable.
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
 registry contains only public verification material, no private signing key is
-stored here, and no signed v7 authorization artifact exists. Any future artifact
+stored here, and no signed v8 authorization artifact exists. Any future artifact
 must remain outside Git and bind the exact post-merge source commit and freshly
 regenerated plan; the historical v1 through v6 artifacts remain unusable.
 

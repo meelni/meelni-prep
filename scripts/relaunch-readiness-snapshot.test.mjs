@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  V7_LEDGER_REF,
+  V8_LEDGER_REF,
   buildRelaunchReadinessSnapshot,
 } from "./relaunch-readiness-snapshot.mjs";
 
-test("relaunch readiness snapshot reports clean queue and exact v7 guardrails", async () => {
+test("relaunch readiness snapshot reports clean queue and exact v8 guardrails", async () => {
   const snapshot = await buildRelaunchReadinessSnapshot({
     fetch: false,
     now: new Date("2026-07-23T04:00:00.000Z"),
@@ -26,15 +26,15 @@ test("relaunch readiness snapshot reports clean queue and exact v7 guardrails", 
   assert.equal(snapshot.github.queueClean, true);
   assert.equal(snapshot.github.openPullRequestCount, 0);
   assert.equal(snapshot.github.openIssueCount, 0);
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, true);
-  assert.equal(snapshot.calibrationV7Guardrails.ledgerRef.present, true);
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, true);
+  assert.equal(snapshot.calibrationV8Guardrails.ledgerRef.present, true);
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     true
   );
 });
 
-test("relaunch readiness snapshot tolerates an absent v7 ledger ref", async () => {
+test("relaunch readiness snapshot tolerates an absent v8 ledger ref", async () => {
   const snapshot = await buildRelaunchReadinessSnapshot({
     fetch: false,
     runCommand: fixtureRunner({
@@ -43,11 +43,11 @@ test("relaunch readiness snapshot tolerates an absent v7 ledger ref", async () =
     }),
   });
 
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, true);
-  assert.equal(snapshot.calibrationV7Guardrails.ledgerRef.present, false);
-  assert.equal(snapshot.calibrationV7Guardrails.ledgerRef.reason, "not_found");
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, true);
+  assert.equal(snapshot.calibrationV8Guardrails.ledgerRef.present, false);
+  assert.equal(snapshot.calibrationV8Guardrails.ledgerRef.reason, "not_found");
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     false
   );
 });
@@ -61,13 +61,13 @@ test("relaunch readiness snapshot marks non-exact rulesets as not ready", async 
     }),
   });
 
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, false);
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, false);
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.activationActor.exact,
+    snapshot.calibrationV8Guardrails.rulesets.required.activationActor.exact,
     false
   );
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     false
   );
 });
@@ -82,13 +82,13 @@ test("relaunch readiness snapshot rejects a non-user activation bypass actor", a
     }),
   });
 
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, false);
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, false);
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.activationActor.exact,
+    snapshot.calibrationV8Guardrails.rulesets.required.activationActor.exact,
     false
   );
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     false
   );
 });
@@ -103,18 +103,18 @@ test("relaunch readiness snapshot fetches detailed rulesets before exactness che
     }),
   });
 
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, true);
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, true);
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.ledgerImmutable.exact,
+    snapshot.calibrationV8Guardrails.rulesets.required.ledgerImmutable.exact,
     true
   );
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.activationActor.exact,
+    snapshot.calibrationV8Guardrails.rulesets.required.activationActor.exact,
     true
   );
-  assert.equal(snapshot.calibrationV7Guardrails.ledgerRef.present, false);
+  assert.equal(snapshot.calibrationV8Guardrails.ledgerRef.present, false);
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     false
   );
 });
@@ -130,18 +130,18 @@ test("relaunch readiness snapshot fails closed when ruleset detail fetch fails",
     }),
   });
 
-  assert.equal(snapshot.calibrationV7Guardrails.rulesets.allExact, false);
+  assert.equal(snapshot.calibrationV8Guardrails.rulesets.allExact, false);
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.ledgerImmutable.exact,
+    snapshot.calibrationV8Guardrails.rulesets.required.ledgerImmutable.exact,
     false
   );
   assert.equal(
-    snapshot.calibrationV7Guardrails.rulesets.required.ledgerImmutable
+    snapshot.calibrationV8Guardrails.rulesets.required.ledgerImmutable
       .detailLookupFailed,
     true
   );
   assert.equal(
-    snapshot.calibrationV7Guardrails.readyForOwnerAuthorizedCalibration,
+    snapshot.calibrationV8Guardrails.readyForOwnerAuthorizedCalibration,
     false
   );
 });
@@ -212,7 +212,7 @@ function fixtureRunner({
       }
 
       return JSON.stringify({
-        ref: V7_LEDGER_REF,
+        ref: V8_LEDGER_REF,
         object: {
           sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           type: "commit",
@@ -240,12 +240,12 @@ function buildRulesets({ exact, activationActorType }) {
   return [
     {
       id: 101,
-      name: "Meelni SAV-248 v7 calibration ledger immutable",
+      name: "Meelni SAV-248 v8 calibration ledger immutable",
       target: "branch",
       enforcement: "active",
       conditions: {
         ref_name: {
-          include: [V7_LEDGER_REF],
+          include: [V8_LEDGER_REF],
           exclude: [],
         },
       },
@@ -254,12 +254,12 @@ function buildRulesets({ exact, activationActorType }) {
     },
     {
       id: 102,
-      name: "Meelni SAV-248 v7 calibration activation actor",
+      name: "Meelni SAV-248 v8 calibration activation actor",
       target: "branch",
       enforcement: exact ? "active" : "evaluate",
       conditions: {
         ref_name: {
-          include: [V7_LEDGER_REF],
+          include: [V8_LEDGER_REF],
           exclude: [],
         },
       },
