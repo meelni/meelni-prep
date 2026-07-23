@@ -39,6 +39,18 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
   );
   assert.match(
     runbook,
+    /SAV-198\/SAV-248 v4 terminal calibration evidence is recorded truthfully/i
+  );
+  assert.match(
+    runbook,
+    /consumed SAV-285\/v3 lane is historical failure evidence, not the current\s+terminal calibration path/i
+  );
+  assert.doesNotMatch(
+    runbook,
+    /SAV-198\/SAV-285 terminal calibration evidence/i
+  );
+  assert.match(
+    runbook,
     /only the product owner may create the final Production\s+GO record/i
   );
   assert.match(runbook, /A successful Preview rehearsal is evidence only/i);
