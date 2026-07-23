@@ -224,6 +224,45 @@ test("a verified owner handoff activates only the exact signed plan", async () =
   );
 });
 
+test("a verified owner handoff seeds an absent genesis ledger ref before activation", async () => {
+  const ownerAuthorization = buildVerifiedOwnerAuthorization();
+  const activationNow = new Date(NOW.getTime() + 524);
+  const options: ActivateCalibrationRunOptions = {
+    ownerAuthorization,
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: approvalFixture(),
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 2,
+    now: activationNow,
+    activationId: "verified-owner-activation",
+  };
+  const plan = buildCalibrationActivatedPlan({
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: options.adjudicationApproval,
+    model: options.model,
+    repetitions: options.repetitions,
+    now: activationNow,
+  });
+  const genesis = buildCalibrationAuthorizationGenesis(
+    plan,
+    ownerAuthorization.authorization
+  );
+  const state = createUnseededCanonicalState(genesis);
+
+  const authority =
+    await calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+      options,
+      new FakeGitHubClient(state)
+    );
+
+  assertPinnedFakeGenesis(state, genesis);
+  assert.equal(state.refSha, authority.activationCommit);
+  assert.deepEqual(
+    state.commits.get(authority.activationCommit)?.parents,
+    [genesis.oid]
+  );
+});
+
 test("canonical repository and activation actor identities are immutable", async () => {
   for (const mutate of [
     (state: FakeGitHubState) => (state.repository.id += 1),
@@ -245,13 +284,6 @@ test("canonical repository and activation actor identities are immutable", async
 });
 
 test("activation requires the exact deterministic pinned genesis OID and payload", async () => {
-  const missingRef = createCanonicalState();
-  missingRef.refSha = "";
-  await assert.rejects(
-    () => activate(new FakeGitHubClient(missingRef)),
-    /fake_ref_missing/
-  );
-
   const wrongOid = createCanonicalState();
   wrongOid.refSha = "1".repeat(40);
   wrongOid.commits.set(
@@ -800,7 +832,7 @@ interface FakeGitHubState {
   viewer: { id: number; login: string };
   rulesets: GitHubRuleset[];
   effectiveRuleTypes: string[];
-  refSha: string;
+  refSha: string | null;
   commits: Map<string, GitHubCommit>;
 }
 
@@ -830,9 +862,15 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     return [...this.state.effectiveRuleTypes];
   }
 
-  getRef(): GitHubRef {
-    if (!this.state.refSha) throw new Error("fake_ref_missing");
+  getRefIfPresent(): GitHubRef | null {
+    if (!this.state.refSha) return null;
     return { ref: SAV_248_V4_GIT_LEDGER_REF, sha: this.state.refSha };
+  }
+
+  getRef(): GitHubRef {
+    const ref = this.getRefIfPresent();
+    if (!ref) throw new Error("fake_ref_missing");
+    return ref;
   }
 
   getCommit(sha: string): GitHubCommit {
@@ -850,9 +888,7 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     const normalizedDate = new Date(
       Math.floor(new Date(input.date).getTime() / 1_000) * 1_000
     ).toISOString();
-    const sha = createHash("sha1")
-      .update(JSON.stringify({ ...input, date: normalizedDate }))
-      .digest("hex");
+    const sha = fakeCommitSha({ ...input, date: normalizedDate });
     const commit: GitHubCommit = {
       sha,
       message: input.message,
@@ -863,6 +899,19 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
     };
     this.state.commits.set(sha, commit);
     return structuredClone(commit);
+  }
+
+  createRef(input: {
+    ref: typeof SAV_248_V4_GIT_LEDGER_REF;
+    sha: string;
+  }): GitHubRef {
+    assert.equal(input.ref, SAV_248_V4_GIT_LEDGER_REF);
+    if (this.state.refSha) throw new Error("fake_ref_already_exists");
+    if (!this.state.commits.has(input.sha)) {
+      throw new Error("fake_ref_sha_missing");
+    }
+    this.state.refSha = input.sha;
+    return this.getRef();
   }
 
   async updateRef(input: { sha: string; force: false }): Promise<GitHubRef> {
@@ -940,6 +989,15 @@ function createCanonicalState(
   };
 }
 
+function createUnseededCanonicalState(
+  genesis: ReturnType<typeof buildCalibrationAuthorizationGenesis>
+): FakeGitHubState {
+  const state = createCanonicalState(genesis);
+  state.refSha = null;
+  state.commits.delete(genesis.oid);
+  return state;
+}
+
 function canonicalRulesets(): GitHubRuleset[] {
   const base = {
     source: `${SAV_248_V4_GITHUB_OWNER}/${SAV_248_V4_GITHUB_REPOSITORY}`,
@@ -983,6 +1041,28 @@ function genesisCommit(patch: Partial<GitHubCommit> = {}): GitHubCommit {
   };
 }
 
+function fakeCommitSha(input: {
+  message: string;
+  treeSha: string;
+  parents: string[];
+  date: string;
+}): string {
+  const timestamp = Math.floor(new Date(input.date).getTime() / 1_000);
+  const body = [
+    `tree ${input.treeSha}`,
+    ...input.parents.map((parent) => `parent ${parent}`),
+    `author Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
+    `committer Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
+    "",
+    input.message,
+    "",
+  ].join("\n");
+  return createHash("sha1")
+    .update(`commit ${Buffer.byteLength(body)}\0`)
+    .update(body)
+    .digest("hex");
+}
+
 function commitIdentity(date = SAV_248_V4_GENESIS_DATE) {
   return {
     name: "Meelni Calibration Authorization",
@@ -1003,6 +1083,20 @@ function assertPayloadFreeActivation(
     false
   );
   assert.equal(commit.message.includes("OPENAI_API_KEY"), false);
+}
+
+function assertPinnedFakeGenesis(
+  state: FakeGitHubState,
+  genesis: ReturnType<typeof buildCalibrationAuthorizationGenesis>
+): void {
+  const commit = state.commits.get(genesis.oid);
+  assert.ok(commit);
+  assert.equal(commit.sha, genesis.oid);
+  assert.equal(commit.message, genesis.message);
+  assert.equal(commit.treeSha, SAV_248_V4_EMPTY_TREE_OID);
+  assert.deepEqual(commit.parents, []);
+  assert.deepEqual(commit.author, commitIdentity(genesis.date));
+  assert.deepEqual(commit.committer, commitIdentity(genesis.date));
 }
 
 function approvalFixture() {
@@ -1207,7 +1301,8 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
         return jsonResponse(state.effectiveRuleTypes.map((type) => ({ type })));
       }
       if (input.method === "GET" && input.path.includes("/git/ref/")) {
-        const ref = await client.getRef();
+        const ref = await client.getRefIfPresent();
+        if (!ref) return jsonResponse({ message: "Not Found" }, 404);
         return jsonResponse({
           ref: ref.ref,
           object: { type: "commit", sha: ref.sha },
@@ -1233,6 +1328,14 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
           date: body.author.date,
         });
         return jsonResponse(gitHubCommitResponse(commit), 201);
+      }
+      if (input.method === "POST" && input.path.endsWith("/git/refs")) {
+        const body = JSON.parse(input.body ?? "null") as {
+          ref: typeof SAV_248_V4_GIT_LEDGER_REF;
+          sha: string;
+        };
+        const ref = await client.createRef(body);
+        return jsonResponse({ ref: ref.ref, object: { type: "commit", sha: ref.sha } }, 201);
       }
       if (input.method === "PATCH" && input.path.includes("/git/refs/")) {
         const body = JSON.parse(input.body ?? "null") as {
