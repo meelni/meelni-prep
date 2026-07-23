@@ -92,7 +92,7 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4",
     "Meelni SAV-248 v4 calibration ledger immutable",
     "Meelni SAV-248 v4 calibration activation actor",
-    "GitHub user `saviii`, user ID\n     `24397508`",
+    "GitHub user `saviii`, actor type\n     `User`, user ID `24397508`",
     "meelni_interview_pass_usd",
     "meelni_starter_monthly_usd",
     "meelni_pro_monthly_usd",
