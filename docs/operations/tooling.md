@@ -206,10 +206,11 @@ artifacts, default-on must contain the owner's explicit `GO` bound to the exact
 candidate. Default-off and emergency disable remain available without GO.
 
 Statsig provider governance for the gate is tracked separately in
-[Statsig Relaunch Governance](./statsig-relaunch-governance.md). SAV-283 may
-prepare the review-settings mutation and evidence packet, but the provider
-mutation itself requires explicit owner approval and must not enable the gate or
-change targeting rules.
+[Statsig Relaunch Governance](./statsig-relaunch-governance.md). SAV-283 has
+configured owner-only reviewer eligibility for the relaunch gate and Preview
+rehearsal authority, but required-review enforcement still needs proof or a
+documented Statsig limitation. Future provider mutations require explicit owner
+approval and must not enable the gate or change targeting rules.
 
 The ordered prelaunch execution checklist is tracked in
 [Relaunch Readiness Execution](./relaunch-readiness-execution.md). Use it to

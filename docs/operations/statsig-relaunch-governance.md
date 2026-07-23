@@ -1,6 +1,7 @@
 # Statsig Relaunch Governance
 
-Status: pending owner-approved provider mutation.
+Status: owner-only reviewer eligibility configured; required-review enforcement
+still needs proof or a documented Statsig limitation.
 
 This runbook covers the `meelni_reactivation_access` Statsig gate, which
 controls whether discontinued/relaunch-gated product entry points reopen. It
@@ -23,7 +24,7 @@ separate decision is explicit.
 
 ## Current provider evidence
 
-Read-only Statsig checks on 2026-07-22 returned:
+Statsig checks on 2026-07-23 returned:
 
 Gate `meelni_reactivation_access`:
 
@@ -32,9 +33,9 @@ Gate `meelni_reactivation_access`:
 - `rules: []`
 - `reviewSettings.requiredReview: false`
 - `reviewSettings.allowedReviewers: []`
-- eligible reviewers API: `everyone_eligible: true`, with no enumerated users
-  or reviewer groups
-- review list: empty
+- eligible reviewers API: `everyone_eligible: false`, with owner user
+  `7spxjTLm7lyPibNJavcTmx` / `contact@meelni.com` and no reviewer groups
+- committed review `6Uip5thkTs2D7ascrYKYkQ`, type `allowed_reviewers`
 
 Dynamic config `meelni_preview_rehearsal_authority`:
 
@@ -48,15 +49,17 @@ Dynamic config `meelni_preview_rehearsal_authority`:
   - `approvedGitRef: "codex/sav-268-preview-lineage-reconciliation"`
   - `authorizedAt: "2026-07-19T13:21:47.878Z"`
   - `expiresAt: "2026-07-19T13:31:47.878Z"`
-- eligible reviewers API: `everyone_eligible: true`, with no enumerated users
-  or reviewer groups
-- review list: empty
+- eligible reviewers API: `everyone_eligible: false`, with owner user
+  `7spxjTLm7lyPibNJavcTmx` / `contact@meelni.com` and no reviewer groups
+- committed review `QHCBMD2kK9ZIwA4hXmdzP`, type `allowed_reviewers`
 
 This means both controls are safely off. The dynamic config's retained metadata
-is inactive and expired, so it grants no rehearsal authority. Statsig still does
-not enforce the accepted owner-only launch authority: a sufficiently privileged
-editor could change the gate or config unless provider-side review settings are
-configured.
+is inactive and expired, so it grants no rehearsal authority. Statsig now limits
+eligible reviewers for both controls to the owner account. However, the gate
+detail endpoint still reports `reviewSettings.requiredReview: false` and does
+not show allowed reviewers there, so required-review enforcement is not yet
+proven. Do not claim SAV-283 complete until either required review is read back
+as enforced or the exact Statsig platform/API limitation is recorded.
 
 ## Required governance target
 
@@ -67,29 +70,33 @@ Before any relaunch rehearsal or launch flip, configure Statsig so that:
    changes.
 3. `contact@meelni.com` is the explicit allowed reviewer if the Statsig plan and
    API support user-scoped reviewers.
-4. Self-approval remains disabled unless a later owner-approved decision
-   explicitly says otherwise.
+4. Self-approval remains available for the owner-only single-operator workflow,
+   matching the accepted decision that Meelni should not require a fake second
+   approver.
 5. The mutation does not change `isEnabled`, `status`, `rules`, `idType`,
    targeting, fallback defaults, retained inactive rehearsal metadata, or
    release state.
 6. The gate and dynamic config remain disabled after the governance mutation,
    with `defaultValue.active: false`.
 
-If Statsig cannot restrict allowed reviewers to the owner account, stop and
-record the exact limitation in Linear. Do not substitute "everyone eligible" as
-an owner-only control.
+If Statsig cannot separately require review while preserving the owner-only
+reviewer constraint, stop and record the exact limitation in Linear. Do not
+substitute owner-only eligibility alone as proof that review is required.
 
 ## Owner authorization packet
 
-SAV-283 requires explicit owner approval before creating or committing a Statsig
-review. The authorization request should include:
+SAV-283 required explicit owner approval before creating or committing a Statsig
+review. The 2026-07-23 owner-only eligibility mutations have been committed, but
+any future review-governance mutation, launch rehearsal, gate enablement, or
+dynamic-config activation still requires explicit owner authorization. The
+authorization request should include:
 
 - gate ID: `meelni_reactivation_access`
 - dynamic config ID: `meelni_preview_rehearsal_authority`
 - current safe state: both controls disabled, no rules, dynamic config
   `active: false`, owner `contact@meelni.com`
-- proposed operation: enable required review and restrict allowed reviewers to
-  the owner account when supported for both controls
+- proposed operation: enable required review where supported, preserving the
+  owner-only reviewer constraint for both controls
 - explicit non-goals: do not enable the gate, do not add rules, do not change
   `MEELNI_REACTIVATION_DEFAULT`, do not activate Preview rehearsal authority,
   do not authorize launch
@@ -100,10 +107,11 @@ Approved wording should be precise, for example:
 
 > I authorize the SAV-283 Statsig governance mutation for
 > `meelni_reactivation_access` and
-> `meelni_preview_rehearsal_authority`: require review, restrict eligible
-> reviewers to `contact@meelni.com` where supported, keep self-approval
-> disabled, and do not change enabled state, dynamic config active state,
-> targeting rules, fallback defaults, or launch state.
+> `meelni_preview_rehearsal_authority`: require review where supported,
+> preserve eligible reviewers as `contact@meelni.com`, preserve owner
+> self-commit for the single-operator workflow, and do not change enabled state,
+> dynamic config active state, targeting rules, fallback defaults, or launch
+> state.
 
 ## API rehearsal sequence
 
@@ -117,8 +125,8 @@ into chat, docs, Linear, or PRs.
 2. Read eligible reviewers for both controls.
    - Expected target: owner user ID `7spxjTLm7lyPibNJavcTmx` is eligible, or an
      owner-only reviewer group exists.
-   - Current known gap: `everyone_eligible: true` with no enumerated users or
-     groups.
+   - Current provider state: `everyone_eligible: false`, owner user
+     `7spxjTLm7lyPibNJavcTmx` eligible, no reviewer groups.
 3. Create gate and dynamic-config reviews proposing only review-settings
    changes.
    - Proposed change shape should be limited to review governance fields such as
@@ -127,12 +135,15 @@ into chat, docs, Linear, or PRs.
 4. Verify each review by ID.
    - Confirm proposed change does not include gate enablement, rules, fallback,
      dynamic config activation, or targeting changes.
-5. Have an eligible non-agent owner approve and commit, or stop if the API
-   cannot express the owner-only reviewer constraint.
+5. Commit through the owner account for the single-operator workflow, or stop if
+   the API cannot express the required-review setting without weakening the
+   owner-only reviewer constraint.
 6. Read the gate and dynamic config again.
-   - Required: `requiredReview: true`, owner-only reviewer constraint where
-     supported, `isEnabled: false`, `rules: []`, and dynamic config
-     `defaultValue.active: false`.
+   - Required before closing SAV-283: `requiredReview: true` if Statsig exposes
+     that state, owner-only reviewer constraint, `isEnabled: false`,
+     `rules: []`, and dynamic config `defaultValue.active: false`; otherwise
+     a documented platform limitation explaining why required-review enforcement
+     cannot be proven separately from owner-only eligibility.
 7. Rehearse the unsafe path without committing it.
    - Create or attempt a proposed enable change only if the owner explicitly
      included this rehearsal in the authorization.

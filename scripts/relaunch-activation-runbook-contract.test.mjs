@@ -140,21 +140,24 @@ test("evaluation calibration runbook uses v4 owner authorization artifact names"
   }
 });
 
-test("Statsig governance runbook keeps current provider gap explicit", async () => {
+test("Statsig governance runbook records owner-only eligibility and required-review caveat", async () => {
   const runbook = await readFile(STATSIG_GOVERNANCE_RUNBOOK_PATH, "utf8");
 
   for (const required of [
-    "Read-only Statsig checks on 2026-07-22 returned",
+    "Statsig checks on 2026-07-23 returned",
     "Gate `meelni_reactivation_access`",
     "Dynamic config `meelni_preview_rehearsal_authority`",
     '`reviewSettings.requiredReview: false`',
+    "`everyone_eligible: false`",
+    "`6Uip5thkTs2D7ascrYKYkQ`",
+    "`QHCBMD2kK9ZIwA4hXmdzP`",
     "`defaultValue.active: false`",
     "retained historical rehearsal metadata",
     "inactive and expired",
-    "requires review for gate changes",
-    "requires review for dynamic-config\n   changes",
+    "required-review enforcement is not yet\nproven",
+    "preserving the\n  owner-only reviewer constraint",
     "do not activate Preview rehearsal authority",
-    "do not change enabled state, dynamic config active state",
+    "do not change enabled state,\n> dynamic config active state",
     "defaultValue.active: false",
   ]) {
     assert.match(runbook, escapeForRegex(required));
@@ -162,7 +165,11 @@ test("Statsig governance runbook keeps current provider gap explicit", async () 
 
   assert.match(
     runbook,
-    /both controls are safely off[\s\S]*Statsig still does\s+not enforce the accepted owner-only launch authority/i
+    /both controls are safely off[\s\S]*limits\s+eligible reviewers for both controls to the owner account/i
+  );
+  assert.match(
+    runbook,
+    /required-review enforcement is not yet\s+proven/i
   );
   assert.match(
     runbook,
@@ -170,7 +177,7 @@ test("Statsig governance runbook keeps current provider gap explicit", async () 
   );
   assert.match(
     runbook,
-    /The mutation does not change `isEnabled`, `status`, `rules`, `idType`,\s+targeting, fallback defaults, retained inactive rehearsal metadata, or\s+release state/i
+    /self-commit for the single-operator workflow/i
   );
 });
 
