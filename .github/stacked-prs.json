@@ -1,12 +1,5 @@
 {
   "version": 2,
   "repository": "meelni/meelni-prep",
-  "stacks": [
-    {
-      "pr": 424,
-      "headRef": "codex/sav-303-delegated-calibration-runner",
-      "parentPr": 423,
-      "parentRef": "codex/sav-302-delegated-agent-authorization"
-    }
-  ]
+  "stacks": []
 }
