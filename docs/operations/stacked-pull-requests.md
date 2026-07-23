@@ -188,7 +188,8 @@ GitHub's native protected pull-request merge as documented in
 `docs/operations/ci-cost-control.md`. If live branch protection is also
 expecting the ordinary CI `Validate` job, include a small relevant operations
 documentation update with the registry change rather than bypassing protection
-or publishing a synthetic merge authorization.
+or publishing a synthetic merge authorization; keep that companion change
+limited to the operational context that explains why normal CI must run.
 
 This repository's merge queue is not currently configured, auto-merge is
 disabled, and CI does not support `merge_group`. GitHub's pull-request merge API
