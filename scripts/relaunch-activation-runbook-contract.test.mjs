@@ -43,7 +43,7 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
   );
   assert.match(
     runbook,
-    /consumed v3 through v6 lanes are historical failure evidence, not the\s+current terminal calibration path/i
+    /consumed v3 through v7 lanes are historical failure evidence, not the\s+current\s+terminal calibration path/i
   );
   assert.doesNotMatch(
     runbook,
