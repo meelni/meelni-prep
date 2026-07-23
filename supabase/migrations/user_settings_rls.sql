@@ -1,11 +1,15 @@
 -- Enable RLS on user_settings table
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own settings" ON user_settings;
+
 -- Policy: Users can view their own settings
 CREATE POLICY "Users can view own settings"
   ON user_settings
   FOR SELECT
   USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own settings" ON user_settings;
 
 -- Policy: Users can insert their own settings
 CREATE POLICY "Users can insert own settings"
@@ -13,12 +17,16 @@ CREATE POLICY "Users can insert own settings"
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own settings" ON user_settings;
+
 -- Policy: Users can update their own settings
 CREATE POLICY "Users can update own settings"
   ON user_settings
   FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own settings" ON user_settings;
 
 -- Policy: Users can delete their own settings
 CREATE POLICY "Users can delete own settings"

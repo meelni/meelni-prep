@@ -8,12 +8,16 @@
 
 ALTER TABLE app_user ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own profile" ON app_user;
+
 -- Policy: Users can view their own profile
 CREATE POLICY "Users can view own profile"
   ON app_user
   FOR SELECT
   TO authenticated
   USING (id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update own profile" ON app_user;
 
 -- Policy: Users can update their own profile
 CREATE POLICY "Users can update own profile"
@@ -22,6 +26,8 @@ CREATE POLICY "Users can update own profile"
   TO authenticated
   USING (id = auth.uid())
   WITH CHECK (id = auth.uid());
+
+DROP POLICY IF EXISTS "Service role has full access to app_user" ON app_user;
 
 -- Policy: Service role has full access (for admin operations)
 CREATE POLICY "Service role has full access to app_user"
@@ -37,12 +43,16 @@ CREATE POLICY "Service role has full access to app_user"
 
 ALTER TABLE interview_question ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can view questions" ON interview_question;
+
 -- Policy: All authenticated users can read questions (public question bank)
 CREATE POLICY "Authenticated users can view questions"
   ON interview_question
   FOR SELECT
   TO authenticated
   USING (is_active = true);
+
+DROP POLICY IF EXISTS "Service role has full access to interview_question" ON interview_question;
 
 -- Policy: Service role can manage questions (admin-only writes)
 CREATE POLICY "Service role has full access to interview_question"
@@ -58,6 +68,8 @@ CREATE POLICY "Service role has full access to interview_question"
 
 ALTER TABLE session_question ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own session questions" ON session_question;
+
 -- Policy: Users can view questions used in their own sessions
 CREATE POLICY "Users can view own session questions"
   ON session_question
@@ -71,6 +83,8 @@ CREATE POLICY "Users can view own session questions"
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert own session questions" ON session_question;
+
 -- Policy: Users can insert questions for their own sessions
 CREATE POLICY "Users can insert own session questions"
   ON session_question
@@ -83,6 +97,8 @@ CREATE POLICY "Users can insert own session questions"
       AND interview_session.user_id = auth.uid()
     )
   );
+
+DROP POLICY IF EXISTS "Service role has full access to session_question" ON session_question;
 
 -- Policy: Service role has full access (for background operations)
 CREATE POLICY "Service role has full access to session_question"
@@ -98,12 +114,16 @@ CREATE POLICY "Service role has full access to session_question"
 
 ALTER TABLE user_insights ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own insights" ON user_insights;
+
 -- Policy: Users can view their own insights
 CREATE POLICY "Users can view own insights"
   ON user_insights
   FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Service role has full access to user_insights" ON user_insights;
 
 -- Policy: Service role has full access (for analytics jobs)
 CREATE POLICY "Service role has full access to user_insights"
