@@ -30942,20 +30942,7 @@ function buildCalibrationActivatedPlan(input) {
   const scoredCases = evaluationCalibrationCases.filter(
     ({ expectedCompletionState }) => expectedCompletionState === "full" || expectedCompletionState === "partial"
   );
-  const calls = scoredCases.flatMap((fixture) => {
-    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
-    const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
-      inputTokenCeiling,
-      CALIBRATION_MAX_COMPLETION_TOKENS,
-      CALIBRATION_PRICING_CONTRACT
-    );
-    return Array.from({ length: input.repetitions }, (_, runIndex) => ({
-      callKey: `${fixture.id}:${runIndex}`,
-      inputTokenCeiling,
-      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
-      worstCaseNanoUsd
-    }));
-  });
+  const calls = buildCalibrationActivatedPlanCalls(input.repetitions);
   const plannedWorstCaseNanoUsd = calls.reduce(
     (total, call) => total + call.worstCaseNanoUsd,
     0
@@ -31016,6 +31003,25 @@ function buildCalibrationActivatedPlan(input) {
   };
   return { ...withoutHash, planHash: sha2563(stableJson(withoutHash)) };
 }
+function buildCalibrationActivatedPlanCalls(repetitions) {
+  const scoredCases = evaluationCalibrationCases.filter(
+    ({ expectedCompletionState }) => expectedCompletionState === "full" || expectedCompletionState === "partial"
+  );
+  return scoredCases.flatMap((fixture) => {
+    const inputTokenCeiling = structuredCalibrationInputTokenCeiling(fixture);
+    const worstCaseNanoUsd = calculateWorstCaseNanoUsd(
+      inputTokenCeiling,
+      CALIBRATION_MAX_COMPLETION_TOKENS,
+      CALIBRATION_PRICING_CONTRACT
+    );
+    return Array.from({ length: repetitions }, (_, runIndex) => ({
+      callKey: `${fixture.id}:${runIndex}`,
+      inputTokenCeiling,
+      outputTokenCeiling: CALIBRATION_MAX_COMPLETION_TOKENS,
+      worstCaseNanoUsd
+    }));
+  });
+}
 async function activateCalibrationRun(options, credentials) {
   assertCalibrationSpendAuthorizationExecutable(options.authorization);
   if (!options.ownerAuthorization || options.ownerAuthorization.authorization !== options.authorization) {
@@ -31025,6 +31031,12 @@ async function activateCalibrationRun(options, credentials) {
     options,
     createProductionGitHubCasClient(credentials.githubToken),
     "executable"
+  );
+}
+async function resumeDelegatedActivatedCalibrationRun(options, credentials) {
+  return await resumeDelegatedActivatedCalibrationRunWithClient(
+    options,
+    createProductionGitHubCasClient(credentials.githubToken)
   );
 }
 function assertCalibrationSpendAuthorizationExecutable(value) {
@@ -31131,6 +31143,43 @@ async function activateCalibrationRunWithClient(options, github, mode) {
     throw new Error("calibration_git_activation_not_durable");
   }
   return new ActivatedCalibrationRunAuthority(activation.sha, plan, github);
+}
+async function resumeDelegatedActivatedCalibrationRunWithClient(options, github) {
+  assertDelegatedCalibrationRetryAuthority(options);
+  await assertCanonicalGitHubAuthority(github);
+  const currentRef = await github.getRef();
+  if (currentRef.ref !== SAV_248_V4_GIT_LEDGER_REF) {
+    throw new Error("calibration_github_ledger_ref_invalid");
+  }
+  const activation = await github.getCommit(currentRef.sha);
+  const activationMessage = parseCalibrationActivationMessage(activation);
+  const authorization = await github.getCommit(activation.parents[0]);
+  const authorizationMessage = parseCalibrationAuthorizationLedgerMessage(authorization);
+  if (activationMessage.runId !== authorizationMessage.runId || activationMessage.authorizationId !== authorizationMessage.authorizationId || activationMessage.authorizationHash !== authorizationMessage.authorizationHash || activationMessage.planHash !== authorizationMessage.planHash) {
+    throw new Error("calibration_delegated_resume_ledger_mismatch");
+  }
+  const calls = buildCalibrationActivatedPlanCalls(options.repetitions);
+  const plannedWorstCaseNanoUsd = calls.reduce(
+    (total, call) => total + call.worstCaseNanoUsd,
+    0
+  );
+  if (authorizationMessage.plannedCalls !== calls.length || authorizationMessage.plannedWorstCaseNanoUsd !== plannedWorstCaseNanoUsd || calls.length > options.delegatedAuthorization.maximumProviderCalls || calls.length > options.delegatedAuthorization.maximumPhysicalHttpAttempts || plannedWorstCaseNanoUsd > options.delegatedAuthorization.maximumSpendNanoUsd) {
+    throw new Error("calibration_delegated_resume_plan_exceeds_authority");
+  }
+  await assertCanonicalGitHubAuthority(github);
+  return new ActivatedCalibrationRunAuthority(
+    activation.sha,
+    {
+      runId: SAV_248_V4_APPROVED_RUN_ID,
+      authorizationId: activationMessage.authorizationId,
+      authorizationHash: activationMessage.authorizationHash,
+      planHash: activationMessage.planHash,
+      plannedCalls: authorizationMessage.plannedCalls,
+      plannedWorstCaseNanoUsd: authorizationMessage.plannedWorstCaseNanoUsd,
+      calls
+    },
+    github
+  );
 }
 function buildCalibrationAuthorizationGenesis(plan, authorization) {
   if (authorization.authorizationStatus === "pending_explicit_product_owner_approval") {
@@ -31298,6 +31347,72 @@ function isValidActivationCommit(commit, plan, genesis) {
     return parsed.contractVersion === "evaluation-calibration-git-activation.v1" && parsed.runId === SAV_248_V4_APPROVED_RUN_ID && parsed.authorizationId === plan.authorizationId && parsed.authorizationHash === plan.authorizationHash && parsed.planHash === plan.planHash && typeof parsed.activationId === "string" && parsed.activationId.length > 0;
   } catch {
     return false;
+  }
+}
+function assertDelegatedCalibrationRetryAuthority(options) {
+  if (options.delegatedAuthorization.actionClass !== "synthetic_calibration_retry") {
+    throw new Error("calibration_delegated_resume_action_invalid");
+  }
+  if (options.model !== CALIBRATION_PRICING_CONTRACT.model) {
+    throw new Error("calibration_git_activation_model_mismatch");
+  }
+  if (options.repetitions !== 2) {
+    throw new Error("calibration_git_activation_repetitions_mismatch");
+  }
+  validateCalibrationPricingFreshness(options.now ?? /* @__PURE__ */ new Date());
+}
+function parseCalibrationActivationMessage(commit) {
+  if (commit.treeSha !== SAV_248_V4_EMPTY_TREE_OID || commit.parents.length !== 1 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+    throw new Error("calibration_delegated_resume_activation_commit_invalid");
+  }
+  const parsed = parseLedgerMessage(
+    commit.message,
+    "calibration_delegated_resume_activation_message_invalid"
+  );
+  assertExactKeys2(parsed, [
+    "activationId",
+    "authorizationHash",
+    "authorizationId",
+    "contractVersion",
+    "planHash",
+    "runId"
+  ]);
+  if (parsed.contractVersion !== "evaluation-calibration-git-activation.v1" || parsed.runId !== SAV_248_V4_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || typeof parsed.activationId !== "string" || parsed.authorizationId.length === 0 || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || parsed.activationId.length === 0) {
+    throw new Error("calibration_delegated_resume_activation_message_invalid");
+  }
+  return parsed;
+}
+function parseCalibrationAuthorizationLedgerMessage(commit) {
+  if (commit.treeSha !== SAV_248_V4_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+    throw new Error("calibration_delegated_resume_authorization_commit_invalid");
+  }
+  const parsed = parseLedgerMessage(
+    commit.message,
+    "calibration_delegated_resume_authorization_message_invalid"
+  );
+  assertExactKeys2(parsed, [
+    "authorizationHash",
+    "authorizationId",
+    "contractVersion",
+    "planHash",
+    "plannedCalls",
+    "plannedWorstCaseNanoUsd",
+    "predecessorAuthorities",
+    "reviewedSourceCommit",
+    "runId"
+  ]);
+  if (parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" || parsed.runId !== SAV_248_V4_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || !Number.isSafeInteger(parsed.plannedCalls) || !Number.isSafeInteger(parsed.plannedWorstCaseNanoUsd) || typeof parsed.reviewedSourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(parsed.reviewedSourceCommit) || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || stableJson(parsed.predecessorAuthorities) !== stableJson(SAV_248_V4_PREDECESSOR_AUTHORITIES)) {
+    throw new Error("calibration_delegated_resume_authorization_message_invalid");
+  }
+  return parsed;
+}
+function parseLedgerMessage(message, code) {
+  try {
+    const parsed = JSON.parse(message);
+    if (!isRecord2(parsed)) throw new Error(code);
+    return parsed;
+  } catch {
+    throw new Error(code);
   }
 }
 function isCommitIdentity(identity, date2) {
@@ -33735,6 +33850,121 @@ function getCalibrationCliExitCode(executionKind, report) {
   return report.corpus.expectedStateMismatches === 0 && report.corpus.invalidEvidenceAnchors === 0 && report.metrics.insufficientHandlingRate === 1 ? 0 : 1;
 }
 
+// lib/operations/delegated-agent-authorization.ts
+var DELEGATED_AGENT_AUTHORIZATION_CONTRACT = "meelni.delegated-agent-authorization.v1";
+var DELEGATED_AGENT_ID = "codex";
+var DELEGATED_AGENT_AUTHORIZATION_MAX_TTL_MS = 4 * 60 * 60 * 1e3;
+var DELEGATED_AGENT_AUTHORIZATION_MAX_SPEND_NANO_USD = 3e9;
+var ARTIFACT_KEYS2 = ["contract", "payload"];
+var PAYLOAD_KEYS2 = [
+  "actionClass",
+  "authorizationId",
+  "authorizedBy",
+  "authorizedVia",
+  "customerTranscriptsAllowed",
+  "delegatedTo",
+  "expiresAt",
+  "issuedAt",
+  "launchDecision",
+  "maximumPhysicalHttpAttempts",
+  "maximumProviderCalls",
+  "maximumSpendNanoUsd",
+  "productionDataAllowed",
+  "reviewedSourcePolicy",
+  "scope"
+];
+var AUTHORIZATION_ID2 = /^sav[0-9]+_delegated_agent_[0-9a-f]{32}$/;
+function verifyDelegatedAgentAuthorization(input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  if (!Number.isFinite(now.getTime())) {
+    throw new Error("delegated_agent_authorization_clock_invalid");
+  }
+  const artifact = parseDelegatedAgentAuthorizationArtifact(input.artifact);
+  const payload = artifact.payload;
+  if (!AUTHORIZATION_ID2.test(payload.authorizationId)) {
+    throw new Error("delegated_agent_authorization_id_invalid");
+  }
+  if (payload.authorizedBy !== "human_product_owner_chat_delegation" || payload.authorizedVia !== "codex_thread" || payload.delegatedTo !== DELEGATED_AGENT_ID) {
+    throw new Error("delegated_agent_authorization_provenance_invalid");
+  }
+  if (payload.actionClass !== "repo_only_guardrail_repair" && payload.actionClass !== "synthetic_calibration_retry") {
+    throw new Error("delegated_agent_authorization_action_invalid");
+  }
+  if (typeof payload.scope !== "string" || payload.scope.length < 8 || payload.scope.length > 240) {
+    throw new Error("delegated_agent_authorization_scope_invalid");
+  }
+  if (payload.reviewedSourcePolicy !== "exact_commit_required" && payload.reviewedSourcePolicy !== "merged_repo_only_guardrail_repairs_allowed") {
+    throw new Error("delegated_agent_authorization_source_policy_invalid");
+  }
+  if (!Number.isSafeInteger(payload.maximumProviderCalls) || payload.maximumProviderCalls < 0 || payload.maximumProviderCalls > 96 || !Number.isSafeInteger(payload.maximumPhysicalHttpAttempts) || payload.maximumPhysicalHttpAttempts < payload.maximumProviderCalls || payload.maximumPhysicalHttpAttempts > 96 || !Number.isSafeInteger(payload.maximumSpendNanoUsd) || payload.maximumSpendNanoUsd < 0 || payload.maximumSpendNanoUsd > DELEGATED_AGENT_AUTHORIZATION_MAX_SPEND_NANO_USD) {
+    throw new Error("delegated_agent_authorization_budget_invalid");
+  }
+  if (payload.customerTranscriptsAllowed !== false || payload.productionDataAllowed !== false || payload.launchDecision !== null) {
+    throw new Error("delegated_agent_authorization_scope_forbidden");
+  }
+  const issuedAt = parseTimestamp2(
+    payload.issuedAt,
+    "delegated_agent_authorization_issued_at_invalid"
+  );
+  const expiresAt = parseTimestamp2(
+    payload.expiresAt,
+    "delegated_agent_authorization_expires_at_invalid"
+  );
+  if (issuedAt.getTime() > now.getTime()) {
+    throw new Error("delegated_agent_authorization_not_yet_valid");
+  }
+  if (expiresAt.getTime() <= now.getTime()) {
+    throw new Error("delegated_agent_authorization_expired");
+  }
+  if (expiresAt.getTime() <= issuedAt.getTime() || expiresAt.getTime() - issuedAt.getTime() > DELEGATED_AGENT_AUTHORIZATION_MAX_TTL_MS) {
+    throw new Error("delegated_agent_authorization_ttl_invalid");
+  }
+  return Object.freeze({
+    authorizationId: payload.authorizationId,
+    delegatedTo: payload.delegatedTo,
+    actionClass: payload.actionClass,
+    scope: payload.scope,
+    reviewedSourcePolicy: payload.reviewedSourcePolicy,
+    maximumProviderCalls: payload.maximumProviderCalls,
+    maximumPhysicalHttpAttempts: payload.maximumPhysicalHttpAttempts,
+    maximumSpendNanoUsd: payload.maximumSpendNanoUsd,
+    expiresAt: payload.expiresAt
+  });
+}
+function parseDelegatedAgentAuthorizationArtifact(value) {
+  assertPlainObject2(value, "delegated_agent_authorization_artifact_invalid");
+  assertExactKeys5(value, ARTIFACT_KEYS2);
+  if (value.contract !== DELEGATED_AGENT_AUTHORIZATION_CONTRACT) {
+    throw new Error("delegated_agent_authorization_contract_invalid");
+  }
+  assertPlainObject2(
+    value.payload,
+    "delegated_agent_authorization_payload_invalid"
+  );
+  assertExactKeys5(value.payload, PAYLOAD_KEYS2);
+  return value;
+}
+function parseTimestamp2(value, code) {
+  if (typeof value !== "string") throw new Error(code);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value || parsed.getUTCMilliseconds() !== 0) {
+    throw new Error(code);
+  }
+  return parsed;
+}
+function assertPlainObject2(value, code) {
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error(code);
+  }
+}
+function assertExactKeys5(value, expected) {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index2) => key !== wanted[index2])) {
+    throw new Error("delegated_agent_authorization_unknown_or_missing_field");
+  }
+}
+
 // scripts/run-evaluation-calibration.ts
 var LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
 var SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
@@ -33795,37 +34025,59 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
-    if (!args.ownerAuthorization) {
-      throw new Error("live_calibration_requires_owner_authorization");
+    if (Boolean(args.ownerAuthorization) === Boolean(args.delegatedAuthorization)) {
+      throw new Error("live_calibration_requires_exactly_one_authorization");
     }
-    ownerAuthorization = await loadCalibrationOwnerAuthorization({
-      authorizationPath: args.ownerAuthorization,
-      repositoryRoot: process.cwd()
-    });
-    assertCalibrationSpendAuthorizationExecutable(
-      ownerAuthorization.authorization
-    );
-    assertCalibrationReviewedSourceCheckout(
-      ownerAuthorization.authorization.reviewedSourceCommit
-    );
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
     if (adjudicationApproval === void 0) {
       throw new Error("Live calibration requires an adjudication approval");
     }
     const semantic = requireSemanticReviewArgs(args);
+    const delegatedAuthorization = args.delegatedAuthorization ? verifyDelegatedAgentAuthorization({
+      artifact: JSON.parse(
+        await readFile(
+          resolve4(process.cwd(), args.delegatedAuthorization),
+          "utf8"
+        )
+      )
+    }) : void 0;
+    if (delegatedAuthorization) {
+      if (!args.previousTerminalReport) {
+        throw new Error("delegated_retry_requires_previous_terminal_report");
+      }
+      assertPreviousTerminalReportAllowsDelegatedRetry(
+        JSON.parse(
+          await readFile(resolve4(process.cwd(), args.previousTerminalReport), "utf8")
+        )
+      );
+    }
+    if (args.ownerAuthorization) {
+      ownerAuthorization = await loadCalibrationOwnerAuthorization({
+        authorizationPath: args.ownerAuthorization,
+        repositoryRoot: process.cwd()
+      });
+      assertCalibrationSpendAuthorizationExecutable(
+        ownerAuthorization.authorization
+      );
+      assertCalibrationReviewedSourceCheckout(
+        ownerAuthorization.authorization.reviewedSourceCommit
+      );
+    }
     const planned = buildCalibrationActivatedPlan({
-      authorization: ownerAuthorization.authorization,
+      authorization: ownerAuthorization?.authorization ?? SAV_248_V4_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
       now: /* @__PURE__ */ new Date()
     });
-    assertCalibrationOwnerAuthorizationMatchesPlan(
-      ownerAuthorization,
-      planned,
-      /* @__PURE__ */ new Date()
-    );
+    if (ownerAuthorization) {
+      assertCalibrationOwnerAuthorizationMatchesPlan(
+        ownerAuthorization,
+        planned,
+        /* @__PURE__ */ new Date()
+      );
+    }
     semanticPaths = await prepareCalibrationSemanticReviewPaths({
       cwd: process.cwd(),
       ...semantic
@@ -33839,12 +34091,22 @@ async function main() {
     if (liveCredentials.acknowledgement !== LIVE_ACKNOWLEDGEMENT) {
       throw new Error("calibration_live_credential_acknowledgement_mismatch");
     }
+    if (delegatedAuthorization) {
+      runAuthority = await resumeDelegatedActivatedCalibrationRun(
+        {
+          delegatedAuthorization,
+          model: modelVersion,
+          repetitions
+        },
+        { githubToken: liveCredentials.githubToken }
+      );
+    }
     semanticCapture = initializePrivateSemanticCapture({
       directory: semanticPaths.captureDirectory,
-      runId: planned.runId,
+      runId: runAuthority?.plan.runId ?? planned.runId,
       approvedPlan: {
         version: planned.contractVersion,
-        sha256: planned.planHash
+        sha256: runAuthority?.plan.planHash ?? planned.planHash
       },
       corpus: {
         version: planned.goldSetVersion,
@@ -33859,28 +34121,32 @@ async function main() {
         sha256: planned.responseFormatHash
       },
       modelVersion: planned.model,
-      caseRuns: planned.calls.map(({ callKey }) => parsePlanCallKey(callKey)),
+      caseRuns: (runAuthority?.plan.calls ?? planned.calls).map(
+        ({ callKey }) => parsePlanCallKey(callKey)
+      ),
       retentionExpiresAt: new Date(
-        Date.now() + planned.calls.length * CALIBRATION_REQUEST_TIMEOUT_MS + semanticPaths.timeoutSeconds * 1e3 + CALIBRATION_PROVIDER_RUN_OVERHEAD_MS
+        Date.now() + (runAuthority?.plan.calls.length ?? planned.calls.length) * CALIBRATION_REQUEST_TIMEOUT_MS + semanticPaths.timeoutSeconds * 1e3 + CALIBRATION_PROVIDER_RUN_OVERHEAD_MS
       ).toISOString()
     });
     try {
-      runAuthority = await activateCalibrationRun(
-        {
-          ownerAuthorization,
-          authorization: ownerAuthorization.authorization,
-          adjudicationApproval,
-          model: modelVersion,
-          repetitions
-        },
-        { githubToken: liveCredentials.githubToken }
-      );
+      if (!runAuthority) {
+        runAuthority = await activateCalibrationRun(
+          {
+            ownerAuthorization,
+            authorization: ownerAuthorization.authorization,
+            adjudicationApproval,
+            model: modelVersion,
+            repetitions
+          },
+          { githubToken: liveCredentials.githubToken }
+        );
+      }
     } catch (error) {
       cleanupPrivateSemanticCapture(semanticCapture);
       semanticCapture = void 0;
       throw error;
     }
-    if (runAuthority.plan.planHash !== planned.planHash) {
+    if (!delegatedAuthorization && runAuthority.plan.planHash !== planned.planHash) {
       runAuthority.release();
       cleanupPrivateSemanticCapture(semanticCapture);
       semanticCapture = void 0;
@@ -34045,6 +34311,8 @@ function parseArgs(argv) {
   let repetitions;
   let approval;
   let ownerAuthorization;
+  let delegatedAuthorization;
+  let previousTerminalReport;
   let semanticCaptureDirectory;
   let semanticPublicReport;
   let semanticReviewRequest;
@@ -34075,6 +34343,16 @@ function parseArgs(argv) {
       ownerAuthorization = argv[++index2];
       if (!ownerAuthorization) {
         throw new Error("--owner-authorization requires a path");
+      }
+    } else if (argument === "--delegated-agent-authorization") {
+      delegatedAuthorization = argv[++index2];
+      if (!delegatedAuthorization) {
+        throw new Error("--delegated-agent-authorization requires a path");
+      }
+    } else if (argument === "--previous-terminal-report") {
+      previousTerminalReport = argv[++index2];
+      if (!previousTerminalReport) {
+        throw new Error("--previous-terminal-report requires a path");
       }
     } else if (argument === "--semantic-capture-dir") {
       semanticCaptureDirectory = argv[++index2];
@@ -34123,6 +34401,8 @@ function parseArgs(argv) {
     repetitions,
     approval,
     ownerAuthorization,
+    delegatedAuthorization,
+    previousTerminalReport,
     semanticCaptureDirectory,
     semanticPublicReport,
     semanticReviewRequest,
@@ -34147,6 +34427,24 @@ function requireSemanticReviewArgs(args) {
     throw new Error("live_calibration_requires_complete_semantic_review_paths");
   }
   return values2;
+}
+function assertPreviousTerminalReportAllowsDelegatedRetry(report) {
+  if (!report || typeof report !== "object") {
+    throw new Error("delegated_retry_previous_report_invalid");
+  }
+  const execution = report.execution;
+  if (!execution || typeof execution !== "object") {
+    throw new Error("delegated_retry_previous_report_invalid");
+  }
+  const cost = execution.cost;
+  if (!cost || typeof cost !== "object") {
+    throw new Error("delegated_retry_previous_report_missing_cost");
+  }
+  const typedExecution = execution;
+  const typedCost = cost;
+  if (typedExecution.paidProviderCalled !== true || typedCost.completedCalls !== 0 || typedCost.reconciledActualCostUsd !== 0) {
+    throw new Error("delegated_retry_previous_report_has_spend_or_completion");
+  }
 }
 async function publishCalibrationReport(input) {
   if (input.executionKind === "live_provider") {

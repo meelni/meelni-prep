@@ -34,6 +34,8 @@ import {
   activateCalibrationRun,
   assertCalibrationSpendAuthorizationExecutable,
   buildCalibrationActivatedPlan,
+  resumeDelegatedActivatedCalibrationRun,
+  SAV_248_V4_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import {
   assertCalibrationOwnerAuthorizationMatchesPlan,
@@ -63,6 +65,7 @@ import {
   CALIBRATION_LIVE_RUNTIME_READY,
   readCalibrationLiveCredentials,
 } from "@/lib/evaluation/calibration-live-startup.mjs";
+import { verifyDelegatedAgentAuthorization } from "@/lib/operations/delegated-agent-authorization";
 
 const LIVE_ACKNOWLEDGEMENT = "I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL";
 const SELF_TEST_MODEL = "deterministic-calibration-self-test.v1";
@@ -128,37 +131,62 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
-    if (!args.ownerAuthorization) {
-      throw new Error("live_calibration_requires_owner_authorization");
+    if (Boolean(args.ownerAuthorization) === Boolean(args.delegatedAuthorization)) {
+      throw new Error("live_calibration_requires_exactly_one_authorization");
     }
-    ownerAuthorization = await loadCalibrationOwnerAuthorization({
-      authorizationPath: args.ownerAuthorization,
-      repositoryRoot: process.cwd(),
-    });
-    assertCalibrationSpendAuthorizationExecutable(
-      ownerAuthorization.authorization
-    );
-    assertCalibrationReviewedSourceCheckout(
-      ownerAuthorization.authorization.reviewedSourceCommit
-    );
     assertCalibrationOpenAIEnvironment(process.env);
     modelVersion = getFeedbackEvaluationModel();
     if (adjudicationApproval === undefined) {
       throw new Error("Live calibration requires an adjudication approval");
     }
     const semantic = requireSemanticReviewArgs(args);
+    const delegatedAuthorization = args.delegatedAuthorization
+      ? verifyDelegatedAgentAuthorization({
+          artifact: JSON.parse(
+            await readFile(
+              resolve(process.cwd(), args.delegatedAuthorization),
+              "utf8"
+            )
+          ),
+        })
+      : undefined;
+    if (delegatedAuthorization) {
+      if (!args.previousTerminalReport) {
+        throw new Error("delegated_retry_requires_previous_terminal_report");
+      }
+      assertPreviousTerminalReportAllowsDelegatedRetry(
+        JSON.parse(
+          await readFile(resolve(process.cwd(), args.previousTerminalReport), "utf8")
+        )
+      );
+    }
+    if (args.ownerAuthorization) {
+      ownerAuthorization = await loadCalibrationOwnerAuthorization({
+        authorizationPath: args.ownerAuthorization,
+        repositoryRoot: process.cwd(),
+      });
+      assertCalibrationSpendAuthorizationExecutable(
+        ownerAuthorization.authorization
+      );
+      assertCalibrationReviewedSourceCheckout(
+        ownerAuthorization.authorization.reviewedSourceCommit
+      );
+    }
     const planned = buildCalibrationActivatedPlan({
-      authorization: ownerAuthorization.authorization,
+      authorization:
+        ownerAuthorization?.authorization ?? SAV_248_V4_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
       now: new Date(),
     });
-    assertCalibrationOwnerAuthorizationMatchesPlan(
-      ownerAuthorization,
-      planned,
-      new Date()
-    );
+    if (ownerAuthorization) {
+      assertCalibrationOwnerAuthorizationMatchesPlan(
+        ownerAuthorization,
+        planned,
+        new Date()
+      );
+    }
     semanticPaths = await prepareCalibrationSemanticReviewPaths({
       cwd: process.cwd(),
       ...semantic,
@@ -171,12 +199,22 @@ async function main() {
     if (liveCredentials.acknowledgement !== LIVE_ACKNOWLEDGEMENT) {
       throw new Error("calibration_live_credential_acknowledgement_mismatch");
     }
+    if (delegatedAuthorization) {
+      runAuthority = await resumeDelegatedActivatedCalibrationRun(
+        {
+          delegatedAuthorization,
+          model: modelVersion,
+          repetitions,
+        },
+        { githubToken: liveCredentials.githubToken }
+      );
+    }
     semanticCapture = initializePrivateSemanticCapture({
       directory: semanticPaths.captureDirectory,
-      runId: planned.runId,
+      runId: runAuthority?.plan.runId ?? planned.runId,
       approvedPlan: {
         version: planned.contractVersion,
-        sha256: planned.planHash,
+        sha256: runAuthority?.plan.planHash ?? planned.planHash,
       },
       corpus: {
         version: planned.goldSetVersion,
@@ -191,31 +229,36 @@ async function main() {
         sha256: planned.responseFormatHash,
       },
       modelVersion: planned.model,
-      caseRuns: planned.calls.map(({ callKey }) => parsePlanCallKey(callKey)),
+      caseRuns: (runAuthority?.plan.calls ?? planned.calls).map(({ callKey }) =>
+        parsePlanCallKey(callKey)
+      ),
       retentionExpiresAt: new Date(
         Date.now() +
-          planned.calls.length * CALIBRATION_REQUEST_TIMEOUT_MS +
+          (runAuthority?.plan.calls.length ?? planned.calls.length) *
+            CALIBRATION_REQUEST_TIMEOUT_MS +
           semanticPaths.timeoutSeconds * 1_000 +
           CALIBRATION_PROVIDER_RUN_OVERHEAD_MS
       ).toISOString(),
     });
     try {
-      runAuthority = await activateCalibrationRun(
-        {
-          ownerAuthorization,
-          authorization: ownerAuthorization.authorization,
-          adjudicationApproval,
-          model: modelVersion,
-          repetitions,
-        },
-        { githubToken: liveCredentials.githubToken }
-      );
+      if (!runAuthority) {
+        runAuthority = await activateCalibrationRun(
+          {
+            ownerAuthorization,
+            authorization: ownerAuthorization!.authorization,
+            adjudicationApproval,
+            model: modelVersion,
+            repetitions,
+          },
+          { githubToken: liveCredentials.githubToken }
+        );
+      }
     } catch (error) {
       cleanupPrivateSemanticCapture(semanticCapture);
       semanticCapture = undefined;
       throw error;
     }
-    if (runAuthority.plan.planHash !== planned.planHash) {
+    if (!delegatedAuthorization && runAuthority.plan.planHash !== planned.planHash) {
       runAuthority.release();
       cleanupPrivateSemanticCapture(semanticCapture);
       semanticCapture = undefined;
@@ -410,6 +453,8 @@ function parseArgs(argv: string[]): {
   repetitions?: number;
   approval?: string;
   ownerAuthorization?: string;
+  delegatedAuthorization?: string;
+  previousTerminalReport?: string;
   semanticCaptureDirectory?: string;
   semanticPublicReport?: string;
   semanticReviewRequest?: string;
@@ -423,6 +468,8 @@ function parseArgs(argv: string[]): {
   let repetitions: number | undefined;
   let approval: string | undefined;
   let ownerAuthorization: string | undefined;
+  let delegatedAuthorization: string | undefined;
+  let previousTerminalReport: string | undefined;
   let semanticCaptureDirectory: string | undefined;
   let semanticPublicReport: string | undefined;
   let semanticReviewRequest: string | undefined;
@@ -454,6 +501,16 @@ function parseArgs(argv: string[]): {
       ownerAuthorization = argv[++index];
       if (!ownerAuthorization) {
         throw new Error("--owner-authorization requires a path");
+      }
+    } else if (argument === "--delegated-agent-authorization") {
+      delegatedAuthorization = argv[++index];
+      if (!delegatedAuthorization) {
+        throw new Error("--delegated-agent-authorization requires a path");
+      }
+    } else if (argument === "--previous-terminal-report") {
+      previousTerminalReport = argv[++index];
+      if (!previousTerminalReport) {
+        throw new Error("--previous-terminal-report requires a path");
       }
     } else if (argument === "--semantic-capture-dir") {
       semanticCaptureDirectory = argv[++index];
@@ -506,6 +563,8 @@ function parseArgs(argv: string[]): {
     repetitions,
     approval,
     ownerAuthorization,
+    delegatedAuthorization,
+    previousTerminalReport,
     semanticCaptureDirectory,
     semanticPublicReport,
     semanticReviewRequest,
@@ -551,6 +610,34 @@ function requireSemanticReviewArgs(args: CalibrationArgs) {
     output: string;
     timeoutSeconds: number;
   };
+}
+
+function assertPreviousTerminalReportAllowsDelegatedRetry(report: unknown): void {
+  if (!report || typeof report !== "object") {
+    throw new Error("delegated_retry_previous_report_invalid");
+  }
+  const execution = (report as { execution?: unknown }).execution;
+  if (!execution || typeof execution !== "object") {
+    throw new Error("delegated_retry_previous_report_invalid");
+  }
+  const cost = (execution as { cost?: unknown }).cost;
+  if (!cost || typeof cost !== "object") {
+    throw new Error("delegated_retry_previous_report_missing_cost");
+  }
+  const typedExecution = execution as {
+    paidProviderCalled?: unknown;
+  };
+  const typedCost = cost as {
+    completedCalls?: unknown;
+    reconciledActualCostUsd?: unknown;
+  };
+  if (
+    typedExecution.paidProviderCalled !== true ||
+    typedCost.completedCalls !== 0 ||
+    typedCost.reconciledActualCostUsd !== 0
+  ) {
+    throw new Error("delegated_retry_previous_report_has_spend_or_completion");
+  }
 }
 
 async function publishCalibrationReport(input: {

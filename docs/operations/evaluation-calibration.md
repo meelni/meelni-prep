@@ -441,13 +441,20 @@ checks, builds and hashes the approved plan, creates a unique empty-tree
 activation child, and updates the ref with `force: false`. Concurrent sibling
 activations allow exactly one winner; the loser refuses before provider work.
 
-An activated ref is terminal even when the process crashes before call one.
-There is no stale recovery or resume: all unused pre-reserved capacity is burned,
-and a new paid run requires separate owner authorization plus a reviewed code
-change. Missing/deleted refs and changed activation heads fail closed. Local
-reports or caches may be deleted without affecting authority and must never
-contain prompts, transcripts, provider bodies, API keys, customer data, or
-Production data.
+An activated ref cannot be activated again and cannot mint a new budget. A
+bounded delegated retry may resume the already-activated ledger only when a
+previous terminal report proves zero completed calls and zero reconciled actual
+spend, the delegated artifact is
+`meelni.delegated-agent-authorization.v1` with action class
+`synthetic_calibration_retry`, and its call/attempt/spend caps cover the exact
+ledger plan. The delegated path does not create or update the Git ref, does not
+replace human-owner activation authority, and cannot authorize launch,
+Production data, customer transcripts, refunds, destructive actions, or wider
+provider spend. Missing/deleted refs, changed activation heads, malformed
+ledger messages, non-zero prior completed calls, or non-zero prior actual spend
+fail closed. Local reports or caches may be deleted without affecting authority
+and must never contain prompts, transcripts, provider bodies, API keys,
+customer data, or Production data.
 
 Do not run this command under shell tracing (`set -x`); the launcher rejects
 xtrace. Do not export `GITHUB_TOKEN` or `OPENAI_API_KEY`: the launcher
@@ -462,6 +469,25 @@ do not run it against the pending proposal:
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
   --owner-authorization /secure/external/path/sav-248-v4-owner-authorization.json \
+  --approval /secure/path/evaluation-adjudication-approval.json \
+  --output /secure/path/sav-248-automated-report.json \
+  --semantic-capture-dir /secure/private/path/sav-248-capture \
+  --semantic-public-report /secure/path/sav-248-semantic-report.json \
+  --semantic-review-request /secure/path/sav-248-review-request.json \
+  --semantic-panel-a /secure/path/sav-248-panel-a.json \
+  --semantic-panel-b /secure/path/sav-248-panel-b.json \
+  --semantic-execution-authority /secure/path/sav-248-execution-authority.json \
+  --semantic-review-timeout-seconds 7200
+```
+
+For the narrow delegated retry path after a zero-cost terminal failure, replace
+`--owner-authorization` with both delegated inputs:
+
+```bash
+MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
+  ./scripts/run-evaluation-calibration-live.sh \
+  --delegated-agent-authorization /secure/external/path/sav-303-delegated-agent-authorization.json \
+  --previous-terminal-report /secure/path/previous-sav-248-automated-report.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \
