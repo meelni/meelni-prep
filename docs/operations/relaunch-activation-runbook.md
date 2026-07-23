@@ -45,8 +45,8 @@ Record evidence links in SAV-176 before enabling the Preview gate:
    identity.
 4. SAV-198/SAV-248 v8 terminal calibration evidence is recorded truthfully,
    including the bounded synthetic provider run if separately authorized. The
-   consumed v3 through v6 lanes are historical failure evidence, not the
-   current terminal calibration path.
+   consumed v3 through v7 lanes are historical failure evidence, not the current
+   terminal calibration path.
 5. SAV-186 fresh-user golden path passes in Preview: signup, trial grant,
    selected question, live interview, durable transcript, calibrated feedback,
    billing cancellation policy, and irreversible deletion policy.
