@@ -143,6 +143,8 @@ The delegated artifact uses the canonical non-human task-thread identity,
 records a null human reviewer identity, and requires exactly two distinct
 32/32 exact-hash agent-panel approvals. Its scope is semantic adjudication
 only; it does not authorize paid/provider/ledger/Production work or launch.
+Any delegated retry must resume only a previously owner-activated ledger ref
+and must preserve the original spend, source, and report boundaries.
 
 The eight insufficient fixtures are separately enforced validator negatives,
 not scored adjudication candidates. They have no score bands or findings;
