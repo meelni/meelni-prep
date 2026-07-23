@@ -360,8 +360,8 @@ npm run calibration:plan-proposal -- \
 ```
 
 The current proposal is 64 physical calls (two symmetric runs for each of 32
-scored fixtures), 2,247,265,000 nano-USD ($2.247265) worst case, and hash
-`4ec2affcbfe24d3f4a0de311fe6871ab37fb255de2cc3f29ab08e561f25483da`.
+scored fixtures), 2,273,985,000 nano-USD ($2.273985) worst case, and hash
+`1ec69fbd7baf76423f05b9a3919683244f793a056eb959a9a1b1785869889bf0`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
@@ -421,7 +421,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: a38fbfad71ed319f9cff30ff26655c54bc5a1040
+proposal commit: 6659581c21c8b543e31d88e1420a2913fe31a384
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
