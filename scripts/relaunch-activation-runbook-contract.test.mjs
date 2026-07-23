@@ -83,6 +83,7 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     "human product owner remains the only launch GO/NO-GO authority",
     "`meelni_reactivation_access` disabled",
     "`MEELNI_REACTIVATION_DEFAULT`",
+    "npm run --silent relaunch:readiness-snapshot",
     "SAV-198",
     "SAV-126",
     "SAV-283",
@@ -110,22 +111,17 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
   );
   assert.match(
     runbook,
+    /does not mutate GitHub, providers, Linear, feature\s+flags, ledger refs, or owner authorization artifacts/i
+  );
+  assert.match(
+    runbook,
     /A broad "looks good" or "signed" message is not enough/i
   );
-  assert.match(
-    runbook,
-    /Do not point Production at test-mode price IDs/i
-  );
+  assert.match(runbook, /Do not point Production at test-mode price IDs/i);
   assert.match(runbook, /Do not manually create the v4 ledger\s+ref/i);
   assert.match(runbook, /Stop before total spend\s+can exceed \$3/i);
-  assert.match(
-    runbook,
-    /Do not print secret values/i
-  );
-  assert.match(
-    runbook,
-    /no customer transcripts;\s+- no Production data/i
-  );
+  assert.match(runbook, /Do not print secret values/i);
+  assert.match(runbook, /no customer transcripts;\s+- no Production data/i);
   assert.match(
     runbook,
     /Default-off and emergency-disable rollback remain available without launch GO/i
@@ -159,7 +155,7 @@ test("Statsig governance runbook records owner-only eligibility and required-rev
     "Statsig checks on 2026-07-23 returned",
     "Gate `meelni_reactivation_access`",
     "Dynamic config `meelni_preview_rehearsal_authority`",
-    '`reviewSettings.requiredReview: false`',
+    "`reviewSettings.requiredReview: false`",
     "`everyone_eligible: false`",
     "`6Uip5thkTs2D7ascrYKYkQ`",
     "`QHCBMD2kK9ZIwA4hXmdzP`",
@@ -179,18 +175,12 @@ test("Statsig governance runbook records owner-only eligibility and required-rev
     runbook,
     /both controls are safely off[\s\S]*limits\s+eligible reviewers for both controls to the owner account/i
   );
-  assert.match(
-    runbook,
-    /required-review enforcement is not yet\s+proven/i
-  );
+  assert.match(runbook, /required-review enforcement is not yet\s+proven/i);
   assert.match(
     runbook,
     /Do not propose `is_enabled: true` or `default_value\.active: true`/i
   );
-  assert.match(
-    runbook,
-    /self-commit for the single-operator workflow/i
-  );
+  assert.match(runbook, /self-commit for the single-operator workflow/i);
 });
 
 test("production action runbook uses the active owner key", async () => {
