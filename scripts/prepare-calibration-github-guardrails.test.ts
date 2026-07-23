@@ -5,28 +5,28 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  SAV_248_V6_ACTOR_RULESET_NAME,
-  SAV_248_V6_GIT_LEDGER_REF,
-  SAV_248_V6_GITHUB_ACTIVATION_ACTOR_ID,
-  SAV_248_V6_IMMUTABLE_RULESET_NAME,
+  SAV_248_V7_ACTOR_RULESET_NAME,
+  SAV_248_V7_GIT_LEDGER_REF,
+  SAV_248_V7_GITHUB_ACTIVATION_ACTOR_ID,
+  SAV_248_V7_IMMUTABLE_RULESET_NAME,
 } from "@/lib/evaluation/calibration-run-ledger";
 
 import {
-  buildSAV248V6GitHubGuardrailPayloads,
-  writeSAV248V6GitHubGuardrailPacket,
+  buildSAV248V7GitHubGuardrailPayloads,
+  writeSAV248V7GitHubGuardrailPacket,
 } from "./prepare-calibration-github-guardrails";
 
-test("builds the exact SAV-248 v6 GitHub ruleset payloads", () => {
+test("builds the exact SAV-248 v7 GitHub ruleset payloads", () => {
   const { immutableRuleset, activationActorRuleset } =
-    buildSAV248V6GitHubGuardrailPayloads();
+    buildSAV248V7GitHubGuardrailPayloads();
 
   assert.deepEqual(immutableRuleset, {
-    name: SAV_248_V6_IMMUTABLE_RULESET_NAME,
+    name: SAV_248_V7_IMMUTABLE_RULESET_NAME,
     target: "branch",
     enforcement: "active",
     conditions: {
       ref_name: {
-        include: [SAV_248_V6_GIT_LEDGER_REF],
+        include: [SAV_248_V7_GIT_LEDGER_REF],
         exclude: [],
       },
     },
@@ -35,19 +35,19 @@ test("builds the exact SAV-248 v6 GitHub ruleset payloads", () => {
   });
 
   assert.deepEqual(activationActorRuleset, {
-    name: SAV_248_V6_ACTOR_RULESET_NAME,
+    name: SAV_248_V7_ACTOR_RULESET_NAME,
     target: "branch",
     enforcement: "active",
     conditions: {
       ref_name: {
-        include: [SAV_248_V6_GIT_LEDGER_REF],
+        include: [SAV_248_V7_GIT_LEDGER_REF],
         exclude: [],
       },
     },
     rules: [{ type: "creation" }, { type: "update" }],
     bypass_actors: [
       {
-        actor_id: SAV_248_V6_GITHUB_ACTIVATION_ACTOR_ID,
+        actor_id: SAV_248_V7_GITHUB_ACTIVATION_ACTOR_ID,
         actor_type: "User",
         bypass_mode: "always",
       },
@@ -58,7 +58,7 @@ test("builds the exact SAV-248 v6 GitHub ruleset payloads", () => {
 test("writes a non-mutating guardrail packet with owner-approval instructions", async () => {
   const dir = await mkdtemp(join(tmpdir(), "meelni-sav198-guardrails-"));
   try {
-    await writeSAV248V6GitHubGuardrailPacket(dir, "a".repeat(40));
+    await writeSAV248V7GitHubGuardrailPacket(dir, "a".repeat(40));
 
     const immutable = JSON.parse(
       await readFile(join(dir, "immutable-ruleset-payload.json"), "utf8")
@@ -68,12 +68,12 @@ test("writes a non-mutating guardrail packet with owner-approval instructions", 
     );
     const readme = await readFile(join(dir, "README.md"), "utf8");
 
-    assert.equal(immutable.name, SAV_248_V6_IMMUTABLE_RULESET_NAME);
-    assert.equal(activation.name, SAV_248_V6_ACTOR_RULESET_NAME);
+    assert.equal(immutable.name, SAV_248_V7_IMMUTABLE_RULESET_NAME);
+    assert.equal(activation.name, SAV_248_V7_ACTOR_RULESET_NAME);
     assert.match(readme, /Do not apply it without exact\s+owner authorization/i);
     assert.match(readme, /Do not manually\s+create the ledger ref/i);
     assert.match(readme, /gh api \\\n  --method POST/i);
-    assert.match(readme, new RegExp(SAV_248_V6_GIT_LEDGER_REF));
+    assert.match(readme, new RegExp(SAV_248_V7_GIT_LEDGER_REF));
 
     assert.equal((await stat(join(dir, "README.md"))).mode & 0o777, 0o600);
   } finally {

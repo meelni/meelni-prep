@@ -54,6 +54,12 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /perform this evidence uniqueness check/
   );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /substring\/superstring variant/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /share any character position in the source turn/
+  );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /same-turn ranges are pairwise disjoint/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /remove or rewrite that finding rather than reusing evidence/
