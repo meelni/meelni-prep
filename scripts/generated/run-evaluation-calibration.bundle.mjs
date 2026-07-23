@@ -28088,6 +28088,7 @@ Return your analysis as a JSON object with this exact structure:
 }
 
 Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
+Use a distinct, non-overlapping exact evidence span for every finding. Do not reuse the same quote, the same sentence fragment, or overlapping text from the same transcript turn across multiple strengths or improvements. If one turn contains evidence for multiple findings, cite separate non-overlapping exact spans for each finding.
 An exact quote is necessary but not sufficient: every observation must have observable lexical or PM-concept support in its cited candidate turns. Every spaced-language observation, including a negative or absence finding, needs at least two independent observable supports in both its exact evidence quotes and cited turns, with a bounded PM concept group counting only once. Only a bounded literal-citation statement or predominantly compact-language anchor may use its narrower exact-evidence path. A single compact token inside an otherwise spaced-language observation is not enough. Material safety, legal, privacy, biometric, security, compliance, growth, demand, profitability, delight, or product-market-fit claims must occur in the exact evidence, including hyphenated forms. Do not use a nearby but unrelated quote to support a claim.
 Every number, number word, statistically-significant claim, or absolute term such as "all", "always", "every", "never", "no", or "only" in an observation must also appear in that finding's exact evidence quotes.
 Do not make a negative observation when the cited candidate turns directly state the positive behavior. Prefer bounded opportunity language over unsupported absolute-absence claims.
@@ -30844,7 +30845,7 @@ var SAV_248_V4_GIT_LEDGER_REF = `refs/heads/${SAV_248_V4_GIT_LEDGER_BRANCH}`;
 var SAV_248_V4_GIT_LEDGER_API_REF = `heads/${SAV_248_V4_GIT_LEDGER_BRANCH}`;
 var SAV_248_V4_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V4_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V4_GENESIS_COMMIT_OID = "f93c43859d7b8ccd4990c7933ea139fdf9356a2c";
+var SAV_248_V4_GENESIS_COMMIT_OID = "6659581c21c8b543e31d88e1420a2913fe31a384";
 var SAV_248_V4_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v4 calibration ledger immutable";
 var SAV_248_V4_ACTOR_RULESET_NAME = "Meelni SAV-248 v4 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -30876,8 +30877,8 @@ var SAV_248_V4_SPEND_AUTHORIZATION = {
   historicalAuthoritiesReusable: false,
   predecessorAuthorities: SAV_248_V4_PREDECESSOR_AUTHORITIES
 };
-var SAV_248_V4_REBASED_PLAN_WORST_CASE_NANO_USD = 2247265e3;
-var SAV_248_V4_REBASED_PLAN_HASH = "4ec2affcbfe24d3f4a0de311fe6871ab37fb255de2cc3f29ab08e561f25483da";
+var SAV_248_V4_REBASED_PLAN_WORST_CASE_NANO_USD = 2273985e3;
+var SAV_248_V4_REBASED_PLAN_HASH = "1ec69fbd7baf76423f05b9a3919683244f793a056eb959a9a1b1785869889bf0";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;

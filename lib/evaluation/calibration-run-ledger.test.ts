@@ -129,7 +129,7 @@ test("v4 plan remains a non-executable proposal until fresh exact owner approval
     proposal.proposedPlan.plannedWorstCaseNanoUsd,
     SAV_248_V4_REBASED_PLAN_WORST_CASE_NANO_USD
   );
-  assert.equal(proposal.proposedPlan.plannedWorstCaseUsd, 2.247265);
+  assert.equal(proposal.proposedPlan.plannedWorstCaseUsd, 2.273985);
   assert.equal(proposal.authorityScope.providerCallsExecuted, false);
   assert.equal(proposal.authorityScope.ledgerActivated, false);
   assert.equal(proposal.authorityScope.launchAuthorized, false);
