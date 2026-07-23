@@ -20,8 +20,8 @@ import {
   CALIBRATION_OWNER_ID,
   CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT,
   CALIBRATION_OWNER_ROLE,
-  SAV_248_V5_APPROVED_RUN_ID,
-  SAV_248_V5_PREDECESSOR_AUTHORITIES,
+  SAV_248_V6_APPROVED_RUN_ID,
+  SAV_248_V6_PREDECESSOR_AUTHORITIES,
   assertCalibrationOwnerAuthorizationMatchesPlan,
   calibrationOwnerAuthorizationSignatureMessage,
   canonicalCalibrationOwnerAuthorizationJson,
@@ -53,7 +53,7 @@ test("an active human-owner signature authorizes only its exact bounded plan", (
     planHash: "a".repeat(64),
     plannedProviderCalls: 64,
     plannedPhysicalHttpAttempts: 64,
-    plannedWorstCaseNanoUsd: 2_273_985_000,
+    plannedWorstCaseNanoUsd: 2_308_945_000,
   });
   assert.equal(
     verified.authorization.authorizationStatus,
@@ -188,7 +188,7 @@ test("even a valid owner signature cannot widen the accepted run contract", () =
     (payload: CalibrationOwnerAuthorizationPayload) => void
   > = [
     (payload) =>
-      (payload.runId = SAV_248_V5_PREDECESSOR_AUTHORITIES[1]
+      (payload.runId = SAV_248_V6_PREDECESSOR_AUTHORITIES[1]
         .runId as typeof payload.runId),
     (payload) => (payload.ownerId = "agent" as typeof payload.ownerId),
     (payload) => (payload.ownerRole = "agent" as typeof payload.ownerRole),
@@ -311,13 +311,13 @@ test("plan mutations cannot reuse one valid owner approval", () => {
     {
       planHash: "b".repeat(64),
       plannedCalls: 64,
-      plannedWorstCaseNanoUsd: 2_273_985_000,
+      plannedWorstCaseNanoUsd: 2_308_945_000,
       reviewedSourceCommit: "b".repeat(40),
     },
     {
       planHash: "a".repeat(64),
       plannedCalls: 63,
-      plannedWorstCaseNanoUsd: 2_273_985_000,
+      plannedWorstCaseNanoUsd: 2_308_945_000,
       reviewedSourceCommit: "b".repeat(40),
     },
     {
@@ -329,7 +329,7 @@ test("plan mutations cannot reuse one valid owner approval", () => {
     {
       planHash: "a".repeat(64),
       plannedCalls: 64,
-      plannedWorstCaseNanoUsd: 2_273_985_000,
+      plannedWorstCaseNanoUsd: 2_308_945_000,
       reviewedSourceCommit: "c".repeat(40),
     },
   ]) {
@@ -346,7 +346,7 @@ test("plan mutations cannot reuse one valid owner approval", () => {
         {
           planHash: "a".repeat(64),
           plannedCalls: 64,
-          plannedWorstCaseNanoUsd: 2_273_985_000,
+          plannedWorstCaseNanoUsd: 2_308_945_000,
           reviewedSourceCommit: "b".repeat(40),
         },
         new Date("2026-07-20T00:30:00.000Z")
@@ -440,8 +440,8 @@ test("the loader accepts only a small private external regular file", async () =
 
 function validPayload(): CalibrationOwnerAuthorizationPayload {
   return {
-    authorizationId: "sav248_v5_auth_0123456789abcdef0123456789abcdef",
-    runId: SAV_248_V5_APPROVED_RUN_ID,
+    authorizationId: "sav248_v6_auth_0123456789abcdef0123456789abcdef",
+    runId: SAV_248_V6_APPROVED_RUN_ID,
     ownerId: CALIBRATION_OWNER_ID,
     ownerRole: CALIBRATION_OWNER_ROLE,
     approvalDecision: CALIBRATION_OWNER_APPROVAL_DECISION,
@@ -451,7 +451,7 @@ function validPayload(): CalibrationOwnerAuthorizationPayload {
     planHash: "a".repeat(64),
     plannedProviderCalls: 64,
     plannedPhysicalHttpAttempts: 64,
-    plannedWorstCaseNanoUsd: 2_273_985_000,
+    plannedWorstCaseNanoUsd: 2_308_945_000,
     maximumProviderCalls: 96,
     maximumPhysicalHttpAttempts: 96,
     maximumSpendNanoUsd: 3_000_000_000,
@@ -460,7 +460,7 @@ function validPayload(): CalibrationOwnerAuthorizationPayload {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V5_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V6_PREDECESSOR_AUTHORITIES,
     issuedAt: "2026-07-20T00:00:00.000Z",
     expiresAt: "2026-07-20T00:30:00.000Z",
   };
