@@ -70,7 +70,7 @@ export const SAV_248_V4_EMPTY_TREE_OID =
   "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const SAV_248_V4_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
 export const SAV_248_V4_GENESIS_COMMIT_OID =
-  "a38fbfad71ed319f9cff30ff26655c54bc5a1040";
+  "6eea90b200977e3d4e66c34064372f7f499bc32e";
 export const SAV_248_V4_IMMUTABLE_RULESET_NAME =
   "Meelni SAV-248 v4 calibration ledger immutable";
 export const SAV_248_V4_ACTOR_RULESET_NAME =
@@ -133,8 +133,8 @@ export const SAV_248_V4_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorizatio
 
 export const SAV_248_V4_REBASED_PLAN_WORST_CASE_NANO_USD = 2_247_265_000;
 export const SAV_248_V4_REBASED_PLAN_HASH =
-  "3e0078f436182b282ad2b9aabdde33647373b9f3e2ec32625f3f18ecba06b6c1";
-export const SAV_248_V4_REBASED_PLAN_PROPOSED_AT = "2026-07-22T03:32:00.000Z";
+  "4ec2affcbfe24d3f4a0de311fe6871ab37fb255de2cc3f29ab08e561f25483da";
+export const SAV_248_V4_REBASED_PLAN_PROPOSED_AT = "2026-07-23T05:13:31.000Z";
 
 export interface CalibrationActivatedPlanCall {
   callKey: string;
