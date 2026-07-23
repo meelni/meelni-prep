@@ -21,7 +21,7 @@ technical evidence, never owner GO/NO-GO.
 `sav-250-agent-panel-signoffs.json` binds two independent provider-free agent
 reviews to the exact candidate commit, candidate/corpus hashes, and audit-file
 hash. It records no human approval, spend authority, provider call, Production
-data use, v4 authority, or launch decision.
+data use, v5 authority, or launch decision.
 
 `sav-198-paid-run-authorization.json` is historical v1 authorization evidence.
 Its protected ledger was activated and is terminal; neither this file nor the
@@ -36,26 +36,28 @@ nano-USD ($2.052925) deterministic worst case, and plan hash
 This historical artifact cannot revive the consumed v1 authority. It performs
 no provider call or ledger activation and grants no launch authority.
 
-`sav-248-v4-paid-run-authorization-proposal.json` is deliberately not an
+`sav-248-v5-paid-run-authorization-proposal.json` is deliberately not an
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
 reviewed source commit. The current 64-call proposal has a $2.273985
 deterministic worst case and proposal hash
-`1ec69fbd7baf76423f05b9a3919683244f793a056eb959a9a1b1785869889bf0`.
-It explicitly records the correct v1, v2, and consumed v3 refs and terminal, non-reusable
+`90e19b6713ed73649a160f3e26b0cca773734cba6541fb917bee53bf22763477`.
+It explicitly records the correct v1, v2, v3, and consumed v4 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
 `4acdf549eecad5fe88d685c28fbc98d7475b8f05`, and
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2` at
 `d0c4fc4c028b10d8616fdde337be150315a7798c`, and
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3` at
-`1baee0b82c61cb6d89dbe9dc23cee1beccf72b31`. Its proposal authorization hash is
-`4bc35bd4dd3cd76b6d7c8613feadf64884f0ad39e180d4f6c1ed97327076e4d5`.
-No v4 Git ledger exists or is authorized. The proposal-only deterministic
-genesis is `6659581c21c8b543e31d88e1420a2913fe31a384` and must not be created.
+`1baee0b82c61cb6d89dbe9dc23cee1beccf72b31`, and
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4` at
+`feb7591898145bcb6bec9526c650f705f2530270`. Its proposal authorization hash is
+`a7eabb6a31bb1e3af8e7b4e729c78f8f17607804f2801eb4fad68b63fb2b04d9`.
+No v5 Git ledger exists or is authorized. The proposal-only deterministic
+genesis is `f85132f5d080152a75b4d2d922b9e2a256e06310` and must not be created.
 
-`sav-248-v4-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
+`sav-248-v5-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
@@ -66,9 +68,9 @@ paid run can become executable.
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
 registry contains only public verification material, no private signing key is
-stored here, and no signed v4 authorization artifact exists. Any future artifact
+stored here, and no signed v5 authorization artifact exists. Any future artifact
 must remain outside Git and bind the exact post-merge source commit and freshly
-regenerated plan; the historical v1/v2/v3 artifacts remain unusable.
+regenerated plan; the historical v1/v2/v3/v4 artifacts remain unusable.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are immutable v7 local evidence only. Their historical `launchAcceptance`
