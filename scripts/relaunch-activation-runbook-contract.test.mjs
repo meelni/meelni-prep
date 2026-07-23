@@ -135,6 +135,7 @@ test("evaluation calibration runbook uses v4 owner authorization artifact names"
     "sav-248-v4-owner-authorization-request.json",
     "sav-248-v4-owner-authorization.json",
     "sav-248-v4-owner-authorization-report.json",
+    "GitHub user `saviii`, actor type `User`, user ID `24397508`",
   ]) {
     assert.match(runbook, escapeForRegex(required));
   }
