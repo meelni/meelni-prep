@@ -104,7 +104,7 @@ describe("feedback transcript read states", () => {
     vi.stubGlobal("fetch", request);
 
     render(<FeedbackPage />);
-    fireEvent.click(await findTranscriptExpandButton());
+    await expandTranscript();
     await waitFor(() => expect(transcriptAttempts).toBe(1));
 
     const failure = await screen.findByRole("alert", undefined, {
@@ -141,7 +141,7 @@ describe("feedback transcript read states", () => {
     vi.stubGlobal("fetch", request);
 
     render(<FeedbackPage />);
-    fireEvent.click(await findTranscriptExpandButton());
+    await expandTranscript();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading transcript"
@@ -204,7 +204,7 @@ describe("feedback transcript read states", () => {
     vi.stubGlobal("fetch", request);
 
     const view = render(<FeedbackPage />);
-    fireEvent.click(await findTranscriptExpandButton());
+    await expandTranscript();
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading transcript"
     );
@@ -212,7 +212,7 @@ describe("feedback transcript read states", () => {
 
     navigation.sessionId = SECOND_SESSION_ID;
     view.rerender(<FeedbackPage />);
-    fireEvent.click(await findTranscriptExpandButton());
+    await expandTranscript();
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Loading transcript"
     );
@@ -277,41 +277,43 @@ describe("feedback transcript read states", () => {
   });
 
   it("starts and completes focused practice from completed feedback", async () => {
-    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === `/api/feedback/${SESSION_ID}`) {
-        return completedFeedbackResponse();
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/feedback/${SESSION_ID}`) {
+          return completedFeedbackResponse();
+        }
+        if (url === "/api/focused-practice/attempts/start") {
+          expect(init?.method).toBe("POST");
+          expect(JSON.parse(String(init?.body))).toEqual({
+            sourceSessionId: SESSION_ID,
+          });
+          return Response.json({
+            disposition: "created",
+            attempt: focusedPracticeAttempt("in_progress"),
+          });
+        }
+        if (
+          url ===
+          "/api/focused-practice/attempts/focused-practice-attempt-1/complete"
+        ) {
+          expect(init?.method).toBe("POST");
+          expect(JSON.parse(String(init?.body))).toEqual({
+            contractVersion: "focused-practice-completion.v1",
+            practicedAloud: true,
+            response: {
+              kind: "revised_answer",
+              text: "I would revise the answer by naming the user, problem, and priority first.",
+            },
+          });
+          return Response.json({
+            disposition: "completed",
+            attempt: focusedPracticeAttempt("completed"),
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
       }
-      if (url === "/api/focused-practice/attempts/start") {
-        expect(init?.method).toBe("POST");
-        expect(JSON.parse(String(init?.body))).toEqual({
-          sourceSessionId: SESSION_ID,
-        });
-        return Response.json({
-          disposition: "created",
-          attempt: focusedPracticeAttempt("in_progress"),
-        });
-      }
-      if (
-        url ===
-        "/api/focused-practice/attempts/focused-practice-attempt-1/complete"
-      ) {
-        expect(init?.method).toBe("POST");
-        expect(JSON.parse(String(init?.body))).toEqual({
-          contractVersion: "focused-practice-completion.v1",
-          practicedAloud: true,
-          response: {
-            kind: "revised_answer",
-            text: "I would revise the answer by naming the user, problem, and priority first.",
-          },
-        });
-        return Response.json({
-          disposition: "completed",
-          attempt: focusedPracticeAttempt("completed"),
-        });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
+    );
     vi.stubGlobal("fetch", request);
 
     render(<FeedbackPage />);
@@ -327,15 +329,12 @@ describe("feedback transcript read states", () => {
       screen.getByText(/does not start another interview, use another credit/i)
     ).toBeInTheDocument();
 
-    fireEvent.change(
-      screen.getByLabelText("Your revised answer"),
-      {
-        target: {
-          value:
-            "I would revise the answer by naming the user, problem, and priority first.",
-        },
-      }
-    );
+    fireEvent.change(screen.getByLabelText("Your revised answer"), {
+      target: {
+        value:
+          "I would revise the answer by naming the user, problem, and priority first.",
+      },
+    });
     fireEvent.click(
       screen.getByLabelText(
         "I practiced this answer out loud before saving the self-review."
@@ -422,6 +421,13 @@ function findTranscriptExpandButton() {
   return screen.findByRole("button", { name: "Expand" }, { timeout: 5000 });
 }
 
+async function expandTranscript() {
+  const button = await findTranscriptExpandButton();
+  await act(async () => {
+    fireEvent.click(button);
+  });
+}
+
 function focusedPracticeAttempt(state: "in_progress" | "completed") {
   const base = {
     attemptId: "focused-practice-attempt-1",
@@ -497,7 +503,8 @@ function focusedPracticeAttempt(state: "in_progress" | "completed") {
         kind: "self_review",
         focusDimension: "structure",
         sourceObservation: "Synthetic structure observation",
-        sourceNextStep: "State the user, problem, and priority before solutions.",
+        sourceNextStep:
+          "State the user, problem, and priority before solutions.",
         successCriterion:
           "The revision moves from one target user and problem to a prioritized solution with an explicit product rationale.",
         prompt:

@@ -58,6 +58,7 @@
     "production-action:consume": "node scripts/consume-production-action-authorization.mjs",
     "production-action:owner": "node scripts/production-action-owner.mjs",
     "production-action:synthetic-dry-run": "node scripts/production-action-owner.mjs synthetic-dry-run",
+    "relaunch:readiness-snapshot": "node scripts/relaunch-readiness-snapshot.mjs",
     "db:check": "drizzle-kit check",
     "deploy:preflight": "tsx scripts/deployment-preflight.ts",
     "deploy:preflight:preview": "tsx --env-file=.env.local scripts/deployment-preflight.ts --target=preview",
