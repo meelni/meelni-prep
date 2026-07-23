@@ -12,6 +12,8 @@ const COMPLETION_CONTRACT_PATH =
 const ROOM_METADATA_CONTRACT_PATH = "docs/contracts/livekit-room-metadata.md";
 const RECONNECT_RUNBOOK_PATH = "docs/operations/interview-session-reconnect.md";
 const DEADLINE_RUNBOOK_PATH = "docs/operations/interview-session-deadline.md";
+const BILLING_RLS_MIGRATION_PATH =
+  "supabase/migrations/20251113000001_add_billing_rls_policies.sql";
 
 test("migration operations docs match the ordered Drizzle journal", async () => {
   const [
@@ -102,3 +104,30 @@ test("migration operations docs match the ordered Drizzle journal", async () => 
     assert.doesNotMatch(document, /two-second transcript drain/i);
   }
 });
+
+test("billing RLS migration recreates policies through replay-safe guards", async () => {
+  const migration = await readFile(BILLING_RLS_MIGRATION_PATH, "utf8");
+  const createPolicyPattern =
+    /CREATE POLICY "([^"]+)"\s+ON ([a-z_][a-z0-9_]*)/gi;
+  const createdPolicies = Array.from(
+    migration.matchAll(createPolicyPattern),
+    (match) => ({ name: match[1], table: match[2] })
+  );
+
+  assert.ok(createdPolicies.length > 0);
+
+  for (const { name, table } of createdPolicies) {
+    assert.match(
+      migration,
+      new RegExp(
+        `DROP POLICY IF EXISTS "${escapeForRegex(name)}" ON ${table};[\\s\\S]*?CREATE POLICY "${escapeForRegex(name)}"\\s+ON ${table}`,
+        "i"
+      ),
+      `${name} on ${table} must be dropped before it is recreated`
+    );
+  }
+});
+
+function escapeForRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
