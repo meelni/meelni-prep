@@ -39,7 +39,9 @@ Use this skill before meaningful Meelni work begins, then keep using it as progr
 7. For a repo-only, docs-only, guardrail, or tooling increment under a
    long-running owner-gated parent, create or reuse a PR-sized child issue and
    target the PR at that child. Do not make the parent issue the only linked
-   issue unless the PR completes every parent acceptance criterion.
+   issue, title key, or generated branch key unless the PR completes every
+   parent acceptance criterion. Linear can close a parent from a merged PR title,
+   head branch, or sole linked issue even without GitHub closing keywords.
 
 ## Issue Format
 
@@ -47,28 +49,33 @@ Use this Markdown description for parent slice issues and substantial child issu
 
 ```markdown
 ## Outcome
+
 - User/business outcome:
 - Success signal:
 - Non-goals:
 
 ## Context
+
 - Why now:
 - Relevant repo docs/specs:
 - Related Linear issues/PRs:
 
 ## Slice
+
 - Primary slice:
 - Secondary slices:
 - Relevant Meelni skill(s):
 - Owner type: agent | human | mixed
 
 ## Scope
+
 - In scope:
 - Out of scope:
 - Assumptions:
 - Dependencies/blockers:
 
 ## Acceptance Criteria
+
 - [ ] Product behavior is clear to PM/design/engineering.
 - [ ] Implementation is complete for the scoped slice.
 - [ ] Relevant tests or manual checks are documented.
@@ -76,16 +83,19 @@ Use this Markdown description for parent slice issues and substantial child issu
 - [ ] PR is linked, reviewed as needed, merged, and the issue is closed only after merge.
 
 ## Technical Notes
+
 - Likely files/packages:
 - Data/provider dependencies:
 - Rollout or migration notes:
 
 ## Validation
+
 - Required commands:
 - Manual checks:
 - Regression fixtures needed:
 
 ## Handoff
+
 - Current state:
 - Next action:
 - Risk:
@@ -135,7 +145,10 @@ Use concise comments. A useful update should answer: what changed, what evidence
 - Do not use terminal PR language such as `closes`, `fixes`, or `resolves` for
   a parent issue unless the PR is intentionally completing that parent issue.
   Prefer neutral tracking language, for example: `Parent: SAV-198; closes
-  SAV-293 only.`
+SAV-293 only.`
+- Do not use the long-running parent key as the PR title key or branch key for a
+  small increment. Use the PR-sized child issue key, then mention the parent
+  only as neutral context.
 - Do not mark scope complete without recording verification evidence.
 - If the work changes shape, update Linear before continuing so the next agent or human can trust the trail.
 - If a user asks for a quick exploratory answer with no code changes, a Linear issue is optional.
