@@ -4,10 +4,10 @@
   "decisionSource": null,
   "humanReviewerIdentity": null,
   "proposedAt": "2026-07-23T05:13:31.000Z",
-  "acceptanceBasis": "fresh_v5_authorization_and_exact_source_commit_still_required",
+  "acceptanceBasis": "fresh_v6_authorization_and_exact_source_commit_still_required",
   "authorization": {
-    "authorizationId": "sav-248-pending-paid-calibration-authorization.v5",
-    "runId": "sav-248-authorized-paid-calibration.v5",
+    "authorizationId": "sav-248-pending-paid-calibration-authorization.v6",
+    "runId": "sav-248-authorized-paid-calibration.v6",
     "authorizationStatus": "pending_explicit_product_owner_approval",
     "authorizedOn": null,
     "authorizationSource": null,
@@ -37,14 +37,19 @@
         "runId": "sav-248-authorized-paid-calibration.v4",
         "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4",
         "activationCommit": "feb7591898145bcb6bec9526c650f705f2530270"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v5",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v5",
+        "activationCommit": "78295d40c19ba366a64956010af9535b283aaf44"
       }
     ]
   },
   "proposedPlan": {
-    "planHash": "90e19b6713ed73649a160f3e26b0cca773734cba6541fb917bee53bf22763477",
+    "planHash": "89d5570217306df00d9f09b009c0cbc8737b23b82ec900ce81e6f730c0e7a1c1",
     "plannedCalls": 64,
-    "plannedWorstCaseNanoUsd": 2273985000,
-    "plannedWorstCaseUsd": 2.273985,
+    "plannedWorstCaseNanoUsd": 2308945000,
+    "plannedWorstCaseUsd": 2.308945,
     "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
     "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
     "approvalHash": "adba410cd2e2b434d772a6e2434fd3c74ca4a02931e29469e4cb32ef880e8b9c",
@@ -54,7 +59,7 @@
     "repetitions": 2,
     "pricingHash": "d1754331f913ed694eaa2b588271465e473aff095928360111794a1a6f29cae0",
     "promptVersion": "feedback.prompt.v2",
-    "promptHash": "6a7e5bed62c359cde3ba768a2a7c2be02038a256b1b16763835c17b63e1a2456",
+    "promptHash": "f9f73da4d0a71dd17fb4533eaabc301f9b6e9f8c0e1d4745f59fd1c7847c6f99",
     "responseFormatVersion": "feedback-provider-response-format.v1",
     "responseFormatHash": "66605edf2b3cad146671f22afa656d9c01c9abea2e7475a68dbe21738c8e4073",
     "requestPolicyVersion": "feedback-calibration-request-policy.v1",
