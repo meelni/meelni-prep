@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Delegated Agent Authorization Boundary](2026-07-23-delegated-agent-authorization-boundary.md): Allow explicitly labeled bounded agent authorization for repeat repo-only or synthetic-only work while preserving human-owner-only launch, spend, Production data, billing, destructive-action, and live-provider boundaries.
 - [Forward Runtime-Settlement Reconciliation](2026-07-17-forward-runtime-settlement-reconciliation.md): Preserve the historical ledger, recognize only the exact legacy Preview lineage, and converge through a fail-closed forward migration with no inferred writer evidence.
 - [Explicit Analytics Consent](2026-07-17-explicit-analytics-consent.md): Optional browser analytics use one versioned tri-state opt-in; undecided/declined states fail closed, replay/autocapture stay disabled, and the operational server relaunch gate remains consent-independent with logging disabled.
 - [Human-Owned Launch Decision](2026-07-13-human-owned-launch-decision.md): Only the human product owner makes the final launch GO/NO-GO; agents and automated gates provide evidence and a readiness recommendation, and Production/default-on action requires explicit owner authorization.
