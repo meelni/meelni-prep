@@ -313,6 +313,7 @@ export interface CalibrationGitHubCasClient {
   getViewer(): GitHubViewerIdentity | Promise<GitHubViewerIdentity>;
   getRulesets(): GitHubRuleset[] | Promise<GitHubRuleset[]>;
   getEffectiveBranchRuleTypes(): string[] | Promise<string[]>;
+  getRefIfPresent(): GitHubRef | null | Promise<GitHubRef | null>;
   getRef(): GitHubRef | Promise<GitHubRef>;
   getCommit(sha: string): GitHubCommit | Promise<GitHubCommit>;
   createCommit(input: {
@@ -321,6 +322,10 @@ export interface CalibrationGitHubCasClient {
     parents: string[];
     date: string;
   }): GitHubCommit | Promise<GitHubCommit>;
+  createRef(input: {
+    ref: typeof SAV_248_V4_GIT_LEDGER_REF;
+    sha: string;
+  }): GitHubRef | Promise<GitHubRef>;
   updateRef(input: {
     sha: string;
     force: false;
@@ -562,7 +567,28 @@ async function activateCalibrationRunWithClient(
   const genesis = buildCalibrationAuthorizationGenesis(plan, authorization);
   await assertCanonicalGitHubAuthority(github);
 
-  const currentRef = await github.getRef();
+  let currentRef = await github.getRefIfPresent();
+  if (!currentRef) {
+    const seeded = await github.createCommit({
+      message: genesis.message,
+      treeSha: SAV_248_V4_EMPTY_TREE_OID,
+      parents: [],
+      date: genesis.date,
+    });
+    assertPinnedGenesisCommit(seeded, genesis);
+    await assertCanonicalGitHubAuthority(github);
+    try {
+      currentRef = await github.createRef({
+        ref: SAV_248_V4_GIT_LEDGER_REF,
+        sha: genesis.oid,
+      });
+    } catch (error) {
+      throw new Error("calibration_git_authorization_seed_lost_concurrent_cas", {
+        cause: error,
+      });
+    }
+    await assertCanonicalGitHubAuthority(github);
+  }
   if (currentRef.ref !== SAV_248_V4_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
@@ -1062,22 +1088,23 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     );
   }
 
-  async getRef(): Promise<GitHubRef> {
-    const record = requireRecord(
-      await this.api(
-        "GET",
-        `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V4_GIT_LEDGER_API_REF}`
-      ),
-      "ref"
+  async getRefIfPresent(): Promise<GitHubRef | null> {
+    const response = await this.api(
+      "GET",
+      `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V4_GIT_LEDGER_API_REF}`,
+      undefined,
+      { allowNotFound: true }
     );
-    const object = requireRecord(record.object, "ref.object");
-    if (object.type !== "commit") {
-      throw new Error("calibration_github_ledger_ref_not_commit");
+    if (response === null) return null;
+    return parseGitHubRef(response, "ref");
+  }
+
+  async getRef(): Promise<GitHubRef> {
+    const response = await this.getRefIfPresent();
+    if (!response) {
+      throw new Error("calibration_github_ledger_ref_missing");
     }
-    return {
-      ref: requireString(record.ref, "ref.ref"),
-      sha: requireOid(object.sha, "ref.object.sha"),
-    };
+    return response;
   }
 
   async getCommit(sha: string): Promise<GitHubCommit> {
@@ -1110,6 +1137,21 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     );
   }
 
+  async createRef(input: {
+    ref: typeof SAV_248_V4_GIT_LEDGER_REF;
+    sha: string;
+  }): Promise<GitHubRef> {
+    const record = requireRecord(
+      await this.api(
+        "POST",
+        `${SAV_248_V4_GITHUB_REPOSITORY_API_PATH}/git/refs`,
+        input
+      ),
+      "createdRef"
+    );
+    return parseGitHubRef(record, "createdRef");
+  }
+
   async updateRef(input: { sha: string; force: false }): Promise<GitHubRef> {
     const record = requireRecord(
       await this.api(
@@ -1129,7 +1171,8 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   private async api(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    options: { allowNotFound?: boolean } = {}
   ): Promise<unknown> {
     this.attestStartup();
     assertGitHubTransportEnvironment(this.#env);
@@ -1164,6 +1207,9 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
       });
       if (response.statusCode >= 300 && response.statusCode < 400) {
         throw new Error("calibration_github_api_redirect_rejected");
+      }
+      if (options.allowNotFound && response.statusCode === 404) {
+        return null;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw new Error("calibration_github_api_status_invalid");
@@ -1348,6 +1394,18 @@ function parseGitHubRuleset(value: unknown): GitHubRuleset {
     ruleTypes: record.rules.map((value) =>
       requireString(requireRecord(value, "ruleset.rule").type, "rule.type")
     ),
+  };
+}
+
+function parseGitHubRef(value: unknown, field: string): GitHubRef {
+  const record = requireRecord(value, field);
+  const object = requireRecord(record.object, `${field}.object`);
+  if (object.type !== "commit") {
+    throw new Error("calibration_github_ledger_ref_not_commit");
+  }
+  return {
+    ref: requireString(record.ref, `${field}.ref`),
+    sha: requireOid(object.sha, `${field}.object.sha`),
   };
 }
 
