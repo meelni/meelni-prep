@@ -30844,7 +30844,7 @@ var SAV_248_V4_GIT_LEDGER_REF = `refs/heads/${SAV_248_V4_GIT_LEDGER_BRANCH}`;
 var SAV_248_V4_GIT_LEDGER_API_REF = `heads/${SAV_248_V4_GIT_LEDGER_BRANCH}`;
 var SAV_248_V4_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V4_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V4_GENESIS_COMMIT_OID = "6eea90b200977e3d4e66c34064372f7f499bc32e";
+var SAV_248_V4_GENESIS_COMMIT_OID = "f93c43859d7b8ccd4990c7933ea139fdf9356a2c";
 var SAV_248_V4_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v4 calibration ledger immutable";
 var SAV_248_V4_ACTOR_RULESET_NAME = "Meelni SAV-248 v4 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -31151,8 +31151,7 @@ function buildCalibrationAuthorizationGenesis(plan, authorization) {
     `author ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
     `committer ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
     "",
-    message,
-    ""
+    message
   ].join("\n");
   return {
     date: date2,
