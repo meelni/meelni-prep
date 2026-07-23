@@ -128,6 +128,27 @@ Guidelines:
   closed event before external retention, or every additional selected server
   log source requires a separate privacy review.
 
+Custom staging environment:
+
+- Vercel custom environment `staging` (ID
+  `env_h7GlGHRbEHNe8xdyyc1q5ebdknaI`) is the canonical isolated provider
+  integration and launch-rehearsal target.
+- It is a Preview-type environment bound to the persistent Git branch
+  `codex/staging`. Its stable Vercel alias is
+  `meelni-env-staging-meelni.vercel.app`.
+- List the active target and branch binding with
+  `npx vercel@latest target ls --scope meelni --project meelni`.
+- Keep staging provider secrets scoped to the `staging` custom environment; do
+  not use branch-only overrides as the durable configuration and do not
+  overwrite the separate Production values.
+- A push to `codex/staging` creates the trusted Git deployment identity that
+  deployment preflight requires. Keep the branch tree aligned with the exact
+  application head being rehearsed and record both commit and tree identity in
+  evidence.
+- The staging environment remains fail-closed under the normal Preview product
+  controls. Creating or updating the environment does not authorize a
+  relaunch-gate change.
+
 ## GitHub
 
 Canonical target:
@@ -249,6 +270,33 @@ Current SAV-283 evidence from 2026-07-23:
   `reviewSettings.requiredReview: false`, so required-review enforcement is not
   proven even though the eligible-reviewers endpoint now returns owner-only.
 
+GitHub App:
+
+- In Statsig, open **Settings > Integrations > GitHub App**, then enable the
+  connection for the `meelni` GitHub organization.
+- Canonical `statsig-code` GitHub App installation ID: `147430568`. Verify the
+  organization, selected-repository mode, and permissions without exposing
+  credentials with:
+
+  ```bash
+  gh api /orgs/meelni/installations \
+    --jq '.installations[] | select(.app_slug=="statsig-code") | {id, app_slug, account: .account.login, repository_selection, permissions}'
+  ```
+
+- Select **Only select repositories** and grant access only to
+  `meelni/meelni-prep`; do not use the default all-current-and-future-repos
+  scope.
+- GitHub requires a sudo-mode passkey or equivalent second-factor confirmation
+  before completing the installation. After authorization returns to Statsig,
+  verify that the integration lists only `meelni/meelni-prep`.
+- If GitHub shows the repo-scoped `statsig-code` installation but Statsig still
+  shows **Enable Connection**, the installation callback was not associated
+  with the Statsig project. Statsig cannot adopt that orphaned installation into
+  the same project. With explicit approval to remove and restore the external
+  permission, uninstall installation `147430568`, immediately restart
+  **Enable Connection** from `meelni-com`, reinstall for only
+  `meelni/meelni-prep`, and verify the Statsig integration reports connected.
+
 Production guardrails:
 
 - Get explicit owner approval before creating, approving, committing, or
@@ -278,9 +326,8 @@ Canonical target:
 - Preview WebSocket host: `meelni-preview-dk7443ua.livekit.cloud`
 - Preview interview deployment: `CA_ZbGxFjfEYwsD`, dispatch name
   `meelni-preview-interview`
-- Preview demo deployment: not yet source-authorized; deploy preflight remains
-  fail-closed until a distinct demo dispatch is provisioned and recorded in
-  `lib/deployment/provider-identities.ts`
+- Preview demo deployment: `CA_M5XTD4CMyXk3`, dispatch name
+  `meelni-preview-demo`
 
 Auth:
 
@@ -318,6 +365,13 @@ Operational notes:
 
 - Vercel sensitive values can pull into `.env.local` as blank strings. `npm run env:pull` preserves existing nonblank local LiveKit values when Vercel returns blanks.
 - If Vercel env values are questionable, use the authenticated `meelni` LiveKit CLI project as the source of truth and overwrite Vercel Development, Preview, and Production envs.
+- For the Vercel `staging` custom environment, use only the authenticated
+  `meelni-preview` CLI project as the credential source. A LiveKit plan change
+  or key rotation can leave the deployed staging pair stale even when the URL
+  and dispatch names still match. Restore `LIVEKIT_API_KEY` and
+  `LIVEKIT_API_SECRET` to `staging` without printing their values, redeploy the
+  same reviewed commit, and require `PASS livekit.project.read_only` before a
+  rehearsal. Never copy the default `meelni` Production pair into staging.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
 - Require `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` in every
   worker mode, including local development. An unnamed worker opts into
@@ -402,11 +456,13 @@ Operational notes:
     --project-ref rarrrwkjuhfyfatcmrkw --output json
   ```
 
-- As of 2026-07-10, the canonical project reported `pitr_enabled: false` and
-  no listed physical backup entries. Do not assume a provider restore point is
-  available. Capture a mode-0600 schema-only dump outside the repository before
-  additive migrations, and require a stronger data backup before destructive
-  data or schema changes.
+- As of 2026-07-16, the paid canonical project reported seven completed daily
+  physical backups and `pitr_enabled: false`. Verify current backup status
+  before every live mutation rather than assuming this observation is still
+  current. Capture a mode-0600 schema-only dump outside the repository before
+  additive migrations, and require explicit authorization plus a reviewed
+  recovery procedure before destructive data, schema, or migration-ledger
+  changes.
 
 ## Google Sheets
 
@@ -491,6 +547,19 @@ Webhook guidance:
 - Local development can use `stripe listen --forward-to http://localhost:3000/api/webhooks/stripe`.
 - Production webhooks should target the production app URL, usually `/api/webhooks/stripe`.
 - Treat webhook signing secrets as secrets. Do not paste them into chat or Linear.
+- The canonical Stripe test-mode webhook endpoint is
+  `we_1TuSuvCdoT5hfbsFbmsubdFW`. It targets the stable Vercel staging alias at
+  `/api/webhooks/stripe` and uses the project automation-bypass query without
+  documenting its secret value.
+- Its signing secret is stored only as `STRIPE_WEBHOOK_SECRET` in the Vercel
+  `staging` custom environment. After rotating the endpoint or secret, redeploy
+  `codex/staging` before sending a receipt.
+- Do not point the test endpoint at an ephemeral PR/branch deployment. The old
+  branch-pinned test endpoint was deleted after the canonical staging receiver
+  returned signed `200` receipts on 2026-07-18.
+- Preview and Production must use different webhook endpoints and signing
+  secrets. Never replace the Production signing secret while repairing the
+  staging/test receiver.
 - Generate the canonical 16-required/one-optional endpoint allowlist with
   `npm run stripe:webhook-events -- --format=json`. Verify a sanitized endpoint
   export with
