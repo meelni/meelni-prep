@@ -21,7 +21,7 @@ technical evidence, never owner GO/NO-GO.
 `sav-250-agent-panel-signoffs.json` binds two independent provider-free agent
 reviews to the exact candidate commit, candidate/corpus hashes, and audit-file
 hash. It records no human approval, spend authority, provider call, Production
-data use, v6 authority, or launch decision.
+data use, v7 authority, or launch decision.
 
 `sav-198-paid-run-authorization.json` is historical v1 authorization evidence.
 Its protected ledger was activated and is terminal; neither this file nor the
@@ -36,14 +36,14 @@ nano-USD ($2.052925) deterministic worst case, and plan hash
 This historical artifact cannot revive the consumed v1 authority. It performs
 no provider call or ledger activation and grants no launch authority.
 
-`sav-248-v6-paid-run-authorization-proposal.json` is deliberately not an
+`sav-248-v7-paid-run-authorization-proposal.json` is deliberately not an
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current 64-call proposal has a $2.308945
+reviewed source commit. The current 64-call proposal has a $2.344225
 deterministic worst case and proposal hash
-`89d5570217306df00d9f09b009c0cbc8737b23b82ec900ce81e6f730c0e7a1c1`.
-It explicitly records the correct v1, v2, v3, and consumed v4 refs and terminal, non-reusable
+`b0bbff39c8bc50cd8a3eb4eaa350bdb4781bb87c87f725e9d388365a77c84449`.
+It explicitly records the correct v1 through v6 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
 `4acdf549eecad5fe88d685c28fbc98d7475b8f05`, and
@@ -52,12 +52,16 @@ activation commits:
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3` at
 `1baee0b82c61cb6d89dbe9dc23cee1beccf72b31`, and
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4` at
-`feb7591898145bcb6bec9526c650f705f2530270`. Its proposal authorization hash is
-`a7eabb6a31bb1e3af8e7b4e729c78f8f17607804f2801eb4fad68b63fb2b04d9`.
-No v6 Git ledger exists or is authorized. The proposal-only deterministic
-genesis is `f197794dd0962d30ed00e72715795f9a854a859d` and must not be created.
+`feb7591898145bcb6bec9526c650f705f2530270`, and
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v5` at
+`78295d40c19ba366a64956010af9535b283aaf44`, and
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6` at
+`b23e5d54fb21d72e1043a4404fea1ac691e31a89`. Its proposal authorization hash is
+source-derived and must be regenerated after merge. No v7 Git ledger exists or
+is authorized. The proposal-only deterministic genesis is
+`11d1307cc1c8098163bbb8986ac3ca0635ece9f0` and must not be created.
 
-`sav-248-v6-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
+`sav-248-v7-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
@@ -68,9 +72,9 @@ paid run can become executable.
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
 registry contains only public verification material, no private signing key is
-stored here, and no signed v6 authorization artifact exists. Any future artifact
+stored here, and no signed v7 authorization artifact exists. Any future artifact
 must remain outside Git and bind the exact post-merge source commit and freshly
-regenerated plan; the historical v1/v2/v3/v4 artifacts remain unusable.
+regenerated plan; the historical v1 through v6 artifacts remain unusable.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are immutable v7 local evidence only. Their historical `launchAcceptance`

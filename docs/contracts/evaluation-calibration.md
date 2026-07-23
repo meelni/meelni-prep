@@ -248,7 +248,7 @@ It binds request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
 and the terminal v1/v2/v3/v4 authorities, but its authorization status is pending and
 its reviewed source commit is null. The existing ≤96/$3 approvals were consumed
-by historical attempts and cannot authorize v6. A future exact owner
+by historical attempts and cannot authorize v7. A future exact owner
 approval must bind the final post-merge commit and a freshly priced regenerated
 plan before any credential or provider boundary can open. The executable
 runtime independently resolves the canonical repository, requires `HEAD` to
@@ -259,9 +259,9 @@ readiness. The credential-bearing process is a checked-in, reproducible ESM
 bundle, not `tsx` or mutable `node_modules`; its exact bytes, size, build
 contract, package-lock digest, platform, architecture, Node version, and
 built-in-only external imports are recorded in
-`docs/evidence/sav-248-v6-runtime-manifest.json` and verified before spawn.
+`docs/evidence/sav-248-v7-runtime-manifest.json` and verified before spawn.
 
-Proposed live v6 responses use the strict `feedback-provider-response-format.v1` JSON
+Proposed live v7 responses use the strict `feedback-provider-response-format.v1` JSON
 schema. The scorer rejects refusals, incomplete finish states, and malformed
 schema output. It passes the exact UTF-8 bytes of the decoded provider message
 content to the authenticated private capture before JSON parsing; these are not
@@ -296,8 +296,8 @@ overhead for operator/watchdog purge.
 
 ## Paid-run authorization and ledger contract
 
-There is no approved v6 spend. The proposal in
-`docs/evidence/sav-248-v6-paid-run-authorization-proposal.json` records at most
+There is no approved v7 spend. The proposal in
+`docs/evidence/sav-248-v7-paid-run-authorization-proposal.json` records at most
 96 provider calls/physical attempts and $3 using synthetic or separately
 approved fixtures, but explicitly records pending owner approval, null approval
 source/date, and null reviewed source commit. The executable path rejects it
@@ -320,7 +320,7 @@ until a fresh exact owner authorization is signed outside Git and verified
 against the final post-merge source commit, regenerated plan, and current
 pricing/runtime hashes.
 
-The signed payload binds one new v6 authorization ID, the exact 40-character
+The signed payload binds one new v7 authorization ID, the exact 40-character
 reviewed source commit, exact regenerated plan hash, equal planned provider-call
 and physical-attempt counts, exact worst-case nano-USD, the 96-call/attempt and
 $3 ceilings, one aggregate run, synthetic or separately approved fixtures only,
@@ -330,7 +330,7 @@ issue time must use a whole-second boundary because it also determines the Git
 authorization commit identity. The runtime rejects unknown fields,
 stale/future artifacts, revoked or out-of-window
 keys, signature/key mismatches, copied unverified authorization objects, and any
-source, plan, call-count, or spend drift before GitHub access. A v1/v2/v3/v4 artifact
+source, plan, call-count, or spend drift before GitHub access. A v1/v2/v3/v4/v5/v6 artifact
 or run ID cannot satisfy this contract.
 
 The supported owner handoff is
@@ -344,10 +344,10 @@ valid for calibration spend approval.
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
-`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v7`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`f197794dd0962d30ed00e72715795f9a854a859d`; it must not be created and will
+`11d1307cc1c8098163bbb8986ac3ca0635ece9f0`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates
