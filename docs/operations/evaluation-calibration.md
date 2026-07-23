@@ -294,6 +294,22 @@ The paid launcher never loads `.env.local` and has no npm script. It retrieves
 the OpenAI key from the macOS Keychain service
 `meelni-calibration-openai`; add or rotate that item through Keychain Access,
 not a shell argument, environment variable, repository file, or chat message.
+Before preparing a short-lived owner or delegated retry artifact, run the
+non-spending provider preflight:
+
+```bash
+npm run calibration:provider-preflight
+```
+
+This command reads only the `meelni-calibration-openai` Keychain item and makes
+one read-only model lookup against the pinned OpenAI model. It redacts the
+credential, rejects ambient `OPENAI_API_KEY` or `OPENAI_BASE_URL` values because
+the live launcher rejects them too, and exits non-zero for missing keys, HTTP
+401 authentication failures, inaccessible models, redirects, stale pricing
+review timestamps, or network timeouts. A passing provider preflight is not
+calibration evidence and does not authorize launch; it only proves the next
+authorized calibration attempt is unlikely to fail before call one because of
+local provider credential setup.
 
 The launcher pins `OPENAI_FEEDBACK_MODEL=gpt-5.1-2025-11-13` in the minimal
 attested runtime environment. That exact snapshot is bound to the repository's
