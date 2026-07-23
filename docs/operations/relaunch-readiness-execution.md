@@ -34,6 +34,17 @@ the accepted compatibility contract.
 Run these read-only checks from a clean checkout of `origin/main`:
 
 ```bash
+npm run --silent relaunch:readiness-snapshot
+```
+
+The command emits sanitized JSON for the GitHub PR/issue queue, local git
+state, `origin/main`, exact `SAV-198` / `SAV-248` v4 ruleset readiness, and
+v4 ledger-ref presence. It does not mutate GitHub, providers, Linear, feature
+flags, ledger refs, or owner authorization artifacts.
+
+If the command is unavailable, run the underlying read-only checks manually:
+
+```bash
 gh pr list --repo meelni/meelni-prep --state open \
   --json number,title,isDraft,headRefName,updatedAt
 
