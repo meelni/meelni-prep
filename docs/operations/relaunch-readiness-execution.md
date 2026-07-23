@@ -10,6 +10,15 @@ The human product owner remains the only launch GO/NO-GO authority. Keep
 candidate. Passing this runbook's technical gates is readiness evidence, not a
 launch decision.
 
+Delegated-agent authorization may be used only for bounded repeat work that is
+explicitly recorded under
+`meelni.delegated-agent-authorization.v1`, such as repo-only guardrail repairs
+or synthetic-only calibration retries inside an already approved spend envelope.
+It is not a human-owner signature and cannot authorize launch, new spend caps,
+Production data, customer transcripts, destructive actions, refunds, or live
+provider mutations outside the bounded scope. Human-owner-only gates must reject
+delegated artifacts.
+
 ## Canonical tracking
 
 Use Linear as the shared source of work status:
