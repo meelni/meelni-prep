@@ -93,10 +93,65 @@ test("relaunch readiness snapshot rejects a non-user activation bypass actor", a
   );
 });
 
+test("relaunch readiness snapshot fetches detailed rulesets before exactness checks", async () => {
+  const snapshot = await buildRelaunchReadinessSnapshot({
+    fetch: false,
+    runCommand: fixtureRunner({
+      ledgerRefPresent: false,
+      rulesetsExact: true,
+      rulesetListSummariesOnly: true,
+    }),
+  });
+
+  assert.equal(snapshot.calibrationV4Guardrails.rulesets.allExact, true);
+  assert.equal(
+    snapshot.calibrationV4Guardrails.rulesets.required.ledgerImmutable.exact,
+    true
+  );
+  assert.equal(
+    snapshot.calibrationV4Guardrails.rulesets.required.activationActor.exact,
+    true
+  );
+  assert.equal(snapshot.calibrationV4Guardrails.ledgerRef.present, false);
+  assert.equal(
+    snapshot.calibrationV4Guardrails.readyForOwnerAuthorizedCalibration,
+    false
+  );
+});
+
+test("relaunch readiness snapshot fails closed when ruleset detail fetch fails", async () => {
+  const snapshot = await buildRelaunchReadinessSnapshot({
+    fetch: false,
+    runCommand: fixtureRunner({
+      ledgerRefPresent: true,
+      rulesetsExact: true,
+      rulesetListSummariesOnly: true,
+      rulesetDetailLookupFails: true,
+    }),
+  });
+
+  assert.equal(snapshot.calibrationV4Guardrails.rulesets.allExact, false);
+  assert.equal(
+    snapshot.calibrationV4Guardrails.rulesets.required.ledgerImmutable.exact,
+    false
+  );
+  assert.equal(
+    snapshot.calibrationV4Guardrails.rulesets.required.ledgerImmutable
+      .detailLookupFailed,
+    true
+  );
+  assert.equal(
+    snapshot.calibrationV4Guardrails.readyForOwnerAuthorizedCalibration,
+    false
+  );
+});
+
 function fixtureRunner({
   ledgerRefPresent,
   rulesetsExact,
   activationActorType = "User",
+  rulesetListSummariesOnly = false,
+  rulesetDetailLookupFails = false,
 }) {
   return async (file, args) => {
     const command = [file, ...args].join(" ");
@@ -120,12 +175,34 @@ function fixtureRunner({
       return "[]";
     }
     if (command.includes("/rulesets?")) {
+      const rulesets = buildRulesets({
+        exact: rulesetsExact,
+        activationActorType,
+      });
       return JSON.stringify(
-        buildRulesets({
-          exact: rulesetsExact,
-          activationActorType,
-        })
+        rulesetListSummariesOnly ? rulesets.map(toRulesetSummary) : rulesets
       );
+    }
+    if (command.includes("/rulesets/")) {
+      if (rulesetDetailLookupFails) {
+        const error = new Error("HTTP 404: Not Found");
+        error.stderr = "Not Found";
+        throw error;
+      }
+
+      const id = Number(command.match(/\/rulesets\/(\d+)/)?.[1]);
+      const ruleset = buildRulesets({
+        exact: rulesetsExact,
+        activationActorType,
+      }).find((candidate) => candidate.id === id);
+
+      if (!ruleset) {
+        const error = new Error("HTTP 404: Not Found");
+        error.stderr = "Not Found";
+        throw error;
+      }
+
+      return JSON.stringify(ruleset);
     }
     if (command.includes("/git/ref/heads/meelni-ledger/")) {
       if (!ledgerRefPresent) {
@@ -144,6 +221,18 @@ function fixtureRunner({
     }
 
     throw new Error(`Unexpected command: ${command}`);
+  };
+}
+
+function toRulesetSummary(ruleset) {
+  return {
+    id: ruleset.id,
+    name: ruleset.name,
+    target: ruleset.target,
+    enforcement: ruleset.enforcement,
+    conditions: null,
+    bypass_actors: null,
+    rules: null,
   };
 }
 

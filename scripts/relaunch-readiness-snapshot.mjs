@@ -82,6 +82,11 @@ export async function buildRelaunchReadinessSnapshot({
     ]),
     getLedgerRef(runCommand, repo),
   ]);
+  const detailedRulesets = await hydrateMatchingRulesetDetails(
+    runCommand,
+    repo,
+    rawRulesets
+  );
 
   const git = {
     branch: branch.trim(),
@@ -94,7 +99,7 @@ export async function buildRelaunchReadinessSnapshot({
       .map((line) => line.trimEnd())
       .filter(Boolean),
   };
-  const rulesets = summarizeRulesets(rawRulesets);
+  const rulesets = summarizeRulesets(detailedRulesets);
 
   return {
     generatedAt: now.toISOString(),
@@ -147,6 +152,43 @@ export function summarizeRulesets(rawRulesets) {
   };
 }
 
+async function hydrateMatchingRulesetDetails(runCommand, repo, rawRulesets) {
+  if (!Array.isArray(rawRulesets)) {
+    return [];
+  }
+
+  return Promise.all(
+    rawRulesets.map(async (ruleset) => {
+      if (!shouldFetchRulesetDetail(ruleset)) {
+        return ruleset;
+      }
+
+      try {
+        return await runJson(runCommand, "gh", [
+          "api",
+          `repos/${repo}/rulesets/${ruleset.id}`,
+        ]);
+      } catch (error) {
+        return {
+          ...ruleset,
+          detailLookupFailed: true,
+          detailLookupReason: classifyRulesetDetailFailure(error),
+        };
+      }
+    })
+  );
+}
+
+function shouldFetchRulesetDetail(ruleset) {
+  return (
+    ruleset?.id &&
+    /SAV-248 v4 calibration/i.test(ruleset?.name ?? "") &&
+    (!Array.isArray(ruleset.rules) ||
+      !Array.isArray(ruleset.bypass_actors) ||
+      !ruleset.conditions?.ref_name)
+  );
+}
+
 function summarizeRuleset(ruleset, required) {
   if (!ruleset) {
     return {
@@ -180,6 +222,9 @@ function summarizeRuleset(ruleset, required) {
     name: ruleset.name,
     target: ruleset.target,
     enforcement: ruleset.enforcement,
+    ...(ruleset.detailLookupFailed
+      ? { detailLookupFailed: true, detailLookupReason: ruleset.detailLookupReason }
+      : {}),
     includedRefs,
     excludedRefs,
     ruleTypes: [...actualRuleTypes].sort(),
@@ -226,6 +271,17 @@ async function defaultRunCommand(file, args, options = {}) {
 }
 
 function classifyMissingRef(error) {
+  const text = `${error?.stdout ?? ""}\n${error?.stderr ?? ""}\n${
+    error?.message ?? ""
+  }`;
+  if (/not found|404/i.test(text)) {
+    return "not_found";
+  }
+
+  return "lookup_failed";
+}
+
+function classifyRulesetDetailFailure(error) {
   const text = `${error?.stdout ?? ""}\n${error?.stderr ?? ""}\n${
     error?.message ?? ""
   }`;
