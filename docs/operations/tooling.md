@@ -141,6 +141,22 @@ Python availability, Python agent environment, and Conductor configuration. A
 Node mismatch is a failure and prints the deterministic `fnm install`/`fnm use`
 recovery command while allowing the rest of the diagnostic report to finish.
 
+## Linear And PR Automation Safety
+
+Treat Linear parent issues as durable outcome trackers and child issues as the
+unit a normal PR should close. For long-running owner-gated relaunch work, a
+repo-only PR must close a PR-sized child issue, not the parent. Parent issues
+whose criteria require signed owner authorization, provider/live actions,
+terminal reports, or a human launch decision remain open until those criteria
+are evidenced directly.
+
+When preparing PR text, avoid terminal keywords such as `closes`, `fixes`, or
+`resolves` next to a parent issue unless the PR intentionally completes that
+parent. Use wording like `Closes SAV-293. Parent: SAV-198 remains open until
+owner-gated calibration criteria complete.` After merging a child PR, re-check
+the parent issue state in Linear and restore it to the correct non-terminal
+state if automation moved it to Done prematurely.
+
 The doctor fails when required local runtime envs are missing or contain placeholder values such as `https://xxx.supabase.co`, `wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional: provider placeholders can otherwise look valid until login, LiveKit, or feedback generation fails at runtime.
 
 ## Development
