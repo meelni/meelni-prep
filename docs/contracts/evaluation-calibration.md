@@ -356,9 +356,13 @@ child containing only authorization, plan-hash, and activation metadata, then
 performs a GitHub REST ref update with `force: false`. Concurrent children share
 the authorized parent, so only one update can fast-forward and every loser
 refuses execution.
-An activated head is terminal: a restart, crash, missing local cache, or local
-state reset cannot reopen it. Any additional run requires a new owner
-authorization and reviewed code change.
+An activated head cannot be activated a second time or mint another budget. A
+restart, crash, missing local cache, or local state reset may resume it only via
+the delegated-agent retry contract after a previous terminal v9 report proves
+zero completed calls and zero reconciled actual spend. Any non-zero prior
+completion or actual spend, malformed ledger history, changed activation head,
+or wider delegated cap fails closed. Any additional run still requires a new
+owner authorization and reviewed code change.
 
 The production authority uses Node HTTPS directly against the fixed
 `api.github.com:443` endpoint. It accepts only `GITHUB_TOKEN`, uses Node's
@@ -391,11 +395,12 @@ binary identities remain part of reviewed source,
 closing coherent bundle/manifest substitution and hash-to-spawn replacement.
 The sealed bootstrap attests empty `execArgv`, verifies the exact standalone
 runtime bundle contract, and launches that sealed bundle with a minimal
-credential-free environment and no package loader. The runtime loads and
-verifies the private external owner envelope, validates its executable
-authorization and exact plan binding, validates the exact directly hashed
-reviewed Git checkout, and validates its private paths before it emits runtime
-readiness.
+credential-free environment and no package loader. The runtime loads exactly
+one private external authorization path: either the human-owner envelope for
+first activation or a delegated-agent retry artifact plus a previous terminal
+report for zero-spend resume. It validates executable authority, the exact plan
+or protected activated ledger binding, the directly hashed reviewed Git
+checkout, and private paths before it emits runtime readiness.
 Only then does the bootstrap relay the exact readiness handshake over the
 private status pipe; the outer launcher derives and transmits credentials over
 a separate private pipe afterward. The runtime repeats its environment

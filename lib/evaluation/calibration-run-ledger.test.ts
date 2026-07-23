@@ -15,6 +15,10 @@ import test from "node:test";
 
 import { evaluationCalibrationCases } from "@meelni/test-fixtures";
 
+import {
+  DELEGATED_AGENT_AUTHORIZATION_CONTRACT,
+  verifyDelegatedAgentAuthorization,
+} from "@/lib/operations/delegated-agent-authorization";
 import { buildDelegatedEvaluationAdjudicationApproval } from "./calibration-approval";
 import {
   CALIBRATION_OWNER_APPROVAL_DECISION,
@@ -221,6 +225,140 @@ test("a verified owner handoff activates only the exact signed plan", async () =
         new FakeGitHubClient(createCanonicalState(genesis))
       ),
     /provenance_unverified/
+  );
+});
+
+test("delegated retry resumes only an already owner-activated ledger plan", async () => {
+  const ownerAuthorization = buildVerifiedOwnerAuthorization();
+  const activationNow = new Date(NOW.getTime() + 524);
+  const options: ActivateCalibrationRunOptions = {
+    ownerAuthorization,
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: approvalFixture(),
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 2,
+    now: activationNow,
+    activationId: "verified-owner-activation",
+  };
+  const plan = buildCalibrationActivatedPlan({
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: options.adjudicationApproval,
+    model: options.model,
+    repetitions: options.repetitions,
+    now: activationNow,
+  });
+  const state = createCanonicalState(
+    buildCalibrationAuthorizationGenesis(plan, ownerAuthorization.authorization)
+  );
+  const ownerActivated =
+    await calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+      options,
+      new FakeGitHubClient(state)
+    );
+  ownerActivated.release();
+
+  const resumed =
+    await calibrationRunLedgerTestSeam.resumeDelegatedActivatedCalibrationRunWithClient(
+      {
+        delegatedAuthorization: delegatedCalibrationRetryAuthorization(),
+        model: CALIBRATION_PRICING_CONTRACT.model,
+        repetitions: 2,
+        now: activationNow,
+      },
+      new FakeGitHubClient(state)
+    );
+
+  assert.equal(resumed.activationCommit, ownerActivated.activationCommit);
+  assert.equal(resumed.authorizationId, ownerActivated.authorizationId);
+  assert.equal(resumed.planHash, ownerActivated.planHash);
+  const firstCall = resumed.plan.calls[0]!;
+  assert.doesNotThrow(() => resumed.assertReservationAuthorized(firstCall));
+  assert.throws(
+    () =>
+      resumed.assertReservationAuthorized({
+        ...firstCall,
+        callKey: "forged-call",
+      }),
+    /not_in_activated_plan/
+  );
+});
+
+test("delegated retry cannot activate, broaden caps, or resume malformed ledgers", async () => {
+  const ownerAuthorization = buildVerifiedOwnerAuthorization();
+  const activationNow = new Date(NOW.getTime() + 524);
+  const plan = buildCalibrationActivatedPlan({
+    authorization: ownerAuthorization.authorization,
+    adjudicationApproval: approvalFixture(),
+    model: CALIBRATION_PRICING_CONTRACT.model,
+    repetitions: 2,
+    now: activationNow,
+  });
+  const state = createCanonicalState(
+    buildCalibrationAuthorizationGenesis(plan, ownerAuthorization.authorization)
+  );
+  await calibrationRunLedgerTestSeam.activateVerifiedOwnerAuthorizationWithClient(
+    {
+      ownerAuthorization,
+      authorization: ownerAuthorization.authorization,
+      adjudicationApproval: approvalFixture(),
+      model: CALIBRATION_PRICING_CONTRACT.model,
+      repetitions: 2,
+      now: activationNow,
+      activationId: "verified-owner-activation",
+    },
+    new FakeGitHubClient(state)
+  );
+
+  await assert.rejects(
+    () =>
+      calibrationRunLedgerTestSeam.resumeDelegatedActivatedCalibrationRunWithClient(
+        {
+          delegatedAuthorization: delegatedCalibrationRetryAuthorization({
+            actionClass: "repo_only_guardrail_repair",
+          }),
+          model: CALIBRATION_PRICING_CONTRACT.model,
+          repetitions: 2,
+          now: activationNow,
+        },
+        new FakeGitHubClient(state)
+      ),
+    /action_invalid/
+  );
+  await assert.rejects(
+    () =>
+      calibrationRunLedgerTestSeam.resumeDelegatedActivatedCalibrationRunWithClient(
+        {
+          delegatedAuthorization: delegatedCalibrationRetryAuthorization({
+            maximumProviderCalls: 63,
+          }),
+          model: CALIBRATION_PRICING_CONTRACT.model,
+          repetitions: 2,
+          now: activationNow,
+        },
+        new FakeGitHubClient(state)
+      ),
+    /exceeds_authority/
+  );
+
+  const malformedState = structuredCloneState(state);
+  const activation = malformedState.commits.get(malformedState.refSha!)!;
+  const authorization = malformedState.commits.get(activation.parents[0]!)!;
+  authorization.message = JSON.stringify({
+    ...JSON.parse(authorization.message),
+    planHash: "0".repeat(64),
+  });
+  await assert.rejects(
+    () =>
+      calibrationRunLedgerTestSeam.resumeDelegatedActivatedCalibrationRunWithClient(
+        {
+          delegatedAuthorization: delegatedCalibrationRetryAuthorization(),
+          model: CALIBRATION_PRICING_CONTRACT.model,
+          repetitions: 2,
+          now: activationNow,
+        },
+        new FakeGitHubClient(malformedState)
+      ),
+    /ledger_mismatch/
   );
 });
 
@@ -1100,6 +1238,53 @@ function assertPinnedFakeGenesis(
 
 function approvalFixture() {
   return buildDelegatedEvaluationAdjudicationApproval();
+}
+
+function delegatedCalibrationRetryAuthorization(
+  patch: Record<string, unknown> = {}
+) {
+  return verifyDelegatedAgentAuthorization({
+    artifact: {
+      contract: DELEGATED_AGENT_AUTHORIZATION_CONTRACT,
+      payload: {
+        authorizationId:
+          "sav303_delegated_agent_1234567890abcdef1234567890abcdef",
+        authorizedBy: "human_product_owner_chat_delegation",
+        authorizedVia: "codex_thread",
+        delegatedTo: "codex",
+        actionClass: "synthetic_calibration_retry",
+        scope:
+          "Resume already activated SAV-198 calibration after zero-cost provider-auth failure",
+        reviewedSourcePolicy: "merged_repo_only_guardrail_repairs_allowed",
+        maximumProviderCalls: 64,
+        maximumPhysicalHttpAttempts: 64,
+        maximumSpendNanoUsd: SAV_248_V4_REBASED_PLAN_WORST_CASE_NANO_USD,
+        customerTranscriptsAllowed: false,
+        productionDataAllowed: false,
+        launchDecision: null,
+        issuedAt: NOW.toISOString(),
+        expiresAt: new Date(NOW.getTime() + 4 * 60 * 60 * 1_000).toISOString(),
+        ...patch,
+      },
+    },
+    now: NOW,
+  });
+}
+
+function structuredCloneState(state: FakeGitHubState): FakeGitHubState {
+  return {
+    repository: structuredClone(state.repository),
+    viewer: structuredClone(state.viewer),
+    rulesets: structuredClone(state.rulesets),
+    effectiveRuleTypes: [...state.effectiveRuleTypes],
+    refSha: state.refSha,
+    commits: new Map(
+      [...state.commits.entries()].map(([sha, commit]) => [
+        sha,
+        structuredClone(commit),
+      ])
+    ),
+  };
 }
 
 function buildVerifiedOwnerAuthorization() {
