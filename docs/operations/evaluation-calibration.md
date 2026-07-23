@@ -201,13 +201,20 @@ whole-second boundary, and the lifetime must be no longer than 30 minutes.
 
 Prepare the later handoff in this order: merge the reviewed public-key/runtime
 and fresh-pricing source; select one new `sav248_v8_auth_` identifier plus the
-issue/expiry window; build the inner v7 authorization from those fixed values;
+issue/expiry window; build the v8 authorization request from those fixed values;
 regenerate the exact plan against that authorization and merged commit; place
 its hash/count/cost in the outer payload; then have the human product owner sign
 that exact payload outside Git. Any change to source, authorization metadata,
 plan, count, or cost requires a new envelope. The verifier brands the parsed
 authorization in memory; copying or reconstructing its fields does not preserve
 authority.
+
+When a previous lane has already activated or failed and a later source change
+promotes the executable lane, do not reapply or regenerate the older lane's
+GitHub rulesets. First confirm `origin/main`, the run ID, ruleset names, and
+ledger ref suffix all match the current source. Historical lane rulesets remain
+evidence for predecessor authorities; duplicating them by name creates
+ambiguous guardrail state and does not authorize the newer run.
 
 Use the provider-free owner helper for that external handoff. It derives and
 verifies only the calibration-specific
@@ -351,7 +358,7 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the non-executable v7 proposal:
+Generate and verify the non-executable v8 proposal:
 
 ```bash
 npm run calibration:plan-proposal -- \
