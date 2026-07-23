@@ -24,8 +24,8 @@ import {
   CALIBRATION_OWNER_AUTHORIZATION_MAX_TTL_MS,
   CALIBRATION_OWNER_ID,
   CALIBRATION_OWNER_ROLE,
-  SAV_248_V5_APPROVED_RUN_ID,
-  SAV_248_V5_PREDECESSOR_AUTHORITIES,
+  SAV_248_V6_APPROVED_RUN_ID,
+  SAV_248_V6_PREDECESSOR_AUTHORITIES,
   assertCalibrationOwnerAuthorizationMatchesPlan,
   calibrationOwnerAuthorizationSignatureMessage,
   loadCalibrationOwnerAuthorization,
@@ -44,7 +44,7 @@ const REPORT_CONTRACT =
   "meelni.evaluation-calibration-owner-authorization-verification-report.v1";
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const AUTHORIZATION_ID = /^sav248_v5_auth_[0-9a-f]{32}$/;
+const AUTHORIZATION_ID = /^sav248_v6_auth_[0-9a-f]{32}$/;
 const KEY_ID = /^[A-Za-z0-9._-]{1,80}$/;
 const OWNER_ONLY_MODE = 0o600;
 
@@ -221,7 +221,7 @@ export async function prepareUnsignedOwnerAuthorization(input: {
   });
   const payload: CalibrationOwnerAuthorizationPayload = {
     authorizationId,
-    runId: SAV_248_V5_APPROVED_RUN_ID,
+    runId: SAV_248_V6_APPROVED_RUN_ID,
     ownerId: CALIBRATION_OWNER_ID,
     ownerRole: CALIBRATION_OWNER_ROLE,
     approvalDecision: CALIBRATION_OWNER_APPROVAL_DECISION,
@@ -240,7 +240,7 @@ export async function prepareUnsignedOwnerAuthorization(input: {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V5_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V6_PREDECESSOR_AUTHORITIES,
     issuedAt: issuedAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
@@ -418,9 +418,9 @@ function buildApprovedSpendAuthorization(input: {
   signingKeyId: string;
 }): ApprovedCalibrationSpendAuthorization {
   return {
-    contractVersion: "evaluation-calibration-spend-authorization.v5",
+    contractVersion: "evaluation-calibration-spend-authorization.v6",
     authorizationId: input.authorizationId,
-    runId: SAV_248_V5_APPROVED_RUN_ID,
+    runId: SAV_248_V6_APPROVED_RUN_ID,
     authorizationStatus: "approved_by_human_product_owner",
     authorizedOn: input.issuedAt,
     authorizationSource: "external_product_owner_ed25519",
@@ -436,7 +436,7 @@ function buildApprovedSpendAuthorization(input: {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V5_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V6_PREDECESSOR_AUTHORITIES,
   };
 }
 
@@ -660,7 +660,7 @@ function usage(): string {
     "Evaluation calibration owner-authorization tooling (provider-free)",
     "",
     "Commands:",
-    "  prepare --adjudication-approval PATH --authorization-id sav248_v5_auth_<32hex> --reviewed-source-commit 40hex --signing-key-id ID --issued-at ISO --output-path PATH [--expires-at ISO | --ttl-minutes N]",
+    "  prepare --adjudication-approval PATH --authorization-id sav248_v6_auth_<32hex> --reviewed-source-commit 40hex --signing-key-id ID --issued-at ISO --output-path PATH [--expires-at ISO | --ttl-minutes N]",
     "  sign --payload-path PATH --artifact-path PATH --key-id ID --private-key-path ABSOLUTE_PATH",
     "  verify --artifact-path ABSOLUTE_PATH --adjudication-approval PATH --reviewed-source-commit 40hex [--key-registry-path PATH] [--output-path PATH]",
     "",

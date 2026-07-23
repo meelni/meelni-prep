@@ -238,17 +238,17 @@ includes valid usage, the report preserves its identity and token totals,
 reconciles known cost, and then stops. Only absent or invalid usage retains an
 unresolved worst-case reservation.
 
-The current non-executable v5 proposal contains exactly 64 calls: two symmetric runs for
+The current non-executable v6 proposal contains exactly 64 calls: two symmetric runs for
 each of the 32 scored fixtures. Its deterministic worst-case reservation is
-2,273,985,000 nano-USD ($2.273985), below the unchanged $3 hard cap. The
+2,308,945,000 nano-USD ($2.308945), below the unchanged $3 hard cap. The
 current feedback prompt makes the former 96-call reservation exceed $3, so it
 is not authorized. The proposal hash is
-`90e19b6713ed73649a160f3e26b0cca773734cba6541fb917bee53bf22763477`.
+`89d5570217306df00d9f09b009c0cbc8737b23b82ec900ce81e6f730c0e7a1c1`.
 It binds request-policy hash
 `884a3ff52b5dc309b982942740bb9b8e6cb2529e4472be47b3ac4abd8de628db`
 and the terminal v1/v2/v3/v4 authorities, but its authorization status is pending and
 its reviewed source commit is null. The existing ≤96/$3 approvals were consumed
-by historical attempts and cannot authorize v5. A future exact owner
+by historical attempts and cannot authorize v6. A future exact owner
 approval must bind the final post-merge commit and a freshly priced regenerated
 plan before any credential or provider boundary can open. The executable
 runtime independently resolves the canonical repository, requires `HEAD` to
@@ -259,9 +259,9 @@ readiness. The credential-bearing process is a checked-in, reproducible ESM
 bundle, not `tsx` or mutable `node_modules`; its exact bytes, size, build
 contract, package-lock digest, platform, architecture, Node version, and
 built-in-only external imports are recorded in
-`docs/evidence/sav-248-v5-runtime-manifest.json` and verified before spawn.
+`docs/evidence/sav-248-v6-runtime-manifest.json` and verified before spawn.
 
-Proposed live v5 responses use the strict `feedback-provider-response-format.v1` JSON
+Proposed live v6 responses use the strict `feedback-provider-response-format.v1` JSON
 schema. The scorer rejects refusals, incomplete finish states, and malformed
 schema output. It passes the exact UTF-8 bytes of the decoded provider message
 content to the authenticated private capture before JSON parsing; these are not
@@ -296,8 +296,8 @@ overhead for operator/watchdog purge.
 
 ## Paid-run authorization and ledger contract
 
-There is no approved v5 spend. The proposal in
-`docs/evidence/sav-248-v5-paid-run-authorization-proposal.json` records at most
+There is no approved v6 spend. The proposal in
+`docs/evidence/sav-248-v6-paid-run-authorization-proposal.json` records at most
 96 provider calls/physical attempts and $3 using synthetic or separately
 approved fixtures, but explicitly records pending owner approval, null approval
 source/date, and null reviewed source commit. The executable path rejects it
@@ -320,7 +320,7 @@ until a fresh exact owner authorization is signed outside Git and verified
 against the final post-merge source commit, regenerated plan, and current
 pricing/runtime hashes.
 
-The signed payload binds one new v5 authorization ID, the exact 40-character
+The signed payload binds one new v6 authorization ID, the exact 40-character
 reviewed source commit, exact regenerated plan hash, equal planned provider-call
 and physical-attempt counts, exact worst-case nano-USD, the 96-call/attempt and
 $3 ceilings, one aggregate run, synthetic or separately approved fixtures only,
@@ -344,10 +344,10 @@ valid for calibration spend approval.
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
-`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v5`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`f85132f5d080152a75b4d2d922b9e2a256e06310`; it must not be created and will
+`f197794dd0962d30ed00e72715795f9a854a859d`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates

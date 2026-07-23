@@ -52,6 +52,14 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
+    /perform this evidence uniqueness check/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /remove or rewrite that finding rather than reusing evidence/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
     /weighted overall would be 9\.0 or higher/
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /same-dimension grounded strength/);
