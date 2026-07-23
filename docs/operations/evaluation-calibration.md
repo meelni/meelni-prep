@@ -368,8 +368,9 @@ refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4
    With no bypass, administrators remain subject to both invariants.
 2. `Meelni SAV-248 v4 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
-   bypass actor: GitHub user `saviii` (`24397508`). The independent immutable
-   ruleset still prevents that actor from deleting or force-updating the ref.
+   bypass actor: GitHub user `saviii`, actor type `User`, user ID `24397508`.
+   The independent immutable ruleset still prevents that actor from deleting or
+   force-updating the ref.
 
 The runtime also requires GitHub's effective branch-rule endpoint to return
 `creation`, `update`, `deletion`, and `non_fast_forward`. Configure and verify
