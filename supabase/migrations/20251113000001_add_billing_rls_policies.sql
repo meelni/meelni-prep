@@ -16,12 +16,16 @@ ALTER TABLE stripe_customer_mapping ENABLE ROW LEVEL SECURITY;
 -- 2. Subscription table policies (user isolation)
 -- ====================
 
+DROP POLICY IF EXISTS "Users can view own subscription" ON subscription;
+
 -- Users can only SELECT their own subscription
 CREATE POLICY "Users can view own subscription"
   ON subscription
   FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update own subscription" ON subscription;
 
 -- Users can only UPDATE their own subscription (for cancellation requests)
 CREATE POLICY "Users can update own subscription"
@@ -30,6 +34,8 @@ CREATE POLICY "Users can update own subscription"
   TO authenticated
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Service role has full access to subscription" ON subscription;
 
 -- Service role can do everything (for webhooks and admin operations)
 CREATE POLICY "Service role has full access to subscription"
@@ -43,12 +49,16 @@ CREATE POLICY "Service role has full access to subscription"
 -- 3. Usage record policies (user isolation)
 -- ====================
 
+DROP POLICY IF EXISTS "Users can view own usage records" ON usage_record;
+
 -- Users can only SELECT their own usage records
 CREATE POLICY "Users can view own usage records"
   ON usage_record
   FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Service role has full access to usage_record" ON usage_record;
 
 -- Service role can do everything (usage tracked server-side)
 CREATE POLICY "Service role has full access to usage_record"
@@ -62,12 +72,16 @@ CREATE POLICY "Service role has full access to usage_record"
 -- 4. Payment history policies (user isolation)
 -- ====================
 
+DROP POLICY IF EXISTS "Users can view own payment history" ON payment_history;
+
 -- Users can only SELECT their own payment history
 CREATE POLICY "Users can view own payment history"
   ON payment_history
   FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Service role has full access to payment_history" ON payment_history;
 
 -- Service role can do everything (payments created by webhooks)
 CREATE POLICY "Service role has full access to payment_history"
@@ -81,6 +95,8 @@ CREATE POLICY "Service role has full access to payment_history"
 -- 5. Stripe event log policies (service role only)
 -- ====================
 
+DROP POLICY IF EXISTS "Service role has full access to stripe_event_log" ON stripe_event_log;
+
 -- Service role only (webhooks and admin)
 CREATE POLICY "Service role has full access to stripe_event_log"
   ON stripe_event_log
@@ -88,6 +104,8 @@ CREATE POLICY "Service role has full access to stripe_event_log"
   TO service_role
   USING (true)
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users cannot access stripe_event_log" ON stripe_event_log;
 
 -- No user access (internal audit log)
 CREATE POLICY "Users cannot access stripe_event_log"
@@ -100,6 +118,8 @@ CREATE POLICY "Users cannot access stripe_event_log"
 -- 6. Stripe customer mapping policies (service role only)
 -- ====================
 
+DROP POLICY IF EXISTS "Service role has full access to stripe_customer_mapping" ON stripe_customer_mapping;
+
 -- Service role only (webhooks and admin)
 CREATE POLICY "Service role has full access to stripe_customer_mapping"
   ON stripe_customer_mapping
@@ -107,6 +127,8 @@ CREATE POLICY "Service role has full access to stripe_customer_mapping"
   TO service_role
   USING (true)
   WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users cannot access stripe_customer_mapping" ON stripe_customer_mapping;
 
 -- No user access (internal mapping table)
 CREATE POLICY "Users cannot access stripe_customer_mapping"
