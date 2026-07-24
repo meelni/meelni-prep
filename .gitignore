@@ -42,6 +42,12 @@ yarn-error.log*
 # Supabase CLI local project metadata
 supabase/.temp/
 
+# Generated calibration outputs that must stay outside reviewed public evidence.
+docs/evidence/*-evaluation-calibration-live.json
+docs/evidence/*-semantic-capture/
+docs/evidence/*-semantic-capture-report.json
+docs/evidence/*-semantic-public-report.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
