@@ -28,8 +28,8 @@ const APPROVAL_PATH = join(
 const REVIEWED_SOURCE_COMMIT = "f6ff63ce2f9b03542b28ffdb591c96434d436e1f";
 const AUTHORIZATION_ID = "sav248_v8_auth_0123456789abcdef0123456789abcdef";
 const KEY_ID = "owner-calibration-test-2026-07";
-const ISSUED_AT = "2026-07-23T05:20:00.000Z";
-const EXPIRES_AT = "2026-07-23T05:50:00.000Z";
+const ISSUED_AT = "2026-07-24T17:20:00.000Z";
+const EXPIRES_AT = "2026-07-24T17:50:00.000Z";
 
 test("calibration owner CLI prepares, signs, and verifies an exact plan", async () => {
   const directory = mkdtempSync(join(tmpdir(), "meelni-calibration-owner-"));
@@ -104,7 +104,7 @@ test("calibration owner CLI prepares, signs, and verifies an exact plan", async 
       "--key-registry-path",
       registryPath,
       "--now",
-      "2026-07-23T05:25:00.000Z",
+      "2026-07-24T17:25:00.000Z",
       "--output-path",
       reportPath,
     ]);
@@ -180,7 +180,7 @@ test("calibration owner CLI rejects source drift before reporting success", asyn
           "--key-registry-path",
           registryPath,
           "--now",
-          "2026-07-23T05:25:00.000Z",
+          "2026-07-24T17:25:00.000Z",
         ]),
       /source_commit_mismatch/
     );

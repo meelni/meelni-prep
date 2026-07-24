@@ -197,7 +197,7 @@ For live runs, `execution.modelVersion` must be the pinned snapshot
 `evaluation-calibration-pricing.v1` binds that model to
 `https://api.openai.com/v1`, the explicit `default` service tier, zero SDK
 retries, and redirect rejection. It records the Standard pricing re-verified
-against the official model page at `2026-07-22T03:31:58.000Z`: $1.25 per
+against the official model page at `2026-07-24T17:17:35.000Z`: $1.25 per
 million uncached input tokens, $0.125 per million cached input tokens, and $10
 per million output tokens. The review expires after 24 hours; future-dated or
 stale review timestamps fail before call one.
