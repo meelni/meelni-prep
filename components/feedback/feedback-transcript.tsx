@@ -157,6 +157,11 @@ export function FeedbackTranscriptSection({
         <Button
           variant="ghost"
           size="sm"
+          aria-label={
+            expanded
+              ? "Collapse interview transcript"
+              : "Expand interview transcript"
+          }
           aria-expanded={expanded}
           aria-controls={contentId}
           onClick={() => onExpandedChange(!expanded)}
