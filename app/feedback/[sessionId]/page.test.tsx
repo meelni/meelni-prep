@@ -416,7 +416,11 @@ function transcriptResponse(sessionId: string, text: string) {
 }
 
 function findTranscriptExpandButton() {
-  return screen.findByRole("button", { name: "Expand" }, { timeout: 5000 });
+  return screen.findByRole(
+    "button",
+    { name: "Expand interview transcript" },
+    { timeout: 5000 }
+  );
 }
 
 async function expandTranscript() {

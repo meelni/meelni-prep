@@ -19,6 +19,16 @@ proves unique open ownership only; it does not prove that a journal or snapshot
 was generated from the merged predecessor. See
 [Stacked Pull Requests](./stacked-pull-requests.md#cross-pr-migration-ownership).
 
+Supabase SQL migrations that create RLS policies must be replay-safe. Before
+each `CREATE POLICY`, include the matching `DROP POLICY IF EXISTS` on the same
+table in the same migration file. Hosted Preview branch replays can encounter a
+schema where a policy name already exists even when the canonical Drizzle ledger
+is still converging; an unguarded `CREATE POLICY` then fails with a duplicate
+policy error before later preflight evidence can run. The repository contract
+test `scripts/migration-docs-contract.test.mjs` scans `supabase/migrations/*.sql`
+and fails any unguarded RLS policy creation so future Preview/security checks do
+not regress this behavior.
+
 ## Connection rules
 
 - Runtime serverless clients use `prepare: false` and at most one connection per
