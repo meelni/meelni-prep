@@ -176,3 +176,34 @@ test("live calibration cannot enter through credential-inheriting npm", () => {
     0
   );
 });
+
+test("generated live calibration evidence remains ignored by default", () => {
+  const ignoredPaths = [
+    "docs/evidence/sav-198-evaluation-calibration-live.json",
+    "docs/evidence/sav-248-semantic-capture/output.json",
+    "docs/evidence/sav-248-semantic-capture-report.json",
+    "docs/evidence/sav-248-semantic-public-report.json",
+  ];
+  const trackedPublicEvidence = [
+    "docs/evidence/sav-198-evaluation-calibration-preflight.json",
+    "docs/evidence/sav-198-evaluation-calibration-self-test.json",
+    "docs/evidence/sav-248-v8-plan-proposal.json",
+  ];
+
+  for (const path of ignoredPaths) {
+    const result = execFileSync("git", ["check-ignore", "--quiet", path], {
+      encoding: "utf8",
+    });
+    assert.equal(result, "");
+  }
+
+  for (const path of trackedPublicEvidence) {
+    assert.throws(
+      () =>
+        execFileSync("git", ["check-ignore", "--quiet", path], {
+          encoding: "utf8",
+        }),
+      /Command failed/
+    );
+  }
+});
