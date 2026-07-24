@@ -31,7 +31,7 @@ export interface CalibrationPricingContract {
   maximumSdkRetries: 0;
   redirectPolicy: "error";
   requestTimeoutMs: 300_000;
-  reviewedAt: "2026-07-23T05:13:31.000Z";
+  reviewedAt: "2026-07-24T17:17:35.000Z";
   reviewTtlHours: 24;
   source: "https://developers.openai.com/api/docs/models/gpt-5.1";
   nanoUsdPerMillionTokens: {
@@ -50,7 +50,7 @@ export const CALIBRATION_PRICING_CONTRACT: CalibrationPricingContract = {
   maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
   redirectPolicy: "error",
   requestTimeoutMs: CALIBRATION_REQUEST_TIMEOUT_MS,
-  reviewedAt: "2026-07-23T05:13:31.000Z",
+  reviewedAt: "2026-07-24T17:17:35.000Z",
   reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
   nanoUsdPerMillionTokens: {
