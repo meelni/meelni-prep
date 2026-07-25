@@ -104,7 +104,7 @@ export interface CalibrationFailure {
 }
 
 export interface EvaluationCalibrationReport {
-  contractVersion: "evaluation-calibration-report.v9";
+  contractVersion: "evaluation-calibration-report.v10";
   generatedAt: string;
   execution: {
     kind: CalibrationExecutionKind;
@@ -704,7 +704,7 @@ export async function runEvaluationCalibration(
     adjudicationPassed;
 
   return {
-    contractVersion: "evaluation-calibration-report.v9",
+    contractVersion: "evaluation-calibration-report.v10",
     generatedAt: now.toISOString(),
     execution: {
       kind: options.executionKind,

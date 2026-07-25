@@ -549,7 +549,7 @@ export function completePrivateSemanticReviewAfterTerminalReport(input: {
     replacePublicReport(publicReportPath, completedReport);
     return { report: completedReport, retentionReportUpdated: true };
   } catch {
-    // The terminal v9 report is already durable. Leaving the semantic report's
+    // The terminal v10 report is already durable. Leaving the semantic report's
     // deletion bit false is conservative and never overclaims cleanup.
     return { report: input.report, retentionReportUpdated: false };
   }
@@ -1117,7 +1117,7 @@ function assertTerminalCalibrationReport(pathInput: string, sha256: string): voi
     typeof parsed !== "object" ||
     Array.isArray(parsed) ||
     (parsed as { contractVersion?: unknown }).contractVersion !==
-      "evaluation-calibration-report.v9" ||
+      "evaluation-calibration-report.v10" ||
     !["passed", "failed"].includes(
       String(
         (parsed as { semanticReview?: { status?: unknown } }).semanticReview

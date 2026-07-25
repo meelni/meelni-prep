@@ -20,8 +20,8 @@ import {
   CALIBRATION_OWNER_ID,
   CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT,
   CALIBRATION_OWNER_ROLE,
-  SAV_248_V9_APPROVED_RUN_ID,
-  SAV_248_V9_PREDECESSOR_AUTHORITIES,
+  SAV_248_V10_APPROVED_RUN_ID,
+  SAV_248_V10_PREDECESSOR_AUTHORITIES,
   assertCalibrationOwnerAuthorizationMatchesPlan,
   calibrationOwnerAuthorizationSignatureMessage,
   canonicalCalibrationOwnerAuthorizationJson,
@@ -188,7 +188,7 @@ test("even a valid owner signature cannot widen the accepted run contract", () =
     (payload: CalibrationOwnerAuthorizationPayload) => void
   > = [
     (payload) =>
-      (payload.runId = SAV_248_V9_PREDECESSOR_AUTHORITIES[1]
+      (payload.runId = SAV_248_V10_PREDECESSOR_AUTHORITIES[1]
         .runId as typeof payload.runId),
     (payload) => (payload.ownerId = "agent" as typeof payload.ownerId),
     (payload) => (payload.ownerRole = "agent" as typeof payload.ownerRole),
@@ -440,8 +440,8 @@ test("the loader accepts only a small private external regular file", async () =
 
 function validPayload(): CalibrationOwnerAuthorizationPayload {
   return {
-    authorizationId: "sav248_v9_auth_0123456789abcdef0123456789abcdef",
-    runId: SAV_248_V9_APPROVED_RUN_ID,
+    authorizationId: "sav248_v10_auth_0123456789abcdef0123456789abcdef",
+    runId: SAV_248_V10_APPROVED_RUN_ID,
     ownerId: CALIBRATION_OWNER_ID,
     ownerRole: CALIBRATION_OWNER_ROLE,
     approvalDecision: CALIBRATION_OWNER_APPROVAL_DECISION,
@@ -460,7 +460,7 @@ function validPayload(): CalibrationOwnerAuthorizationPayload {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V9_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V10_PREDECESSOR_AUTHORITIES,
     issuedAt: "2026-07-20T00:00:00.000Z",
     expiresAt: "2026-07-20T00:30:00.000Z",
   };

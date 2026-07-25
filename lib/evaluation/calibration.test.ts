@@ -26,8 +26,8 @@ import {
 } from "./calibration-budget";
 import {
   buildCalibrationActivatedPlan,
-  SAV_248_V9_APPROVED_RUN_ID,
-  SAV_248_V9_SPEND_AUTHORIZATION,
+  SAV_248_V10_APPROVED_RUN_ID,
+  SAV_248_V10_SPEND_AUTHORIZATION,
 } from "./calibration-run-ledger";
 import {
   FeedbackProviderInvocationError,
@@ -74,7 +74,7 @@ test("calibration preflight validates 40 synthetic cases without claiming readin
     report.gate.calibrationEvidenceAcceptance,
     "pending_adjudication_signoff"
   );
-  assert.equal(report.contractVersion, "evaluation-calibration-report.v9");
+  assert.equal(report.contractVersion, "evaluation-calibration-report.v10");
   assert.equal("launchAcceptance" in report.gate, false);
 });
 
@@ -808,7 +808,7 @@ test("approved live automation remains pending until semantic review passes", as
   assert.equal(report.execution.cost?.attemptedCalls, 64);
   assert.equal(
     report.execution.cost?.authorizedRunId,
-    SAV_248_V9_APPROVED_RUN_ID
+    SAV_248_V10_APPROVED_RUN_ID
   );
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 64);
@@ -946,7 +946,7 @@ function withProviderUsage(
 
 function liveGuard(): CalibrationSpendGuard {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_248_V9_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V10_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
     repetitions: 2,
@@ -955,8 +955,8 @@ function liveGuard(): CalibrationSpendGuard {
   let spend = createEmptyCalibrationSpendState();
   const persistence: CalibrationSpendPersistence = {
     durable: true,
-    runId: SAV_248_V9_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V9_SPEND_AUTHORIZATION.authorizationId,
+    runId: SAV_248_V10_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V10_SPEND_AUTHORIZATION.authorizationId,
     authorizationHash: plan.authorizationHash,
     activationCommit: "test-activation-commit",
     planHash: plan.planHash,
