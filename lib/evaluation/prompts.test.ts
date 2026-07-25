@@ -87,11 +87,13 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /same-turn ranges are pairwise disjoint/
   );
-  assert.match(EVALUATION_SYSTEM_PROMPT, /blacklist at the sentence\/line/);
+  assert.match(EVALUATION_SYSTEM_PROMPT, /reserve source text before writing findings/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /source sentence or transcript line containing that quote is unavailable/
+    /exact range and the entire source sentence\/line containing it are unavailable/
   );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /reserved-evidence table/);
+  assert.match(EVALUATION_SYSTEM_PROMPT, /line-sharing/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /no source sentence\/line is assigned to more than one finding/
@@ -111,6 +113,18 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     /weighted overall would be 9\.0 or higher/
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /same-dimension grounded strength/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /Score weak partial answers conservatively/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /do not score structure above 4 or clarity above 5/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /brainstorm features for everyone and measure general usage/
+  );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /two observable supports from the grounded findings/
