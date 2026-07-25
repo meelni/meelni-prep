@@ -18,6 +18,10 @@ import {
   restoreCanonicalTranscriptIds,
 } from "./transcript-aliases";
 import { getFeedbackProviderResponseFormat } from "./provider-response-format";
+import {
+  appendCalibrationEvidenceHints,
+  type CalibrationEvidenceHint,
+} from "./calibration-evidence-hints";
 
 export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
   "feedback_configuration_missing_openai_key";
@@ -183,6 +187,7 @@ export async function generateFeedbackWithUsage(
     beforePhysicalRequest?: () => void | Promise<void>;
     onRawSyntheticOutput?: (rawResponse: Uint8Array) => void | Promise<void>;
     calibrationCredentials?: { openaiApiKey: string };
+    calibrationEvidenceHints?: readonly CalibrationEvidenceHint[];
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -212,10 +217,16 @@ export async function generateFeedbackWithUsage(
           options.beforePhysicalRequest!
         )
       : getOpenAI();
-    const userPrompt = getEvaluationPrompt(
-      roundType,
-      aliasProjection.transcript,
-      evaluationState
+    const userPrompt = appendCalibrationEvidenceHints(
+      getEvaluationPrompt(
+        roundType,
+        aliasProjection.transcript,
+        evaluationState
+      ),
+      options.calibrationPaidMode
+        ? options.calibrationEvidenceHints
+        : undefined,
+      aliasProjection.canonicalIdByAlias
     );
     const completion = await client.chat.completions.create({
       model: modelVersion,

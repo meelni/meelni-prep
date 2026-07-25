@@ -30,12 +30,13 @@ import {
   assertCalibrationOpenAIEnvironment,
   generateFeedbackWithUsage,
 } from "@/lib/evaluation/scorer";
+import { buildCalibrationEvidenceHints } from "@/lib/evaluation/calibration-evidence-hints";
 import {
   activateCalibrationRun,
   assertCalibrationSpendAuthorizationExecutable,
   buildCalibrationActivatedPlan,
   resumeDelegatedActivatedCalibrationRun,
-  SAV_248_V13_SPEND_AUTHORIZATION,
+  SAV_248_V14_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import {
   assertCalibrationOwnerAuthorizationMatchesPlan,
@@ -179,7 +180,7 @@ async function main() {
     }
     const planned = buildCalibrationActivatedPlan({
       authorization:
-        ownerAuthorization?.authorization ?? SAV_248_V13_SPEND_AUTHORIZATION,
+        ownerAuthorization?.authorization ?? SAV_248_V14_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
@@ -304,6 +305,7 @@ async function main() {
           calibrationCredentials: {
             openaiApiKey: liveCredentials.openaiKey,
           },
+          calibrationEvidenceHints: buildCalibrationEvidenceHints(fixture),
         }
       );
   }
