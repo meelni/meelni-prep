@@ -136,6 +136,7 @@ test("evaluation calibration runbook uses v9 owner authorization artifact names"
     "sav-248-v9-owner-authorization.json",
     "sav-248-v9-owner-authorization-report.json",
     "GitHub user `saviii`, actor type `User`, user ID `24397508`",
+    "proposal commit: 3d74d088ae1fd198943a90a8d68857f80236b7cf",
   ]) {
     assert.match(runbook, escapeForRegex(required));
   }
@@ -144,6 +145,7 @@ test("evaluation calibration runbook uses v9 owner authorization artifact names"
     "sav-248-v3-owner-authorization-request.json",
     "sav-248-v3-owner-authorization.json",
     "sav-248-v3-owner-authorization-report.json",
+    "proposal commit: f197794dd0962d30ed00e72715795f9a854a859d",
   ]) {
     assert.doesNotMatch(runbook, escapeForRegex(stale));
   }
