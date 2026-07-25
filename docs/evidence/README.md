@@ -40,9 +40,9 @@ no provider call or ledger activation and grants no launch authority.
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current 64-call proposal has a $2.432705
-deterministic worst case and proposal hash
-`543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94`.
+reviewed source commit. The current repaired 64-call proposal has a $2.507905
+deterministic worst case. Its proposal authorization hash is source-derived and
+must be regenerated after merge.
 It explicitly records the correct v1 through v6 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
@@ -56,18 +56,22 @@ activation commits:
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v5` at
 `78295d40c19ba366a64956010af9535b283aaf44`, and
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6` at
-`b23e5d54fb21d72e1043a4404fea1ac691e31a89`. Its proposal authorization hash is
-source-derived and must be regenerated after merge. No v9 Git ledger exists or
-is authorized. The proposal-only deterministic genesis is
-`c17f132875234fc1b6b61a3db525467f94b4fb4d` and must not be created.
+`b23e5d54fb21d72e1043a4404fea1ac691e31a89`. The authorized v9 paid run later
+activated `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9` at
+`08864c3bfad23d6c394847ccbef5ffca87347275`, made one provider request, spent
+$0.01311, and failed terminally with `evidence_quote_not_grounded`. That v9
+ledger is non-reusable failure evidence. Future paid execution requires repaired
+source, a fresh exact owner authorization, and a successor ledger lane; do not
+manually create or reuse v9.
 
-`sav-248-v9-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
+`sav-248-v9-plan-proposal.json` binds the repaired corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
-feature-flag, or launch action. After merge and a fresh pricing check, it must be
-regenerated and explicitly approved against one exact source commit before any
-paid run can become executable.
+feature-flag, or launch action. Because real v9 has already failed terminally,
+after merge and a fresh pricing check a successor lane must be regenerated and
+explicitly approved against one exact source commit before any paid run can
+become executable.
 
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
