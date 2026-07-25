@@ -32,8 +32,11 @@ Return your analysis as a JSON object with this exact structure:
     {
       "dimension": "structure | clarity | insight | communication | leadership",
       "observation": "Specific observed behavior",
-      "transcriptRefs": ["exact turn alias such as turn_0001"],
-      "evidence": [{"turnRef": "same exact turn alias", "quote": "exact case-sensitive substring from that turn"}],
+      "transcriptRefs": ["exact turn alias such as turn_0001", "exact turn alias such as turn_0002"],
+      "evidence": [
+        {"turnRef": "same exact turn alias as transcriptRefs[0]", "quote": "exact case-sensitive substring from that turn"},
+        {"turnRef": "same exact turn alias as transcriptRefs[1]", "quote": "another disjoint exact substring that supports the same observation"}
+      ],
       "nextStep": "Specific way to keep applying this strength",
       "rubricVersion": "${FEEDBACK_RUBRIC_VERSION}",
       "confidence": <number 0-1>
@@ -43,8 +46,11 @@ Return your analysis as a JSON object with this exact structure:
     {
       "dimension": "structure | clarity | insight | communication | leadership",
       "observation": "Specific observed opportunity",
-      "transcriptRefs": ["exact turn alias such as turn_0001"],
-      "evidence": [{"turnRef": "same exact turn alias", "quote": "exact case-sensitive substring from that turn"}],
+      "transcriptRefs": ["exact turn alias such as turn_0001", "exact turn alias such as turn_0002"],
+      "evidence": [
+        {"turnRef": "same exact turn alias as transcriptRefs[0]", "quote": "exact case-sensitive substring from that turn"},
+        {"turnRef": "same exact turn alias as transcriptRefs[1]", "quote": "another disjoint exact substring that supports the same observation"}
+      ],
       "nextStep": "Concrete action for the next answer",
       "rubricVersion": "${FEEDBACK_RUBRIC_VERSION}",
       "confidence": <number 0-1>
@@ -58,7 +64,7 @@ Return your analysis as a JSON object with this exact structure:
 }
 
 Return exactly two strengths and exactly two improvements. Do not return one, three, or any other count for either array. Before returning JSON, count the array lengths and verify strengths.length === 2 and improvements.length === 2; if the evidence feels thin, still return the two best grounded findings rather than changing the count.
-Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
+Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. For normal spaced-language findings, include at least two transcriptRefs and two matching evidence entries, preferably from different candidate turns; use the one-evidence narrow path only for bounded literal-citation statements or predominantly compact-language anchors. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
 Use a distinct, non-overlapping exact evidence span for every finding. Do not reuse the same quote, the same sentence fragment, a substring/superstring variant, or overlapping text from the same transcript turn across multiple strengths or improvements. If one turn contains evidence for multiple findings, cite separate non-overlapping exact spans for each finding; prefer different candidate turns when the available spans are close together.
 Treat two quotes from the same turn as overlapping when their exact matches share any character position in the source turn. Adding or removing nearby words, punctuation, or sentence boundaries around a reused phrase is still overlap, not distinct evidence.
 Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, verify every identity is unique, verify same-turn ranges are pairwise disjoint, and replace any repeated or overlapping evidence with a different exact candidate quote from a disjoint range. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.

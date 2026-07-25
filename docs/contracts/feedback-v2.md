@@ -95,11 +95,15 @@ Each strength and improvement contains exactly these fields:
 {
   "dimension": "insight",
   "observation": "The answer chose a specific user segment.",
-  "transcriptRefs": ["writer-id:event-id"],
+  "transcriptRefs": ["writer-id:event-id-1", "writer-id:event-id-2"],
   "evidence": [
     {
-      "turnRef": "writer-id:event-id",
+      "turnRef": "writer-id:event-id-1",
       "quote": "working parents"
+    },
+    {
+      "turnRef": "writer-id:event-id-2",
+      "quote": "coordinate changing pickup schedules"
     }
   ],
   "nextStep": "Carry that segment through prioritization.",
@@ -113,6 +117,10 @@ Each strength and improvement contains exactly these fields:
 - `transcriptRefs` contains unique canonical transcript `eventId` values. A
   database row UUID is not a feedback evidence identity.
 - Every reference has exactly one evidence entry and vice versa.
+- Normal spaced-language findings should cite at least two references and two
+  matching evidence entries, preferably from different candidate turns. The
+  one-evidence narrow path is reserved for bounded literal-citation statements
+  or predominantly compact-language anchors.
 - `quote` resolves to a non-empty, case-sensitive substring of the referenced
   durable candidate turn. Harmless Unicode punctuation and whitespace
   differences
