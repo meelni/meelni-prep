@@ -6,20 +6,20 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_REPO = "meelni/meelni-prep";
-export const V9_LEDGER_REF =
-  "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9";
-export const V9_LEDGER_REF_API_PATH =
-  "heads/meelni-ledger/sav-248-authorized-paid-calibration.v9";
+export const V10_LEDGER_REF =
+  "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v10";
+export const V10_LEDGER_REF_API_PATH =
+  "heads/meelni-ledger/sav-248-authorized-paid-calibration.v10";
 export const SAVIII_GITHUB_USER_ID = 24397508;
 
 const REQUIRED_RULESETS = {
   ledgerImmutable: {
-    name: "Meelni SAV-248 v9 calibration ledger immutable",
+    name: "Meelni SAV-248 v10 calibration ledger immutable",
     rules: ["deletion", "non_fast_forward"],
     bypassActors: [],
   },
   activationActor: {
-    name: "Meelni SAV-248 v9 calibration activation actor",
+    name: "Meelni SAV-248 v10 calibration activation actor",
     rules: ["creation", "update"],
     bypassActors: [
       {
@@ -118,8 +118,8 @@ export async function buildRelaunchReadinessSnapshot({
       openIssues,
       queueClean: openPullRequests.length === 0 && openIssues.length === 0,
     },
-    calibrationV9Guardrails: {
-      ledgerRefName: V9_LEDGER_REF,
+    calibrationV10Guardrails: {
+      ledgerRefName: V10_LEDGER_REF,
       rulesets,
       ledgerRef,
       readyForOwnerAuthorizedCalibration:
@@ -142,7 +142,7 @@ export function summarizeRulesets(rawRulesets) {
     required: summaries,
     allExact: Object.values(summaries).every((summary) => summary.exact),
     matchingRulesets: rulesets
-      .filter((ruleset) => /SAV-248 v9 calibration/i.test(ruleset?.name ?? ""))
+      .filter((ruleset) => /SAV-248 v10 calibration/i.test(ruleset?.name ?? ""))
       .map((ruleset) => ({
         id: ruleset.id,
         name: ruleset.name,
@@ -182,7 +182,7 @@ async function hydrateMatchingRulesetDetails(runCommand, repo, rawRulesets) {
 function shouldFetchRulesetDetail(ruleset) {
   return (
     ruleset?.id &&
-    /SAV-248 v9 calibration/i.test(ruleset?.name ?? "") &&
+    /SAV-248 v10 calibration/i.test(ruleset?.name ?? "") &&
     (!Array.isArray(ruleset.rules) ||
       !Array.isArray(ruleset.bypass_actors) ||
       !ruleset.conditions?.ref_name)
@@ -211,7 +211,7 @@ function summarizeRuleset(ruleset, required) {
     ruleset.target === "branch" &&
     ruleset.enforcement === "active" &&
     setEquals(actualRuleTypes, expectedRuleTypes) &&
-    includesOnly(includedRefs, [V9_LEDGER_REF]) &&
+    includesOnly(includedRefs, [V10_LEDGER_REF]) &&
     excludedRefs.length === 0 &&
     bypassActorsMatch(actualBypassActors, required.bypassActors);
 
@@ -243,7 +243,7 @@ async function getLedgerRef(runCommand, repo) {
   try {
     const ref = await runJson(runCommand, "gh", [
       "api",
-      `repos/${repo}/git/ref/${V9_LEDGER_REF_API_PATH}`,
+      `repos/${repo}/git/ref/${V10_LEDGER_REF_API_PATH}`,
     ]);
 
     return {
@@ -352,7 +352,7 @@ function printHelp() {
   console.log(`Usage: npm run relaunch:readiness-snapshot -- [--repo owner/name] [--no-fetch]
 
 Creates a read-only JSON snapshot of GitHub queue state, git state, and the
-SAV-248 v9 calibration guardrail prerequisites. This command does not mutate
+SAV-248 v10 calibration guardrail prerequisites. This command does not mutate
 GitHub, providers, Linear, feature flags, ledger refs, or owner authorizations.`);
 }
 

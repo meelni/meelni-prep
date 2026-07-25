@@ -26,7 +26,7 @@ const APPROVAL_PATH = join(
   "sav-198-adjudication-approval.json"
 );
 const REVIEWED_SOURCE_COMMIT = "f6ff63ce2f9b03542b28ffdb591c96434d436e1f";
-const AUTHORIZATION_ID = "sav248_v9_auth_0123456789abcdef0123456789abcdef";
+const AUTHORIZATION_ID = "sav248_v10_auth_0123456789abcdef0123456789abcdef";
 const KEY_ID = "owner-calibration-test-2026-07";
 const ISSUED_AT = "2026-07-24T17:20:00.000Z";
 const EXPIRES_AT = "2026-07-24T17:50:00.000Z";

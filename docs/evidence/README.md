@@ -36,13 +36,15 @@ nano-USD ($2.052925) deterministic worst case, and plan hash
 This historical artifact cannot revive the consumed v1 authority. It performs
 no provider call or ledger activation and grants no launch authority.
 
-`sav-248-v9-paid-run-authorization-proposal.json` is deliberately not an
+`sav-248-v10-paid-run-authorization-proposal.json` is deliberately not an
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current repaired 64-call proposal has a $2.507905
-deterministic worst case. Its proposal authorization hash is source-derived and
-must be regenerated after merge.
+reviewed source commit. The current successor 64-call proposal has a $2.507905
+deterministic worst case and plan hash
+`60d75effec9d8102c853537e61ba8c376a73bb6eb0c4cfbe7c6c2657edc0add0`. Its
+proposal authorization hash is source-derived and must be regenerated after
+merge.
 It explicitly records the correct v1 through v6 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
@@ -64,25 +66,25 @@ ledger is non-reusable failure evidence. Future paid execution requires repaired
 source, a fresh exact owner authorization, and a successor ledger lane; do not
 manually create or reuse v9.
 
-`sav-248-v9-plan-proposal.json` binds the repaired corpus, adjudication, prompt,
+`sav-248-v10-plan-proposal.json` binds the repaired corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
 feature-flag, or launch action. Because real v9 has already failed terminally,
-after merge and a fresh pricing check a successor lane must be regenerated and
+after merge and a fresh pricing check this successor lane must be regenerated and
 explicitly approved against one exact source commit before any paid run can
 become executable.
 
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
 registry contains only public verification material, no private signing key is
-stored here, and no signed v9 authorization artifact exists. Any future artifact
+stored here, and no signed v10 authorization artifact exists. Any future artifact
 must remain outside Git and bind the exact post-merge source commit and freshly
 regenerated plan; the historical v1 through v6 artifacts remain unusable.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are immutable v7 local evidence only. Their historical `launchAcceptance`
-field is the technical predecessor of current v9
+field is the technical predecessor of current v10
 `calibrationEvidenceAcceptance`; it does not represent owner launch authority.
 Both reports deliberately keep live-provider and calibration-evidence
 acceptance pending.

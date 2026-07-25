@@ -29,7 +29,7 @@ remain pending.
 
 ## V3 synthetic-output semantic review
 
-The SAV-248 v9 live launcher integrates the semantic-review contract in
+The SAV-248 v10 live launcher integrates the semantic-review contract in
 `docs/contracts/evaluation-output-semantic-adjudication.md`. The private-run
 boundary must hash raw synthetic output byte-for-byte and emit only the trusted
 hash manifest. Separately, a trusted operator/orchestrator must construct the
@@ -48,10 +48,10 @@ alternative-review, or agreement invariant. A report with `gate: failed` is
 terminal rejection evidence for that response set.
 
 The launcher captures the exact UTF-8 bytes of the decoded provider message
-content before JSON parsing. It atomically persists a v9 automated report in
+content before JSON parsing. It atomically persists a v10 automated report in
 `pending_semantic_review`, then waits for two decision-only panel files plus a
 separate operator-authored execution-authority file. Semantic review grants no
-provider access or spend authority. The current v9 artifacts are deliberately
+provider access or spend authority. The current v10 artifacts are deliberately
 non-executable proposals; a fresh exact owner authorization, reviewed post-merge
 source commit, refreshed pricing review, and protected GitHub ledger would all
 be required before any paid run.
@@ -87,14 +87,14 @@ for either unanimous acceptance or unanimous rejection, initially with
 `reviewed_legitimate` to equal the automated report's unique canonical-evidence
 mismatches; a count-only or unrelated alternative cannot convert a mismatch to
 a pass. The runner hashes only the immutable semantic-adjudication section,
-atomically replaces the pending v9 report with passed or failed, and verifies
+atomically replaces the pending v10 report with passed or failed, and verifies
 that exact terminal file before `completePrivateSemanticReviewAfterTerminalReport`
 may delete the private directory. It then atomically updates the semantic
-report to `rawCaptureDeleted: true`. Failure before terminal v9 publication
+report to `rawCaptureDeleted: true`. Failure before terminal v10 publication
 preserves the capture. Failure or crash after terminal publication can leave
 the deletion bit conservatively false but cannot revert terminal evidence.
 Invalid, disagreeing, or malformed review input publishes no semantic result;
-the live runner atomically records terminal v9 failure before authenticated
+the live runner atomically records terminal v10 failure before authenticated
 cleanup. Public report paths inside the private capture are forbidden,
 including paths whose existing parent resolves through a symlink into that
 directory.
@@ -112,7 +112,7 @@ would require a separate durable authenticated capability design, not a plain
 serialized handle.
 
 The capture and adjudication helpers are testable without a provider. During
-any future authorized v9 run they may receive only synthetic/approved fixture output;
+any future authorized v10 run they may receive only synthetic/approved fixture output;
 they must never receive Production or customer data, reuse a terminal v1/v2
 authority, or imply provider acceptance or launch approval.
 
@@ -153,7 +153,7 @@ preflight requires all eight to skip evaluation and make zero provider calls.
 ## Proposed live-provider run (not authorized)
 
 Do not run this step. The current code intentionally fails before the readiness
-handshake or credential delivery because no fresh v9 spend authorization exists.
+handshake or credential delivery because no fresh v10 spend authorization exists.
 The proposal evaluates 32 scored synthetic transcripts twice, for exactly 64
 planned model calls. The eight insufficient transcripts are expected to make
 zero model calls. Its proposed envelope remains at most 96 physical attempts and
@@ -163,12 +163,12 @@ The v1 and v2 refs are terminal historical authorities and cannot be reused.
 The repository contains the fail-closed verifier for a future external owner
 handoff. It does not contain an approval: the public-key registry at
 `config/evaluation-calibration-owner-keys.json` contains only reviewed public
-verification material, no signed v9 envelope exists, and private signing
+verification material, no signed v10 envelope exists, and private signing
 material must never be placed in Git, chat, environment files, logs, or
 generated evidence. Rotating or enrolling another owner public key requires a
 reviewed source change and runtime-bundle regeneration.
 
-`docs/evidence/sav-248-v9-paid-run-authorization-proposal.json` truthfully
+`docs/evidence/sav-248-v10-paid-run-authorization-proposal.json` truthfully
 records `pending_explicit_product_owner_approval`, null authorization source and
 date, and a null `reviewedSourceCommit`. It cannot authorize a provider request,
 GitHub mutation, or credential delivery. Before any future run, the product
@@ -200,8 +200,8 @@ expiry timestamps must be canonical ISO strings, the issue time must be on a
 whole-second boundary, and the lifetime must be no longer than 30 minutes.
 
 Prepare the later handoff in this order: merge the reviewed public-key/runtime
-and fresh-pricing source; select one new `sav248_v9_auth_` identifier plus the
-issue/expiry window; build the v9 authorization request from those fixed values;
+and fresh-pricing source; select one new `sav248_v10_auth_` identifier plus the
+issue/expiry window; build the v10 authorization request from those fixed values;
 regenerate the exact plan against that authorization and merged commit; place
 its hash/count/cost in the outer payload; then have the human product owner sign
 that exact payload outside Git. Any change to source, authorization metadata,
@@ -225,24 +225,24 @@ launch decision.
 ```bash
 npm run calibration:owner-authorization -- prepare \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
-  --authorization-id sav248_v9_auth_<32 lowercase hex characters> \
+  --authorization-id sav248_v10_auth_<32 lowercase hex characters> \
   --reviewed-source-commit <final reviewed 40-character source commit> \
   --signing-key-id meelni-owner-2026-07 \
   --issued-at <whole-second ISO timestamp> \
   --ttl-minutes 30 \
-  --output-path /secure/external/path/sav-248-v9-owner-authorization-request.json
+  --output-path /secure/external/path/sav-248-v10-owner-authorization-request.json
 
 npm run calibration:owner-authorization -- sign \
-  --payload-path /secure/external/path/sav-248-v9-owner-authorization-request.json \
-  --artifact-path /secure/external/path/sav-248-v9-owner-authorization.json \
+  --payload-path /secure/external/path/sav-248-v10-owner-authorization-request.json \
+  --artifact-path /secure/external/path/sav-248-v10-owner-authorization.json \
   --key-id meelni-owner-2026-07 \
   --private-key-path /secure/external/path/meelni-owner-private-key.pem
 
 npm run calibration:owner-authorization -- verify \
-  --artifact-path /secure/external/path/sav-248-v9-owner-authorization.json \
+  --artifact-path /secure/external/path/sav-248-v10-owner-authorization.json \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
   --reviewed-source-commit <final reviewed 40-character source commit> \
-  --output-path /secure/external/path/sav-248-v9-owner-authorization-report.json
+  --output-path /secure/external/path/sav-248-v10-owner-authorization-report.json
 ```
 
 The private key and signed artifact paths must be absolute paths outside every
@@ -264,7 +264,7 @@ The live child does not execute through `tsx` or import from mutable
 complete 363-input runtime into
 `scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
 remain external. `npm run calibration:verify-runtime` must reproduce the exact
-tracked bundle and `docs/evidence/sav-248-v9-runtime-manifest.json`. Before
+tracked bundle and `docs/evidence/sav-248-v10-runtime-manifest.json`. Before
 spawning the child, the credential-free bootstrap checks the bundle's regular
 file identity, ownership, link count, mode, byte length, SHA-256, package-lock
 SHA-256, Node version, platform, and architecture. A dependency or source
@@ -358,18 +358,18 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the non-executable v9 proposal:
+Generate and verify the non-executable v10 proposal:
 
 ```bash
 npm run calibration:plan-proposal -- \
   --approval docs/evidence/sav-198-adjudication-approval.json \
-  --output docs/evidence/sav-248-v9-plan-proposal.json
+  --output docs/evidence/sav-248-v10-plan-proposal.json
 ```
 
 The current repaired source proposal is 64 physical calls (two symmetric runs
 for each of 32 scored fixtures), 2,507,905,000 nano-USD ($2.507905) worst case,
 and plan hash
-`94365d4d49f2850d008a20721ffe0ca2c63ba71cfd0e5225e74f90e5fb110297`.
+`60d75effec9d8102c853537e61ba8c376a73bb6eb0c4cfbe7c6c2657edc0add0`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
@@ -387,13 +387,13 @@ verified may repository owners configure the two exact active repository
 rulesets below for:
 
 ```text
-refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v10
 ```
 
-1. `Meelni SAV-248 v9 calibration ledger immutable`: exact ref include, no
+1. `Meelni SAV-248 v10 calibration ledger immutable`: exact ref include, no
    excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
    With no bypass, administrators remain subject to both invariants.
-2. `Meelni SAV-248 v9 calibration activation actor`: the same exact ref include,
+2. `Meelni SAV-248 v10 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
    bypass actor: GitHub user `saviii`, actor type `User`, user ID `24397508`.
    The independent immutable ruleset still prevents that actor from deleting or
@@ -409,7 +409,7 @@ instead of reusing ad hoc temporary files:
 
 ```bash
 npm run calibration:github-guardrails -- \
-  --output-dir /secure/external/path/sav-248-v9-github-guardrails
+  --output-dir /secure/external/path/sav-248-v10-github-guardrails
 ```
 
 The command writes only local JSON payloads and a README with the current source
@@ -430,7 +430,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: fb80b13ed8c8dff44e2d06bd7b6cfd245e57ef79
+proposal commit: b6a4a4d87045770dd972c6ced2ac1b409b9d80fc
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
@@ -495,7 +495,7 @@ do not run it against the pending proposal:
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
-  --owner-authorization /secure/external/path/sav-248-v9-owner-authorization.json \
+  --owner-authorization /secure/external/path/sav-248-v10-owner-authorization.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \
@@ -534,7 +534,7 @@ be an owner-owned `0700` directory and each file must be `0600`. The runner
 rejects pre-existing, symlinked, unsafe, or non-private paths before readiness.
 
 After all non-canonical automated thresholds pass, the same process finalizes
-the capture, writes a pending v9 report and the review request, and waits. Start
+the capture, writes a pending v10 report and the review request, and waits. Start
 two actual independent agent tasks against the same capture and request. Each
 panel file contains only the review-input hash and decisions; it must not claim
 its own task or execution identity. After independently observing both
@@ -559,7 +559,7 @@ immediately. Unanimous acceptance or rejection publishes a sanitized semantic
 report with a conservative deletion bit, atomically replaces the pending
 automated report with passed or failed, verifies that terminal file, and only
 then deletes raw output. Timeout, disagreement, interruption, or any other
-terminal failure exits nonzero after atomically replacing an already-pending v9
+terminal failure exits nonzero after atomically replacing an already-pending v10
 report with failure; cleanup occurs only after terminal publication. If that
 publication fails, raw capture remains. SIGKILL and host crashes cannot
 guarantee automatic deletion; retention is sized for 64 five-minute requests,
@@ -573,7 +573,7 @@ deliberately exact so an ambient boolean cannot accidentally enable paid
 calibration.
 
 The live CLI exits zero only when `calibrationEvidenceAcceptance` is `passed` in
-the current `evaluation-calibration-report.v9` report. A zero exit means only
+the current `evaluation-calibration-report.v10` report. A zero exit means only
 that the complete calibration evidence contract passed; it is not the human
 product owner's launch decision. A provider-quality pass still exits nonzero
 when adjudication approval is missing, stale, incomplete, or contains
@@ -584,8 +584,8 @@ adding secrets or provider responses containing sensitive data.
 
 The committed v7 receipts remain byte-for-byte immutable. Their historical
 `gate.launchAcceptance` values have the same technical state interpretation as
-v9 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
-Do not rewrite or regenerate those historical files during a v9 run.
+v10 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
+Do not rewrite or regenerate those historical files during a v10 run.
 
 ## Review checklist
 
@@ -603,7 +603,7 @@ Do not rewrite or regenerate those historical files during a v9 run.
   stopping. It has `completed_plan` only after all 64 planned calls reconcile
   successfully.
 - The cost report uses `evaluation-calibration-cost-report.v5`, the current
-  report uses `evaluation-calibration-report.v9`, and the fixed run,
+  report uses `evaluation-calibration-report.v10`, and the fixed run,
   authorization ID, and
   authorization hash match the committed spend-authorization manifest.
 - The activated plan reports exactly 64 calls and at most $3 worst-case, the

@@ -67,7 +67,7 @@ gold-set preflight and 100% insufficient-handling threshold.
 
 ## Report contract
 
-Every current command emits `evaluation-calibration-report.v9` JSON with:
+Every current command emits `evaluation-calibration-report.v10` JSON with:
 
 - execution kind, evaluator model, repetition count, and paid-provider status;
 - gold-set, adjudication, schema, prompt, and rubric versions;
@@ -89,7 +89,7 @@ as `provider_bad_request`, `provider_authentication`, `provider_permission`,
 `provider_server_error`, or `provider_unknown`, plus a numeric `httpStatus`
 when the SDK exposed one. It must never include raw provider messages, request
 bodies, response bodies, object paths, headers, prompt text, transcript text, or
-credentials. Older v9 reports without this object remain valid but less
+credentials. Older v10 reports without this object remain valid but less
 diagnostic.
 
 Live reports also include `execution.cost`, an
@@ -120,7 +120,7 @@ The committed version-7 reports under `docs/evidence/` are immutable historical
 receipts and remain byte-for-byte unchanged. When reading a v7 report, interpret
 its `gate.launchAcceptance` value as the historical name for v9
 `gate.calibrationEvidenceAcceptance`; never interpret it as owner launch GO or
-NO-GO. Current writers must emit v9 and must not recreate the v7 field.
+NO-GO. Current writers must emit v10 and must not recreate the v7 field.
 
 An `evaluation_provider_returned_invalid_feedback` failure additionally carries
 `feedbackRejectionCode`, a member of the closed
@@ -259,14 +259,14 @@ readiness. The credential-bearing process is a checked-in, reproducible ESM
 bundle, not `tsx` or mutable `node_modules`; its exact bytes, size, build
 contract, package-lock digest, platform, architecture, Node version, and
 built-in-only external imports are recorded in
-`docs/evidence/sav-248-v9-runtime-manifest.json` and verified before spawn.
+`docs/evidence/sav-248-v10-runtime-manifest.json` and verified before spawn.
 
 Proposed live v7 responses use the strict `feedback-provider-response-format.v1` JSON
 schema. The scorer rejects refusals, incomplete finish states, and malformed
 schema output. It passes the exact UTF-8 bytes of the decoded provider message
 content to the authenticated private capture before JSON parsing; these are not
 the raw HTTP response body bytes. Capture failure stops the run without retrying
-or discarding known provider usage. The automated v9 report is atomically
+or discarding known provider usage. The automated v10 report is atomically
 published as `pending_semantic_review` before review starts, then atomically
 replaced with passed or failed after semantic finalization.
 
@@ -282,14 +282,14 @@ operator authority. Panels cannot self-assert task or execution identity. Only
 unanimous complete decisions can publish the sanitized report; acceptance or
 rejection first publishes a content-free semantic report with a conservative
 `rawCaptureDeleted: false` state. The exact semantic-adjudication hash and the
-exact legitimate-alternative output IDs are then bound into a terminal v9
+exact legitimate-alternative output IDs are then bound into a terminal v10
 report. Only after that terminal report is synced does the workflow delete the
 authenticated raw capture and update the deletion bit. Timeout, unsafe or
 malformed input, disagreement, normal exceptions, SIGINT, or SIGTERM atomically
-downgrade an already-pending v9 report to terminal failure before cleanup. If
+downgrade an already-pending v10 report to terminal failure before cleanup. If
 terminal publication itself fails, the capture is retained. A crash after
 terminal publication may leave the deletion bit conservatively false, but
-cannot leave the v9 report pending without also retaining capture. SIGKILL and
+cannot leave the v10 report pending without also retaining capture. SIGKILL and
 host crashes cannot guarantee deletion; the retention window covers the
 worst-case 64 five-minute requests, the full review timeout, and ten minutes of
 overhead for operator/watchdog purge.
@@ -297,7 +297,7 @@ overhead for operator/watchdog purge.
 ## Paid-run authorization and ledger contract
 
 There is no approved v7 spend. The proposal in
-`docs/evidence/sav-248-v9-paid-run-authorization-proposal.json` records at most
+`docs/evidence/sav-248-v10-paid-run-authorization-proposal.json` records at most
 96 provider calls/physical attempts and $3 using synthetic or separately
 approved fixtures, but explicitly records pending owner approval, null approval
 source/date, and null reviewed source commit. The executable path rejects it
@@ -344,7 +344,7 @@ valid for calibration spend approval.
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
-`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v10`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
 `11d1307cc1c8098163bbb8986ac3ca0635ece9f0`; it must not be created and will
@@ -358,7 +358,7 @@ the authorized parent, so only one update can fast-forward and every loser
 refuses execution.
 An activated head cannot be activated a second time or mint another budget. A
 restart, crash, missing local cache, or local state reset may resume it only via
-the delegated-agent retry contract after a previous terminal v9 report proves
+the delegated-agent retry contract after a previous terminal v10 report proves
 zero completed calls and zero reconciled actual spend. Any non-zero prior
 completion or actual spend, malformed ledger history, changed activation head,
 or wider delegated cap fails closed. Any additional run still requires a new

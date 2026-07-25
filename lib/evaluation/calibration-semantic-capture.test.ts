@@ -152,7 +152,7 @@ test("canonical mismatch alternatives must identify the exact captured case and 
   cleanupRoot(mismatch.root);
 });
 
-test("capture deletion requires a durable terminal v9 report", () => {
+test("capture deletion requires a durable terminal v10 report", () => {
   const fixture = createFixture();
   const report = publishPrivateSemanticReviewBeforeTerminalReport({
     capture: fixture.capture,
@@ -722,7 +722,7 @@ function completeReview(
     `${basename(input.publicReportPath)}.terminal.json`
   );
   const terminal = `${JSON.stringify({
-    contractVersion: "evaluation-calibration-report.v9",
+    contractVersion: "evaluation-calibration-report.v10",
     semanticReview: { status: report.semanticAdjudication.gate },
     gate: { calibrationEvidenceAcceptance: report.semanticAdjudication.gate },
   })}\n`;
