@@ -428,7 +428,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: f197794dd0962d30ed00e72715795f9a854a859d
+proposal commit: 3d74d088ae1fd198943a90a8d68857f80236b7cf
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
