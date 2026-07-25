@@ -259,7 +259,7 @@ readiness. The credential-bearing process is a checked-in, reproducible ESM
 bundle, not `tsx` or mutable `node_modules`; its exact bytes, size, build
 contract, package-lock digest, platform, architecture, Node version, and
 built-in-only external imports are recorded in
-`docs/evidence/sav-248-v8-runtime-manifest.json` and verified before spawn.
+`docs/evidence/sav-248-v9-runtime-manifest.json` and verified before spawn.
 
 Proposed live v7 responses use the strict `feedback-provider-response-format.v1` JSON
 schema. The scorer rejects refusals, incomplete finish states, and malformed
@@ -297,7 +297,7 @@ overhead for operator/watchdog purge.
 ## Paid-run authorization and ledger contract
 
 There is no approved v7 spend. The proposal in
-`docs/evidence/sav-248-v8-paid-run-authorization-proposal.json` records at most
+`docs/evidence/sav-248-v9-paid-run-authorization-proposal.json` records at most
 96 provider calls/physical attempts and $3 using synthetic or separately
 approved fixtures, but explicitly records pending owner approval, null approval
 source/date, and null reviewed source commit. The executable path rejects it
@@ -344,7 +344,7 @@ valid for calibration spend approval.
 The durable authority is the protected payload-free Git ref in the fixed
 private GitHub repository `meelni/meelni-prep` (repository ID `1089904588`,
 organization owner ID `302571838`):
-`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v8`. Before call
+`refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
 `11d1307cc1c8098163bbb8986ac3ca0635ece9f0`; it must not be created and will

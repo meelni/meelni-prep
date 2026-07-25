@@ -35,7 +35,7 @@ import {
   assertCalibrationSpendAuthorizationExecutable,
   buildCalibrationActivatedPlan,
   resumeDelegatedActivatedCalibrationRun,
-  SAV_248_V8_SPEND_AUTHORIZATION,
+  SAV_248_V9_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import {
   assertCalibrationOwnerAuthorizationMatchesPlan,
@@ -131,7 +131,9 @@ async function main() {
   }
   if (executionKind === "live_provider") {
     assertCalibrationLiveStartupState();
-    if (Boolean(args.ownerAuthorization) === Boolean(args.delegatedAuthorization)) {
+    if (
+      Boolean(args.ownerAuthorization) === Boolean(args.delegatedAuthorization)
+    ) {
       throw new Error("live_calibration_requires_exactly_one_authorization");
     }
     assertCalibrationOpenAIEnvironment(process.env);
@@ -156,7 +158,10 @@ async function main() {
       }
       assertPreviousTerminalReportAllowsDelegatedRetry(
         JSON.parse(
-          await readFile(resolve(process.cwd(), args.previousTerminalReport), "utf8")
+          await readFile(
+            resolve(process.cwd(), args.previousTerminalReport),
+            "utf8"
+          )
         )
       );
     }
@@ -174,7 +179,7 @@ async function main() {
     }
     const planned = buildCalibrationActivatedPlan({
       authorization:
-        ownerAuthorization?.authorization ?? SAV_248_V8_SPEND_AUTHORIZATION,
+        ownerAuthorization?.authorization ?? SAV_248_V9_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
@@ -258,7 +263,10 @@ async function main() {
       semanticCapture = undefined;
       throw error;
     }
-    if (!delegatedAuthorization && runAuthority.plan.planHash !== planned.planHash) {
+    if (
+      !delegatedAuthorization &&
+      runAuthority.plan.planHash !== planned.planHash
+    ) {
       runAuthority.release();
       cleanupPrivateSemanticCapture(semanticCapture);
       semanticCapture = undefined;
@@ -612,7 +620,9 @@ function requireSemanticReviewArgs(args: CalibrationArgs) {
   };
 }
 
-function assertPreviousTerminalReportAllowsDelegatedRetry(report: unknown): void {
+function assertPreviousTerminalReportAllowsDelegatedRetry(
+  report: unknown
+): void {
   if (!report || typeof report !== "object") {
     throw new Error("delegated_retry_previous_report_invalid");
   }
