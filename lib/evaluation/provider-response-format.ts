@@ -8,7 +8,7 @@ import {
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-provider-response-format.v1" as const;
+  "feedback-provider-response-format.v2" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -17,6 +17,11 @@ const FEEDBACK_DIMENSIONS = [
   "communication",
   "leadership",
 ] as const;
+
+const EXACT_TURN_REF_DESCRIPTION =
+  "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases." as const;
+const EXACT_QUOTE_DESCRIPTION =
+  "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn." as const;
 
 /**
  * Provider-owned structural constraints. Transcript grounding and all other
@@ -28,9 +33,17 @@ export function getFeedbackProviderResponseFormat(
   const stringValue = { type: "string" as const };
   const evidence = {
     type: "object" as const,
+    description:
+      "One grounded evidence entry. Its turnRef must cite a candidate turn, and quote must be copied byte-for-byte from that same turn.",
     properties: {
-      turnRef: stringValue,
-      quote: stringValue,
+      turnRef: {
+        ...stringValue,
+        description: EXACT_TURN_REF_DESCRIPTION,
+      },
+      quote: {
+        ...stringValue,
+        description: EXACT_QUOTE_DESCRIPTION,
+      },
     },
     required: ["turnRef", "quote"] as const,
     additionalProperties: false,

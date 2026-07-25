@@ -61,10 +61,10 @@
     ]
   },
   "proposedPlan": {
-    "planHash": "97ac56149afd3ab1bf1cb5306ca8b3d5b98e4ce169478dcdf5a915f0c74c4371",
+    "planHash": "94365d4d49f2850d008a20721ffe0ca2c63ba71cfd0e5225e74f90e5fb110297",
     "plannedCalls": 64,
-    "plannedWorstCaseNanoUsd": 2432705000,
-    "plannedWorstCaseUsd": 2.432705,
+    "plannedWorstCaseNanoUsd": 2507905000,
+    "plannedWorstCaseUsd": 2.507905,
     "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
     "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
     "approvalHash": "adba410cd2e2b434d772a6e2434fd3c74ca4a02931e29469e4cb32ef880e8b9c",
@@ -75,10 +75,10 @@
     "pricingHash": "52190af67bd2375769664f8a5d1e74928f744d9d6e7db7e63463db633e3e5dba",
     "promptVersion": "feedback.prompt.v2",
     "promptHash": "1702d91e0c1248568d5d980f46740aa51da56dad5faf00e22e499390889b06df",
-    "responseFormatVersion": "feedback-provider-response-format.v1",
-    "responseFormatHash": "403729b9e246f85eabd50284dae905218c250bdd1785b2d58b27fa77424e8eb9",
+    "responseFormatVersion": "feedback-provider-response-format.v2",
+    "responseFormatHash": "97642732fb45e0547311e2ed8ddc416960b37facaf2276d6dca98457c1b89c87",
     "requestPolicyVersion": "feedback-calibration-request-policy.v1",
-    "requestPolicyHash": "5da35139f3f910970f9f60bf699168604eae592ebd621d212f4959b6bbae866a",
+    "requestPolicyHash": "02a8c8a71729b6ca4645e332d3b22f1783300cb825847e3151e4e85dc6ef277f",
     "reviewedSourceCommit": null
   },
   "unchangedControls": {

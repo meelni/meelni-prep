@@ -71,7 +71,7 @@ export const SAV_248_V9_EMPTY_TREE_OID =
   "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const SAV_248_V9_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
 export const SAV_248_V9_GENESIS_COMMIT_OID =
-  "3d74d088ae1fd198943a90a8d68857f80236b7cf";
+  "fb80b13ed8c8dff44e2d06bd7b6cfd245e57ef79";
 export const SAV_248_V9_IMMUTABLE_RULESET_NAME =
   "Meelni SAV-248 v9 calibration ledger immutable";
 export const SAV_248_V9_ACTOR_RULESET_NAME =
@@ -132,9 +132,9 @@ export const SAV_248_V9_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorizatio
     predecessorAuthorities: SAV_248_V9_PREDECESSOR_AUTHORITIES,
   };
 
-export const SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD = 2_432_705_000;
+export const SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD = 2_507_905_000;
 export const SAV_248_V9_REBASED_PLAN_HASH =
-  "97ac56149afd3ab1bf1cb5306ca8b3d5b98e4ce169478dcdf5a915f0c74c4371";
+  "94365d4d49f2850d008a20721ffe0ca2c63ba71cfd0e5225e74f90e5fb110297";
 export const SAV_248_V9_REBASED_PLAN_PROPOSED_AT = "2026-07-24T17:17:35.000Z";
 
 export interface CalibrationActivatedPlanCall {

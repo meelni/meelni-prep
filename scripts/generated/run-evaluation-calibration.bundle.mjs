@@ -28227,7 +28227,7 @@ Analyze this transcript and return only the exact JSON structure. Preserve turn 
 
 // lib/evaluation/provider-response-format.ts
 import { createHash } from "node:crypto";
-var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v1";
+var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v2";
 var FEEDBACK_DIMENSIONS = [
   "structure",
   "clarity",
@@ -28235,13 +28235,22 @@ var FEEDBACK_DIMENSIONS = [
   "communication",
   "leadership"
 ];
+var EXACT_TURN_REF_DESCRIPTION = "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases.";
+var EXACT_QUOTE_DESCRIPTION = "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn.";
 function getFeedbackProviderResponseFormat(evaluationState) {
   const stringValue = { type: "string" };
   const evidence = {
     type: "object",
+    description: "One grounded evidence entry. Its turnRef must cite a candidate turn, and quote must be copied byte-for-byte from that same turn.",
     properties: {
-      turnRef: stringValue,
-      quote: stringValue
+      turnRef: {
+        ...stringValue,
+        description: EXACT_TURN_REF_DESCRIPTION
+      },
+      quote: {
+        ...stringValue,
+        description: EXACT_QUOTE_DESCRIPTION
+      }
     },
     required: ["turnRef", "quote"],
     additionalProperties: false
@@ -30883,7 +30892,7 @@ var SAV_248_V9_GIT_LEDGER_REF = `refs/heads/${SAV_248_V9_GIT_LEDGER_BRANCH}`;
 var SAV_248_V9_GIT_LEDGER_API_REF = `heads/${SAV_248_V9_GIT_LEDGER_BRANCH}`;
 var SAV_248_V9_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V9_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V9_GENESIS_COMMIT_OID = "3d74d088ae1fd198943a90a8d68857f80236b7cf";
+var SAV_248_V9_GENESIS_COMMIT_OID = "fb80b13ed8c8dff44e2d06bd7b6cfd245e57ef79";
 var SAV_248_V9_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v9 calibration ledger immutable";
 var SAV_248_V9_ACTOR_RULESET_NAME = "Meelni SAV-248 v9 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -30915,8 +30924,8 @@ var SAV_248_V9_SPEND_AUTHORIZATION = {
   historicalAuthoritiesReusable: false,
   predecessorAuthorities: SAV_248_V9_PREDECESSOR_AUTHORITIES
 };
-var SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD = 2432705e3;
-var SAV_248_V9_REBASED_PLAN_HASH = "97ac56149afd3ab1bf1cb5306ca8b3d5b98e4ce169478dcdf5a915f0c74c4371";
+var SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD = 2507905e3;
+var SAV_248_V9_REBASED_PLAN_HASH = "94365d4d49f2850d008a20721ffe0ca2c63ba71cfd0e5225e74f90e5fb110297";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;

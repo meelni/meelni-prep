@@ -366,15 +366,17 @@ npm run calibration:plan-proposal -- \
   --output docs/evidence/sav-248-v9-plan-proposal.json
 ```
 
-The current proposal is 64 physical calls (two symmetric runs for each of 32
-scored fixtures), 2,432,705,000 nano-USD ($2.432705) worst case, and hash
-`543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94`.
+The current repaired source proposal is 64 physical calls (two symmetric runs
+for each of 32 scored fixtures), 2,507,905,000 nano-USD ($2.507905) worst case,
+and plan hash
+`94365d4d49f2850d008a20721ffe0ca2c63ba71cfd0e5225e74f90e5fb110297`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
-`5da35139f3f910970f9f60bf699168604eae592ebd621d212f4959b6bbae866a`
-but leaves the reviewed source commit null. A future exact plan must change
-after the final source commit and refreshed pricing are bound; treat this
+`02a8c8a71729b6ca4645e332d3b22f1783300cb825847e3151e4e85dc6ef277f`
+but leaves the reviewed source commit null. The real v9 ledger has already
+failed terminally and is non-reusable. A future exact plan must use a successor
+lane after the final source commit and refreshed pricing are bound; treat this
 proposal as historical review input, never as an accepted or executable plan.
 
 ### Durable single-run GitHub activation
@@ -428,7 +430,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: 3d74d088ae1fd198943a90a8d68857f80236b7cf
+proposal commit: fb80b13ed8c8dff44e2d06bd7b6cfd245e57ef79
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
