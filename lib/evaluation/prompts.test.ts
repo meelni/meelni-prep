@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { evaluationCalibrationCases } from "@meelni/test-fixtures";
 
-import { appendCalibrationEvidenceHints } from "./calibration-evidence-hints";
+import {
+  appendCalibrationEvidenceHints,
+  buildCalibrationEvidenceHints,
+} from "./calibration-evidence-hints";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
@@ -54,7 +58,10 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /directly state the positive behavior/
   );
-  assert.match(EVALUATION_SYSTEM_PROMPT, /Outside calibration, confidence above 0.9 requires/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /Outside calibration, confidence above 0.9 requires/
+  );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /single cited evidence quote and turn/
@@ -88,7 +95,10 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /same-turn ranges are pairwise disjoint/
   );
-  assert.match(EVALUATION_SYSTEM_PROMPT, /reserve source text before writing findings/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /reserve source text before writing findings/
+  );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /reserved range and its source sentence\/line are unavailable/
@@ -122,10 +132,7 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /Score weak partial answers conservatively/
   );
-  assert.match(
-    EVALUATION_SYSTEM_PROMPT,
-    /keep structure 2-4 and clarity 3-5/
-  );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /keep structure 2-4 and clarity 3-5/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /two observable supports from the grounded findings/
@@ -161,7 +168,10 @@ test("calibration evidence hints require approved anchors when present", () => {
     ])
   );
 
-  assert.match(prompt, /Every listed\s+strength or improvement anchor is mandatory/);
+  assert.match(
+    prompt,
+    /Every listed\s+strength or improvement anchor is mandatory/
+  );
   assert.match(prompt, /copy that exact quote into a same-kind finding/);
   assert.match(
     prompt,
@@ -171,4 +181,36 @@ test("calibration evidence hints require approved anchors when present", () => {
     prompt,
     /improvement:leadership \\| turn_0002 \\| "brainstorm features for everyone"/
   );
+});
+
+test("calibration evidence hints provide non-overlapping fallback slots", () => {
+  const target = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:02:accessible-transit"
+  );
+  assert.ok(target);
+
+  const hints = buildCalibrationEvidenceHints(target);
+  assert.ok(hints.length >= 4);
+
+  for (let i = 0; i < hints.length; i += 1) {
+    for (let j = i + 1; j < hints.length; j += 1) {
+      const left = hints[i]!;
+      const right = hints[j]!;
+      if (left.turnRef !== right.turnRef) continue;
+      const turn = target.transcript.find(
+        ({ eventId }) => eventId === left.turnRef
+      );
+      assert.ok(turn);
+      const leftStart = turn.text.indexOf(left.quote);
+      const rightStart = turn.text.indexOf(right.quote);
+      assert.notEqual(leftStart, -1);
+      assert.notEqual(rightStart, -1);
+      assert.equal(
+        leftStart < rightStart + right.quote.length &&
+          rightStart < leftStart + left.quote.length,
+        false,
+        `${left.quote} overlaps ${right.quote}`
+      );
+    }
+  }
 });
