@@ -367,19 +367,20 @@ npm run calibration:plan-proposal -- \
 ```
 
 The current repaired source proposal is 64 physical calls (two symmetric runs
-for each of 32 scored fixtures), 2,626,785,000 nano-USD ($2.626785) worst case,
+for each of 32 scored fixtures), 2,708,945,000 nano-USD ($2.708945) worst case,
 and plan hash
-`f02d1d49d2c66ed64fef6dd0f9f8aab518eac9d973e08775d22b129350f80818`.
+`a3e8d7fb563d11e60032fbc2e56c0925776d56ad942487e5ca61ca096813f8f6`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
-`24cf06b506ef83a19f403fdfb9b19df56a69d64ad48547ae6b921888f26b9f5d`
+`330c1e5749960f9e2924c79a62283b8b5f791e81f476b85cdf198c1b86944cf8`
 but leaves the reviewed source commit null. The real v9 ledger has already
 failed terminally and is non-reusable; the real v10 ledger has also failed
-terminally after one paid attempt and is non-reusable. A future exact plan must
-use a successor lane after the final source commit and refreshed pricing are
-bound; treat this proposal as historical review input, never as an accepted or
-executable plan.
+terminally after one paid attempt and is non-reusable; the real v11 ledger has
+also failed terminally after one paid attempt and is non-reusable. A future exact
+plan must use a successor lane after the final source commit and refreshed
+pricing are bound; treat this proposal as historical review input, never as an
+accepted or executable plan.
 
 ### Durable single-run GitHub activation
 
@@ -432,7 +433,7 @@ parents: []
 author/committer: Meelni Calibration Authorization <calibration-ledger@meelni.invalid>
 author/committer date: 2026-07-18T19:10:00.000Z
 message: exact calibrationAuthorizationCommitMessage() output
-proposal commit: a3b92bcbb243e1331c8b63aa96ea09e47f159ad0
+proposal commit: 62163a8131efb899654a0b144b804fd7a2678473
 ```
 
 The final authorized runbook may use `gh api --hostname github.com` against the
