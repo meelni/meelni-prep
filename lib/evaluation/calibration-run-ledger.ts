@@ -40,8 +40,8 @@ import {
   getFeedbackCalibrationRequestPolicyHash,
 } from "./calibration-request-policy";
 import {
-  SAV_248_V11_APPROVED_RUN_ID,
-  SAV_248_V11_PREDECESSOR_AUTHORITIES,
+  SAV_248_V12_APPROVED_RUN_ID,
+  SAV_248_V12_PREDECESSOR_AUTHORITIES,
   assertCalibrationOwnerAuthorizationMatchesPlan,
   assertCalibrationOwnerAuthorizationWasVerified,
   type ApprovedCalibrationSpendAuthorization,
@@ -50,40 +50,40 @@ import {
 import type { VerifiedDelegatedAgentAuthorization } from "@/lib/operations/delegated-agent-authorization";
 
 export {
-  SAV_248_V11_APPROVED_RUN_ID,
-  SAV_248_V11_PREDECESSOR_AUTHORITIES,
+  SAV_248_V12_APPROVED_RUN_ID,
+  SAV_248_V12_PREDECESSOR_AUTHORITIES,
 } from "./calibration-owner-authorization";
-export const SAV_248_V11_AUTHORIZATION_ID =
-  "sav-248-pending-paid-calibration-authorization.v11";
-export const SAV_248_V11_GITHUB_OWNER = "meelni";
-export const SAV_248_V11_GITHUB_REPOSITORY = "meelni-prep";
-export const SAV_248_V11_GITHUB_REPOSITORY_ID = 1_089_904_588;
-export const SAV_248_V11_GITHUB_OWNER_ID = 302_571_838;
-export const SAV_248_V11_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
-export const SAV_248_V11_GITHUB_ACTIVATION_ACTOR_ID = 24_397_508;
-export const SAV_248_V11_GIT_LEDGER_BRANCH =
-  "meelni-ledger/sav-248-authorized-paid-calibration.v11";
-export const SAV_248_V11_GIT_LEDGER_REF =
-  `refs/heads/${SAV_248_V11_GIT_LEDGER_BRANCH}` as const;
-export const SAV_248_V11_GIT_LEDGER_API_REF =
-  `heads/${SAV_248_V11_GIT_LEDGER_BRANCH}` as const;
-export const SAV_248_V11_EMPTY_TREE_OID =
+export const SAV_248_V12_AUTHORIZATION_ID =
+  "sav-248-pending-paid-calibration-authorization.v12";
+export const SAV_248_V12_GITHUB_OWNER = "meelni";
+export const SAV_248_V12_GITHUB_REPOSITORY = "meelni-prep";
+export const SAV_248_V12_GITHUB_REPOSITORY_ID = 1_089_904_588;
+export const SAV_248_V12_GITHUB_OWNER_ID = 302_571_838;
+export const SAV_248_V12_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
+export const SAV_248_V12_GITHUB_ACTIVATION_ACTOR_ID = 24_397_508;
+export const SAV_248_V12_GIT_LEDGER_BRANCH =
+  "meelni-ledger/sav-248-authorized-paid-calibration.v12";
+export const SAV_248_V12_GIT_LEDGER_REF =
+  `refs/heads/${SAV_248_V12_GIT_LEDGER_BRANCH}` as const;
+export const SAV_248_V12_GIT_LEDGER_API_REF =
+  `heads/${SAV_248_V12_GIT_LEDGER_BRANCH}` as const;
+export const SAV_248_V12_EMPTY_TREE_OID =
   "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-export const SAV_248_V11_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-export const SAV_248_V11_GENESIS_COMMIT_OID =
-  "62163a8131efb899654a0b144b804fd7a2678473";
-export const SAV_248_V11_IMMUTABLE_RULESET_NAME =
-  "Meelni SAV-248 v11 calibration ledger immutable";
-export const SAV_248_V11_ACTOR_RULESET_NAME =
-  "Meelni SAV-248 v11 calibration activation actor";
+export const SAV_248_V12_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
+export const SAV_248_V12_GENESIS_COMMIT_OID =
+  "eac173aeb8cc32f161f533b3275d6748863988de";
+export const SAV_248_V12_IMMUTABLE_RULESET_NAME =
+  "Meelni SAV-248 v12 calibration ledger immutable";
+export const SAV_248_V12_ACTOR_RULESET_NAME =
+  "Meelni SAV-248 v12 calibration activation actor";
 const GITHUB_API_VERSION = "2022-11-28";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_API_PORT = 443;
 const GITHUB_API_TIMEOUT_MS = 10_000;
 const GITHUB_API_MAX_RESPONSE_BYTES = 1_048_576;
-const GITHUB_USER_AGENT = "meelni-sav-248-v11-calibration-authority";
-const SAV_248_V11_GITHUB_REPOSITORY_API_PATH =
-  `/repos/${SAV_248_V11_GITHUB_OWNER}/${SAV_248_V11_GITHUB_REPOSITORY}` as const;
+const GITHUB_USER_AGENT = "meelni-sav-248-v12-calibration-authority";
+const SAV_248_V12_GITHUB_REPOSITORY_API_PATH =
+  `/repos/${SAV_248_V12_GITHUB_OWNER}/${SAV_248_V12_GITHUB_REPOSITORY}` as const;
 const COMMIT_IDENTITY = {
   name: "Meelni Calibration Authorization",
   email: "calibration-ledger@meelni.invalid",
@@ -91,8 +91,8 @@ const COMMIT_IDENTITY = {
 
 export interface PendingCalibrationSpendAuthorization {
   contractVersion: "evaluation-calibration-spend-authorization.v2";
-  authorizationId: typeof SAV_248_V11_AUTHORIZATION_ID;
-  runId: typeof SAV_248_V11_APPROVED_RUN_ID;
+  authorizationId: typeof SAV_248_V12_AUTHORIZATION_ID;
+  runId: typeof SAV_248_V12_APPROVED_RUN_ID;
   authorizationStatus: "pending_explicit_product_owner_approval";
   authorizedOn: null;
   authorizationSource: null;
@@ -105,18 +105,18 @@ export interface PendingCalibrationSpendAuthorization {
   customerTranscriptsAllowed: false;
   productionDataAllowed: false;
   historicalAuthoritiesReusable: false;
-  predecessorAuthorities: typeof SAV_248_V11_PREDECESSOR_AUTHORITIES;
+  predecessorAuthorities: typeof SAV_248_V12_PREDECESSOR_AUTHORITIES;
 }
 
 export type CalibrationSpendAuthorization =
   | PendingCalibrationSpendAuthorization
   | ApprovedCalibrationSpendAuthorization;
 
-export const SAV_248_V11_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorization =
+export const SAV_248_V12_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorization =
   {
     contractVersion: "evaluation-calibration-spend-authorization.v2",
-    authorizationId: SAV_248_V11_AUTHORIZATION_ID,
-    runId: SAV_248_V11_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V12_AUTHORIZATION_ID,
+    runId: SAV_248_V12_APPROVED_RUN_ID,
     authorizationStatus: "pending_explicit_product_owner_approval",
     authorizedOn: null,
     authorizationSource: null,
@@ -129,13 +129,13 @@ export const SAV_248_V11_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorizati
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V11_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V12_PREDECESSOR_AUTHORITIES,
   };
 
-export const SAV_248_V11_REBASED_PLAN_WORST_CASE_NANO_USD = 2_708_945_000;
-export const SAV_248_V11_REBASED_PLAN_HASH =
-  "a3e8d7fb563d11e60032fbc2e56c0925776d56ad942487e5ca61ca096813f8f6";
-export const SAV_248_V11_REBASED_PLAN_PROPOSED_AT = "2026-07-25T17:20:00.000Z";
+export const SAV_248_V12_REBASED_PLAN_WORST_CASE_NANO_USD = 2_708_945_000;
+export const SAV_248_V12_REBASED_PLAN_HASH =
+  "b73b9b621b78066fd66fa5835daa89749308d3e38f5b40ec1de29b94bbf55829";
+export const SAV_248_V12_REBASED_PLAN_PROPOSED_AT = "2026-07-25T17:20:00.000Z";
 
 export interface CalibrationActivatedPlanCall {
   callKey: string;
@@ -145,7 +145,7 @@ export interface CalibrationActivatedPlanCall {
 }
 
 export interface CalibrationRunSpendPlan {
-  runId: typeof SAV_248_V11_APPROVED_RUN_ID;
+  runId: typeof SAV_248_V12_APPROVED_RUN_ID;
   authorizationId: string;
   authorizationHash: string;
   plannedCalls: number;
@@ -175,45 +175,45 @@ export interface CalibrationActivatedPlan extends CalibrationRunSpendPlan {
   repetitions: 2;
 }
 
-export function buildSAV248V11PlanProposal(adjudicationApproval: unknown) {
+export function buildSAV248V12PlanProposal(adjudicationApproval: unknown) {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_248_V11_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V12_SPEND_AUTHORIZATION,
     adjudicationApproval,
     model: CALIBRATION_PRICING_CONTRACT.model,
     repetitions: 2,
-    now: new Date(SAV_248_V11_REBASED_PLAN_PROPOSED_AT),
+    now: new Date(SAV_248_V12_REBASED_PLAN_PROPOSED_AT),
   });
   if (
     plan.plannedCalls !== 64 ||
     plan.plannedWorstCaseNanoUsd !==
-      SAV_248_V11_REBASED_PLAN_WORST_CASE_NANO_USD ||
-    plan.planHash !== SAV_248_V11_REBASED_PLAN_HASH
+      SAV_248_V12_REBASED_PLAN_WORST_CASE_NANO_USD ||
+    plan.planHash !== SAV_248_V12_REBASED_PLAN_HASH
   ) {
-    throw new Error("sav_248_v11_plan_acceptance_mismatch");
+    throw new Error("sav_248_v12_plan_acceptance_mismatch");
   }
   return {
     contractVersion: "evaluation-calibration-plan-proposal.v1" as const,
     decision: "pending_explicit_product_owner_approval" as const,
     decisionSource: null,
     humanReviewerIdentity: null,
-    proposedAt: SAV_248_V11_REBASED_PLAN_PROPOSED_AT,
+    proposedAt: SAV_248_V12_REBASED_PLAN_PROPOSED_AT,
     acceptanceBasis:
-      "fresh_v11_authorization_and_exact_source_commit_still_required" as const,
+      "fresh_v12_authorization_and_exact_source_commit_still_required" as const,
     authorization: {
-      authorizationId: SAV_248_V11_SPEND_AUTHORIZATION.authorizationId,
-      runId: SAV_248_V11_SPEND_AUTHORIZATION.runId,
-      authorizationStatus: SAV_248_V11_SPEND_AUTHORIZATION.authorizationStatus,
-      authorizedOn: SAV_248_V11_SPEND_AUTHORIZATION.authorizedOn,
-      authorizationSource: SAV_248_V11_SPEND_AUTHORIZATION.authorizationSource,
-      reviewedSourceCommit: SAV_248_V11_SPEND_AUTHORIZATION.reviewedSourceCommit,
-      maximumProviderCalls: SAV_248_V11_SPEND_AUTHORIZATION.maximumProviderCalls,
+      authorizationId: SAV_248_V12_SPEND_AUTHORIZATION.authorizationId,
+      runId: SAV_248_V12_SPEND_AUTHORIZATION.runId,
+      authorizationStatus: SAV_248_V12_SPEND_AUTHORIZATION.authorizationStatus,
+      authorizedOn: SAV_248_V12_SPEND_AUTHORIZATION.authorizedOn,
+      authorizationSource: SAV_248_V12_SPEND_AUTHORIZATION.authorizationSource,
+      reviewedSourceCommit: SAV_248_V12_SPEND_AUTHORIZATION.reviewedSourceCommit,
+      maximumProviderCalls: SAV_248_V12_SPEND_AUTHORIZATION.maximumProviderCalls,
       maximumPhysicalHttpAttempts:
-        SAV_248_V11_SPEND_AUTHORIZATION.maximumPhysicalHttpAttempts,
-      maximumSpendUsd: SAV_248_V11_SPEND_AUTHORIZATION.maximumSpendUsd,
+        SAV_248_V12_SPEND_AUTHORIZATION.maximumPhysicalHttpAttempts,
+      maximumSpendUsd: SAV_248_V12_SPEND_AUTHORIZATION.maximumSpendUsd,
       authorizationChanged: true as const,
       historicalAuthoritiesReusable:
-        SAV_248_V11_SPEND_AUTHORIZATION.historicalAuthoritiesReusable,
-      predecessorAuthorities: SAV_248_V11_PREDECESSOR_AUTHORITIES,
+        SAV_248_V12_SPEND_AUTHORIZATION.historicalAuthoritiesReusable,
+      predecessorAuthorities: SAV_248_V12_PREDECESSOR_AUTHORITIES,
     },
     proposedPlan: {
       planHash: plan.planHash,
@@ -334,7 +334,7 @@ export interface CalibrationGitHubCasClient {
     date: string;
   }): GitHubCommit | Promise<GitHubCommit>;
   createRef(input: {
-    ref: typeof SAV_248_V11_GIT_LEDGER_REF;
+    ref: typeof SAV_248_V12_GIT_LEDGER_REF;
     sha: string;
   }): GitHubRef | Promise<GitHubRef>;
   updateRef(input: {
@@ -347,7 +347,7 @@ export class ActivatedCalibrationRunAuthority
   implements CalibrationSpendPersistence
 {
   readonly durable = true as const;
-  readonly runId = SAV_248_V11_APPROVED_RUN_ID;
+  readonly runId = SAV_248_V12_APPROVED_RUN_ID;
   readonly authorizationId: string;
   readonly authorizationHash: string;
   readonly planHash: string;
@@ -374,7 +374,7 @@ export class ActivatedCalibrationRunAuthority
     if (!this.active) throw new Error("calibration_git_activation_released");
     await assertCanonicalGitHubAuthority(this.github);
     const current = await this.github.getRef();
-    if (current.ref !== SAV_248_V11_GIT_LEDGER_REF) {
+    if (current.ref !== SAV_248_V12_GIT_LEDGER_REF) {
       this.active = false;
       throw new Error("calibration_github_ledger_ref_invalid");
     }
@@ -474,7 +474,7 @@ export function buildCalibrationActivatedPlan(input: {
   );
   const withoutHash = {
     contractVersion: "evaluation-calibration-activated-plan.v2" as const,
-    runId: SAV_248_V11_APPROVED_RUN_ID as typeof SAV_248_V11_APPROVED_RUN_ID,
+    runId: SAV_248_V12_APPROVED_RUN_ID as typeof SAV_248_V12_APPROVED_RUN_ID,
     authorizationId: authorization.authorizationId,
     authorizationHash,
     ...adjudicationHashes,
@@ -603,7 +603,7 @@ async function activateCalibrationRunWithClient(
   if (!currentRef) {
     const seeded = await github.createCommit({
       message: genesis.message,
-      treeSha: SAV_248_V11_EMPTY_TREE_OID,
+      treeSha: SAV_248_V12_EMPTY_TREE_OID,
       parents: [],
       date: genesis.date,
     });
@@ -611,7 +611,7 @@ async function activateCalibrationRunWithClient(
     await assertCanonicalGitHubAuthority(github);
     try {
       currentRef = await github.createRef({
-        ref: SAV_248_V11_GIT_LEDGER_REF,
+        ref: SAV_248_V12_GIT_LEDGER_REF,
         sha: genesis.oid,
       });
     } catch (error) {
@@ -624,7 +624,7 @@ async function activateCalibrationRunWithClient(
     }
     await assertCanonicalGitHubAuthority(github);
   }
-  if (currentRef.ref !== SAV_248_V11_GIT_LEDGER_REF) {
+  if (currentRef.ref !== SAV_248_V12_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
   if (currentRef.sha !== genesis.oid) {
@@ -639,7 +639,7 @@ async function activateCalibrationRunWithClient(
   const activationId = options.activationId ?? randomUUID();
   const activationMessage = stableJson({
     contractVersion: "evaluation-calibration-git-activation.v1",
-    runId: SAV_248_V11_APPROVED_RUN_ID,
+    runId: SAV_248_V12_APPROVED_RUN_ID,
     authorizationId: plan.authorizationId,
     authorizationHash: plan.authorizationHash,
     planHash: plan.planHash,
@@ -650,7 +650,7 @@ async function activateCalibrationRunWithClient(
   ).toISOString();
   const activation = await github.createCommit({
     message: activationMessage,
-    treeSha: SAV_248_V11_EMPTY_TREE_OID,
+    treeSha: SAV_248_V12_EMPTY_TREE_OID,
     parents: [genesis.oid],
     date: activationDate,
   });
@@ -675,7 +675,7 @@ async function activateCalibrationRunWithClient(
   await assertCanonicalGitHubAuthority(github);
   const durable = await github.getRef();
   if (
-    durable.ref !== SAV_248_V11_GIT_LEDGER_REF ||
+    durable.ref !== SAV_248_V12_GIT_LEDGER_REF ||
     durable.sha !== activation.sha
   ) {
     throw new Error("calibration_git_activation_not_durable");
@@ -690,7 +690,7 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(
   assertDelegatedCalibrationRetryAuthority(options);
   await assertCanonicalGitHubAuthority(github);
   const currentRef = await github.getRef();
-  if (currentRef.ref !== SAV_248_V11_GIT_LEDGER_REF) {
+  if (currentRef.ref !== SAV_248_V12_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
   const activation = await github.getCommit(currentRef.sha);
@@ -726,7 +726,7 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(
   return new ActivatedCalibrationRunAuthority(
     activation.sha,
     {
-      runId: SAV_248_V11_APPROVED_RUN_ID,
+      runId: SAV_248_V12_APPROVED_RUN_ID,
       authorizationId: activationMessage.authorizationId,
       authorizationHash: activationMessage.authorizationHash,
       planHash: activationMessage.planHash,
@@ -776,9 +776,9 @@ export function buildCalibrationAuthorizationGenesis(
     "pending_explicit_product_owner_approval"
   ) {
     return {
-      date: SAV_248_V11_GENESIS_DATE,
+      date: SAV_248_V12_GENESIS_DATE,
       message: calibrationAuthorizationCommitMessage(),
-      oid: SAV_248_V11_GENESIS_COMMIT_OID,
+      oid: SAV_248_V12_GENESIS_COMMIT_OID,
     };
   }
   const date = authorization.authorizedOn;
@@ -788,7 +788,7 @@ export function buildCalibrationAuthorizationGenesis(
     throw new Error("calibration_git_authorization_date_invalid");
   }
   const body = [
-    `tree ${SAV_248_V11_EMPTY_TREE_OID}`,
+    `tree ${SAV_248_V12_EMPTY_TREE_OID}`,
     `author ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp} +0000`,
     `committer ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp} +0000`,
     "",
@@ -823,13 +823,13 @@ export function calibrationAuthorizationCommitMessage(
   }
   return stableJson({
     contractVersion: "evaluation-calibration-git-authorization-proposal.v1",
-    runId: SAV_248_V11_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V11_AUTHORIZATION_ID,
-    authorizationHash: sha256(stableJson(SAV_248_V11_SPEND_AUTHORIZATION)),
-    planHash: SAV_248_V11_REBASED_PLAN_HASH,
+    runId: SAV_248_V12_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V12_AUTHORIZATION_ID,
+    authorizationHash: sha256(stableJson(SAV_248_V12_SPEND_AUTHORIZATION)),
+    planHash: SAV_248_V12_REBASED_PLAN_HASH,
     plannedCalls: 64,
-    plannedWorstCaseNanoUsd: SAV_248_V11_REBASED_PLAN_WORST_CASE_NANO_USD,
-    predecessorAuthorities: SAV_248_V11_PREDECESSOR_AUTHORITIES,
+    plannedWorstCaseNanoUsd: SAV_248_V12_REBASED_PLAN_WORST_CASE_NANO_USD,
+    predecessorAuthorities: SAV_248_V12_PREDECESSOR_AUTHORITIES,
   });
 }
 
@@ -840,15 +840,15 @@ export function parseCalibrationSpendAuthorization(
     throw new Error("calibration_spend_authorization_invalid");
   }
   if (value.authorizationStatus === "pending_explicit_product_owner_approval") {
-    assertExactKeys(value, Object.keys(SAV_248_V11_SPEND_AUTHORIZATION));
+    assertExactKeys(value, Object.keys(SAV_248_V12_SPEND_AUTHORIZATION));
     for (const [key, expected] of Object.entries(
-      SAV_248_V11_SPEND_AUTHORIZATION
+      SAV_248_V12_SPEND_AUTHORIZATION
     )) {
       if (stableJson(value[key]) !== stableJson(expected)) {
         throw new Error(`calibration_spend_authorization_${key}_mismatch`);
       }
     }
-    return { ...SAV_248_V11_SPEND_AUTHORIZATION };
+    return { ...SAV_248_V12_SPEND_AUTHORIZATION };
   }
   return parseApprovedCalibrationSpendAuthorization(value);
 }
@@ -882,9 +882,9 @@ function parseApprovedCalibrationSpendAuthorization(
     value as unknown as ApprovedCalibrationSpendAuthorization;
   if (
     authorization.contractVersion !==
-      "evaluation-calibration-spend-authorization.v11" ||
-    !/^sav248_v11_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) ||
-    authorization.runId !== SAV_248_V11_APPROVED_RUN_ID ||
+      "evaluation-calibration-spend-authorization.v12" ||
+    !/^sav248_v12_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) ||
+    authorization.runId !== SAV_248_V12_APPROVED_RUN_ID ||
     authorization.authorizationStatus !== "approved_by_human_product_owner" ||
     authorization.authorizationSource !== "external_product_owner_ed25519" ||
     !Number.isFinite(new Date(authorization.authorizedOn).getTime()) ||
@@ -901,7 +901,7 @@ function parseApprovedCalibrationSpendAuthorization(
     authorization.productionDataAllowed !== false ||
     authorization.historicalAuthoritiesReusable !== false ||
     stableJson(authorization.predecessorAuthorities) !==
-      stableJson(SAV_248_V11_PREDECESSOR_AUTHORITIES)
+      stableJson(SAV_248_V12_PREDECESSOR_AUTHORITIES)
   ) {
     throw new Error("calibration_spend_authorization_approved_invalid");
   }
@@ -913,19 +913,19 @@ async function assertCanonicalGitHubAuthority(
 ): Promise<void> {
   const repository = await github.getRepository();
   if (
-    repository.id !== SAV_248_V11_GITHUB_REPOSITORY_ID ||
+    repository.id !== SAV_248_V12_GITHUB_REPOSITORY_ID ||
     repository.fullName !==
-      `${SAV_248_V11_GITHUB_OWNER}/${SAV_248_V11_GITHUB_REPOSITORY}` ||
-    repository.owner.id !== SAV_248_V11_GITHUB_OWNER_ID ||
-    repository.owner.login !== SAV_248_V11_GITHUB_OWNER ||
+      `${SAV_248_V12_GITHUB_OWNER}/${SAV_248_V12_GITHUB_REPOSITORY}` ||
+    repository.owner.id !== SAV_248_V12_GITHUB_OWNER_ID ||
+    repository.owner.login !== SAV_248_V12_GITHUB_OWNER ||
     repository.private !== true
   ) {
     throw new Error("calibration_github_repository_identity_mismatch");
   }
   const viewer = await github.getViewer();
   if (
-    viewer.id !== SAV_248_V11_GITHUB_ACTIVATION_ACTOR_ID ||
-    viewer.login !== SAV_248_V11_GITHUB_ACTIVATION_ACTOR_LOGIN
+    viewer.id !== SAV_248_V12_GITHUB_ACTIVATION_ACTOR_ID ||
+    viewer.login !== SAV_248_V12_GITHUB_ACTIVATION_ACTOR_LOGIN
   ) {
     throw new Error("calibration_github_activation_actor_mismatch");
   }
@@ -941,15 +941,15 @@ function assertCanonicalProtection(
 ): void {
   if (
     rulesets.length !== 2 ||
-    rulesets.filter(({ name }) => name === SAV_248_V11_IMMUTABLE_RULESET_NAME)
+    rulesets.filter(({ name }) => name === SAV_248_V12_IMMUTABLE_RULESET_NAME)
       .length !== 1 ||
-    rulesets.filter(({ name }) => name === SAV_248_V11_ACTOR_RULESET_NAME)
+    rulesets.filter(({ name }) => name === SAV_248_V12_ACTOR_RULESET_NAME)
       .length !== 1
   ) {
     throw new Error("calibration_github_ruleset_set_invalid");
   }
   const immutable = rulesets.find(
-    ({ name }) => name === SAV_248_V11_IMMUTABLE_RULESET_NAME
+    ({ name }) => name === SAV_248_V12_IMMUTABLE_RULESET_NAME
   );
   if (!immutable || !isExactRepositoryRuleset(immutable)) {
     throw new Error("calibration_github_immutable_ruleset_missing");
@@ -962,7 +962,7 @@ function assertCanonicalProtection(
   }
 
   const actor = rulesets.find(
-    ({ name }) => name === SAV_248_V11_ACTOR_RULESET_NAME
+    ({ name }) => name === SAV_248_V12_ACTOR_RULESET_NAME
   );
   if (!actor || !isExactRepositoryRuleset(actor)) {
     throw new Error("calibration_github_actor_ruleset_missing");
@@ -970,7 +970,7 @@ function assertCanonicalProtection(
   if (
     !hasExactStrings(actor.ruleTypes, ["creation", "update"]) ||
     actor.bypassActors.length !== 1 ||
-    actor.bypassActors[0]?.actorId !== SAV_248_V11_GITHUB_ACTIVATION_ACTOR_ID ||
+    actor.bypassActors[0]?.actorId !== SAV_248_V12_GITHUB_ACTIVATION_ACTOR_ID ||
     actor.bypassActors[0]?.actorType !== "User" ||
     actor.bypassActors[0]?.bypassMode !== "always"
   ) {
@@ -992,12 +992,12 @@ function assertCanonicalProtection(
 function isExactRepositoryRuleset(ruleset: GitHubRuleset): boolean {
   return (
     ruleset.source ===
-      `${SAV_248_V11_GITHUB_OWNER}/${SAV_248_V11_GITHUB_REPOSITORY}` &&
+      `${SAV_248_V12_GITHUB_OWNER}/${SAV_248_V12_GITHUB_REPOSITORY}` &&
     ruleset.sourceType === "Repository" &&
     ruleset.target === "branch" &&
     ruleset.enforcement === "active" &&
     ruleset.includeRefs.length === 1 &&
-    ruleset.includeRefs[0] === SAV_248_V11_GIT_LEDGER_REF &&
+    ruleset.includeRefs[0] === SAV_248_V12_GIT_LEDGER_REF &&
     ruleset.excludeRefs.length === 0
   );
 }
@@ -1016,7 +1016,7 @@ function assertPinnedGenesisCommit(
   if (
     commit.sha !== genesis.oid ||
     commit.message !== genesis.message ||
-    commit.treeSha !== SAV_248_V11_EMPTY_TREE_OID ||
+    commit.treeSha !== SAV_248_V12_EMPTY_TREE_OID ||
     commit.parents.length !== 0 ||
     !isCommitIdentity(commit.author, genesis.date) ||
     !isCommitIdentity(commit.committer, genesis.date)
@@ -1031,7 +1031,7 @@ function isValidActivationCommit(
   genesis: CalibrationAuthorizationGenesis
 ): boolean {
   if (
-    commit.treeSha !== SAV_248_V11_EMPTY_TREE_OID ||
+    commit.treeSha !== SAV_248_V12_EMPTY_TREE_OID ||
     commit.parents.length !== 1 ||
     commit.parents[0] !== genesis.oid ||
     !isCommitIdentity(commit.author, commit.author.date) ||
@@ -1043,7 +1043,7 @@ function isValidActivationCommit(
     const parsed = JSON.parse(commit.message) as Record<string, unknown>;
     return (
       parsed.contractVersion === "evaluation-calibration-git-activation.v1" &&
-      parsed.runId === SAV_248_V11_APPROVED_RUN_ID &&
+      parsed.runId === SAV_248_V12_APPROVED_RUN_ID &&
       parsed.authorizationId === plan.authorizationId &&
       parsed.authorizationHash === plan.authorizationHash &&
       parsed.planHash === plan.planHash &&
@@ -1074,7 +1074,7 @@ function assertDelegatedCalibrationRetryAuthority(
 
 interface CalibrationActivationLedgerMessage {
   contractVersion: "evaluation-calibration-git-activation.v1";
-  runId: typeof SAV_248_V11_APPROVED_RUN_ID;
+  runId: typeof SAV_248_V12_APPROVED_RUN_ID;
   authorizationId: string;
   authorizationHash: string;
   planHash: string;
@@ -1083,21 +1083,21 @@ interface CalibrationActivationLedgerMessage {
 
 interface CalibrationAuthorizationLedgerMessage {
   contractVersion: "evaluation-calibration-git-authorization.v1";
-  runId: typeof SAV_248_V11_APPROVED_RUN_ID;
+  runId: typeof SAV_248_V12_APPROVED_RUN_ID;
   authorizationId: string;
   authorizationHash: string;
   planHash: string;
   plannedCalls: number;
   plannedWorstCaseNanoUsd: number;
   reviewedSourceCommit: string;
-  predecessorAuthorities: typeof SAV_248_V11_PREDECESSOR_AUTHORITIES;
+  predecessorAuthorities: typeof SAV_248_V12_PREDECESSOR_AUTHORITIES;
 }
 
 function parseCalibrationActivationMessage(
   commit: GitHubCommit
 ): CalibrationActivationLedgerMessage {
   if (
-    commit.treeSha !== SAV_248_V11_EMPTY_TREE_OID ||
+    commit.treeSha !== SAV_248_V12_EMPTY_TREE_OID ||
     commit.parents.length !== 1 ||
     !isCommitIdentity(commit.author, commit.author.date) ||
     !isCommitIdentity(commit.committer, commit.author.date)
@@ -1118,7 +1118,7 @@ function parseCalibrationActivationMessage(
   ]);
   if (
     parsed.contractVersion !== "evaluation-calibration-git-activation.v1" ||
-    parsed.runId !== SAV_248_V11_APPROVED_RUN_ID ||
+    parsed.runId !== SAV_248_V12_APPROVED_RUN_ID ||
     typeof parsed.authorizationId !== "string" ||
     typeof parsed.authorizationHash !== "string" ||
     typeof parsed.planHash !== "string" ||
@@ -1137,7 +1137,7 @@ function parseCalibrationAuthorizationLedgerMessage(
   commit: GitHubCommit
 ): CalibrationAuthorizationLedgerMessage {
   if (
-    commit.treeSha !== SAV_248_V11_EMPTY_TREE_OID ||
+    commit.treeSha !== SAV_248_V12_EMPTY_TREE_OID ||
     commit.parents.length !== 0 ||
     !isCommitIdentity(commit.author, commit.author.date) ||
     !isCommitIdentity(commit.committer, commit.author.date)
@@ -1163,7 +1163,7 @@ function parseCalibrationAuthorizationLedgerMessage(
   ]);
   if (
     parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" ||
-    parsed.runId !== SAV_248_V11_APPROVED_RUN_ID ||
+    parsed.runId !== SAV_248_V12_APPROVED_RUN_ID ||
     typeof parsed.authorizationId !== "string" ||
     typeof parsed.authorizationHash !== "string" ||
     typeof parsed.planHash !== "string" ||
@@ -1174,7 +1174,7 @@ function parseCalibrationAuthorizationLedgerMessage(
     !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) ||
     !/^[0-9a-f]{64}$/.test(parsed.planHash) ||
     stableJson(parsed.predecessorAuthorities) !==
-      stableJson(SAV_248_V11_PREDECESSOR_AUTHORITIES)
+      stableJson(SAV_248_V12_PREDECESSOR_AUTHORITIES)
   ) {
     throw new Error(
       "calibration_delegated_resume_authorization_message_invalid"
@@ -1253,7 +1253,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   async getRepository(): Promise<GitHubRepositoryIdentity> {
     const response = await this.api(
       "GET",
-      SAV_248_V11_GITHUB_REPOSITORY_API_PATH
+      SAV_248_V12_GITHUB_REPOSITORY_API_PATH
     );
     const record = requireRecord(response, "repository");
     const owner = requireRecord(record.owner, "repository.owner");
@@ -1279,7 +1279,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   async getRulesets(): Promise<GitHubRuleset[]> {
     const listed = await this.api(
       "GET",
-      `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/rulesets?includes_parents=true&targets=branch&per_page=100`
+      `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/rulesets?includes_parents=true&targets=branch&per_page=100`
     );
     if (!Array.isArray(listed)) {
       throw new Error("calibration_github_rulesets_invalid");
@@ -1288,8 +1288,8 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     for (const item of listed) {
       const summary = requireRecord(item, "ruleset.summary");
       if (
-        summary.name !== SAV_248_V11_IMMUTABLE_RULESET_NAME &&
-        summary.name !== SAV_248_V11_ACTOR_RULESET_NAME
+        summary.name !== SAV_248_V12_IMMUTABLE_RULESET_NAME &&
+        summary.name !== SAV_248_V12_ACTOR_RULESET_NAME
       ) {
         continue;
       }
@@ -1298,7 +1298,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
         parseGitHubRuleset(
           await this.api(
             "GET",
-            `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/rulesets/${id}?includes_parents=true`
+            `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/rulesets/${id}?includes_parents=true`
           )
         )
       );
@@ -1307,10 +1307,10 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   }
 
   async getEffectiveBranchRuleTypes(): Promise<string[]> {
-    const branch = encodeURIComponent(SAV_248_V11_GIT_LEDGER_BRANCH);
+    const branch = encodeURIComponent(SAV_248_V12_GIT_LEDGER_BRANCH);
     const response = await this.api(
       "GET",
-      `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/rules/branches/${branch}`
+      `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/rules/branches/${branch}`
     );
     if (!Array.isArray(response)) {
       throw new Error("calibration_github_effective_rules_invalid");
@@ -1323,7 +1323,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   async getRefIfPresent(): Promise<GitHubRef | null> {
     const response = await this.api(
       "GET",
-      `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V11_GIT_LEDGER_API_REF}`,
+      `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V12_GIT_LEDGER_API_REF}`,
       undefined,
       { allowNotFound: true }
     );
@@ -1343,7 +1343,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     return parseGitHubCommit(
       await this.api(
         "GET",
-        `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/git/commits/${sha}`
+        `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/git/commits/${sha}`
       )
     );
   }
@@ -1357,7 +1357,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     return parseGitHubCommit(
       await this.api(
         "POST",
-        `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/git/commits`,
+        `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/git/commits`,
         {
           message: input.message,
           tree: input.treeSha,
@@ -1370,13 +1370,13 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
   }
 
   async createRef(input: {
-    ref: typeof SAV_248_V11_GIT_LEDGER_REF;
+    ref: typeof SAV_248_V12_GIT_LEDGER_REF;
     sha: string;
   }): Promise<GitHubRef> {
     const record = requireRecord(
       await this.api(
         "POST",
-        `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/git/refs`,
+        `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/git/refs`,
         input
       ),
       "createdRef"
@@ -1388,7 +1388,7 @@ class DirectCalibrationGitHubCasClient implements CalibrationGitHubCasClient {
     const record = requireRecord(
       await this.api(
         "PATCH",
-        `${SAV_248_V11_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V11_GIT_LEDGER_API_REF}`,
+        `${SAV_248_V12_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V12_GIT_LEDGER_API_REF}`,
         input
       ),
       "updatedRef"
