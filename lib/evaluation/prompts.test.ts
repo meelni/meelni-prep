@@ -62,6 +62,14 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /perform this evidence uniqueness check/
   );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /four findings as four separate evidence slots/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /quote already used by one slot is unavailable/
+  );
   assert.match(EVALUATION_SYSTEM_PROMPT, /substring\/superstring variant/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,

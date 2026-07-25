@@ -136,7 +136,7 @@ test("evaluation calibration runbook uses v10 owner authorization artifact names
     "sav-248-v10-owner-authorization.json",
     "sav-248-v10-owner-authorization-report.json",
     "GitHub user `saviii`, actor type `User`, user ID `24397508`",
-    "proposal commit: b6a4a4d87045770dd972c6ced2ac1b409b9d80fc",
+    "proposal commit: 048420635d9103314488320171f153732738666c",
   ]) {
     assert.match(runbook, escapeForRegex(required));
   }
