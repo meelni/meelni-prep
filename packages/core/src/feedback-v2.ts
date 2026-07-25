@@ -752,6 +752,7 @@ const NEGATIVE_MATERIAL_POLARITY_PATTERN =
 const ABSENCE_CLAIM_PATTERN =
   /\b(?:absent|indeterminate|pending|tbd|to\s+be\s+determined|unaddressed|undecided|undefined|undetermined|unidentified|unmeasured|unprioriti[sz]ed|unknown|unresolved|unspecified|unset|unvalidated)\b/iu;
 const ADVERSE_LIMITING_ADVERB_PATTERN = /\b(?:barely|hardly|scarcely)\b/iu;
+const ADVERSE_CONTRAST_PATTERN = /\binstead\s+of\b/iu;
 const ADVERSE_DEVOID_PATTERN =
   /\bdevoid\s+of\s+(?:(?:an?|the)\s+)?(?:analysis|criteria|criterion|decision\s+thresholds?|details?|evidence|explanations?|frameworks?|metrics?|reasoning|specifics?|structures?|success\s+thresholds?)\b/iu;
 const ABSENCE_CLAIM_GLOBAL_PATTERN =
@@ -1146,7 +1147,9 @@ function requireScorePrecision(
 function getCriticalClaimAnchors(text: string): Set<string> {
   const normalized = text.normalize("NFKC");
   const anchors = new Set<string>();
-  let materialProjection = normalizeMaterialNegationContractions(normalized);
+  let materialProjection = normalizeMaterialNegationContractions(
+    normalized.replace(/\bgrowth\s+areas?\b/giu, " ")
+  );
   materialProjection = materialProjection.replace(
     /\bnot\s+without(?:\s+any)?\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(security|privacy|compliance)\s+(?:(?:apparent|critical|dangerous|known|major|material|meaningful|notable|obvious|serious|severe|significant|substantial|unresolved)\s+){0,2}(?:concerns?|defects?|deficienc(?:y|ies)|exposures?|failures?|flaws?|gaps?|hazards?|holes?|issues?|liabilit(?:y|ies)|problems?|risks?|shortcomings?|threats?|vulnerabilit(?:y|ies)|weakness(?:es)?)\b/giu,
     (_match, material: string) => {
@@ -1225,8 +1228,9 @@ function getCriticalClaimAnchors(text: string): Set<string> {
 }
 
 function getDirectionalClaimAnchors(text: string): Set<string> {
+  const projectedText = text.replace(/\bgrowth\s+areas?\b/giu, " ");
   const anchors = new Set<string>();
-  const clauses = text.split(
+  const clauses = projectedText.split(
     /[.!?;:\n\u2026\u3002\uFF01\uFF1F]+|\b(?:although|but|however|while|yet)\b/iu
   );
   for (const clause of clauses) {
@@ -1915,7 +1919,13 @@ function hasPositiveTargetClause(
     ) {
       return false;
     }
-    return setsIntersect(negativeTargets, getObservableSupportAnchors(clause));
+    const supportedTargets = countIntersection(
+      negativeTargets,
+      getObservableSupportAnchors(clause)
+    );
+    return negativeTargets.size <= 1
+      ? supportedTargets > 0
+      : supportedTargets >= 2;
   });
 }
 
@@ -2203,6 +2213,7 @@ function containsAdverseClaim(text: string): boolean {
     containsNegativeClaim(negativeProjection) ||
     ABSENCE_CLAIM_PATTERN.test(negativeProjection) ||
     ADVERSE_LIMITING_ADVERB_PATTERN.test(text) ||
+    ADVERSE_CONTRAST_PATTERN.test(text) ||
     ADVERSE_DEVOID_PATTERN.test(text) ||
     [...getCriticalClaimAnchors(text)].some(
       (anchor) =>
@@ -2270,9 +2281,10 @@ function getNegativeClaimTargetSignals(text: string): Set<string> {
   );
   for (const match of negativeProjection.matchAll(NEGATIVE_CLAIM_PATTERN)) {
     const start = (match.index ?? 0) + match[0].length;
-    for (const signal of getSupportSignals(
-      negativeProjection.slice(start, start + 120)
-    )) {
+    const localTargetClause =
+      negativeProjection.slice(start, start + 120).split(TARGET_CLAUSE_BOUNDARY)[0] ??
+      "";
+    for (const signal of getSupportSignals(localTargetClause)) {
       targets.add(signal);
     }
   }
@@ -2293,15 +2305,19 @@ function getAbsenceClaimTargetSignals(text: string): Set<string> {
   )) {
     const start = match.index ?? 0;
     const contextStart = Math.max(0, start - 120);
-    for (const signal of getSupportSignals(
-      absenceProjection.slice(contextStart, start)
-    )) {
+    const localPrefixClause =
+      absenceProjection
+        .slice(contextStart, start)
+        .split(TARGET_CLAUSE_BOUNDARY)
+        .at(-1) ?? "";
+    for (const signal of getSupportSignals(localPrefixClause)) {
       targets.add(signal);
     }
     const end = start + match[0].length;
-    for (const signal of getSupportSignals(
-      absenceProjection.slice(end, end + 80)
-    )) {
+    const localSuffixClause =
+      absenceProjection.slice(end, end + 80).split(TARGET_CLAUSE_BOUNDARY)[0] ??
+      "";
+    for (const signal of getSupportSignals(localSuffixClause)) {
       targets.add(signal);
     }
   }
