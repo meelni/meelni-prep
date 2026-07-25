@@ -144,22 +144,22 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
 test("paid feedback uses a deterministic strict response schema", () => {
   assert.equal(
     FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
-    "feedback-provider-response-format.v4"
+    "feedback-provider-response-format.v5"
   );
   assert.equal(
     getFeedbackProviderResponseFormatContractHash(),
-    "18daf844ac5e6f4e5c7d8cd108f49be1e1e94f54e0620004e2beac0f0d3d7dd8"
+    "f36b21d43f8c17efc2b5bacb5af86b8e11b5a2f890672feaae54a5535a7e3cc3"
   );
   assert.equal(
     Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
-    4_730
+    5_190
   );
   assert.equal(
     Buffer.byteLength(
       serializeFeedbackProviderResponseFormat("partial"),
       "utf8"
     ),
-    4_736
+    5_196
   );
   const full = getFeedbackProviderResponseFormat("full");
   const partial = getFeedbackProviderResponseFormat("partial");
@@ -207,6 +207,21 @@ test("paid feedback uses a deterministic strict response schema", () => {
   assert.match(
     full.json_schema.schema.properties.strengths.items.properties.evidence
       .description,
+    /Exactly one evidence entry/
+  );
+  assert.equal(
+    full.json_schema.schema.properties.strengths.items.properties.evidence
+      .minItems,
+    1
+  );
+  assert.equal(
+    full.json_schema.schema.properties.strengths.items.properties.evidence
+      .maxItems,
+    1
+  );
+  assert.match(
+    full.json_schema.schema.properties.strengths.items.properties.evidence
+      .description,
     /never duplicate, overlap, nest, extend, trim/
   );
   assert.match(
@@ -233,13 +248,13 @@ test("paid request policy pins every non-prompt provider control", () => {
     maximumSdkRetries: 0,
     redirectPolicy: "error",
     requestTimeoutMs: 300_000,
-    responseFormatVersion: "feedback-provider-response-format.v4",
+    responseFormatVersion: "feedback-provider-response-format.v5",
     responseFormatHash:
-      "18daf844ac5e6f4e5c7d8cd108f49be1e1e94f54e0620004e2beac0f0d3d7dd8",
+      "f36b21d43f8c17efc2b5bacb5af86b8e11b5a2f890672feaae54a5535a7e3cc3",
   });
   assert.equal(
     getFeedbackCalibrationRequestPolicyHash(),
-    "330c1e5749960f9e2924c79a62283b8b5f791e81f476b85cdf198c1b86944cf8"
+    "320ad803aab471a09a37e2384be525ca124eeb58af4d21063cb788e6b1e70a1f"
   );
 });
 

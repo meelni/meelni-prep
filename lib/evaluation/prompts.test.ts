@@ -48,15 +48,15 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /Confidence above 0\.9 requires/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /at least two independent observable supports/
+    /single cited evidence quote and turn/
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /include at least two transcriptRefs and two matching evidence entries/
+    /transcriptRefs array must contain exactly one alias/
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /another disjoint exact substring that supports the same observation/
+    /evidence array must contain exactly one matching evidence entry/
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,

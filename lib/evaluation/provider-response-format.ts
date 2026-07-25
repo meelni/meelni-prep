@@ -8,7 +8,7 @@ import {
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-provider-response-format.v4" as const;
+  "feedback-provider-response-format.v5" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -19,9 +19,9 @@ const FEEDBACK_DIMENSIONS = [
 ] as const;
 
 const EXACT_TURN_REF_DESCRIPTION =
-  "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases." as const;
+  "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases. Across the two strengths and two improvements, use four different primary evidence turnRefs unless the transcript has fewer than four candidate turns." as const;
 const EXACT_QUOTE_DESCRIPTION =
-  "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, do not reuse this same quote, a substring/superstring variant, an overlapping quote from the same turn, or another quote from the same source sentence/line." as const;
+  "Copy one meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, this quote must be unique: do not reuse this same quote, a substring/superstring variant, an overlapping quote from the same turn, or another quote from the same source sentence/line." as const;
 
 /**
  * Provider-owned structural constraints. Transcript grounding and all other
@@ -65,7 +65,9 @@ export function getFeedbackProviderResponseFormat(
       evidence: {
         type: "array" as const,
         description:
-          "Evidence for this single finding only. Every quote in this array must be unavailable to the other strength/improvement findings; never duplicate, overlap, nest, extend, trim, or reuse another finding's source sentence/line.",
+          "Exactly one evidence entry for this finding. This one quote is unavailable to the other strength/improvement findings; never duplicate, overlap, nest, extend, trim, or reuse another finding's quote, turnRef when avoidable, or source sentence/line.",
+        minItems: 1,
+        maxItems: 1,
         items: evidence,
       },
       nextStep: stringValue,
