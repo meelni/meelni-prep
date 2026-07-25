@@ -89,9 +89,9 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     "SAV-283",
     "SAV-186",
     "SAV-223",
-    "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v12",
-    "Meelni SAV-248 v12 calibration ledger immutable",
-    "Meelni SAV-248 v12 calibration activation actor",
+    "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v13",
+    "Meelni SAV-248 v13 calibration ledger immutable",
+    "Meelni SAV-248 v13 calibration activation actor",
     "GitHub user `saviii`, actor type\n     `User`, user ID `24397508`",
     "meelni_interview_pass_usd",
     "meelni_starter_monthly_usd",
@@ -118,7 +118,7 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
     /A broad "looks good" or "signed" message is not enough/i
   );
   assert.match(runbook, /Do not point Production at test-mode price IDs/i);
-  assert.match(runbook, /Do not manually create the v12 ledger\s+ref/i);
+  assert.match(runbook, /Do not manually create the v13 ledger\s+ref/i);
   assert.match(runbook, /Stop before total spend\s+can exceed \$3/i);
   assert.match(runbook, /Do not print secret values/i);
   assert.match(runbook, /no customer transcripts;\s+- no Production data/i);
@@ -128,15 +128,15 @@ test("relaunch readiness execution runbook sequences live gates without authoriz
   );
 });
 
-test("evaluation calibration runbook uses v12 owner authorization artifact names", async () => {
+test("evaluation calibration runbook uses v13 owner authorization artifact names", async () => {
   const runbook = await readFile(EVALUATION_CALIBRATION_RUNBOOK_PATH, "utf8");
 
   for (const required of [
-    "sav-248-v12-owner-authorization-request.json",
-    "sav-248-v12-owner-authorization.json",
-    "sav-248-v12-owner-authorization-report.json",
+    "sav-248-v13-owner-authorization-request.json",
+    "sav-248-v13-owner-authorization.json",
+    "sav-248-v13-owner-authorization-report.json",
     "GitHub user `saviii`, actor type `User`, user ID `24397508`",
-    "proposal commit: eac173aeb8cc32f161f533b3275d6748863988de",
+    "proposal commit: c8106ec6c2451085dc244dca9c0db63d5716ce23",
   ]) {
     assert.match(runbook, escapeForRegex(required));
   }
