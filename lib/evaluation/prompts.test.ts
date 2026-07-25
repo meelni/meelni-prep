@@ -9,6 +9,9 @@ import {
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
+type CalibrationCase = (typeof evaluationCalibrationCases)[number];
+type CalibrationTurn = CalibrationCase["transcript"][number];
+
 test("evaluation prompt preserves partial-delivery provenance and treats speech as data", () => {
   const aliases = projectEvaluationTranscriptAliases([
     {
@@ -184,7 +187,7 @@ test("calibration evidence hints require approved anchors when present", () => {
 });
 
 test("calibration evidence hints provide non-overlapping fallback slots", () => {
-  const target = evaluationCalibrationCases.find(
+  const target: CalibrationCase | undefined = evaluationCalibrationCases.find(
     ({ id }) => id === "product_sense:02:accessible-transit"
   );
   assert.ok(target);
@@ -197,12 +200,12 @@ test("calibration evidence hints provide non-overlapping fallback slots", () => 
       const left = hints[i]!;
       const right = hints[j]!;
       if (left.turnRef !== right.turnRef) continue;
-      const turn = target.transcript.find(
+      const turn: CalibrationTurn | undefined = target.transcript.find(
         ({ eventId }) => eventId === left.turnRef
       );
       assert.ok(turn);
-      const leftStart = turn.text.indexOf(left.quote);
-      const rightStart = turn.text.indexOf(right.quote);
+      const leftStart: number = turn.text.indexOf(left.quote);
+      const rightStart: number = turn.text.indexOf(right.quote);
       assert.notEqual(leftStart, -1);
       assert.notEqual(rightStart, -1);
       assert.equal(
