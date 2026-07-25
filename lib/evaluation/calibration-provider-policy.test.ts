@@ -144,22 +144,22 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
 test("paid feedback uses a deterministic strict response schema", () => {
   assert.equal(
     FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
-    "feedback-provider-response-format.v1"
+    "feedback-provider-response-format.v2"
   );
   assert.equal(
     getFeedbackProviderResponseFormatContractHash(),
-    "403729b9e246f85eabd50284dae905218c250bdd1785b2d58b27fa77424e8eb9"
+    "97642732fb45e0547311e2ed8ddc416960b37facaf2276d6dca98457c1b89c87"
   );
   assert.equal(
     Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
-    2_476
+    3_416
   );
   assert.equal(
     Buffer.byteLength(
       serializeFeedbackProviderResponseFormat("partial"),
       "utf8"
     ),
-    2_482
+    3_422
   );
   const full = getFeedbackProviderResponseFormat("full");
   const partial = getFeedbackProviderResponseFormat("partial");
@@ -177,6 +177,21 @@ test("paid feedback uses a deterministic strict response schema", () => {
   assert.equal(full.json_schema.schema.properties.strengths.maxItems, 2);
   assert.equal(full.json_schema.schema.properties.improvements.minItems, 2);
   assert.equal(full.json_schema.schema.properties.improvements.maxItems, 2);
+  const evidenceSchema =
+    full.json_schema.schema.properties.strengths.items.properties.evidence
+      .items;
+  assert.match(
+    evidenceSchema.description,
+    /quote must be copied byte-for-byte from that same turn/
+  );
+  assert.match(
+    evidenceSchema.properties.turnRef.description,
+    /Copy one candidate turnRef alias exactly from transcriptRefs/
+  );
+  assert.match(
+    evidenceSchema.properties.quote.description,
+    /Do not paraphrase, summarize, normalize, add words, remove words/
+  );
 });
 
 test("paid request policy pins every non-prompt provider control", () => {
@@ -196,13 +211,13 @@ test("paid request policy pins every non-prompt provider control", () => {
     maximumSdkRetries: 0,
     redirectPolicy: "error",
     requestTimeoutMs: 300_000,
-    responseFormatVersion: "feedback-provider-response-format.v1",
+    responseFormatVersion: "feedback-provider-response-format.v2",
     responseFormatHash:
-      "403729b9e246f85eabd50284dae905218c250bdd1785b2d58b27fa77424e8eb9",
+      "97642732fb45e0547311e2ed8ddc416960b37facaf2276d6dca98457c1b89c87",
   });
   assert.equal(
     getFeedbackCalibrationRequestPolicyHash(),
-    "5da35139f3f910970f9f60bf699168604eae592ebd621d212f4959b6bbae866a"
+    "02a8c8a71729b6ca4645e332d3b22f1783300cb825847e3151e4e85dc6ef277f"
   );
 });
 
