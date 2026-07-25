@@ -8,7 +8,7 @@ import {
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-provider-response-format.v2" as const;
+  "feedback-provider-response-format.v3" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -21,7 +21,7 @@ const FEEDBACK_DIMENSIONS = [
 const EXACT_TURN_REF_DESCRIPTION =
   "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases." as const;
 const EXACT_QUOTE_DESCRIPTION =
-  "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn." as const;
+  "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, do not reuse this same quote or an overlapping quote from the same turn." as const;
 
 /**
  * Provider-owned structural constraints. Transcript grounding and all other
@@ -58,10 +58,14 @@ export function getFeedbackProviderResponseFormat(
       observation: stringValue,
       transcriptRefs: {
         type: "array" as const,
+        description:
+          "Use aliases for evidence-bearing candidate turns. Across all four findings, prefer different aliases; when reusing a turn, cite disjoint non-overlapping quotes.",
         items: stringValue,
       },
       evidence: {
         type: "array" as const,
+        description:
+          "Evidence for this single finding only. Every quote in this array must be unavailable to the other strength/improvement findings; never duplicate or overlap evidence across findings.",
         items: evidence,
       },
       nextStep: stringValue,

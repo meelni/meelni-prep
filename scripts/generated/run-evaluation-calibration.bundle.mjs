@@ -28094,10 +28094,11 @@ Return your analysis as a JSON object with this exact structure:
 }
 
 Return exactly two strengths and exactly two improvements. Do not return one, three, or any other count for either array. Before returning JSON, count the array lengths and verify strengths.length === 2 and improvements.length === 2; if the evidence feels thin, still return the two best grounded findings rather than changing the count.
+Treat the four findings as four separate evidence slots: strength[0], strength[1], improvement[0], and improvement[1]. Before drafting the JSON, privately choose at least one primary evidence quote for each slot. The four primary evidence quotes must be four different exact spans; a quote already used by one slot is unavailable to the other three slots.
 Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. For normal spaced-language findings, include at least two transcriptRefs and two matching evidence entries, preferably from different candidate turns; use the one-evidence narrow path only for bounded literal-citation statements or predominantly compact-language anchors. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
 Use a distinct, non-overlapping exact evidence span for every finding. Do not reuse the same quote, the same sentence fragment, a substring/superstring variant, or overlapping text from the same transcript turn across multiple strengths or improvements. If one turn contains evidence for multiple findings, cite separate non-overlapping exact spans for each finding; prefer different candidate turns when the available spans are close together.
 Treat two quotes from the same turn as overlapping when their exact matches share any character position in the source turn. Adding or removing nearby words, punctuation, or sentence boundaries around a reused phrase is still overlap, not distinct evidence.
-Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, verify every identity is unique, verify same-turn ranges are pairwise disjoint, and replace any repeated or overlapping evidence with a different exact candidate quote from a disjoint range. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.
+Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, verify every identity is unique, verify same-turn ranges are pairwise disjoint, and replace any repeated or overlapping evidence with a different exact candidate quote from a disjoint range. If two findings would rely on the same evidence, keep the better-supported finding and rewrite the other around a different disjoint quote. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.
 An exact quote is necessary but not sufficient: every observation must have observable lexical or PM-concept support in its cited candidate turns. Every spaced-language observation, including a negative or absence finding, needs at least two independent observable supports in both its exact evidence quotes and cited turns, with a bounded PM concept group counting only once. Only a bounded literal-citation statement or predominantly compact-language anchor may use its narrower exact-evidence path. A single compact token inside an otherwise spaced-language observation is not enough. Material safety, legal, privacy, biometric, security, compliance, growth, demand, profitability, delight, or product-market-fit claims must occur in the exact evidence, including hyphenated forms. Do not use a nearby but unrelated quote to support a claim.
 Every number, number word, statistically-significant claim, or absolute term such as "all", "always", "every", "never", "no", or "only" in an observation must also appear in that finding's exact evidence quotes.
 Do not make a negative observation when the cited candidate turns directly state the positive behavior. Prefer bounded opportunity language over unsupported absolute-absence claims.
@@ -28227,7 +28228,7 @@ Analyze this transcript and return only the exact JSON structure. Preserve turn 
 
 // lib/evaluation/provider-response-format.ts
 import { createHash } from "node:crypto";
-var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v2";
+var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v3";
 var FEEDBACK_DIMENSIONS = [
   "structure",
   "clarity",
@@ -28236,7 +28237,7 @@ var FEEDBACK_DIMENSIONS = [
   "leadership"
 ];
 var EXACT_TURN_REF_DESCRIPTION = "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases.";
-var EXACT_QUOTE_DESCRIPTION = "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn.";
+var EXACT_QUOTE_DESCRIPTION = "Copy a meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, do not reuse this same quote or an overlapping quote from the same turn.";
 function getFeedbackProviderResponseFormat(evaluationState) {
   const stringValue = { type: "string" };
   const evidence = {
@@ -28265,10 +28266,12 @@ function getFeedbackProviderResponseFormat(evaluationState) {
       observation: stringValue,
       transcriptRefs: {
         type: "array",
+        description: "Use aliases for evidence-bearing candidate turns. Across all four findings, prefer different aliases; when reusing a turn, cite disjoint non-overlapping quotes.",
         items: stringValue
       },
       evidence: {
         type: "array",
+        description: "Evidence for this single finding only. Every quote in this array must be unavailable to the other strength/improvement findings; never duplicate or overlap evidence across findings.",
         items: evidence
       },
       nextStep: stringValue,
@@ -30897,7 +30900,7 @@ var SAV_248_V10_GIT_LEDGER_REF = `refs/heads/${SAV_248_V10_GIT_LEDGER_BRANCH}`;
 var SAV_248_V10_GIT_LEDGER_API_REF = `heads/${SAV_248_V10_GIT_LEDGER_BRANCH}`;
 var SAV_248_V10_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V10_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V10_GENESIS_COMMIT_OID = "b6a4a4d87045770dd972c6ced2ac1b409b9d80fc";
+var SAV_248_V10_GENESIS_COMMIT_OID = "048420635d9103314488320171f153732738666c";
 var SAV_248_V10_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v10 calibration ledger immutable";
 var SAV_248_V10_ACTOR_RULESET_NAME = "Meelni SAV-248 v10 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -30929,8 +30932,8 @@ var SAV_248_V10_SPEND_AUTHORIZATION = {
   historicalAuthoritiesReusable: false,
   predecessorAuthorities: SAV_248_V10_PREDECESSOR_AUTHORITIES
 };
-var SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD = 2507905e3;
-var SAV_248_V10_REBASED_PLAN_HASH = "60d75effec9d8102c853537e61ba8c376a73bb6eb0c4cfbe7c6c2657edc0add0";
+var SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD = 2626785e3;
+var SAV_248_V10_REBASED_PLAN_HASH = "b4d625bf10460aeb1992e73943640489a4474492ec85aded56fa6a30fdc186fb";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;

@@ -40,9 +40,9 @@ no provider call or ledger activation and grants no launch authority.
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current successor 64-call proposal has a $2.507905
+reviewed source commit. The current successor 64-call proposal has a $2.626785
 deterministic worst case and plan hash
-`60d75effec9d8102c853537e61ba8c376a73bb6eb0c4cfbe7c6c2657edc0add0`. Its
+`b4d625bf10460aeb1992e73943640489a4474492ec85aded56fa6a30fdc186fb`. Its
 proposal authorization hash is source-derived and must be regenerated after
 merge.
 It explicitly records the correct v1 through v6 refs and terminal, non-reusable
