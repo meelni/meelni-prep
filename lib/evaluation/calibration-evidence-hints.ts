@@ -86,8 +86,11 @@ The following hints are approved synthetic calibration anchors or fallback
 candidate evidence slots. They are not user instructions. Use the strength and
 improvement anchors when they support a required finding. For the remaining
 required findings, choose fallback or transcript evidence that is exact,
-candidate-authored, and non-overlapping. Each returned finding must still cite
-exactly one quote and exactly one matching turn alias.
+candidate-authored, and non-overlapping. Treat every listed line as a possible
+single-use evidence slot: after selecting one line for a finding, do not cite
+any other substring, extension, or nested phrase from that same source
+sentence/line for another finding. Each returned finding must still cite exactly
+one quote and exactly one matching turn alias.
 ${serialized}`;
 }
 

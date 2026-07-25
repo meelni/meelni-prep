@@ -28098,13 +28098,14 @@ Treat the four findings as four separate evidence slots: strength[0], strength[1
 Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every finding's transcriptRefs array must contain exactly one alias, and every finding's evidence array must contain exactly one matching evidence entry. Do not include second, backup, supporting, or redundant evidence entries. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
 Use a distinct, non-overlapping exact evidence span for every finding. Do not reuse the same quote, the same turn when avoidable, the same sentence fragment, a substring/superstring variant, or overlapping text from the same transcript turn across multiple strengths or improvements. If one turn contains evidence for multiple findings, pick the strongest finding for that turn and move the other finding to a different candidate turn or different source sentence.
 Treat two quotes from the same turn as overlapping when their exact matches share any character position in the source turn. Adding or removing nearby words, punctuation, or sentence boundaries around a reused phrase is still overlap, not distinct evidence.
-For evidence allocation, blacklist at the sentence/line level: after a finding uses any quote, the entire source sentence or transcript line containing that quote is unavailable to the other three findings. Do not create a "new" quote by trimming, extending, or nesting text inside a sentence/line already used by another finding. If a turn has multiple usable ideas in one sentence, pick only one finding for that sentence and move the other finding to a different sentence, a different turn, or a different dimension.
-Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, identify the source sentence/line containing that range, verify every identity is unique, verify same-turn ranges are pairwise disjoint, verify no source sentence/line is assigned to more than one finding, and replace any repeated, nested, sentence-sharing, or overlapping evidence with a different exact candidate quote from a disjoint sentence/line. If two findings would rely on the same evidence sentence/line, keep the better-supported finding and rewrite the other around a different disjoint sentence/line. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.
+For evidence allocation, reserve source text before writing findings. Maintain a private reserved-evidence table with four rows: slot, turnRef, quote, exact character range, and source sentence/line. After a row is reserved, that exact range and the entire source sentence/line containing it are unavailable to the other three findings. Do not create a "new" quote by trimming, extending, or nesting text inside a sentence/line already used by another finding. If a turn has multiple usable ideas in one sentence, pick only one finding for that sentence and move the other finding to a different sentence, a different turn, or a different dimension.
+Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, identify the source sentence/line containing that range, verify every identity is unique, verify same-turn ranges are pairwise disjoint, verify no source sentence/line is assigned to more than one finding, and replace any repeated, nested, sentence-sharing, line-sharing, or overlapping evidence with a different exact candidate quote from a disjoint sentence/line. If two findings would rely on the same evidence sentence/line, keep the better-supported finding and rewrite the other around a different disjoint sentence/line. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.
 An exact quote is necessary but not sufficient: every observation must have observable lexical or PM-concept support in its single cited evidence quote and turn. Write each observation around the concrete words in that exact quote; include at least two observable concepts that are literally present in the quote or unambiguously named by the cited turn. If the quote says "working parents" and not "compares options" or "defines a threshold", the observation may mention working parents but must not claim comparison or threshold-setting. If one quote cannot support a nuanced spaced-language observation, narrow the observation to what that one quote directly proves rather than adding another evidence entry. Material safety, legal, privacy, biometric, security, compliance, growth, demand, profitability, delight, or product-market-fit claims must occur in the exact evidence, including hyphenated forms. Do not use a nearby but unrelated quote to support a claim.
 For calibration outputs, write observations in quote-first language but do not put quotation marks inside observations. Exact quoted text belongs only in the evidence.quote field. The observation should reuse at least two important words or short phrases from the exact evidence quote, such as intended user outcome, brainstorm features for everyone, not defined the underlying problem, general usage, outcome metric, guardrail, or decision threshold. Do not add rubric-only explanations like core structural element, product sense framework, prioritization leadership, or depth of insight unless those words are present in the cited quote. A safe observation shape is: Names <phrase from evidence.quote> but does/does not <second phrase from evidence.quote>. Keep the interpretation narrower than the quote rather than broader than it.
 Strength observations must describe only positive demonstrated behavior. Do not put negative, absence, or gap language in a strength observation, including not, no, never, without, missing, lacking, has not, have not, did not, does not, or fails to. If a strength evidence quote contains both a positive clause and a negative clause, write the strength only about the positive clause before words like but, however, or instead; move the negative clause to an improvement if useful. Improvement observations may use bounded gap language when the exact evidence quote supports it.
 Every number, number word, or statistically-significant claim in an observation must also appear in that finding's exact evidence quotes. Do not use absolute terms in any observation, even when evidence contains them: avoid all, always, completely, entirely, every, never, no, none, and only. Rewrite with bounded evidence words instead.
 Do not make a negative observation when the cited candidate turns directly state the positive behavior. Prefer bounded opportunity language over unsupported absolute-absence claims.
+Score weak partial answers conservatively. If a transcript names a plausible user, feature, or metric but also keeps the audience broad, asks only whether users like an idea, lacks segmentation, lacks a measurable outcome, or lacks a guardrail or decision threshold, do not score structure above 4 or clarity above 5. A weak partial product-sense answer that says it would define an intended user outcome but then brainstorm features for everyone and measure general usage should remain weak: structure 2-4 and clarity 3-5 unless the transcript adds a concrete segment, tradeoff, outcome metric, guardrail, and threshold.
 Confidence above 0.9 requires at least six quoted lexical units and 24 quoted letters of exact evidence for that finding; a compact Han/Kana grapheme pair counts as one lexical unit. Reserve any exceptional score profile whose weighted overall would be 9.0 or higher for results whose findings collectively cite at least three candidate turns and 18 quoted lexical units. Every dimension scored 9 or 10 must have a same-dimension grounded strength.
 Keep the summary evidence-limited. Every factual summary statement needs at least two observable supports from the grounded findings, and at least half of its non-meta claim anchors must be supported. Write two short summary sentences. Each sentence must reuse at least two concrete words or short phrases from the four observations or exact evidence quotes, such as intended user outcome, easiest idea, brainstorm features for everyone, not defined the underlying problem, general usage, outcome metric, guardrail, or decision threshold. Do not introduce new abstract labels in the summary unless the same label appears in a finding observation or exact evidence quote. Every material or quantitative summary claim must occur in exact evidence. Never make hiring, readiness, pass/fail, hiring-bar, or candidate-advancement claims. Never describe the candidate or answer as flawless or perfect, and never claim no weaknesses, only strengths, or equivalent unsupported absolutes.
 Use focused-practice language in every recommendation.
@@ -28231,7 +28232,7 @@ Analyze this transcript and return only the exact JSON structure. Preserve turn 
 
 // lib/evaluation/provider-response-format.ts
 import { createHash } from "node:crypto";
-var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v5";
+var FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION = "feedback-provider-response-format.v6";
 var FEEDBACK_DIMENSIONS = [
   "structure",
   "clarity",
@@ -28240,7 +28241,7 @@ var FEEDBACK_DIMENSIONS = [
   "leadership"
 ];
 var EXACT_TURN_REF_DESCRIPTION = "Copy one candidate turnRef alias exactly from transcriptRefs; never cite interviewer turns or invent aliases. Across the two strengths and two improvements, use four different primary evidence turnRefs unless the transcript has fewer than four candidate turns.";
-var EXACT_QUOTE_DESCRIPTION = "Copy one meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, this quote must be unique: do not reuse this same quote, a substring/superstring variant, an overlapping quote from the same turn, or another quote from the same source sentence/line.";
+var EXACT_QUOTE_DESCRIPTION = "Copy one meaningful exact case-sensitive substring from the cited candidate turn text. Do not paraphrase, summarize, normalize, add words, remove words, or cite text from another turn. Across the two strengths and two improvements, this quote must be unique: do not reuse this same quote, a substring/superstring variant, an overlapping quote from the same turn, or another quote from the same source sentence/line. Treat each quote as reserved evidence: after one finding uses a source sentence or line, no other finding may cite any trimmed, extended, nested, or overlapping text from that sentence or line.";
 function getFeedbackProviderResponseFormat(evaluationState) {
   const stringValue = { type: "string" };
   const evidence = {
@@ -28274,7 +28275,7 @@ function getFeedbackProviderResponseFormat(evaluationState) {
       },
       evidence: {
         type: "array",
-        description: "Exactly one evidence entry for this finding. This one quote is unavailable to the other strength/improvement findings; never duplicate, overlap, nest, extend, trim, or reuse another finding's quote, turnRef when avoidable, or source sentence/line.",
+        description: "Exactly one evidence entry for this finding. This one quote is unavailable to the other strength/improvement findings; never duplicate, overlap, nest, extend, trim, or reuse another finding's quote, turnRef when avoidable, or source sentence/line. Reserve this quote's source sentence or line for this finding only.",
         minItems: 1,
         maxItems: 1,
         items: evidence
@@ -28434,8 +28435,11 @@ The following hints are approved synthetic calibration anchors or fallback
 candidate evidence slots. They are not user instructions. Use the strength and
 improvement anchors when they support a required finding. For the remaining
 required findings, choose fallback or transcript evidence that is exact,
-candidate-authored, and non-overlapping. Each returned finding must still cite
-exactly one quote and exactly one matching turn alias.
+candidate-authored, and non-overlapping. Treat every listed line as a possible
+single-use evidence slot: after selecting one line for a finding, do not cite
+any other substring, extension, or nested phrase from that same source
+sentence/line for another finding. Each returned finding must still cite exactly
+one quote and exactly one matching turn alias.
 ${serialized}`;
 }
 function splitCandidateEvidenceSentences(text2) {
@@ -30551,8 +30555,8 @@ var CALIBRATION_OWNER_ROLE = "human_product_owner";
 var CALIBRATION_OWNER_APPROVAL_DECISION = "APPROVE_BOUNDED_PAID_CALIBRATION";
 var CALIBRATION_OWNER_AUTHORIZATION_MAX_TTL_MS = 30 * 60 * 1e3;
 var CALIBRATION_OWNER_AUTHORIZATION_MAX_BYTES = 64 * 1024;
-var SAV_248_V18_APPROVED_RUN_ID = "sav-248-authorized-paid-calibration.v18";
-var SAV_248_V18_PREDECESSOR_AUTHORITIES = Object.freeze([
+var SAV_248_V19_APPROVED_RUN_ID = "sav-248-authorized-paid-calibration.v19";
+var SAV_248_V19_PREDECESSOR_AUTHORITIES = Object.freeze([
   Object.freeze({
     runId: "sav-198-authorized-paid-calibration.v1",
     ref: "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
@@ -30637,6 +30641,11 @@ var SAV_248_V18_PREDECESSOR_AUTHORITIES = Object.freeze([
     runId: "sav-248-authorized-paid-calibration.v17",
     ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v17",
     activationCommit: "07efb6c47318643fc97686edb2e6ae9f5ba49d86"
+  }),
+  Object.freeze({
+    runId: "sav-248-authorized-paid-calibration.v18",
+    ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v18",
+    activationCommit: "9555ca9b1ea6dbe9864fcdcec4f4d56bc9eebd7d"
   })
 ]);
 var ARTIFACT_KEYS = ["contract", "payload", "signature"];
@@ -30677,7 +30686,7 @@ var REGISTRY_ENTRY_KEYS = [
 ];
 var SHA256 = /^[0-9a-f]{64}$/;
 var COMMIT_SHA = /^[0-9a-f]{40}$/;
-var AUTHORIZATION_ID = /^sav248_v18_auth_[0-9a-f]{32}$/;
+var AUTHORIZATION_ID = /^sav248_v19_auth_[0-9a-f]{32}$/;
 var KEY_ID = /^[A-Za-z0-9._-]{1,80}$/;
 var BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 var verifiedSpendAuthorizations = /* @__PURE__ */ new WeakSet();
@@ -30714,7 +30723,7 @@ function verifyCalibrationOwnerAuthorization(input) {
   if (typeof payload.authorizationId !== "string" || !AUTHORIZATION_ID.test(payload.authorizationId)) {
     throw new Error("calibration_owner_authorization_id_invalid");
   }
-  if (payload.runId !== SAV_248_V18_APPROVED_RUN_ID) {
+  if (payload.runId !== SAV_248_V19_APPROVED_RUN_ID) {
     throw new Error("calibration_owner_authorization_run_invalid");
   }
   if (payload.ownerId !== CALIBRATION_OWNER_ID || payload.ownerRole !== CALIBRATION_OWNER_ROLE || payload.approvalDecision !== CALIBRATION_OWNER_APPROVAL_DECISION) {
@@ -30739,7 +30748,7 @@ function verifyCalibrationOwnerAuthorization(input) {
   if (canonicalCalibrationOwnerAuthorizationJson(
     payload.predecessorAuthorities
   ) !== canonicalCalibrationOwnerAuthorizationJson(
-    SAV_248_V18_PREDECESSOR_AUTHORITIES
+    SAV_248_V19_PREDECESSOR_AUTHORITIES
   )) {
     throw new Error(
       "calibration_owner_authorization_predecessor_authority_invalid"
@@ -30806,9 +30815,9 @@ function verifyCalibrationOwnerAuthorization(input) {
     throw new Error("calibration_owner_authorization_signature_mismatch");
   }
   const authorization = Object.freeze({
-    contractVersion: "evaluation-calibration-spend-authorization.v18",
+    contractVersion: "evaluation-calibration-spend-authorization.v19",
     authorizationId: payload.authorizationId,
-    runId: SAV_248_V18_APPROVED_RUN_ID,
+    runId: SAV_248_V19_APPROVED_RUN_ID,
     authorizationStatus: "approved_by_human_product_owner",
     authorizedOn: payload.issuedAt,
     authorizationSource: "external_product_owner_ed25519",
@@ -30824,7 +30833,7 @@ function verifyCalibrationOwnerAuthorization(input) {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V18_PREDECESSOR_AUTHORITIES
+    predecessorAuthorities: SAV_248_V19_PREDECESSOR_AUTHORITIES
   });
   verifiedSpendAuthorizations.add(authorization);
   const verified = Object.freeze({
@@ -30997,36 +31006,36 @@ function isRecord(value) {
 }
 
 // lib/evaluation/calibration-run-ledger.ts
-var SAV_248_V18_AUTHORIZATION_ID = "sav-248-pending-paid-calibration-authorization.v18";
-var SAV_248_V18_GITHUB_OWNER = "meelni";
-var SAV_248_V18_GITHUB_REPOSITORY = "meelni-prep";
-var SAV_248_V18_GITHUB_REPOSITORY_ID = 1089904588;
-var SAV_248_V18_GITHUB_OWNER_ID = 302571838;
-var SAV_248_V18_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
-var SAV_248_V18_GITHUB_ACTIVATION_ACTOR_ID = 24397508;
-var SAV_248_V18_GIT_LEDGER_BRANCH = "meelni-ledger/sav-248-authorized-paid-calibration.v18";
-var SAV_248_V18_GIT_LEDGER_REF = `refs/heads/${SAV_248_V18_GIT_LEDGER_BRANCH}`;
-var SAV_248_V18_GIT_LEDGER_API_REF = `heads/${SAV_248_V18_GIT_LEDGER_BRANCH}`;
-var SAV_248_V18_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-var SAV_248_V18_GENESIS_DATE = "2026-07-25T21:35:00.000Z";
-var SAV_248_V18_GENESIS_COMMIT_OID = "2fa842d19bedeeba53f00a76eb85d632562212a2";
-var SAV_248_V18_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v18 calibration ledger immutable";
-var SAV_248_V18_ACTOR_RULESET_NAME = "Meelni SAV-248 v18 calibration activation actor";
+var SAV_248_V19_AUTHORIZATION_ID = "sav-248-pending-paid-calibration-authorization.v19";
+var SAV_248_V19_GITHUB_OWNER = "meelni";
+var SAV_248_V19_GITHUB_REPOSITORY = "meelni-prep";
+var SAV_248_V19_GITHUB_REPOSITORY_ID = 1089904588;
+var SAV_248_V19_GITHUB_OWNER_ID = 302571838;
+var SAV_248_V19_GITHUB_ACTIVATION_ACTOR_LOGIN = "saviii";
+var SAV_248_V19_GITHUB_ACTIVATION_ACTOR_ID = 24397508;
+var SAV_248_V19_GIT_LEDGER_BRANCH = "meelni-ledger/sav-248-authorized-paid-calibration.v19";
+var SAV_248_V19_GIT_LEDGER_REF = `refs/heads/${SAV_248_V19_GIT_LEDGER_BRANCH}`;
+var SAV_248_V19_GIT_LEDGER_API_REF = `heads/${SAV_248_V19_GIT_LEDGER_BRANCH}`;
+var SAV_248_V19_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+var SAV_248_V19_GENESIS_DATE = "2026-07-25T21:35:00.000Z";
+var SAV_248_V19_GENESIS_COMMIT_OID = "9ef8498592c58083ddc45684f4453aa0af1841c7";
+var SAV_248_V19_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v19 calibration ledger immutable";
+var SAV_248_V19_ACTOR_RULESET_NAME = "Meelni SAV-248 v19 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
 var GITHUB_API_HOST = "api.github.com";
 var GITHUB_API_PORT = 443;
 var GITHUB_API_TIMEOUT_MS = 1e4;
 var GITHUB_API_MAX_RESPONSE_BYTES = 1048576;
-var GITHUB_USER_AGENT = "meelni-sav-248-v18-calibration-authority";
-var SAV_248_V18_GITHUB_REPOSITORY_API_PATH = `/repos/${SAV_248_V18_GITHUB_OWNER}/${SAV_248_V18_GITHUB_REPOSITORY}`;
+var GITHUB_USER_AGENT = "meelni-sav-248-v19-calibration-authority";
+var SAV_248_V19_GITHUB_REPOSITORY_API_PATH = `/repos/${SAV_248_V19_GITHUB_OWNER}/${SAV_248_V19_GITHUB_REPOSITORY}`;
 var COMMIT_IDENTITY = {
   name: "Meelni Calibration Authorization",
   email: "calibration-ledger@meelni.invalid"
 };
-var SAV_248_V18_SPEND_AUTHORIZATION = {
+var SAV_248_V19_SPEND_AUTHORIZATION = {
   contractVersion: "evaluation-calibration-spend-authorization.v2",
-  authorizationId: SAV_248_V18_AUTHORIZATION_ID,
-  runId: SAV_248_V18_APPROVED_RUN_ID,
+  authorizationId: SAV_248_V19_AUTHORIZATION_ID,
+  runId: SAV_248_V19_APPROVED_RUN_ID,
   authorizationStatus: "pending_explicit_product_owner_approval",
   authorizedOn: null,
   authorizationSource: null,
@@ -31039,17 +31048,17 @@ var SAV_248_V18_SPEND_AUTHORIZATION = {
   customerTranscriptsAllowed: false,
   productionDataAllowed: false,
   historicalAuthoritiesReusable: false,
-  predecessorAuthorities: SAV_248_V18_PREDECESSOR_AUTHORITIES
+  predecessorAuthorities: SAV_248_V19_PREDECESSOR_AUTHORITIES
 };
-var SAV_248_V18_REBASED_PLAN_WORST_CASE_NANO_USD = 2894545e3;
-var SAV_248_V18_REBASED_PLAN_HASH = "b9c1d61796cc41c5769b602c1732803b1d61a4654115fafddef95b7e122daa05";
+var SAV_248_V19_REBASED_PLAN_WORST_CASE_NANO_USD = 2997745e3;
+var SAV_248_V19_REBASED_PLAN_HASH = "8d311609414271dda78b74ce0de2346fd2a5e6170643b926d9606144e2cb2694";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;
     this.plan = plan;
     this.github = github;
     this.durable = true;
-    this.runId = SAV_248_V18_APPROVED_RUN_ID;
+    this.runId = SAV_248_V19_APPROVED_RUN_ID;
     this.active = true;
     this.spend = createEmptyCalibrationSpendState();
     this.authorizationId = plan.authorizationId;
@@ -31063,7 +31072,7 @@ var ActivatedCalibrationRunAuthority = class {
     if (!this.active) throw new Error("calibration_git_activation_released");
     await assertCanonicalGitHubAuthority(this.github);
     const current = await this.github.getRef();
-    if (current.ref !== SAV_248_V18_GIT_LEDGER_REF) {
+    if (current.ref !== SAV_248_V19_GIT_LEDGER_REF) {
       this.active = false;
       throw new Error("calibration_github_ledger_ref_invalid");
     }
@@ -31152,7 +31161,7 @@ function buildCalibrationActivatedPlan(input) {
   );
   const withoutHash = {
     contractVersion: "evaluation-calibration-activated-plan.v2",
-    runId: SAV_248_V18_APPROVED_RUN_ID,
+    runId: SAV_248_V19_APPROVED_RUN_ID,
     authorizationId: authorization.authorizationId,
     authorizationHash,
     ...adjudicationHashes,
@@ -31253,7 +31262,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   if (!currentRef) {
     const seeded = await github.createCommit({
       message: genesis.message,
-      treeSha: SAV_248_V18_EMPTY_TREE_OID,
+      treeSha: SAV_248_V19_EMPTY_TREE_OID,
       parents: [],
       date: genesis.date
     });
@@ -31261,7 +31270,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
     await assertCanonicalGitHubAuthority(github);
     try {
       currentRef = await github.createRef({
-        ref: SAV_248_V18_GIT_LEDGER_REF,
+        ref: SAV_248_V19_GIT_LEDGER_REF,
         sha: genesis.oid
       });
     } catch (error) {
@@ -31274,7 +31283,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
     }
     await assertCanonicalGitHubAuthority(github);
   }
-  if (currentRef.ref !== SAV_248_V18_GIT_LEDGER_REF) {
+  if (currentRef.ref !== SAV_248_V19_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
   if (currentRef.sha !== genesis.oid) {
@@ -31288,7 +31297,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   const activationId = options.activationId ?? randomUUID();
   const activationMessage = stableJson({
     contractVersion: "evaluation-calibration-git-activation.v1",
-    runId: SAV_248_V18_APPROVED_RUN_ID,
+    runId: SAV_248_V19_APPROVED_RUN_ID,
     authorizationId: plan.authorizationId,
     authorizationHash: plan.authorizationHash,
     planHash: plan.planHash,
@@ -31299,7 +31308,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   ).toISOString();
   const activation = await github.createCommit({
     message: activationMessage,
-    treeSha: SAV_248_V18_EMPTY_TREE_OID,
+    treeSha: SAV_248_V19_EMPTY_TREE_OID,
     parents: [genesis.oid],
     date: activationDate
   });
@@ -31316,7 +31325,7 @@ async function activateCalibrationRunWithClient(options, github, mode) {
   }
   await assertCanonicalGitHubAuthority(github);
   const durable = await github.getRef();
-  if (durable.ref !== SAV_248_V18_GIT_LEDGER_REF || durable.sha !== activation.sha) {
+  if (durable.ref !== SAV_248_V19_GIT_LEDGER_REF || durable.sha !== activation.sha) {
     throw new Error("calibration_git_activation_not_durable");
   }
   return new ActivatedCalibrationRunAuthority(activation.sha, plan, github);
@@ -31325,7 +31334,7 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(options, github)
   assertDelegatedCalibrationRetryAuthority(options);
   await assertCanonicalGitHubAuthority(github);
   const currentRef = await github.getRef();
-  if (currentRef.ref !== SAV_248_V18_GIT_LEDGER_REF) {
+  if (currentRef.ref !== SAV_248_V19_GIT_LEDGER_REF) {
     throw new Error("calibration_github_ledger_ref_invalid");
   }
   const activation = await github.getCommit(currentRef.sha);
@@ -31347,7 +31356,7 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(options, github)
   return new ActivatedCalibrationRunAuthority(
     activation.sha,
     {
-      runId: SAV_248_V18_APPROVED_RUN_ID,
+      runId: SAV_248_V19_APPROVED_RUN_ID,
       authorizationId: activationMessage.authorizationId,
       authorizationHash: activationMessage.authorizationHash,
       planHash: activationMessage.planHash,
@@ -31361,9 +31370,9 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(options, github)
 function buildCalibrationAuthorizationGenesis(plan, authorization) {
   if (authorization.authorizationStatus === "pending_explicit_product_owner_approval") {
     return {
-      date: SAV_248_V18_GENESIS_DATE,
+      date: SAV_248_V19_GENESIS_DATE,
       message: calibrationAuthorizationCommitMessage(),
-      oid: SAV_248_V18_GENESIS_COMMIT_OID
+      oid: SAV_248_V19_GENESIS_COMMIT_OID
     };
   }
   const date2 = authorization.authorizedOn;
@@ -31373,7 +31382,7 @@ function buildCalibrationAuthorizationGenesis(plan, authorization) {
     throw new Error("calibration_git_authorization_date_invalid");
   }
   const body = [
-    `tree ${SAV_248_V18_EMPTY_TREE_OID}`,
+    `tree ${SAV_248_V19_EMPTY_TREE_OID}`,
     `author ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
     `committer ${COMMIT_IDENTITY.name} <${COMMIT_IDENTITY.email}> ${timestamp2} +0000`,
     "",
@@ -31401,13 +31410,13 @@ function calibrationAuthorizationCommitMessage(plan, authorization) {
   }
   return stableJson({
     contractVersion: "evaluation-calibration-git-authorization-proposal.v1",
-    runId: SAV_248_V18_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V18_AUTHORIZATION_ID,
-    authorizationHash: sha2563(stableJson(SAV_248_V18_SPEND_AUTHORIZATION)),
-    planHash: SAV_248_V18_REBASED_PLAN_HASH,
+    runId: SAV_248_V19_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V19_AUTHORIZATION_ID,
+    authorizationHash: sha2563(stableJson(SAV_248_V19_SPEND_AUTHORIZATION)),
+    planHash: SAV_248_V19_REBASED_PLAN_HASH,
     plannedCalls: 64,
-    plannedWorstCaseNanoUsd: SAV_248_V18_REBASED_PLAN_WORST_CASE_NANO_USD,
-    predecessorAuthorities: SAV_248_V18_PREDECESSOR_AUTHORITIES
+    plannedWorstCaseNanoUsd: SAV_248_V19_REBASED_PLAN_WORST_CASE_NANO_USD,
+    predecessorAuthorities: SAV_248_V19_PREDECESSOR_AUTHORITIES
   });
 }
 function parseCalibrationSpendAuthorization(value) {
@@ -31415,15 +31424,15 @@ function parseCalibrationSpendAuthorization(value) {
     throw new Error("calibration_spend_authorization_invalid");
   }
   if (value.authorizationStatus === "pending_explicit_product_owner_approval") {
-    assertExactKeys2(value, Object.keys(SAV_248_V18_SPEND_AUTHORIZATION));
+    assertExactKeys2(value, Object.keys(SAV_248_V19_SPEND_AUTHORIZATION));
     for (const [key, expected] of Object.entries(
-      SAV_248_V18_SPEND_AUTHORIZATION
+      SAV_248_V19_SPEND_AUTHORIZATION
     )) {
       if (stableJson(value[key]) !== stableJson(expected)) {
         throw new Error(`calibration_spend_authorization_${key}_mismatch`);
       }
     }
-    return { ...SAV_248_V18_SPEND_AUTHORIZATION };
+    return { ...SAV_248_V19_SPEND_AUTHORIZATION };
   }
   return parseApprovedCalibrationSpendAuthorization(value);
 }
@@ -31451,18 +31460,18 @@ function parseApprovedCalibrationSpendAuthorization(value) {
   ];
   assertExactKeys2(value, expectedKeys);
   const authorization = value;
-  if (authorization.contractVersion !== "evaluation-calibration-spend-authorization.v18" || !/^sav248_v18_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) || authorization.runId !== SAV_248_V18_APPROVED_RUN_ID || authorization.authorizationStatus !== "approved_by_human_product_owner" || authorization.authorizationSource !== "external_product_owner_ed25519" || !Number.isFinite(new Date(authorization.authorizedOn).getTime()) || authorization.ownerId !== "saviii" || authorization.ownerRole !== "human_product_owner" || !/^[A-Za-z0-9._-]{1,80}$/.test(authorization.ownerSigningKeyId) || !/^[0-9a-f]{40}$/.test(authorization.reviewedSourceCommit) || authorization.singleAggregateRun !== true || authorization.maximumProviderCalls !== 96 || authorization.maximumPhysicalHttpAttempts !== 96 || authorization.maximumSpendUsd !== 3 || authorization.fixturePolicy !== "synthetic_or_separately_approved_only" || authorization.customerTranscriptsAllowed !== false || authorization.productionDataAllowed !== false || authorization.historicalAuthoritiesReusable !== false || stableJson(authorization.predecessorAuthorities) !== stableJson(SAV_248_V18_PREDECESSOR_AUTHORITIES)) {
+  if (authorization.contractVersion !== "evaluation-calibration-spend-authorization.v19" || !/^sav248_v19_auth_[0-9a-f]{32}$/.test(authorization.authorizationId) || authorization.runId !== SAV_248_V19_APPROVED_RUN_ID || authorization.authorizationStatus !== "approved_by_human_product_owner" || authorization.authorizationSource !== "external_product_owner_ed25519" || !Number.isFinite(new Date(authorization.authorizedOn).getTime()) || authorization.ownerId !== "saviii" || authorization.ownerRole !== "human_product_owner" || !/^[A-Za-z0-9._-]{1,80}$/.test(authorization.ownerSigningKeyId) || !/^[0-9a-f]{40}$/.test(authorization.reviewedSourceCommit) || authorization.singleAggregateRun !== true || authorization.maximumProviderCalls !== 96 || authorization.maximumPhysicalHttpAttempts !== 96 || authorization.maximumSpendUsd !== 3 || authorization.fixturePolicy !== "synthetic_or_separately_approved_only" || authorization.customerTranscriptsAllowed !== false || authorization.productionDataAllowed !== false || authorization.historicalAuthoritiesReusable !== false || stableJson(authorization.predecessorAuthorities) !== stableJson(SAV_248_V19_PREDECESSOR_AUTHORITIES)) {
     throw new Error("calibration_spend_authorization_approved_invalid");
   }
   return authorization;
 }
 async function assertCanonicalGitHubAuthority(github) {
   const repository = await github.getRepository();
-  if (repository.id !== SAV_248_V18_GITHUB_REPOSITORY_ID || repository.fullName !== `${SAV_248_V18_GITHUB_OWNER}/${SAV_248_V18_GITHUB_REPOSITORY}` || repository.owner.id !== SAV_248_V18_GITHUB_OWNER_ID || repository.owner.login !== SAV_248_V18_GITHUB_OWNER || repository.private !== true) {
+  if (repository.id !== SAV_248_V19_GITHUB_REPOSITORY_ID || repository.fullName !== `${SAV_248_V19_GITHUB_OWNER}/${SAV_248_V19_GITHUB_REPOSITORY}` || repository.owner.id !== SAV_248_V19_GITHUB_OWNER_ID || repository.owner.login !== SAV_248_V19_GITHUB_OWNER || repository.private !== true) {
     throw new Error("calibration_github_repository_identity_mismatch");
   }
   const viewer = await github.getViewer();
-  if (viewer.id !== SAV_248_V18_GITHUB_ACTIVATION_ACTOR_ID || viewer.login !== SAV_248_V18_GITHUB_ACTIVATION_ACTOR_LOGIN) {
+  if (viewer.id !== SAV_248_V19_GITHUB_ACTIVATION_ACTOR_ID || viewer.login !== SAV_248_V19_GITHUB_ACTIVATION_ACTOR_LOGIN) {
     throw new Error("calibration_github_activation_actor_mismatch");
   }
   assertCanonicalProtection(
@@ -31471,11 +31480,11 @@ async function assertCanonicalGitHubAuthority(github) {
   );
 }
 function assertCanonicalProtection(rulesets, effectiveRuleTypes) {
-  if (rulesets.length !== 2 || rulesets.filter(({ name }) => name === SAV_248_V18_IMMUTABLE_RULESET_NAME).length !== 1 || rulesets.filter(({ name }) => name === SAV_248_V18_ACTOR_RULESET_NAME).length !== 1) {
+  if (rulesets.length !== 2 || rulesets.filter(({ name }) => name === SAV_248_V19_IMMUTABLE_RULESET_NAME).length !== 1 || rulesets.filter(({ name }) => name === SAV_248_V19_ACTOR_RULESET_NAME).length !== 1) {
     throw new Error("calibration_github_ruleset_set_invalid");
   }
   const immutable = rulesets.find(
-    ({ name }) => name === SAV_248_V18_IMMUTABLE_RULESET_NAME
+    ({ name }) => name === SAV_248_V19_IMMUTABLE_RULESET_NAME
   );
   if (!immutable || !isExactRepositoryRuleset(immutable)) {
     throw new Error("calibration_github_immutable_ruleset_missing");
@@ -31484,12 +31493,12 @@ function assertCanonicalProtection(rulesets, effectiveRuleTypes) {
     throw new Error("calibration_github_immutable_ruleset_unsafe");
   }
   const actor = rulesets.find(
-    ({ name }) => name === SAV_248_V18_ACTOR_RULESET_NAME
+    ({ name }) => name === SAV_248_V19_ACTOR_RULESET_NAME
   );
   if (!actor || !isExactRepositoryRuleset(actor)) {
     throw new Error("calibration_github_actor_ruleset_missing");
   }
-  if (!hasExactStrings(actor.ruleTypes, ["creation", "update"]) || actor.bypassActors.length !== 1 || actor.bypassActors[0]?.actorId !== SAV_248_V18_GITHUB_ACTIVATION_ACTOR_ID || actor.bypassActors[0]?.actorType !== "User" || actor.bypassActors[0]?.bypassMode !== "always") {
+  if (!hasExactStrings(actor.ruleTypes, ["creation", "update"]) || actor.bypassActors.length !== 1 || actor.bypassActors[0]?.actorId !== SAV_248_V19_GITHUB_ACTIVATION_ACTOR_ID || actor.bypassActors[0]?.actorType !== "User" || actor.bypassActors[0]?.bypassMode !== "always") {
     throw new Error("calibration_github_actor_ruleset_unsafe");
   }
   const effective = new Set(effectiveRuleTypes);
@@ -31505,23 +31514,23 @@ function assertCanonicalProtection(rulesets, effectiveRuleTypes) {
   }
 }
 function isExactRepositoryRuleset(ruleset) {
-  return ruleset.source === `${SAV_248_V18_GITHUB_OWNER}/${SAV_248_V18_GITHUB_REPOSITORY}` && ruleset.sourceType === "Repository" && ruleset.target === "branch" && ruleset.enforcement === "active" && ruleset.includeRefs.length === 1 && ruleset.includeRefs[0] === SAV_248_V18_GIT_LEDGER_REF && ruleset.excludeRefs.length === 0;
+  return ruleset.source === `${SAV_248_V19_GITHUB_OWNER}/${SAV_248_V19_GITHUB_REPOSITORY}` && ruleset.sourceType === "Repository" && ruleset.target === "branch" && ruleset.enforcement === "active" && ruleset.includeRefs.length === 1 && ruleset.includeRefs[0] === SAV_248_V19_GIT_LEDGER_REF && ruleset.excludeRefs.length === 0;
 }
 function hasExactStrings(actual, expected) {
   return actual.length === expected.length && expected.every((value) => actual.includes(value));
 }
 function assertPinnedGenesisCommit(commit, genesis) {
-  if (commit.sha !== genesis.oid || commit.message !== genesis.message || commit.treeSha !== SAV_248_V18_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, genesis.date) || !isCommitIdentity(commit.committer, genesis.date)) {
+  if (commit.sha !== genesis.oid || commit.message !== genesis.message || commit.treeSha !== SAV_248_V19_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, genesis.date) || !isCommitIdentity(commit.committer, genesis.date)) {
     throw new Error("calibration_git_authorization_commit_invalid");
   }
 }
 function isValidActivationCommit(commit, plan, genesis) {
-  if (commit.treeSha !== SAV_248_V18_EMPTY_TREE_OID || commit.parents.length !== 1 || commit.parents[0] !== genesis.oid || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+  if (commit.treeSha !== SAV_248_V19_EMPTY_TREE_OID || commit.parents.length !== 1 || commit.parents[0] !== genesis.oid || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
     return false;
   }
   try {
     const parsed = JSON.parse(commit.message);
-    return parsed.contractVersion === "evaluation-calibration-git-activation.v1" && parsed.runId === SAV_248_V18_APPROVED_RUN_ID && parsed.authorizationId === plan.authorizationId && parsed.authorizationHash === plan.authorizationHash && parsed.planHash === plan.planHash && typeof parsed.activationId === "string" && parsed.activationId.length > 0;
+    return parsed.contractVersion === "evaluation-calibration-git-activation.v1" && parsed.runId === SAV_248_V19_APPROVED_RUN_ID && parsed.authorizationId === plan.authorizationId && parsed.authorizationHash === plan.authorizationHash && parsed.planHash === plan.planHash && typeof parsed.activationId === "string" && parsed.activationId.length > 0;
   } catch {
     return false;
   }
@@ -31539,7 +31548,7 @@ function assertDelegatedCalibrationRetryAuthority(options) {
   validateCalibrationPricingFreshness(options.now ?? /* @__PURE__ */ new Date());
 }
 function parseCalibrationActivationMessage(commit) {
-  if (commit.treeSha !== SAV_248_V18_EMPTY_TREE_OID || commit.parents.length !== 1 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+  if (commit.treeSha !== SAV_248_V19_EMPTY_TREE_OID || commit.parents.length !== 1 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
     throw new Error("calibration_delegated_resume_activation_commit_invalid");
   }
   const parsed = parseLedgerMessage(
@@ -31554,13 +31563,13 @@ function parseCalibrationActivationMessage(commit) {
     "planHash",
     "runId"
   ]);
-  if (parsed.contractVersion !== "evaluation-calibration-git-activation.v1" || parsed.runId !== SAV_248_V18_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || typeof parsed.activationId !== "string" || parsed.authorizationId.length === 0 || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || parsed.activationId.length === 0) {
+  if (parsed.contractVersion !== "evaluation-calibration-git-activation.v1" || parsed.runId !== SAV_248_V19_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || typeof parsed.activationId !== "string" || parsed.authorizationId.length === 0 || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || parsed.activationId.length === 0) {
     throw new Error("calibration_delegated_resume_activation_message_invalid");
   }
   return parsed;
 }
 function parseCalibrationAuthorizationLedgerMessage(commit) {
-  if (commit.treeSha !== SAV_248_V18_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
+  if (commit.treeSha !== SAV_248_V19_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
     throw new Error(
       "calibration_delegated_resume_authorization_commit_invalid"
     );
@@ -31580,7 +31589,7 @@ function parseCalibrationAuthorizationLedgerMessage(commit) {
     "reviewedSourceCommit",
     "runId"
   ]);
-  if (parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" || parsed.runId !== SAV_248_V18_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || !Number.isSafeInteger(parsed.plannedCalls) || !Number.isSafeInteger(parsed.plannedWorstCaseNanoUsd) || typeof parsed.reviewedSourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(parsed.reviewedSourceCommit) || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || stableJson(parsed.predecessorAuthorities) !== stableJson(SAV_248_V18_PREDECESSOR_AUTHORITIES)) {
+  if (parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" || parsed.runId !== SAV_248_V19_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || !Number.isSafeInteger(parsed.plannedCalls) || !Number.isSafeInteger(parsed.plannedWorstCaseNanoUsd) || typeof parsed.reviewedSourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(parsed.reviewedSourceCommit) || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || stableJson(parsed.predecessorAuthorities) !== stableJson(SAV_248_V19_PREDECESSOR_AUTHORITIES)) {
     throw new Error(
       "calibration_delegated_resume_authorization_message_invalid"
     );
@@ -31614,7 +31623,7 @@ var DirectCalibrationGitHubCasClient = class {
   async getRepository() {
     const response = await this.api(
       "GET",
-      SAV_248_V18_GITHUB_REPOSITORY_API_PATH
+      SAV_248_V19_GITHUB_REPOSITORY_API_PATH
     );
     const record = requireRecord3(response, "repository");
     const owner = requireRecord3(record.owner, "repository.owner");
@@ -31638,7 +31647,7 @@ var DirectCalibrationGitHubCasClient = class {
   async getRulesets() {
     const listed = await this.api(
       "GET",
-      `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/rulesets?includes_parents=true&targets=branch&per_page=100`
+      `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/rulesets?includes_parents=true&targets=branch&per_page=100`
     );
     if (!Array.isArray(listed)) {
       throw new Error("calibration_github_rulesets_invalid");
@@ -31646,7 +31655,7 @@ var DirectCalibrationGitHubCasClient = class {
     const rulesets = [];
     for (const item of listed) {
       const summary = requireRecord3(item, "ruleset.summary");
-      if (summary.name !== SAV_248_V18_IMMUTABLE_RULESET_NAME && summary.name !== SAV_248_V18_ACTOR_RULESET_NAME) {
+      if (summary.name !== SAV_248_V19_IMMUTABLE_RULESET_NAME && summary.name !== SAV_248_V19_ACTOR_RULESET_NAME) {
         continue;
       }
       const id = requireNumber(summary.id, "ruleset.id");
@@ -31654,7 +31663,7 @@ var DirectCalibrationGitHubCasClient = class {
         parseGitHubRuleset(
           await this.api(
             "GET",
-            `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/rulesets/${id}?includes_parents=true`
+            `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/rulesets/${id}?includes_parents=true`
           )
         )
       );
@@ -31662,10 +31671,10 @@ var DirectCalibrationGitHubCasClient = class {
     return rulesets;
   }
   async getEffectiveBranchRuleTypes() {
-    const branch = encodeURIComponent(SAV_248_V18_GIT_LEDGER_BRANCH);
+    const branch = encodeURIComponent(SAV_248_V19_GIT_LEDGER_BRANCH);
     const response = await this.api(
       "GET",
-      `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/rules/branches/${branch}`
+      `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/rules/branches/${branch}`
     );
     if (!Array.isArray(response)) {
       throw new Error("calibration_github_effective_rules_invalid");
@@ -31677,7 +31686,7 @@ var DirectCalibrationGitHubCasClient = class {
   async getRefIfPresent() {
     const response = await this.api(
       "GET",
-      `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V18_GIT_LEDGER_API_REF}`,
+      `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/git/ref/${SAV_248_V19_GIT_LEDGER_API_REF}`,
       void 0,
       { allowNotFound: true }
     );
@@ -31695,7 +31704,7 @@ var DirectCalibrationGitHubCasClient = class {
     return parseGitHubCommit(
       await this.api(
         "GET",
-        `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/git/commits/${sha}`
+        `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/git/commits/${sha}`
       )
     );
   }
@@ -31703,7 +31712,7 @@ var DirectCalibrationGitHubCasClient = class {
     return parseGitHubCommit(
       await this.api(
         "POST",
-        `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/git/commits`,
+        `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/git/commits`,
         {
           message: input.message,
           tree: input.treeSha,
@@ -31718,7 +31727,7 @@ var DirectCalibrationGitHubCasClient = class {
     const record = requireRecord3(
       await this.api(
         "POST",
-        `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/git/refs`,
+        `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/git/refs`,
         input
       ),
       "createdRef"
@@ -31729,7 +31738,7 @@ var DirectCalibrationGitHubCasClient = class {
     const record = requireRecord3(
       await this.api(
         "PATCH",
-        `${SAV_248_V18_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V18_GIT_LEDGER_API_REF}`,
+        `${SAV_248_V19_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V19_GIT_LEDGER_API_REF}`,
         input
       ),
       "updatedRef"
@@ -34249,7 +34258,7 @@ async function main() {
       );
     }
     const planned = buildCalibrationActivatedPlan({
-      authorization: ownerAuthorization?.authorization ?? SAV_248_V18_SPEND_AUTHORIZATION,
+      authorization: ownerAuthorization?.authorization ?? SAV_248_V19_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
