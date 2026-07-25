@@ -367,8 +367,8 @@ npm run calibration:plan-proposal -- \
 ```
 
 The current proposal is 64 physical calls (two symmetric runs for each of 32
-scored fixtures), 2,375,425,000 nano-USD ($2.375425) worst case, and hash
-`f04676b88e003b262549707f30d1b3b71563021850df876e55d1362ff397cd50`.
+scored fixtures), 2,432,705,000 nano-USD ($2.432705) worst case, and hash
+`543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94`.
 The former 96-call plan exceeds the $3 reservation under the current feedback
 prompt and is not authorized. Treat any other value as stale or mismatched.
 This proposal additionally pins request-policy hash
