@@ -71,7 +71,7 @@ export const SAV_248_V8_EMPTY_TREE_OID =
   "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const SAV_248_V8_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
 export const SAV_248_V8_GENESIS_COMMIT_OID =
-  "2b31ca83617c00e85b27ded369708d45ba568eea";
+  "c17f132875234fc1b6b61a3db525467f94b4fb4d";
 export const SAV_248_V8_IMMUTABLE_RULESET_NAME =
   "Meelni SAV-248 v8 calibration ledger immutable";
 export const SAV_248_V8_ACTOR_RULESET_NAME =
@@ -132,9 +132,9 @@ export const SAV_248_V8_SPEND_AUTHORIZATION: PendingCalibrationSpendAuthorizatio
     predecessorAuthorities: SAV_248_V8_PREDECESSOR_AUTHORITIES,
   };
 
-export const SAV_248_V8_REBASED_PLAN_WORST_CASE_NANO_USD = 2_375_425_000;
+export const SAV_248_V8_REBASED_PLAN_WORST_CASE_NANO_USD = 2_432_705_000;
 export const SAV_248_V8_REBASED_PLAN_HASH =
-  "f04676b88e003b262549707f30d1b3b71563021850df876e55d1362ff397cd50";
+  "543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94";
 export const SAV_248_V8_REBASED_PLAN_PROPOSED_AT = "2026-07-24T17:17:35.000Z";
 
 export interface CalibrationActivatedPlanCall {
@@ -615,9 +615,12 @@ async function activateCalibrationRunWithClient(
         sha: genesis.oid,
       });
     } catch (error) {
-      throw new Error("calibration_git_authorization_seed_lost_concurrent_cas", {
-        cause: error,
-      });
+      throw new Error(
+        "calibration_git_authorization_seed_lost_concurrent_cas",
+        {
+          cause: error,
+        }
+      );
     }
     await assertCanonicalGitHubAuthority(github);
   }
@@ -697,7 +700,8 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(
     parseCalibrationAuthorizationLedgerMessage(authorization);
   if (
     activationMessage.runId !== authorizationMessage.runId ||
-    activationMessage.authorizationId !== authorizationMessage.authorizationId ||
+    activationMessage.authorizationId !==
+      authorizationMessage.authorizationId ||
     activationMessage.authorizationHash !==
       authorizationMessage.authorizationHash ||
     activationMessage.planHash !== authorizationMessage.planHash
@@ -714,8 +718,7 @@ async function resumeDelegatedActivatedCalibrationRunWithClient(
     authorizationMessage.plannedWorstCaseNanoUsd !== plannedWorstCaseNanoUsd ||
     calls.length > options.delegatedAuthorization.maximumProviderCalls ||
     calls.length > options.delegatedAuthorization.maximumPhysicalHttpAttempts ||
-    plannedWorstCaseNanoUsd >
-      options.delegatedAuthorization.maximumSpendNanoUsd
+    plannedWorstCaseNanoUsd > options.delegatedAuthorization.maximumSpendNanoUsd
   ) {
     throw new Error("calibration_delegated_resume_plan_exceeds_authority");
   }
@@ -1056,8 +1059,7 @@ function assertDelegatedCalibrationRetryAuthority(
   options: ResumeDelegatedCalibrationRunOptions
 ): void {
   if (
-    options.delegatedAuthorization.actionClass !==
-    "synthetic_calibration_retry"
+    options.delegatedAuthorization.actionClass !== "synthetic_calibration_retry"
   ) {
     throw new Error("calibration_delegated_resume_action_invalid");
   }
@@ -1140,7 +1142,9 @@ function parseCalibrationAuthorizationLedgerMessage(
     !isCommitIdentity(commit.author, commit.author.date) ||
     !isCommitIdentity(commit.committer, commit.author.date)
   ) {
-    throw new Error("calibration_delegated_resume_authorization_commit_invalid");
+    throw new Error(
+      "calibration_delegated_resume_authorization_commit_invalid"
+    );
   }
   const parsed = parseLedgerMessage(
     commit.message,
@@ -1172,7 +1176,9 @@ function parseCalibrationAuthorizationLedgerMessage(
     stableJson(parsed.predecessorAuthorities) !==
       stableJson(SAV_248_V8_PREDECESSOR_AUTHORITIES)
   ) {
-    throw new Error("calibration_delegated_resume_authorization_message_invalid");
+    throw new Error(
+      "calibration_delegated_resume_authorization_message_invalid"
+    );
   }
   return parsed as unknown as CalibrationAuthorizationLedgerMessage;
 }

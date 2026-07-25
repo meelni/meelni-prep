@@ -129,7 +129,7 @@ test("v8 plan remains a non-executable proposal until fresh exact owner approval
     proposal.proposedPlan.plannedWorstCaseNanoUsd,
     SAV_248_V8_REBASED_PLAN_WORST_CASE_NANO_USD
   );
-  assert.equal(proposal.proposedPlan.plannedWorstCaseUsd, 2.375425);
+  assert.equal(proposal.proposedPlan.plannedWorstCaseUsd, 2.432705);
   assert.equal(proposal.authorityScope.providerCallsExecuted, false);
   assert.equal(proposal.authorityScope.ledgerActivated, false);
   assert.equal(proposal.authorityScope.launchAuthorized, false);
@@ -395,10 +395,9 @@ test("a verified owner handoff seeds an absent genesis ledger ref before activat
 
   assertPinnedFakeGenesis(state, genesis);
   assert.equal(state.refSha, authority.activationCommit);
-  assert.deepEqual(
-    state.commits.get(authority.activationCommit)?.parents,
-    [genesis.oid]
-  );
+  assert.deepEqual(state.commits.get(authority.activationCommit)?.parents, [
+    genesis.oid,
+  ]);
 });
 
 test("canonical repository and activation actor identities are immutable", async () => {
@@ -1518,7 +1517,10 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
           sha: string;
         };
         const ref = await client.createRef(body);
-        return jsonResponse({ ref: ref.ref, object: { type: "commit", sha: ref.sha } }, 201);
+        return jsonResponse(
+          { ref: ref.ref, object: { type: "commit", sha: ref.sha } },
+          201
+        );
       }
       if (input.method === "PATCH" && input.path.includes("/git/refs/")) {
         const body = JSON.parse(input.body ?? "null") as {
