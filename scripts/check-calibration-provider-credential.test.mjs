@@ -16,7 +16,7 @@ export const CALIBRATION_PRICING_CONTRACT = {
   model: "gpt-5.1-2025-11-13",
   endpoint: CALIBRATION_OFFICIAL_OPENAI_ENDPOINT,
   serviceTier: CALIBRATION_SERVICE_TIER,
-  reviewedAt: "2026-07-24T17:17:35.000Z",
+  reviewedAt: "2026-07-25T17:20:00.000Z",
   reviewTtlHours: 24,
 };
 `;
@@ -27,7 +27,7 @@ test("parses the pinned calibration pricing contract without importing mutable r
     model: "gpt-5.1-2025-11-13",
     endpoint: "https://api.openai.com/v1",
     serviceTier: "default",
-    reviewedAt: "2026-07-24T17:17:35.000Z",
+    reviewedAt: "2026-07-25T17:20:00.000Z",
     reviewTtlHours: 24,
   });
 });

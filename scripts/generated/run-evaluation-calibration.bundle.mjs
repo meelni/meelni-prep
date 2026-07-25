@@ -28396,7 +28396,7 @@ var CALIBRATION_PRICING_CONTRACT = {
   maximumSdkRetries: CALIBRATION_MAX_SDK_RETRIES,
   redirectPolicy: "error",
   requestTimeoutMs: CALIBRATION_REQUEST_TIMEOUT_MS,
-  reviewedAt: "2026-07-24T17:17:35.000Z",
+  reviewedAt: "2026-07-25T17:20:00.000Z",
   reviewTtlHours: 24,
   source: "https://developers.openai.com/api/docs/models/gpt-5.1",
   nanoUsdPerMillionTokens: {
@@ -30905,7 +30905,7 @@ var SAV_248_V11_GIT_LEDGER_REF = `refs/heads/${SAV_248_V11_GIT_LEDGER_BRANCH}`;
 var SAV_248_V11_GIT_LEDGER_API_REF = `heads/${SAV_248_V11_GIT_LEDGER_BRANCH}`;
 var SAV_248_V11_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V11_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V11_GENESIS_COMMIT_OID = "af2c098f5bb187aa37d898221b74c734aea901a5";
+var SAV_248_V11_GENESIS_COMMIT_OID = "a3b92bcbb243e1331c8b63aa96ea09e47f159ad0";
 var SAV_248_V11_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v11 calibration ledger immutable";
 var SAV_248_V11_ACTOR_RULESET_NAME = "Meelni SAV-248 v11 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -30938,7 +30938,7 @@ var SAV_248_V11_SPEND_AUTHORIZATION = {
   predecessorAuthorities: SAV_248_V11_PREDECESSOR_AUTHORITIES
 };
 var SAV_248_V11_REBASED_PLAN_WORST_CASE_NANO_USD = 2626785e3;
-var SAV_248_V11_REBASED_PLAN_HASH = "62e1cf9ab3ff5c2fed6d7993163579bc997f20d748e9c88b2f51fd6b6fe81009";
+var SAV_248_V11_REBASED_PLAN_HASH = "f02d1d49d2c66ed64fef6dd0f9f8aab518eac9d973e08775d22b129350f80818";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;
