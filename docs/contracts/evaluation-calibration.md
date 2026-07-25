@@ -197,7 +197,7 @@ For live runs, `execution.modelVersion` must be the pinned snapshot
 `evaluation-calibration-pricing.v1` binds that model to
 `https://api.openai.com/v1`, the explicit `default` service tier, zero SDK
 retries, and redirect rejection. It records the Standard pricing re-verified
-against the official model page at `2026-07-24T17:17:35.000Z`: $1.25 per
+against the official model page at `2026-07-25T17:20:00.000Z`: $1.25 per
 million uncached input tokens, $0.125 per million cached input tokens, and $10
 per million output tokens. The review expires after 24 hours; future-dated or
 stale review timestamps fail before call one.
@@ -347,7 +347,7 @@ organization owner ID `302571838`):
 `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v11`. Before call
 one, a future reviewed CLI would require that ref to point to the final
 authorization's deterministic genesis commit. The current proposal-only OID is
-`af2c098f5bb187aa37d898221b74c734aea901a5`; it must not be created and will
+`a3b92bcbb243e1331c8b63aa96ea09e47f159ad0`; it must not be created and will
 change when the authorization/source/pricing binding changes. The final
 zero-parent tree must be empty and its complete message and identity encode the
 authorization. It creates
