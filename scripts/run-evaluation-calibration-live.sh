@@ -18,7 +18,7 @@ LAUNCHER="$SCRIPT_DIR/run-evaluation-calibration-live.sh"
 BOOTSTRAP="$SCRIPT_DIR/run-evaluation-calibration-live.mjs"
 RUNTIME="$SCRIPT_DIR/generated/run-evaluation-calibration.bundle.mjs"
 STARTUP=$(/bin/realpath "$SCRIPT_DIR/../lib/evaluation/calibration-live-startup.mjs")
-MANIFEST=$(/bin/realpath "$SCRIPT_DIR/../docs/evidence/sav-248-v19-runtime-manifest.json")
+MANIFEST=$(/bin/realpath "$SCRIPT_DIR/../docs/evidence/sav-248-v20-runtime-manifest.json")
 PACKAGE_LOCK=$(/bin/realpath "$SCRIPT_DIR/../package-lock.json")
 SOURCE_REPOSITORY_ROOT=$(/bin/realpath "$SCRIPT_DIR/..")
 READY="MEELNI_CALIBRATION_READY_V1"
@@ -225,7 +225,7 @@ if [ "$test_mode" != "1" ]; then
   attest_reviewed_file "$LAUNCHER" "scripts/run-evaluation-calibration-live.sh" "$reviewed_source_commit"
   attest_reviewed_file "$BOOTSTRAP" "scripts/run-evaluation-calibration-live.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$STARTUP" "lib/evaluation/calibration-live-startup.mjs" "$reviewed_source_commit"
-  attest_reviewed_file "$MANIFEST" "docs/evidence/sav-248-v19-runtime-manifest.json" "$reviewed_source_commit"
+  attest_reviewed_file "$MANIFEST" "docs/evidence/sav-248-v20-runtime-manifest.json" "$reviewed_source_commit"
   attest_reviewed_file "$RUNTIME" "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
   attest_reviewed_file "$PACKAGE_LOCK" "package-lock.json" "$reviewed_source_commit"
   [ -x "$NODE_BIN" ] || fail "calibration_live_launcher_node_missing"
@@ -247,7 +247,7 @@ if [ "$test_mode" != "1" ]; then
   /bin/chmod 700 "$sealed_root" || fail "calibration_live_launcher_sealed_root_mode_failed"
   seal_reviewed_file "scripts/run-evaluation-calibration-live.mjs" "$reviewed_source_commit"
   seal_reviewed_file "lib/evaluation/calibration-live-startup.mjs" "$reviewed_source_commit"
-  seal_reviewed_file "docs/evidence/sav-248-v19-runtime-manifest.json" "$reviewed_source_commit"
+  seal_reviewed_file "docs/evidence/sav-248-v20-runtime-manifest.json" "$reviewed_source_commit"
   seal_reviewed_file "scripts/generated/run-evaluation-calibration.bundle.mjs" "$reviewed_source_commit"
   seal_reviewed_file "package-lock.json" "$reviewed_source_commit"
   /bin/cp "$NODE_BIN" "$sealed_root/node" || \
