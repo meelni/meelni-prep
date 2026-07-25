@@ -43,7 +43,7 @@ Record evidence links in SAV-176 before enabling the Preview gate:
 3. SAV-226 proves isolated Preview Supabase, Stripe test mode/webhook, LiveKit
    project/agents, and Inngest configuration with no shared Production provider
    identity.
-4. SAV-198/SAV-248 v9 terminal calibration evidence is recorded truthfully,
+4. SAV-198/SAV-248 v10 terminal calibration evidence is recorded truthfully,
    including the bounded synthetic provider run if separately authorized. The
    consumed v3 through v7 lanes are historical failure evidence, not the current
    terminal calibration path.

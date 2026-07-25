@@ -26,7 +26,7 @@ import {
   CALIBRATION_OWNER_ID,
   CALIBRATION_OWNER_KEY_REGISTRY_CONTRACT,
   CALIBRATION_OWNER_ROLE,
-  SAV_248_V9_PREDECESSOR_AUTHORITIES,
+  SAV_248_V10_PREDECESSOR_AUTHORITIES,
   calibrationOwnerAuthorizationSignatureMessage,
   verifyCalibrationOwnerAuthorization,
   type ApprovedCalibrationSpendAuthorization,
@@ -44,26 +44,26 @@ import {
   CALIBRATION_PRICING_CONTRACT,
 } from "./calibration-budget";
 import {
-  SAV_248_V9_ACTOR_RULESET_NAME,
-  SAV_248_V9_APPROVED_RUN_ID,
-  SAV_248_V9_EMPTY_TREE_OID,
-  SAV_248_V9_GENESIS_COMMIT_OID,
-  SAV_248_V9_GENESIS_DATE,
-  SAV_248_V9_GITHUB_ACTIVATION_ACTOR_ID,
-  SAV_248_V9_GITHUB_ACTIVATION_ACTOR_LOGIN,
-  SAV_248_V9_GITHUB_OWNER,
-  SAV_248_V9_GITHUB_OWNER_ID,
-  SAV_248_V9_GITHUB_REPOSITORY,
-  SAV_248_V9_GITHUB_REPOSITORY_ID,
-  SAV_248_V9_GIT_LEDGER_REF,
-  SAV_248_V9_IMMUTABLE_RULESET_NAME,
-  SAV_248_V9_REBASED_PLAN_PROPOSED_AT,
-  SAV_248_V9_SPEND_AUTHORIZATION,
-  SAV_248_V9_REBASED_PLAN_HASH,
-  SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD,
+  SAV_248_V10_ACTOR_RULESET_NAME,
+  SAV_248_V10_APPROVED_RUN_ID,
+  SAV_248_V10_EMPTY_TREE_OID,
+  SAV_248_V10_GENESIS_COMMIT_OID,
+  SAV_248_V10_GENESIS_DATE,
+  SAV_248_V10_GITHUB_ACTIVATION_ACTOR_ID,
+  SAV_248_V10_GITHUB_ACTIVATION_ACTOR_LOGIN,
+  SAV_248_V10_GITHUB_OWNER,
+  SAV_248_V10_GITHUB_OWNER_ID,
+  SAV_248_V10_GITHUB_REPOSITORY,
+  SAV_248_V10_GITHUB_REPOSITORY_ID,
+  SAV_248_V10_GIT_LEDGER_REF,
+  SAV_248_V10_IMMUTABLE_RULESET_NAME,
+  SAV_248_V10_REBASED_PLAN_PROPOSED_AT,
+  SAV_248_V10_SPEND_AUTHORIZATION,
+  SAV_248_V10_REBASED_PLAN_HASH,
+  SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD,
   activateCalibrationRun,
   buildCalibrationAuthorizationGenesis,
-  buildSAV248V9PlanProposal,
+  buildSAV248V10PlanProposal,
   buildCalibrationActivatedPlan,
   calibrationAuthorizationCommitMessage,
   calibrationRunLedgerTestSeam,
@@ -75,35 +75,35 @@ import {
   type GitHubRuleset,
 } from "./calibration-run-ledger";
 
-const NOW = new Date(SAV_248_V9_REBASED_PLAN_PROPOSED_AT);
+const NOW = new Date(SAV_248_V10_REBASED_PLAN_PROPOSED_AT);
 
 test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.deepEqual(
-    parseCalibrationSpendAuthorization(SAV_248_V9_SPEND_AUTHORIZATION),
-    SAV_248_V9_SPEND_AUTHORIZATION
+    parseCalibrationSpendAuthorization(SAV_248_V10_SPEND_AUTHORIZATION),
+    SAV_248_V10_SPEND_AUTHORIZATION
   );
   assert.throws(
     () =>
       parseCalibrationSpendAuthorization({
-        ...SAV_248_V9_SPEND_AUTHORIZATION,
+        ...SAV_248_V10_SPEND_AUTHORIZATION,
         runId: "mint-another-budget",
       }),
     /runId_mismatch/
   );
 
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_248_V9_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V10_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: CALIBRATION_PRICING_CONTRACT.model,
     repetitions: 2,
     now: NOW,
   });
-  assert.equal(plan.runId, SAV_248_V9_APPROVED_RUN_ID);
+  assert.equal(plan.runId, SAV_248_V10_APPROVED_RUN_ID);
   assert.equal(plan.plannedCalls, 64);
   assert.equal(plan.calls.length, 64);
   assert.equal(
     plan.plannedWorstCaseNanoUsd,
-    SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD
+    SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD
   );
   assert.ok(plan.plannedWorstCaseNanoUsd <= CALIBRATION_MAX_SPEND_NANO_USD);
   assert.equal(plan.planHash.length, 64);
@@ -111,11 +111,11 @@ test("authorization pre-reserves one exact approved aggregate plan", () => {
   assert.equal(plan.approvalHash.length, 64);
   assert.equal(plan.pricingHash.length, 64);
   assert.equal(new Set(plan.calls.map(({ callKey }) => callKey)).size, 64);
-  assert.equal(deterministicGenesisOid(), SAV_248_V9_GENESIS_COMMIT_OID);
+  assert.equal(deterministicGenesisOid(), SAV_248_V10_GENESIS_COMMIT_OID);
 });
 
-test("v9 plan remains a non-executable proposal until fresh exact owner approval", async () => {
-  const proposal = buildSAV248V9PlanProposal(
+test("v10 plan remains a non-executable proposal until fresh exact owner approval", async () => {
+  const proposal = buildSAV248V10PlanProposal(
     buildDelegatedEvaluationAdjudicationApproval()
   );
   assert.equal(proposal.authorization.authorizationChanged, true);
@@ -124,10 +124,10 @@ test("v9 plan remains a non-executable proposal until fresh exact owner approval
   assert.equal(proposal.decision, "pending_explicit_product_owner_approval");
   assert.equal(proposal.authorityScope.freshSpendAuthorizationCaptured, false);
   assert.equal(proposal.proposedPlan.reviewedSourceCommit, null);
-  assert.equal(proposal.proposedPlan.planHash, SAV_248_V9_REBASED_PLAN_HASH);
+  assert.equal(proposal.proposedPlan.planHash, SAV_248_V10_REBASED_PLAN_HASH);
   assert.equal(
     proposal.proposedPlan.plannedWorstCaseNanoUsd,
-    SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD
+    SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD
   );
   assert.equal(proposal.proposedPlan.plannedWorstCaseUsd, 2.507905);
   assert.equal(proposal.authorityScope.providerCallsExecuted, false);
@@ -138,17 +138,17 @@ test("v9 plan remains a non-executable proposal until fresh exact owner approval
       readFileSync(
         join(
           process.cwd(),
-          "docs/evidence/sav-248-v9-paid-run-authorization-proposal.json"
+          "docs/evidence/sav-248-v10-paid-run-authorization-proposal.json"
         ),
         "utf8"
       )
     ),
-    SAV_248_V9_SPEND_AUTHORIZATION
+    SAV_248_V10_SPEND_AUTHORIZATION
   );
   assert.deepEqual(
     JSON.parse(
       readFileSync(
-        join(process.cwd(), "docs/evidence/sav-248-v9-plan-proposal.json"),
+        join(process.cwd(), "docs/evidence/sav-248-v10-plan-proposal.json"),
         "utf8"
       )
     ),
@@ -416,7 +416,7 @@ test("canonical repository and activation actor identities are immutable", async
       () => activate(new FakeGitHubClient(state)),
       /repository_identity_mismatch|activation_actor_mismatch/
     );
-    assert.equal(state.refSha, SAV_248_V9_GENESIS_COMMIT_OID);
+    assert.equal(state.refSha, SAV_248_V10_GENESIS_COMMIT_OID);
   }
 });
 
@@ -440,13 +440,13 @@ test("activation requires the exact deterministic pinned genesis OID and payload
       author: {
         ...commitIdentity(),
         date: new Date(
-          new Date(SAV_248_V9_GENESIS_DATE).getTime() + 1_000
+          new Date(SAV_248_V10_GENESIS_DATE).getTime() + 1_000
         ).toISOString(),
       },
     },
   ] satisfies Array<Partial<GitHubCommit>>) {
     const state = createCanonicalState();
-    state.commits.set(SAV_248_V9_GENESIS_COMMIT_OID, genesisCommit(patch));
+    state.commits.set(SAV_248_V10_GENESIS_COMMIT_OID, genesisCommit(patch));
     await assert.rejects(
       () => activate(new FakeGitHubClient(state)),
       /authorization_commit_invalid/
@@ -459,23 +459,23 @@ test("activation refuses absent, inactive, bypassable, or incomplete protection"
     (state) => (state.rulesets = []),
     (state) =>
       (state.rulesets.find(
-        ({ name }) => name === SAV_248_V9_IMMUTABLE_RULESET_NAME
+        ({ name }) => name === SAV_248_V10_IMMUTABLE_RULESET_NAME
       )!.enforcement = "disabled"),
     (state) =>
       (state.rulesets.find(
-        ({ name }) => name === SAV_248_V9_IMMUTABLE_RULESET_NAME
+        ({ name }) => name === SAV_248_V10_IMMUTABLE_RULESET_NAME
       )!.ruleTypes = ["non_fast_forward"]),
     (state) =>
       state.rulesets
-        .find(({ name }) => name === SAV_248_V9_IMMUTABLE_RULESET_NAME)!
+        .find(({ name }) => name === SAV_248_V10_IMMUTABLE_RULESET_NAME)!
         .bypassActors.push({
-          actorId: SAV_248_V9_GITHUB_ACTIVATION_ACTOR_ID,
+          actorId: SAV_248_V10_GITHUB_ACTIVATION_ACTOR_ID,
           actorType: "User",
           bypassMode: "always",
         }),
     (state) =>
       state.rulesets
-        .find(({ name }) => name === SAV_248_V9_ACTOR_RULESET_NAME)!
+        .find(({ name }) => name === SAV_248_V10_ACTOR_RULESET_NAME)!
         .bypassActors.push({
           actorId: null,
           actorType: "OrganizationAdmin",
@@ -484,11 +484,11 @@ test("activation refuses absent, inactive, bypassable, or incomplete protection"
     (state) => (state.effectiveRuleTypes = ["creation", "deletion", "update"]),
     (state) =>
       (state.rulesets.find(
-        ({ name }) => name === SAV_248_V9_ACTOR_RULESET_NAME
+        ({ name }) => name === SAV_248_V10_ACTOR_RULESET_NAME
       )!.includeRefs = ["refs/heads/not-the-ledger"]),
     (state) =>
       (state.rulesets.find(
-        ({ name }) => name === SAV_248_V9_ACTOR_RULESET_NAME
+        ({ name }) => name === SAV_248_V10_ACTOR_RULESET_NAME
       )!.ruleTypes = ["update"]),
   ];
 
@@ -499,7 +499,7 @@ test("activation refuses absent, inactive, bypassable, or incomplete protection"
       () => activate(new FakeGitHubClient(state)),
       /ruleset|protection/
     );
-    assert.equal(state.refSha, SAV_248_V9_GENESIS_COMMIT_OID);
+    assert.equal(state.refSha, SAV_248_V10_GENESIS_COMMIT_OID);
   }
 });
 
@@ -546,7 +546,7 @@ test("request authority fails closed when protection or activated ref changes", 
 
   const secondState = createCanonicalState();
   const second = await activate(new FakeGitHubClient(secondState));
-  secondState.refSha = SAV_248_V9_GENESIS_COMMIT_OID;
+  secondState.refSha = SAV_248_V10_GENESIS_COMMIT_OID;
   await assert.rejects(
     () => second.assertRequestAuthority(),
     /activation_is_not_current/
@@ -568,11 +568,11 @@ test("direct GitHub transport ignores PATH and accepts only canonical API data",
           authorization: input.headers.Authorization,
         });
         return jsonResponse({
-          id: SAV_248_V9_GITHUB_REPOSITORY_ID,
-          full_name: `${SAV_248_V9_GITHUB_OWNER}/${SAV_248_V9_GITHUB_REPOSITORY}`,
+          id: SAV_248_V10_GITHUB_REPOSITORY_ID,
+          full_name: `${SAV_248_V10_GITHUB_OWNER}/${SAV_248_V10_GITHUB_REPOSITORY}`,
           owner: {
-            id: SAV_248_V9_GITHUB_OWNER_ID,
-            login: SAV_248_V9_GITHUB_OWNER,
+            id: SAV_248_V10_GITHUB_OWNER_ID,
+            login: SAV_248_V10_GITHUB_OWNER,
           },
           private: true,
         });
@@ -586,7 +586,7 @@ test("direct GitHub transport ignores PATH and accepts only canonical API data",
   );
   assert.deepEqual(requests, [
     {
-      path: `/repos/${SAV_248_V9_GITHUB_OWNER}/${SAV_248_V9_GITHUB_REPOSITORY}`,
+      path: `/repos/${SAV_248_V10_GITHUB_OWNER}/${SAV_248_V10_GITHUB_REPOSITORY}`,
       authorization: "Bearer test-github-token",
     },
   ]);
@@ -1001,7 +1001,7 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
 
   getRefIfPresent(): GitHubRef | null {
     if (!this.state.refSha) return null;
-    return { ref: SAV_248_V9_GIT_LEDGER_REF, sha: this.state.refSha };
+    return { ref: SAV_248_V10_GIT_LEDGER_REF, sha: this.state.refSha };
   }
 
   getRef(): GitHubRef {
@@ -1039,10 +1039,10 @@ class FakeGitHubClient implements CalibrationGitHubCasClient {
   }
 
   createRef(input: {
-    ref: typeof SAV_248_V9_GIT_LEDGER_REF;
+    ref: typeof SAV_248_V10_GIT_LEDGER_REF;
     sha: string;
   }): GitHubRef {
-    assert.equal(input.ref, SAV_248_V9_GIT_LEDGER_REF);
+    assert.equal(input.ref, SAV_248_V10_GIT_LEDGER_REF);
     if (this.state.refSha) throw new Error("fake_ref_already_exists");
     if (!this.state.commits.has(input.sha)) {
       throw new Error("fake_ref_sha_missing");
@@ -1079,7 +1079,7 @@ function activationOptions(
   activationId: string
 ): ActivateCalibrationRunOptions {
   return {
-    authorization: SAV_248_V9_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V10_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: CALIBRATION_PRICING_CONTRACT.model,
     repetitions: 2,
@@ -1090,24 +1090,24 @@ function activationOptions(
 
 function createCanonicalState(
   genesis: ReturnType<typeof buildCalibrationAuthorizationGenesis> = {
-    date: SAV_248_V9_GENESIS_DATE,
+    date: SAV_248_V10_GENESIS_DATE,
     message: calibrationAuthorizationCommitMessage(),
-    oid: SAV_248_V9_GENESIS_COMMIT_OID,
+    oid: SAV_248_V10_GENESIS_COMMIT_OID,
   }
 ): FakeGitHubState {
   return {
     repository: {
-      id: SAV_248_V9_GITHUB_REPOSITORY_ID,
-      fullName: `${SAV_248_V9_GITHUB_OWNER}/${SAV_248_V9_GITHUB_REPOSITORY}`,
+      id: SAV_248_V10_GITHUB_REPOSITORY_ID,
+      fullName: `${SAV_248_V10_GITHUB_OWNER}/${SAV_248_V10_GITHUB_REPOSITORY}`,
       owner: {
-        id: SAV_248_V9_GITHUB_OWNER_ID,
-        login: SAV_248_V9_GITHUB_OWNER,
+        id: SAV_248_V10_GITHUB_OWNER_ID,
+        login: SAV_248_V10_GITHUB_OWNER,
       },
       private: true,
     },
     viewer: {
-      id: SAV_248_V9_GITHUB_ACTIVATION_ACTOR_ID,
-      login: SAV_248_V9_GITHUB_ACTIVATION_ACTOR_LOGIN,
+      id: SAV_248_V10_GITHUB_ACTIVATION_ACTOR_ID,
+      login: SAV_248_V10_GITHUB_ACTIVATION_ACTOR_LOGIN,
     },
     rulesets: canonicalRulesets(),
     effectiveRuleTypes: ["creation", "deletion", "non_fast_forward", "update"],
@@ -1137,26 +1137,26 @@ function createUnseededCanonicalState(
 
 function canonicalRulesets(): GitHubRuleset[] {
   const base = {
-    source: `${SAV_248_V9_GITHUB_OWNER}/${SAV_248_V9_GITHUB_REPOSITORY}`,
+    source: `${SAV_248_V10_GITHUB_OWNER}/${SAV_248_V10_GITHUB_REPOSITORY}`,
     sourceType: "Repository",
     target: "branch",
     enforcement: "active",
-    includeRefs: [SAV_248_V9_GIT_LEDGER_REF],
+    includeRefs: [SAV_248_V10_GIT_LEDGER_REF],
     excludeRefs: [],
   };
   return [
     {
       ...base,
-      name: SAV_248_V9_IMMUTABLE_RULESET_NAME,
+      name: SAV_248_V10_IMMUTABLE_RULESET_NAME,
       bypassActors: [],
       ruleTypes: ["deletion", "non_fast_forward"],
     },
     {
       ...base,
-      name: SAV_248_V9_ACTOR_RULESET_NAME,
+      name: SAV_248_V10_ACTOR_RULESET_NAME,
       bypassActors: [
         {
-          actorId: SAV_248_V9_GITHUB_ACTIVATION_ACTOR_ID,
+          actorId: SAV_248_V10_GITHUB_ACTIVATION_ACTOR_ID,
           actorType: "User",
           bypassMode: "always",
         },
@@ -1168,12 +1168,12 @@ function canonicalRulesets(): GitHubRuleset[] {
 
 function genesisCommit(patch: Partial<GitHubCommit> = {}): GitHubCommit {
   return {
-    sha: SAV_248_V9_GENESIS_COMMIT_OID,
+    sha: SAV_248_V10_GENESIS_COMMIT_OID,
     message: calibrationAuthorizationCommitMessage(),
-    treeSha: SAV_248_V9_EMPTY_TREE_OID,
+    treeSha: SAV_248_V10_EMPTY_TREE_OID,
     parents: [],
-    author: commitIdentity(SAV_248_V9_GENESIS_DATE),
-    committer: commitIdentity(SAV_248_V9_GENESIS_DATE),
+    author: commitIdentity(SAV_248_V10_GENESIS_DATE),
+    committer: commitIdentity(SAV_248_V10_GENESIS_DATE),
     ...patch,
   };
 }
@@ -1199,7 +1199,7 @@ function fakeCommitSha(input: {
     .digest("hex");
 }
 
-function commitIdentity(date = SAV_248_V9_GENESIS_DATE) {
+function commitIdentity(date = SAV_248_V10_GENESIS_DATE) {
   return {
     name: "Meelni Calibration Authorization",
     email: "calibration-ledger@meelni.invalid",
@@ -1212,8 +1212,8 @@ function assertPayloadFreeActivation(
   activationCommit: string
 ): void {
   const commit = state.commits.get(activationCommit)!;
-  assert.equal(commit.treeSha, SAV_248_V9_EMPTY_TREE_OID);
-  assert.deepEqual(commit.parents, [SAV_248_V9_GENESIS_COMMIT_OID]);
+  assert.equal(commit.treeSha, SAV_248_V10_EMPTY_TREE_OID);
+  assert.deepEqual(commit.parents, [SAV_248_V10_GENESIS_COMMIT_OID]);
   assert.equal(
     commit.message.includes(evaluationCalibrationCases[0].transcript[0].text),
     false
@@ -1229,7 +1229,7 @@ function assertPinnedFakeGenesis(
   assert.ok(commit);
   assert.equal(commit.sha, genesis.oid);
   assert.equal(commit.message, genesis.message);
-  assert.equal(commit.treeSha, SAV_248_V9_EMPTY_TREE_OID);
+  assert.equal(commit.treeSha, SAV_248_V10_EMPTY_TREE_OID);
   assert.deepEqual(commit.parents, []);
   assert.deepEqual(commit.author, commitIdentity(genesis.date));
   assert.deepEqual(commit.committer, commitIdentity(genesis.date));
@@ -1257,7 +1257,7 @@ function delegatedCalibrationRetryAuthorization(
         reviewedSourcePolicy: "merged_repo_only_guardrail_repairs_allowed",
         maximumProviderCalls: 64,
         maximumPhysicalHttpAttempts: 64,
-        maximumSpendNanoUsd: SAV_248_V9_REBASED_PLAN_WORST_CASE_NANO_USD,
+        maximumSpendNanoUsd: SAV_248_V10_REBASED_PLAN_WORST_CASE_NANO_USD,
         customerTranscriptsAllowed: false,
         productionDataAllowed: false,
         launchDecision: null,
@@ -1291,9 +1291,9 @@ function buildVerifiedOwnerAuthorization() {
   const keyId = "owner-calibration-test";
   const authorizedOn = NOW.toISOString();
   const authorization: ApprovedCalibrationSpendAuthorization = {
-    contractVersion: "evaluation-calibration-spend-authorization.v9",
-    authorizationId: "sav248_v9_auth_0123456789abcdef0123456789abcdef",
-    runId: SAV_248_V9_APPROVED_RUN_ID,
+    contractVersion: "evaluation-calibration-spend-authorization.v10",
+    authorizationId: "sav248_v10_auth_0123456789abcdef0123456789abcdef",
+    runId: SAV_248_V10_APPROVED_RUN_ID,
     authorizationStatus: "approved_by_human_product_owner",
     authorizedOn,
     authorizationSource: "external_product_owner_ed25519",
@@ -1309,7 +1309,7 @@ function buildVerifiedOwnerAuthorization() {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V9_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V10_PREDECESSOR_AUTHORITIES,
   };
   const plan = buildCalibrationActivatedPlan({
     authorization,
@@ -1320,7 +1320,7 @@ function buildVerifiedOwnerAuthorization() {
   });
   const payload: CalibrationOwnerAuthorizationPayload = {
     authorizationId: authorization.authorizationId,
-    runId: SAV_248_V9_APPROVED_RUN_ID,
+    runId: SAV_248_V10_APPROVED_RUN_ID,
     ownerId: CALIBRATION_OWNER_ID,
     ownerRole: CALIBRATION_OWNER_ROLE,
     approvalDecision: CALIBRATION_OWNER_APPROVAL_DECISION,
@@ -1339,7 +1339,7 @@ function buildVerifiedOwnerAuthorization() {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V9_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V10_PREDECESSOR_AUTHORITIES,
     issuedAt: authorizedOn,
     expiresAt: new Date(NOW.getTime() + 15 * 60 * 1_000).toISOString(),
   };
@@ -1379,10 +1379,10 @@ function buildVerifiedOwnerAuthorization() {
 
 function deterministicGenesisOid(): string {
   const timestamp = Math.floor(
-    new Date(SAV_248_V9_GENESIS_DATE).getTime() / 1_000
+    new Date(SAV_248_V10_GENESIS_DATE).getTime() / 1_000
   );
   const body = [
-    `tree ${SAV_248_V9_EMPTY_TREE_OID}`,
+    `tree ${SAV_248_V10_EMPTY_TREE_OID}`,
     `author Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
     `committer Meelni Calibration Authorization <calibration-ledger@meelni.invalid> ${timestamp} +0000`,
     "",
@@ -1436,7 +1436,7 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
       if (
         input.method === "GET" &&
         input.path ===
-          `/repos/${SAV_248_V9_GITHUB_OWNER}/${SAV_248_V9_GITHUB_REPOSITORY}`
+          `/repos/${SAV_248_V10_GITHUB_OWNER}/${SAV_248_V10_GITHUB_REPOSITORY}`
       ) {
         return jsonResponse({
           id: state.repository.id,
@@ -1513,7 +1513,7 @@ function fakeGitHubApiTransport(state: FakeGitHubState) {
       }
       if (input.method === "POST" && input.path.endsWith("/git/refs")) {
         const body = JSON.parse(input.body ?? "null") as {
-          ref: typeof SAV_248_V9_GIT_LEDGER_REF;
+          ref: typeof SAV_248_V10_GIT_LEDGER_REF;
           sha: string;
         };
         const ref = await client.createRef(body);
