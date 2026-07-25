@@ -26,8 +26,8 @@ import {
 } from "./calibration-budget";
 import {
   buildCalibrationActivatedPlan,
-  SAV_248_V17_APPROVED_RUN_ID,
-  SAV_248_V17_SPEND_AUTHORIZATION,
+  SAV_248_V18_APPROVED_RUN_ID,
+  SAV_248_V18_SPEND_AUTHORIZATION,
 } from "./calibration-run-ledger";
 import {
   FeedbackProviderInvocationError,
@@ -808,7 +808,7 @@ test("approved live automation remains pending until semantic review passes", as
   assert.equal(report.execution.cost?.attemptedCalls, 64);
   assert.equal(
     report.execution.cost?.authorizedRunId,
-    SAV_248_V17_APPROVED_RUN_ID
+    SAV_248_V18_APPROVED_RUN_ID
   );
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 64);
@@ -946,7 +946,7 @@ function withProviderUsage(
 
 function liveGuard(): CalibrationSpendGuard {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_248_V17_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V18_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
     repetitions: 2,
@@ -955,8 +955,8 @@ function liveGuard(): CalibrationSpendGuard {
   let spend = createEmptyCalibrationSpendState();
   const persistence: CalibrationSpendPersistence = {
     durable: true,
-    runId: SAV_248_V17_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V17_SPEND_AUTHORIZATION.authorizationId,
+    runId: SAV_248_V18_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V18_SPEND_AUTHORIZATION.authorizationId,
     authorizationHash: plan.authorizationHash,
     activationCommit: "test-activation-commit",
     planHash: plan.planHash,

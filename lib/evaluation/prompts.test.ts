@@ -43,6 +43,14 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /Every number, number word/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
+    /Do not use absolute terms in any observation/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /avoid all, always, completely, entirely, every, never, no, none, and only/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
     /directly state the positive behavior/
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /Confidence above 0\.9 requires/);
