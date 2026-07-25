@@ -1,0 +1,142 @@
+{
+  "contractVersion": "evaluation-calibration-plan-proposal.v1",
+  "decision": "pending_explicit_product_owner_approval",
+  "decisionSource": null,
+  "humanReviewerIdentity": null,
+  "proposedAt": "2026-07-25T22:05:00.000Z",
+  "acceptanceBasis": "fresh_v18_authorization_and_exact_source_commit_still_required",
+  "authorization": {
+    "authorizationId": "sav-248-pending-paid-calibration-authorization.v18",
+    "runId": "sav-248-authorized-paid-calibration.v18",
+    "authorizationStatus": "pending_explicit_product_owner_approval",
+    "authorizedOn": null,
+    "authorizationSource": null,
+    "reviewedSourceCommit": null,
+    "maximumProviderCalls": 96,
+    "maximumPhysicalHttpAttempts": 96,
+    "maximumSpendUsd": 3,
+    "authorizationChanged": true,
+    "historicalAuthoritiesReusable": false,
+    "predecessorAuthorities": [
+      {
+        "runId": "sav-198-authorized-paid-calibration.v1",
+        "ref": "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
+        "activationCommit": "4acdf549eecad5fe88d685c28fbc98d7475b8f05"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v2",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v2",
+        "activationCommit": "d0c4fc4c028b10d8616fdde337be150315a7798c"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v3",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v3",
+        "activationCommit": "1baee0b82c61cb6d89dbe9dc23cee1beccf72b31"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v4",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v4",
+        "activationCommit": "feb7591898145bcb6bec9526c650f705f2530270"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v5",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v5",
+        "activationCommit": "78295d40c19ba366a64956010af9535b283aaf44"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v6",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v6",
+        "activationCommit": "b23e5d54fb21d72e1043a4404fea1ac691e31a89"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v7",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v7",
+        "activationCommit": "52f7e105db37ab0a48d3b4a2e5a692d0e1ccd840"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v8",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v8",
+        "activationCommit": "a8f342f39f548401d91b5c2cf9f073b3f0cfd9cd"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v9",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9",
+        "activationCommit": "08864c3bfad23d6c394847ccbef5ffca87347275"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v10",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v10",
+        "activationCommit": "9672ea31973fa6e02b93df8e48904efa7e894840"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v11",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v11",
+        "activationCommit": "3b84b1029f64cb488d6a4a7cff119cb98ccad2de"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v12",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v12",
+        "activationCommit": "0f446eddd7dce9d4d239ea10bc78decff5ddb032"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v13",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v13",
+        "activationCommit": "699a8e9e878ae62cb353e9f577df844775219b02"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v14",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v14",
+        "activationCommit": "1a1cbb05987d1a35490d5558b781c5709acd80e7"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v15",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v15",
+        "activationCommit": "b09bb853ed78da86a267dce3c68c8c14d56e7c5c"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v16",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v16",
+        "activationCommit": "7619183899331afb898aeb7bacd237fbb4a199af"
+      },
+      {
+        "runId": "sav-248-authorized-paid-calibration.v17",
+        "ref": "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v17",
+        "activationCommit": "07efb6c47318643fc97686edb2e6ae9f5ba49d86"
+      }
+    ]
+  },
+  "proposedPlan": {
+    "planHash": "b9c1d61796cc41c5769b602c1732803b1d61a4654115fafddef95b7e122daa05",
+    "plannedCalls": 64,
+    "plannedWorstCaseNanoUsd": 2894545000,
+    "plannedWorstCaseUsd": 2.894545,
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+    "approvalHash": "adba410cd2e2b434d772a6e2434fd3c74ca4a02931e29469e4cb32ef880e8b9c",
+    "model": "gpt-5.1-2025-11-13",
+    "endpoint": "https://api.openai.com/v1",
+    "serviceTier": "default",
+    "repetitions": 2,
+    "pricingHash": "dc09cfd7817f517051f90007a69404e989a042ef17a70b960518b2470e250674",
+    "promptVersion": "feedback.prompt.v2",
+    "promptHash": "1b446c112acfe2f3f0da2394869e7881127502f54760e5fdefdc01722141e41a",
+    "responseFormatVersion": "feedback-provider-response-format.v5",
+    "responseFormatHash": "f36b21d43f8c17efc2b5bacb5af86b8e11b5a2f890672feaae54a5535a7e3cc3",
+    "requestPolicyVersion": "feedback-calibration-request-policy.v1",
+    "requestPolicyHash": "320ad803aab471a09a37e2384be525ca124eeb58af4d21063cb788e6b1e70a1f",
+    "reviewedSourceCommit": null
+  },
+  "unchangedControls": {
+    "model": true,
+    "fixtures": true,
+    "maximumCalls": true,
+    "maximumSpend": true,
+    "semanticApproval": true
+  },
+  "authorityScope": {
+    "freshSpendAuthorizationCaptured": false,
+    "providerCallsExecuted": false,
+    "ledgerActivated": false,
+    "launchAuthorized": false
+  }
+}
