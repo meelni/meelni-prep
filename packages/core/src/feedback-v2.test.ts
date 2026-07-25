@@ -1950,6 +1950,48 @@ test("scopes negation independently across coordinated clauses", () => {
   }
 });
 
+test("scopes negative targets to the local clause when evidence mixes positive and negative claims", () => {
+  const response = validResponse();
+  const source =
+    "I would watch general usage after launch; I have not selected an outcome metric, guardrail, or decision threshold.";
+  response.improvements[0].observation =
+    "Mentions watch general usage after launch and not selected an outcome metric, which keeps the thinking broad.";
+  response.improvements[0].transcriptRefs = ["writer-a:2"];
+  response.improvements[0].evidence = [{ turnRef: "writer-a:2", quote: source }];
+
+  const parsed = parseFeedbackV2(response, {
+    transcript: [transcript[0], { ...transcript[1], text: source }],
+    evaluationState: "full",
+    modelVersion: "gpt-test-1",
+  });
+
+  assert.equal(
+    parsed.improvements[0].observation,
+    response.improvements[0].observation
+  );
+});
+
+test("scopes absence targets to the local clause when evidence mixes positive and unresolved choices", () => {
+  const response = validResponse();
+  const source =
+    "After that I would brainstorm features for everyone instead of choosing a user segment.";
+  response.improvements[0].observation =
+    "Says they would brainstorm features for everyone instead of choosing a user segment, which leaves the decision about a focused user segment unresolved.";
+  response.improvements[0].transcriptRefs = ["writer-a:2"];
+  response.improvements[0].evidence = [{ turnRef: "writer-a:2", quote: source }];
+
+  const parsed = parseFeedbackV2(response, {
+    transcript: [transcript[0], { ...transcript[1], text: source }],
+    evaluationState: "full",
+    modelVersion: "gpt-test-1",
+  });
+
+  assert.equal(
+    parsed.improvements[0].observation,
+    response.improvements[0].observation
+  );
+});
+
 test("recognizes a positive coordinated predicate without a repeated subject", () => {
   for (const source of [
     "I did not discuss pricing and defined a retention metric before launch.",
@@ -4308,6 +4350,20 @@ test("rejects unsupported material and quantitative summary claims", () => {
       summary
     );
   }
+});
+
+test("allows growth areas as coaching language without treating it as business growth", () => {
+  const response = validResponse();
+  response.summary =
+    "The answer chooses working parents and weekly completed plans. The concierge experiment and success threshold are growth areas.";
+
+  const parsed = parseFeedbackV2(response, {
+    transcript,
+    evaluationState: "full",
+    modelVersion: "gpt-test-1",
+  });
+
+  assert.equal(parsed.summary, response.summary);
 });
 
 test("rejects arbitrary short non-Latin evidence units", () => {
