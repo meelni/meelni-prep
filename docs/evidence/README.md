@@ -36,16 +36,16 @@ nano-USD ($2.052925) deterministic worst case, and plan hash
 This historical artifact cannot revive the consumed v1 authority. It performs
 no provider call or ledger activation and grants no launch authority.
 
-`sav-248-v15-paid-run-authorization-proposal.json` is deliberately not an
+`sav-248-v16-paid-run-authorization-proposal.json` is deliberately not an
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current successor 64-call proposal has a $2.733585
+reviewed source commit. The current successor 64-call proposal has a $2.793105
 deterministic worst case and plan hash
-`2e7a0b7cb3fb7fdf3ea588067201ad568a0bc74b897baffb99c34ab9a05b8295`. Its
+`a3fa29692a78105ee3920884f5f6ea706a07c0c5ddafe508b0357c86e94e2548`. Its
 proposal authorization hash is source-derived and must be regenerated after
 merge.
-It explicitly records the correct v1 through v12 refs and terminal, non-reusable
+It explicitly records the correct v1 through v15 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
 `4acdf549eecad5fe88d685c28fbc98d7475b8f05`, and
@@ -61,16 +61,17 @@ activation commits:
 `b23e5d54fb21d72e1043a4404fea1ac691e31a89`. The authorized v9 paid run later
 activated `refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v9` at
 `08864c3bfad23d6c394847ccbef5ffca87347275`, made one provider request, spent
-$0.01311, and failed terminally with `evidence_quote_not_grounded`. That v9
-ledger is non-reusable failure evidence. Future paid execution requires repaired
-source, a fresh exact owner authorization, and a successor ledger lane; do not
-manually create or reuse v9, v10, v11, v12, or v13.
+$0.01311, and failed terminally with `evidence_quote_not_grounded`. Later v10
+through v15 lanes also activated and failed closed during bounded synthetic
+calibration repair attempts. Those ledgers are non-reusable failure evidence.
+Future paid execution requires repaired source, a fresh exact owner authorization,
+and a successor ledger lane; do not manually create or reuse v9 through v15.
 
-`sav-248-v15-plan-proposal.json` binds the repaired corpus, adjudication, prompt,
+`sav-248-v16-plan-proposal.json` binds the repaired corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,
 and plan hashes while leaving the reviewed source commit null. It authorizes no
 provider call, GitHub mutation, Production data, customer transcript,
-feature-flag, or launch action. Because real v9, v10, v11, and v12 have already
+feature-flag, or launch action. Because real v9 through v15 have already
 failed terminally, after merge and a fresh pricing check this successor lane
 must be regenerated and explicitly approved against one exact source commit
 before any paid run can become executable.
@@ -78,9 +79,9 @@ before any paid run can become executable.
 The repository now defines an external Ed25519 owner-authorization handoff, but
 that mechanism is not itself approval evidence. The checked-in owner public-key
 registry contains only public verification material, no private signing key is
-stored here, and no signed v15 authorization artifact exists. Any future artifact
+stored here, and no signed v16 authorization artifact exists. Any future artifact
 must remain outside Git and bind the exact post-merge source commit and freshly
-regenerated plan; the historical v1 through v13 artifacts remain unusable.
+regenerated plan; the historical v1 through v15 artifacts remain unusable.
 
 SAV-198 includes a calibration preflight and deterministic harness report. Both
 are immutable v7 local evidence only. Their historical `launchAcceptance`

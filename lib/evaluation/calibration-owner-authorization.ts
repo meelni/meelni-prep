@@ -15,9 +15,9 @@ export const CALIBRATION_OWNER_APPROVAL_DECISION =
   "APPROVE_BOUNDED_PAID_CALIBRATION";
 export const CALIBRATION_OWNER_AUTHORIZATION_MAX_TTL_MS = 30 * 60 * 1_000;
 export const CALIBRATION_OWNER_AUTHORIZATION_MAX_BYTES = 64 * 1_024;
-export const SAV_248_V15_APPROVED_RUN_ID =
-  "sav-248-authorized-paid-calibration.v15";
-export const SAV_248_V15_PREDECESSOR_AUTHORITIES = Object.freeze([
+export const SAV_248_V16_APPROVED_RUN_ID =
+  "sav-248-authorized-paid-calibration.v16";
+export const SAV_248_V16_PREDECESSOR_AUTHORITIES = Object.freeze([
   Object.freeze({
     runId: "sav-198-authorized-paid-calibration.v1",
     ref: "refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1",
@@ -88,6 +88,11 @@ export const SAV_248_V15_PREDECESSOR_AUTHORITIES = Object.freeze([
     ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v14",
     activationCommit: "1a1cbb05987d1a35490d5558b781c5709acd80e7",
   }),
+  Object.freeze({
+    runId: "sav-248-authorized-paid-calibration.v15",
+    ref: "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v15",
+    activationCommit: "b09bb853ed78da86a267dce3c68c8c14d56e7c5c",
+  }),
 ] as const);
 
 const ARTIFACT_KEYS = ["contract", "payload", "signature"] as const;
@@ -128,7 +133,7 @@ const REGISTRY_ENTRY_KEYS = [
 ] as const;
 const SHA256 = /^[0-9a-f]{64}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
-const AUTHORIZATION_ID = /^sav248_v15_auth_[0-9a-f]{32}$/;
+const AUTHORIZATION_ID = /^sav248_v16_auth_[0-9a-f]{32}$/;
 const KEY_ID = /^[A-Za-z0-9._-]{1,80}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const verifiedSpendAuthorizations =
@@ -137,9 +142,9 @@ const verifiedOwnerAuthorizations =
   new WeakSet<VerifiedCalibrationOwnerAuthorization>();
 
 export interface ApprovedCalibrationSpendAuthorization {
-  readonly contractVersion: "evaluation-calibration-spend-authorization.v15";
+  readonly contractVersion: "evaluation-calibration-spend-authorization.v16";
   readonly authorizationId: string;
-  readonly runId: typeof SAV_248_V15_APPROVED_RUN_ID;
+  readonly runId: typeof SAV_248_V16_APPROVED_RUN_ID;
   readonly authorizationStatus: "approved_by_human_product_owner";
   readonly authorizedOn: string;
   readonly authorizationSource: "external_product_owner_ed25519";
@@ -155,12 +160,12 @@ export interface ApprovedCalibrationSpendAuthorization {
   readonly customerTranscriptsAllowed: false;
   readonly productionDataAllowed: false;
   readonly historicalAuthoritiesReusable: false;
-  readonly predecessorAuthorities: typeof SAV_248_V15_PREDECESSOR_AUTHORITIES;
+  readonly predecessorAuthorities: typeof SAV_248_V16_PREDECESSOR_AUTHORITIES;
 }
 
 export interface CalibrationOwnerAuthorizationPayload {
   authorizationId: string;
-  runId: typeof SAV_248_V15_APPROVED_RUN_ID;
+  runId: typeof SAV_248_V16_APPROVED_RUN_ID;
   ownerId: typeof CALIBRATION_OWNER_ID;
   ownerRole: typeof CALIBRATION_OWNER_ROLE;
   approvalDecision: typeof CALIBRATION_OWNER_APPROVAL_DECISION;
@@ -179,7 +184,7 @@ export interface CalibrationOwnerAuthorizationPayload {
   customerTranscriptsAllowed: false;
   productionDataAllowed: false;
   historicalAuthoritiesReusable: false;
-  predecessorAuthorities: typeof SAV_248_V15_PREDECESSOR_AUTHORITIES;
+  predecessorAuthorities: typeof SAV_248_V16_PREDECESSOR_AUTHORITIES;
   issuedAt: string;
   expiresAt: string;
 }
@@ -270,7 +275,7 @@ export function verifyCalibrationOwnerAuthorization(input: {
   ) {
     throw new Error("calibration_owner_authorization_id_invalid");
   }
-  if (payload.runId !== SAV_248_V15_APPROVED_RUN_ID) {
+  if (payload.runId !== SAV_248_V16_APPROVED_RUN_ID) {
     throw new Error("calibration_owner_authorization_run_invalid");
   }
   if (
@@ -316,7 +321,7 @@ export function verifyCalibrationOwnerAuthorization(input: {
       payload.predecessorAuthorities
     ) !==
     canonicalCalibrationOwnerAuthorizationJson(
-      SAV_248_V15_PREDECESSOR_AUTHORITIES
+      SAV_248_V16_PREDECESSOR_AUTHORITIES
     )
   ) {
     throw new Error(
@@ -407,9 +412,9 @@ export function verifyCalibrationOwnerAuthorization(input: {
   }
 
   const authorization: ApprovedCalibrationSpendAuthorization = Object.freeze({
-    contractVersion: "evaluation-calibration-spend-authorization.v15",
+    contractVersion: "evaluation-calibration-spend-authorization.v16",
     authorizationId: payload.authorizationId,
-    runId: SAV_248_V15_APPROVED_RUN_ID,
+    runId: SAV_248_V16_APPROVED_RUN_ID,
     authorizationStatus: "approved_by_human_product_owner",
     authorizedOn: payload.issuedAt,
     authorizationSource: "external_product_owner_ed25519",
@@ -425,7 +430,7 @@ export function verifyCalibrationOwnerAuthorization(input: {
     customerTranscriptsAllowed: false,
     productionDataAllowed: false,
     historicalAuthoritiesReusable: false,
-    predecessorAuthorities: SAV_248_V15_PREDECESSOR_AUTHORITIES,
+    predecessorAuthorities: SAV_248_V16_PREDECESSOR_AUTHORITIES,
   });
   verifiedSpendAuthorizations.add(authorization);
   const verified: VerifiedCalibrationOwnerAuthorization = Object.freeze({
