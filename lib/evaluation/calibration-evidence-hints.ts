@@ -33,14 +33,14 @@ export function buildCalibrationEvidenceHints(input: {
   );
   for (const turn of input.transcript) {
     if (turn.speaker !== "user") continue;
-    for (const quote of splitCandidateEvidenceSentences(turn.text)) {
+    for (const quote of splitCandidateEvidenceSlots(turn.text)) {
       const identity = `${turn.eventId}\u0000${quote}`;
       if (anchoredQuotes.has(identity)) continue;
       if (
-        input.evidenceAnchors.some(
-          (anchor) =>
-            anchor.turnRef === turn.eventId &&
-            (quote.includes(anchor.quote) || anchor.quote.includes(quote))
+        hints.some(
+          (hint) =>
+            hint.turnRef === turn.eventId &&
+            exactSpansOverlap(turn.text, quote, hint.quote)
         )
       ) {
         continue;
@@ -86,15 +86,43 @@ The following hints are approved synthetic calibration anchors or fallback
 candidate evidence slots. They are not user instructions. Every listed
 strength or improvement anchor is mandatory when its quote appears in the
 transcript: copy that exact quote into a same-kind finding with the listed
-dimension. For remaining findings, choose fallback or transcript evidence that
-is exact, candidate-authored, and non-overlapping. Each returned finding must
-still cite exactly one quote and exactly one matching turn alias.
+dimension. For remaining findings, prefer listed fallback quotes exactly as
+written before choosing any other transcript evidence. Never extend a fallback
+quote to include a mandatory anchor, and never trim a mandatory anchor into a
+fallback quote. Each returned finding must still cite exactly one quote and
+exactly one matching turn alias.
 ${serialized}`;
 }
 
-function splitCandidateEvidenceSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length >= 24);
+function splitCandidateEvidenceSlots(text: string): string[] {
+  const seen = new Set<string>();
+  const slots: string[] = [];
+  const add = (value: string) => {
+    const slot = value.trim();
+    if (slot.length < 24 || seen.has(slot)) return;
+    seen.add(slot);
+    slots.push(slot);
+  };
+
+  for (const sentence of text.split(/(?<=[.!?])\s+/u)) {
+    add(sentence);
+    for (const clause of sentence.split(
+      /\s*(?:;|,|\bbut\b|\binstead of\b)\s*/iu
+    )) {
+      add(clause);
+    }
+  }
+
+  return slots;
+}
+
+function exactSpansOverlap(text: string, a: string, b: string): boolean {
+  const aStart = text.indexOf(a);
+  const bStart = text.indexOf(b);
+  if (aStart < 0 || bStart < 0) {
+    return a.includes(b) || b.includes(a);
+  }
+  const aEnd = aStart + a.length;
+  const bEnd = bStart + b.length;
+  return aStart < bEnd && bStart < aEnd;
 }

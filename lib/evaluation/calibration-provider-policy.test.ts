@@ -144,11 +144,11 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
 test("paid feedback uses a deterministic strict response schema", () => {
   assert.equal(
     FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
-    "feedback-provider-response-format.v6"
+    "feedback-provider-response-format.v7"
   );
   assert.equal(
     getFeedbackProviderResponseFormatContractHash(),
-    "f3333679192e1743ea75a6c27967b8a1bb0678e51371417271a6255cd494c1c2"
+    "f360ce6d7417fe539891b5e44f9a97f806eb64ee6718f60ea453509c2e760484"
   );
   assert.equal(
     Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
@@ -261,13 +261,13 @@ test("paid request policy pins every non-prompt provider control", () => {
     maximumSdkRetries: 0,
     redirectPolicy: "error",
     requestTimeoutMs: 300_000,
-    responseFormatVersion: "feedback-provider-response-format.v6",
+    responseFormatVersion: "feedback-provider-response-format.v7",
     responseFormatHash:
-      "f3333679192e1743ea75a6c27967b8a1bb0678e51371417271a6255cd494c1c2",
+      "f360ce6d7417fe539891b5e44f9a97f806eb64ee6718f60ea453509c2e760484",
   });
   assert.equal(
     getFeedbackCalibrationRequestPolicyHash(),
-    "0366975d1046eceb2bd545a3d0b20275e3ff6c8648fb3722a3aacc059bb5eb13"
+    "837b98e27100f0f10ee28700e64d1b3399b916f1b4ac884241a820eed9b43401"
   );
 });
 
