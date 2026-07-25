@@ -40,9 +40,9 @@ no provider call or ledger activation and grants no launch authority.
 authorization. It records the proposed boundary—at most 96 physical attempts
 and a hard $3 total cap using synthetic/approved fixtures only—together with
 `pending_explicit_product_owner_approval`, null approval source/date, and a null
-reviewed source commit. The current 64-call proposal has a $2.375425
+reviewed source commit. The current 64-call proposal has a $2.432705
 deterministic worst case and proposal hash
-`f04676b88e003b262549707f30d1b3b71563021850df876e55d1362ff397cd50`.
+`543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94`.
 It explicitly records the correct v1 through v6 refs and terminal, non-reusable
 activation commits:
 `refs/heads/meelni-ledger/sav-198-authorized-paid-calibration.v1` at
@@ -59,7 +59,7 @@ activation commits:
 `b23e5d54fb21d72e1043a4404fea1ac691e31a89`. Its proposal authorization hash is
 source-derived and must be regenerated after merge. No v8 Git ledger exists or
 is authorized. The proposal-only deterministic genesis is
-`2b31ca83617c00e85b27ded369708d45ba568eea` and must not be created.
+`c17f132875234fc1b6b61a3db525467f94b4fb4d` and must not be created.
 
 `sav-248-v8-plan-proposal.json` binds the proposed corpus, adjudication, prompt,
 strict response format, request policy, model, endpoint, service tier, pricing,

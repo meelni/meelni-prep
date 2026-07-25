@@ -28062,8 +28062,11 @@ Return your analysis as a JSON object with this exact structure:
     {
       "dimension": "structure | clarity | insight | communication | leadership",
       "observation": "Specific observed behavior",
-      "transcriptRefs": ["exact turn alias such as turn_0001"],
-      "evidence": [{"turnRef": "same exact turn alias", "quote": "exact case-sensitive substring from that turn"}],
+      "transcriptRefs": ["exact turn alias such as turn_0001", "exact turn alias such as turn_0002"],
+      "evidence": [
+        {"turnRef": "same exact turn alias as transcriptRefs[0]", "quote": "exact case-sensitive substring from that turn"},
+        {"turnRef": "same exact turn alias as transcriptRefs[1]", "quote": "another disjoint exact substring that supports the same observation"}
+      ],
       "nextStep": "Specific way to keep applying this strength",
       "rubricVersion": "${FEEDBACK_RUBRIC_VERSION}",
       "confidence": <number 0-1>
@@ -28073,8 +28076,11 @@ Return your analysis as a JSON object with this exact structure:
     {
       "dimension": "structure | clarity | insight | communication | leadership",
       "observation": "Specific observed opportunity",
-      "transcriptRefs": ["exact turn alias such as turn_0001"],
-      "evidence": [{"turnRef": "same exact turn alias", "quote": "exact case-sensitive substring from that turn"}],
+      "transcriptRefs": ["exact turn alias such as turn_0001", "exact turn alias such as turn_0002"],
+      "evidence": [
+        {"turnRef": "same exact turn alias as transcriptRefs[0]", "quote": "exact case-sensitive substring from that turn"},
+        {"turnRef": "same exact turn alias as transcriptRefs[1]", "quote": "another disjoint exact substring that supports the same observation"}
+      ],
       "nextStep": "Concrete action for the next answer",
       "rubricVersion": "${FEEDBACK_RUBRIC_VERSION}",
       "confidence": <number 0-1>
@@ -28088,7 +28094,7 @@ Return your analysis as a JSON object with this exact structure:
 }
 
 Return exactly two strengths and exactly two improvements. Do not return one, three, or any other count for either array. Before returning JSON, count the array lengths and verify strengths.length === 2 and improvements.length === 2; if the evidence feels thin, still return the two best grounded findings rather than changing the count.
-Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
+Do not return an overall score. The application computes it with the canonical PM weighting. Every finding must contain every field. Every transcriptRefs entry must have exactly one evidence entry and vice versa. For normal spaced-language findings, include at least two transcriptRefs and two matching evidence entries, preferably from different candidate turns; use the one-evidence narrow path only for bounded literal-citation statements or predominantly compact-language anchors. Never invent, paraphrase, normalize, or alter evidence quotes. Each evidence quote must contain meaningful candidate language or a meaningful quantified anchor; never cite only pronouns, auxiliaries, bare numbers, or fragments such as "I" or "would".
 Use a distinct, non-overlapping exact evidence span for every finding. Do not reuse the same quote, the same sentence fragment, a substring/superstring variant, or overlapping text from the same transcript turn across multiple strengths or improvements. If one turn contains evidence for multiple findings, cite separate non-overlapping exact spans for each finding; prefer different candidate turns when the available spans are close together.
 Treat two quotes from the same turn as overlapping when their exact matches share any character position in the source turn. Adding or removing nearby words, punctuation, or sentence boundaries around a reused phrase is still overlap, not distinct evidence.
 Before returning JSON, perform this evidence uniqueness check: list every strength and improvement evidence identity as turnRef + quote, find the exact character range of each quote within its cited turn, verify every identity is unique, verify same-turn ranges are pairwise disjoint, and replace any repeated or overlapping evidence with a different exact candidate quote from a disjoint range. If you cannot find distinct evidence for a finding, remove or rewrite that finding rather than reusing evidence.
@@ -30872,7 +30878,7 @@ var SAV_248_V8_GIT_LEDGER_REF = `refs/heads/${SAV_248_V8_GIT_LEDGER_BRANCH}`;
 var SAV_248_V8_GIT_LEDGER_API_REF = `heads/${SAV_248_V8_GIT_LEDGER_BRANCH}`;
 var SAV_248_V8_EMPTY_TREE_OID = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 var SAV_248_V8_GENESIS_DATE = "2026-07-18T19:10:00.000Z";
-var SAV_248_V8_GENESIS_COMMIT_OID = "2b31ca83617c00e85b27ded369708d45ba568eea";
+var SAV_248_V8_GENESIS_COMMIT_OID = "c17f132875234fc1b6b61a3db525467f94b4fb4d";
 var SAV_248_V8_IMMUTABLE_RULESET_NAME = "Meelni SAV-248 v8 calibration ledger immutable";
 var SAV_248_V8_ACTOR_RULESET_NAME = "Meelni SAV-248 v8 calibration activation actor";
 var GITHUB_API_VERSION = "2022-11-28";
@@ -30904,8 +30910,8 @@ var SAV_248_V8_SPEND_AUTHORIZATION = {
   historicalAuthoritiesReusable: false,
   predecessorAuthorities: SAV_248_V8_PREDECESSOR_AUTHORITIES
 };
-var SAV_248_V8_REBASED_PLAN_WORST_CASE_NANO_USD = 2375425e3;
-var SAV_248_V8_REBASED_PLAN_HASH = "f04676b88e003b262549707f30d1b3b71563021850df876e55d1362ff397cd50";
+var SAV_248_V8_REBASED_PLAN_WORST_CASE_NANO_USD = 2432705e3;
+var SAV_248_V8_REBASED_PLAN_HASH = "543e7eae030a6f5235f6e66812bb1f7554f2aecad0a6cdf63a4181b289c04f94";
 var ActivatedCalibrationRunAuthority = class {
   constructor(activationCommit, plan, github) {
     this.activationCommit = activationCommit;
@@ -31119,9 +31125,12 @@ async function activateCalibrationRunWithClient(options, github, mode) {
         sha: genesis.oid
       });
     } catch (error) {
-      throw new Error("calibration_git_authorization_seed_lost_concurrent_cas", {
-        cause: error
-      });
+      throw new Error(
+        "calibration_git_authorization_seed_lost_concurrent_cas",
+        {
+          cause: error
+        }
+      );
     }
     await assertCanonicalGitHubAuthority(github);
   }
@@ -31412,7 +31421,9 @@ function parseCalibrationActivationMessage(commit) {
 }
 function parseCalibrationAuthorizationLedgerMessage(commit) {
   if (commit.treeSha !== SAV_248_V8_EMPTY_TREE_OID || commit.parents.length !== 0 || !isCommitIdentity(commit.author, commit.author.date) || !isCommitIdentity(commit.committer, commit.author.date)) {
-    throw new Error("calibration_delegated_resume_authorization_commit_invalid");
+    throw new Error(
+      "calibration_delegated_resume_authorization_commit_invalid"
+    );
   }
   const parsed = parseLedgerMessage(
     commit.message,
@@ -31430,7 +31441,9 @@ function parseCalibrationAuthorizationLedgerMessage(commit) {
     "runId"
   ]);
   if (parsed.contractVersion !== "evaluation-calibration-git-authorization.v1" || parsed.runId !== SAV_248_V8_APPROVED_RUN_ID || typeof parsed.authorizationId !== "string" || typeof parsed.authorizationHash !== "string" || typeof parsed.planHash !== "string" || !Number.isSafeInteger(parsed.plannedCalls) || !Number.isSafeInteger(parsed.plannedWorstCaseNanoUsd) || typeof parsed.reviewedSourceCommit !== "string" || !/^[0-9a-f]{40}$/.test(parsed.reviewedSourceCommit) || !/^[0-9a-f]{64}$/.test(parsed.authorizationHash) || !/^[0-9a-f]{64}$/.test(parsed.planHash) || stableJson(parsed.predecessorAuthorities) !== stableJson(SAV_248_V8_PREDECESSOR_AUTHORITIES)) {
-    throw new Error("calibration_delegated_resume_authorization_message_invalid");
+    throw new Error(
+      "calibration_delegated_resume_authorization_message_invalid"
+    );
   }
   return parsed;
 }
