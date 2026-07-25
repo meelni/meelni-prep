@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -30,6 +30,7 @@ interface TranscriptResponse {
 }
 
 export function useEvidenceTranscript(sessionId: string) {
+  const previousSessionId = useRef(sessionId);
   const [expanded, setExpanded] = useState(false);
   const [turns, setTurns] = useState<FeedbackTranscriptTurn[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +41,8 @@ export function useEvidenceTranscript(sessionId: string) {
   const [requestVersion, setRequestVersion] = useState(0);
 
   useEffect(() => {
+    if (previousSessionId.current === sessionId) return;
+    previousSessionId.current = sessionId;
     setExpanded(false);
     setTurns([]);
     setLoading(false);
