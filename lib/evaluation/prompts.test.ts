@@ -79,6 +79,15 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /same-turn ranges are pairwise disjoint/
   );
+  assert.match(EVALUATION_SYSTEM_PROMPT, /blacklist at the sentence\/line/);
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /source sentence or transcript line containing that quote is unavailable/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
+    /no source sentence\/line is assigned to more than one finding/
+  );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /Return exactly two strengths and exactly two improvements/

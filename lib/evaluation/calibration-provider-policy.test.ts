@@ -144,22 +144,22 @@ test("paid request policy rejects an unpriced model or output ceiling", () => {
 test("paid feedback uses a deterministic strict response schema", () => {
   assert.equal(
     FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
-    "feedback-provider-response-format.v3"
+    "feedback-provider-response-format.v4"
   );
   assert.equal(
     getFeedbackProviderResponseFormatContractHash(),
-    "650fe1c9a5d4ebcf549869bbadd6d7ca64c093494ec6a0dd88cfbd003b802c48"
+    "18daf844ac5e6f4e5c7d8cd108f49be1e1e94f54e0620004e2beac0f0d3d7dd8"
   );
   assert.equal(
     Buffer.byteLength(serializeFeedbackProviderResponseFormat("full"), "utf8"),
-    4_406
+    4_730
   );
   assert.equal(
     Buffer.byteLength(
       serializeFeedbackProviderResponseFormat("partial"),
       "utf8"
     ),
-    4_412
+    4_736
   );
   const full = getFeedbackProviderResponseFormat("full");
   const partial = getFeedbackProviderResponseFormat("partial");
@@ -194,12 +194,25 @@ test("paid feedback uses a deterministic strict response schema", () => {
   );
   assert.match(
     evidenceSchema.properties.quote.description,
-    /do not reuse this same quote or an overlapping quote/
+    /do not reuse this same quote/
+  );
+  assert.match(
+    evidenceSchema.properties.quote.description,
+    /overlapping quote/
+  );
+  assert.match(
+    evidenceSchema.properties.quote.description,
+    /same source sentence\/line/
   );
   assert.match(
     full.json_schema.schema.properties.strengths.items.properties.evidence
       .description,
-    /never duplicate or overlap evidence across findings/
+    /never duplicate, overlap, nest, extend, trim/
+  );
+  assert.match(
+    full.json_schema.schema.properties.strengths.items.properties.evidence
+      .description,
+    /source sentence\/line/
   );
 });
 
@@ -220,13 +233,13 @@ test("paid request policy pins every non-prompt provider control", () => {
     maximumSdkRetries: 0,
     redirectPolicy: "error",
     requestTimeoutMs: 300_000,
-    responseFormatVersion: "feedback-provider-response-format.v3",
+    responseFormatVersion: "feedback-provider-response-format.v4",
     responseFormatHash:
-      "650fe1c9a5d4ebcf549869bbadd6d7ca64c093494ec6a0dd88cfbd003b802c48",
+      "18daf844ac5e6f4e5c7d8cd108f49be1e1e94f54e0620004e2beac0f0d3d7dd8",
   });
   assert.equal(
     getFeedbackCalibrationRequestPolicyHash(),
-    "24cf06b506ef83a19f403fdfb9b19df56a69d64ad48547ae6b921888f26b9f5d"
+    "330c1e5749960f9e2924c79a62283b8b5f791e81f476b85cdf198c1b86944cf8"
   );
 });
 
