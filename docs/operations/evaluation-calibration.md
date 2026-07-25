@@ -51,7 +51,7 @@ The launcher captures the exact UTF-8 bytes of the decoded provider message
 content before JSON parsing. It atomically persists a v10 automated report in
 `pending_semantic_review`, then waits for two decision-only panel files plus a
 separate operator-authored execution-authority file. Semantic review grants no
-provider access or spend authority. The current v19 artifacts are deliberately
+provider access or spend authority. The current v20 artifacts are deliberately
 non-executable proposals; a fresh exact owner authorization, reviewed post-merge
 source commit, refreshed pricing review, and protected GitHub ledger would all
 be required before any paid run.
@@ -112,7 +112,7 @@ would require a separate durable authenticated capability design, not a plain
 serialized handle.
 
 The capture and adjudication helpers are testable without a provider. During
-any future authorized v19 run they may receive only synthetic/approved fixture output;
+any future authorized v20 run they may receive only synthetic/approved fixture output;
 they must never receive Production or customer data, reuse a terminal v1/v2
 authority, or imply provider acceptance or launch approval.
 
@@ -153,7 +153,7 @@ preflight requires all eight to skip evaluation and make zero provider calls.
 ## Proposed live-provider run (not authorized)
 
 Do not run this step. The current code intentionally fails before the readiness
-handshake or credential delivery because no fresh v19 spend authorization exists.
+handshake or credential delivery because no fresh v20 spend authorization exists.
 The proposal evaluates 32 scored synthetic transcripts twice, for exactly 64
 planned model calls. The eight insufficient transcripts are expected to make
 zero model calls. Its proposed envelope remains at most 96 physical attempts and
@@ -163,12 +163,12 @@ The v1 and v2 refs are terminal historical authorities and cannot be reused.
 The repository contains the fail-closed verifier for a future external owner
 handoff. It does not contain an approval: the public-key registry at
 `config/evaluation-calibration-owner-keys.json` contains only reviewed public
-verification material, no signed v19 envelope exists, and private signing
+verification material, no signed v20 envelope exists, and private signing
 material must never be placed in Git, chat, environment files, logs, or
 generated evidence. Rotating or enrolling another owner public key requires a
 reviewed source change and runtime-bundle regeneration.
 
-`docs/evidence/sav-248-v19-paid-run-authorization-proposal.json` truthfully
+`docs/evidence/sav-248-v20-paid-run-authorization-proposal.json` truthfully
 records `pending_explicit_product_owner_approval`, null authorization source and
 date, and a null `reviewedSourceCommit`. It cannot authorize a provider request,
 GitHub mutation, or credential delivery. Before any future run, the product
@@ -200,8 +200,8 @@ expiry timestamps must be canonical ISO strings, the issue time must be on a
 whole-second boundary, and the lifetime must be no longer than 30 minutes.
 
 Prepare the later handoff in this order: merge the reviewed public-key/runtime
-and fresh-pricing source; select one new `sav248_v19_auth_` identifier plus the
-issue/expiry window; build the v19 authorization request from those fixed values;
+and fresh-pricing source; select one new `sav248_v20_auth_` identifier plus the
+issue/expiry window; build the v20 authorization request from those fixed values;
 regenerate the exact plan against that authorization and merged commit; place
 its hash/count/cost in the outer payload; then have the human product owner sign
 that exact payload outside Git. Any change to source, authorization metadata,
@@ -225,24 +225,24 @@ launch decision.
 ```bash
 npm run calibration:owner-authorization -- prepare \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
-  --authorization-id sav248_v19_auth_<32 lowercase hex characters> \
+  --authorization-id sav248_v20_auth_<32 lowercase hex characters> \
   --reviewed-source-commit <final reviewed 40-character source commit> \
   --signing-key-id meelni-owner-2026-07 \
   --issued-at <whole-second ISO timestamp> \
   --ttl-minutes 30 \
-  --output-path /secure/external/path/sav-248-v19-owner-authorization-request.json
+  --output-path /secure/external/path/sav-248-v20-owner-authorization-request.json
 
 npm run calibration:owner-authorization -- sign \
-  --payload-path /secure/external/path/sav-248-v19-owner-authorization-request.json \
-  --artifact-path /secure/external/path/sav-248-v19-owner-authorization.json \
+  --payload-path /secure/external/path/sav-248-v20-owner-authorization-request.json \
+  --artifact-path /secure/external/path/sav-248-v20-owner-authorization.json \
   --key-id meelni-owner-2026-07 \
   --private-key-path /secure/external/path/meelni-owner-private-key.pem
 
 npm run calibration:owner-authorization -- verify \
-  --artifact-path /secure/external/path/sav-248-v19-owner-authorization.json \
+  --artifact-path /secure/external/path/sav-248-v20-owner-authorization.json \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
   --reviewed-source-commit <final reviewed 40-character source commit> \
-  --output-path /secure/external/path/sav-248-v19-owner-authorization-report.json
+  --output-path /secure/external/path/sav-248-v20-owner-authorization-report.json
 ```
 
 The private key and signed artifact paths must be absolute paths outside every
@@ -264,7 +264,7 @@ The live child does not execute through `tsx` or import from mutable
 complete 372-input runtime into
 `scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
 remain external. `npm run calibration:verify-runtime` must reproduce the exact
-tracked bundle and `docs/evidence/sav-248-v19-runtime-manifest.json`. Before
+tracked bundle and `docs/evidence/sav-248-v20-runtime-manifest.json`. Before
 spawning the child, the credential-free bootstrap checks the bundle's regular
 file identity, ownership, link count, mode, byte length, SHA-256, package-lock
 SHA-256, Node version, platform, and architecture. A dependency or source
@@ -358,12 +358,12 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the non-executable v19 proposal:
+Generate and verify the non-executable v20 proposal:
 
 ```bash
 npm run calibration:plan-proposal -- \
   --approval docs/evidence/sav-198-adjudication-approval.json \
-  --output docs/evidence/sav-248-v19-plan-proposal.json
+  --output docs/evidence/sav-248-v20-plan-proposal.json
 ```
 
 The current repaired source proposal is 64 physical calls (two symmetric runs
@@ -379,7 +379,7 @@ failed terminally and is non-reusable; the real v10 ledger has also failed
 terminally after one paid attempt and is non-reusable; the real v11 ledger has
 also failed terminally after one paid attempt and is non-reusable; the real v12
 ledger has also failed terminally after one paid attempt and is non-reusable.
-The v19 proposal is the current successor lane and remains non-executable until
+The v20 proposal is the current successor lane and remains non-executable until
 the final source commit and refreshed pricing are bound by a fresh exact owner
 authorization.
 
@@ -391,13 +391,13 @@ verified may repository owners configure the two exact active repository
 rulesets below for:
 
 ```text
-refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v19
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v20
 ```
 
-1. `Meelni SAV-248 v19 calibration ledger immutable`: exact ref include, no
+1. `Meelni SAV-248 v20 calibration ledger immutable`: exact ref include, no
    excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
    With no bypass, administrators remain subject to both invariants.
-2. `Meelni SAV-248 v19 calibration activation actor`: the same exact ref include,
+2. `Meelni SAV-248 v20 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
    bypass actor: GitHub user `saviii`, actor type `User`, user ID `24397508`.
    The independent immutable ruleset still prevents that actor from deleting or
@@ -413,7 +413,7 @@ instead of reusing ad hoc temporary files:
 
 ```bash
 npm run calibration:github-guardrails -- \
-  --output-dir /secure/external/path/sav-248-v19-github-guardrails
+  --output-dir /secure/external/path/sav-248-v20-github-guardrails
 ```
 
 The command writes only local JSON payloads and a README with the current source
@@ -499,7 +499,7 @@ do not run it against the pending proposal:
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
-  --owner-authorization /secure/external/path/sav-248-v19-owner-authorization.json \
+  --owner-authorization /secure/external/path/sav-248-v20-owner-authorization.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \
@@ -589,7 +589,7 @@ adding secrets or provider responses containing sensitive data.
 The committed v7 receipts remain byte-for-byte immutable. Their historical
 `gate.launchAcceptance` values have the same technical state interpretation as
 v10 `gate.calibrationEvidenceAcceptance`, but never represent owner GO/NO-GO.
-Do not rewrite or regenerate those historical files during a v19 run.
+Do not rewrite or regenerate those historical files during a v20 run.
 
 ## Review checklist
 

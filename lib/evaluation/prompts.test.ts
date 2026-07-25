@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { appendCalibrationEvidenceHints } from "./calibration-evidence-hints";
 import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
@@ -53,7 +54,7 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
     EVALUATION_SYSTEM_PROMPT,
     /directly state the positive behavior/
   );
-  assert.match(EVALUATION_SYSTEM_PROMPT, /Confidence above 0\.9 requires/);
+  assert.match(EVALUATION_SYSTEM_PROMPT, /Outside calibration, confidence above 0.9 requires/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
     /single cited evidence quote and turn/
@@ -90,9 +91,9 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /reserve source text before writing findings/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /exact range and the entire source sentence\/line containing it are unavailable/
+    /reserved range and its source sentence\/line are unavailable/
   );
-  assert.match(EVALUATION_SYSTEM_PROMPT, /reserved-evidence table/);
+  assert.match(EVALUATION_SYSTEM_PROMPT, /Track four rows/);
   assert.match(EVALUATION_SYSTEM_PROMPT, /line-sharing/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
@@ -115,15 +116,15 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /same-dimension grounded strength/);
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
+    /For calibration, never set confidence above 0\.9/
+  );
+  assert.match(
+    EVALUATION_SYSTEM_PROMPT,
     /Score weak partial answers conservatively/
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
-    /do not score structure above 4 or clarity above 5/
-  );
-  assert.match(
-    EVALUATION_SYSTEM_PROMPT,
-    /brainstorm features for everyone and measure general usage/
+    /keep structure 2-4 and clarity 3-5/
   );
   assert.match(
     EVALUATION_SYSTEM_PROMPT,
@@ -135,4 +136,39 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /candidate-advancement claims/);
   assert.match(EVALUATION_SYSTEM_PROMPT, /flawless or perfect/);
+});
+
+test("calibration evidence hints require approved anchors when present", () => {
+  const prompt = appendCalibrationEvidenceHints(
+    "base prompt",
+    [
+      {
+        kind: "strength",
+        dimension: "structure",
+        turnRef: "case:user:1",
+        quote: "define the intended user outcome",
+      },
+      {
+        kind: "improvement",
+        dimension: "leadership",
+        turnRef: "case:user:2",
+        quote: "brainstorm features for everyone",
+      },
+    ],
+    new Map([
+      ["turn_0001", "case:user:1"],
+      ["turn_0002", "case:user:2"],
+    ])
+  );
+
+  assert.match(prompt, /Every listed\s+strength or improvement anchor is mandatory/);
+  assert.match(prompt, /copy that exact quote into a same-kind finding/);
+  assert.match(
+    prompt,
+    /strength:structure \\| turn_0001 \\| "define the intended user outcome"/
+  );
+  assert.match(
+    prompt,
+    /improvement:leadership \\| turn_0002 \\| "brainstorm features for everyone"/
+  );
 });
