@@ -5,11 +5,13 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DashboardFeedbackStatus } from "@/components/dashboard/dashboard-feedback-status";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { StatusPill } from "@/components/ui/app-surface";
 import {
   buildDashboardPracticeSummary,
+  type DashboardPracticeSummary,
   type DashboardSessionInput,
 } from "@/lib/dashboard/contracts";
 import type { Session } from "@/lib/api/queries";
@@ -49,10 +51,10 @@ export const OverviewSection = memo(function OverviewSection({
 
   return (
     <DashboardPage label="Overview">
-      <div className="mx-auto flex w-full max-w-6xl flex-col">
-        <section className="border-dashboard-panel-border overflow-hidden border-y">
-          <div className="grid gap-0 lg:grid-cols-[1fr_300px]">
-            <div className="space-y-5 py-6 pr-0 sm:py-8 lg:pr-8">
+      <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col">
+        <section className="border-dashboard-panel-border min-w-0 overflow-hidden border-b">
+          <div className="grid min-w-0 gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="min-w-0 space-y-5 py-6 pr-0 sm:py-8 lg:pr-8">
               <div className="flex flex-wrap gap-2">
                 <StatusPill
                   tone="primary"
@@ -77,7 +79,7 @@ export const OverviewSection = memo(function OverviewSection({
                   {summary.recommendation.description}
                 </p>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Button asChild size="lg" className="gap-2">
                   <Link href={summary.recommendation.href}>
                     Start mock interview
@@ -99,7 +101,7 @@ export const OverviewSection = memo(function OverviewSection({
               </div>
             </div>
 
-            <aside className="border-dashboard-panel-border border-t py-6 sm:py-8 lg:border-t-0 lg:border-l lg:pl-8">
+            <aside className="border-dashboard-panel-border min-w-0 border-t py-6 sm:py-8 lg:border-t-0 lg:border-l lg:pl-8">
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
                 {summary.progress.label}
               </p>
@@ -155,24 +157,7 @@ export const OverviewSection = memo(function OverviewSection({
           {summary.recentInterviews.length > 0 ? (
             <div className="divide-dashboard-panel-border divide-y">
               {summary.recentInterviews.map((interview) => (
-                <Link
-                  key={interview.id}
-                  href={interview.feedbackHref || "/dashboard/history"}
-                  className="hover:text-primary grid gap-3 py-4 text-sm transition-colors sm:grid-cols-[88px_150px_1fr_56px]"
-                >
-                  <span className="text-dashboard-muted">
-                    {interview.dateLabel}
-                  </span>
-                  <span className="text-dashboard-foreground font-semibold">
-                    {interview.roundLabel}
-                  </span>
-                  <span className="text-dashboard-muted">
-                    {interview.focusLabel}
-                  </span>
-                  <span className="text-dashboard-foreground font-mono font-semibold sm:text-right">
-                    {interview.scoreLabel}
-                  </span>
-                </Link>
+                <RecentInterviewRow key={interview.id} interview={interview} />
               ))}
             </div>
           ) : (
@@ -185,3 +170,51 @@ export const OverviewSection = memo(function OverviewSection({
     </DashboardPage>
   );
 });
+
+function RecentInterviewRow({
+  interview,
+}: {
+  interview: DashboardPracticeSummary["recentInterviews"][number];
+}) {
+  const content = (
+    <>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-dashboard-foreground font-semibold">
+            {interview.roundLabel}
+          </span>
+          <span className="text-dashboard-muted">{interview.dateLabel}</span>
+        </div>
+        <p className="text-dashboard-muted mt-1 leading-6 break-words">
+          {interview.focusLabel}
+        </p>
+      </div>
+      {interview.feedbackState === "ready" ? (
+        <span className="text-dashboard-foreground shrink-0 font-mono font-semibold sm:text-right">
+          {interview.scoreLabel}
+        </span>
+      ) : (
+        <DashboardFeedbackStatus
+          state={interview.feedbackState}
+          label={interview.scoreLabel}
+          className="justify-self-start sm:justify-self-end"
+        />
+      )}
+    </>
+  );
+  const className =
+    "grid min-w-0 gap-3 py-4 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center";
+
+  if (!interview.feedbackHref) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <Link
+      href={interview.feedbackHref}
+      className={`${className} hover:text-primary transition-colors`}
+    >
+      {content}
+    </Link>
+  );
+}

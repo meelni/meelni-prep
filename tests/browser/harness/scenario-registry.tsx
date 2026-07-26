@@ -7,6 +7,7 @@ import { TranscriptPanel } from "@/app/interview/components/transcript-panel";
 import { ExploreClient } from "@/app/explore/explore-client";
 import { SetupContent } from "@/app/setup/setup-content";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
+import { HistorySection } from "@/components/dashboard/sections/history";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { CompletedV2Review } from "@/components/feedback/feedback-completed-review";
@@ -22,6 +23,7 @@ import type { FeedbackViewState } from "@meelni/core";
 import {
   completedFeedback,
   dashboardSessions,
+  dashboardStatusSessions,
   partialFeedback,
   publicQuestions,
   transcriptTurns,
@@ -30,6 +32,8 @@ import {
 export const HARNESS_SCENARIOS = [
   "explore",
   "dashboard",
+  "dashboard-statuses",
+  "history-statuses",
   "new-interview",
   "interview",
   "feedback",
@@ -63,7 +67,7 @@ function Shell({
   activeSection,
   children,
 }: {
-  activeSection: "overview" | "new-interview" | "settings";
+  activeSection: "overview" | "new-interview" | "history" | "settings";
   children: React.ReactNode;
 }) {
   return (
@@ -88,6 +92,32 @@ function DashboardScenario() {
         loadingSessions={false}
         {...dashboardStats}
         completionRate={100}
+      />
+    </Shell>
+  );
+}
+
+function DashboardStatusesScenario() {
+  return (
+    <Shell activeSection="overview">
+      <OverviewSection
+        sessions={dashboardStatusSessions}
+        loadingSessions={false}
+        totalSessions={dashboardStatusSessions.length}
+        totalMinutes={150}
+        avgScore={7.6}
+        completionRate={100}
+      />
+    </Shell>
+  );
+}
+
+function HistoryStatusesScenario() {
+  return (
+    <Shell activeSection="history">
+      <HistorySection
+        sessions={dashboardStatusSessions}
+        loadingSessions={false}
       />
     </Shell>
   );
@@ -247,6 +277,10 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return <ExploreScenario />;
     case "dashboard":
       return <DashboardScenario />;
+    case "dashboard-statuses":
+      return <DashboardStatusesScenario />;
+    case "history-statuses":
+      return <HistoryStatusesScenario />;
     case "new-interview":
       return <NewInterviewScenario />;
     case "interview":
