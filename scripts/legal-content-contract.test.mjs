@@ -58,6 +58,7 @@ test("the short consent notice uses the approved cookie-and-analytics language",
   assert.match(banner, /"Decline"/);
   assert.match(banner, /"Allow analytics"/);
   assert.doesNotMatch(banner, /PostHog|Statsig|privacy draft/i);
+  assert.doesNotMatch(banner, /href="\/privacy"|next\/link/i);
 });
 
 test("the durable contract records Privacy approval without approving Terms", () => {
