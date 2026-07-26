@@ -5,87 +5,103 @@ import test from "node:test";
 
 const terms = readFileSync("app/terms/page.tsx", "utf8");
 const privacy = readFileSync("app/privacy/page.tsx", "utf8");
-const activeDrafts = `${terms}\n${privacy}`;
 const legalContent = readFileSync("lib/legal/public-legal-content.ts", "utf8");
+const banner = readFileSync("components/cookie-consent-banner.tsx", "utf8");
 const contract = readFileSync("docs/contracts/public-legal-draft.md", "utf8");
 
 const RETIRED_UNSUPPORTED_CLAIMS =
   /unlimited AI mock interviews|100\+ interviews|audio recordings|improve our AI models|regular security audits|within 30 days|request human review|GDPR-compliant|all employees in the same position/gi;
-const PUBLIC_OPERATIONAL_INTERNALS =
-  /feature flag|PostHog|Statsig|session[- ]replay|automatic[- ]capture|launch blockers?|repository behavior|provider fingerprints?|subprocessors?|foundation models?|credit-ledger/i;
 
-test("active legal drafts exclude retired billing, recording, retention, and compliance claims", () => {
-  assert.doesNotMatch(activeDrafts, RETIRED_UNSUPPORTED_CLAIMS);
-  assert.doesNotMatch(activeDrafts, /\b(?:gym|reps?|workouts?|drills?)\b/i);
-});
-
-test("both legal routes use the explicit unindexed draft metadata contract", () => {
-  for (const source of [terms, privacy]) {
-    assert.match(source, /createLegalDraftMetadata\(/);
-    assert.match(source, /LEGAL_DRAFT_NOTICE/);
-    assert.doesNotMatch(source, /createPublicMetadata\(/);
-    assert.doesNotMatch(source, /Last Updated|effective date:/i);
-  }
-});
-
-test("public legal routes are concise holding pages without operational internals", () => {
-  assert.doesNotMatch(activeDrafts, PUBLIC_OPERATIONAL_INTERNALS);
-  assert.match(legalContent, /not legal advice/i);
-  assert.match(legalContent, /not effective/i);
-  assert.match(privacy, /durable deletion request\s+exists/i);
-  assert.match(privacy, /cleanup runs or retries asynchronously/i);
-  assert.doesNotMatch(privacy, /workflow was queued|queues asynchronous/i);
-});
-
-test("terms holding page avoids catalog internals and enforceable acceptance language", () => {
-  assert.doesNotMatch(terms, /getLegalBillingFacts\(\)/);
-  assert.match(
-    terms,
-    /nothing on this page asks a visitor to\s+accept\s+terms/i
+test("public legal pages exclude retired billing, recording, retention, and compliance claims", () => {
+  assert.doesNotMatch(`${terms}\n${privacy}`, RETIRED_UNSUPPORTED_CLAIMS);
+  assert.doesNotMatch(
+    `${terms}\n${privacy}`,
+    /\b(?:gym|reps?|workouts?|drills?)\b/i
   );
-  assert.doesNotMatch(terms, /By (?:accessing|using).*you (?:accept|agree)/i);
 });
 
-test("the durable contract preserves owner approval and indexing gates", () => {
-  assert.match(contract, /final legal policy not approved/i);
-  assert.match(contract, /noindex, nofollow/i);
-  assert.match(contract, /neither route may appear in the sitemap/i);
-  assert.match(contract, /accountable owner and legal approval/i);
-  assert.match(contract, /tests.*cannot approve these decisions/is);
-  assert.match(contract, /Internal implementation review inventory/i);
+test("Privacy is final and indexable while Terms remains an unindexed draft", () => {
+  assert.match(privacy, /publicMetadata\(\"\/privacy\"/);
+  assert.match(privacy, /Privacy Policy \| Meelni/);
+  assert.match(privacy, /PRIVACY_POLICY_EFFECTIVE_DATE/);
+  assert.doesNotMatch(privacy, /createLegalDraftMetadata|LEGAL_DRAFT_NOTICE/);
+
+  assert.match(terms, /createLegalDraftMetadata\(/);
+  assert.match(terms, /LEGAL_DRAFT_NOTICE/);
+  assert.doesNotMatch(terms, /publicMetadata\(/);
+});
+
+test("the Privacy Policy preserves implemented product-data boundaries", () => {
+  assert.match(privacy, /contact@meelni\.com/);
   assert.match(
-    contract,
-    /do not initialize until a\s+current explicit acceptance/i
+    privacy,
+    /does not create or store\s+a\s+replayable interview-audio recording/i
   );
-  assert.match(contract, /autocapture and session replay are disabled/i);
-  assert.match(contract, /initial background enqueue can fail/i);
-  assert.match(contract, /must not\s+be copied onto the public holding pages/i);
+  assert.match(privacy, /Stripe processes payment-card details/i);
+  assert.match(
+    privacy,
+    /automatic\s+capture and session replay are\s+disabled/i
+  );
+  assert.match(
+    privacy,
+    /never include\s+interview audio, transcripts, question or answer text/i
+  );
+  assert.match(privacy, /cleanup then\s+runs\s+or\s+retries\s+asynchronously/i);
+  assert.match(privacy, /We do not sell personal information/i);
+  assert.match(privacy, /not directed to children under 13/i);
 });
 
-test("every public inbound legal link labels the destination as a draft", () => {
+test("the short consent notice uses the approved cookie-and-analytics language", () => {
+  assert.match(banner, /title="Cookie preferences"/);
+  assert.match(banner, /analytics cookies and similar technologies/i);
+  assert.match(banner, /Interview content is never included/i);
+  assert.match(banner, /"Decline"/);
+  assert.match(banner, /"Allow analytics"/);
+  assert.doesNotMatch(banner, /PostHog|Statsig|privacy draft/i);
+});
+
+test("the durable contract records Privacy approval without approving Terms", () => {
+  assert.match(contract, /Privacy Policy status:\s+approved and effective/i);
+  assert.match(contract, /Terms status:\s+draft/i);
+  assert.match(contract, /July 26, 2026/i);
+  assert.match(contract, /contact@meelni\.com/i);
+  assert.match(contract, /PostHog and Statsig/i);
+  assert.match(contract, /autocapture and session replay remain disabled/i);
+  assert.match(contract, /cleanup runs or retries\s+asynchronously/i);
+  assert.match(contract, /must remain `noindex, nofollow`/i);
+});
+
+test("public links no longer describe the Privacy Policy as a draft", () => {
   const findings = [];
   let linksInspected = 0;
 
   for (const file of walkTsxFiles(["app", "components"])) {
     const source = readFileSync(file, "utf8");
     const linkPattern =
-      /<(?:Link|a)\b(?=[^>]*\bhref=["']\/(privacy|terms)["'])[^>]*>([\s\S]*?)<\/(?:Link|a)>/g;
+      /<(?:Link|a)\b(?=[^>]*\bhref=["']\/privacy["'])[^>]*>([\s\S]*?)<\/(?:Link|a)>/g;
 
     for (const match of source.matchAll(linkPattern)) {
       linksInspected += 1;
-      const route = match[1];
-      const label = match[2]
+      const label = match[1]
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim();
-      if (!new RegExp(`${route} draft`, "i").test(label)) {
-        findings.push(`${file}: /${route} -> ${label}`);
-      }
+      if (/draft/i.test(label)) findings.push(`${file}: ${label}`);
     }
   }
 
   assert.ok(linksInspected > 0);
   assert.deepEqual(findings, []);
+});
+
+test("Terms stays a concise holding page without enforceable acceptance language", () => {
+  assert.doesNotMatch(terms, /getLegalBillingFacts\(\)/);
+  assert.match(
+    terms,
+    /nothing on this page asks a visitor to\s+accept\s+terms/i
+  );
+  assert.doesNotMatch(terms, /By (?:accessing|using).*you (?:accept|agree)/i);
+  assert.match(legalContent, /not legal advice/i);
 });
 
 function walkTsxFiles(roots) {

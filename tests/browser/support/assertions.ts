@@ -205,7 +205,8 @@ export async function assertNoHorizontalOverflow(
 export async function assertCriticalAccessibility(
   page: Page,
   testInfo: TestInfo,
-  surfaceId: string
+  surfaceId: string,
+  options: { exclude?: string[] } = {}
 ) {
   await page.evaluate(async () => {
     if (document.activeElement instanceof HTMLElement) {
@@ -220,9 +221,16 @@ export async function assertCriticalAccessibility(
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
   });
-  const result = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze();
+  let axe = new AxeBuilder({ page }).withTags([
+    "wcag2a",
+    "wcag2aa",
+    "wcag21a",
+    "wcag21aa",
+  ]);
+  for (const selector of options.exclude ?? []) {
+    axe = axe.exclude(selector);
+  }
+  const result = await axe.analyze();
   const isBlocking = (finding: (typeof result.violations)[number]) =>
     findingIsBlocking(finding);
   const blockingIncomplete = result.incomplete.flatMap((finding) => {

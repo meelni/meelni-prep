@@ -190,10 +190,9 @@ describe("rendered auth intent and recovery", () => {
       "href",
       "/terms"
     );
-    expect(screen.getByRole("link", { name: "Privacy draft" })).toHaveAttribute(
-      "href",
-      "/privacy"
-    );
+    expect(
+      screen.getByRole("link", { name: "Privacy Policy" })
+    ).toHaveAttribute("href", "/privacy");
     expect(
       screen.getByText(/Review the.*before creating an account/i)
     ).toBeInTheDocument();

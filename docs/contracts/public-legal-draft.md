@@ -1,167 +1,154 @@
-# Public Legal Draft Truth Contract
+# Public Legal Policy Contract
 
-Status: engineering contract; final legal policy not approved
+## Status
 
-## Purpose
+- Privacy Policy status: approved and effective.
+- Privacy Policy version: July 26, 2026.
+- Terms status: draft and not effective.
 
-`/terms` and `/privacy` are engineering drafts that summarize implemented
-product behavior for accountable owner and legal review. They are not approved
-legal advice, effective terms, or a complete privacy notice.
+The historical filename is retained because repository tests and references use
+it. The contract now distinguishes the approved Privacy Policy from the
+unapproved Terms holding page.
 
-Until accountable approval is recorded:
+## Public route contract
 
-- both routes must explicitly emit `noindex, nofollow`;
-- neither route may emit a canonical, Open Graph, or Twitter promotion;
-- neither route may appear in the sitemap;
-- no “Last updated” or effective date may imply policy approval;
-- the relaunch fallback remains default-off independently of the routes.
+`/privacy` is the public Privacy Policy. It must:
 
-## Evidence hierarchy
+- identify Meelni as the operator and `contact@meelni.com` as the privacy
+  contact;
+- show an effective date and last-updated date of July 26, 2026;
+- emit canonical, indexable public metadata;
+- appear in the Production sitemap; and
+- use plain language that agrees with implemented product behavior.
 
-Factual statements must be grounded in this order:
+`/terms` remains a temporary holding page. It must remain `noindex, nofollow`,
+must not emit a canonical or social promotion, and must remain outside the
+sitemap until the contracting entity, acceptance process, commercial terms,
+governing law, and liability provisions are separately approved.
 
-1. accepted decisions and stable contracts;
-2. implemented workflows, data selections, and provider adapters;
-3. tested public presentation derived from the same source;
-4. clearly labeled open questions.
+## Approved privacy representations
 
-Do not infer policy from a UI label, optional environment variable, legacy
-schema field, provider marketing page, or aspirational roadmap.
+### Account and practice data
 
-## Corrected claim classes
+The public policy may state that Meelni stores:
 
-| Legacy claim                                                         | Repository truth                                                                                                       | Draft treatment                                                            |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Pro includes unrestricted interviews                                 | Accepted catalog is 12 credits/month with bounded rollover                                                             | Billing facts project the canonical public catalog                         |
-| Accounts use Google OAuth                                            | Google and email/password auth are implemented                                                                         | Name both methods                                                          |
-| Meelni stores replayable interview audio                             | Reviewed application storage persists transcript text and timing/duration metadata; voice providers process live audio | Do not claim durable audio-file storage; require provider-retention review |
-| Interview content improves provider models                           | No approved training-purpose contract or separate training pipeline is established                                     | State no such purpose; require explicit approval for any future use        |
-| Security controls are “industry standard” and regularly audited      | The repo has concrete auth, ownership, RLS, redaction, and secret-handling controls, but no certification contract     | Do not make comparative or audit-frequency guarantees                      |
-| Account data is erased within a fixed number of days                 | Local deletion is asynchronous and completed tombstones have intentionally undefined retention                         | Describe workflow truth and promise no exact date                          |
-| Human review of automated feedback is available                      | No human-review workflow is implemented                                                                                | Do not offer this control until an owned workflow exists                   |
-| Regional rights, transfers, age rules, and governing law are settled | No accountable policy decision is recorded                                                                             | Keep in the owner/legal decision list                                      |
-| Browser analytics consent is legally approved                        | Engineering now implements explicit opt-in and disables replay/autocapture; accountable legal/owner review remains     | Disclose reviewed engineering behavior without declaring legal compliance  |
+- account identity, profile, authentication references, settings, and
+  preferences;
+- selected questions, interview lifecycle and timing data, transcript text,
+  generated feedback and scores, bookmarks, practice sets, focused-practice
+  responses, and progress insights;
+- support/contact submissions; and
+- subscription, purchase, usage, payment-summary, and credit-ledger data.
 
-## Billing boundary
-
-Terms billing facts must be projected from
-`lib/billing/catalog-presentation.ts`, which derives from the accepted core
-catalog. Legal copy must not duplicate plan allowances as independent strings
-or revive removed free/unrestricted plans.
-
-## Account privacy boundary
-
-The privacy draft may describe the implemented account export and durable
-deletion workflow from `docs/contracts/account-privacy.md`. It must preserve
-these limitations:
-
-- export is allowlisted, user-scoped, and excludes provider operations;
-- a deletion response means the durable asynchronous request exists, not that
-  all provider cleanup completed;
-- completed tombstone, provider, billing, log, and backup retention has no
-  approved universal deletion period;
-- provider/admin errors, secrets, and raw webhook payloads are not user-facing
-  export data.
-
-## Decisions requiring accountable approval
-
-Privacy policy decisions include legal entity/contact, lawful bases, regional
-rights and request verification, age eligibility, subprocessors and transfers,
-retention schedules, and cookie/analytics consent.
-
-Terms decisions include contracting entity/contact, eligibility and acceptable
-use, content ownership/licenses, purchase/refund/cancellation/tax terms,
-enforcement and appeals, warranty/liability/indemnity/disputes, governing law,
-change notice, and effective date.
-
-Engineering tests can prove the draft matches repository behavior and remains
-unindexed. They cannot approve these decisions.
-
-## Internal implementation review inventory
-
-This section is review material for accountable owners and counsel. It must not
-be copied onto the public holding pages merely because those pages are
-`noindex`; indexing controls are not access controls.
-
-### Authentication and account data
-
-- Supabase authentication currently supports Google sign-in and email with a
-  password.
-- Application storage can contain account/profile settings, interview
-  lifecycle and timing data, selected questions, transcript text and turn
-  timing, generated feedback and scores, bookmarks, practice sets,
-  progress insights, and frozen legacy streak or achievement records retained
-  for export and account-deletion compatibility.
-- The account export is an allowlisted JSON projection of account, settings,
-  practice, transcript, feedback, progress, and billing-summary data. It
-  excludes credentials, raw provider operations, logs, deletion tombstones,
-  and other users.
+Supabase authentication supports Google and email/password sign-in. Google may
+provide profile information for authentication.
 
 ### Voice, transcript, and model processing
 
-- Live voice audio is transmitted through configured real-time speech and
-  voice providers while an interview runs.
-- The reviewed application database stores transcript text and audio-duration
-  metadata, not replayable audio files.
-- Provider processing, data-use, and retention terms require verification
-  against deployed configuration and contracts.
-- The repository does not establish a separate pipeline that trains provider
-  foundation models on interview content. Any future training purpose requires
-  explicit approval before it is represented publicly.
+Live interview audio is transmitted to configured real-time voice and speech
+providers while a session runs. Meelni stores transcript text and
+audio-duration metadata in the application; it does not create or store a
+replayable interview-audio recording in the application.
 
-### Billing and deletion
+Interview content may be processed by speech-recognition, language-model, and
+speech-synthesis providers to run the interview and generate feedback. The
+repository has no separate Meelni model-training pipeline, so the policy states
+that Meelni does not use interview content to train a separate Meelni model. It
+does not make a broader claim about every provider's independent legal
+obligations or retention.
 
-- Stripe handles checkout and payment processing. Application storage contains
-  subscription and payment summaries, usage, finite-credit ledger records, and
-  the provider references needed for billing reconciliation and account
-  cleanup. Raw payment-card details are not part of the reviewed application
-  database model.
-- A successful account-deletion response means the durable deletion request
-  exists. The initial background enqueue can fail while the route still returns
-  `deletion_retry_scheduled`; scheduled recovery then retries the work.
-  Customer-facing wording must therefore say that cleanup runs or retries
-  asynchronously, not that every successful response queued a workflow.
-- Completed deletion tombstones retain the user identifier, status and attempt
-  timestamps, and one-way provider fingerprints until a separate retention
-  decision approves removal.
+Automated feedback is informational. The product does not use it to make legal
+or similarly significant decisions about a user.
 
-### Analytics, replay, and browser storage
+### Billing
 
-- Optional PostHog and browser Statsig clients do not initialize until a
-  current explicit acceptance is resolved for the current browser/account
-  subject. Undecided, declined, stale, malformed, and provider-error states
-  fail closed.
-- Browser autocapture and session replay are disabled. Analytics events use
-  explicit property allowlists; authenticated identifiers use a keyed
-  pseudonym rather than a raw account identifier.
-- The consent-independent server relaunch gate uses a non-identifying
-  operational subject with Statsig event logging disabled. Consent does not
-  determine product access.
-- Isolated Preview network evidence, provider retention, cookie
-  classification, and accountable legal/owner approval remain open. The
-  engineering behavior must not be published as a legal-compliance claim.
+Stripe processes payment-card details. Meelni stores plan, subscription,
+purchase, credit, transaction, invoice, payment-status, and reconciliation
+references, but not full payment-card numbers.
 
-### Provider and retention review
+### Cookies and optional analytics
 
-- Current code integrates provider categories for hosting, authentication and
-  database storage, real-time voice rooms, speech recognition,
-  language-model processing, voice synthesis, billing, analytics and feature
-  flags, and background jobs.
-- The exact subprocessor list, provider roles, regions, international-transfer
-  terms, and provider retention require verification against deployed
-  configuration and contracts.
-- The repository defines no approved universal retention period for account,
-  transcript, feedback, analytics, billing, log, backup, or completed-tombstone
-  data.
-- The relaunch gate remains default-off independently of this legal review. Its
-  operational state is not public legal-page content.
+Necessary cookies and similar technologies may operate for authentication,
+security, continuity, billing handoffs, and privacy-preference storage.
 
-## Approval and indexing gate
+Optional browser analytics stay off until current explicit acceptance. If
+accepted:
 
-Removing `noindex` or adding either route to the sitemap requires all of:
+- PostHog and Statsig may initialize for manually approved product-usage events
+  and feature evaluation;
+- interview audio, transcripts, questions, answers, and feedback excerpts must
+  not enter analytics;
+- authenticated identifiers remain pseudonymous;
+- PostHog autocapture and session replay remain disabled; and
+- Statsig browser storage and event logging remain disabled.
 
-1. accountable owner and legal approval recorded in a durable issue or decision;
-2. a reviewed legal entity, contact, effective date, and policy version;
-3. live provider/subprocessor, analytics-consent, retention, and billing checks;
-4. updated content-contract fixtures proving the approved policy and product
-   behavior still agree.
+Declining optional analytics does not affect product access. The preference
+cookie may last 180 days. Users can change the decision in Data & privacy
+settings.
+
+Meelni does not sell personal information, share it for cross-context
+behavioral advertising, or run third-party advertising networks in the
+reviewed product.
+
+### Provider categories
+
+The approved policy names the current core providers that may process personal
+information for their service category: Vercel, Supabase, Google, LiveKit,
+Deepgram, OpenAI, Cartesia, Stripe, Inngest, PostHog, and Statsig.
+
+Provider configuration, regions, transfer safeguards, and retention remain
+operational facts that must be maintained against deployed contracts. The
+policy therefore describes legally recognized transfer mechanisms and
+retention criteria without inventing provider-specific periods.
+
+### Retention and deletion
+
+No unsupported universal deletion deadline is promised. Retention is described
+using criteria: data type, account activity, the product purpose, security,
+dispute resolution, financial reconciliation, tax/accounting requirements, and
+other legal obligations.
+
+An authenticated account can request a JSON export or submit an account deletion
+request from settings. A successful deletion request means a durable tombstone
+exists and product access ends. Application and provider cleanup runs or retries
+asynchronously; the response does not mean every provider, backup, log, billing
+record, or legally retained record was erased immediately.
+
+Completed tombstones, provider fingerprints, restricted backups, security logs,
+and billing records may be retained only where reasonably necessary for
+security, legal compliance, fraud prevention, financial reconciliation, or
+reliable completion of the deletion request.
+
+### Rights and age
+
+The policy provides one online-business request method through
+`contact@meelni.com` plus authenticated export and deletion controls. Requests
+may require identity and authority verification.
+
+The policy describes access, copy, correction, deletion, restriction,
+objection, portability, withdrawal, appeal, supervisory-authority complaint,
+and non-discrimination rights as applicable by location and law.
+
+The Service is not directed to children under 13. Meelni does not knowingly
+collect personal information from children under 13 and provides a contact path
+for review and deletion.
+
+## Approval evidence
+
+The human product owner explicitly instructed Codex on July 26, 2026 to use its
+best judgment to finalize and update the Privacy Policy because no separate
+legal reviewer was available. The accepted durable decision is
+[`2026-07-26-public-privacy-policy.md`](../decisions/2026-07-26-public-privacy-policy.md).
+
+This approval authorizes the repository content and indexing changes. It does
+not certify jurisdiction-by-jurisdiction compliance, approve the Terms draft,
+or authorize a Production deployment.
+
+## Change control
+
+Any change to the categories collected, interview-content processing,
+analytics purpose, sale/sharing posture, advertising use, provider list,
+retention criteria, request methods, age posture, or effective date requires a
+policy review and corresponding contract/test update. A material analytics
+purpose change must also advance the analytics-consent policy version and
+re-prompt prior acceptances.

@@ -83,11 +83,7 @@ test("analytics privacy actions preserve the 44px touch-target contract", async 
     "utf8"
   );
 
-  for (const label of [
-    "Read the privacy draft",
-    "Decline",
-    "Allow analytics",
-  ]) {
+  for (const label of ["Privacy", "Decline", "Allow analytics"]) {
     const labelIndex = banner.indexOf(label);
     assert.notEqual(labelIndex, -1, `missing consent banner action: ${label}`);
     assert.match(

@@ -49,3 +49,9 @@ Lifecycle-owned server workflows await consent lookup and optional PostHog deliv
 ## Versioning
 
 Increasing `ANALYTICS_CONSENT_POLICY_VERSION` invalidates prior acceptance and re-prompts. A prior decline remains effective until explicitly changed.
+
+The July 26, 2026 Privacy Policy has accountable owner approval for the current
+analytics purpose and behavior. That approval does not certify
+jurisdiction-by-jurisdiction compliance. Deployed provider configuration,
+retention, and transfer safeguards remain operational facts that must be
+maintained against the public policy.

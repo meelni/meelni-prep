@@ -85,7 +85,7 @@ export function TermsHoldingContent() {
             </p>
             <div className="not-prose mt-6 flex flex-wrap gap-3">
               <Button asChild variant="outline">
-                <Link href="/privacy">Review privacy draft</Link>
+                <Link href="/privacy">Read the Privacy Policy</Link>
               </Button>
             </div>
           </section>

@@ -49,4 +49,4 @@
 - Risk level: Medium; intentionally removes publicly routable but unsupported content.
 - Backward compatibility: `/docs` and `/test-*` become 404. No supported customer workflow depends on them.
 - Metrics/events: Hosted CI build and crawl status; production 404/error telemetry after deployment.
-- Follow-up: SAV-182 must land before the contact-identity acceptance criterion can close. SAV-235 owns approval and indexing readiness for the legal drafts; `/privacy` and `/terms` remain reachable QA pages but stay outside the sitemap until that work explicitly changes their status. A future public API/docs launch requires an explicit product decision, an owned contract, and removal of the `/docs` prohibition in the same reviewed change.
+- Follow-up: SAV-182 must land before the contact-identity acceptance criterion can close. The accepted July 26, 2026 privacy decision now makes `/privacy` indexable and includes it in the sitemap; `/terms` remains an unindexed QA route. A future public API/docs launch requires an explicit product decision, an owned contract, and removal of the `/docs` prohibition in the same reviewed change.

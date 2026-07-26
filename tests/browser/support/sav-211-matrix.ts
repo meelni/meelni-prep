@@ -33,7 +33,7 @@ export const SAV_211_BROWSER_SCENARIOS: Sav211BrowserScenario[] = [
   { id: "feedback-failed", expectedText: "Feedback review failed" },
   { id: "feedback-unavailable", expectedText: "Feedback unavailable" },
   { id: "feedback-compare", expectedText: "Compare Attempts" },
-  { id: "consent-undecided", expectedText: "Optional product analytics" },
+  { id: "consent-undecided", expectedText: "Cookie preferences" },
   { id: "consent-accepted", expectedText: "Consent layout fixture" },
   { id: "consent-declined", expectedText: "Consent layout fixture" },
 ];
