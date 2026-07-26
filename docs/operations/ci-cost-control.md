@@ -30,9 +30,9 @@ by parallel validation lanes rather than one serial runner.
 - Concurrency cancellation stops superseded runs for the same pull request/ref.
 
 The trigger policy changes frequency while preserving risk-matched merge-ready
-coverage. Ordinary Validate still installs clean dependency graphs, verifies
-clean and upgrade migration paths, runs repository skills and Node/Python
-contracts, executes the full quality/regression suite, and builds the production
+coverage. Full Validate installs clean dependency graphs, verifies clean and
+upgrade migration paths, runs repository skills and Node/Python contracts,
+executes the full quality/regression suite, and builds the production
 application. Pull-request path suppression has one exact exception:
 `.github/stacked-prs.json`. Manual dispatch remains the break-glass
 clean-machine verification path, but never substitutes for merge-ref
@@ -40,7 +40,7 @@ validation.
 
 ## Parallel validation topology
 
-Every ordinary merge-ready head runs the complete gate in four independent
+Full-coverage merge-ready heads run the complete gate in four independent
 GitHub-hosted lanes:
 
 - `Static and Python Contracts` runs repository-skill validation, formatting,
@@ -51,22 +51,60 @@ GitHub-hosted lanes:
 - `Database Migrations` is the only lane that starts PostgreSQL and verifies
   clean and legacy upgrade paths.
 - `Production and Browser QA` builds the isolated production artifact, crawls
-  public routes, and runs the representative Chromium matrix.
+  public routes, and runs the representative Chromium matrix. CI uses two
+  Chromium workers across isolated project/file groups while preserving zero
+  retries and ordered execution within each file.
 
-The lanes have no dependencies on each other. A final GitHub Actions job depends
-on all four, uses `always()`, and publishes the exact required `Validate` context
-only after inspecting every lane result. Success is the only accepted result;
-failure, cancellation, or a missing/skipped ordinary lane fails the aggregator.
-Manual dispatch publishes `Manual Validate`, never the protected PR context.
-Draft and closed events allocate no validation lanes and cannot publish a
-successful `Validate`.
+The lanes have no dependencies on each other after classification. A final
+GitHub Actions job uses `always()` and publishes the exact required `Validate`
+context only after inspecting classification and every lane result. A selected
+lane must succeed and an unselected lane must be skipped; failure, cancellation,
+missing output, or any other combination fails the aggregator. Manual dispatch
+selects every full lane and publishes `Manual Validate`, never the protected PR
+context. Draft and closed events allocate no validation lanes and cannot publish
+a successful `Validate`.
 
 Parallelization deliberately trades a modest increase in aggregate runner
-minutes for a lower merge critical path. The initial service-level target is a
-full ready-PR p90 of seven minutes or less, down from the 15m37s p90 measured
-across the 20 most recent successful runs on July 26, 2026. Change-aware lane
-selection is a separate rollout and must not be described as active until it has
-its own merged implementation and exact-head evidence.
+minutes for a lower merge critical path. PR #484 provided the first live
+full-path result: 6m34s end to end, with a 6m22s production/browser critical
+lane, down from the 15m37s p90 measured across the 20 preceding successful runs
+on July 26, 2026. The ongoing service-level target is a full ready-PR p90 of
+seven minutes or less.
+
+## Conservative change routing
+
+`scripts/classify-ci-changes.mjs` classifies GitHub's checked-out pull-request
+merge relative to its first parent. It uses only repository paths and status,
+never PR labels, titles, body text, user inputs, API guesses, or transitive test
+inference.
+
+| Change class                                             | Repository docs | Static/Python | Unit/contracts | PostgreSQL | Production/browser |
+| -------------------------------------------------------- | --------------: | ------------: | -------------: | ---------: | -----------------: |
+| Documentation only                                       |             yes |            no |             no |         no |                 no |
+| Python `agent/` only                                     |              no |           yes |            yes |         no |                 no |
+| SQL/JSON migration only                                  |              no |           yes |            yes |        yes |                 no |
+| App, UI, public content, or browser QA                   |              no |           yes |            yes |         no |                yes |
+| Mixed owned classes                                      |              no |           yes |            yes |      union |              union |
+| Config, dependency, workflow, shared library, or unknown |              no |           yes |            yes |        yes |                yes |
+| Manual dispatch                                          |              no |           yes |            yes |        yes |                yes |
+
+Documentation means top-level `README.md`, `AGENTS.md`, or `DESIGN.md`, or
+reviewed documentation/assets below `docs/`, `openspec/`, and `.agents/`.
+Product content below `content/` is application behavior and retains production
+and browser validation. The lightweight documentation lane installs the locked
+dependency graph, runs Prettier on changed text documents, and validates all
+repository skills.
+
+Only added and modified paths can use targeted routing. Deleted, renamed,
+copied, empty, malformed, or unreadable diffs select full coverage. Changes to
+the workflow, classifier, tests, package lock, configs, shared `lib/` or
+`packages/` code, and every unowned path also select full coverage. The
+classifier regression test inventories every tracked top-level entry so a new
+root cannot silently acquire a fast path.
+
+The first routing PR necessarily selects the full gate because it changes CI
+and classifier code. A separate documentation-only proof PR must demonstrate
+the two-minute SLO before this rollout is considered complete.
 
 ### Exact registry-only fast path
 
@@ -209,11 +247,14 @@ explicit owner decision, and time-box any protection change. Restore the full
 configuration immediately after the emergency action and verify it through the
 API above.
 
-To roll back the cost-control workflow itself, revert its commit through a PR;
-keep `Validate`, `Trusted Publisher`, and `Migration Collision Publisher`
-required and restore the `push: main` full-CI trigger. To roll back only the
-registry fast path, remove its exact `paths-ignore` and publisher step through a
-protected PR. Never leave a skipped lifecycle context named `Validate`.
+To roll back change routing without undoing parallelization, change the
+classifier to select all four full lanes for every diff and remove the
+lightweight repository lane in a protected PR. To roll back the cost-control
+workflow itself, revert its commit through a PR; keep `Validate`, `Trusted
+Publisher`, and `Migration Collision Publisher` required and restore the
+`push: main` full-CI trigger. To roll back only the registry fast path, remove
+its exact `paths-ignore` and publisher step through a protected PR. Never leave
+a skipped lifecycle context named `Validate`.
 
 Vercel, GitGuardian, and local results remain complementary evidence; none
 replaces hosted Validate.

@@ -110,9 +110,11 @@ test("cost control preserves exact-head cancellation and the complete validation
   }
 });
 
-test("full validation runs in parallel behind one fail-closed required context", () => {
+test("change-aware validation runs behind one fail-closed required context", () => {
   const jobs = parsedWorkflow.jobs;
   assert.deepEqual(Object.keys(jobs), [
+    "classify",
+    "repository",
     "static",
     "tests",
     "database",
@@ -120,19 +122,50 @@ test("full validation runs in parallel behind one fail-closed required context",
     "validate",
   ]);
 
-  for (const lane of ["static", "tests", "database", "production"]) {
+  assert.equal(jobs.classify.name, "Classify CI Changes");
+  assert.equal(jobs.classify.steps[0].with["fetch-depth"], 2);
+  assert.match(
+    jobs.classify.steps[1].run,
+    /classify-ci-changes\.mjs --github-output/
+  );
+  assert.equal(jobs.classify.steps.length, 2);
+  assert.deepEqual(Object.keys(jobs.classify.outputs), [
+    "repository",
+    "static",
+    "tests",
+    "database",
+    "production",
+    "mode",
+    "reason",
+  ]);
+
+  for (const lane of [
+    "repository",
+    "static",
+    "tests",
+    "database",
+    "production",
+  ]) {
     assert.match(jobs[lane].if, /github\.event\.action != 'closed'/);
     assert.match(jobs[lane].if, /github\.event\.pull_request\.draft == false/);
+    assert.match(
+      jobs[lane].if,
+      new RegExp(`needs\\.classify\\.outputs\\.${lane} == 'true'`)
+    );
+    assert.equal(jobs[lane].needs, "classify");
     assert.equal(jobs[lane]["runs-on"], "ubuntu-latest");
     assert.ok(jobs[lane]["timeout-minutes"] <= 15);
   }
 
+  assert.equal(jobs.repository.name, "Repository and Documentation");
   assert.equal(jobs.static.name, "Static and Python Contracts");
   assert.equal(jobs.tests.name, "Unit and Contract Tests");
   assert.equal(jobs.database.name, "Database Migrations");
   assert.equal(jobs.production.name, "Production and Browser QA");
 
   assert.deepEqual(jobs.validate.needs, [
+    "classify",
+    "repository",
     "static",
     "tests",
     "database",
@@ -142,6 +175,8 @@ test("full validation runs in parallel behind one fail-closed required context",
   assert.match(jobs.validate.name, /'Validate'/);
   assert.equal(jobs.validate.steps.length, 1);
   assert.deepEqual(jobs.validate.steps[0].env, {
+    CLASSIFY_RESULT: "${{ needs.classify.result }}",
+    REPOSITORY_RESULT: "${{ needs.repository.result }}",
     STATIC_RESULT: "${{ needs.static.result }}",
     TESTS_RESULT: "${{ needs.tests.result }}",
     DATABASE_RESULT: "${{ needs.database.result }}",
@@ -149,15 +184,27 @@ test("full validation runs in parallel behind one fail-closed required context",
   });
   assert.match(
     jobs.validate.steps[0].run,
-    /if \[ "\$result" != "success" \]; then/
+    /\[ "\$REPOSITORY_RESULT" = "success" \]/
   );
+  assert.match(
+    jobs.validate.steps[0].run,
+    /\[ "\$STATIC_RESULT" != "success" \] \|\| \[ "\$TESTS_RESULT" != "success" \]/
+  );
+  assert.match(jobs.validate.steps[0].run, /"\$result" != "skipped"/);
   assert.match(jobs.validate.steps[0].run, /exit 1/);
 
   assert.equal(
     jobs.database.services?.postgres?.env.POSTGRES_DB,
     "meelni_test"
   );
-  for (const lane of ["static", "tests", "production", "validate"]) {
+  for (const lane of [
+    "classify",
+    "repository",
+    "static",
+    "tests",
+    "production",
+    "validate",
+  ]) {
     assert.equal(jobs[lane].services, undefined);
   }
 });
