@@ -204,7 +204,6 @@ const longLifecycleMessage =
 function ConsentDecisionScenario() {
   return (
     <>
-      <CookieConsentBanner />
       <main
         aria-labelledby="consent-fixture-title"
         className="mx-auto min-h-[70vh] w-full max-w-5xl space-y-4 px-4 py-8 sm:px-6"
@@ -221,6 +220,7 @@ function ConsentDecisionScenario() {
           Continue practice
         </Button>
       </main>
+      <CookieConsentBanner />
     </>
   );
 }

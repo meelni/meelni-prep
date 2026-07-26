@@ -136,7 +136,7 @@ export default function ContactPage() {
                 Email us directly while the form is unavailable.
               </AppSurfaceDescription>
               <Button asChild variant="outline" className="mt-6">
-                <a href="mailto:support@meelni.com">Email support</a>
+                <a href="mailto:contact@meelni.com">Email support</a>
               </Button>
             </MarketingCard>
 
@@ -151,7 +151,7 @@ export default function ContactPage() {
                 <Link href="/dashboard/settings">Open account settings</Link>
               </Button>
               <Button asChild variant="ghost" className="mt-2">
-                <a href="mailto:billing@meelni.com">Email billing</a>
+                <a href="mailto:contact@meelni.com">Email billing</a>
               </Button>
             </MarketingCard>
           </div>
@@ -224,7 +224,7 @@ export default function ContactPage() {
       setError({
         title: "Request not saved",
         message:
-          "We could not confirm that your request was saved. Try again or email support@meelni.com directly.",
+          "We could not confirm that your request was saved. Try again or email contact@meelni.com directly.",
       });
     } catch {
       if (
@@ -237,7 +237,7 @@ export default function ContactPage() {
       setError({
         title: "Request not saved",
         message:
-          "We could not confirm your request was saved. Try again or email support@meelni.com directly.",
+          "We could not confirm your request was saved. Try again or email contact@meelni.com directly.",
       });
     } finally {
       setIsSubmitting(false);
@@ -415,10 +415,10 @@ export default function ContactPage() {
                           {error.message}
                         </p>
                         <a
-                          href="mailto:support@meelni.com"
+                          href="mailto:contact@meelni.com"
                           className="text-primary inline-block text-xs font-medium hover:underline"
                         >
-                          Email support@meelni.com
+                          Email contact@meelni.com
                         </a>
                       </div>
                     </AppSurface>
@@ -451,14 +451,9 @@ export default function ContactPage() {
                 </div>
                 <div className="space-y-4">
                   <ContactEmail
-                    address="support@meelni.com"
-                    label="General support"
+                    address="contact@meelni.com"
+                    label="Support, billing, and privacy"
                     icon={<Mail className="h-5 w-5" />}
-                  />
-                  <ContactEmail
-                    address="billing@meelni.com"
-                    label="Billing inquiries"
-                    icon={<CreditCard className="h-5 w-5" />}
                   />
                 </div>
               </MarketingCard>
@@ -499,7 +494,7 @@ export default function ContactPage() {
                     href="/privacy"
                     className="text-primary block text-sm hover:underline"
                   >
-                    Privacy draft
+                    Privacy Policy
                   </Link>
                   <Link
                     href="/terms"

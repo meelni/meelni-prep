@@ -32,7 +32,14 @@ test("the sitemap enumerates canonical public routes without invented freshness"
   const entries = await sitemap();
   const urls = new Set(entries.map((entry) => entry.url));
 
-  for (const route of ["", "/explore", "/companies", "/pricing", "/blog"]) {
+  for (const route of [
+    "",
+    "/explore",
+    "/companies",
+    "/pricing",
+    "/blog",
+    "/privacy",
+  ]) {
     assert.ok(urls.has(publicUrl(route || "/")), route || "/");
   }
   for (const route of [
@@ -47,7 +54,7 @@ test("the sitemap enumerates canonical public routes without invented freshness"
   assert.ok(
     [...urls].some((url) => url.startsWith(`${PUBLIC_ORIGIN}/companies/`))
   );
-  assert.equal(urls.has(`${PUBLIC_ORIGIN}/privacy`), false);
+  assert.equal(urls.has(`${PUBLIC_ORIGIN}/privacy`), true);
   assert.equal(urls.has(`${PUBLIC_ORIGIN}/terms`), false);
   assert.equal(urls.has(`${PUBLIC_ORIGIN}/contact`), false);
   assert.equal(urls.size, entries.length);

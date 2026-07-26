@@ -30,10 +30,10 @@ export default function CheckoutCanceled() {
           <>
             Need help? Contact us at{" "}
             <a
-              href="mailto:support@meelni.com"
+              href="mailto:contact@meelni.com"
               className="text-primary hover:underline"
             >
-              support@meelni.com
+              contact@meelni.com
             </a>
           </>
         }

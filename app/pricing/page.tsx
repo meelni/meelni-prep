@@ -191,7 +191,7 @@ export default function PricingPage() {
           <p>&copy; 2025 Meelni. All rights reserved.</p>
           <div className="mt-4 flex justify-center gap-6">
             <Link href="/privacy" className="hover:text-foreground">
-              Privacy draft
+              Privacy Policy
             </Link>
             <Link href="/terms" className="hover:text-foreground">
               Terms draft

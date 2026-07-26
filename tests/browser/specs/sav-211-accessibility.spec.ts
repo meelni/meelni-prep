@@ -29,7 +29,7 @@ for (const scenario of SAV_211_BROWSER_SCENARIOS) {
     await expect(page.getByText(scenario.expectedText).first()).toBeVisible();
 
     if (scenario.id === "consent-undecided") {
-      await assertConsentNoticePrecedesContent(page);
+      await assertConsentNoticeFloatsOverContent(page);
     } else if (
       scenario.id === "consent-accepted" ||
       scenario.id === "consent-declined"
@@ -112,44 +112,44 @@ test("SAV-211 comparison supports radio movement and retry recovery", async ({
   activity.assertClean();
 });
 
-test("SAV-211 consent choices remove the normal-flow notice", async ({
-  page,
-}) => {
+test("SAV-211 consent choices remove the floating notice", async ({ page }) => {
   const activity = await installBrowserActivityGuard(page, "harness");
   const href = sav211ScenarioHref("consent-undecided");
 
   await page.goto(href, { waitUntil: "domcontentloaded" });
-  await assertConsentNoticePrecedesContent(page);
+  await assertConsentNoticeFloatsOverContent(page);
   await page.getByRole("button", { name: "Decline" }).click();
   await expect(page.locator("[data-cookie-consent-banner]")).toHaveCount(0);
   await expect(page.getByRole("main")).toBeVisible();
 
   await page.goto(href, { waitUntil: "domcontentloaded" });
-  await assertConsentNoticePrecedesContent(page);
+  await assertConsentNoticeFloatsOverContent(page);
   await page.getByRole("button", { name: "Allow analytics" }).click();
   await expect(page.locator("[data-cookie-consent-banner]")).toHaveCount(0);
   await expect(page.getByRole("main")).toBeVisible();
   activity.assertClean();
 });
 
-async function assertConsentNoticePrecedesContent(page: Page) {
+async function assertConsentNoticeFloatsOverContent(page: Page) {
   const banner = page.locator("[data-cookie-consent-banner]");
   const content = page.locator("[data-consent-primary-content]");
   await expect(banner).toBeVisible();
   await expect(content).toBeVisible();
 
-  const [bannerBox, contentBox] = await Promise.all([
+  const [bannerBox, contentBox, position] = await Promise.all([
     banner.boundingBox(),
     content.boundingBox(),
+    banner.evaluate((element) => getComputedStyle(element).position),
   ]);
   expect(bannerBox).not.toBeNull();
   expect(contentBox).not.toBeNull();
-  expect(contentBox!.y).toBeGreaterThanOrEqual(
-    bannerBox!.y + bannerBox!.height - 1
-  );
+  expect(position).toBe("fixed");
+  expect(contentBox!.y).toBeLessThan(bannerBox!.y);
+  expect(bannerBox!.x).toBeGreaterThanOrEqual(15);
+  expect(bannerBox!.y).toBeGreaterThanOrEqual(0);
 
   for (const action of [
-    page.getByRole("link", { name: "Read the privacy draft" }),
+    page.getByRole("link", { name: "Privacy" }),
     page.getByRole("button", { name: "Decline" }),
     page.getByRole("button", { name: "Allow analytics" }),
   ]) {
