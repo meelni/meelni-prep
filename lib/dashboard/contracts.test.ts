@@ -197,11 +197,16 @@ test("only completed, valid scores contribute to progress and weaknesses", () =>
   const rowsById = new Map(history.rows.map((row) => [row.id, row]));
   assert.equal(
     rowsById.get("dashboard-pending")?.focusLabel,
-    "Feedback pending"
+    "Feedback is being prepared"
   );
-  assert.equal(rowsById.get("dashboard-processing")?.scoreLabel, "Pending");
+  assert.equal(rowsById.get("dashboard-processing")?.scoreLabel, "In progress");
   assert.equal(rowsById.get("dashboard-failed")?.scoreLabel, "Unavailable");
-  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "Skipped");
-  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "Unscored");
+  assert.equal(rowsById.get("dashboard-failed")?.statusLabel, "Unavailable");
+  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "No feedback");
+  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "No score");
+  assert.equal(
+    rowsById.get("dashboard-skipped")?.feedbackState,
+    "not-generated"
+  );
   assert.equal(rowsById.get("dashboard-failed")?.feedbackHref, null);
 });
