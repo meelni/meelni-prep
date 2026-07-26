@@ -106,6 +106,27 @@ The first routing PR necessarily selects the full gate because it changes CI
 and classifier code. A separate documentation-only proof PR must demonstrate
 the two-minute SLO before this rollout is considered complete.
 
+### July 26, 2026 rollout evidence
+
+The rollout uses exact hosted runs rather than local estimates:
+
+- Before parallelization, the 20 preceding successful full runs had a 15m21s
+  median and a 15m37s p90. Documentation-only PR #479 took 15m49s, and a
+  three-line backend fix in PR #480 took 15m27s.
+- Parallelization PR #484 first proved the complete gate at 6m34s end to end.
+- Routing PR #486 proved the current rebased full path at exact head
+  `44abae5721f9ef92c3846761a9eb85137c45a096` in
+  [run 30223964289](https://github.com/meelni/meelni-prep/actions/runs/30223964289):
+  6m12s end to end, with a 5m52s production/browser critical lane, 5m35s
+  unit/contracts lane, 3m28s static/Python lane, 2m21s database lane, and a
+  successful three-second `Validate` aggregator.
+
+SAV-334 records the separate documentation-only run and final protection
+readback before closing the rollout. A documentation proof is valid only when
+the repository lane succeeds, every code lane is skipped, the exact required
+`Validate`, `Trusted Publisher`, and `Migration Collision Publisher` contexts
+succeed, and the pull request merges through normal strict protection.
+
 ### Exact registry-only fast path
 
 GitHub, not pull-request code, applies the one-entry `paths-ignore`. A proposed
