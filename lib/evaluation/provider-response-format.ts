@@ -8,7 +8,7 @@ import {
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-provider-response-format.v8" as const;
+  "feedback-provider-response-format.v9" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",

@@ -36,7 +36,7 @@ import {
   assertCalibrationSpendAuthorizationExecutable,
   buildCalibrationActivatedPlan,
   resumeDelegatedActivatedCalibrationRun,
-  SAV_248_V22_SPEND_AUTHORIZATION,
+  SAV_248_V23_SPEND_AUTHORIZATION,
 } from "@/lib/evaluation/calibration-run-ledger";
 import {
   assertCalibrationOwnerAuthorizationMatchesPlan,
@@ -180,7 +180,7 @@ async function main() {
     }
     const planned = buildCalibrationActivatedPlan({
       authorization:
-        ownerAuthorization?.authorization ?? SAV_248_V22_SPEND_AUTHORIZATION,
+        ownerAuthorization?.authorization ?? SAV_248_V23_SPEND_AUTHORIZATION,
       adjudicationApproval,
       model: modelVersion,
       repetitions,
