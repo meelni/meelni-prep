@@ -96,7 +96,10 @@ async function computedContrastRatio(
   });
 
   const parseRgb = (value: string): [number, number, number] => {
-    const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+    const channels = value
+      .match(/[\d.]+/g)
+      ?.slice(0, 3)
+      .map(Number);
     if (!channels || channels.length !== 3) {
       throw new Error(`Expected an RGB color, received ${value}`);
     }
@@ -109,9 +112,7 @@ async function computedContrastRatio(
         ? normalized / 12.92
         : ((normalized + 0.055) / 1.055) ** 2.4;
     });
-    return (
-      linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
-    );
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
   };
   const foreground = luminance(parseRgb(colors.foreground));
   const background = luminance(parseRgb(colors.background));
