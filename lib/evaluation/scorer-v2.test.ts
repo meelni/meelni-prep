@@ -237,6 +237,42 @@ test("provider parser authenticates only content-free invariant classifications"
     "test a concierge flow first"
   );
 
+  const reusedEvidence = {
+    ...providerValue,
+    improvements: [
+      {
+        ...providerValue.improvements[0],
+        transcriptRefs: ["turn_0001"],
+        evidence: [
+          {
+            turnRef: "turn_0001",
+            quote: "working parents and measure weekly completed plans",
+          },
+        ],
+      },
+    ],
+  };
+  let reusedCaught: unknown;
+  try {
+    parse(reusedEvidence);
+  } catch (error) {
+    reusedCaught = error;
+  }
+  assert.ok(reusedCaught instanceof FeedbackProviderInvocationError);
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(reusedCaught),
+    "evidence_reused_across_findings"
+  );
+  const repairedReusedEvidence =
+    parseWithCalibrationHints(reusedEvidence).evaluation;
+  assert.deepEqual(repairedReusedEvidence.improvements[0].transcriptRefs, [
+    "candidate:2",
+  ]);
+  assert.equal(
+    repairedReusedEvidence.improvements[0].evidence[0].quote,
+    "test a concierge flow first"
+  );
+
   const unsupportedQuantity = {
     ...providerValue,
     strengths: [

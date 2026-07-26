@@ -458,7 +458,8 @@ function isCalibrationEvidenceSlotFallbackError(
   try {
     return (
       error instanceof FeedbackV2ParseError &&
-      (error.code === "evidence_overlaps_across_findings" ||
+      (error.code === "evidence_reused_across_findings" ||
+        error.code === "evidence_overlaps_across_findings" ||
         error.code === "finding_quantitative_claim_unsupported" ||
         error.code === "finding_absolute_claim_unsupported")
     );
