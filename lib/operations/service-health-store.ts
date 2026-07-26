@@ -40,6 +40,7 @@ export function createDrizzleServiceHealthEvidenceReader(
 ): ServiceHealthEvidenceReader {
   return {
     async read({ staleBefore, queryTimeoutMs }) {
+      const staleBeforeIso = staleBefore.toISOString();
       return database.transaction(async (transaction) => {
         await transaction.execute(
           sql`select set_config('statement_timeout', ${`${queryTimeoutMs}ms`}, true)`
@@ -50,7 +51,7 @@ export function createDrizzleServiceHealthEvidenceReader(
           exists (
             select 1 from ${feedback}
             where ${feedback.dispatchStatus} in ('pending', 'sending')
-              and coalesce(${feedback.dispatchClaimedAt}, ${feedback.createdAt}) < ${staleBefore}
+              and coalesce(${feedback.dispatchClaimedAt}, ${feedback.createdAt}) < ${staleBeforeIso}
           ) as "feedbackDispatchStale",
           exists (
             select 1 from ${feedback}
@@ -59,7 +60,7 @@ export function createDrizzleServiceHealthEvidenceReader(
           exists (
             select 1 from ${stripeEventLog}
             where ${stripeEventLog.status} = 'pending'
-              and ${stripeEventLog.createdAt} < ${staleBefore}
+              and ${stripeEventLog.createdAt} < ${staleBeforeIso}
           ) as "stripeWebhookStale",
           exists (
             select 1 from ${stripeEventLog}
