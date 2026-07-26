@@ -23,10 +23,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  static:
+  classify:
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.action != 'closed' && github.event.pull_request.draft == false)
+    name: Classify CI Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      repository: ${{ steps.changes.outputs.repository }}
+      static: ${{ steps.changes.outputs.static }}
+      tests: ${{ steps.changes.outputs.tests }}
+      database: ${{ steps.changes.outputs.database }}
+      production: ${{ steps.changes.outputs.production }}
+      mode: ${{ steps.changes.outputs.mode }}
+      reason: ${{ steps.changes.outputs.reason }}
+    steps:
+      - name: Check out repository merge
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: changes
+        name: Select required validation lanes
+        run: node scripts/classify-ci-changes.mjs --github-output "$GITHUB_OUTPUT"
+
+  repository:
+    needs: classify
+    if: >-
+      (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.draft == false)) &&
+      needs.classify.outputs.repository == 'true'
+    name: Repository and Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CI: true
+    steps:
+      - name: Check out repository merge
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install Node.js dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate changed documentation
+        run: node scripts/classify-ci-changes.mjs --validate-docs
+
+      - name: Validate repository skills
+        run: npm run validate:skills
+
+  static:
+    needs: classify
+    if: >-
+      (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.draft == false)) &&
+      needs.classify.outputs.static == 'true'
     name: Static and Python Contracts
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -68,9 +129,11 @@ jobs:
         run: npm run test:python-agent
 
   tests:
+    needs: classify
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action != 'closed' && github.event.pull_request.draft == false)
+      (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.draft == false)) &&
+      needs.classify.outputs.tests == 'true'
     name: Unit and Contract Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -100,9 +163,11 @@ jobs:
         run: npm run test:ci
 
   database:
+    needs: classify
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action != 'closed' && github.event.pull_request.draft == false)
+      (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.draft == false)) &&
+      needs.classify.outputs.database == 'true'
     name: Database Migrations
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -144,9 +209,11 @@ jobs:
         run: npm run test:database-migrations
 
   production:
+    needs: classify
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action != 'closed' && github.event.pull_request.draft == false)
+      (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.draft == false)) &&
+      needs.classify.outputs.production == 'true'
     name: Production and Browser QA
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -212,7 +279,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' ||
       (github.event.action != 'closed' && github.event.pull_request.draft == false))
-    needs: [static, tests, database, production]
+    needs: [classify, repository, static, tests, database, production]
     name: >-
       ${{ github.event_name == 'workflow_dispatch' && 'Manual Validate' ||
       (github.event_name == 'pull_request' &&
@@ -221,21 +288,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every validation lane
+      - name: Require every selected validation lane
         env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          REPOSITORY_RESULT: ${{ needs.repository.result }}
           STATIC_RESULT: ${{ needs.static.result }}
           TESTS_RESULT: ${{ needs.tests.result }}
           DATABASE_RESULT: ${{ needs.database.result }}
           PRODUCTION_RESULT: ${{ needs.production.result }}
         run: |
-          for result in \
-            "$STATIC_RESULT" \
-            "$TESTS_RESULT" \
-            "$DATABASE_RESULT" \
-            "$PRODUCTION_RESULT"
-          do
-            if [ "$result" != "success" ]; then
-              echo "::error::A required validation lane concluded: $result"
+          if [ "$CLASSIFY_RESULT" != "success" ]; then
+            echo "::error::Change classification concluded: $CLASSIFY_RESULT"
+            exit 1
+          fi
+
+          if [ "$REPOSITORY_RESULT" = "success" ]; then
+            for result in \
+              "$STATIC_RESULT" \
+              "$TESTS_RESULT" \
+              "$DATABASE_RESULT" \
+              "$PRODUCTION_RESULT"
+            do
+              if [ "$result" != "skipped" ]; then
+                echo "::error::Documentation routing produced an unexpected lane result: $result"
+                exit 1
+              fi
+            done
+            exit 0
+          fi
+
+          if [ "$REPOSITORY_RESULT" != "skipped" ]; then
+            echo "::error::Repository lane concluded: $REPOSITORY_RESULT"
+            exit 1
+          fi
+          if [ "$STATIC_RESULT" != "success" ] || [ "$TESTS_RESULT" != "success" ]; then
+            echo "::error::Code routing requires successful static and test lanes"
+            exit 1
+          fi
+          for result in "$DATABASE_RESULT" "$PRODUCTION_RESULT"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::A heavy validation lane concluded: $result"
               exit 1
             fi
           done
