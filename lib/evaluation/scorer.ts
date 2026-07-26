@@ -371,7 +371,7 @@ export function parseFeedbackProviderEvaluation(input: {
       modelVersion: input.observedModel,
     });
   } catch (error) {
-    if (isSummaryObservableSupportError(error)) {
+    if (isSummaryGroundingFallbackError(error)) {
       try {
         parsed = parseFeedbackV2(
           withGroundedProviderSummaryFallback(input.value),
@@ -466,13 +466,14 @@ function isCalibrationEvidenceSlotFallbackError(
   }
 }
 
-function isSummaryObservableSupportError(
+function isSummaryGroundingFallbackError(
   error: unknown
 ): error is FeedbackV2ParseError {
   try {
     return (
       error instanceof FeedbackV2ParseError &&
-      error.code === "summary_observable_support_insufficient"
+      (error.code === "summary_observable_support_insufficient" ||
+        error.code === "summary_quantitative_claim_unsupported")
     );
   } catch {
     return false;
