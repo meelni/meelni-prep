@@ -154,6 +154,30 @@ test("provider parser authenticates only content-free invariant classifications"
       observedServiceTier: "default",
       usage,
     });
+  const parseWithCalibrationHints = (value: unknown) =>
+    parseFeedbackProviderEvaluation({
+      value,
+      transcript: projection.transcript,
+      canonicalIdByAlias: projection.canonicalIdByAlias,
+      evaluationState: "full",
+      observedModel: "gpt-test-1",
+      observedServiceTier: "default",
+      usage,
+      calibrationEvidenceHints: [
+        {
+          kind: "strength",
+          dimension: "insight",
+          turnRef: "candidate:1",
+          quote: "working parents and measure weekly completed plans",
+        },
+        {
+          kind: "improvement",
+          dimension: "structure",
+          turnRef: "candidate:2",
+          quote: "test a concierge flow first",
+        },
+      ],
+    });
 
   const repairedSummary = parse({
     ...providerValue,
@@ -169,6 +193,42 @@ test("provider parser authenticates only content-free invariant classifications"
   assert.deepEqual(repairedSummary.strengths[0].transcriptRefs, [
     "candidate:1",
   ]);
+
+  const overlappingEvidence = {
+    ...providerValue,
+    improvements: [
+      {
+        ...providerValue.improvements[0],
+        transcriptRefs: ["turn_0001"],
+        evidence: [
+          {
+            turnRef: "turn_0001",
+            quote: "measure weekly completed plans",
+          },
+        ],
+      },
+    ],
+  };
+  let overlappingCaught: unknown;
+  try {
+    parse(overlappingEvidence);
+  } catch (error) {
+    overlappingCaught = error;
+  }
+  assert.ok(overlappingCaught instanceof FeedbackProviderInvocationError);
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(overlappingCaught),
+    "evidence_overlaps_across_findings"
+  );
+  const repairedEvidence =
+    parseWithCalibrationHints(overlappingEvidence).evaluation;
+  assert.deepEqual(repairedEvidence.improvements[0].transcriptRefs, [
+    "candidate:2",
+  ]);
+  assert.equal(
+    repairedEvidence.improvements[0].evidence[0].quote,
+    "test a concierge flow first"
+  );
 
   const expectRejection = (
     value: unknown,

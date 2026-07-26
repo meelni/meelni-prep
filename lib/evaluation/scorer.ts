@@ -337,6 +337,9 @@ export async function generateFeedbackWithUsage(
       observedModel: completion.model,
       observedServiceTier,
       usage,
+      calibrationEvidenceHints: options.calibrationPaidMode
+        ? options.calibrationEvidenceHints
+        : undefined,
     });
   } catch (error) {
     if (error instanceof FeedbackProviderInvocationError) throw error;
@@ -358,6 +361,7 @@ export function parseFeedbackProviderEvaluation(input: {
   observedModel: string;
   observedServiceTier: string | null;
   usage: FeedbackProviderUsage;
+  calibrationEvidenceHints?: readonly CalibrationEvidenceHint[];
 }): FeedbackProviderResult {
   let parsed: FeedbackV2Result;
   try {
@@ -371,6 +375,31 @@ export function parseFeedbackProviderEvaluation(input: {
       try {
         parsed = parseFeedbackV2(
           withGroundedProviderSummaryFallback(input.value),
+          {
+            transcript: input.transcript,
+            evaluationState: input.evaluationState,
+            modelVersion: input.observedModel,
+          }
+        );
+      } catch (fallbackError) {
+        throw createInvalidFeedbackProviderError(
+          input.usage,
+          input.observedModel,
+          input.observedServiceTier,
+          classifyFeedbackParserFailure(fallbackError)
+        );
+      }
+    } else if (
+      isEvidenceOverlapError(error) &&
+      input.calibrationEvidenceHints?.length
+    ) {
+      try {
+        parsed = parseFeedbackV2(
+          withCalibrationEvidenceSlotFallback(
+            input.value,
+            input.calibrationEvidenceHints,
+            input.canonicalIdByAlias
+          ),
           {
             transcript: input.transcript,
             evaluationState: input.evaluationState,
@@ -423,6 +452,17 @@ export function parseFeedbackProviderEvaluation(input: {
   }
 }
 
+function isEvidenceOverlapError(error: unknown): error is FeedbackV2ParseError {
+  try {
+    return (
+      error instanceof FeedbackV2ParseError &&
+      error.code === "evidence_overlaps_across_findings"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isSummaryObservableSupportError(
   error: unknown
 ): error is FeedbackV2ParseError {
@@ -434,6 +474,79 @@ function isSummaryObservableSupportError(
   } catch {
     return false;
   }
+}
+
+function withCalibrationEvidenceSlotFallback(
+  value: unknown,
+  hints: readonly CalibrationEvidenceHint[],
+  canonicalIdByAlias: ReadonlyMap<string, string>
+): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const aliasByCanonicalId = new Map<string, string>();
+  for (const [alias, canonicalId] of canonicalIdByAlias.entries()) {
+    aliasByCanonicalId.set(canonicalId, alias);
+  }
+  const unusedHints = hints
+    .map((hint) => ({
+      ...hint,
+      turnRef: aliasByCanonicalId.get(hint.turnRef) ?? hint.turnRef,
+    }))
+    .filter((hint) => hint.quote.trim().length > 0);
+  const used = new Set<string>();
+  const response = value as {
+    strengths?: unknown;
+    improvements?: unknown;
+  };
+  const strengths = replaceCalibrationEvidenceSlots(
+    response.strengths,
+    "strength",
+    unusedHints,
+    used
+  );
+  const improvements = replaceCalibrationEvidenceSlots(
+    response.improvements,
+    "improvement",
+    unusedHints,
+    used
+  );
+  return withGroundedProviderSummaryFallback({
+    ...value,
+    strengths,
+    improvements,
+  });
+}
+
+function replaceCalibrationEvidenceSlots(
+  items: unknown,
+  kind: "strength" | "improvement",
+  hints: readonly CalibrationEvidenceHint[],
+  used: Set<string>
+): unknown {
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    const dimension = (item as { dimension?: unknown }).dimension;
+    const hint =
+      hints.find(
+        (candidate) =>
+          !used.has(`${candidate.turnRef}\u0000${candidate.quote}`) &&
+          candidate.kind === kind &&
+          candidate.dimension === dimension
+      ) ??
+      hints.find(
+        (candidate) =>
+          !used.has(`${candidate.turnRef}\u0000${candidate.quote}`) &&
+          candidate.kind === "fallback"
+      );
+    if (!hint) return item;
+    used.add(`${hint.turnRef}\u0000${hint.quote}`);
+    return {
+      ...item,
+      observation: sentenceCaseSummaryObservation(hint.quote),
+      transcriptRefs: [hint.turnRef],
+      evidence: [{ turnRef: hint.turnRef, quote: hint.quote }],
+    };
+  });
 }
 
 function withGroundedProviderSummaryFallback(value: unknown): unknown {
