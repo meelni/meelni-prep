@@ -367,12 +367,32 @@ export function parseFeedbackProviderEvaluation(input: {
       modelVersion: input.observedModel,
     });
   } catch (error) {
-    throw createInvalidFeedbackProviderError(
-      input.usage,
-      input.observedModel,
-      input.observedServiceTier,
-      classifyFeedbackParserFailure(error)
-    );
+    if (isSummaryObservableSupportError(error)) {
+      try {
+        parsed = parseFeedbackV2(
+          withGroundedProviderSummaryFallback(input.value),
+          {
+            transcript: input.transcript,
+            evaluationState: input.evaluationState,
+            modelVersion: input.observedModel,
+          }
+        );
+      } catch (fallbackError) {
+        throw createInvalidFeedbackProviderError(
+          input.usage,
+          input.observedModel,
+          input.observedServiceTier,
+          classifyFeedbackParserFailure(fallbackError)
+        );
+      }
+    } else {
+      throw createInvalidFeedbackProviderError(
+        input.usage,
+        input.observedModel,
+        input.observedServiceTier,
+        classifyFeedbackParserFailure(error)
+      );
+    }
   }
 
   let canonical: FeedbackV2Result;
@@ -401,6 +421,55 @@ export function parseFeedbackProviderEvaluation(input: {
       "practice_recommendation_normalization_failed"
     );
   }
+}
+
+function isSummaryObservableSupportError(
+  error: unknown
+): error is FeedbackV2ParseError {
+  try {
+    return (
+      error instanceof FeedbackV2ParseError &&
+      error.code === "summary_observable_support_insufficient"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function withGroundedProviderSummaryFallback(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const response = value as {
+    strengths?: unknown;
+    improvements?: unknown;
+  };
+  const findings = [
+    ...(Array.isArray(response.strengths) ? response.strengths : []),
+    ...(Array.isArray(response.improvements) ? response.improvements : []),
+  ];
+  const summaryStatements = findings
+    .map((finding) =>
+      finding && typeof finding === "object"
+        ? (finding as { observation?: unknown }).observation
+        : undefined
+    )
+    .filter(
+      (observation): observation is string =>
+        typeof observation === "string" && observation.trim().length > 0
+    )
+    .slice(0, 2)
+    .map((observation) => sentenceCaseSummaryObservation(observation));
+
+  return {
+    ...value,
+    summary:
+      summaryStatements.join(" ") ||
+      "Focused practice can build on the grounded findings.",
+  };
+}
+
+function sentenceCaseSummaryObservation(observation: string): string {
+  const trimmed = observation.trim().replace(/\s+/g, " ");
+  return /[.!?]$/u.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function parseProviderUsage(

@@ -154,6 +154,22 @@ test("provider parser authenticates only content-free invariant classifications"
       observedServiceTier: "default",
       usage,
     });
+
+  const repairedSummary = parse({
+    ...providerValue,
+    summary: "The answer invents blockchain moons.",
+  }).evaluation;
+  assert.equal(
+    repairedSummary.summary,
+    [
+      providerValue.strengths[0].observation,
+      providerValue.improvements[0].observation,
+    ].join(" ")
+  );
+  assert.deepEqual(repairedSummary.strengths[0].transcriptRefs, [
+    "candidate:1",
+  ]);
+
   const expectRejection = (
     value: unknown,
     expected: FeedbackV2RejectionCode
