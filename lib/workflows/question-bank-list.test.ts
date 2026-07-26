@@ -11,7 +11,10 @@ import {
 import { handleQuestionsListRequest } from "@/app/api/questions/route";
 import { NextRequest } from "next/server";
 import { mapQuestionType } from "@/scripts/sync-questions-from-sheet";
-import { getQuestionSyncSafetyError } from "@/lib/question-sync/safety";
+import {
+  getMissingQuestionRounds,
+  getQuestionSyncSafetyError,
+} from "@/lib/question-sync/safety";
 import { parseIntegerParam } from "@/app/api/questions/route";
 
 const records: QuestionBankRecord[] = [
@@ -130,6 +133,33 @@ test("public question route cannot opt into inactive historical rows", async () 
   }
 });
 
+test("public question route reports an empty corpus as unavailable", async () => {
+  const response = await handleQuestionsListRequest(
+    new NextRequest("http://localhost/api/questions"),
+    {
+      getPublishedQuestions: async () => ({ questions: [], total: 0 }),
+    }
+  );
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: "Question bank is temporarily unavailable",
+    code: "question_bank_unavailable",
+  });
+});
+
+test("public question route preserves valid empty filtered results", async () => {
+  const response = await handleQuestionsListRequest(
+    new NextRequest("http://localhost/api/questions?type=strategy"),
+    {
+      getPublishedQuestions: async () => ({ questions: [], total: 0 }),
+    }
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).questions, []);
+});
+
 test("sheet ingestion writes database-compatible four-round labels", () => {
   assert.equal(mapQuestionType("Leadership & Drive"), "Behavioral");
   assert.equal(mapQuestionType("Product Design"), "Product Sense");
@@ -200,6 +230,26 @@ test("question sync aborts unsafe validation and deactivation plans", () => {
       deactivationRows: 5,
     }),
     null
+  );
+});
+
+test("question sync requires source coverage for every interview round", () => {
+  assert.deepEqual(
+    getMissingQuestionRounds([
+      { questionType: "Product Sense" },
+      { questionType: "Behavioral" },
+      { questionType: "Execution" },
+    ]),
+    ["strategy"]
+  );
+  assert.deepEqual(
+    getMissingQuestionRounds([
+      { questionType: "Product design/strategy" },
+      { questionType: "Behavioral" },
+      { questionType: "Pricing" },
+      { questionType: "Product Strategy" },
+    ]),
+    []
   );
 });
 

@@ -31,3 +31,13 @@ test("public question corpus requests active records and serializes dates", asyn
   assert.equal(corpus.questions[0].askedAt, "2025-11-20T00:00:00.000Z");
   assert.equal(corpus.questions[0].createdAt, null);
 });
+
+test("public question corpus fails closed when the published bank is empty", async () => {
+  await assert.rejects(
+    loadPublicQuestionCorpus({ limit: 20, offset: 0 }, async () => ({
+      total: 0,
+      questions: [],
+    })),
+    /question_bank_unavailable/
+  );
+});

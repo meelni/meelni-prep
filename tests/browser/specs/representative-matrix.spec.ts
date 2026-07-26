@@ -239,6 +239,34 @@ for (const surface of BROWSER_QA_SURFACES) {
         selectedDifficultyBox!.y + selectedDifficultyBox!.height - 1
       );
     }
+    if (surface.id === "new-interview") {
+      const scrollContainer = page.getByTestId(
+        "new-interview-scroll-container"
+      );
+      const scrollEvidence = await scrollContainer.evaluate((element) => {
+        const container = element as HTMLElement;
+        container.scrollTop = 0;
+        const initialScrollTop = container.scrollTop;
+        container.scrollTop = Math.min(
+          320,
+          container.scrollHeight - container.clientHeight
+        );
+        return {
+          clientHeight: container.clientHeight,
+          initialScrollTop,
+          overflowY: getComputedStyle(container).overflowY,
+          scrollHeight: container.scrollHeight,
+          scrolledTop: container.scrollTop,
+        };
+      });
+      expect(scrollEvidence.overflowY).toBe("auto");
+      expect(scrollEvidence.scrollHeight).toBeGreaterThan(
+        scrollEvidence.clientHeight
+      );
+      expect(scrollEvidence.scrolledTop).toBeGreaterThan(
+        scrollEvidence.initialScrollTop
+      );
+    }
     const accessibility = await assertCriticalAccessibility(
       page,
       testInfo,

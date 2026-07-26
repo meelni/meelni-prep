@@ -487,7 +487,10 @@ export function SetupContent() {
   }
 
   return (
-    <div className="bg-dashboard-panel text-dashboard-foreground min-h-full">
+    <div
+      data-testid="new-interview-scroll-container"
+      className="bg-dashboard-panel text-dashboard-foreground h-full min-h-0 overflow-y-auto overscroll-contain"
+    >
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-5 sm:p-8">
         <motion.div
           initial={shouldReduceMotion ? false : "initial"}
