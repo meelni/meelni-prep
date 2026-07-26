@@ -307,6 +307,38 @@ test("provider parser authenticates only content-free invariant classifications"
     "working parents and measure weekly completed plans"
   );
 
+  const unsupportedMaterial = {
+    ...providerValue,
+    strengths: [
+      {
+        ...providerValue.strengths[0],
+        observation:
+          "The answer established legal compliance and privacy safeguards.",
+      },
+    ],
+  };
+  let unsupportedMaterialCaught: unknown;
+  try {
+    parse(unsupportedMaterial);
+  } catch (error) {
+    unsupportedMaterialCaught = error;
+  }
+  assert.ok(unsupportedMaterialCaught instanceof FeedbackProviderInvocationError);
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(unsupportedMaterialCaught),
+    "finding_material_claim_unsupported"
+  );
+  const repairedMaterial =
+    parseWithCalibrationHints(unsupportedMaterial).evaluation;
+  assert.equal(
+    repairedMaterial.strengths[0].observation,
+    "working parents and measure weekly completed plans."
+  );
+  assert.equal(
+    repairedMaterial.strengths[0].evidence[0].quote,
+    "working parents and measure weekly completed plans"
+  );
+
   const unsupportedQuantity = {
     ...providerValue,
     strengths: [
