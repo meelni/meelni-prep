@@ -1,7 +1,8 @@
 # Hosted CI cost control
 
 Meelni uses local validation continuously and one GitHub-hosted clean-machine
-gate when a change becomes merge-ready.
+gate when a change becomes merge-ready. The gate is one protected result backed
+by parallel validation lanes rather than one serial runner.
 
 ## Trigger policy
 
@@ -29,13 +30,43 @@ gate when a change becomes merge-ready.
 - Concurrency cancellation stops superseded runs for the same pull request/ref.
 
 The trigger policy changes frequency while preserving risk-matched merge-ready
-coverage. Ordinary Validate still installs a clean dependency graph, starts PostgreSQL, verifies
+coverage. Ordinary Validate still installs clean dependency graphs, verifies
 clean and upgrade migration paths, runs repository skills and Node/Python
 contracts, executes the full quality/regression suite, and builds the production
 application. Pull-request path suppression has one exact exception:
 `.github/stacked-prs.json`. Manual dispatch remains the break-glass
 clean-machine verification path, but never substitutes for merge-ref
 validation.
+
+## Parallel validation topology
+
+Every ordinary merge-ready head runs the complete gate in four independent
+GitHub-hosted lanes:
+
+- `Static and Python Contracts` runs repository-skill validation, formatting,
+  linting, both TypeScript passes, dependency/boundary/security quality checks,
+  and the Python agent contracts.
+- `Unit and Contract Tests` runs local tooling tests and the full Node/Vitest
+  regression suite.
+- `Database Migrations` is the only lane that starts PostgreSQL and verifies
+  clean and legacy upgrade paths.
+- `Production and Browser QA` builds the isolated production artifact, crawls
+  public routes, and runs the representative Chromium matrix.
+
+The lanes have no dependencies on each other. A final GitHub Actions job depends
+on all four, uses `always()`, and publishes the exact required `Validate` context
+only after inspecting every lane result. Success is the only accepted result;
+failure, cancellation, or a missing/skipped ordinary lane fails the aggregator.
+Manual dispatch publishes `Manual Validate`, never the protected PR context.
+Draft and closed events allocate no validation lanes and cannot publish a
+successful `Validate`.
+
+Parallelization deliberately trades a modest increase in aggregate runner
+minutes for a lower merge critical path. The initial service-level target is a
+full ready-PR p90 of seven minutes or less, down from the 15m37s p90 measured
+across the 20 most recent successful runs on July 26, 2026. Change-aware lane
+selection is a separate rollout and must not be described as active until it has
+its own merged implementation and exact-head evidence.
 
 ### Exact registry-only fast path
 

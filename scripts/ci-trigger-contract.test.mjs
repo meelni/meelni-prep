@@ -95,18 +95,70 @@ test("exact registry-only PRs use GitHub path suppression and trusted publicatio
 
 test("cost control preserves exact-head cancellation and the complete validation gate", () => {
   assert.match(workflow, /cancel-in-progress: true/);
-  assert.match(workflow, /timeout-minutes: 30/);
   assert.match(workflow, /postgres:17\.6-alpine3\.22@sha256:/);
 
   for (const step of [
     "Validate repository skills",
     "Run local tooling tests",
     "Verify clean and legacy database migrations",
-    "Run type, lint, quality, and regression checks",
+    "Run type, lint, and quality checks",
+    "Run regression tests",
     "Run Python agent contract tests",
     "Build production application",
   ]) {
     assert.match(workflow, new RegExp(`- name: ${step}`));
+  }
+});
+
+test("full validation runs in parallel behind one fail-closed required context", () => {
+  const jobs = parsedWorkflow.jobs;
+  assert.deepEqual(Object.keys(jobs), [
+    "static",
+    "tests",
+    "database",
+    "production",
+    "validate",
+  ]);
+
+  for (const lane of ["static", "tests", "database", "production"]) {
+    assert.match(jobs[lane].if, /github\.event\.action != 'closed'/);
+    assert.match(jobs[lane].if, /github\.event\.pull_request\.draft == false/);
+    assert.equal(jobs[lane]["runs-on"], "ubuntu-latest");
+    assert.ok(jobs[lane]["timeout-minutes"] <= 15);
+  }
+
+  assert.equal(jobs.static.name, "Static and Python Contracts");
+  assert.equal(jobs.tests.name, "Unit and Contract Tests");
+  assert.equal(jobs.database.name, "Database Migrations");
+  assert.equal(jobs.production.name, "Production and Browser QA");
+
+  assert.deepEqual(jobs.validate.needs, [
+    "static",
+    "tests",
+    "database",
+    "production",
+  ]);
+  assert.match(jobs.validate.if, /^always\(\) &&/);
+  assert.match(jobs.validate.name, /'Validate'/);
+  assert.equal(jobs.validate.steps.length, 1);
+  assert.deepEqual(jobs.validate.steps[0].env, {
+    STATIC_RESULT: "${{ needs.static.result }}",
+    TESTS_RESULT: "${{ needs.tests.result }}",
+    DATABASE_RESULT: "${{ needs.database.result }}",
+    PRODUCTION_RESULT: "${{ needs.production.result }}",
+  });
+  assert.match(
+    jobs.validate.steps[0].run,
+    /if \[ "\$result" != "success" \]; then/
+  );
+  assert.match(jobs.validate.steps[0].run, /exit 1/);
+
+  assert.equal(
+    jobs.database.services?.postgres?.env.POSTGRES_DB,
+    "meelni_test"
+  );
+  for (const lane of ["static", "tests", "production", "validate"]) {
+    assert.equal(jobs[lane].services, undefined);
   }
 });
 

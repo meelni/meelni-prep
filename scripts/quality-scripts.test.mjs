@@ -40,11 +40,12 @@ test("package scripts expose the aggregate quality gates", () => {
 });
 
 test("CI includes deterministic stacked PR regression fixtures", () => {
-  assert.match(scripts["check:ci"], /npm\s+run\s+test:stack/);
+  assert.match(scripts["test:ci"], /npm\s+run\s+test:stack/);
+  assert.equal(scripts["check:ci"], "npm run check && npm run test:ci");
 });
 
 test("CI includes feedback and consent accessibility regression fixtures", () => {
-  assert.match(scripts["check:ci"], /npm\s+run\s+test:ui/);
+  assert.match(scripts["test:ci"], /npm\s+run\s+test:ui/);
   assert.match(
     scripts["test:ui"],
     /components\/feedback\/\*\.test\.ts(?:\s|$)/
@@ -130,12 +131,12 @@ test("browser QA exposes one pinned Chromium entrypoint", () => {
   );
 });
 
-test("CI runs browser QA once in the existing PR validation job", () => {
+test("CI runs browser QA once in the production validation lane", () => {
   assert.equal(ciWorkflow.match(/run:\s+npm run test:browser:qa/g)?.length, 1);
   assert.doesNotMatch(ciWorkflow, /strategy:\s*\n\s*matrix:/);
   assert.match(
     ciWorkflow,
-    /id: browser_qa[\s\S]*?github\.event_name == 'pull_request' \|\|[\s\S]*?github\.event_name == 'workflow_dispatch'[\s\S]*?run: npm run test:browser:qa/
+    /production:[\s\S]*?id: browser_qa[\s\S]*?run: npm run test:browser:qa[\s\S]*?validate:/
   );
   assert.match(
     ciWorkflow,

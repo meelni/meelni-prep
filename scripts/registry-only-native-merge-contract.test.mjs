@@ -372,8 +372,12 @@ function canonicalWorkflowExpressions(source) {
 function assertNoExternalCredentialSource(value, label) {
   for (const scalar of scalarValues(value)) {
     for (const expression of canonicalWorkflowExpressions(scalar)) {
+      const expressionWithoutJobResults = expression.replace(
+        /\bneeds\.[a-z0-9_-]+\.result\b/g,
+        ""
+      );
       assert.doesNotMatch(
-        expression,
+        expressionWithoutJobResults,
         /\b(?:env|inputs|matrix|needs|secrets|vars)\b/,
         `${label} must not derive runtime authority from external inputs`
       );
@@ -1191,6 +1195,52 @@ jobs:
 `,
         }),
       /external inputs|credential input/
+    );
+  }
+});
+
+test("workflow guard allows only exact upstream job conclusions", () => {
+  assert.doesNotThrow(() =>
+    assertWorkflowHasNoMergeAuthority({
+      path: "job-result-aggregator.yml",
+      source: `
+name: Job result aggregator
+permissions:
+  contents: read
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$RESULT" = success
+        env:
+          RESULT: \${{ needs.validation-lane.result }}
+`,
+    })
+  );
+
+  for (const value of [
+    "\${{ needs.validation-lane.outputs.token }}",
+    "\${{ toJSON(needs) }}",
+    "\${{ needs[inputs.lane].result }}",
+  ]) {
+    assert.throws(
+      () =>
+        assertWorkflowHasNoMergeAuthority({
+          path: "job-output-delegation.yml",
+          source: `
+name: Job output delegation
+permissions:
+  contents: read
+jobs:
+  delegate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: owner/action@0123456789abcdef0123456789abcdef01234567
+        with:
+          data: ${value}
+`,
+        }),
+      /external inputs/
     );
   }
 });
