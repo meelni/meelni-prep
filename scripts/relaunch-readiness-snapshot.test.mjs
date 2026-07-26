@@ -6,7 +6,7 @@ import {
   buildRelaunchReadinessSnapshot,
 } from "./relaunch-readiness-snapshot.mjs";
 
-test("relaunch readiness snapshot reports clean queue and exact v24 guardrails", async () => {
+test("relaunch readiness snapshot reports clean queue and exact v25 guardrails", async () => {
   const snapshot = await buildRelaunchReadinessSnapshot({
     fetch: false,
     now: new Date("2026-07-23T04:00:00.000Z"),
@@ -34,7 +34,7 @@ test("relaunch readiness snapshot reports clean queue and exact v24 guardrails",
   );
 });
 
-test("relaunch readiness snapshot tolerates an absent v24 ledger ref", async () => {
+test("relaunch readiness snapshot tolerates an absent v25 ledger ref", async () => {
   const snapshot = await buildRelaunchReadinessSnapshot({
     fetch: false,
     runCommand: fixtureRunner({
@@ -240,7 +240,7 @@ function buildRulesets({ exact, activationActorType }) {
   return [
     {
       id: 101,
-      name: "Meelni SAV-248 v24 calibration ledger immutable",
+      name: "Meelni SAV-248 v25 calibration ledger immutable",
       target: "branch",
       enforcement: "active",
       conditions: {
@@ -254,7 +254,7 @@ function buildRulesets({ exact, activationActorType }) {
     },
     {
       id: 102,
-      name: "Meelni SAV-248 v24 calibration activation actor",
+      name: "Meelni SAV-248 v25 calibration activation actor",
       target: "branch",
       enforcement: exact ? "active" : "evaluate",
       conditions: {

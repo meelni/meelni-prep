@@ -91,7 +91,7 @@ test("local, CI, package, and calibration runtime Node contracts align", () => {
   );
   const runtimeManifest = JSON.parse(
     readFileSync(
-      resolve(repoRoot, "docs/evidence/sav-248-v24-runtime-manifest.json"),
+      resolve(repoRoot, "docs/evidence/sav-248-v25-runtime-manifest.json"),
       "utf8"
     )
   );

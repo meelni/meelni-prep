@@ -194,6 +194,19 @@ test("provider parser authenticates only content-free invariant classifications"
     "candidate:1",
   ]);
 
+  const unsupportedSummaryQuantity = {
+    ...providerValue,
+    summary: "The answer names 12 specific audiences.",
+  };
+  const repairedSummaryQuantity = parse(unsupportedSummaryQuantity).evaluation;
+  assert.equal(
+    repairedSummaryQuantity.summary,
+    [
+      providerValue.strengths[0].observation,
+      providerValue.improvements[0].observation,
+    ].join(" ")
+  );
+
   const overlappingEvidence = {
     ...providerValue,
     improvements: [
