@@ -130,6 +130,7 @@ vi.mock("./components/end-session-modal", () => ({
     ) : null,
 }));
 
+import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { InterviewPageContent } from "./page";
 
 describe("active interview page lifecycle", () => {
@@ -311,6 +312,58 @@ describe("active interview page lifecycle", () => {
         ([input]) => String(input) === "/api/nudges/analyze"
       )
     ).toBe(false);
+  });
+
+  it("uses the successful start token without making a second token request", async () => {
+    const request = vi.fn(activeInterviewResponse);
+    vi.stubGlobal("fetch", request);
+    storeInitialInterviewRoomCredentials({
+      response: {
+        sessionId: SESSION_ID,
+        token: "initial-start-token",
+        url: "wss://preview.livekit.cloud",
+        roomName: "interview-room",
+      },
+      sessionId: SESSION_ID,
+      ownerId: "owner-a",
+    });
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/livekit/token"
+      )
+    ).toBe(false);
+  });
+
+  it("shows an actionable failure instead of spinning forever when initial authorization is rejected", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/livekit/token") {
+        return Response.json(
+          {
+            error: "session_not_joinable",
+            message: "This interview session is no longer active.",
+          },
+          { status: 409 }
+        );
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Failed to Load Interview" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Connecting to room...")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Back to Dashboard" })
+    ).toBeVisible();
+    expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
   });
 
   it("disconnects and freezes the room after an ambiguous end transport failure", async () => {

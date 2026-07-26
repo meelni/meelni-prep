@@ -38,7 +38,7 @@ export interface JoinableInterviewSession {
   lifecycleVersion: number;
   reconnectDeadlineAt?: Date | null;
   reconnectDeadlineOwner?: "reconnect_grace" | "hard_deadline" | null;
-  databaseNow: Date;
+  databaseNow: Date | string;
 }
 
 export interface JoinInterviewSessionInput {
@@ -177,8 +177,11 @@ export async function joinInterviewSessionWorkflow(
   // Stable session creation already owns one reservation. The ready voice
   // session is the join entitlement; checking the user's remaining balance
   // here would reject the credit already bound to this attempt.
-  const authorization = deriveJoinAuthorization(session, session.databaseNow);
-  if (!authorization) {
+  const databaseNow = parseDatabaseTimestamp(session.databaseNow);
+  const authorization = databaseNow
+    ? deriveJoinAuthorization(session, databaseNow)
+    : null;
+  if (!authorization || !databaseNow) {
     deps.audit({
       outcome: "denied",
       reason: "session_not_joinable",
@@ -199,7 +202,7 @@ export async function joinInterviewSessionWorkflow(
     participantName: "Candidate",
     roomName: session.livekitRoomName!,
     ttlSeconds: authorization.ttlSeconds,
-    observedAt: session.databaseNow,
+    observedAt: databaseNow,
     expiresAt: authorization.expiresAt,
     env: input.env,
   });
@@ -218,11 +221,16 @@ export async function joinInterviewSessionWorkflow(
   }
 
   const current = await deps.getSession(input.sessionId);
-  const currentAuthorization = current
-    ? deriveJoinAuthorization(current, current.databaseNow)
+  const currentDatabaseNow = current
+    ? parseDatabaseTimestamp(current.databaseNow)
     : null;
+  const currentAuthorization =
+    current && currentDatabaseNow
+      ? deriveJoinAuthorization(current, currentDatabaseNow)
+      : null;
   if (
     !current ||
+    !currentDatabaseNow ||
     current.userId !== input.user.id ||
     current.livekitRoomName !== session.livekitRoomName ||
     current.lifecycleVersion !== authorization.lifecycleVersion ||
@@ -254,7 +262,7 @@ export async function joinInterviewSessionWorkflow(
     Math.floor(currentAuthorization.expiresAt.getTime() / 1_000) * 1_000;
   if (
     !Number.isFinite(tokenExpirationMs) ||
-    tokenExpirationMs <= current.databaseNow.getTime() ||
+    tokenExpirationMs <= currentDatabaseNow.getTime() ||
     tokenExpirationMs > canonicalCutoffMs
   ) {
     deps.audit({
@@ -428,6 +436,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isValidDate(value: Date | null | undefined): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime());
+}
+
+function parseDatabaseTimestamp(value: Date | string): Date | null {
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function isUuid(value: string): boolean {

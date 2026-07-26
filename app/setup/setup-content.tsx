@@ -51,6 +51,7 @@ import {
   isDefinitiveInterviewStartFailure,
   parseInterviewStartSessionId,
 } from "@/lib/interview/start-attempt";
+import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 export function SetupContent() {
@@ -432,6 +433,11 @@ export function SetupContent() {
       if (!sessionId) {
         throw new Error("Interview start returned an invalid session ID");
       }
+      storeInitialInterviewRoomCredentials({
+        response: responseData,
+        sessionId,
+        ownerId: user!.id,
+      });
       clearInterviewStartAttempt(startAttemptId);
 
       const startSucceededProperties = {
@@ -446,8 +452,9 @@ export function SetupContent() {
         startSucceededProperties
       );
 
-      // Keep room credentials out of browser history. The interview route
-      // authorizes this owned session and mints a fresh short-lived token.
+      // Keep room credentials out of browser history. A one-time, owner-bound
+      // handoff lets the interview route use the token that this successful
+      // start already authorized; reloads still use the reconnect endpoint.
       router.push(getCanonicalInterviewHref(sessionId));
     } catch (err) {
       console.error("[Interview Setup] start_failed", {
