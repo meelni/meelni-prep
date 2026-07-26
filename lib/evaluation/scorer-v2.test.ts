@@ -185,10 +185,7 @@ test("provider parser authenticates only content-free invariant classifications"
   }).evaluation;
   assert.equal(
     repairedSummary.summary,
-    [
-      providerValue.strengths[0].observation,
-      providerValue.improvements[0].observation,
-    ].join(" ")
+    "Feedback is limited to the grounded findings above."
   );
   assert.deepEqual(repairedSummary.strengths[0].transcriptRefs, [
     "candidate:1",
@@ -201,10 +198,7 @@ test("provider parser authenticates only content-free invariant classifications"
   const repairedSummaryQuantity = parse(unsupportedSummaryQuantity).evaluation;
   assert.equal(
     repairedSummaryQuantity.summary,
-    [
-      providerValue.strengths[0].observation,
-      providerValue.improvements[0].observation,
-    ].join(" ")
+    "Feedback is limited to the grounded findings above."
   );
 
   const overlappingEvidence = {
@@ -317,10 +311,7 @@ test("provider parser authenticates only content-free invariant classifications"
     parse(unsupportedSummaryAbsolute).evaluation;
   assert.equal(
     repairedSummaryAbsolute.summary,
-    [
-      providerValue.strengths[0].observation,
-      providerValue.improvements[0].observation,
-    ].join(" ")
+    "Feedback is limited to the grounded findings above."
   );
 
   const expectRejection = (
