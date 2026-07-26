@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { buildSAV258V30PlanProposal } from "@/lib/evaluation/calibration-run-ledger";
+import { buildSAV258V31PlanProposal } from "@/lib/evaluation/calibration-run-ledger";
 
 void main().catch((error) => {
   console.error(
@@ -30,7 +30,7 @@ async function main() {
   const adjudicationApproval = JSON.parse(
     await readFile(resolve(process.cwd(), approval), "utf8")
   );
-  const serialized = `${JSON.stringify(buildSAV258V30PlanProposal(adjudicationApproval), null, 2)}\n`;
+  const serialized = `${JSON.stringify(buildSAV258V31PlanProposal(adjudicationApproval), null, 2)}\n`;
   const target = resolve(process.cwd(), output);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, serialized, { encoding: "utf8", mode: 0o600 });
