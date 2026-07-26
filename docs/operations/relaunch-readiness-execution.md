@@ -47,8 +47,8 @@ npm run --silent relaunch:readiness-snapshot
 ```
 
 The command emits sanitized JSON for the GitHub PR/issue queue, local git
-state, `origin/main`, exact `SAV-198` / `SAV-248` v28 ruleset readiness, and
-v28 ledger-ref presence. It does not mutate GitHub, providers, Linear, feature
+state, `origin/main`, exact `SAV-198` / `SAV-248` v29 ruleset readiness, and
+v29 ledger-ref presence. It does not mutate GitHub, providers, Linear, feature
 flags, ledger refs, or owner authorization artifacts.
 
 If the command is unavailable, run the underlying read-only checks manually:
@@ -76,8 +76,8 @@ prepared artifact, a regenerated artifact, or a different provider action.
 
 Current prelaunch live actions require exact owner authorization for:
 
-1. creating the `SAV-198` / `SAV-248` v28 GitHub calibration ledger rulesets;
-2. signing the fresh `SAV-198` v28 owner authorization request;
+1. creating the `SAV-198` / `SAV-248` v29 GitHub calibration ledger rulesets;
+2. signing the fresh `SAV-198` v29 owner authorization request;
 3. running the synthetic-only calibration under the $3 cap;
 4. signing and executing the `SAV-126` Stripe live catalog request;
 5. updating Vercel Production envs with live Stripe price IDs;
@@ -90,20 +90,20 @@ separate owner-GO workflow.
 
 ### 1. Verify GitHub calibration guardrails
 
-`SAV-198` v28 calibration requires two exact active repository rulesets for:
+`SAV-198` v29 calibration requires two exact active repository rulesets for:
 
 ```text
-refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v28
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v29
 ```
 
 The required rulesets are:
 
-1. `Meelni SAV-248 v28 calibration ledger immutable`
+1. `Meelni SAV-248 v29 calibration ledger immutable`
    - exact ref include;
    - no excludes;
    - no bypass actors;
    - rule types: `deletion`, `non_fast_forward`.
-2. `Meelni SAV-248 v28 calibration activation actor`
+2. `Meelni SAV-248 v29 calibration activation actor`
    - exact ref include;
    - no excludes;
    - rule types: `creation`, `update`;
@@ -114,14 +114,14 @@ Verify without mutating first:
 
 ```bash
 gh api 'repos/meelni/meelni-prep/rulesets?includes_parents=true&targets=branch&per_page=100' \
-  --jq '[.[] | select(.name|test("SAV-248 v28 calibration";"i")) | {id,name,target,enforcement}]'
+  --jq '[.[] | select(.name|test("SAV-248 v29 calibration";"i")) | {id,name,target,enforcement}]'
 
-gh api repos/meelni/meelni-prep/git/ref/heads/meelni-ledger/sav-248-authorized-paid-calibration.v28 \
+gh api repos/meelni/meelni-prep/git/ref/heads/meelni-ledger/sav-248-authorized-paid-calibration.v29 \
   --jq '{ref:.ref, sha:.object.sha, type:.object.type}' || true
 ```
 
-If the exact v28 rulesets are missing, stop unless the owner has explicitly
-authorized the GitHub ruleset mutation. Do not manually create the v28 ledger
+If the exact v29 rulesets are missing, stop unless the owner has explicitly
+authorized the GitHub ruleset mutation. Do not manually create the v29 ledger
 ref; the calibration runtime owns the single activation commit after the
 signed authorization is verified.
 
@@ -130,7 +130,7 @@ operator needs a fresh packet:
 
 ```bash
 npm run calibration:github-guardrails -- \
-  --output-dir /secure/external/path/sav-248-v28-github-guardrails
+  --output-dir /secure/external/path/sav-248-v29-github-guardrails
 ```
 
 This command writes local JSON/README files only. It does not mutate GitHub or
@@ -143,7 +143,7 @@ provider-free helper described in
 [Evaluation Calibration](../contracts/evaluation-calibration.md). The artifact
 must bind:
 
-- one new `sav258_v28_auth_<32 hex>` authorization ID;
+- one new `sav258_v29_auth_<32 hex>` authorization ID;
 - the exact reviewed 40-character source commit;
 - the regenerated plan hash;
 - planned provider calls and physical attempts;

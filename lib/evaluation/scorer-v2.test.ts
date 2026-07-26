@@ -273,6 +273,40 @@ test("provider parser authenticates only content-free invariant classifications"
     "test a concierge flow first"
   );
 
+  const contradictedNegative = {
+    ...providerValue,
+    strengths: [
+      {
+        ...providerValue.strengths[0],
+        observation:
+          "The answer does not identify working parents or a measurable behavior.",
+      },
+    ],
+  };
+  let contradictedNegativeCaught: unknown;
+  try {
+    parse(contradictedNegative);
+  } catch (error) {
+    contradictedNegativeCaught = error;
+  }
+  assert.ok(
+    contradictedNegativeCaught instanceof FeedbackProviderInvocationError
+  );
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(contradictedNegativeCaught),
+    "finding_negative_claim_contradicted"
+  );
+  const repairedContradictedNegative =
+    parseWithCalibrationHints(contradictedNegative).evaluation;
+  assert.equal(
+    repairedContradictedNegative.strengths[0].observation,
+    "working parents and measure weekly completed plans."
+  );
+  assert.equal(
+    repairedContradictedNegative.strengths[0].evidence[0].quote,
+    "working parents and measure weekly completed plans"
+  );
+
   const unsupportedQuantity = {
     ...providerValue,
     strengths: [
