@@ -7,19 +7,19 @@ const execFileAsync = promisify(execFile);
 
 export const DEFAULT_REPO = "meelni/meelni-prep";
 export const V10_LEDGER_REF =
-  "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v25";
+  "refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v26";
 export const V10_LEDGER_REF_API_PATH =
-  "heads/meelni-ledger/sav-248-authorized-paid-calibration.v25";
+  "heads/meelni-ledger/sav-248-authorized-paid-calibration.v26";
 export const SAVIII_GITHUB_USER_ID = 24397508;
 
 const REQUIRED_RULESETS = {
   ledgerImmutable: {
-    name: "Meelni SAV-248 v25 calibration ledger immutable",
+    name: "Meelni SAV-248 v26 calibration ledger immutable",
     rules: ["deletion", "non_fast_forward"],
     bypassActors: [],
   },
   activationActor: {
-    name: "Meelni SAV-248 v25 calibration activation actor",
+    name: "Meelni SAV-248 v26 calibration activation actor",
     rules: ["creation", "update"],
     bypassActors: [
       {
@@ -142,7 +142,7 @@ export function summarizeRulesets(rawRulesets) {
     required: summaries,
     allExact: Object.values(summaries).every((summary) => summary.exact),
     matchingRulesets: rulesets
-      .filter((ruleset) => /SAV-248 v25 calibration/i.test(ruleset?.name ?? ""))
+      .filter((ruleset) => /SAV-248 v26 calibration/i.test(ruleset?.name ?? ""))
       .map((ruleset) => ({
         id: ruleset.id,
         name: ruleset.name,
@@ -182,7 +182,7 @@ async function hydrateMatchingRulesetDetails(runCommand, repo, rawRulesets) {
 function shouldFetchRulesetDetail(ruleset) {
   return (
     ruleset?.id &&
-    /SAV-248 v25 calibration/i.test(ruleset?.name ?? "") &&
+    /SAV-248 v26 calibration/i.test(ruleset?.name ?? "") &&
     (!Array.isArray(ruleset.rules) ||
       !Array.isArray(ruleset.bypass_actors) ||
       !ruleset.conditions?.ref_name)
@@ -352,7 +352,7 @@ function printHelp() {
   console.log(`Usage: npm run relaunch:readiness-snapshot -- [--repo owner/name] [--no-fetch]
 
 Creates a read-only JSON snapshot of GitHub queue state, git state, and the
-SAV-248 v25 calibration guardrail prerequisites. This command does not mutate
+SAV-248 v26 calibration guardrail prerequisites. This command does not mutate
 GitHub, providers, Linear, feature flags, ledger refs, or owner authorizations.`);
 }
 
