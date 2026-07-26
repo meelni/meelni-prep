@@ -187,7 +187,7 @@ test("generated live calibration evidence remains ignored by default", () => {
   const trackedPublicEvidence = [
     "docs/evidence/sav-198-evaluation-calibration-preflight.json",
     "docs/evidence/sav-198-evaluation-calibration-self-test.json",
-    "docs/evidence/sav-248-v25-plan-proposal.json",
+    "docs/evidence/sav-248-v26-plan-proposal.json",
   ];
 
   for (const path of ignoredPaths) {
