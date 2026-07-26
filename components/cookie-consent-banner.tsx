@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAnalyticsConsent } from "@/app/providers/analytics-consent-provider";
 import { ConsentBannerSurface } from "@/components/analytics/consent-banner-surface";
@@ -47,12 +46,6 @@ export function CookieConsentBanner() {
         With your permission, we use analytics cookies and similar technologies
         to improve Meelni. Interview content is never included.
       </p>
-      <Link
-        href="/privacy"
-        className="text-primary inline-flex min-h-11 items-center underline-offset-4 hover:underline"
-      >
-        Privacy
-      </Link>
       {error && (
         <p className="text-destructive mt-1" role="alert">
           {error}
