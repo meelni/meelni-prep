@@ -1,5 +1,9 @@
 # SAV-235: Legal Page Product Truth
 
+> Historical task record. The Privacy portion was superseded by the accepted
+> [July 26, 2026 Public Privacy Policy decision](../decisions/2026-07-26-public-privacy-policy.md).
+> Terms remains a draft.
+
 ## Intent
 
 - User request: Replace unsupported Terms and Privacy claims with a conservative draft grounded in implemented Meelni behavior.

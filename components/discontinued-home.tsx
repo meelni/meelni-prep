@@ -30,7 +30,7 @@ export function DiscontinuedHome() {
               Terms draft
             </Link>
             <Link className="hover:text-foreground" href="/privacy">
-              Privacy draft
+              Privacy Policy
             </Link>
           </div>
         </div>

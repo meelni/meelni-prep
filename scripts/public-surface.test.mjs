@@ -93,6 +93,7 @@ test("sitemap documents expose canonical public URLs without invented freshness"
     "/companies",
     "/pricing",
     "/blog",
+    "/privacy",
     "/blog/example",
   ];
   const document = `<urlset>${paths
@@ -136,7 +137,7 @@ test("sitemap documents expose canonical public URLs without invented freshness"
       assertPublicSitemapDocument(
         document.replace(
           "https://www.meelni.com/blog/example",
-          "https://www.meelni.com/privacy"
+          "https://www.meelni.com/terms"
         )
       ),
     /non-indexable public route/

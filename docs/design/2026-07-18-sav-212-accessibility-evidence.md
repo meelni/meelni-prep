@@ -20,7 +20,7 @@ paused experience and all Production configuration were left unchanged.
 - Shared and launch-critical dialogs have accessible names, viewport-safe
   bounds, 44px close controls, keyboard focus containment, Escape behavior,
   and deterministic focus restoration.
-- Signup exposes truthful Terms and Privacy draft links without claiming
+- At the time of this evidence, signup exposed truthful Terms and Privacy draft links without claiming
   agreement, and validation errors are adjacent, assertive, and referenced by
   each affected password input with `aria-invalid` and `aria-describedby`.
 - Auth, settings, drawer, interview-ending, and error-recovery actions meet the

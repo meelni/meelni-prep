@@ -16,6 +16,7 @@ const STATIC_PUBLIC_ROUTES = [
   "/companies",
   "/pricing",
   "/blog",
+  "/privacy",
 ] as const;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

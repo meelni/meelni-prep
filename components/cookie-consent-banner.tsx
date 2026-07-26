@@ -16,7 +16,7 @@ export function CookieConsentBanner() {
 
   return (
     <ConsentBannerSurface
-      title="Optional product analytics"
+      title="Cookie preferences"
       titleId="analytics-consent-title"
       actions={
         <>
@@ -33,7 +33,8 @@ export function CookieConsentBanner() {
           <Button
             type="button"
             size="sm"
-            className="min-h-11"
+            variant="outline"
+            className="border-foreground/50 min-h-11"
             disabled={saving}
             onClick={() => void setConsent("accepted", "banner")}
           >
@@ -42,16 +43,16 @@ export function CookieConsentBanner() {
         </>
       }
     >
-      <p>
-        Allow Meelni to use PostHog and Statsig to understand product usage.
-        Interview audio, transcripts, questions, and answers are never included.{" "}
-        <Link
-          href="/privacy"
-          className="text-primary inline-flex min-h-11 items-center underline-offset-4 hover:underline"
-        >
-          Read the privacy draft
-        </Link>
+      <p className="bg-card">
+        With your permission, we use analytics cookies and similar technologies
+        to improve Meelni. Interview content is never included.
       </p>
+      <Link
+        href="/privacy"
+        className="text-primary inline-flex min-h-11 items-center underline-offset-4 hover:underline"
+      >
+        Privacy
+      </Link>
       {error && (
         <p className="text-destructive mt-1" role="alert">
           {error}
