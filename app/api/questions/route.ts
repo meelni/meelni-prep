@@ -134,6 +134,18 @@ export async function handleQuestionsListRequest(
       search,
     });
 
+    // An empty unfiltered first page means the published corpus is unavailable,
+    // not that a user's filter happened to have no matches.
+    if (!roundType && !search && offset === 0 && total === 0) {
+      return NextResponse.json(
+        {
+          error: "Question bank is temporarily unavailable",
+          code: "question_bank_unavailable",
+        },
+        { status: 503 }
+      );
+    }
+
     // Pagination metadata
     const pagination = {
       total,

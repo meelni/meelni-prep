@@ -168,6 +168,9 @@ test("requires a strong contact HMAC secret before provider reads", async () => 
         async verifyServiceRoleKey() {
           providerReads += 1;
         },
+        async verifyPublishedQuestionBank() {
+          providerReads += 1;
+        },
       },
       stripeCatalogReader: {
         async readAccountId() {
@@ -743,6 +746,7 @@ test("fails closed when decoded Supabase JWT claims are not accepted by the proj
         throw new Error("provider details must stay redacted");
       },
       async verifyServiceRoleKey() {},
+      async verifyPublishedQuestionBank() {},
     },
     target: "preview",
   });
@@ -753,6 +757,58 @@ test("fails closed when decoded Supabase JWT claims are not accepted by the proj
     ["supabase_project_unreadable"]
   );
   assert.doesNotMatch(result.failures[0]?.message ?? "", /provider details/);
+});
+
+test("does not require a published corpus in an isolated Preview database", async () => {
+  let questionBankReads = 0;
+  const result = await runDeploymentPreflight({
+    env: validEnvironment("preview"),
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(false),
+    supabaseProjectReader: {
+      async verifyAnonKey() {},
+      async verifyServiceRoleKey() {},
+      async verifyPublishedQuestionBank() {
+        questionBankReads += 1;
+        throw new Error("Preview corpus is intentionally empty");
+      },
+    },
+    target: "preview",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(questionBankReads, 0);
+});
+
+test("fails closed when any Production question round has no published questions", async () => {
+  const result = await runDeploymentPreflight({
+    env: validEnvironment("production"),
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(true),
+    supabaseProjectReader: {
+      async verifyAnonKey() {},
+      async verifyServiceRoleKey() {},
+      async verifyPublishedQuestionBank() {
+        throw new Error("empty product_sense corpus");
+      },
+    },
+    target: "production",
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.failures.map(({ area, code, check }) => ({ area, code, check })),
+    [
+      {
+        area: "question_bank",
+        code: "question_bank_unavailable",
+        check: "question_bank.published_rounds",
+      },
+    ]
+  );
+  assert.doesNotMatch(result.failures[0]?.message ?? "", /product_sense/);
 });
 
 test("rejects cross-target Inngest signing keys", async () => {
@@ -1113,6 +1169,7 @@ function validSupabaseReader() {
   return {
     async verifyAnonKey() {},
     async verifyServiceRoleKey() {},
+    async verifyPublishedQuestionBank() {},
   };
 }
 

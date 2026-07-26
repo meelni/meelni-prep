@@ -15,6 +15,7 @@
  *   GOOGLE_SHEETS_API_KEY + GOOGLE_SHEET_ID (Method B)
  */
 
+import { getMissingQuestionRounds } from "@/lib/question-sync/safety";
 import {
   fetchSheetAsCSV,
   validateSheetRow,
@@ -437,6 +438,11 @@ export async function prepareQuestionSyncSource(): Promise<PreparedQuestionSync>
 
   const { questions, duplicates } =
     deduplicateQuestionSyncSource(validatedQuestions);
+  const missingRounds = getMissingQuestionRounds(questions);
+  if (missingRounds.length > 0) {
+    console.error("question_sync_round_coverage_abort");
+    throw new Error("question_sync_round_coverage_abort");
+  }
 
   console.info(
     "question_sync_source",

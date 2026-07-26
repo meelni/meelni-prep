@@ -162,6 +162,69 @@ test("startInterviewSessionWorkflow allows all PM round types when a credit is a
   }
 });
 
+test("startInterviewSessionWorkflow falls back to an older active question when no recent question is available", async () => {
+  const selectionCalls: string[] = [];
+  const h = harness({
+    getRandomRecentQuestion: async (days, questionTypes) => {
+      selectionCalls.push(`recent:${days}:${questionTypes.join(",")}`);
+      return null;
+    },
+    getRandomQuestion: async (questionTypes) => {
+      selectionCalls.push(`all:${questionTypes.join(",")}`);
+      return question();
+    },
+  });
+
+  const result = await startInterviewSessionWorkflow(
+    request({
+      questionId: undefined,
+      config: {
+        duration: 30,
+        questionPreference: { recency: "very_recent", recentDays: 365 },
+      },
+    }),
+    h.deps
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(selectionCalls, [
+    "recent:365:Product Sense,Product design/strategy",
+    "all:Product Sense,Product design/strategy",
+  ]);
+  assert.equal(h.store.current?.question.id, QUESTION_ID);
+});
+
+test("startInterviewSessionWorkflow returns a recoverable message when a round has no active questions", async () => {
+  const h = harness({
+    getRandomRecentQuestion: async () => null,
+    getRandomQuestion: async () => null,
+  });
+
+  const result = await startInterviewSessionWorkflow(
+    request({
+      questionId: undefined,
+      config: {
+        duration: 30,
+        questionPreference: { recency: "very_recent", recentDays: 365 },
+      },
+    }),
+    h.deps
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 404,
+    body: {
+      error: "no_questions_available",
+      message:
+        "We couldn't find an active question for this interview type. Choose another interview type and try again.",
+      retryable: false,
+    },
+  });
+  assert.equal(h.calls.includes("prepare"), false);
+  assert.equal(h.calls.includes("provider"), false);
+});
+
 test("startInterviewSessionWorkflow returns no-credit response before session work", async () => {
   const h = harness({
     prepareStart: async () => {

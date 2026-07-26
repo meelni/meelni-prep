@@ -32,6 +32,15 @@ export async function loadPublicQuestionCorpus(
     activeOnly: true,
   });
 
+  if (
+    !options.roundType &&
+    !options.search &&
+    (options.offset ?? 0) === 0 &&
+    result.total === 0
+  ) {
+    throw new Error("question_bank_unavailable");
+  }
+
   return {
     total: result.total,
     questions: result.questions.map(serializePublicQuestion),

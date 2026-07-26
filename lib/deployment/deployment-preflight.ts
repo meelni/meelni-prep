@@ -57,6 +57,7 @@ export interface OpenAiModelReader {
 export interface SupabaseProjectReader {
   verifyAnonKey(): Promise<void>;
   verifyServiceRoleKey(): Promise<void>;
+  verifyPublishedQuestionBank(): Promise<void>;
 }
 
 export type DeploymentPreflightFailureCode =
@@ -69,6 +70,7 @@ export type DeploymentPreflightFailureCode =
   | "livekit_project_unreadable"
   | "openai_model_unreadable"
   | "supabase_project_unreadable"
+  | "question_bank_unavailable"
   | "stripe_price_unreadable"
   | "stripe_account_mismatch"
   | "stripe_price_mismatch";
@@ -81,7 +83,8 @@ export interface DeploymentPreflightFailure {
     | "livekit"
     | "statsig"
     | "stripe"
-    | "supabase";
+    | "supabase"
+    | "question_bank";
   code: DeploymentPreflightFailureCode;
   check: string;
   message: string;
@@ -169,6 +172,7 @@ export async function runDeploymentPreflight({
     };
   }
 
+  let supabaseCredentialsVerified = false;
   if (!failures.some((failure) => failure.area === "supabase")) {
     if (!supabaseProjectReader) {
       failures.push({
@@ -188,6 +192,7 @@ export async function runDeploymentPreflight({
           providerTimeoutMs
         );
         passedChecks.push("supabase.credentials.read_only");
+        supabaseCredentialsVerified = true;
       } catch {
         failures.push({
           area: "supabase",
@@ -196,6 +201,28 @@ export async function runDeploymentPreflight({
           message: "Supabase credentials could not be verified read-only.",
         });
       }
+    }
+  }
+
+  if (
+    target === "production" &&
+    supabaseCredentialsVerified &&
+    supabaseProjectReader
+  ) {
+    try {
+      await withTimeout(
+        supabaseProjectReader.verifyPublishedQuestionBank(),
+        providerTimeoutMs
+      );
+      passedChecks.push("question_bank.published_rounds");
+    } catch {
+      failures.push({
+        area: "question_bank",
+        code: "question_bank_unavailable",
+        check: "question_bank.published_rounds",
+        message:
+          "The target database must contain a published question for every interview round.",
+      });
     }
   }
 

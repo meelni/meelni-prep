@@ -1,5 +1,9 @@
 import OpenAI from "openai";
 import { RoomServiceClient } from "livekit-server-sdk";
+import {
+  QUESTION_ROUND_TYPES,
+  questionTypeStorageAliasesForRound,
+} from "@meelni/core";
 
 import {
   runDeploymentPreflight,
@@ -100,7 +104,44 @@ function createSupabaseProjectReader(
         serviceRoleKey
       );
     },
+    async verifyPublishedQuestionBank() {
+      await Promise.all(
+        QUESTION_ROUND_TYPES.map(async (roundType) => {
+          const url = new URL("/rest/v1/interview_question", projectUrl);
+          url.searchParams.set("select", "id");
+          url.searchParams.set("is_active", "eq.true");
+          url.searchParams.set("quality_status", "eq.published");
+          url.searchParams.set(
+            "question_type",
+            `in.(${questionTypeStorageAliasesForRound(roundType)
+              .map(quotePostgrestValue)
+              .join(",")})`
+          );
+          url.searchParams.set("limit", "1");
+
+          const response = await fetch(url, {
+            headers: {
+              apikey: serviceRoleKey,
+              authorization: `Bearer ${serviceRoleKey}`,
+            },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) {
+            await response.body?.cancel();
+            throw new Error("Question bank verification failed");
+          }
+          const rows = (await response.json()) as unknown;
+          if (!Array.isArray(rows) || rows.length === 0) {
+            throw new Error("Published question round is empty");
+          }
+        })
+      );
+    },
   };
+}
+
+function quotePostgrestValue(value: string) {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
 async function verifySupabaseCredential(url: URL, credential: string) {
