@@ -120,12 +120,18 @@ The rollout uses exact hosted runs rather than local estimates:
   6m12s end to end, with a 5m52s production/browser critical lane, 5m35s
   unit/contracts lane, 3m28s static/Python lane, 2m21s database lane, and a
   successful three-second `Validate` aggregator.
+- Documentation proof PR #487 selected only repository/documentation validation
+  at exact head `94a1eb84c45d0c915039de89eb0daefe559525f8` in
+  [run 30224302099](https://github.com/meelni/meelni-prep/actions/runs/30224302099):
+  1m24s end to end, with a nine-second classifier, 59-second repository lane,
+  all four code lanes skipped, and a successful three-second `Validate`
+  aggregator.
 
-SAV-334 records the separate documentation-only run and final protection
-readback before closing the rollout. A documentation proof is valid only when
-the repository lane succeeds, every code lane is skipped, the exact required
-`Validate`, `Trusted Publisher`, and `Migration Collision Publisher` contexts
-succeed, and the pull request merges through normal strict protection.
+SAV-334 records the final protection readback before closing the rollout. A
+documentation proof is valid only when the repository lane succeeds, every code
+lane is skipped, the exact required `Validate`, `Trusted Publisher`, and
+`Migration Collision Publisher` contexts succeed, and the pull request merges
+through normal strict protection.
 
 ### Exact registry-only fast path
 
