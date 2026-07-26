@@ -17,6 +17,9 @@ GO record and execute default-on.
 - Keep `MEELNI_RELAUNCH_PHASE=prelaunch` for Production.
 - Do not use `relaunch-default-on` until the product owner signs an explicit
   GO bound to the exact release candidate.
+- After that exact owner GO, Production default-on is represented by the
+  paired state `MEELNI_RELAUNCH_PHASE=launched` and
+  `MEELNI_REACTIVATION_DEFAULT=true`; either value alone is not a valid launch.
 - A successful Preview rehearsal is evidence only. It is not launch approval.
 
 Automatic NO-GO recommendation applies when any required gate is missing,
@@ -29,8 +32,8 @@ stale, ambiguous, unverifiable, or failing.
 | Statsig tier      | `preview`                                                                                     | `production`                        | `production`                 |
 | Statsig gate      | `meelni_reactivation_access` targeted only to the exact reviewed commit/ref                   | off                                 | owner-approved target        |
 | Dynamic config    | `meelni_preview_rehearsal_authority` with `active=true`, exact commit/ref, and ≤2h UTC window | absent or inactive                  | not launch authority         |
-| Vercel phase      | `MEELNI_RELAUNCH_PHASE=rehearsal`                                                             | `MEELNI_RELAUNCH_PHASE=prelaunch`   | separately approved          |
-| Vercel fallback   | `MEELNI_REACTIVATION_DEFAULT=false`                                                           | `MEELNI_REACTIVATION_DEFAULT=false` | owner-approved change only   |
+| Vercel phase      | `MEELNI_RELAUNCH_PHASE=rehearsal`                                                             | `MEELNI_RELAUNCH_PHASE=prelaunch`   | `MEELNI_RELAUNCH_PHASE=launched` |
+| Vercel fallback   | `MEELNI_REACTIVATION_DEFAULT=false`                                                           | `MEELNI_REACTIVATION_DEFAULT=false` | `MEELNI_REACTIVATION_DEFAULT=true` |
 | Deployment anchor | Branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA=<40hex>`                                           | none                                | exact candidate in GO record |
 
 ## Prerequisites before Preview flip
