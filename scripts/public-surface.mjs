@@ -7,9 +7,10 @@ const INDEXABLE_PUBLIC_PATHS = [
   "/companies",
   "/pricing",
   "/blog",
+  "/privacy",
 ];
 
-export const NON_INDEXABLE_QA_PATHS = ["/contact", "/privacy", "/terms"];
+export const NON_INDEXABLE_QA_PATHS = ["/contact", "/terms"];
 
 export const PUBLIC_CRAWL_SEEDS = [
   ...INDEXABLE_PUBLIC_PATHS,

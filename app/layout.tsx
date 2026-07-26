@@ -112,9 +112,9 @@ export default async function RootLayout({
                     <StatsigProvider
                       initialGateValues={featureFlagBootstrap.values}
                     >
-                      <CookieConsentBanner />
                       {children}
                       <Toaster position="top-right" duration={3000} />
+                      <CookieConsentBanner />
                     </StatsigProvider>
                   </PostHogProvider>
                 </AnalyticsConsentProvider>

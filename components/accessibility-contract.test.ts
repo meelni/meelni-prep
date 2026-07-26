@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("analytics consent occupies document flow before primary content", async () => {
+test("analytics consent uses a floating bottom card after primary content", async () => {
   const [layout, banner, surface] = await Promise.all([
     readFile("app/layout.tsx", "utf8"),
     readFile("components/cookie-consent-banner.tsx", "utf8"),
@@ -10,17 +10,29 @@ test("analytics consent occupies document flow before primary content", async ()
   ]);
 
   assert.ok(
-    layout.indexOf("<CookieConsentBanner />") < layout.indexOf("{children}"),
-    "consent must render before primary content"
+    layout.indexOf("<CookieConsentBanner />") > layout.indexOf("{children}"),
+    "consent must render after primary content"
   );
   assert.match(banner, /ConsentBannerSurface/);
   assert.match(banner, /useAnalyticsConsent/);
   assert.doesNotMatch(banner, /posthog-js|localStorage/);
   assert.match(surface, /data-cookie-consent-banner/);
-  assert.doesNotMatch(surface, /\b(?:fixed|sticky|absolute)\b/);
+  assert.match(surface, /\bfixed\b/);
+  assert.match(surface, /bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(surface, /\bmax-w-md\b/);
+  assert.match(surface, /\bshadow-lg\b/);
   assert.match(surface, /grid-cols-1/);
   assert.match(surface, /sm:grid-cols-2/);
-  assert.match(banner, /border-foreground\/50/);
+  assert.equal(
+    (banner.match(/variant="outline"/g) ?? []).length,
+    2,
+    "accept and decline must receive equal visual emphasis"
+  );
+  assert.equal(
+    (banner.match(/border-foreground\/50/g) ?? []).length,
+    2,
+    "accept and decline must preserve equally visible borders"
+  );
 });
 
 test("feedback lifecycle states share the accessible review surface", async () => {

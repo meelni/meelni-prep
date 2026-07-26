@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (!access.value) {
       return contactError(
         "contact_unavailable",
-        "The contact form is temporarily unavailable. Email support@meelni.com or manage account and billing settings from your dashboard.",
+        "The contact form is temporarily unavailable. Email contact@meelni.com or manage account and billing settings from your dashboard.",
         false,
         403
       );
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     });
     return contactError(
       "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
+      "We could not save your request. Try again or email contact@meelni.com directly.",
       true,
       503
     );
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     });
     return contactError(
       "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
+      "We could not save your request. Try again or email contact@meelni.com directly.",
       true,
       503
     );
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     });
     return contactError(
       "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
+      "We could not save your request. Try again or email contact@meelni.com directly.",
       true,
       503
     );
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
     });
     return contactError(
       "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
+      "We could not save your request. Try again or email contact@meelni.com directly.",
       true,
       503
     );
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
     });
     return contactError(
       "storage_unavailable",
-      "We could not save your request. Try again or email support@meelni.com directly.",
+      "We could not save your request. Try again or email contact@meelni.com directly.",
       true,
       503
     );
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
   });
   return contactError(
     result.code,
-    "We could not save your request. Try again or email support@meelni.com directly.",
+    "We could not save your request. Try again or email contact@meelni.com directly.",
     true,
     503
   );

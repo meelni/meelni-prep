@@ -15,8 +15,11 @@ test("contact remains feature-gated and promises only durable storage", async ()
   assert.match(page, /robots: \{ index: false, follow: false \}/);
   assert.match(client, /if \(!activation\.canActivate\)/);
   assert.match(client, /Contact form temporarily unavailable/);
-  assert.match(client, /mailto:support@meelni\.com/);
-  assert.match(client, /mailto:billing@meelni\.com/);
+  assert.match(client, /mailto:contact@meelni\.com/);
+  assert.doesNotMatch(
+    client,
+    /mailto:(?:support|billing|privacy|legal)@meelni\.com/
+  );
   assert.match(client, /state === "stored"/);
   assert.match(client, /Request saved/);
   assert.doesNotMatch(

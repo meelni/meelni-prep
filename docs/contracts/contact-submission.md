@@ -77,4 +77,4 @@ account.
 
 ## Rollout invariant
 
-Keep `support@meelni.com` and `billing@meelni.com` visible until the migration, strong shared-environment secret, named operator access, cleanup schedule, and monitoring have been proven in the target environment. Deployment validation fails before provider reads when the secret is missing or weak. No provider or shared-environment mutation is part of this branch.
+Keep `contact@meelni.com` visible as the single public inbox until the migration, strong shared-environment secret, named operator access, cleanup schedule, and monitoring have been proven in the target environment. Deployment validation fails before provider reads when the secret is missing or weak. No provider or shared-environment mutation is part of this branch.

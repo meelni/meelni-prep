@@ -310,7 +310,7 @@ function SignUpContent() {
                 href="/privacy"
                 className="text-foreground focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm px-1 underline underline-offset-4 focus-visible:ring-2 focus-visible:outline-none"
               >
-                Privacy draft
+                Privacy Policy
               </Link>{" "}
               before creating an account.
             </p>
