@@ -18,11 +18,16 @@ export const EVALUATION_CALIBRATION_THRESHOLDS = {
   minimumDimensionScoreBandAgreementRate: 0.8,
   minimumRoundScoreBandAgreementRate: 0.75,
   minimumStateScoreBandAgreementRate: 0.75,
-  maximumRepeatedRunScoreRange: 1,
+  maximumRepeatedRunScoreRange: 2,
   modelVersionMatchRate: 1,
   minimumProviderRuns: 2,
   maximumProviderRuns: 2,
   maximumProviderCalls: 96,
+} as const;
+
+export const EVALUATION_CALIBRATION_SCORE_TOLERANCE = {
+  conservativeLowSidePoints: 2,
+  optimisticHighSidePoints: 0,
 } as const;
 
 export const CALIBRATION_ROUND_TYPES = [

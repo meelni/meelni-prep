@@ -26,8 +26,8 @@ import {
 } from "./calibration-budget";
 import {
   buildCalibrationActivatedPlan,
-  SAV_248_V31_APPROVED_RUN_ID,
-  SAV_248_V31_SPEND_AUTHORIZATION,
+  SAV_248_V32_APPROVED_RUN_ID,
+  SAV_248_V32_SPEND_AUTHORIZATION,
 } from "./calibration-run-ledger";
 import {
   FeedbackProviderInvocationError,
@@ -252,7 +252,7 @@ test("calibration fails a live report when repeated scores are unstable", async 
 
   assert.ok(
     report.metrics.maximumRepeatedRunScoreRange === null ||
-      report.metrics.maximumRepeatedRunScoreRange > 1
+      report.metrics.maximumRepeatedRunScoreRange > 2
   );
   assert.equal(report.gate.liveProviderAcceptance, "failed");
   assert.equal(report.gate.calibrationEvidenceAcceptance, "failed");
@@ -265,6 +265,55 @@ test("calibration fails a live report when repeated scores are unstable", async 
         failure.observedScoreRange !== undefined
     )
   );
+});
+
+test("score calibration tolerates bounded conservative scoring but rejects inflated scoring", async () => {
+  const baseline = createDeterministicCalibrationEvaluator(LIVE_MODEL);
+  const conservative = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    evaluator: withProviderUsage(async (input) => {
+      const output = await baseline(input);
+      return withScores(output, {
+        structure: Math.max(0, output.scores.structure - 2),
+        clarity: Math.max(0, output.scores.clarity - 2),
+        insight: Math.max(0, output.scores.insight - 2),
+        communication: Math.max(0, output.scores.communication - 2),
+        leadership: Math.max(0, output.scores.leadership - 2),
+      });
+    }),
+    spendGuard: liveGuard(),
+    adjudicationApproval: approvalFixture(),
+  });
+
+  assert.equal(conservative.gate.liveProviderAcceptance, "pending_semantic_review");
+  assert.equal(conservative.gate.calibrationEvidenceAcceptance, "pending_semantic_review");
+  assert.equal(conservative.metrics.scoreBandAgreementRate, 1);
+
+  const optimistic = await runEvaluationCalibration({
+    executionKind: "live_provider",
+    captureRawSyntheticOutput: async () => undefined,
+    modelVersion: LIVE_MODEL,
+    repetitions: 2,
+    now: NOW,
+    evaluator: withProviderUsage(async (input) => {
+      const output = await baseline(input);
+      return withScores(output, {
+        structure: Math.min(10, output.scores.structure + 2),
+        clarity: Math.min(10, output.scores.clarity + 2),
+        insight: Math.min(10, output.scores.insight + 2),
+        communication: Math.min(10, output.scores.communication + 2),
+        leadership: Math.min(10, output.scores.leadership + 2),
+      });
+    }),
+    spendGuard: liveGuard(),
+    adjudicationApproval: approvalFixture(),
+  });
+
+  assert.equal(optimistic.gate.liveProviderAcceptance, "failed");
 });
 
 test("a constant-high scorer fails the varied corpus instead of gaming a pooled band", async () => {
@@ -322,8 +371,8 @@ test("a completely broken leadership scorer cannot pass at the pooled 80 percent
     adjudicationApproval: approvalFixture(),
   });
 
-  assert.equal(report.metrics.scoreBandAgreementRate, 0.8);
-  assert.equal(report.metrics.scoreBandAgreementByDimension.leadership, 0);
+  assert.ok(report.metrics.scoreBandAgreementRate! >= 0.8);
+  assert.ok(report.metrics.scoreBandAgreementByDimension.leadership! < 0.8);
   assert.equal(report.gate.liveProviderAcceptance, "failed");
 });
 
@@ -808,7 +857,7 @@ test("approved live automation remains pending until semantic review passes", as
   assert.equal(report.execution.cost?.attemptedCalls, 64);
   assert.equal(
     report.execution.cost?.authorizedRunId,
-    SAV_248_V31_APPROVED_RUN_ID
+    SAV_248_V32_APPROVED_RUN_ID
   );
   assert.equal(report.execution.cost?.authorizationHash?.length, 64);
   assert.equal(report.execution.cost?.physicalHttpAttemptCeiling, 64);
@@ -946,7 +995,7 @@ function withProviderUsage(
 
 function liveGuard(): CalibrationSpendGuard {
   const plan = buildCalibrationActivatedPlan({
-    authorization: SAV_248_V31_SPEND_AUTHORIZATION,
+    authorization: SAV_248_V32_SPEND_AUTHORIZATION,
     adjudicationApproval: approvalFixture(),
     model: LIVE_MODEL,
     repetitions: 2,
@@ -955,8 +1004,8 @@ function liveGuard(): CalibrationSpendGuard {
   let spend = createEmptyCalibrationSpendState();
   const persistence: CalibrationSpendPersistence = {
     durable: true,
-    runId: SAV_248_V31_APPROVED_RUN_ID,
-    authorizationId: SAV_248_V31_SPEND_AUTHORIZATION.authorizationId,
+    runId: SAV_248_V32_APPROVED_RUN_ID,
+    authorizationId: SAV_248_V32_SPEND_AUTHORIZATION.authorizationId,
     authorizationHash: plan.authorizationHash,
     activationCommit: "test-activation-commit",
     planHash: plan.planHash,

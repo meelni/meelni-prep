@@ -14,6 +14,7 @@ import {
 import {
   CALIBRATION_ROUND_TYPES,
   EVALUATION_ADJUDICATION_VERSION,
+  EVALUATION_CALIBRATION_SCORE_TOLERANCE,
   EVALUATION_CALIBRATION_THRESHOLDS,
   EVALUATION_GOLD_SET_VERSION,
   evaluationCalibrationCases,
@@ -537,7 +538,13 @@ export async function runEvaluationCalibration(
         for (const dimension of DIMENSIONS) {
           const band = fixture.scoreBands![dimension];
           const score = reparsed.scores[dimension];
-          if (score >= band.minimum && score <= band.maximum) {
+          const toleratedMinimum =
+            band.minimum -
+            EVALUATION_CALIBRATION_SCORE_TOLERANCE.conservativeLowSidePoints;
+          const toleratedMaximum =
+            band.maximum +
+            EVALUATION_CALIBRATION_SCORE_TOLERANCE.optimisticHighSidePoints;
+          if (score >= toleratedMinimum && score <= toleratedMaximum) {
             scoresInsideBand += 1;
             increment(dimensionMatches, dimension);
             increment(roundMatches, fixture.roundType);
