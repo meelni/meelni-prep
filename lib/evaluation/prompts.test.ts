@@ -217,3 +217,44 @@ test("calibration evidence hints provide non-overlapping fallback slots", () => 
     }
   }
 });
+
+test("calibration evidence hints fill partial cases with residual non-overlapping slots", () => {
+  const target: CalibrationCase | undefined = evaluationCalibrationCases.find(
+    ({ id }) => id === "product_sense:05:language-practice"
+  );
+  assert.ok(target);
+
+  const hints = buildCalibrationEvidenceHints(target);
+  assert.ok(hints.length >= 4);
+  assert.ok(
+    hints.some(
+      (hint) =>
+        hint.kind === "fallback" &&
+        hint.turnRef === "product_sense:05:language-practice:user:2" &&
+        hint.quote ===
+          "tied to a real upcoming situation rather than more vocabulary cards"
+    )
+  );
+
+  for (let i = 0; i < hints.length; i += 1) {
+    for (let j = i + 1; j < hints.length; j += 1) {
+      const left = hints[i]!;
+      const right = hints[j]!;
+      if (left.turnRef !== right.turnRef) continue;
+      const turn: CalibrationTurn | undefined = target.transcript.find(
+        ({ eventId }) => eventId === left.turnRef
+      );
+      assert.ok(turn);
+      const leftStart: number = turn.text.indexOf(left.quote);
+      const rightStart: number = turn.text.indexOf(right.quote);
+      assert.notEqual(leftStart, -1);
+      assert.notEqual(rightStart, -1);
+      assert.equal(
+        leftStart < rightStart + right.quote.length &&
+          rightStart < leftStart + left.quote.length,
+        false,
+        `${left.quote} overlaps ${right.quote}`
+      );
+    }
+  }
+});

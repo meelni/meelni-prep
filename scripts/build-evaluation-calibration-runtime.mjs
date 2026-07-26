@@ -16,7 +16,7 @@ import { assertPinnedNodeVersion } from "./node-version.mjs";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const bundlePath = "scripts/generated/run-evaluation-calibration.bundle.mjs";
-const manifestPath = "docs/evidence/sav-248-v29-runtime-manifest.json";
+const manifestPath = "docs/evidence/sav-248-v30-runtime-manifest.json";
 const buildContract = Object.freeze({
   contractVersion: "evaluation-calibration-runtime-build.v1",
   entryPoint: "scripts/run-evaluation-calibration.ts",

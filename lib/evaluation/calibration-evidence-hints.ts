@@ -51,6 +51,29 @@ export function buildCalibrationEvidenceHints(input: {
         return hints;
       }
     }
+    for (const quote of splitResidualEvidenceSlots(
+      turn.text,
+      hints
+        .filter((hint) => hint.turnRef === turn.eventId)
+        .map((hint) => hint.quote)
+    )) {
+      const identity = `${turn.eventId}\u0000${quote}`;
+      if (anchoredQuotes.has(identity)) continue;
+      if (
+        hints.some(
+          (hint) =>
+            hint.turnRef === turn.eventId &&
+            exactSpansOverlap(turn.text, quote, hint.quote)
+        )
+      ) {
+        continue;
+      }
+      hints.push({ kind: "fallback", turnRef: turn.eventId, quote });
+      anchoredQuotes.add(identity);
+      if (hints.length >= input.evidenceAnchors.length + 4) {
+        return hints;
+      }
+    }
   }
   return hints;
 }
@@ -112,6 +135,43 @@ function splitCandidateEvidenceSlots(text: string): string[] {
       add(clause);
     }
   }
+
+  return slots;
+}
+
+function splitResidualEvidenceSlots(
+  text: string,
+  reservedQuotes: readonly string[]
+): string[] {
+  const seen = new Set<string>();
+  const slots: string[] = [];
+  const add = (value: string) => {
+    const slot = value
+      .trim()
+      .replace(/^[,;:.\s]+/u, "")
+      .replace(/[,;:.\s]+$/u, "")
+      .trim();
+    if (slot.length < 24 || seen.has(slot)) return;
+    seen.add(slot);
+    slots.push(slot);
+  };
+
+  const ranges = reservedQuotes
+    .map((quote) => {
+      const start = text.indexOf(quote);
+      return start < 0 ? null : { start, end: start + quote.length };
+    })
+    .filter((range): range is { start: number; end: number } => range !== null)
+    .sort((left, right) => left.start - right.start);
+
+  if (!ranges.length) return slots;
+
+  let cursor = 0;
+  for (const range of ranges) {
+    if (cursor < range.start) add(text.slice(cursor, range.start));
+    cursor = Math.max(cursor, range.end);
+  }
+  if (cursor < text.length) add(text.slice(cursor));
 
   return slots;
 }
