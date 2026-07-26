@@ -33,6 +33,58 @@ export const dashboardSessions = [
   },
 ];
 
+export const dashboardStatusSessions = [
+  {
+    id: "browser-qa-not-scored",
+    userId: "browser-qa-user",
+    role: "product_manager",
+    roundType: "product_sense",
+    mode: "voice_video",
+    startedAt: "2026-07-21T17:00:00.000Z",
+    endedAt: "2026-07-21T17:30:00.000Z",
+  },
+  {
+    id: "browser-qa-score-unavailable",
+    userId: "browser-qa-user",
+    role: "product_manager",
+    roundType: "strategy",
+    mode: "voice_video",
+    startedAt: "2026-07-20T17:00:00.000Z",
+    endedAt: "2026-07-20T17:30:00.000Z",
+    feedback: {
+      status: "completed",
+      overallScore: null,
+    },
+  },
+  {
+    id: "browser-qa-feedback-failed",
+    userId: "browser-qa-user",
+    role: "product_manager",
+    roundType: "execution",
+    mode: "voice_video",
+    startedAt: "2026-07-19T17:00:00.000Z",
+    endedAt: "2026-07-19T17:30:00.000Z",
+    feedback: {
+      status: "failed",
+      overallScore: null,
+    },
+  },
+  {
+    id: "browser-qa-feedback-skipped",
+    userId: "browser-qa-user",
+    role: "product_manager",
+    roundType: "behavioral",
+    mode: "voice_video",
+    startedAt: "2026-07-18T17:00:00.000Z",
+    endedAt: "2026-07-18T17:30:00.000Z",
+    feedback: {
+      status: "skipped",
+      overallScore: null,
+    },
+  },
+  dashboardSessions[0]!,
+];
+
 const evidenceTurn = "browser-qa-turn-1";
 
 export const completedFeedback: FeedbackV2View = {

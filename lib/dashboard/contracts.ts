@@ -27,6 +27,13 @@ export interface DashboardQuestionInput {
   isActive?: boolean | null;
 }
 
+export type DashboardFeedbackDisplayState =
+  | "ready"
+  | "processing"
+  | "unavailable"
+  | "not-generated"
+  | "unscored";
+
 export interface DashboardProgressBar {
   score: number;
   value: number;
@@ -77,6 +84,7 @@ export interface DashboardPracticeSummary {
     roundLabel: string;
     focusLabel: string;
     scoreLabel: string;
+    feedbackState: DashboardFeedbackDisplayState;
     feedbackHref: string | null;
   }>;
   progressSignal: {
@@ -109,6 +117,7 @@ export interface HistorySummary {
     focusLabel: string;
     scoreLabel: string;
     statusLabel: string;
+    feedbackState: DashboardFeedbackDisplayState;
     feedbackHref: string | null;
     repeatHref: string;
   }>;
@@ -309,6 +318,7 @@ export function buildDashboardPracticeSummary(
         roundLabel: formatRoundType(session.roundType),
         focusLabel: display.focusLabel,
         scoreLabel: score === null ? display.scoreLabel : score.toFixed(1),
+        feedbackState: display.feedbackState,
         feedbackHref: score === null ? null : `/feedback/${session.id}`,
       };
     }),
@@ -374,6 +384,7 @@ export function buildHistorySummary(
       focusLabel: display.focusLabel,
       scoreLabel: hasScore ? score.toFixed(1) : display.scoreLabel,
       statusLabel: display.statusLabel,
+      feedbackState: display.feedbackState,
       feedbackHref: hasScore ? `/feedback/${session.id}` : null,
       repeatHref: `/dashboard/new-interview?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
     };
@@ -504,6 +515,7 @@ function getFeedbackDisplay(
       focusLabel: focusArea?.label || "Scored feedback",
       scoreLabel: "Scored",
       statusLabel: "Feedback ready",
+      feedbackState: "ready" as const,
     };
   }
 
@@ -511,33 +523,38 @@ function getFeedbackDisplay(
     case "pending":
     case "processing":
       return {
-        focusLabel: "Feedback pending",
-        scoreLabel: "Pending",
-        statusLabel: "Processing",
+        focusLabel: "Feedback is being prepared",
+        scoreLabel: "In progress",
+        statusLabel: "In progress",
+        feedbackState: "processing" as const,
       };
     case "failed":
       return {
-        focusLabel: "Feedback failed",
+        focusLabel: "Feedback couldn’t be generated",
         scoreLabel: "Unavailable",
-        statusLabel: "Feedback failed",
+        statusLabel: "Unavailable",
+        feedbackState: "unavailable" as const,
       };
     case "skipped":
       return {
-        focusLabel: "Feedback skipped",
-        scoreLabel: "Skipped",
-        statusLabel: "Feedback skipped",
+        focusLabel: "Feedback wasn’t generated",
+        scoreLabel: "No feedback",
+        statusLabel: "No feedback",
+        feedbackState: "not-generated" as const,
       };
     case "completed":
       return {
-        focusLabel: "Score unavailable",
-        scoreLabel: "Unscored",
-        statusLabel: "Score unavailable",
+        focusLabel: "This feedback has no score",
+        scoreLabel: "No score",
+        statusLabel: "No score",
+        feedbackState: "unscored" as const,
       };
     default:
       return {
-        focusLabel: "Not scored",
-        scoreLabel: "Not scored",
-        statusLabel: "Not scored",
+        focusLabel: "No score is available for this interview",
+        scoreLabel: "No score",
+        statusLabel: "No score",
+        feedbackState: "unscored" as const,
       };
   }
 }
