@@ -51,7 +51,7 @@ The launcher captures the exact UTF-8 bytes of the decoded provider message
 content before JSON parsing. It atomically persists a v10 automated report in
 `pending_semantic_review`, then waits for two decision-only panel files plus a
 separate operator-authored execution-authority file. Semantic review grants no
-provider access or spend authority. The current v26 artifacts are deliberately
+provider access or spend authority. The current v27 artifacts are deliberately
 non-executable proposals; a fresh exact owner authorization, reviewed post-merge
 source commit, refreshed pricing review, and protected GitHub ledger would all
 be required before any paid run.
@@ -168,7 +168,7 @@ material must never be placed in Git, chat, environment files, logs, or
 generated evidence. Rotating or enrolling another owner public key requires a
 reviewed source change and runtime-bundle regeneration.
 
-`docs/evidence/sav-248-v26-paid-run-authorization-proposal.json` truthfully
+`docs/evidence/sav-248-v27-paid-run-authorization-proposal.json` truthfully
 records `pending_explicit_product_owner_approval`, null authorization source and
 date, and a null `reviewedSourceCommit`. It cannot authorize a provider request,
 GitHub mutation, or credential delivery. Before any future run, the product
@@ -200,7 +200,7 @@ expiry timestamps must be canonical ISO strings, the issue time must be on a
 whole-second boundary, and the lifetime must be no longer than 30 minutes.
 
 Prepare the later handoff in this order: merge the reviewed public-key/runtime
-and fresh-pricing source; select one new `sav258_v26_auth_` identifier plus the
+and fresh-pricing source; select one new `sav258_v27_auth_` identifier plus the
 issue/expiry window; build the v26 authorization request from those fixed values;
 regenerate the exact plan against that authorization and merged commit; place
 its hash/count/cost in the outer payload; then have the human product owner sign
@@ -225,24 +225,24 @@ launch decision.
 ```bash
 npm run calibration:owner-authorization -- prepare \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
-  --authorization-id sav258_v26_auth_<32 lowercase hex characters> \
+  --authorization-id sav258_v27_auth_<32 lowercase hex characters> \
   --reviewed-source-commit <final reviewed 40-character source commit> \
   --signing-key-id meelni-owner-2026-07 \
   --issued-at <whole-second ISO timestamp> \
   --ttl-minutes 30 \
-  --output-path /secure/external/path/sav-248-v26-owner-authorization-request.json
+  --output-path /secure/external/path/sav-248-v27-owner-authorization-request.json
 
 npm run calibration:owner-authorization -- sign \
-  --payload-path /secure/external/path/sav-248-v26-owner-authorization-request.json \
-  --artifact-path /secure/external/path/sav-248-v26-owner-authorization.json \
+  --payload-path /secure/external/path/sav-248-v27-owner-authorization-request.json \
+  --artifact-path /secure/external/path/sav-248-v27-owner-authorization.json \
   --key-id meelni-owner-2026-07 \
   --private-key-path /secure/external/path/meelni-owner-private-key.pem
 
 npm run calibration:owner-authorization -- verify \
-  --artifact-path /secure/external/path/sav-248-v26-owner-authorization.json \
+  --artifact-path /secure/external/path/sav-248-v27-owner-authorization.json \
   --adjudication-approval docs/evidence/sav-198-adjudication-approval.json \
   --reviewed-source-commit <final reviewed 40-character source commit> \
-  --output-path /secure/external/path/sav-248-v26-owner-authorization-report.json
+  --output-path /secure/external/path/sav-248-v27-owner-authorization-report.json
 ```
 
 The private key and signed artifact paths must be absolute paths outside every
@@ -264,7 +264,7 @@ The live child does not execute through `tsx` or import from mutable
 complete 372-input runtime into
 `scripts/generated/run-evaluation-calibration.bundle.mjs`; only Node built-ins
 remain external. `npm run calibration:verify-runtime` must reproduce the exact
-tracked bundle and `docs/evidence/sav-248-v26-runtime-manifest.json`. Before
+tracked bundle and `docs/evidence/sav-248-v27-runtime-manifest.json`. Before
 spawning the child, the credential-free bootstrap checks the bundle's regular
 file identity, ownership, link count, mode, byte length, SHA-256, package-lock
 SHA-256, Node version, platform, and architecture. A dependency or source
@@ -358,12 +358,12 @@ totals on failed or mismatched responses. Valid in-reservation usage is
 reconciled to known cost before the identity failure stops the run; absent,
 invalid usage retains the reservation.
 
-Generate and verify the non-executable v26 proposal:
+Generate and verify the non-executable v27 proposal:
 
 ```bash
 npm run calibration:plan-proposal -- \
   --approval docs/evidence/sav-198-adjudication-approval.json \
-  --output docs/evidence/sav-248-v26-plan-proposal.json
+  --output docs/evidence/sav-248-v27-plan-proposal.json
 ```
 
 The current repaired source proposal is 64 physical calls (two symmetric runs
@@ -379,7 +379,7 @@ failed terminally and is non-reusable; the real v10 ledger has also failed
 terminally after one paid attempt and is non-reusable; the real v11 ledger has
 also failed terminally after one paid attempt and is non-reusable; the real v12
 ledger has also failed terminally after one paid attempt and is non-reusable.
-The v26 proposal is the current successor lane and remains non-executable until
+The v27 proposal is the current successor lane and remains non-executable until
 the final source commit and refreshed pricing are bound by a fresh exact owner
 authorization.
 
@@ -391,13 +391,13 @@ verified may repository owners configure the two exact active repository
 rulesets below for:
 
 ```text
-refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v26
+refs/heads/meelni-ledger/sav-248-authorized-paid-calibration.v27
 ```
 
-1. `Meelni SAV-248 v26 calibration ledger immutable`: exact ref include, no
+1. `Meelni SAV-248 v27 calibration ledger immutable`: exact ref include, no
    excludes, no bypass actors, with `deletion` and `non_fast_forward` rules.
    With no bypass, administrators remain subject to both invariants.
-2. `Meelni SAV-248 v26 calibration activation actor`: the same exact ref include,
+2. `Meelni SAV-248 v27 calibration activation actor`: the same exact ref include,
    no excludes, `creation` and `update` restrictions, and exactly one `always`
    bypass actor: GitHub user `saviii`, actor type `User`, user ID `24397508`.
    The independent immutable ruleset still prevents that actor from deleting or
@@ -413,7 +413,7 @@ instead of reusing ad hoc temporary files:
 
 ```bash
 npm run calibration:github-guardrails -- \
-  --output-dir /secure/external/path/sav-248-v26-github-guardrails
+  --output-dir /secure/external/path/sav-248-v27-github-guardrails
 ```
 
 The command writes only local JSON payloads and a README with the current source
@@ -499,7 +499,7 @@ do not run it against the pending proposal:
 ```bash
 MEELNI_ALLOW_PAID_CALIBRATION=I_UNDERSTAND_THIS_CALLS_A_PAID_MODEL \
   ./scripts/run-evaluation-calibration-live.sh \
-  --owner-authorization /secure/external/path/sav-248-v26-owner-authorization.json \
+  --owner-authorization /secure/external/path/sav-248-v27-owner-authorization.json \
   --approval /secure/path/evaluation-adjudication-approval.json \
   --output /secure/path/sav-248-automated-report.json \
   --semantic-capture-dir /secure/private/path/sav-248-capture \

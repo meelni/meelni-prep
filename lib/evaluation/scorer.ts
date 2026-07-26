@@ -557,32 +557,10 @@ function replaceCalibrationEvidenceSlots(
 
 function withGroundedProviderSummaryFallback(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const response = value as {
-    strengths?: unknown;
-    improvements?: unknown;
-  };
-  const findings = [
-    ...(Array.isArray(response.strengths) ? response.strengths : []),
-    ...(Array.isArray(response.improvements) ? response.improvements : []),
-  ];
-  const summaryStatements = findings
-    .map((finding) =>
-      finding && typeof finding === "object"
-        ? (finding as { observation?: unknown }).observation
-        : undefined
-    )
-    .filter(
-      (observation): observation is string =>
-        typeof observation === "string" && observation.trim().length > 0
-    )
-    .slice(0, 2)
-    .map((observation) => sentenceCaseSummaryObservation(observation));
 
   return {
     ...value,
-    summary:
-      summaryStatements.join(" ") ||
-      "Focused practice can build on the grounded findings.",
+    summary: "Feedback is limited to the grounded findings above.",
   };
 }
 
