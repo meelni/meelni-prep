@@ -68,6 +68,8 @@ Migration `0027_question_provenance` fails closed for historical data: every pre
 
 The 25% bulk-removal guard counts every active row that would become inactive, whether it is source-missing or retired as a duplicate. A dry run that exceeds the guard fails instead of treating duplicate cleanup as exempt.
 
+Source preparation also requires at least one valid question in Product Sense, Behavioral, Execution, and Strategy. A missing round fails with the fixed internal code `question_sync_round_coverage_abort` before the database transaction opens. This prevents a large but categorically incomplete spreadsheet from silently removing an interview round.
+
 Dry-run and live responses report `invalidRows`, `exactDuplicateRows`, `nearDuplicateRowsQuarantined`, and `duplicateRecordsRetired` alongside the existing add/update/deactivate totals. Repeating the same source snapshot must produce no new rows or canonical IDs.
 
 ## Responses and audit events
@@ -99,6 +101,8 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
    Enable live scheduled mutation only after the controlled owner-authorized
    adapter exists; do not bypass this through a direct dashboard or CLI mutation.
 7. Monitor the first scheduled Production outcome and question-bank quality. Turn on the relaunch feature gate only after the broader launch checklist is complete.
+
+After every approved live sync, require `/api/health` to report `question_bank_ready` and rerun Production deployment preflight. Both Production checks fail closed unless every canonical interview round has at least one published question. Preview builds do not require a copied corpus in their isolated database; Preview runtime health still reports an unavailable question bank until approved non-production data is synced.
 
 The question-sync migration is `0027_question_provenance`; the canonical chain now continues through `0029_durable_contact_submission`. If any migration's predecessor changes or another migration lands first, regenerate the affected SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
 

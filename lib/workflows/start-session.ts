@@ -990,19 +990,26 @@ async function selectQuestion({
   }
 
   const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
-  const question = recentDays
+  let question = recentDays
     ? await deps.getRandomRecentQuestion(recentDays, dbQuestionTypes)
-    : await deps.getRandomQuestion(dbQuestionTypes);
+    : null;
+
+  // Recency is a preference, not an availability requirement. A sparse or
+  // older question bank should still let the candidate start an interview.
+  if (!question) {
+    question = await deps.getRandomQuestion(dbQuestionTypes);
+  }
 
   if (!question) {
-    const typesList = dbQuestionTypes.join('" or "');
-    const errorMsg = `No questions available for interview type "${roundType}" (looks for: "${typesList}")${
-      recentDays ? ` from the last ${recentDays} days` : ""
-    }. Try selecting "All Questions" or a different interview type.`;
     return {
       ok: false,
       status: 404,
-      body: { error: errorMsg },
+      body: {
+        error: "no_questions_available",
+        message:
+          "We couldn't find an active question for this interview type. Choose another interview type and try again.",
+        retryable: false,
+      },
     };
   }
 

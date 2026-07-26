@@ -17,6 +17,7 @@ import {
 
 const NOW = new Date("2026-07-10T20:00:00.000Z");
 const CLEAR_EVIDENCE: ServiceHealthEvidence = {
+  questionBankReady: true,
   feedbackDispatchStale: false,
   feedbackDispatchFailed: false,
   stripeWebhookStale: false,
@@ -53,6 +54,12 @@ test("database reader applies a local statement timeout and disjoint evidence qu
     /set_config\('statement_timeout', \$1, true\)/
   );
   assert.match(evidenceQuery.sql, /"stripe_event_log"\."status" = 'pending'/);
+  assert.match(evidenceQuery.sql, /"interview_question"\."is_active" = true/);
+  assert.equal(
+    evidenceQuery.params.includes("Product Sense"),
+    true,
+    "question readiness should cover canonical round aliases"
+  );
   assert.doesNotMatch(evidenceQuery.sql, /'pending', 'failed'/);
   assert.deepEqual(evidence, CLEAR_EVIDENCE);
 });

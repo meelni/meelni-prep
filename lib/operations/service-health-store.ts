@@ -1,7 +1,12 @@
 import { sql } from "drizzle-orm";
+import {
+  QUESTION_ROUND_TYPES,
+  questionTypeStorageAliasesForRound,
+  type RoundType,
+} from "@meelni/core";
 
 import { db } from "@/lib/db";
-import { feedback, stripeEventLog } from "@/lib/db/schema";
+import { feedback, interviewQuestion, stripeEventLog } from "@/lib/db/schema";
 import type {
   ServiceHealthEvidence,
   ServiceHealthStore,
@@ -48,6 +53,7 @@ export function createDrizzleServiceHealthEvidenceReader(
 
         const rows = await transaction.execute<ServiceHealthEvidenceRow>(sql`
           select
+          ${allQuestionRoundsReadySql()} as "questionBankReady",
           exists (
             select 1 from ${feedback}
             where ${feedback.dispatchStatus} in ('pending', 'sending')
@@ -73,4 +79,25 @@ export function createDrizzleServiceHealthEvidenceReader(
       });
     },
   };
+}
+
+function allQuestionRoundsReadySql() {
+  return sql.join(
+    QUESTION_ROUND_TYPES.map((roundType) => questionRoundReadySql(roundType)),
+    sql` and `
+  );
+}
+
+function questionRoundReadySql(roundType: RoundType) {
+  const aliases = questionTypeStorageAliasesForRound(roundType);
+  return sql`exists (
+    select 1 from ${interviewQuestion}
+    where ${interviewQuestion.isActive} = true
+      and ${interviewQuestion.questionType} in (
+        ${sql.join(
+          aliases.map((alias) => sql`${alias}`),
+          sql`, `
+        )}
+      )
+  )`;
 }

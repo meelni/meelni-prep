@@ -22,6 +22,7 @@ const READY_ENV = {
   VERCEL_ENV: "preview",
 };
 const CLEAR_EVIDENCE: ServiceHealthEvidence = {
+  questionBankReady: true,
   feedbackDispatchStale: false,
   feedbackDispatchFailed: false,
   stripeWebhookStale: false,
@@ -41,6 +42,11 @@ test("healthy report exposes only fixed non-secret readiness fields", async () =
     checks: [
       { name: "web", status: "healthy", code: "web_ready" },
       { name: "database", status: "healthy", code: "database_ready" },
+      {
+        name: "question_bank",
+        status: "healthy",
+        code: "question_bank_ready",
+      },
       { name: "livekit", status: "healthy", code: "livekit_ready" },
       {
         name: "feedback_dispatch",
@@ -76,7 +82,7 @@ test("configuration and backlog failures degrade without leaking details", async
   );
 
   assert.equal(report.status, "degraded");
-  assert.deepEqual(report.checks.slice(3), [
+  assert.deepEqual(report.checks.slice(4), [
     {
       name: "feedback_dispatch",
       status: "degraded",
@@ -105,6 +111,11 @@ test("database and LiveKit failures make practice unavailable", async () => {
       name: "database",
       status: "unavailable",
       code: "database_unavailable",
+    },
+    {
+      name: "question_bank",
+      status: "unavailable",
+      code: "question_bank_dependency_unavailable",
     },
     {
       name: "livekit",
@@ -140,10 +151,27 @@ test("database evidence uses one bounded stale-work cutoff", async () => {
   assert.equal(captured?.queryTimeoutMs, 1);
 });
 
+test("an empty published question bank makes practice unavailable", async () => {
+  const report = await assessServiceHealth(
+    dependencies(
+      store({ ...CLEAR_EVIDENCE, questionBankReady: false }),
+      READY_ENV
+    )
+  );
+
+  assert.equal(report.status, "unavailable");
+  assert.deepEqual(report.checks[2], {
+    name: "question_bank",
+    status: "unavailable",
+    code: "question_bank_empty",
+  });
+});
+
 test("failed durable work outranks simultaneous stale evidence", async () => {
   const report = await assessServiceHealth(
     dependencies(
       store({
+        questionBankReady: true,
         feedbackDispatchStale: true,
         feedbackDispatchFailed: true,
         stripeWebhookStale: true,
@@ -153,7 +181,7 @@ test("failed durable work outranks simultaneous stale evidence", async () => {
     )
   );
 
-  assert.deepEqual(report.checks.slice(3), [
+  assert.deepEqual(report.checks.slice(4), [
     {
       name: "feedback_dispatch",
       status: "degraded",
