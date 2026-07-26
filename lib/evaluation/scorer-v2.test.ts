@@ -275,6 +275,54 @@ test("provider parser authenticates only content-free invariant classifications"
     "working parents and measure weekly completed plans"
   );
 
+  const unsupportedAbsolute = {
+    ...providerValue,
+    strengths: [
+      {
+        ...providerValue.strengths[0],
+        observation:
+          "The answer always chooses a specific audience and measurable behavior.",
+      },
+    ],
+  };
+  let unsupportedAbsoluteCaught: unknown;
+  try {
+    parse(unsupportedAbsolute);
+  } catch (error) {
+    unsupportedAbsoluteCaught = error;
+  }
+  assert.ok(
+    unsupportedAbsoluteCaught instanceof FeedbackProviderInvocationError
+  );
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(unsupportedAbsoluteCaught),
+    "finding_absolute_claim_unsupported"
+  );
+  const repairedAbsolute =
+    parseWithCalibrationHints(unsupportedAbsolute).evaluation;
+  assert.equal(
+    repairedAbsolute.strengths[0].observation,
+    "working parents and measure weekly completed plans."
+  );
+  assert.equal(
+    repairedAbsolute.strengths[0].evidence[0].quote,
+    "working parents and measure weekly completed plans"
+  );
+
+  const unsupportedSummaryAbsolute = {
+    ...providerValue,
+    summary: "The answer has no meaningful gaps.",
+  };
+  const repairedSummaryAbsolute =
+    parse(unsupportedSummaryAbsolute).evaluation;
+  assert.equal(
+    repairedSummaryAbsolute.summary,
+    [
+      providerValue.strengths[0].observation,
+      providerValue.improvements[0].observation,
+    ].join(" ")
+  );
+
   const expectRejection = (
     value: unknown,
     expected: FeedbackV2RejectionCode
