@@ -461,6 +461,7 @@ function isCalibrationEvidenceSlotFallbackError(
       (error.code === "evidence_reused_across_findings" ||
         error.code === "evidence_overlaps_across_findings" ||
         error.code === "finding_negative_claim_contradicted" ||
+        error.code === "finding_material_claim_unsupported" ||
         error.code === "finding_quantitative_claim_unsupported" ||
         error.code === "finding_absolute_claim_unsupported")
     );
