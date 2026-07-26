@@ -33,6 +33,11 @@ function report(status: ServiceHealthReport["status"]): ServiceHealthReport {
     checks: [
       { name: "web", status: "healthy", code: "web_ready" },
       { name: "database", status: "healthy", code: "database_ready" },
+      {
+        name: "question_bank",
+        status: "healthy",
+        code: "question_bank_ready",
+      },
       { name: "livekit", status: "healthy", code: "livekit_ready" },
       {
         name: "feedback_dispatch",

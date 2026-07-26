@@ -32,6 +32,12 @@ const HEALTH_CODE_CONTRACT: Record<
   web_ready: { name: "web", status: "healthy" },
   database_ready: { name: "database", status: "healthy" },
   database_unavailable: { name: "database", status: "unavailable" },
+  question_bank_ready: { name: "question_bank", status: "healthy" },
+  question_bank_empty: { name: "question_bank", status: "unavailable" },
+  question_bank_dependency_unavailable: {
+    name: "question_bank",
+    status: "unavailable",
+  },
   livekit_ready: { name: "livekit", status: "healthy" },
   livekit_unavailable: { name: "livekit", status: "unavailable" },
   feedback_dispatch_ready: {

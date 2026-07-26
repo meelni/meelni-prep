@@ -2,13 +2,14 @@
 
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bookmark, Play, Search } from "lucide-react";
+import { Bookmark, CircleAlert, Play, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import {
   DashboardLoadingState,
+  DashboardStateCard,
   DashboardSkeletonCard,
 } from "@/components/dashboard/dashboard-surface";
 import {
@@ -43,6 +44,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRound, setSelectedRound] =
     useState<(typeof ROUND_FILTERS)[number]>("All rounds");
@@ -54,9 +57,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const debouncedSearchQuery = useDebounce(searchQuery, 250);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     async function fetchQuestions() {
       try {
         setLoading(true);
+        setLoadError(null);
         const params = new URLSearchParams({
           limit: "100",
           activeOnly: "true",
@@ -66,21 +72,40 @@ export const QuestionsSection = memo(function QuestionsSection() {
           params.set("type", TYPE_TO_API[selectedRound]);
         }
 
-        const res = await fetch(`/api/questions?${params.toString()}`);
+        const res = await fetch(`/api/questions?${params.toString()}`, {
+          signal: controller.signal,
+        });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            data?.code === "question_bank_unavailable"
+              ? "question_bank_unavailable"
+              : "question_bank_read_failed"
+          );
+        }
         setQuestions(data.questions || []);
         setTotalQuestions(
           data.pagination?.total || data.questions?.length || 0
         );
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Error fetching questions:", error);
+        setQuestions([]);
+        setTotalQuestions(0);
+        setLoadError(
+          error instanceof Error &&
+            error.message === "question_bank_unavailable"
+            ? "The published question bank is temporarily unavailable. Please try again shortly."
+            : "We couldn’t load the question bank. Check your connection and try again."
+        );
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     fetchQuestions();
-  }, [selectedRound]);
+    return () => controller.abort();
+  }, [selectedRound, retryCount]);
 
   useEffect(() => {
     async function fetchBookmarks() {
@@ -174,6 +199,24 @@ export const QuestionsSection = memo(function QuestionsSection() {
         <DashboardSkeletonCard className="min-h-[520px]">
           <DashboardLoadingState label="Loading question bank..." />
         </DashboardSkeletonCard>
+      </DashboardPage>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <DashboardPage label="Question Bank">
+        <DashboardStateCard
+          tone="danger"
+          icon={<CircleAlert className="h-8 w-8" aria-hidden="true" />}
+          title="Question bank unavailable"
+          description={loadError}
+          action={
+            <Button type="button" onClick={() => setRetryCount((n) => n + 1)}>
+              Try again
+            </Button>
+          }
+        />
       </DashboardPage>
     );
   }

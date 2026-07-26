@@ -163,6 +163,11 @@ function report(status: "healthy" | "degraded" | "unavailable") {
     checks: [
       { name: "web", status: "healthy", code: "web_ready" },
       { name: "database", status: "healthy", code: "database_ready" },
+      {
+        name: "question_bank",
+        status: "healthy",
+        code: "question_bank_ready",
+      },
       { name: "livekit", status: "healthy", code: "livekit_ready" },
       {
         name: "feedback_dispatch",
@@ -177,7 +182,7 @@ function report(status: "healthy" | "degraded" | "unavailable") {
     ],
   };
   if (status === "degraded") {
-    value.checks[3] = {
+    value.checks[4] = {
       name: "feedback_dispatch",
       status: "degraded",
       code: "feedback_dispatch_config_missing",
@@ -189,12 +194,17 @@ function report(status: "healthy" | "degraded" | "unavailable") {
       status: "unavailable",
       code: "database_unavailable",
     };
-    value.checks[3] = {
+    value.checks[2] = {
+      name: "question_bank",
+      status: "unavailable",
+      code: "question_bank_dependency_unavailable",
+    };
+    value.checks[4] = {
       name: "feedback_dispatch",
       status: "unavailable",
       code: "feedback_dispatch_dependency_unavailable",
     };
-    value.checks[4] = {
+    value.checks[5] = {
       name: "stripe_webhook",
       status: "unavailable",
       code: "stripe_webhook_dependency_unavailable",

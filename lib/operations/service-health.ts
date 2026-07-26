@@ -6,6 +6,7 @@ import {
 export const SERVICE_HEALTH_CHECKS = [
   "web",
   "database",
+  "question_bank",
   "livekit",
   "feedback_dispatch",
   "stripe_webhook",
@@ -18,6 +19,9 @@ export type ServiceHealthCode =
   | "web_ready"
   | "database_ready"
   | "database_unavailable"
+  | "question_bank_ready"
+  | "question_bank_empty"
+  | "question_bank_dependency_unavailable"
   | "livekit_ready"
   | "livekit_unavailable"
   | "feedback_dispatch_ready"
@@ -46,6 +50,7 @@ export interface ServiceHealthReport {
 }
 
 export interface ServiceHealthEvidence {
+  questionBankReady: boolean;
   feedbackDispatchStale: boolean;
   feedbackDispatchFailed: boolean;
   stripeWebhookStale: boolean;
@@ -129,6 +134,7 @@ export async function assessServiceHealth(
   }
 
   checks.push(
+    questionBankCheck(evidence),
     feedbackDispatchCheck(dependencies.env, evidence),
     stripeWebhookCheck(dependencies.env, evidence)
   );
@@ -182,6 +188,30 @@ export function createCachedServiceHealthReader(
         inFlight = undefined;
       });
     return inFlight;
+  };
+}
+
+function questionBankCheck(
+  evidence: ServiceHealthEvidence | null
+): ServiceHealthCheck {
+  if (!evidence) {
+    return {
+      name: "question_bank",
+      status: "unavailable",
+      code: "question_bank_dependency_unavailable",
+    };
+  }
+  if (!evidence.questionBankReady) {
+    return {
+      name: "question_bank",
+      status: "unavailable",
+      code: "question_bank_empty",
+    };
+  }
+  return {
+    name: "question_bank",
+    status: "healthy",
+    code: "question_bank_ready",
   };
 }
 
