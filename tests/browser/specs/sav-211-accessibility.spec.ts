@@ -147,9 +147,9 @@ async function assertConsentNoticeFloatsOverContent(page: Page) {
   expect(contentBox!.y).toBeLessThan(bannerBox!.y);
   expect(bannerBox!.x).toBeGreaterThanOrEqual(15);
   expect(bannerBox!.y).toBeGreaterThanOrEqual(0);
+  await expect(page.getByRole("link", { name: "Privacy" })).toHaveCount(0);
 
   for (const action of [
-    page.getByRole("link", { name: "Privacy" }),
     page.getByRole("button", { name: "Decline" }),
     page.getByRole("button", { name: "Allow analytics" }),
   ]) {

@@ -19,7 +19,7 @@ test("analytics consent uses a floating bottom card after primary content", asyn
   assert.match(surface, /data-cookie-consent-banner/);
   assert.match(surface, /\bfixed\b/);
   assert.match(surface, /bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(surface, /\bmax-w-md\b/);
+  assert.match(surface, /\bmax-w-sm\b/);
   assert.match(surface, /\bshadow-lg\b/);
   assert.match(surface, /grid-cols-1/);
   assert.match(surface, /sm:grid-cols-2/);
@@ -32,6 +32,11 @@ test("analytics consent uses a floating bottom card after primary content", asyn
     (banner.match(/border-foreground\/50/g) ?? []).length,
     2,
     "accept and decline must preserve equally visible borders"
+  );
+  assert.doesNotMatch(
+    banner,
+    /href="\/privacy"|next\/link/,
+    "the compact consent banner must not duplicate site privacy navigation"
   );
 });
 

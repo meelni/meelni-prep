@@ -37,8 +37,8 @@ for (const scenario of SAV_211_BROWSER_SCENARIOS) {
     if (scenario.id === "consent-undecided") {
       const viewport = page.viewportSize();
       expect(viewport).toEqual({ width: 195, height: 422 });
+      await expect(page.getByRole("link", { name: "Privacy" })).toHaveCount(0);
       for (const action of [
-        page.getByRole("link", { name: "Privacy" }),
         page.getByRole("button", { name: "Decline" }),
         page.getByRole("button", { name: "Allow analytics" }),
       ]) {
