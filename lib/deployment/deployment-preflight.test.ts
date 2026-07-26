@@ -928,10 +928,41 @@ test("locks deployment to target-specific owner-controlled relaunch states", asy
     stripeCatalogReader: validStripeReader(true),
     target: "production",
   });
-  assert.equal(launched.ok, false);
+  assert.equal(launched.ok, true);
+  assert.deepEqual(launched.failures, []);
+
+  const launchedWithoutDefaultOn = await runDeploymentPreflight({
+    env: {
+      ...validEnvironment("production"),
+      MEELNI_RELAUNCH_PHASE: "launched",
+    },
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(true),
+    target: "production",
+  });
+  assert.equal(launchedWithoutDefaultOn.ok, false);
   assert.deepEqual(
-    launched.failures.map((failure) => failure.check),
-    ["MEELNI_REACTIVATION_DEFAULT", "MEELNI_RELAUNCH_PHASE"]
+    launchedWithoutDefaultOn.failures.map((failure) => failure.check),
+    ["MEELNI_REACTIVATION_DEFAULT"]
+  );
+
+  const productionDefaultOnWithoutLaunchedPhase = await runDeploymentPreflight({
+    env: {
+      ...validEnvironment("production"),
+      MEELNI_REACTIVATION_DEFAULT: "true",
+    },
+    liveKitProjectReader: validLiveKitReader(),
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(true),
+    target: "production",
+  });
+  assert.equal(productionDefaultOnWithoutLaunchedPhase.ok, false);
+  assert.deepEqual(
+    productionDefaultOnWithoutLaunchedPhase.failures.map(
+      (failure) => failure.check
+    ),
+    ["MEELNI_REACTIVATION_DEFAULT"]
   );
 });
 

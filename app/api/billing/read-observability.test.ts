@@ -4,13 +4,20 @@ const mocks = vi.hoisted(() => ({
   getBalance: vi.fn(),
   report: vi.fn(),
   select: vi.fn(),
+  upsertUser: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: {
       getUser: vi.fn(async () => ({
-        data: { user: { id: "user_fixture" } },
+        data: {
+          user: {
+            id: "user_fixture",
+            email: "fixture@meelni.test",
+            user_metadata: {},
+          },
+        },
         error: null,
       })),
     },
@@ -28,6 +35,7 @@ vi.mock("@/lib/billing/local-dev-bypass", () => ({
   isLocalDevCreditBypassEnabled: vi.fn(() => false),
 }));
 vi.mock("@/lib/db", () => ({ db: { select: mocks.select } }));
+vi.mock("@/lib/db/users", () => ({ upsertUser: mocks.upsertUser }));
 vi.mock("@/lib/operations/operational-events", () => ({
   reportOperationalFailure: mocks.report,
 }));
@@ -41,6 +49,7 @@ describe("billing read operational failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getBalance.mockRejectedValue(new Error("database unavailable"));
+    mocks.upsertUser.mockResolvedValue({ id: "user_fixture" });
     mocks.select.mockImplementation(() => {
       throw new Error("database unavailable");
     });
@@ -75,4 +84,28 @@ describe("billing read operational failures", () => {
       });
     }
   );
+
+  it("syncs the authenticated app user before reading credit balance", async () => {
+    mocks.getBalance.mockResolvedValue({
+      availableCredits: 0,
+      reservedCredits: 0,
+      expiringCredits: 0,
+      nextCreditExpiresAt: null,
+      trialAvailable: true,
+      grants: [],
+    });
+
+    const response = await getCredits();
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertUser).toHaveBeenCalledWith({
+      id: "user_fixture",
+      email: "fixture@meelni.test",
+      name: null,
+    });
+    expect(mocks.getBalance).toHaveBeenCalledWith({
+      store: {},
+      userId: "user_fixture",
+    });
+  });
 });

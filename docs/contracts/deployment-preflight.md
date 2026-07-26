@@ -60,11 +60,19 @@ Inngest does not expose a safe read-only Event Key validation endpoint. An autho
 
 - Statsig client key is nonblank, tier matches the target, and the API URL is exactly the same-origin `/api/statsig` proxy.
 - Preview accepts only `MEELNI_RELAUNCH_PHASE=rehearsal` with `MEELNI_REACTIVATION_DEFAULT=false`. A branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA` may name the exact reviewed 40-character commit. On Vercel, a configured anchor must exactly match `VERCEL_GIT_COMMIT_SHA` and include a valid `VERCEL_GIT_COMMIT_REF` at build time; malformed, missing-system-identity, and stale values fail preflight. Absence leaves an ordinary Preview deployable but unable to evaluate the remote gate.
-- Production accepts only `MEELNI_RELAUNCH_PHASE=prelaunch` with `MEELNI_REACTIVATION_DEFAULT=false`; the gate resolves hard-off without contacting Statsig.
+- Production accepts `MEELNI_RELAUNCH_PHASE=prelaunch` with
+  `MEELNI_REACTIVATION_DEFAULT=false` for hard-off launch preparation. After
+  the product owner records GO for the exact candidate, Production also accepts
+  `MEELNI_RELAUNCH_PHASE=launched` with `MEELNI_REACTIVATION_DEFAULT=true` as
+  the explicit default-on launch state. `MEELNI_REACTIVATION_DEFAULT=true`
+  remains invalid for any Production phase other than `launched`.
 - Runtime resolution is target- and tier-bound: `rehearsal` can evaluate the Preview-tier gate only when Vercel reports `preview`, supplies a valid Git ref, and `VERCEL_GIT_COMMIT_SHA` exactly matches the deployment-side rehearsal SHA.
 - Immutable Vercel values are not revocation authority. A fresh network Statsig response must also contain dynamic config `meelni_preview_rehearsal_authority` with `active=true`, the exact `approvedCommitSha`, the exact `approvedGitRef`, canonical `authorizedAt`, and canonical `expiresAt`. Authorization must already have begun, remain unexpired, and have a total `expiresAt - authorizedAt` lifetime no greater than two hours; an overlong authority never becomes valid merely because its remaining time shrinks. Missing, stale, malformed, expired, not-yet-authorized, overlong, wrong-commit, or wrong-ref authority resolves false before the gate is read. Advancing or disabling that central config revokes historical immutable deployments.
 - The exact commit/ref are also sent as non-identifying Statsig custom attributes so the Preview gate can be independently constrained to the same deployment. `launched` can evaluate only on the Production target and tier. Phase, target, tier, branch, SHA, authority, and provider-network mismatches resolve false.
-- No agent may make the current Production preflight accept `launched`. The product owner’s later GO decision requires a separately reviewed launch authorization change and rehearsal; this contract cannot make that decision.
+- The product owner’s GO decision is still separate from this build contract.
+  Preflight can recognize the owner-approved `launched` state, but it cannot
+  create launch approval, mutate Statsig, or prove the required rehearsal by
+  itself.
 
 ## Rehearsal Evidence
 
