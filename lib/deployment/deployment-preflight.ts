@@ -977,7 +977,13 @@ function validateStatsigEnvironment({
     area: "statsig",
     check: "MEELNI_REACTIVATION_DEFAULT",
     failures,
-    ok: !fallback || fallback === "false",
+    ok:
+      !fallback ||
+      (target === "preview"
+        ? fallback === "false"
+        : phase === "launched"
+          ? fallback === "true"
+          : fallback === "false"),
   });
   validateFormat({
     area: "statsig",
@@ -985,7 +991,9 @@ function validateStatsigEnvironment({
     failures,
     ok:
       !phase ||
-      (target === "preview" ? phase === "rehearsal" : phase === "prelaunch"),
+      (target === "preview"
+        ? phase === "rehearsal"
+        : phase === "prelaunch" || phase === "launched"),
   });
 
   if (

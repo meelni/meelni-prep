@@ -395,6 +395,9 @@ Canonical target:
 - Preview branching: automatic, maximum 1 branch, `Supabase changes only`
 - Region: `East US (Ohio)`
 - Local browser auth redirects through Supabase OAuth and returns to `http://localhost:3000/auth/callback`.
+- Production Auth Site URL must be `https://www.meelni.com`; if it is left at
+  `http://localhost:3000`, new-user confirmation links can send production
+  users to localhost and fail with `ERR_CONNECTION_REFUSED`.
 
 Auth and link:
 
@@ -429,6 +432,21 @@ Env and secrets:
 Operational notes:
 
 - If login redirects to `xxx.supabase.co`, local `.env.local` still has placeholder Supabase values.
+- If production signup/signin redirects to localhost, verify the production
+  Auth URL Configuration before changing app code:
+
+  ```bash
+  TOKEN="$(/usr/bin/security find-generic-password -s 'Supabase CLI' -a supabase -w)"
+  curl -sS \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Accept: application/json" \
+    -H "User-Agent: SupabaseCLI/2.109.1" \
+    "https://api.supabase.com/v1/projects/rarrrwkjuhfyfatcmrkw/config/auth"
+  ```
+
+  Keep `site_url` at `https://www.meelni.com` and keep the redirect allowlist
+  scoped to Meelni production, Vercel deployment aliases, and local dev
+  callback URLs. Do not print or document the Supabase CLI token.
 - Use `npm run setup:local` or run `npx vercel@55.0.0 link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
 - Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
 - Shared database tooling uses `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` as a
