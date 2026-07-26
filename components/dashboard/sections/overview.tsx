@@ -1,19 +1,18 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
-import { ProgressSignalBars } from "@/components/dashboard/charts/progress-signal-bars";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
+import { StatusPill } from "@/components/ui/app-surface";
 import {
   buildDashboardPracticeSummary,
   type DashboardSessionInput,
 } from "@/lib/dashboard/contracts";
 import type { Session } from "@/lib/api/queries";
-import { cn } from "@/lib/utils";
 
 interface OverviewSectionProps {
   sessions: Session[];
@@ -42,37 +41,33 @@ export const OverviewSection = memo(function OverviewSection({
   const summary = buildDashboardPracticeSummary(
     sessions as DashboardSessionInput[]
   );
+  const recommendationMetadata = [
+    summary.recommendation.roundType,
+    summary.recommendation.difficulty,
+    summary.recommendation.creditLabel,
+  ];
 
   return (
     <DashboardPage label="Overview">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
-        <section className="max-w-3xl space-y-3">
-          <div className="space-y-3">
-            <h2 className="font-display text-dashboard-foreground text-3xl leading-[1.08] font-semibold sm:text-4xl">
-              {summary.isNewUser
-                ? "Your first PM mock interview starts here."
-                : summary.progress.state === "empty"
-                  ? "Your next scored interview starts here."
-                  : "Suggested next interview"}
-            </h2>
-            <p className="text-dashboard-muted max-w-2xl text-base leading-7">
-              {summary.isNewUser
-                ? "Start with one real Product Sense answer out loud. Meelni will turn the result into your next practice plan."
-                : summary.progress.state === "empty"
-                  ? "Your interview history is saved. Complete scored feedback before Meelni names a progress trend or focus area."
-                  : "A focused next action based on your recent PM interview feedback, not a dashboard you have to interpret."}
-            </p>
-          </div>
-        </section>
-
-        <section className="border-dashboard-panel-border mt-5 overflow-hidden border-y">
+        <section className="border-dashboard-panel-border overflow-hidden border-y">
           <div className="grid gap-0 lg:grid-cols-[1fr_300px]">
-            <div className="space-y-5 py-6 pr-0 sm:py-7 lg:pr-8">
+            <div className="space-y-5 py-6 pr-0 sm:py-8 lg:pr-8">
               <div className="flex flex-wrap gap-2">
-                <Pill tone="primary">{summary.recommendation.eyebrow}</Pill>
-                <Pill>{summary.recommendation.roundType}</Pill>
-                <Pill>{summary.recommendation.difficulty}</Pill>
-                <Pill>{summary.recommendation.creditLabel}</Pill>
+                <StatusPill
+                  tone="primary"
+                  className="border-primary/30 bg-primary text-primary-foreground font-bold"
+                >
+                  {summary.recommendation.eyebrow}
+                </StatusPill>
+                {recommendationMetadata.map((label) => (
+                  <StatusPill
+                    key={label}
+                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground font-bold"
+                  >
+                    {label}
+                  </StatusPill>
+                ))}
               </div>
               <div className="max-w-3xl space-y-3">
                 <h2 className="font-display text-dashboard-foreground text-2xl leading-tight font-semibold sm:text-3xl">
@@ -96,13 +91,15 @@ export const OverviewSection = memo(function OverviewSection({
                     size="lg"
                     className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground bg-transparent"
                   >
-                    <Link href={summary.lastFeedback.href}>Feedback</Link>
+                    <Link href={summary.lastFeedback.href}>
+                      Review latest feedback
+                    </Link>
                   </Button>
                 )}
               </div>
             </div>
 
-            <aside className="border-dashboard-panel-border border-t py-6 sm:py-7 lg:border-t-0 lg:border-l lg:pl-8">
+            <aside className="border-dashboard-panel-border border-t py-6 sm:py-8 lg:border-t-0 lg:border-l lg:pl-8">
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
                 {summary.progress.label}
               </p>
@@ -121,207 +118,70 @@ export const OverviewSection = memo(function OverviewSection({
               <p className="text-dashboard-muted mt-5 text-sm leading-6">
                 {summary.progress.description}
               </p>
+              <dl className="border-dashboard-panel-border mt-5 space-y-3 border-t pt-5">
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-dashboard-muted text-sm">
+                    Scored interviews
+                  </dt>
+                  <dd className="text-dashboard-foreground text-sm font-semibold">
+                    {summary.progress.scoredInterviewCount}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-dashboard-muted text-sm">Focus area</dt>
+                  <dd className="text-dashboard-foreground text-sm font-semibold">
+                    {summary.focusArea?.label || "Pending feedback"}
+                  </dd>
+                </div>
+              </dl>
             </aside>
           </div>
         </section>
 
-        <section className="border-dashboard-panel-border grid border-b py-6 md:grid-cols-3">
-          <InfoPanel
-            eyebrow="Progress signal"
-            title={summary.progress.score?.toFixed(1) ?? "—"}
-            meta={summary.progress.deltaLabel}
-            rows={[
-              [
-                "Scored interviews",
-                String(summary.progress.scoredInterviewCount),
-              ],
-              [
-                "Focus area",
-                summary.focusArea?.label || "Needs scored dimensions",
-              ],
-            ]}
-            showSignalIcon={summary.progress.score !== null}
-          />
-          <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Last feedback
-              </p>
-              <span className="text-dashboard-muted text-xs">
-                {summary.lastFeedback ? "Latest" : "Pending"}
-              </span>
-            </div>
-            <p className="text-dashboard-foreground mt-5 min-h-16 text-base leading-7">
-              {summary.lastFeedback?.summary ||
-                "Complete an interview to unlock a calibrated feedback summary."}
-            </p>
-            {summary.lastFeedback && (
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground mt-5 bg-transparent"
-              >
-                <Link href={summary.lastFeedback.href}>Feedback</Link>
-              </Button>
-            )}
-          </div>
-          <div className="border-dashboard-panel-border mt-7 border-t pt-7 md:mt-0 md:border-t-0 md:border-l md:px-7 md:pt-0">
+        <section className="py-6 sm:py-8">
+          <div className="border-dashboard-panel-border flex items-center justify-between gap-4 border-b pb-4">
             <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Prep plan
+              Recent interviews
             </p>
-            <div className="mt-5 space-y-4">
-              {summary.prepPlan.map((item) => (
-                <div key={item.label} className="flex gap-3">
-                  <span
-                    className={cn(
-                      "mt-1 h-4 w-4 shrink-0 rounded-full",
-                      item.active ? "bg-primary" : "bg-dashboard-muted/15"
-                    )}
-                  />
-                  <div>
-                    <p className="text-dashboard-foreground text-sm font-semibold">
-                      {item.label}
-                    </p>
-                    <p className="text-dashboard-muted text-sm">{item.title}</p>
-                  </div>
-                </div>
+            <Button
+              asChild
+              variant="link"
+              size="sm"
+              className="text-dashboard-foreground h-auto p-0 hover:text-white"
+            >
+              <Link href="/dashboard/history">View history</Link>
+            </Button>
+          </div>
+          {summary.recentInterviews.length > 0 ? (
+            <div className="divide-dashboard-panel-border divide-y">
+              {summary.recentInterviews.map((interview) => (
+                <Link
+                  key={interview.id}
+                  href={interview.feedbackHref || "/dashboard/history"}
+                  className="hover:text-primary grid gap-3 py-4 text-sm transition-colors sm:grid-cols-[88px_150px_1fr_56px]"
+                >
+                  <span className="text-dashboard-muted">
+                    {interview.dateLabel}
+                  </span>
+                  <span className="text-dashboard-foreground font-semibold">
+                    {interview.roundLabel}
+                  </span>
+                  <span className="text-dashboard-muted">
+                    {interview.focusLabel}
+                  </span>
+                  <span className="text-dashboard-foreground font-mono font-semibold sm:text-right">
+                    {interview.scoreLabel}
+                  </span>
+                </Link>
               ))}
             </div>
-          </div>
-        </section>
-
-        <section className="grid gap-8 py-6 lg:grid-cols-[1.4fr_1fr]">
-          <div>
-            <div className="border-dashboard-panel-border flex items-center justify-between gap-4 border-b pb-4">
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Recent interviews
-              </p>
-              <Button
-                asChild
-                variant="link"
-                size="sm"
-                className="text-dashboard-foreground h-auto p-0 hover:text-white"
-              >
-                <Link href="/dashboard/history">All</Link>
-              </Button>
+          ) : (
+            <div className="text-dashboard-muted py-10 text-sm">
+              Your interviews will appear here after your first session.
             </div>
-            {summary.recentInterviews.length > 0 ? (
-              <div className="divide-dashboard-panel-border divide-y">
-                {summary.recentInterviews.map((interview) => (
-                  <Link
-                    key={interview.id}
-                    href={interview.feedbackHref || "/dashboard/history"}
-                    className="hover:text-primary grid gap-3 py-4 text-sm transition-colors sm:grid-cols-[88px_150px_1fr_56px]"
-                  >
-                    <span className="text-dashboard-muted">
-                      {interview.dateLabel}
-                    </span>
-                    <span className="text-dashboard-foreground font-semibold">
-                      {interview.roundLabel}
-                    </span>
-                    <span className="text-dashboard-muted">
-                      {interview.focusLabel}
-                    </span>
-                    <span className="text-dashboard-foreground font-mono font-semibold sm:text-right">
-                      {interview.scoreLabel}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="text-dashboard-muted py-10 text-sm">
-                Your interviews will appear here after your first session.
-              </div>
-            )}
-          </div>
-
-          <div className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Progress signal
-            </p>
-            <ProgressSignalBars
-              bars={summary.progressSignal.bars}
-              className={cn(
-                "mt-8 h-28",
-                summary.progressSignal.bars.length === 0 && "hidden"
-              )}
-            />
-            <p className="text-dashboard-muted mt-6 text-sm leading-6">
-              {summary.progressSignal.description}
-            </p>
-          </div>
+          )}
         </section>
       </div>
     </DashboardPage>
   );
 });
-
-function Pill({
-  children,
-  tone = "muted",
-}: {
-  children: ReactNode;
-  tone?: "primary" | "muted";
-}) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-3 py-1.5 text-xs font-bold",
-        tone === "primary"
-          ? "bg-primary text-primary-foreground"
-          : "bg-dashboard-muted/15 text-dashboard-foreground"
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function InfoPanel({
-  eyebrow,
-  title,
-  meta,
-  rows,
-  showSignalIcon,
-}: {
-  eyebrow: string;
-  title: string;
-  meta: string;
-  rows: Array<[string, string]>;
-  showSignalIcon: boolean;
-}) {
-  return (
-    <div className="md:pr-7">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-          {eyebrow}
-        </p>
-        <span className="text-dashboard-foreground text-xs font-semibold">
-          {meta}
-        </span>
-      </div>
-      <div className="mt-5 flex items-end gap-4">
-        <span className="text-dashboard-foreground font-mono text-5xl leading-none font-semibold">
-          {title}
-        </span>
-        {showSignalIcon && (
-          <CheckCircle2
-            className="text-primary mb-2 h-5 w-5"
-            aria-hidden="true"
-          />
-        )}
-      </div>
-      <div className="mt-5 space-y-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-4">
-            <span className="text-dashboard-muted text-sm">{label}</span>
-            <span className="text-dashboard-foreground text-sm font-semibold">
-              {value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

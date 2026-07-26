@@ -64,10 +64,14 @@ test("dashboard surface does not expose a top-level page header primitive", () =
 });
 
 test("dashboard progress charts render observed scores without future placeholders", () => {
-  const sectionFiles = [
+  const overviewSource = readFileSync(
     "components/dashboard/sections/overview.tsx",
+    "utf8"
+  );
+  const analyticsSource = readFileSync(
     "components/dashboard/sections/analytics.tsx",
-  ];
+    "utf8"
+  );
   const chartSource = readFileSync(
     "components/dashboard/charts/progress-signal-bars.tsx",
     "utf8"
@@ -78,12 +82,9 @@ test("dashboard progress charts render observed scores without future placeholde
   assert.doesNotMatch(chartSource, /Future progress slot/);
   assert.doesNotMatch(chartSource, /placeholder/);
 
-  for (const file of sectionFiles) {
-    const source = readFileSync(file, "utf8");
-
-    assert.match(source, /ProgressSignalBars/, file);
-    assert.doesNotMatch(source, /progressSignal\.values/, file);
-  }
+  assert.doesNotMatch(overviewSource, /ProgressSignalBars/);
+  assert.match(analyticsSource, /ProgressSignalBars/);
+  assert.doesNotMatch(analyticsSource, /progressSignal\.values/);
 });
 
 test("dashboard progress copy avoids unsupported superlatives and reliability claims", () => {
@@ -96,9 +97,25 @@ test("dashboard progress copy avoids unsupported superlatives and reliability cl
     "utf8"
   );
 
-  assert.match(overviewSource, /Suggested next interview/);
+  assert.match(overviewSource, /summary\.recommendation\.eyebrow/);
   assert.doesNotMatch(overviewSource, /highest-leverage/i);
   assert.match(analyticsSource, /compare observed scores/);
   assert.doesNotMatch(analyticsSource, /reliable trend/i);
   assert.doesNotMatch(analyticsSource, /bottleneck diagnosis/i);
+});
+
+test("dashboard overview keeps one decision and one supporting evidence path", () => {
+  const source = readFileSync(
+    "components/dashboard/sections/overview.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /Start mock interview/);
+  assert.match(source, /Review latest feedback/);
+  assert.match(source, /Recent interviews/);
+  assert.match(source, /View history/);
+  assert.doesNotMatch(source, /Suggested next interview/);
+  assert.doesNotMatch(source, /Prep plan/);
+  assert.doesNotMatch(source, /Last feedback/);
+  assert.doesNotMatch(source, /ProgressSignalBars/);
 });
