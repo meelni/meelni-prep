@@ -51,7 +51,9 @@ GitHub-hosted lanes:
 - `Database Migrations` is the only lane that starts PostgreSQL and verifies
   clean and legacy upgrade paths.
 - `Production and Browser QA` builds the isolated production artifact, crawls
-  public routes, and runs the representative Chromium matrix.
+  public routes, and runs the representative Chromium matrix. CI uses two
+  Chromium workers across isolated project/file groups while preserving zero
+  retries and ordered execution within each file.
 
 The lanes have no dependencies on each other after classification. A final
 GitHub Actions job uses `always()` and publishes the exact required `Validate`
