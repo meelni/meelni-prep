@@ -76,6 +76,27 @@ test("join workflow derives token identity and room from authenticated server re
   ]);
 });
 
+test("join workflow accepts a database timestamp returned as a driver string", async () => {
+  const result = await joinInterviewSessionWorkflow(
+    {
+      user: { id: USER_ID },
+      sessionId: SESSION_ID,
+      env: ENV,
+    },
+    createDeps({
+      getSession: async () =>
+        createSession({
+          databaseNow: "2026-07-09T12:20:00.000Z",
+        }),
+    })
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.body.roomName, "interview-server-owned-room");
+  }
+});
+
 test("join workflow rejects malformed session IDs before querying storage", async () => {
   let queried = false;
   const result = await joinInterviewSessionWorkflow(

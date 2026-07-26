@@ -44,6 +44,7 @@ import {
 import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
+import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
@@ -282,6 +283,19 @@ export function InterviewPageContent() {
         return;
       }
 
+      const initialCredentials = consumeInitialInterviewRoomCredentials({
+        sessionId,
+        ownerId: requestOwnerId,
+        expectedRoomName: normalizedSession.livekit_room_name,
+      });
+      if (initialCredentials) {
+        setToken(initialCredentials.token);
+        setUrl(initialCredentials.url);
+        setConnectionOwnerId(requestOwnerId);
+        setLoading(false);
+        return;
+      }
+
       const credentialResult = await requestInterviewRoomCredentialsWithRetry(
         sessionId,
         normalizedSession.livekit_room_name
@@ -291,7 +305,10 @@ export function InterviewPageContent() {
         if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
           setToken("");
           setUrl("");
-          setDisconnectTimedOut(true);
+          setError(
+            credentialResult.message ||
+              "This interview could not be opened safely. Please return to the dashboard and try again."
+          );
           setLoading(false);
           return;
         }
