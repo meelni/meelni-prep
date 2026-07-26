@@ -390,7 +390,7 @@ export function parseFeedbackProviderEvaluation(input: {
         );
       }
     } else if (
-      isEvidenceOverlapError(error) &&
+      isCalibrationEvidenceSlotFallbackError(error) &&
       input.calibrationEvidenceHints?.length
     ) {
       try {
@@ -452,11 +452,14 @@ export function parseFeedbackProviderEvaluation(input: {
   }
 }
 
-function isEvidenceOverlapError(error: unknown): error is FeedbackV2ParseError {
+function isCalibrationEvidenceSlotFallbackError(
+  error: unknown
+): error is FeedbackV2ParseError {
   try {
     return (
       error instanceof FeedbackV2ParseError &&
-      error.code === "evidence_overlaps_across_findings"
+      (error.code === "evidence_overlaps_across_findings" ||
+        error.code === "finding_quantitative_claim_unsupported")
     );
   } catch {
     return false;
