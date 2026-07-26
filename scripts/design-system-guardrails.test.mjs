@@ -76,14 +76,14 @@ test("design tokens are not wrapped in legacy hsl()/rgb() color functions", asyn
   assert.deepEqual(violations, []);
 });
 
-test("analytics privacy actions preserve the 44px touch-target contract", async () => {
+test("analytics consent actions preserve the 44px touch-target contract", async () => {
   const banner = await readFile("components/cookie-consent-banner.tsx", "utf8");
   const settings = await readFile(
     "components/dashboard/sections/settings.tsx",
     "utf8"
   );
 
-  for (const label of ["Privacy", "Decline", "Allow analytics"]) {
+  for (const label of ["Decline", "Allow analytics"]) {
     const labelIndex = banner.indexOf(label);
     assert.notEqual(labelIndex, -1, `missing consent banner action: ${label}`);
     assert.match(

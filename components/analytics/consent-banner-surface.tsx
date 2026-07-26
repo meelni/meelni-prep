@@ -21,12 +21,12 @@ export function ConsentBannerSurface({
         aria-hidden="true"
       />
       <aside
-        className="border-border bg-card text-card-foreground fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-50 ml-auto max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto rounded-lg border p-4 shadow-lg max-[240px]:inset-0 max-[240px]:max-h-none max-[240px]:max-w-none max-[240px]:rounded-none max-[240px]:border-0 max-[240px]:shadow-none sm:left-auto"
+        className="border-border bg-card text-card-foreground fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-50 ml-auto max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto rounded-lg border p-3 shadow-lg max-[240px]:inset-0 max-[240px]:max-h-none max-[240px]:max-w-none max-[240px]:rounded-none max-[240px]:border-0 max-[240px]:shadow-none sm:left-auto"
         aria-labelledby={titleId}
         aria-live="polite"
         data-cookie-consent-banner
       >
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="space-y-1">
             <h2 id={titleId} className="text-sm font-semibold">
               {title}
