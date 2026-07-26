@@ -125,9 +125,10 @@ test("change-aware validation runs behind one fail-closed required context", () 
   assert.equal(jobs.classify.name, "Classify CI Changes");
   assert.equal(jobs.classify.steps[0].with["fetch-depth"], 2);
   assert.match(
-    jobs.classify.steps[2].run,
+    jobs.classify.steps[1].run,
     /classify-ci-changes\.mjs --github-output/
   );
+  assert.equal(jobs.classify.steps.length, 2);
   assert.deepEqual(Object.keys(jobs.classify.outputs), [
     "repository",
     "static",
