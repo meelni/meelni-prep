@@ -230,6 +230,38 @@ test("provider parser authenticates only content-free invariant classifications"
     "test a concierge flow first"
   );
 
+  const unsupportedQuantity = {
+    ...providerValue,
+    strengths: [
+      {
+        ...providerValue.strengths[0],
+        observation:
+          "The answer chooses 12 specific audiences and measurable behavior.",
+      },
+    ],
+  };
+  let unsupportedQuantityCaught: unknown;
+  try {
+    parse(unsupportedQuantity);
+  } catch (error) {
+    unsupportedQuantityCaught = error;
+  }
+  assert.ok(unsupportedQuantityCaught instanceof FeedbackProviderInvocationError);
+  assert.equal(
+    getAuthenticatedFeedbackRejectionCode(unsupportedQuantityCaught),
+    "finding_quantitative_claim_unsupported"
+  );
+  const repairedQuantity =
+    parseWithCalibrationHints(unsupportedQuantity).evaluation;
+  assert.equal(
+    repairedQuantity.strengths[0].observation,
+    "working parents and measure weekly completed plans."
+  );
+  assert.equal(
+    repairedQuantity.strengths[0].evidence[0].quote,
+    "working parents and measure weekly completed plans"
+  );
+
   const expectRejection = (
     value: unknown,
     expected: FeedbackV2RejectionCode
