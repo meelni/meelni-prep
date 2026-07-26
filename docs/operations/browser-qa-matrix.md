@@ -66,10 +66,13 @@ The browser job fails for any of these launch-critical regressions:
 - an unexpected page exception, console error, redirect, provider request, or
   unmocked API request.
 
-The matrix has no CI retries and uses one Chromium worker. Fix nondeterminism at
-the assertion or fixture boundary; do not hide it with retries, sleeps, broad
-console allowlists, global accessibility-rule suppression, or pixel-diff
-baselines.
+The matrix has no CI retries. Local runs use one Chromium worker for predictable
+diagnostics; hosted CI uses two workers so isolated project/file groups share
+the read-only synthetic servers without serializing independent browser
+contexts. `fullyParallel` remains disabled, so tests within a file retain their
+reviewed order. Fix nondeterminism at the assertion or fixture boundary; do not
+hide it with retries, sleeps, broad console allowlists, global
+accessibility-rule suppression, or pixel-diff baselines.
 
 Any serious or critical incomplete result is blocking, as is any
 `color-contrast` incomplete result regardless of impact. Screenshots are

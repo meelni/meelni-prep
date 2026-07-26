@@ -6,6 +6,7 @@ import test from "node:test";
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const scripts = packageJson.scripts ?? {};
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const playwrightConfig = readFileSync("playwright.config.ts", "utf8");
 const testTsconfig = JSON.parse(readFileSync("tsconfig.tests.json", "utf8"));
 const allTestsTsconfig = JSON.parse(
   readFileSync("tsconfig.tests.all.json", "utf8")
@@ -147,6 +148,9 @@ test("CI runs browser QA once in the production validation lane", () => {
     /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7\.0\.1/
   );
   assert.equal(ciWorkflow.match(/run:\s+npm run build:browser:qa/g)?.length, 1);
+  assert.match(playwrightConfig, /workers: process\.env\.CI \? 2 : 1/);
+  assert.match(playwrightConfig, /retries: 0/);
+  assert.match(playwrightConfig, /fullyParallel: false/);
 });
 
 test("the default check runs linting, formatting, type checks, and quality gates", () => {
