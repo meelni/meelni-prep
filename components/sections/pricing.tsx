@@ -5,6 +5,10 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  CheckoutStartError,
+  CHECKOUT_START_ERROR_MESSAGE,
+} from "@/components/checkout-start-error";
+import {
   getPublicPricingPlans,
   type PublicPricingPlan,
 } from "@/lib/billing/catalog-presentation";
@@ -19,6 +23,7 @@ import { NEW_INTERVIEW_PATH } from "@/lib/navigation/interview-launch";
 
 export function Pricing() {
   const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const activation = usePublicActivationDecision();
   const plans = getPublicPricingPlans();
 
@@ -31,6 +36,7 @@ export function Pricing() {
     }
 
     setLoadingCatalogId(plan.catalogId);
+    setCheckoutError(null);
 
     try {
       const response = await fetch("/api/checkout/create-session", {
@@ -60,6 +66,7 @@ export function Pricing() {
       window.location.href = data.url;
     } catch (error) {
       console.error("Checkout start failed:", error);
+      setCheckoutError(CHECKOUT_START_ERROR_MESSAGE);
       setLoadingCatalogId(null);
     }
   }
@@ -76,6 +83,7 @@ export function Pricing() {
               Buy the amount of practice you need.
             </h2>
           </div>
+          <CheckoutStartError message={checkoutError} className="mb-6" />
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {plans.map((plan) => (
