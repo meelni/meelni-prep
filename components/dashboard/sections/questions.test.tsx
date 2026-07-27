@@ -249,4 +249,265 @@ describe("QuestionsSection bookmarks", () => {
       screen.getAllByText("How would you improve onboarding?")
     ).toHaveLength(2);
   });
+
+  it("appends the next published question page with the server offset", async () => {
+    const questionOffsets: Array<string | null> = [];
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("/api/questions?")) {
+        const offset = new URL(url, "http://localhost").searchParams.get(
+          "offset"
+        );
+        questionOffsets.push(offset);
+        if (offset === "100") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              questions: [
+                {
+                  id: "question-101",
+                  company: "Beta",
+                  questionText: "Design a product for interview 101.",
+                  questionType: "strategy",
+                  askedAt: "2026-06-01T00:00:00.000Z",
+                  isActive: true,
+                },
+              ],
+              pagination: {
+                total: 101,
+                limit: 100,
+                offset: 100,
+                hasMore: false,
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            questions: [
+              {
+                id: "question-1",
+                company: "Acme",
+                questionText: "How would you improve onboarding?",
+                questionType: "product_sense",
+                askedAt: "2026-07-01T00:00:00.000Z",
+                isActive: true,
+              },
+            ],
+            pagination: {
+              total: 101,
+              limit: 100,
+              offset: 0,
+              hasMore: true,
+            },
+          }),
+        });
+      }
+      if (url === "/api/questions/bookmark") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ questionIds: [] }),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<QuestionsSection />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Load more questions" })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Design a product for interview 101.")
+      ).toHaveLength(2)
+    );
+    expect(questionOffsets).toEqual([null, "100"]);
+    expect(
+      screen.queryByRole("button", { name: "Load more questions" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a failed next page visible and retryable", async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("/api/questions?")) {
+        const offset = new URL(url, "http://localhost").searchParams.get(
+          "offset"
+        );
+        if (offset === "100") {
+          return Promise.resolve({
+            ok: false,
+            json: async () => ({ error: "unavailable" }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            questions: [
+              {
+                id: "question-1",
+                company: "Acme",
+                questionText: "How would you improve onboarding?",
+                questionType: "product_sense",
+                askedAt: "2026-07-01T00:00:00.000Z",
+                isActive: true,
+              },
+            ],
+            pagination: {
+              total: 101,
+              limit: 100,
+              offset: 0,
+              hasMore: true,
+            },
+          }),
+        });
+      }
+      if (url === "/api/questions/bookmark") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ questionIds: [] }),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<QuestionsSection />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Load more questions" })
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "More questions couldn’t be loaded. Check your connection and try again."
+    );
+    expect(
+      screen.getByRole("button", { name: "Load more questions" })
+    ).toBeEnabled();
+  });
+
+  it("does not append a stale page after the round changes", async () => {
+    let resolveStalePage:
+      | ((value: {
+          ok: boolean;
+          json: () => Promise<{
+            questions: Array<Record<string, unknown>>;
+            pagination: Record<string, unknown>;
+          }>;
+        }) => void)
+      | undefined;
+    const stalePage = new Promise<{
+      ok: boolean;
+      json: () => Promise<{
+        questions: Array<Record<string, unknown>>;
+        pagination: Record<string, unknown>;
+      }>;
+    }>((resolve) => {
+      resolveStalePage = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("/api/questions?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("offset") === "100") {
+          return stalePage;
+        }
+        if (params.get("type") === "product_sense") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              questions: [
+                {
+                  id: "product-question",
+                  company: "Focused",
+                  questionText: "A product-only question.",
+                  questionType: "product_sense",
+                  askedAt: "2026-07-02T00:00:00.000Z",
+                  isActive: true,
+                },
+              ],
+              pagination: {
+                total: 1,
+                limit: 100,
+                offset: 0,
+                hasMore: false,
+              },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            questions: [
+              {
+                id: "question-1",
+                company: "Acme",
+                questionText: "How would you improve onboarding?",
+                questionType: "product_sense",
+                askedAt: "2026-07-01T00:00:00.000Z",
+                isActive: true,
+              },
+            ],
+            pagination: {
+              total: 101,
+              limit: 100,
+              offset: 0,
+              hasMore: true,
+            },
+          }),
+        });
+      }
+      if (url === "/api/questions/bookmark") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ questionIds: [] }),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<QuestionsSection />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Load more questions" })
+    );
+    await user.click(screen.getByRole("button", { name: /Product Sense/ }));
+    await screen.findAllByText("A product-only question.");
+
+    resolveStalePage?.({
+      ok: true,
+      json: async () => ({
+        questions: [
+          {
+            id: "stale-question",
+            company: "Stale",
+            questionText: "A stale question from the previous round.",
+            questionType: "strategy",
+            askedAt: "2026-05-01T00:00:00.000Z",
+            isActive: true,
+          },
+        ],
+        pagination: {
+          total: 101,
+          limit: 100,
+          offset: 100,
+          hasMore: false,
+        },
+      }),
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("A stale question from the previous round.")
+      ).not.toBeInTheDocument()
+    );
+  });
 });
