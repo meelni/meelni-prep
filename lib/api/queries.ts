@@ -50,7 +50,8 @@ export interface SessionsResponse {
 export const sessionKeys = {
   all: ["sessions"] as const,
   lists: () => [...sessionKeys.all, "list"] as const,
-  list: (limit?: number) => [...sessionKeys.lists(), { limit }] as const,
+  list: (limit?: number, offset = 0) =>
+    [...sessionKeys.lists(), { limit, offset }] as const,
   details: () => [...sessionKeys.all, "detail"] as const,
   detail: (id: string) => [...sessionKeys.details(), id] as const,
 };
@@ -59,8 +60,19 @@ export const sessionKeys = {
 // API Fetchers
 // ============================================================================
 
-async function fetchSessions(limit?: number): Promise<SessionsResponse> {
-  const url = limit ? `/api/sessions?limit=${limit}` : "/api/sessions";
+export function buildSessionsRequestPath(limit?: number, offset = 0) {
+  const searchParams = new URLSearchParams();
+  if (limit !== undefined) searchParams.set("limit", String(limit));
+  if (offset > 0) searchParams.set("offset", String(offset));
+  const query = searchParams.toString();
+  return query ? `/api/sessions?${query}` : "/api/sessions";
+}
+
+async function fetchSessions(
+  limit?: number,
+  offset = 0
+): Promise<SessionsResponse> {
+  const url = buildSessionsRequestPath(limit, offset);
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -74,10 +86,10 @@ async function fetchSessions(limit?: number): Promise<SessionsResponse> {
 // React Query Hooks
 // ============================================================================
 
-export function useSessions(limit?: number) {
+export function useSessions(limit?: number, offset = 0) {
   return useQuery({
-    queryKey: sessionKeys.list(limit),
-    queryFn: () => fetchSessions(limit),
+    queryKey: sessionKeys.list(limit, offset),
+    queryFn: () => fetchSessions(limit, offset),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: 3,
