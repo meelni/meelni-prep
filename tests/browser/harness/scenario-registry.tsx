@@ -128,6 +128,13 @@ function HistoryStatusesScenario() {
       <HistorySection
         sessions={dashboardStatusSessions}
         loadingSessions={false}
+        pagination={{
+          total: dashboardStatusSessions.length + 20,
+          limit: 20,
+          offset: 0,
+          hasMore: true,
+        }}
+        onPageChange={() => undefined}
       />
     </Shell>
   );
