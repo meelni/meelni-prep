@@ -52,6 +52,8 @@
   --color-dashboard-panel-border: var(--dashboard-panel-border);
   --color-dashboard-foreground: var(--dashboard-foreground);
   --color-dashboard-muted: var(--dashboard-muted);
+  --color-dashboard-accent: var(--dashboard-accent);
+  --color-dashboard-accent-foreground: var(--dashboard-accent-foreground);
   --container-max-width: 1000px;
   --container-padding: 1rem;
   --container-center: true;
@@ -267,6 +269,8 @@
   --dashboard-panel-border: rgb(255 255 255 / 0.08);
   --dashboard-foreground: #f2f2f7;
   --dashboard-muted: #8c8c9e;
+  --dashboard-accent: #b9a7ff;
+  --dashboard-accent-foreground: #141417;
 }
 
 .dark {
@@ -326,6 +330,8 @@
   --dashboard-panel-border: rgb(255 255 255 / 0.08);
   --dashboard-foreground: #f2f2f7;
   --dashboard-muted: #8c8c9e;
+  --dashboard-accent: #b9a7ff;
+  --dashboard-accent-foreground: #141417;
 }
 
 @layer base {

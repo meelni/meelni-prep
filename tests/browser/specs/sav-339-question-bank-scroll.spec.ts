@@ -26,7 +26,7 @@ for (const viewport of [
     await page.evaluate(() => document.fonts.ready);
 
     await expect(
-      page.getByRole("heading", { name: "All questions" })
+      page.getByRole("heading", { name: "Question Bank" })
     ).toBeVisible();
     await expect(page.getByText("Start here", { exact: true })).toHaveCount(0);
 
@@ -64,9 +64,23 @@ for (const viewport of [
     expect(after.controls?.y).toBe(before.controls?.y);
     expect(after.firstRow?.y).toBeLessThan(before.firstRow?.y ?? 0);
 
+    if (viewport.width < 1024) {
+      await page.locator("summary").filter({ hasText: "Filters" }).click();
+      await page
+        .getByRole("combobox", { name: "Round" })
+        .selectOption("Product Sense");
+    } else {
+      await page.getByRole("button", { name: "Product Sense 5" }).click();
+      await expect(
+        page.getByRole("button", { name: "All rounds 18" })
+      ).toBeVisible();
+    }
+    await expect(results.locator("[data-question-bank-row]")).toHaveCount(5);
+    await expect(page.getByText("5 questions match")).toBeVisible();
+
     await page.getByRole("textbox", { name: "Search" }).fill("Acme");
     await expect(results.locator("[data-question-bank-row]")).toHaveCount(1);
-    await expect(page.getByText("Showing 1 of 18")).toBeVisible();
+    await expect(page.getByText("1 question matches")).toBeVisible();
 
     const save = results
       .locator("[data-question-bank-row]")
@@ -84,11 +98,19 @@ async function expectNoHorizontalScrollRegions(
 ) {
   const offenders = await page.locator("body *").evaluateAll((elements) =>
     elements
-      .filter(
-        (element) =>
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const isVisuallyHidden =
+          style.position === "absolute" &&
+          element.clientWidth <= 1 &&
+          element.clientHeight <= 1;
+
+        return (
+          !isVisuallyHidden &&
           element.scrollWidth > element.clientWidth + 1 &&
-          getComputedStyle(element).overflowX !== "clip"
-      )
+          style.overflowX !== "clip"
+        );
+      })
       .map((element) => ({
         className: element.className,
         clientWidth: element.clientWidth,

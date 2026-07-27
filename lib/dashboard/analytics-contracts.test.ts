@@ -17,6 +17,10 @@ test("analytics competencies do not fabricate scores when insights omit data", (
     competencies.map((competency) => competency.state),
     ["placeholder", "placeholder", "placeholder"]
   );
+  assert.deepEqual(
+    competencies.map((competency) => competency.sampleSize),
+    [0, 0, 0]
+  );
 });
 
 test("analytics competencies normalize real API scores without fallback precision", () => {
@@ -25,6 +29,11 @@ test("analytics competencies normalize real API scores without fallback precisio
       structure: 82,
       clarity: 7.4,
       insight: 5.9,
+    },
+    competencySampleSizes: {
+      structure: 4,
+      clarity: 3,
+      insight: 2,
     },
   });
 
@@ -36,24 +45,21 @@ test("analytics competencies normalize real API scores without fallback precisio
     competencies.map((competency) => competency.state),
     ["actual", "actual", "actual"]
   );
+  assert.deepEqual(
+    competencies.map((competency) => competency.sampleSize),
+    [4, 3, 2]
+  );
 });
 
 test("analytics evidence is derived from current dashboard summary", () => {
   const evidence = buildAnalyticsEvidence({
     focusAreaLabel: "Metrics depth",
     focusAreaScore: 5.9,
-    focusAreaDescription:
-      "Add success metrics and guardrails before solutions.",
-    progressDeltaLabel: "+6 points across 4 interviews",
   });
 
-  assert.equal(evidence.length, 2);
+  assert.equal(evidence.length, 1);
   assert.match(evidence[0]?.description ?? "", /Metrics depth/);
-  assert.match(evidence[0]?.description ?? "", /latest completed feedback/);
-  assert.equal(
-    evidence[1]?.description,
-    "Recent scored interviews: +6 points across 4 interviews."
-  );
+  assert.match(evidence[0]?.description ?? "", /5\.9\/10/);
   assert.doesNotMatch(
     evidence.map((item) => item.description).join(" "),
     /consistently state users|Only one strategy interview/
@@ -65,24 +71,7 @@ test("analytics evidence stays empty without scored dimension data", () => {
     buildAnalyticsEvidence({
       focusAreaLabel: "Metrics depth",
       focusAreaScore: null,
-      focusAreaDescription:
-        "Add success metrics and guardrails before solutions.",
-      progressDeltaLabel: "No scored interviews",
     }),
     []
-  );
-});
-
-test("analytics evidence renders a flat trend as a complete sentence", () => {
-  const evidence = buildAnalyticsEvidence({
-    focusAreaLabel: "Clarity",
-    focusAreaScore: 7,
-    focusAreaDescription: "Make the recommendation explicit.",
-    progressDeltaLabel: "No score change across 3 interviews",
-  });
-
-  assert.equal(
-    evidence[1]?.description,
-    "Recent scored interviews: No score change across 3 interviews."
   );
 });

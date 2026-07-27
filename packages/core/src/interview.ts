@@ -45,19 +45,19 @@ export const DIFFICULTY_LEVELS = {
   beginner: {
     label: "Junior/APM",
     description: "0-2 years experience",
-    subtitle: "Patient coaching with learning mode",
+    subtitle: "Early-career product judgment and fundamentals",
     icon: "BookOpen",
   },
   intermediate: {
     label: "IC PM",
     description: "2-4 years experience",
-    subtitle: "Balanced approach with standard bar",
+    subtitle: "Independent product ownership and execution",
     icon: "BriefcaseBusiness",
   },
   advanced: {
     label: "Senior PM",
     description: "5+ years experience",
-    subtitle: "High bar with strategic deep-dives",
+    subtitle: "Strategic scope, tradeoffs, and leadership",
     icon: "Compass",
   },
 } as const;

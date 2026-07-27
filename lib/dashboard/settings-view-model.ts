@@ -92,23 +92,38 @@ export function buildSettingsPlanSummary({
   subscription: SettingsSubscriptionSummary | null;
   credits: SettingsCreditSummary | null;
 }): SettingsSummaryTile[] {
+  const nextExpiration = formatSettingsDateLabel(credits?.nextCreditExpiresAt);
+  const availableCredits = credits?.availableCredits ?? 0;
+  const reservedCredits = credits?.reservedCredits ?? 0;
+  const periodEnd = formatSettingsDateLabel(subscription?.currentPeriodEnd);
+
   return [
     {
       label: "Plan",
       value: subscription?.planName || subscription?.tier || "Unavailable",
-      description: subscription?.status || "Current status not loaded",
+      description: formatPlanTiming({
+        status: subscription?.status,
+        periodEnd,
+        cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd,
+      }),
     },
     {
       label: "Available credits",
-      value: String(credits?.availableCredits ?? "0"),
-      description: `${credits?.reservedCredits ?? 0} reserved`,
+      value: `${availableCredits} credit${availableCredits === 1 ? "" : "s"}`,
+      description:
+        reservedCredits === 0
+          ? "None reserved"
+          : `${reservedCredits} reserved for an interview`,
     },
     {
       label: "Next expiration",
-      value: formatSettingsDateLabel(credits?.nextCreditExpiresAt),
-      description: subscription?.cancelAtPeriodEnd
-        ? "Subscription ending"
-        : "Credit-based access",
+      value: nextExpiration,
+      description:
+        nextExpiration === "None"
+          ? "No credits currently expire"
+          : subscription?.cancelAtPeriodEnd
+            ? "Plan scheduled to end"
+            : "Earliest credit expiration",
     },
   ];
 }
@@ -130,4 +145,30 @@ function labelForSignInProvider(provider?: string | null) {
   }
 
   return "Email sign-in";
+}
+
+function formatSettingsStatus(value?: string | null) {
+  if (!value) {
+    return "Current status not loaded";
+  }
+
+  return value
+    .split("_")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function formatPlanTiming({
+  status,
+  periodEnd,
+  cancelAtPeriodEnd,
+}: {
+  status?: string | null;
+  periodEnd: string;
+  cancelAtPeriodEnd?: boolean;
+}) {
+  const statusLabel = formatSettingsStatus(status);
+  if (periodEnd === "None") return statusLabel;
+  if (cancelAtPeriodEnd) return `${statusLabel} · Ends ${periodEnd}`;
+  return `${statusLabel} · Renews ${periodEnd}`;
 }

@@ -10,7 +10,7 @@ import {
   type Ref,
 } from "react";
 import Link from "next/link";
-import { ArrowUpRight, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/app/providers/auth-provider";
@@ -34,6 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import {
   DashboardLoadingState,
@@ -81,6 +85,9 @@ export const SettingsSection = memo(function SettingsSection() {
   const [settings, setSettings] = useState<DashboardSettings>(() =>
     normalizeDashboardSettings(null, fallbackName)
   );
+  const [savedSettings, setSavedSettings] = useState<DashboardSettings>(() =>
+    normalizeDashboardSettings(null, fallbackName)
+  );
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<LoadState>("idle");
   const [billingState, setBillingState] = useState<LoadState>("idle");
@@ -112,7 +119,12 @@ export const SettingsSection = memo(function SettingsSection() {
         };
 
         if (!cancelled) {
-          setSettings(normalizeDashboardSettings(data.settings, fallbackName));
+          const nextSettings = normalizeDashboardSettings(
+            data.settings,
+            fallbackName
+          );
+          setSettings(nextSettings);
+          setSavedSettings(nextSettings);
           setLoadState("ready");
         }
       } catch (error) {
@@ -122,7 +134,9 @@ export const SettingsSection = memo(function SettingsSection() {
         });
 
         if (!cancelled) {
-          setSettings(normalizeDashboardSettings(null, fallbackName));
+          const nextSettings = normalizeDashboardSettings(null, fallbackName);
+          setSettings(nextSettings);
+          setSavedSettings(nextSettings);
           setLoadState("error");
         }
       }
@@ -202,6 +216,7 @@ export const SettingsSection = memo(function SettingsSection() {
       }
 
       setSaveState("ready");
+      setSavedSettings(settings);
     } catch (error) {
       console.error("settings_save_failed", {
         error_code: "SETTINGS_SAVE_FAILED",
@@ -215,6 +230,17 @@ export const SettingsSection = memo(function SettingsSection() {
     await signOut();
     router.push("/");
   };
+
+  const accountDirty = settings.displayName !== savedSettings.displayName;
+  const defaultsDirty =
+    settings.defaultInterviewType !== savedSettings.defaultInterviewType ||
+    settings.defaultDifficulty !== savedSettings.defaultDifficulty ||
+    settings.questionRecency !== savedSettings.questionRecency;
+  const notificationsDirty =
+    settings.emailNotifications !== savedSettings.emailNotifications ||
+    settings.sessionCompletionEmail !== savedSettings.sessionCompletionEmail ||
+    settings.feedbackReadyEmail !== savedSettings.feedbackReadyEmail ||
+    settings.weeklyProgressReport !== savedSettings.weeklyProgressReport;
 
   if (shouldShowSettingsLoading(loadState)) {
     return (
@@ -300,6 +326,7 @@ export const SettingsSection = memo(function SettingsSection() {
               onSave={saveSettings}
               onSignOut={handleSignOut}
               saveState={saveState}
+              isDirty={accountDirty}
             />
           )}
 
@@ -309,6 +336,7 @@ export const SettingsSection = memo(function SettingsSection() {
               onChange={updateSettings}
               onSave={saveSettings}
               saveState={saveState}
+              isDirty={defaultsDirty}
             />
           )}
 
@@ -326,6 +354,7 @@ export const SettingsSection = memo(function SettingsSection() {
               onChange={updateSettings}
               onSave={saveSettings}
               saveState={saveState}
+              isDirty={notificationsDirty}
             />
           )}
 
@@ -349,18 +378,26 @@ function AccountPane({
   onSave,
   onSignOut,
   saveState,
+  isDirty,
 }: {
   account: ReturnType<typeof buildSettingsAccountViewModel>;
   onDisplayNameChange: (value: string) => void;
   onSave: () => void;
   onSignOut: () => void;
   saveState: LoadState;
+  isDirty: boolean;
 }) {
   return (
     <PaneShell
       title="Account"
       description="Profile, login, and session controls."
-      footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
+      footer={
+        <SettingsSaveFooter
+          onSave={onSave}
+          saveState={saveState}
+          isDirty={isDirty}
+        />
+      }
     >
       <div className="divide-dashboard-panel-border divide-y">
         <div className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
@@ -379,8 +416,11 @@ function AccountPane({
               </p>
             </div>
           </div>
-          <div className="w-full sm:w-64">
-            <Label htmlFor="display-name" className="sr-only">
+          <div className="w-full space-y-2 sm:w-72">
+            <Label
+              htmlFor="display-name"
+              className="text-dashboard-foreground text-sm font-semibold"
+            >
               Display name
             </Label>
             <Input
@@ -392,17 +432,17 @@ function AccountPane({
             />
           </div>
         </div>
-
-        <SettingsReadOnlyRow label="Target role" value="Not set yet" />
-        <SettingsReadOnlyRow label="Interview timeline" value="Not set yet" />
       </div>
 
       <SettingsGroup label="Access">
         <SettingsActionRow
-          title={account.signInMethod}
-          description={account.email}
-          actionLabel="Managed"
-          disabled
+          title="Sign-in method"
+          description={account.signInMethod}
+          statusLabel={
+            account.signInMethod === "Google sign-in"
+              ? "Managed by Google"
+              : "Meelni account"
+          }
         />
         <SettingsActionRow
           title="Password"
@@ -411,7 +451,7 @@ function AccountPane({
               ? "Managed by your Google account"
               : "Use password reset from the sign-in screen"
           }
-          actionLabel="Reset"
+          actionLabel="Reset password"
           href="/auth/reset-password"
         />
         <SettingsActionRow
@@ -430,12 +470,19 @@ function InterviewDefaultsPane({
   onChange,
   onSave,
   saveState,
+  isDirty,
 }: SettingsPaneProps) {
   return (
     <PaneShell
       title="Interview defaults"
       description="Defaults used when you start a PM mock interview."
-      footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
+      footer={
+        <SettingsSaveFooter
+          onSave={onSave}
+          saveState={saveState}
+          isDirty={isDirty}
+        />
+      }
     >
       <SettingsSelectRow
         title="Default round"
@@ -449,15 +496,15 @@ function InterviewDefaultsPane({
           })
         }
         options={[
-          ["product_sense", "Product sense"],
-          ["analytical", "Analytical"],
+          ["product_sense", "Product Sense"],
+          ["analytical", "Execution"],
           ["behavioral", "Behavioral"],
           ["strategy", "Strategy"],
         ]}
       />
       <SettingsSelectRow
-        title="Default difficulty"
-        description="The starting challenge level for recommended interviews."
+        title="Default challenge"
+        description="How demanding a recommended interview should feel."
         value={settings.defaultDifficulty}
         valueLabel={labelForDifficulty(settings.defaultDifficulty)}
         onValueChange={(defaultDifficulty) =>
@@ -473,8 +520,8 @@ function InterviewDefaultsPane({
         ]}
       />
       <SettingsSelectRow
-        title="Question recency"
-        description="How current recommended company questions should be."
+        title="Question coverage"
+        description="Which company questions can appear in recommendations."
         value={settings.questionRecency}
         valueLabel={labelForQuestionRecency(settings.questionRecency)}
         onValueChange={(questionRecency) =>
@@ -484,7 +531,7 @@ function InterviewDefaultsPane({
           })
         }
         options={[
-          ["current", "Current interview loops"],
+          ["current", "Most current company questions"],
           ["recent", "Recent company questions"],
           ["all", "All available questions"],
         ]}
@@ -582,14 +629,16 @@ function PlanCreditsPane({
         <SettingsActionRow
           title="Manage billing"
           description="Open the billing portal for payment methods, invoices, and subscription changes."
-          actionLabel={portalState === "loading" ? "Opening" : "Open"}
+          actionLabel={
+            portalState === "loading" ? "Opening billing" : "Manage billing"
+          }
           onClick={openBillingPortal}
           disabled={portalState === "loading"}
         />
         <SettingsActionRow
           title="Add interview credits"
           description="Choose an Interview Pass, Starter, or Pro credit plan."
-          actionLabel="Pricing"
+          actionLabel="View plans"
           href="/pricing"
         />
       </SettingsGroup>
@@ -602,48 +651,64 @@ function NotificationsPane({
   onChange,
   onSave,
   saveState,
+  isDirty,
 }: SettingsPaneProps) {
   return (
     <PaneShell
       title="Notifications"
       description="Emails tied to completed interviews and progress signals."
-      footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
+      footer={
+        <SettingsSaveFooter
+          onSave={onSave}
+          saveState={saveState}
+          isDirty={isDirty}
+        />
+      }
     >
-      <SettingsSwitchRow
-        title="Email notifications"
-        description="Allow Meelni to send account and practice emails."
-        checked={settings.emailNotifications}
-        onCheckedChange={(emailNotifications) =>
-          onChange({ emailNotifications })
-        }
-      />
-      <SettingsSwitchRow
-        title="Session completion email"
-        description="Send a confirmation when a PM mock interview is complete."
-        checked={settings.sessionCompletionEmail}
-        disabled={!settings.emailNotifications}
-        onCheckedChange={(sessionCompletionEmail) =>
-          onChange({ sessionCompletionEmail })
-        }
-      />
-      <SettingsSwitchRow
-        title="Feedback ready email"
-        description="Notify you when calibrated feedback is available."
-        checked={settings.feedbackReadyEmail}
-        disabled={!settings.emailNotifications}
-        onCheckedChange={(feedbackReadyEmail) =>
-          onChange({ feedbackReadyEmail })
-        }
-      />
-      <SettingsSwitchRow
-        title="Weekly progress report"
-        description="Send a weekly digest of recent score trends and practice focus."
-        checked={settings.weeklyProgressReport}
-        disabled={!settings.emailNotifications}
-        onCheckedChange={(weeklyProgressReport) =>
-          onChange({ weeklyProgressReport })
-        }
-      />
+      <SettingsGroup label="Email delivery">
+        <SettingsSwitchRow
+          title="Email notifications"
+          description="Turn all Meelni account and practice emails on or off."
+          checked={settings.emailNotifications}
+          onCheckedChange={(emailNotifications) =>
+            onChange({ emailNotifications })
+          }
+        />
+      </SettingsGroup>
+      <SettingsGroup label="Messages">
+        <div className="border-dashboard-panel-border ml-2 divide-y border-l pl-4 sm:ml-3 sm:pl-5">
+          <SettingsSwitchRow
+            title="Interview complete"
+            description="Send a confirmation when a PM mock interview ends."
+            checked={settings.sessionCompletionEmail}
+            disabled={!settings.emailNotifications}
+            disabledReason="Preference saved. Turn on Email notifications to send it."
+            onCheckedChange={(sessionCompletionEmail) =>
+              onChange({ sessionCompletionEmail })
+            }
+          />
+          <SettingsSwitchRow
+            title="Feedback ready"
+            description="Email when calibrated feedback is available."
+            checked={settings.feedbackReadyEmail}
+            disabled={!settings.emailNotifications}
+            disabledReason="Preference saved. Turn on Email notifications to send it."
+            onCheckedChange={(feedbackReadyEmail) =>
+              onChange({ feedbackReadyEmail })
+            }
+          />
+          <SettingsSwitchRow
+            title="Weekly progress"
+            description="Send a weekly digest of score trends and practice focus."
+            checked={settings.weeklyProgressReport}
+            disabled={!settings.emailNotifications}
+            disabledReason="Preference saved. Turn on Email notifications to send it."
+            onCheckedChange={(weeklyProgressReport) =>
+              onChange({ weeklyProgressReport })
+            }
+          />
+        </div>
+      </SettingsGroup>
     </PaneShell>
   );
 }
@@ -734,7 +799,7 @@ function DataPrivacyPane({
         />
         <SettingsReadOnlyRow
           label="Interview audio"
-          value="Processed live by configured voice providers; no replayable interview recording is created or stored in the Meelni application"
+          value="Processed live during the interview. Meelni does not create or store a replayable audio recording."
         />
       </SettingsGroup>
 
@@ -746,14 +811,14 @@ function DataPrivacyPane({
             </p>
             <p className="text-dashboard-muted max-w-xl text-sm">
               {analyticsDecision === "accepted"
-                ? "Allowed. Meelni may send minimized usage events to PostHog and Statsig."
+                ? "On. Meelni can measure product usage to improve the experience."
                 : analyticsDecision === "declined"
-                  ? "Off. Optional analytics providers do not initialize."
-                  : "Not decided. Optional analytics remain off."}
+                  ? "Off. Optional product analytics are disabled."
+                  : "Off until you choose otherwise."}
             </p>
             <p className="text-dashboard-muted text-xs">
-              Session replay is disabled. Interview audio, transcripts,
-              questions, and answers are never included in analytics events.
+              Session replay stays disabled. Interview audio, transcripts,
+              questions, and answers are never sent as analytics events.
             </p>
             {analyticsError && (
               <p className="text-destructive text-xs" role="alert">
@@ -773,27 +838,43 @@ function DataPrivacyPane({
               </Button>
             )}
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Button
+          <SegmentedControl
+            tone="dashboard"
+            columns={2}
+            className="w-full shrink-0 sm:w-48"
+            aria-label="Optional product analytics"
+          >
+            <SegmentedControlItem
               type="button"
-              size="sm"
-              variant="outline"
+              tone="dashboard"
+              selected={analyticsDecision === "declined"}
               className="min-h-11"
-              disabled={analyticsSaving || analyticsDecision === "declined"}
-              onClick={() => void setAnalyticsConsent("declined", "settings")}
+              aria-label="Analytics off"
+              disabled={analyticsSaving}
+              onClick={() => {
+                if (analyticsDecision !== "declined") {
+                  void setAnalyticsConsent("declined", "settings");
+                }
+              }}
             >
-              {savingDecision === "declined" ? "Turning off..." : "Turn off"}
-            </Button>
-            <Button
+              {savingDecision === "declined" ? "Saving..." : "Off"}
+            </SegmentedControlItem>
+            <SegmentedControlItem
               type="button"
-              size="sm"
+              tone="dashboard"
+              selected={analyticsDecision === "accepted"}
               className="min-h-11"
-              disabled={analyticsSaving || analyticsDecision === "accepted"}
-              onClick={() => void setAnalyticsConsent("accepted", "settings")}
+              aria-label="Turn optional analytics on"
+              disabled={analyticsSaving}
+              onClick={() => {
+                if (analyticsDecision !== "accepted") {
+                  void setAnalyticsConsent("accepted", "settings");
+                }
+              }}
             >
-              {savingDecision === "accepted" ? "Enabling..." : "Allow"}
-            </Button>
-          </div>
+              {savingDecision === "accepted" ? "Saving..." : "On"}
+            </SegmentedControlItem>
+          </SegmentedControl>
         </div>
       </SettingsGroup>
 
@@ -843,15 +924,17 @@ function DataPrivacyPane({
       <SettingsGroup label="Account data">
         <SettingsActionRow
           title="Data export"
-          description="Download a versioned JSON copy of your profile, PM interview practice, feedback, preferences, and user-facing billing history. Provider secrets and raw operational payloads are excluded."
-          actionLabel={exportState === "loading" ? "Preparing" : "Download"}
+          description="Download a JSON copy of your profile, interviews, feedback, preferences, and billing history."
+          actionLabel={
+            exportState === "loading" ? "Preparing data" : "Download data"
+          }
           onClick={handleAccountExport}
           disabled={exportState === "loading"}
         />
         <SettingsActionRow
           title="Delete account"
-          description="Request account cleanup. You will be signed out while Meelni completes retryable authentication, billing-resource, and application-data steps."
-          actionLabel="Delete"
+          description="Permanently close your account and start deleting your Meelni practice data."
+          actionLabel="Delete account"
           actionRef={deleteActionRef}
           onClick={() => {
             setConfirmation("");
@@ -878,23 +961,23 @@ function DataPrivacyPane({
             </div>
             <DialogTitle>Request account deletion</DialogTitle>
             <DialogDescription className="text-dashboard-muted leading-6">
-              This stores a durable request, signs you out, and starts retryable
-              cleanup of your Meelni account and practice data.
+              This permanently closes your account. If the request succeeds,
+              you’ll be signed out immediately.
             </DialogDescription>
           </DialogHeader>
 
           <ul className="text-dashboard-muted list-disc space-y-2 pl-5 text-sm leading-6">
             <li>
-              The request cannot be undone after it is accepted, and account
-              access ends immediately.
+              Your profile, interviews, transcripts, feedback, and preferences
+              enter deletion.
             </li>
             <li>
-              Paid access ends without automatic proration, refund, or Stripe
-              account credit. Exceptional refunds require support review.
+              Paid access ends immediately. This request does not automatically
+              issue a refund.
             </li>
             <li>
-              Limited security, deletion-audit, backup, and legally required
-              billing records may be retained without a fixed deletion period.
+              Legally required security, billing, and deletion records may be
+              retained.
             </li>
           </ul>
 
@@ -908,7 +991,7 @@ function DataPrivacyPane({
               }
               description={
                 deleteMessage ??
-                "Your request is durable and cleanup will continue in the background."
+                "Your deletion request was saved. Data cleanup will continue in the background."
               }
               tone={deleteState === "requested" ? "success" : "warning"}
               announce="polite"
@@ -978,7 +1061,11 @@ function DataPrivacyPane({
             ) : deleteState === "reauthentication_required" ? (
               <>
                 <DialogClose asChild>
-                  <Button type="button" variant="outline">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-dashboard-muted hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
+                  >
                     Cancel
                   </Button>
                 </DialogClose>
@@ -1004,8 +1091,9 @@ function DataPrivacyPane({
                 <DialogClose asChild>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     disabled={deleteState === "submitting"}
+                    className="text-dashboard-muted hover:bg-dashboard-muted/15 hover:text-dashboard-foreground"
                   >
                     Cancel
                   </Button>
@@ -1041,6 +1129,7 @@ interface SettingsPaneProps {
   onChange: (patch: Partial<DashboardSettings>) => void;
   onSave: () => void;
   saveState: LoadState;
+  isDirty: boolean;
 }
 
 function PaneShell({
@@ -1055,7 +1144,7 @@ function PaneShell({
   footer?: ReactNode;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
       <div>
         <h2 className="font-display text-dashboard-foreground text-3xl leading-tight font-semibold">
           {title}
@@ -1064,7 +1153,7 @@ function PaneShell({
           {description}
         </p>
       </div>
-      <div className="space-y-6">{children}</div>
+      <div className="space-y-5">{children}</div>
       {footer}
     </div>
   );
@@ -1097,9 +1186,11 @@ function SettingsReadOnlyRow({
   value: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+    <div className="grid min-w-0 gap-1 py-4 sm:grid-cols-[minmax(140px,180px)_minmax(0,1fr)] sm:items-start sm:gap-6">
       <p className="text-dashboard-foreground text-sm font-semibold">{label}</p>
-      <p className="text-dashboard-muted text-sm sm:text-right">{value}</p>
+      <p className="text-dashboard-muted min-w-0 text-sm leading-6 break-words">
+        {value}
+      </p>
     </div>
   );
 }
@@ -1108,6 +1199,7 @@ function SettingsActionRow({
   title,
   description,
   actionLabel,
+  statusLabel,
   href,
   disabled,
   destructive,
@@ -1116,7 +1208,8 @@ function SettingsActionRow({
 }: {
   title: string;
   description: string;
-  actionLabel: string;
+  actionLabel?: string;
+  statusLabel?: string;
   href?: string;
   disabled?: boolean;
   destructive?: boolean;
@@ -1137,11 +1230,15 @@ function SettingsActionRow({
           {description}
         </p>
       </div>
-      {href && !disabled ? (
+      {statusLabel ? (
+        <span className="text-dashboard-muted shrink-0 text-sm font-medium">
+          {statusLabel}
+        </span>
+      ) : href && !disabled ? (
         <Button asChild variant="outline" size="sm" className={actionClassName}>
           <Link href={href}>
             {actionLabel}
-            <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            <ChevronRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </Button>
       ) : (
@@ -1166,12 +1263,14 @@ function SettingsSwitchRow({
   description,
   checked,
   disabled,
+  disabledReason,
   onCheckedChange,
 }: {
   title: string;
   description: string;
   checked: boolean;
   disabled?: boolean;
+  disabledReason?: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
@@ -1181,6 +1280,11 @@ function SettingsSwitchRow({
         <p className="text-dashboard-muted mt-1 text-sm leading-5">
           {description}
         </p>
+        {disabled && disabledReason && (
+          <p className="text-dashboard-muted mt-1 text-xs leading-5">
+            {disabledReason}
+          </p>
+        )}
       </div>
       <Switch
         checked={checked}
@@ -1247,9 +1351,11 @@ function SettingsSelectRow({
 function SettingsSaveFooter({
   onSave,
   saveState,
+  isDirty,
 }: {
   onSave: () => void;
   saveState: LoadState;
+  isDirty: boolean;
 }) {
   return (
     <div className="border-dashboard-panel-border flex items-center justify-end gap-3 border-t pt-5">
@@ -1272,7 +1378,7 @@ function SettingsSaveFooter({
         <Button
           type="button"
           onClick={onSave}
-          disabled={saveState === "loading"}
+          disabled={saveState === "loading" || !isDirty}
           className="min-h-11 gap-2"
         >
           {saveState === "loading" && (
