@@ -30,6 +30,11 @@ for (const viewport of [
     await expect(
       page.getByRole("heading", { name: "Past interviews" })
     ).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Interview history pages" })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
     await expect(page.getByText("Next review", { exact: true })).toHaveCount(0);
     await expect(
       page.getByText("Unavailable", { exact: true }).filter({ visible: true })
