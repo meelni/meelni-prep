@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useSessions } from "@/lib/api/queries";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
 import { DashboardError } from "@/components/dashboard/error";
@@ -8,16 +8,22 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 
 // Lazy load history section
-const HistorySection = lazy(() => import("@/components/dashboard/sections/history").then(m => ({ default: m.HistorySection })));
+const HistorySection = lazy(() =>
+  import("@/components/dashboard/sections/history").then((m) => ({
+    default: m.HistorySection,
+  }))
+);
+const HISTORY_PAGE_SIZE = 20;
 
 export default function HistoryPage() {
+  const [offset, setOffset] = useState(0);
   // Track Web Vitals performance
-  useWebVitals('dashboard_history');
+  useWebVitals("dashboard_history");
 
   // Track dashboard section views
   useEffect(() => {
-    analytics.track('dashboard_viewed', {
-      section: 'history',
+    analytics.track("dashboard_viewed", {
+      section: "history",
     });
   }, []);
 
@@ -27,7 +33,7 @@ export default function HistoryPage() {
     isLoading: sessionsLoading,
     error,
     refetch,
-  } = useSessions(20);
+  } = useSessions(HISTORY_PAGE_SIZE, offset);
 
   // Error state
   if (error) {
@@ -36,10 +42,21 @@ export default function HistoryPage() {
 
   // Extract data from React Query response
   const sessions = data?.sessions || [];
+  const pagination = data?.pagination ?? {
+    total: 0,
+    limit: HISTORY_PAGE_SIZE,
+    offset,
+    hasMore: false,
+  };
 
   return (
     <Suspense fallback={<DashboardLoadingState />}>
-      <HistorySection sessions={sessions} loadingSessions={sessionsLoading} />
+      <HistorySection
+        sessions={sessions}
+        loadingSessions={sessionsLoading}
+        pagination={pagination}
+        onPageChange={setOffset}
+      />
     </Suspense>
   );
 }

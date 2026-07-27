@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { DashboardFeedbackStatus } from "@/components/dashboard/dashboard-feedback-status";
 import { FilterPill } from "@/components/ui/filter-pill";
+import { Button } from "@/components/ui/button";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { DashboardSkeletonCard } from "@/components/dashboard/dashboard-surface";
 import {
@@ -14,15 +15,23 @@ import {
 } from "@/lib/dashboard/contracts";
 import type { Session } from "@/lib/api/queries";
 import { analytics } from "@/lib/analytics/analytics-service";
+import {
+  buildHistoryPaginationView,
+  type HistoryPaginationInput,
+} from "@/lib/dashboard/history-pagination";
 
 interface HistorySectionProps {
   sessions: Session[];
   loadingSessions: boolean;
+  pagination: HistoryPaginationInput;
+  onPageChange: (offset: number) => void;
 }
 
 export const HistorySection = memo(function HistorySection({
   sessions,
   loadingSessions,
+  pagination,
+  onPageChange,
 }: HistorySectionProps) {
   const [activeFilter, setActiveFilter] = useState("All interviews");
   const summary = useMemo(
@@ -40,10 +49,19 @@ export const HistorySection = memo(function HistorySection({
     }
   }, [loadingSessions, sessions.length, summary.rows]);
 
+  const selectedFilter = summary.filters.includes(activeFilter)
+    ? activeFilter
+    : "All interviews";
   const rows = summary.rows.filter(
     (row) =>
-      activeFilter === "All interviews" || row.roundLabel === activeFilter
+      selectedFilter === "All interviews" || row.roundLabel === selectedFilter
   );
+  const paginationView = buildHistoryPaginationView({
+    pagination,
+    pageRowCount: summary.rows.length,
+    filteredRowCount: rows.length,
+    filterActive: selectedFilter !== "All interviews",
+  });
 
   if (loadingSessions) {
     return (
@@ -81,7 +99,7 @@ export const HistorySection = memo(function HistorySection({
                 <FilterPill
                   key={filter}
                   type="button"
-                  active={activeFilter === filter}
+                  active={selectedFilter === filter}
                   size="lg"
                   onClick={() => setActiveFilter(filter)}
                   className="border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground data-[active=true]:bg-dashboard-muted/15 data-[active=true]:text-dashboard-foreground bg-transparent"
@@ -92,9 +110,39 @@ export const HistorySection = memo(function HistorySection({
             </div>
           </div>
 
-          <p className="text-dashboard-muted py-4 text-sm" aria-live="polite">
-            {rows.length} of {summary.rows.length} interviews
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <p className="text-dashboard-muted text-sm" aria-live="polite">
+              {paginationView.rangeLabel}
+            </p>
+            {(paginationView.hasPrevious || paginationView.hasNext) && (
+              <nav
+                className="flex items-center gap-2"
+                aria-label="Interview history pages"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!paginationView.hasPrevious}
+                  onClick={() => onPageChange(paginationView.previousOffset)}
+                >
+                  Previous
+                </Button>
+                <span className="text-dashboard-muted min-w-20 text-center text-sm">
+                  {paginationView.pageLabel}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!paginationView.hasNext}
+                  onClick={() => onPageChange(paginationView.nextOffset)}
+                >
+                  Next
+                </Button>
+              </nav>
+            )}
+          </div>
 
           <div className="hidden xl:block">
             <div className="min-w-0">
