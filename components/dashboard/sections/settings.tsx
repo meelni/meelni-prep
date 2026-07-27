@@ -511,10 +511,6 @@ function PlanCreditsPane({
     try {
       const response = await fetch("/api/billing/portal", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ returnUrl: window.location.href }),
       });
       const data = (await response.json()) as {
         portalUrl?: string;
