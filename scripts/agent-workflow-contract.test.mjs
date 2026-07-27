@@ -7,6 +7,10 @@ const files = {
   prPrepSkill: ".agents/skills/meelni-pr-prep/SKILL.md",
   toolingDocs: "docs/operations/tooling.md",
 };
+const codexEnvironment = readFileSync(
+  ".codex/environments/environment.toml",
+  "utf8"
+);
 
 test("agent workflow docs protect long-running parent issues from child PR auto-close drift", () => {
   for (const [label, path] of Object.entries(files)) {
@@ -33,4 +37,32 @@ test("agent workflow docs protect long-running parent issues from child PR auto-
       `${label} should keep the parent open until its own criteria are met`,
     );
   }
+});
+
+test("Codex worktree setup does not require provider credentials", () => {
+  const setupScript = codexEnvironment.match(
+    /\[setup\]\s+script = '''([\s\S]*?)'''/
+  )?.[1];
+
+  assert.ok(setupScript, "Codex environment should define a setup script");
+  assert.match(
+    setupScript,
+    /MEELNI_SKIP_ENV_PULL=1 npm run setup:local/,
+    "worktree bootstrap should install locally without pulling provider credentials"
+  );
+  assert.doesNotMatch(
+    setupScript,
+    /npm run doctor/,
+    "strict runtime checks belong to the explicit Env Check action"
+  );
+  assert.match(
+    codexEnvironment,
+    /name = "Pull Env"[\s\S]*?npm run env:pull[\s\S]*?npm run doctor/,
+    "the environment should retain an explicit credential refresh action"
+  );
+  assert.match(
+    codexEnvironment,
+    /name = "Env Check"[\s\S]*?npm run doctor[\s\S]*?npm run validate:env/,
+    "the environment should retain an explicit strict runtime check"
+  );
 });
