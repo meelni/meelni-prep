@@ -29,7 +29,7 @@ test("settings section follows Paper rail layout and avoids old mixed account ca
   );
 
   assert.match(source, /DashboardPage label="Settings"/);
-  assert.match(source, /SETTINGS_CATEGORY_ORDER\.map/);
+  assert.match(source, /SETTINGS_NAV_ITEMS\.map/);
   assert.match(source, /AccountPane/);
   assert.match(source, /PlanCreditsPane/);
   assert.match(source, /NotificationsPane/);

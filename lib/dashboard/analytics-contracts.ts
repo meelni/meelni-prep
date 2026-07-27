@@ -68,11 +68,11 @@ export function buildAnalyticsEvidence({
 
   return [
     {
-      title: "Current bottleneck",
-      description: `${focusAreaLabel} is the lowest scored dimension in the latest completed feedback. ${focusAreaDescription}`,
+      title: "Latest feedback",
+      description: `In the latest completed feedback, ${focusAreaLabel} was the lowest scored dimension. ${focusAreaDescription}`,
     },
     {
-      title: "Score trend",
+      title: "Recent trend",
       description: `Recent scored interviews: ${progressDeltaLabel}.`,
     },
   ];
