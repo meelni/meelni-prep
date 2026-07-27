@@ -24,8 +24,7 @@ if command -v fnm >/dev/null 2>&1; then
   fnm use "$(tr -d '[:space:]' < .node-version)"
 fi
 
-npm run setup:local
-npm run doctor
+MEELNI_SKIP_ENV_PULL=1 npm run setup:local
 '''
 
 [cleanup]

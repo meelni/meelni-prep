@@ -183,7 +183,12 @@ Agent platforms that honor `conductor.json` should use:
 - setup: `npm run setup:local`
 - run: `npm run dev:local`
 
-Codex local environments should use `.codex/environments/environment.toml`. Its setup action runs `npm run setup:local` followed by `npm run doctor`, so fresh worktrees fail early when Vercel auth/env refresh is unavailable.
+Codex local environments should use `.codex/environments/environment.toml`. Its
+setup action runs `npm run setup:local` with `MEELNI_SKIP_ENV_PULL=1`, so fresh
+worktrees can install dependencies and prepare the Python agent without
+requiring provider credentials. Use the explicit **Pull Env** action to refresh
+Preview credentials and **Env Check** to run the strict runtime-readiness
+checks before starting provider-backed workflows.
 
 Run individual services only when debugging:
 
