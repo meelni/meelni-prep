@@ -11,6 +11,7 @@ interface EndSessionModalProps {
   isOpen: boolean;
   isLoading?: boolean;
   error?: string | null;
+  capturedAnswerCount?: number;
   onClose: () => void;
   onConfirm: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
@@ -20,6 +21,7 @@ export function EndSessionModal({
   isOpen,
   isLoading = false,
   error,
+  capturedAnswerCount = 0,
   onClose,
   onConfirm,
   returnFocusRef,
@@ -67,20 +69,27 @@ export function EndSessionModal({
               className="bg-background border-border fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border p-5 shadow-2xl sm:p-6"
             >
               <div className="mb-4 flex justify-center">
-                <div className="bg-warning/10 rounded-full p-3">
+                <div className="bg-destructive/10 rounded-full p-3">
                   <AlertCircle
-                    className="text-warning h-8 w-8"
+                    className="text-destructive h-8 w-8"
                     aria-hidden="true"
                   />
                 </div>
               </div>
 
               <DialogPrimitive.Title className="mb-2 text-center text-2xl font-bold">
-                End Interview?
+                End interview?
               </DialogPrimitive.Title>
               <DialogPrimitive.Description className="text-muted-foreground mb-6 text-center">
-                Your progress will be saved. We&apos;ll prepare feedback when
-                enough interview activity was captured.
+                Ending saves the transcript collected so far and closes this
+                room.{" "}
+                {capturedAnswerCount === 0
+                  ? "No candidate answers are visible in the transcript yet."
+                  : `${capturedAnswerCount} candidate ${
+                      capturedAnswerCount === 1 ? "answer is" : "answers are"
+                    } visible in the transcript.`}{" "}
+                Feedback eligibility is checked after the room closes so an
+                incomplete interview is never scored as complete.
               </DialogPrimitive.Description>
 
               {error && (
@@ -100,7 +109,7 @@ export function EndSessionModal({
                   disabled={isLoading}
                   className="min-h-11 w-full flex-1"
                 >
-                  Continue Interview
+                  Continue interview
                 </Button>
                 <Button
                   variant="destructive"
@@ -117,9 +126,9 @@ export function EndSessionModal({
                       Ending...
                     </>
                   ) : error ? (
-                    "Try Again"
+                    "Try again"
                   ) : (
-                    "End Interview"
+                    "End interview"
                   )}
                 </Button>
               </div>

@@ -42,7 +42,9 @@ export function buildHistoryPaginationView({
 
   return {
     rangeLabel: filterActive
-      ? `Showing ${filteredRowCount} matches on this page (${range})`
+      ? `Showing ${filteredRowCount} ${
+          filteredRowCount === 1 ? "match" : "matches"
+        } on this page (${range})`
       : `Showing ${range}`,
     pageLabel: `Page ${pageNumber} of ${pageCount}`,
     hasPrevious: pagination.offset > 0,

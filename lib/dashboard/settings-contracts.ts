@@ -75,7 +75,7 @@ export const SETTINGS_DATA_CONTRACT: SettingsContractItem[] = [
     label: "Target role and interview timeline",
     source: "No durable profile fields yet",
     action: "future",
-    shipsNow: true,
+    shipsNow: false,
   },
   {
     category: "account",
@@ -175,14 +175,14 @@ export function initialsForUser(
 export function labelForInterviewType(value: DefaultInterviewType) {
   switch (value) {
     case "analytical":
-      return "Analytical";
+      return "Execution";
     case "behavioral":
       return "Behavioral";
     case "strategy":
       return "Strategy";
     case "product_sense":
     default:
-      return "Product sense";
+      return "Product Sense";
   }
 }
 
@@ -206,6 +206,6 @@ export function labelForQuestionRecency(value: QuestionRecency) {
       return "All available questions";
     case "current":
     default:
-      return "Current interview loops";
+      return "Most current company questions";
   }
 }

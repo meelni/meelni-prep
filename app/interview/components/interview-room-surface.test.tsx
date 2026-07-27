@@ -38,7 +38,8 @@ test("renders the interview room through provider-free injected visual slots", (
   assert.match(html, /Fixture media/);
   assert.match(html, /Design a product for a synthetic PM interview fixture/);
   assert.match(html, /This is synthetic interview content/);
-  assert.match(html, /Real interview/);
+  assert.match(html, /Practice interview/);
+  assert.match(html, /Interviewer is listening/);
   assert.doesNotMatch(html, /Gentle hints on/);
   assert.match(html, /aria-label="End interview"/);
 });

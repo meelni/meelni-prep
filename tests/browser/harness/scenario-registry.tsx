@@ -177,6 +177,9 @@ function NewInterviewScenario() {
 function InterviewScenario() {
   const [isMuted, setIsMuted] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const [deadlineAt] = useState(() =>
+    new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  );
   const endTriggerRef = useRef<HTMLElement | null>(null);
 
   return (
@@ -213,7 +216,7 @@ function InterviewScenario() {
         roundType="product_sense"
         timer={
           <TimerDisplay
-            deadlineAt="2099-07-18T01:00:00.000Z"
+            deadlineAt={deadlineAt}
             onDeadlineReached={() => undefined}
           />
         }
@@ -222,6 +225,9 @@ function InterviewScenario() {
       />
       <EndSessionModal
         isOpen={showEndModal}
+        capturedAnswerCount={
+          transcriptTurns.filter((turn) => turn.speaker === "user").length
+        }
         onClose={() => setShowEndModal(false)}
         onConfirm={() => setShowEndModal(false)}
         returnFocusRef={endTriggerRef}

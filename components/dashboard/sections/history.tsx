@@ -6,6 +6,13 @@ import Link from "next/link";
 import { DashboardFeedbackStatus } from "@/components/dashboard/dashboard-feedback-status";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { DashboardSkeletonCard } from "@/components/dashboard/dashboard-surface";
 import {
@@ -19,6 +26,7 @@ import {
   buildHistoryPaginationView,
   type HistoryPaginationInput,
 } from "@/lib/dashboard/history-pagination";
+import { cn } from "@/lib/utils";
 
 interface HistorySectionProps {
   sessions: Session[];
@@ -56,6 +64,9 @@ export const HistorySection = memo(function HistorySection({
     (row) =>
       selectedFilter === "All interviews" || row.roundLabel === selectedFilter
   );
+  const showQuestionColumn = summary.rows.some(
+    (row) => row.questionLabel !== "—"
+  );
   const paginationView = buildHistoryPaginationView({
     pagination,
     pageRowCount: summary.rows.length,
@@ -77,8 +88,8 @@ export const HistorySection = memo(function HistorySection({
     <DashboardPage label="Interview History">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
         <section className="min-w-0" aria-labelledby="interview-log-title">
-          <div className="border-dashboard-panel-border flex flex-col gap-5 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+          <div className="border-dashboard-panel-border border-b pb-5">
+            <div className="max-w-2xl">
               <h2
                 id="interview-log-title"
                 className="text-dashboard-foreground text-xl font-semibold"
@@ -90,8 +101,27 @@ export const HistorySection = memo(function HistorySection({
                 is unavailable.
               </p>
             </div>
+
+            <div className="mt-4 lg:hidden">
+              <Select value={selectedFilter} onValueChange={setActiveFilter}>
+                <SelectTrigger
+                  aria-label="Filter interviews by round"
+                  className="border-dashboard-panel-border text-dashboard-foreground min-h-11 w-full bg-transparent"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {summary.filters.map((filter) => (
+                    <SelectItem key={filter} value={filter}>
+                      {filter}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div
-              className="flex flex-wrap gap-2"
+              className="mt-4 hidden flex-wrap gap-2 lg:flex"
               role="group"
               aria-label="Filter interviews by round"
             >
@@ -100,7 +130,7 @@ export const HistorySection = memo(function HistorySection({
                   key={filter}
                   type="button"
                   active={selectedFilter === filter}
-                  size="lg"
+                  size="md"
                   onClick={() => setActiveFilter(filter)}
                   className="border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground data-[active=true]:bg-dashboard-muted/15 data-[active=true]:text-dashboard-foreground bg-transparent"
                 >
@@ -146,18 +176,30 @@ export const HistorySection = memo(function HistorySection({
 
           <div className="hidden xl:block">
             <div className="min-w-0">
-              <div className="border-dashboard-panel-border text-dashboard-muted grid grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_132px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase">
+              <div
+                className={cn(
+                  "border-dashboard-panel-border text-dashboard-muted grid gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase",
+                  showQuestionColumn
+                    ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_120px]"
+                    : "grid-cols-[76px_140px_minmax(240px,1fr)_120px]"
+                )}
+              >
                 <span>Date</span>
                 <span>Round</span>
-                <span>Question</span>
+                {showQuestionColumn && <span>Question</span>}
                 <span>Feedback</span>
-                <span className="text-right">Score / review</span>
+                <span className="text-right">Result</span>
               </div>
               <div className="divide-dashboard-panel-border divide-y">
                 {rows.map((row) => (
                   <div
                     key={row.id}
-                    className="grid min-w-0 grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_132px] items-center gap-4 py-5 text-sm"
+                    className={cn(
+                      "grid min-w-0 items-center gap-4 py-5 text-sm",
+                      showQuestionColumn
+                        ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_120px]"
+                        : "grid-cols-[76px_140px_minmax(240px,1fr)_120px]"
+                    )}
                   >
                     <span className="text-dashboard-muted">
                       {row.dateLabel}
@@ -165,14 +207,22 @@ export const HistorySection = memo(function HistorySection({
                     <span className="text-dashboard-foreground min-w-0 font-semibold break-words">
                       {row.roundLabel}
                     </span>
-                    <span className="text-dashboard-foreground min-w-0 break-words">
-                      {row.questionLabel}
-                    </span>
+                    {showQuestionColumn && (
+                      <span className="text-dashboard-foreground min-w-0 break-words">
+                        {row.questionLabel}
+                      </span>
+                    )}
                     <span className="min-w-0">
                       {row.feedbackHref ? (
-                        <span className="text-dashboard-muted break-words">
-                          {row.focusLabel}
-                        </span>
+                        <div className="space-y-2">
+                          <DashboardFeedbackStatus
+                            state="ready"
+                            label="Feedback ready"
+                          />
+                          <span className="text-dashboard-muted block break-words">
+                            Focus: {row.focusLabel}
+                          </span>
+                        </div>
                       ) : (
                         <DashboardFeedbackStatus
                           state={row.feedbackState}
@@ -194,7 +244,9 @@ export const HistorySection = memo(function HistorySection({
                           </Link>
                         </span>
                       ) : (
-                        <span className="text-dashboard-muted">—</span>
+                        <span className="text-dashboard-muted text-sm">
+                          {row.scoreLabel}
+                        </span>
                       )}
                     </span>
                   </div>
@@ -221,15 +273,18 @@ export const HistorySection = memo(function HistorySection({
           aria-labelledby="history-patterns-title"
         >
           <div className="max-w-xl">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Scored feedback
-            </p>
             <h2
               id="history-patterns-title"
-              className="text-dashboard-foreground mt-2 text-lg font-semibold"
+              className="text-dashboard-foreground text-lg font-semibold"
             >
-              Patterns worth revisiting
+              {summary.patterns.some((pattern) => pattern.count > 1)
+                ? "Patterns worth revisiting"
+                : "Latest scored feedback"}
             </h2>
+            <p className="text-dashboard-muted mt-1 text-sm leading-6">
+              Repeated signals become patterns only after they appear across
+              multiple scored interviews.
+            </p>
           </div>
           <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {summary.patterns.length > 0 ? (
@@ -257,6 +312,8 @@ export const HistorySection = memo(function HistorySection({
 });
 
 function CompactHistoryRow({ row }: { row: HistorySummary["rows"][number] }) {
+  const showQuestion = row.questionLabel !== "—";
+
   return (
     <div className="grid min-w-0 gap-3 py-5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
       <div className="min-w-0">
@@ -266,36 +323,36 @@ function CompactHistoryRow({ row }: { row: HistorySummary["rows"][number] }) {
           </span>
           <span className="text-dashboard-muted">{row.dateLabel}</span>
         </div>
-        <p className="text-dashboard-foreground mt-2 leading-6 break-words">
-          {row.questionLabel}
-        </p>
-        {!row.feedbackHref && (
-          <p className="text-dashboard-muted mt-1 leading-6 break-words">
-            {row.focusLabel}
+        {showQuestion && (
+          <p className="text-dashboard-foreground mt-2 leading-6 break-words">
+            {row.questionLabel}
           </p>
         )}
-      </div>
-      <div className="flex min-w-0 items-center gap-3 sm:flex-col sm:items-end">
-        {row.feedbackHref ? (
-          <>
-            <span className="text-dashboard-muted">{row.focusLabel}</span>
-            <div className="flex items-center gap-3">
-              <span className="text-dashboard-foreground font-mono font-semibold">
-                {row.scoreLabel}
-              </span>
-              <Link
-                href={row.feedbackHref}
-                className="text-primary font-semibold hover:underline"
-              >
-                Review
-              </Link>
-            </div>
-          </>
-        ) : (
+        <div className="mt-3">
           <DashboardFeedbackStatus
             state={row.feedbackState}
             label={row.statusLabel}
           />
+        </div>
+        <p className="text-dashboard-muted mt-2 leading-6 break-words">
+          {row.feedbackHref ? `Focus: ${row.focusLabel}` : row.focusLabel}
+        </p>
+      </div>
+      <div className="flex min-w-0 items-center gap-3 sm:flex-col sm:items-end">
+        {row.feedbackHref ? (
+          <div className="flex items-center gap-3">
+            <span className="text-dashboard-foreground font-mono font-semibold">
+              {row.scoreLabel}
+            </span>
+            <Link
+              href={row.feedbackHref}
+              className="text-primary font-semibold hover:underline"
+            >
+              Review
+            </Link>
+          </div>
+        ) : (
+          <span className="text-dashboard-muted text-sm">{row.scoreLabel}</span>
         )}
       </div>
     </div>

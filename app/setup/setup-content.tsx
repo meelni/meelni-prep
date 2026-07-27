@@ -5,22 +5,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
-  ArrowLeft,
   ArrowRight,
-  CheckCircle2,
   CreditCard,
   Loader2,
-  Mic,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
   BILLING_CATALOG,
   buildInterviewRecommendation,
   buildFullConfig,
   DIFFICULTY_LEVELS,
+  getDefaultDuration,
   INTERVIEW_TYPE_LABELS,
   type DifficultyLevel,
   type MinimalInterviewConfig,
@@ -91,6 +90,7 @@ export function SetupContent() {
     fallbackRecommendation.difficulty
   );
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [showCustomization, setShowCustomization] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pageLoadTime = useRef(Date.now());
   const defaultRoundType = useRef<RoundType | null>(
@@ -493,55 +493,62 @@ export function SetupContent() {
     return null;
   }
 
+  const matchesRecommendation =
+    effectiveRoundType === recommendation.roundType &&
+    difficulty === recommendation.difficulty;
+  const selectedRoundLabel = effectiveRoundType
+    ? INTERVIEW_TYPE_LABELS[effectiveRoundType]
+    : "PM";
+  const selectedExperienceLabel = difficulty
+    ? DIFFICULTY_LEVELS[difficulty].label
+    : "Experience not selected";
+  const selectedDurationMinutes = getDefaultDuration(
+    effectiveRoundType ?? recommendation.roundType
+  );
+  const startDisabled =
+    isCreatingSession ||
+    !effectiveRoundType ||
+    !difficulty ||
+    (questionIdParam !== null && questionIntentState.status !== "ready");
+
   return (
-    <div
-      data-testid="new-interview-scroll-container"
-      className="bg-dashboard-panel text-dashboard-foreground h-full min-h-0 overflow-y-auto overscroll-contain"
+    <DashboardPage
+      label="New Mock Interview"
+      bodyClassName="overflow-y-auto px-0 py-0"
     >
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-5 sm:p-8">
+      <div
+        data-testid="new-interview-scroll-container"
+        className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-5 sm:p-8"
+      >
         <motion.div
           initial={shouldReduceMotion ? false : "initial"}
           animate="animate"
           variants={staggerContainer}
-          className="space-y-6"
+          className="space-y-5"
         >
           <motion.div
             variants={fadeInUp}
-            className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
           >
-            <div className="space-y-2">
-              <Link
-                href={launchContext.returnTo ?? "/dashboard"}
-                className="text-dashboard-muted hover:text-dashboard-foreground inline-flex items-center gap-2 text-sm transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                {launchContext.returnTo ? "Back" : "Dashboard"}
-              </Link>
-              <div>
-                <h1 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight">
-                  New Mock Interview
-                </h1>
-                <p className="text-dashboard-muted text-sm">
-                  Choose the interview you want to practice, then enter the
-                  room.
-                </p>
-              </div>
+            <div>
+              <h2 className="font-display text-dashboard-foreground text-3xl font-light tracking-tight">
+                Ready when you are
+              </h2>
+              <p className="text-dashboard-muted mt-2 max-w-2xl text-sm leading-6">
+                Start with the recommended setup, or change it before entering
+                the interview room.
+              </p>
             </div>
             {creditBalance && (
-              <div className="flex flex-col items-start gap-2 sm:items-end">
-                <StatusPill tone="muted" className="w-fit">
-                  <CreditCard className="h-3.5 w-3.5" />
-                  {creditBalance.availableCredits}{" "}
-                  {creditBalance.availableCredits === 1 ? "credit" : "credits"}
-                </StatusPill>
-                {creditBalance.trialAvailable && (
-                  <p className="text-dashboard-muted max-w-xs text-left text-xs sm:text-right">
-                    {BILLING_CATALOG.trial.includedCredits} trial credits
-                    available. The 7-day trial starts with your first mock
-                    interview.
-                  </p>
-                )}
-              </div>
+              <StatusPill
+                tone="muted"
+                className="border-dashboard-panel-border bg-dashboard-muted/10 text-dashboard-foreground w-fit shrink-0"
+              >
+                <CreditCard className="h-3.5 w-3.5" aria-hidden="true" />
+                {creditBalance.availableCredits}{" "}
+                {creditBalance.availableCredits === 1 ? "credit" : "credits"}{" "}
+                available
+              </StatusPill>
             )}
           </motion.div>
 
@@ -572,200 +579,190 @@ export function SetupContent() {
 
           <motion.section
             variants={fadeInUp}
-            className="border-primary/25 bg-primary/10 rounded-lg border p-5 shadow-[0_2px_12px_rgb(0_0_0_/_0.2)]"
+            className="border-dashboard-accent/30 bg-dashboard-accent/10 rounded-lg border p-5 sm:p-6"
           >
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill
-                    tone="primary"
-                    className="text-dashboard-foreground"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Recommended
-                  </StatusPill>
-                  <StatusPill
-                    tone="muted"
-                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground"
-                  >
-                    {recommendation.durationMinutes} min
-                  </StatusPill>
-                  <StatusPill
-                    tone="muted"
-                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground"
-                  >
-                    {recommendation.creditCost} credit
-                  </StatusPill>
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-dashboard-foreground text-xl font-semibold">
-                    {INTERVIEW_TYPE_LABELS[recommendation.roundType]} mock
-                    interview for{" "}
-                    {DIFFICULTY_LEVELS[recommendation.difficulty].label}
-                  </h2>
-                  <p className="text-dashboard-muted max-w-2xl text-sm leading-6">
-                    {recommendation.rationale}
-                  </p>
-                </div>
-                {(launchContext.focus || launchContext.company) && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {launchContext.company && (
-                      <StatusPill tone="muted">
-                        Company: {launchContext.company}
-                      </StatusPill>
-                    )}
-                    {launchContext.focus && (
-                      <StatusPill tone="muted">
-                        Focus: {launchContext.focus}
-                      </StatusPill>
-                    )}
-                  </div>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setRoundType(recommendation.roundType);
-                  setDifficulty(recommendation.difficulty);
-                  const properties = {
-                    recommended_round_type: recommendation.roundType,
-                    recommended_difficulty: recommendation.difficulty,
-                    recommendation_source: recommendation.source,
-                    ...analyticsLaunchContext,
-                  };
-                  trackInterviewLaunchEvent(
-                    "new_interview_recommendation_accepted",
-                    properties
-                  );
-                }}
-                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground w-full shrink-0 bg-transparent sm:w-fit"
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Use recommendation
-              </Button>
-            </div>
-          </motion.section>
-
-          <motion.section variants={fadeInUp} className="space-y-5">
-            <div className="space-y-1">
-              <h2 className="text-dashboard-foreground text-base font-semibold">
-                Customize
-              </h2>
-              <p className="text-dashboard-muted text-sm">
-                {selectedQuestionRoundType
-                  ? "The selected question sets the interview round. You can still change the seniority bar."
-                  : "Change the round or seniority bar before starting."}
-              </p>
-            </div>
-
-            {isLoadingCredits ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-muted h-32 animate-pulse rounded-lg"
-                  />
-                ))}
-              </div>
-            ) : (
-              <RoundSelector
-                selected={effectiveRoundType}
-                disabled={Boolean(selectedQuestionRoundType)}
-                onSelect={(type) => {
-                  if (defaultRoundType.current === null) {
-                    defaultRoundType.current = type;
-                  }
-                  const properties = {
-                    field: "round_type",
-                    value: type,
-                    recommended_round_type: recommendation.roundType,
-                    ...analyticsLaunchContext,
-                  } as const;
-                  trackInterviewLaunchEvent(
-                    "new_interview_recommendation_changed",
-                    properties
-                  );
-                  if (!selectedQuestionRoundType) setRoundType(type);
-                }}
-                lockedTypes={[]}
-              />
-            )}
-
-            <DifficultySelector
-              selected={difficulty}
-              onSelect={(level) => {
-                if (defaultDifficulty.current === null) {
-                  defaultDifficulty.current = level;
-                }
-
-                analytics.track("skill_level_selected", {
-                  skill_level: level,
-                  interview_type: effectiveRoundType || "unknown",
-                  is_default_selection: defaultDifficulty.current === level,
-                });
-                const properties = {
-                  field: "difficulty",
-                  value: level,
-                  recommended_difficulty: recommendation.difficulty,
-                  ...analyticsLaunchContext,
-                } as const;
-                trackInterviewLaunchEvent(
-                  "new_interview_recommendation_changed",
-                  properties
-                );
-
-                setDifficulty(level);
-              }}
-            />
-          </motion.section>
-
-          <motion.section
-            aria-label="Interview summary"
-            variants={fadeInUp}
-            className="border-dashboard-panel-border bg-dashboard-panel -mx-5 border-t p-5 sm:-mx-8 sm:px-8"
-          >
-            <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                <div className="text-dashboard-muted flex items-center gap-3 text-sm">
-                  <Mic className="text-primary h-4 w-4" aria-hidden="true" />
-                  <span>
-                    {effectiveRoundType &&
-                      INTERVIEW_TYPE_LABELS[effectiveRoundType]}{" "}
-                    · {difficulty && DIFFICULTY_LEVELS[difficulty].label} ·
-                    hints off
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                {matchesRecommendation && (
+                  <span className="text-dashboard-accent inline-flex items-center gap-1.5 font-semibold">
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    Recommended setup
                   </span>
+                )}
+                {!matchesRecommendation && (
+                  <span className="text-dashboard-foreground font-semibold">
+                    Your setup
+                  </span>
+                )}
+                <span className="text-dashboard-foreground/75">
+                  {selectedDurationMinutes} min · 1 credit
+                </span>
+              </div>
+              <h2 className="text-dashboard-foreground mt-3 text-2xl font-semibold">
+                {selectedRoundLabel} · {selectedExperienceLabel}
+              </h2>
+              <p className="text-dashboard-foreground/75 mt-2 max-w-2xl text-sm leading-6">
+                {matchesRecommendation
+                  ? recommendation.rationale
+                  : "Your selected interview round and experience level will be used when the room starts."}
+              </p>
+              {(launchContext.focus || launchContext.company) && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {launchContext.company && (
+                    <StatusPill tone="muted">
+                      Company: {launchContext.company}
+                    </StatusPill>
+                  )}
+                  {launchContext.focus && (
+                    <StatusPill tone="muted">
+                      Focus: {launchContext.focus}
+                    </StatusPill>
+                  )}
                 </div>
+              )}
+              <div className="mt-5">
                 <InterviewDataDisclosure />
               </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Button
                 ref={startInterviewButtonRef}
                 onClick={handleStartInterview}
-                disabled={
-                  isCreatingSession ||
-                  !effectiveRoundType ||
-                  !difficulty ||
-                  (questionIdParam !== null &&
-                    questionIntentState.status !== "ready")
-                }
-                className="text-primary-foreground min-h-11 w-full sm:w-auto"
+                disabled={startDisabled}
+                className="text-primary-foreground min-h-11 w-full gap-2 sm:w-auto"
               >
                 {isCreatingSession ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
                     Starting mock interview...
                   </>
                 ) : (
                   <>
                     Start mock interview
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </>
                 )}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                aria-expanded={showCustomization}
+                aria-controls="interview-customization"
+                onClick={() => setShowCustomization((current) => !current)}
+                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground min-h-11 w-full gap-2 bg-transparent sm:w-auto"
+              >
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                {showCustomization ? "Hide setup options" : "Change setup"}
+              </Button>
             </div>
+            {creditBalance?.trialAvailable && (
+              <p className="text-dashboard-muted mt-4 text-xs leading-5">
+                Your {BILLING_CATALOG.trial.includedCredits}-credit trial starts
+                with this first mock interview.
+              </p>
+            )}
+            {isLoadingCredits && (
+              <p className="text-dashboard-muted mt-4 text-xs" role="status">
+                Checking interview credits…
+              </p>
+            )}
           </motion.section>
+
+          <AnimatePresence initial={false}>
+            {showCustomization && (
+              <motion.section
+                id="interview-customization"
+                initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={
+                  shouldReduceMotion ? undefined : { opacity: 0, height: 0 }
+                }
+                transition={{ duration: 0.2 }}
+                className="border-dashboard-panel-border space-y-6 overflow-hidden border-t pt-6"
+              >
+                <div>
+                  <h2 className="text-dashboard-foreground text-lg font-semibold">
+                    Setup options
+                  </h2>
+                  <p className="text-dashboard-muted mt-1 text-sm leading-6">
+                    {selectedQuestionRoundType
+                      ? "The selected question fixes the interview round. You can still change the experience level."
+                      : "Choose a PM interview round and the experience level the interviewer should calibrate for."}
+                  </p>
+                </div>
+                <RoundSelector
+                  selected={effectiveRoundType}
+                  disabled={Boolean(selectedQuestionRoundType)}
+                  onSelect={(type) => {
+                    if (defaultRoundType.current === null) {
+                      defaultRoundType.current = type;
+                    }
+                    const properties = {
+                      field: "round_type",
+                      value: type,
+                      recommended_round_type: recommendation.roundType,
+                      ...analyticsLaunchContext,
+                    } as const;
+                    trackInterviewLaunchEvent(
+                      "new_interview_recommendation_changed",
+                      properties
+                    );
+                    if (!selectedQuestionRoundType) setRoundType(type);
+                  }}
+                  lockedTypes={[]}
+                />
+
+                <DifficultySelector
+                  selected={difficulty}
+                  onSelect={(level) => {
+                    if (defaultDifficulty.current === null) {
+                      defaultDifficulty.current = level;
+                    }
+
+                    analytics.track("skill_level_selected", {
+                      skill_level: level,
+                      interview_type: effectiveRoundType || "unknown",
+                      is_default_selection: defaultDifficulty.current === level,
+                    });
+                    const properties = {
+                      field: "difficulty",
+                      value: level,
+                      recommended_difficulty: recommendation.difficulty,
+                      ...analyticsLaunchContext,
+                    } as const;
+                    trackInterviewLaunchEvent(
+                      "new_interview_recommendation_changed",
+                      properties
+                    );
+
+                    setDifficulty(level);
+                  }}
+                />
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          {!matchesRecommendation && (
+            <motion.div variants={fadeInUp}>
+              <Button
+                type="button"
+                variant="link"
+                className="text-dashboard-accent h-auto min-h-11 px-0"
+                onClick={() => {
+                  setRoundType(recommendation.roundType);
+                  setDifficulty(recommendation.difficulty);
+                }}
+              >
+                Restore recommended setup
+              </Button>
+            </motion.div>
+          )}
         </motion.div>
-      </main>
+      </div>
 
       {/* Tier Upgrade Modal */}
       {tierUpgradeInfo && (
@@ -790,7 +787,7 @@ export function SetupContent() {
           returnFocusRef={startInterviewButtonRef}
         />
       )}
-    </div>
+    </DashboardPage>
   );
 }
 

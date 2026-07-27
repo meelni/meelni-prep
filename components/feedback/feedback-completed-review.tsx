@@ -30,7 +30,7 @@ export function CompletedV2Review({
   return (
     <FeedbackReviewShell
       title="Interview feedback"
-      description="PM-focused feedback tied to your recorded answers, with a specific action for your next practice."
+      description="See the result, supporting evidence, and one focused next practice."
       action={<FeedbackDashboardLink />}
     >
       <div className="space-y-8">
@@ -38,7 +38,9 @@ export function CompletedV2Review({
           tone={partial ? "warning" : "success"}
           className={!partial ? "text-foreground" : undefined}
         >
-          {partial ? "Partial recorded interview" : "Full recorded interview"}
+          {partial
+            ? "Based on part of the interview"
+            : "Based on the complete interview"}
         </StatusPill>
 
         {partial && (
@@ -54,15 +56,13 @@ export function CompletedV2Review({
           </FeedbackSectionCard>
         )}
 
+        <FeedbackScoreSummary scores={feedback.scores} />
+
         <FeedbackSectionCard title="Summary">
-          <p className="text-foreground text-lg leading-8 wrap-anywhere">
+          <p className="text-foreground text-base leading-7 wrap-anywhere">
             {feedback.summary}
           </p>
         </FeedbackSectionCard>
-
-        <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
-
-        <FeedbackScoreSummary scores={feedback.scores} />
 
         <FeedbackSectionCard
           title="What worked"
@@ -93,6 +93,8 @@ export function CompletedV2Review({
             />
           ))}
         </FeedbackSectionCard>
+
+        <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
 
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
@@ -127,12 +129,12 @@ export function CompletedLegacyReview({
             as transcript-grounded conclusions about this interview.
           </p>
         </FeedbackSectionCard>
+        <FeedbackScoreSummary scores={feedback.scores} historical />
         <FeedbackSectionCard title="Historical summary">
           <p className="text-foreground leading-7 wrap-anywhere">
             {feedback.summary}
           </p>
         </FeedbackSectionCard>
-        <FeedbackScoreSummary scores={feedback.scores} historical />
         <HistoricalNotes title="What worked" notes={feedback.strengths} />
         <HistoricalNotes
           title="What to revisit"

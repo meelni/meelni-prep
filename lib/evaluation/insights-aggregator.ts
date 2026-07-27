@@ -51,6 +51,13 @@ export interface UserInsights {
     communication: number;
     leadership: number;
   };
+  competencySampleSizes?: {
+    structure: number;
+    clarity: number;
+    insight: number;
+    communication: number;
+    leadership: number;
+  };
 }
 
 /**
@@ -207,6 +214,9 @@ export async function aggregateUserInsights(
   const competencyBreakdown = computeAverageScores(
     completedSessions.map((s) => s.feedback!)
   );
+  const competencySampleSizes = computeScoreSampleSizes(
+    completedSessions.map((s) => s.feedback!)
+  );
 
   return {
     userId,
@@ -215,6 +225,7 @@ export async function aggregateUserInsights(
     byDifficulty,
     trends,
     competencyBreakdown,
+    competencySampleSizes,
   };
 }
 
@@ -266,6 +277,27 @@ export function computeAverageScores(
     insight: average(extractScores("insightScore")),
     communication: average(extractScores("communicationScore")),
     leadership: average(extractScores("leadershipScore")),
+  };
+}
+
+export function computeScoreSampleSizes(
+  feedbackRecords: {
+    structureScore: number | null;
+    clarityScore: number | null;
+    insightScore: number | null;
+    communicationScore: number | null;
+    leadershipScore: number | null;
+  }[]
+) {
+  const count = (field: keyof (typeof feedbackRecords)[number]) =>
+    feedbackRecords.filter((feedback) => feedback[field] !== null).length;
+
+  return {
+    structure: count("structureScore"),
+    clarity: count("clarityScore"),
+    insight: count("insightScore"),
+    communication: count("communicationScore"),
+    leadership: count("leadershipScore"),
   };
 }
 
@@ -437,6 +469,13 @@ function getEmptyInsights(userId: string): UserInsights {
       velocity: 0,
     },
     competencyBreakdown: {
+      structure: 0,
+      clarity: 0,
+      insight: 0,
+      communication: 0,
+      leadership: 0,
+    },
+    competencySampleSizes: {
       structure: 0,
       clarity: 0,
       insight: 0,

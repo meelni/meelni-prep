@@ -117,7 +117,7 @@ const feedbackReviewShellMaxWidthClasses = {
 
 function FeedbackReviewShell({
   className,
-  label = "Interview Feedback",
+  label,
   title,
   description,
   action,
@@ -138,16 +138,20 @@ function FeedbackReviewShell({
     >
       <main className="min-w-0 flex-1 p-2 sm:p-3">
         <section className="border-dashboard-panel-border bg-dashboard-panel flex min-h-[calc(100dvh-1rem)] min-w-0 flex-col rounded-[10px] border sm:min-h-[calc(100dvh-1.5rem)]">
-          <header className="border-dashboard-panel-border flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-transparent px-4 py-2 sm:px-8">
-            <p className="text-dashboard-muted min-w-0 text-xs font-bold tracking-[0.22em] break-words uppercase sm:tracking-[0.28em]">
-              {label}
-            </p>
-            {action && (
-              <div className="max-w-full min-w-0 [&>*]:h-auto [&>*]:min-h-11 [&>*]:max-w-full [&>*]:min-w-0 [&>*]:[overflow-wrap:anywhere] [&>*]:whitespace-normal">
-                {action}
-              </div>
-            )}
-          </header>
+          {(label || action) && (
+            <header className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-2 bg-transparent px-4 pt-2 sm:px-8">
+              {label && (
+                <p className="text-dashboard-muted min-w-0 text-sm font-semibold break-words">
+                  {label}
+                </p>
+              )}
+              {action && (
+                <div className="ml-auto max-w-full min-w-0 [&>*]:h-auto [&>*]:min-h-11 [&>*]:max-w-full [&>*]:min-w-0 [&>*]:[overflow-wrap:anywhere] [&>*]:whitespace-normal">
+                  {action}
+                </div>
+              )}
+            </header>
+          )}
           <div
             className={cn(
               "min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-6",

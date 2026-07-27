@@ -66,8 +66,6 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
     ? buildAnalyticsEvidence({
         focusAreaLabel: practiceSummary.focusArea.label,
         focusAreaScore: practiceSummary.focusArea.score,
-        focusAreaDescription: practiceSummary.focusArea.description,
-        progressDeltaLabel: practiceSummary.progress.deltaLabel,
       })
     : [];
 
@@ -123,7 +121,8 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
               <span className="text-dashboard-muted text-base">/10</span>
             </p>
             <p className="text-dashboard-muted mt-1 text-xs">
-              {completedSessions} scored interviews
+              Latest {Math.min(completedSessions, 5)} of {completedSessions}{" "}
+              scored interviews
             </p>
           </div>
           <div className="max-w-3xl">
@@ -141,38 +140,57 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
           <Button asChild className="lg:mb-0.5">
             <Link href={practiceSummary.recommendation.href}>
               {practiceSummary.focusArea
-                ? `Practice ${practiceSummary.focusArea.label.toLowerCase()}`
+                ? "Start focused interview"
                 : "Start mock interview"}
             </Link>
           </Button>
         </section>
 
-        <div className="grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div
+          className={
+            evidence.length > 0
+              ? "grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_300px]"
+              : "py-6"
+          }
+        >
           <section className="min-w-0 space-y-7">
             <div>
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Observed dimensions
-              </p>
+              <h2 className="text-dashboard-foreground text-base font-semibold">
+                All-time dimension averages
+              </h2>
               <p className="text-dashboard-muted mt-2 text-sm leading-6">
-                Scores appear only where completed feedback includes that
-                dimension.
+                Each average uses only completed feedback that contains that
+                dimension. Sample sizes can differ.
               </p>
               <div className="mt-5 space-y-4">
                 {competencies.map((competency) => (
                   <div key={competency.label} className="min-w-0">
-                    <div className="flex items-baseline justify-between gap-4">
-                      <span className="text-dashboard-foreground text-sm font-semibold">
-                        {competency.label}
-                      </span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <span className="text-dashboard-foreground text-sm font-semibold">
+                          {competency.label}
+                        </span>
+                        <span className="text-dashboard-muted mt-0.5 block text-xs">
+                          {competency.sampleSize === 0
+                            ? "No scored feedback"
+                            : `${competency.sampleSize} scored review${competency.sampleSize === 1 ? "" : "s"}`}
+                          {practiceSummary.focusArea?.label ===
+                            competency.label && " · Current focus"}
+                        </span>
+                      </div>
                       <span className="text-dashboard-foreground shrink-0 font-mono text-sm font-semibold">
                         {competency.value === null
                           ? "Needs data"
-                          : competency.value.toFixed(1)}
+                          : `${competency.value.toFixed(1)}/10`}
                       </span>
                     </div>
                     <span className="bg-dashboard-muted/15 mt-2 block h-2 overflow-hidden rounded-full">
                       <span
-                        className="bg-primary block h-full rounded-full"
+                        className={
+                          practiceSummary.focusArea?.label === competency.label
+                            ? "bg-warning block h-full rounded-full"
+                            : "bg-dashboard-accent block h-full rounded-full"
+                        }
                         style={{
                           width:
                             competency.value === null
@@ -188,40 +206,35 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
 
             <div className="border-dashboard-panel-border border-t pt-7">
               <div className="flex items-center justify-between gap-4">
-                <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                  Score trend
-                </p>
-                <span className="text-primary text-sm font-semibold">
+                <h2 className="text-dashboard-foreground text-base font-semibold">
+                  Recent score trend
+                </h2>
+                <span className="text-dashboard-accent text-sm font-semibold">
                   {practiceSummary.progress.deltaLabel}
                 </span>
               </div>
               <ProgressSignalBars
                 bars={practiceSummary.progressSignal.bars}
-                className="mt-6 h-40 gap-4"
+                className="mt-5 h-44 gap-2 sm:gap-4"
                 showLabels
               />
             </div>
           </section>
 
-          <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              Why this focus
-            </p>
-            <div className="mt-5 space-y-5">
-              {evidence.length > 0 ? (
-                evidence.map((item) => (
+          {evidence.length > 0 && (
+            <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+              <h2 className="text-dashboard-foreground text-base font-semibold">
+                Latest evidence
+              </h2>
+              <div className="mt-5 space-y-5">
+                {evidence.map((item) => (
                   <Evidence key={item.title} title={item.title}>
                     {item.description}
                   </Evidence>
-                ))
-              ) : (
-                <p className="text-dashboard-muted text-sm leading-6">
-                  Evidence appears once recent scored interviews include
-                  dimension feedback.
-                </p>
-              )}
-            </div>
-          </aside>
+                ))}
+              </div>
+            </aside>
+          )}
         </div>
       </div>
     </DashboardPage>

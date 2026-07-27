@@ -70,3 +70,13 @@ export function getDashboardActiveSectionFromPath(
   if (path.startsWith("/dashboard/settings")) return "settings";
   return null;
 }
+
+export function getDashboardSectionLabel(
+  activeSection: DashboardActiveSection
+) {
+  if (activeSection === "new-interview") return "New Mock Interview";
+  return (
+    DASHBOARD_NAVIGATION_ITEMS.find((item) => item.id === activeSection)
+      ?.label || "Dashboard"
+  );
+}

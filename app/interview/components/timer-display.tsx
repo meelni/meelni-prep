@@ -65,7 +65,11 @@ export function TimerDisplay({
           ? "Interview time remaining unavailable"
           : `${formatInterviewTime(remainingSeconds)} remaining in interview`
       }
-      className="bg-muted/50 border-border/50 flex items-center gap-2 rounded-lg border px-3 py-1.5"
+      className={
+        isUrgent
+          ? "border-warning/30 bg-warning/10 flex items-center gap-2 rounded-lg border px-3 py-1.5"
+          : "text-muted-foreground flex items-center gap-2 rounded-lg px-2 py-1"
+      }
     >
       <Clock
         className={
