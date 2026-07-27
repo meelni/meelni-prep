@@ -111,7 +111,11 @@ export function DashboardLayout({
       {/* Preserve the shell overlay token without blocking mobile content. */}
       <div className="bg-overlay/50 fixed inset-0 z-40 hidden md:hidden" />
 
-      <DashboardMobileNavigation activeSection={activeSection} />
+      <DashboardMobileNavigation
+        activeSection={activeSection}
+        user={user}
+        onSignOut={onSignOut}
+      />
 
       <main className="bg-dashboard-canvas min-h-0 min-w-0 flex-1 overflow-hidden p-3">
         <section className={DASHBOARD_CONTENT_PANEL_CLASS_NAME}>
