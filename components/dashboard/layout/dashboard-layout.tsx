@@ -14,9 +14,6 @@ import { Sidebar } from "./sidebar";
 interface DashboardLayoutProps {
   children: React.ReactNode;
   activeSection: DashboardActiveSection;
-  totalSessions?: number;
-  totalMinutes?: number;
-  avgScore?: number;
   user?: DashboardUser | null;
   onSignOut?: () => void;
 }
@@ -57,9 +54,6 @@ export const DASHBOARD_MOBILE_NAV_CLASS_NAME =
 export function DashboardLayout({
   children,
   activeSection,
-  totalSessions,
-  totalMinutes,
-  avgScore,
   user,
   onSignOut,
 }: DashboardLayoutProps) {
@@ -121,9 +115,6 @@ export function DashboardLayout({
           activeSection={activeSection}
           collapsed={sidebarCollapsed}
           setCollapsed={setSidebarCollapsed}
-          totalSessions={totalSessions}
-          totalMinutes={totalMinutes}
-          avgScore={avgScore}
           user={user}
           onSignOut={onSignOut}
         />

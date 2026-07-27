@@ -5,12 +5,7 @@ import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout"
 
 export function DashboardLoading() {
   return (
-    <DashboardLayout
-      activeSection="overview"
-      totalSessions={0}
-      totalMinutes={0}
-      avgScore={0}
-    >
+    <DashboardLayout activeSection="overview">
       <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         {/* Stats Cards Skeleton */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

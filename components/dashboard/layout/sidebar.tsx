@@ -16,9 +16,6 @@ interface SidebarProps {
   activeSection: DashboardActiveSection;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
-  totalSessions?: number;
-  totalMinutes?: number;
-  avgScore?: number;
   user?: DashboardUser | null;
   onSignOut?: () => void;
 }
