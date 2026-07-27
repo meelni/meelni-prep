@@ -14,22 +14,42 @@ import {
   installPublicNetworkFixtures,
 } from "../support/public-fixtures";
 
-async function assertMobileNavigationPopupContract({
+async function assertMobileNavigationDrawerContract({
+  actionName,
+  currentDestination,
   page,
   surfaceId,
   testInfo,
+  triggerName,
 }: {
+  actionName: string;
+  currentDestination?: string;
   page: Parameters<typeof assertCriticalAccessibility>[0];
-  surfaceId: "landing" | "pricing";
+  surfaceId: "dashboard" | "landing" | "pricing";
   testInfo: Parameters<typeof assertCriticalAccessibility>[1];
+  triggerName: string;
 }) {
-  const trigger = page.locator('button[aria-label="Open navigation menu"]');
+  const trigger = page.locator(`button[aria-label="${triggerName}"]`);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await expect(trigger).not.toHaveAttribute("aria-controls");
 
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "Meelni" });
   await expect(dialog).toBeVisible();
+  await dialog.evaluate(async (element) => {
+    await Promise.allSettled(
+      element
+        .getAnimations({ subtree: true })
+        .map((animation) => animation.finished)
+    );
+  });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  const viewport = page.viewportSize();
+  if (viewport) {
+    await page.mouse.move(viewport.width - 1, viewport.height - 1);
+  }
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   const [controlledId, dialogId] = await Promise.all([
     trigger.getAttribute("aria-controls"),
@@ -38,41 +58,35 @@ async function assertMobileNavigationPopupContract({
   expect(controlledId).toBeTruthy();
   expect(controlledId).toBe(dialogId);
 
-  const overscroll = await dialog.evaluate((element) => {
-    const fill = document.querySelector("[data-meelni-drawer-overscroll-fill]");
-    if (!(fill instanceof HTMLElement)) return null;
+  const geometry = await dialog.evaluate((element) => {
     const dialogRect = element.getBoundingClientRect();
-    const fillRect = fill.getBoundingClientRect();
     const dialogStyle = getComputedStyle(element);
-    const fillStyle = getComputedStyle(fill);
-    const pseudo = getComputedStyle(element, "::after");
+
     return {
-      fillBackground: fillStyle.backgroundColor,
-      fillHidden: fill.getAttribute("aria-hidden"),
-      fillPointerEvents: fillStyle.pointerEvents,
-      fillTop: fillRect.top,
-      fillHeight: fillRect.height,
-      pseudoContent: pseudo.content,
-      pseudoDisplay: pseudo.display,
-      surfaceBackground: dialogStyle.backgroundColor,
-      surfaceBottom: dialogRect.bottom,
-      surfaceHeight: dialogRect.height,
-      surfaceWidth: dialogRect.width,
-      fillWidth: fillRect.width,
+      bottom: dialogRect.bottom,
+      height: dialogRect.height,
+      left: dialogRect.left,
+      position: dialogStyle.position,
+      right: dialogRect.right,
       viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      width: dialogRect.width,
     };
   });
-  expect(overscroll).not.toBeNull();
-  expect(overscroll?.pseudoContent).toBe("none");
-  expect(overscroll?.pseudoDisplay).toBe("none");
-  expect(overscroll?.fillHidden).toBe("true");
-  expect(overscroll?.fillPointerEvents).toBe("none");
-  expect(overscroll?.fillBackground).toBe(overscroll?.surfaceBackground);
-  expect(overscroll?.fillTop).toBeCloseTo(overscroll?.viewportHeight ?? 0, 1);
-  expect(overscroll?.fillHeight ?? 0).toBeGreaterThan(
-    (overscroll?.surfaceHeight ?? 0) * 2
-  );
-  expect(overscroll?.fillWidth).toBeCloseTo(overscroll?.surfaceWidth ?? 0, 1);
+  expect(geometry.position).toBe("fixed");
+  expect(geometry.left).toBeCloseTo(0, 1);
+  expect(geometry.bottom).toBeCloseTo(geometry.viewportHeight, 1);
+  expect(geometry.height).toBeCloseTo(geometry.viewportHeight, 1);
+  expect(geometry.width).toBeLessThan(geometry.viewportWidth);
+  expect(geometry.width).toBeLessThanOrEqual(352);
+  expect(geometry.right).toBeCloseTo(geometry.width, 1);
+
+  await expect(dialog.getByRole("link", { name: actionName })).toBeVisible();
+  if (currentDestination) {
+    await expect(
+      dialog.getByRole("link", { name: currentDestination })
+    ).toHaveAttribute("aria-current", "page");
+  }
 
   const accessibility = await assertPopupAccessibility(
     page,
@@ -259,10 +273,25 @@ for (const surface of BROWSER_QA_SURFACES) {
       testInfo.project.name.startsWith("mobile") &&
       (surface.id === "landing" || surface.id === "pricing")
     ) {
-      openPopupAccessibility = await assertMobileNavigationPopupContract({
+      openPopupAccessibility = await assertMobileNavigationDrawerContract({
+        actionName: "Start a mock interview",
         page,
         surfaceId: surface.id,
         testInfo,
+        triggerName: "Open navigation menu",
+      });
+    }
+    if (
+      testInfo.project.name.startsWith("mobile") &&
+      surface.id === "dashboard"
+    ) {
+      openPopupAccessibility = await assertMobileNavigationDrawerContract({
+        actionName: "New Mock Interview",
+        currentDestination: "Overview",
+        page,
+        surfaceId: "dashboard",
+        testInfo,
+        triggerName: "Open workspace navigation",
       });
     }
     if (surface.id === "explore") {

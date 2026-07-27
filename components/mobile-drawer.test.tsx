@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React, { type ComponentPropsWithoutRef, type ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,23 +29,25 @@ vi.mock("@/lib/feature-flags/public-activation-client", () => ({
 vi.mock("@/components/icons", () => ({
   Icons: { logo: () => <span aria-hidden="true" /> },
 }));
-vi.mock("@/components/ui/drawer", () => {
+vi.mock("@/components/ui/navigation-drawer", () => {
   function Container({ children }: { children: ReactNode }) {
     return <div>{children}</div>;
   }
 
-  function Trigger({ children, ...props }: ComponentPropsWithoutRef<"button">) {
-    return <button {...props}>{children}</button>;
+  function Passthrough({ children }: { children: ReactNode }) {
+    return children;
   }
 
   return {
-    Drawer: Container,
-    DrawerContent: Container,
-    DrawerDescription: Container,
-    DrawerFooter: Container,
-    DrawerHeader: Container,
-    DrawerTitle: Container,
-    DrawerTrigger: Trigger,
+    NavigationDrawer: Container,
+    NavigationDrawerBody: Container,
+    NavigationDrawerClose: Passthrough,
+    NavigationDrawerContent: Container,
+    NavigationDrawerDescription: Container,
+    NavigationDrawerFooter: Container,
+    NavigationDrawerHeader: Container,
+    NavigationDrawerTitle: Container,
+    NavigationDrawerTrigger: Passthrough,
   };
 });
 
@@ -64,6 +66,9 @@ describe("MobileDrawer account navigation", () => {
     expect(
       screen.getByRole("button", { name: "Open navigation menu" })
     ).not.toHaveAttribute("aria-controls");
+    expect(
+      screen.getByRole("button", { name: "Open navigation menu" })
+    ).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("link", { name: "Log In" })).toHaveAttribute(
       "href",
       "/auth/signin"
@@ -71,6 +76,10 @@ describe("MobileDrawer account navigation", () => {
     expect(
       screen.getByRole("button", { name: "Practice currently paused" })
     ).toBeDisabled();
+    expect(screen.getByRole("link", { name: /Contact/ })).toHaveAttribute(
+      "href",
+      "/contact"
+    );
   });
 
   it("keeps Dashboard access available to signed-in users while paused", () => {
