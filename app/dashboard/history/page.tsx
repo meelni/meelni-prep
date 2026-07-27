@@ -31,7 +31,13 @@ export default function HistoryPage() {
 
   // Error state
   if (error) {
-    return <DashboardError error={error as Error} reset={() => refetch()} />;
+    return (
+      <DashboardError
+        error={error as Error}
+        label="Interview History"
+        reset={() => refetch()}
+      />
+    );
   }
 
   // Extract data from React Query response

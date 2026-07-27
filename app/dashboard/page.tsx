@@ -32,7 +32,13 @@ export default function DashboardPage() {
 
   // Error state
   if (error) {
-    return <DashboardError error={error as Error} reset={() => refetch()} />;
+    return (
+      <DashboardError
+        error={error as Error}
+        label="Overview"
+        reset={() => refetch()}
+      />
+    );
   }
 
   // Extract data from React Query response
