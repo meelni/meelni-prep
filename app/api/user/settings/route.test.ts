@@ -76,6 +76,31 @@ describe("/api/user/settings privacy contract", () => {
     expect(dbMocks.insert).not.toHaveBeenCalled();
   });
 
+  it("treats malformed JSON as a client validation error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const request = new NextRequest("http://localhost/api/user/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: "{not-json",
+    });
+
+    const response = await PUT(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      error: "Validation Error",
+      message: "Invalid settings data",
+    });
+    expect(body.issues).toContainEqual({
+      code: "custom",
+      path: [],
+      message: "Request body must be valid JSON",
+    });
+    expect(dbMocks.insert).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it("redacts hostile database error names and messages from read logs", async () => {
     const sentinel = "PRIVATE_SETTINGS_SENTINEL_do_not_log";
     const databaseError = new Error(sentinel);
