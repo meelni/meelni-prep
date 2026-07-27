@@ -92,13 +92,13 @@ check("Root env", () => {
 
   if (missing.length > 0) {
     return fail(
-      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni\`, then \`npm run env:pull\`.`
+      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni --scope meelni\`, then \`npm run env:pull\`.`
     );
   }
 
   if (placeholder.length > 0) {
     return fail(
-      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni\`, then \`npm run env:pull\`.`
+      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni --scope meelni\`, then \`npm run env:pull\`.`
     );
   }
 
