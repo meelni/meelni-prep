@@ -46,7 +46,14 @@ test("practice summary recommends the weakest feedback dimension", () => {
   assert.equal(summary.prepPlan[1]?.title, "Metrics depth focused practice");
   assert.doesNotMatch(summary.prepPlan[1]?.title ?? "", /drill|workout/i);
   assert.equal(summary.recentInterviews[0]?.scoreLabel, "6.2");
-  assert.deepEqual(summary.progressSignal.bars, [{ score: 6.2, value: 62 }]);
+  assert.deepEqual(summary.progressSignal.bars, [
+    {
+      score: 6.2,
+      value: 62,
+      dateLabel: "Jul 5",
+      roundLabel: "Product Sense",
+    },
+  ]);
 });
 
 test("practice summary gives new users a first-interview path", () => {
@@ -123,8 +130,27 @@ test("history summary turns sessions into review rows and repeated patterns", ()
 
   assert.equal(summary.rows.length, 2);
   assert.equal(summary.rows[0]?.scoreLabel, "7.1");
+  assert.equal(summary.rows[0]?.questionLabel, "—");
   assert.equal(summary.patterns[0]?.label, "Metrics depth");
   assert.equal(summary.nextReview.countLabel, "2x");
+  assert.deepEqual(summary.filters, [
+    "All interviews",
+    "Product Sense",
+    "Execution",
+  ]);
+});
+
+test("history filters are derived from every round present in the log", () => {
+  const summary = buildHistorySummary([
+    {
+      ...baseSession,
+      id: "strategy-session",
+      roundType: "strategy",
+      feedback: null,
+    },
+  ]);
+
+  assert.deepEqual(summary.filters, ["All interviews", "Strategy"]);
 });
 
 test("progress bars contain observed scored interviews only", () => {
@@ -190,7 +216,7 @@ test("only completed, valid scores contribute to progress and weaknesses", () =>
       label: "Metrics depth",
       count: 1,
       description:
-        "Metrics depth was the lowest scored dimension in 1 completed interview.",
+        "Metrics depth was the lowest scored dimension in your latest scored feedback. Complete more interviews before treating it as a pattern.",
     },
   ]);
 
@@ -199,11 +225,21 @@ test("only completed, valid scores contribute to progress and weaknesses", () =>
     rowsById.get("dashboard-pending")?.focusLabel,
     "Feedback is being prepared"
   );
-  assert.equal(rowsById.get("dashboard-processing")?.scoreLabel, "In progress");
-  assert.equal(rowsById.get("dashboard-failed")?.scoreLabel, "Unavailable");
-  assert.equal(rowsById.get("dashboard-failed")?.statusLabel, "Unavailable");
-  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "No feedback");
-  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "No score");
+  assert.equal(
+    rowsById.get("dashboard-processing")?.scoreLabel,
+    "Not scored yet"
+  );
+  assert.equal(rowsById.get("dashboard-failed")?.scoreLabel, "Not scored");
+  assert.equal(
+    rowsById.get("dashboard-failed")?.statusLabel,
+    "Feedback failed"
+  );
+  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "Not scored");
+  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "Not scored");
+  assert.equal(
+    rowsById.get("dashboard-unscored")?.statusLabel,
+    "Feedback saved"
+  );
   assert.equal(
     rowsById.get("dashboard-skipped")?.feedbackState,
     "not-generated"

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { DashboardFeedbackStatus } from "@/components/dashboard/dashboard-feedback-status";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
-import { StatusPill } from "@/components/ui/app-surface";
 import {
   buildDashboardPracticeSummary,
   type DashboardPracticeSummary,
@@ -43,33 +42,20 @@ export const OverviewSection = memo(function OverviewSection({
   const summary = buildDashboardPracticeSummary(
     sessions as DashboardSessionInput[]
   );
-  const recommendationMetadata = [
-    summary.recommendation.roundType,
-    summary.recommendation.difficulty,
-    summary.recommendation.creditLabel,
-  ];
-
   return (
     <DashboardPage label="Overview">
       <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col">
-        <section className="border-dashboard-panel-border min-w-0 overflow-hidden border-b">
+        <section className="min-w-0 overflow-hidden">
           <div className="grid min-w-0 gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="min-w-0 space-y-5 py-6 pr-0 sm:py-8 lg:pr-8">
-              <div className="flex flex-wrap gap-2">
-                <StatusPill
-                  tone="primary"
-                  className="border-primary/30 bg-primary text-primary-foreground font-bold"
-                >
+              <div className="text-dashboard-muted flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span className="text-dashboard-accent font-semibold">
                   {summary.recommendation.eyebrow}
-                </StatusPill>
-                {recommendationMetadata.map((label) => (
-                  <StatusPill
-                    key={label}
-                    className="border-dashboard-panel-border bg-dashboard-muted/15 text-dashboard-foreground font-bold"
-                  >
-                    {label}
-                  </StatusPill>
-                ))}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{summary.recommendation.experienceLevel}</span>
+                <span aria-hidden="true">·</span>
+                <span>{summary.recommendation.creditLabel}</span>
               </div>
               <div className="max-w-3xl space-y-3">
                 <h2 className="font-display text-dashboard-foreground text-2xl leading-tight font-semibold sm:text-3xl">
@@ -105,18 +91,26 @@ export const OverviewSection = memo(function OverviewSection({
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
                 {summary.progress.label}
               </p>
-              <div className="text-dashboard-muted mt-5 font-mono text-5xl leading-none font-semibold sm:text-6xl">
+              <div className="text-dashboard-foreground mt-4 font-mono text-5xl leading-none font-semibold sm:text-6xl">
                 {summary.progress.score?.toFixed(1) ?? "—"}
                 <span className="text-dashboard-muted">/10</span>
               </div>
-              <div className="bg-dashboard-muted/15 mt-5 h-2 overflow-hidden rounded-full">
-                {summary.progress.score !== null && (
+              {summary.progress.state === "trend" &&
+                summary.progress.score !== null && (
                   <div
-                    className="bg-primary h-full rounded-full"
-                    style={{ width: `${summary.progress.score * 10}%` }}
-                  />
+                    className="bg-dashboard-muted/15 mt-5 h-2 overflow-hidden rounded-full"
+                    role="meter"
+                    aria-label="Recent interview average"
+                    aria-valuemin={0}
+                    aria-valuemax={10}
+                    aria-valuenow={summary.progress.score}
+                  >
+                    <div
+                      className="bg-dashboard-accent h-full rounded-full"
+                      style={{ width: `${summary.progress.score * 10}%` }}
+                    />
+                  </div>
                 )}
-              </div>
               <p className="text-dashboard-muted mt-5 text-sm leading-6">
                 {summary.progress.description}
               </p>
@@ -140,11 +134,11 @@ export const OverviewSection = memo(function OverviewSection({
           </div>
         </section>
 
-        <section className="py-6 sm:py-8">
-          <div className="border-dashboard-panel-border flex items-center justify-between gap-4 border-b pb-4">
-            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+        <section className="border-dashboard-panel-border mt-2 border-t py-6 sm:py-8">
+          <div className="flex items-center justify-between gap-4 pb-3">
+            <h2 className="text-dashboard-foreground text-base font-semibold">
               Recent interviews
-            </p>
+            </h2>
             <Button
               asChild
               variant="link"

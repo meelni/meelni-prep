@@ -203,6 +203,12 @@ for (const surface of BROWSER_QA_SURFACES) {
         page.getByRole("link", { name: "Blog" }).locator("..")
       ).toHaveCSS("opacity", "1");
     }
+    if (surface.id === "settings") {
+      const saveAction = page.getByRole("button", { name: "Save changes" });
+      await expect(saveAction).toBeDisabled();
+      await page.getByLabel("Display name").fill("Jordan Lee");
+      await expect(saveAction).toBeEnabled();
+    }
 
     const action = surface.primaryAction(page);
     const layout = await assertLayoutAndPrimaryAction({
@@ -214,58 +220,34 @@ for (const surface of BROWSER_QA_SURFACES) {
       surface.id === "new-interview" &&
       testInfo.project.name.startsWith("mobile")
     ) {
-      await page.evaluate(async () => {
-        window.scrollTo({ left: 0, top: 0, behavior: "auto" });
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        });
+      const startAction = page.getByRole("button", {
+        name: "Start mock interview",
       });
-      const selectedDifficulty = page.getByRole("button", {
-        name: /IC PM 2-4 years experience/,
-      });
-      const summary = page.getByRole("region", {
-        name: "Interview summary",
-      });
-      const [selectedDifficultyBox, summaryBox] = await Promise.all([
-        selectedDifficulty.boundingBox(),
-        summary.boundingBox(),
+      const changeSetup = page.getByRole("button", { name: "Change setup" });
+      const [startBox, changeBox, viewport] = await Promise.all([
+        startAction.boundingBox(),
+        changeSetup.boundingBox(),
+        page.viewportSize(),
       ]);
-      expect(selectedDifficultyBox).not.toBeNull();
-      expect(summaryBox).not.toBeNull();
-      expect(
-        summaryBox!.y,
-        "mobile interview summary must not overlap the selected difficulty"
-      ).toBeGreaterThanOrEqual(
-        selectedDifficultyBox!.y + selectedDifficultyBox!.height - 1
+      expect(startBox).not.toBeNull();
+      expect(changeBox).not.toBeNull();
+      expect(viewport).not.toBeNull();
+      expect(startBox!.y).toBeGreaterThanOrEqual(0);
+      expect(startBox!.y + startBox!.height).toBeLessThanOrEqual(
+        viewport!.height
       );
+      expect(
+        changeBox!.y,
+        "setup customization must follow the real start action"
+      ).toBeGreaterThanOrEqual(startBox!.y + startBox!.height - 1);
     }
     if (surface.id === "new-interview") {
-      const scrollContainer = page.getByTestId(
-        "new-interview-scroll-container"
-      );
-      const scrollEvidence = await scrollContainer.evaluate((element) => {
-        const container = element as HTMLElement;
-        container.scrollTop = 0;
-        const initialScrollTop = container.scrollTop;
-        container.scrollTop = Math.min(
-          320,
-          container.scrollHeight - container.clientHeight
-        );
-        return {
-          clientHeight: container.clientHeight,
-          initialScrollTop,
-          overflowY: getComputedStyle(container).overflowY,
-          scrollHeight: container.scrollHeight,
-          scrolledTop: container.scrollTop,
-        };
-      });
-      expect(scrollEvidence.overflowY).toBe("auto");
-      expect(scrollEvidence.scrollHeight).toBeGreaterThan(
-        scrollEvidence.clientHeight
-      );
-      expect(scrollEvidence.scrolledTop).toBeGreaterThan(
-        scrollEvidence.initialScrollTop
-      );
+      await expect(
+        page.getByText("Recommended setup", { exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Start mock interview" })
+      ).toBeVisible();
     }
     const accessibility = await assertCriticalAccessibility(
       page,
@@ -362,7 +344,7 @@ test("interview end dialog has a name and restores focus", async ({ page }) => {
     page,
   });
   await assertDialogFocusContract({
-    dialogName: "End Interview?",
+    dialogName: "End interview?",
     page,
     trigger: page.getByRole("button", { name: "End interview" }),
   });

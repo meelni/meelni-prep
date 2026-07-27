@@ -133,6 +133,11 @@ export const analyticsInsights = {
     clarity: 7.5,
     insight: 7,
   },
+  competencySampleSizes: {
+    structure: 3,
+    clarity: 3,
+    insight: 3,
+  },
 };
 
 const evidenceTurn = "browser-qa-turn-1";

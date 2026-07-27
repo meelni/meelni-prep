@@ -14,11 +14,9 @@ export function DashboardPage({
   bodyClassName,
 }: DashboardPageProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col text-dashboard-foreground">
-      <header className="flex h-10 shrink-0 items-center border-b border-dashboard-panel-border bg-transparent px-6 sm:px-8">
-        <p className="text-dashboard-muted text-xs font-bold tracking-[0.28em] uppercase">
-          {label}
-        </p>
+    <div className="text-dashboard-foreground flex h-full min-h-0 flex-col">
+      <header className="flex h-11 shrink-0 items-center bg-transparent px-6 sm:px-8">
+        <h1 className="text-dashboard-muted text-sm font-semibold">{label}</h1>
       </header>
       <div
         className={cn(

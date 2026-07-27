@@ -3,10 +3,7 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Mic2, RefreshCw, Target } from "lucide-react";
 
-import {
-  FeedbackActionItem,
-  FeedbackSectionCard,
-} from "./feedback-surface";
+import { FeedbackSectionCard } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/app-surface";
 import { Textarea } from "@/components/ui/textarea";
@@ -184,19 +181,36 @@ export function FocusedPracticeWorkspace({
       )}
 
       {!attempt && (
-        <ul className="space-y-3">
-          <FeedbackActionItem marker="1" tone="info" title="Use the feedback">
-            Pick up the most actionable feedback point from this interview.
-          </FeedbackActionItem>
-          <FeedbackActionItem marker="2" tone="info" title="Practice aloud">
-            Spend five minutes revising the answer as if an interviewer were
-            listening.
-          </FeedbackActionItem>
-          <FeedbackActionItem marker="3" tone="info" title="Compare honestly">
-            Check your revision against the original evidence and success
-            criterion. This is self-review, not a new evaluation.
-          </FeedbackActionItem>
-        </ul>
+        <ol className="divide-border divide-y">
+          {[
+            [
+              "Use the feedback",
+              "Pick the most actionable feedback point from this interview.",
+            ],
+            [
+              "Practice aloud",
+              "Spend five minutes revising the answer as if an interviewer were listening.",
+            ],
+            [
+              "Compare honestly",
+              "Check the revision against the original evidence. This is self-review, not a new score.",
+            ],
+          ].map(([title, description], index) => (
+            <li key={title} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="bg-info/10 text-info flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+                {index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="text-foreground block font-medium">
+                  {title}
+                </span>
+                <span className="text-muted-foreground mt-1 block text-sm leading-6">
+                  {description}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
       )}
 
       {attempt?.state === "in_progress" && (
@@ -218,9 +232,7 @@ export function FocusedPracticeWorkspace({
         />
       )}
 
-      {attempt?.state === "completed" && (
-        <CompletedAttempt attempt={attempt} />
-      )}
+      {attempt?.state === "completed" && <CompletedAttempt attempt={attempt} />}
     </FeedbackSectionCard>
   );
 }
@@ -313,8 +325,7 @@ function InProgressAttempt({
             count > responseLimit && "text-destructive"
           )}
         >
-          {count.toLocaleString()} / {responseLimit.toLocaleString()}{" "}
-          characters
+          {count.toLocaleString()} / {responseLimit.toLocaleString()} characters
         </p>
       </div>
 
@@ -390,7 +401,7 @@ function CompletedAttempt({
           <p className="text-muted-foreground mt-2 text-sm leading-6">
             {review.prompt}
           </p>
-          <blockquote className="text-foreground mt-4 whitespace-pre-wrap text-sm leading-6">
+          <blockquote className="text-foreground mt-4 text-sm leading-6 whitespace-pre-wrap">
             {review.response.text}
           </blockquote>
         </div>
@@ -403,8 +414,12 @@ function AttemptPlan({ attempt }: { attempt: FocusedPracticeAttemptView }) {
   return (
     <div className="border-border/70 bg-background/50 space-y-4 rounded-lg border p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusPill>{dimensionLabels[attempt.plan.source.focusDimension]}</StatusPill>
-        <StatusPill tone="muted">{attempt.plan.durationMinutes} minutes</StatusPill>
+        <StatusPill>
+          {dimensionLabels[attempt.plan.source.focusDimension]}
+        </StatusPill>
+        <StatusPill tone="muted">
+          {attempt.plan.durationMinutes} minutes
+        </StatusPill>
       </div>
       <div className="space-y-2">
         <h3 className="text-foreground text-lg font-semibold">
@@ -443,7 +458,10 @@ function AttemptPlan({ attempt }: { attempt: FocusedPracticeAttemptView }) {
         ))}
       </ol>
       <p className="border-info/20 bg-info/5 text-foreground rounded-lg border p-3 text-sm leading-6">
-        <Mic2 className="mr-2 inline h-4 w-4 align-text-bottom" aria-hidden="true" />
+        <Mic2
+          className="mr-2 inline h-4 w-4 align-text-bottom"
+          aria-hidden="true"
+        />
         Practice aloud first, then write the version you want to keep.
       </p>
     </div>

@@ -93,7 +93,11 @@ test("analytics consent actions preserve the 44px touch-target contract", async 
     );
   }
 
-  for (const label of ["Retry account sync", "Turn off", '"Allow"']) {
+  for (const label of [
+    "Retry account sync",
+    'aria-label="Analytics off"',
+    'aria-label="Turn optional analytics on"',
+  ]) {
     const labelIndex = settings.lastIndexOf(label);
     assert.notEqual(
       labelIndex,
@@ -106,6 +110,32 @@ test("analytics consent actions preserve the 44px touch-target contract", async 
       `${label} must retain a 44px minimum target`
     );
   }
+});
+
+test("dashboard action tokens keep outline buttons legible on dark surfaces", async () => {
+  const layout = await readFile(
+    "components/dashboard/layout/dashboard-layout.tsx",
+    "utf8"
+  );
+  const button = await readFile("components/ui/button.tsx", "utf8");
+
+  for (const token of [
+    "[--background:var(--dashboard-panel)]",
+    "[--foreground:var(--dashboard-foreground)]",
+    "[--input:var(--dashboard-panel-border)]",
+    "[--popover:var(--dashboard-panel)]",
+    "[--popover-foreground:var(--dashboard-foreground)]",
+  ]) {
+    assert.match(
+      layout,
+      new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    );
+  }
+
+  assert.match(
+    button,
+    /border border-input bg-background text-foreground hover:bg-accent/
+  );
 });
 
 test("ui source tree does not keep tracked backup files", async () => {
@@ -805,7 +835,7 @@ test("priority overlays use the shared overlay color token", async () => {
 test("interview control rail uses semantic surface tokens", async () => {
   const file = "app/interview/components/interview-controls.tsx";
   const content = await readFile(file, "utf8");
-  const required = ["bg-card/80", "border-border"];
+  const required = ["bg-card/90", "border-border"];
   const banned = ["bg-white/", "border-white/"];
   const violations = [];
 
@@ -1523,7 +1553,7 @@ test("dashboard overview status indicators use semantic tokens", async () => {
   const content = await readFile(file, "utf8");
   const rawStatusUtility =
     /\b(?:bg|text|border)-(?:blue|green|orange|purple)-500(?:\/\d+)?\b/;
-  const requiredTokens = ["bg-primary", "text-primary"];
+  const requiredTokens = ["bg-dashboard-accent", "text-dashboard-accent"];
   const violations = requiredTokens.filter((token) => !content.includes(token));
 
   if (rawStatusUtility.test(content)) {
@@ -1569,6 +1599,7 @@ test("interview runtime indicators use semantic status tokens", async () => {
     "app/interview/components/connection-indicator.tsx",
     "app/interview/components/end-session-modal.tsx",
     "app/interview/components/interview-controls.tsx",
+    "app/interview/components/timer-display.tsx",
   ];
   const messageFiles = [
     "app/interview/components/transcript-panel.tsx",

@@ -1008,6 +1008,11 @@ export function InterviewPageContent() {
         isOpen={showEndModal && !deadlineReached}
         isLoading={isEndingSession}
         error={endSessionError}
+        capturedAnswerCount={
+          transcript.filter(
+            (turn) => turn.speaker === "user" && turn.text.trim().length > 0
+          ).length
+        }
         onClose={() => {
           setShowEndModal(false);
           setEndSessionError(null);

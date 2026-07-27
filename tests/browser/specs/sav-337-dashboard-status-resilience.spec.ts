@@ -28,8 +28,12 @@ for (const viewport of [
     });
     await page.evaluate(() => document.fonts.ready);
     await expect(page.getByText("Recent interviews")).toBeVisible();
-    await expect(page.getByText("Unavailable", { exact: true })).toBeVisible();
-    await expect(page.getByText("No feedback", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("No feedback result is available for this interview.")
+    ).toBeVisible();
+    await expect(
+      page.getByText("Not scored", { exact: true }).first()
+    ).toBeVisible();
     await expectNoHorizontalScrollRegions(page);
 
     await page.goto(harness("history-statuses"), {
@@ -42,12 +46,12 @@ for (const viewport of [
     ).toBeVisible();
     await expect(
       history
-        .getByText("Unavailable", { exact: true })
+        .getByText("Feedback unavailable", { exact: true })
         .filter({ visible: true })
     ).toBeVisible();
     await expect(
       history
-        .getByText("No score", { exact: true })
+        .getByText("Not scored", { exact: true })
         .filter({ visible: true })
         .first()
     ).toBeVisible();
@@ -64,6 +68,7 @@ async function expectNoHorizontalScrollRegions(
     elements
       .filter(
         (element) =>
+          !element.classList.contains("sr-only") &&
           element.scrollWidth > element.clientWidth + 1 &&
           getComputedStyle(element).overflowX !== "clip"
       )

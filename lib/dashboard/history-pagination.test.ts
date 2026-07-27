@@ -63,3 +63,22 @@ test("history pagination makes current-page filtering explicit", () => {
   assert.equal(view.hasNext, false);
   assert.equal(view.previousOffset, 20);
 });
+
+test("history pagination uses singular match language", () => {
+  const view = buildHistoryPaginationView({
+    pagination: {
+      total: 25,
+      limit: 5,
+      offset: 0,
+      hasMore: true,
+    },
+    pageRowCount: 5,
+    filteredRowCount: 1,
+    filterActive: true,
+  });
+
+  assert.equal(
+    view.rangeLabel,
+    "Showing 1 match on this page (1–5 of 25 interviews)"
+  );
+});

@@ -19,7 +19,10 @@ export type Sav211BrowserScenario = {
 };
 
 export const SAV_211_BROWSER_SCENARIOS: Sav211BrowserScenario[] = [
-  { id: "feedback-partial", expectedText: "Partial recorded interview" },
+  {
+    id: "feedback-partial",
+    expectedText: "Based on part of the interview",
+  },
   {
     id: "feedback-insufficient",
     expectedText: "Not enough evidence for feedback",

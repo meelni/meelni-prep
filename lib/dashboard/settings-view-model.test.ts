@@ -80,13 +80,13 @@ test("settings plan summary view model preserves billing and credit fallback cop
       },
       {
         label: "Available credits",
-        value: "0",
-        description: "0 reserved",
+        value: "0 credits",
+        description: "None reserved",
       },
       {
         label: "Next expiration",
         value: "None",
-        description: "Credit-based access",
+        description: "No credits currently expire",
       },
     ]
   );
@@ -105,12 +105,16 @@ test("settings plan summary view model preserves billing and credit fallback cop
       },
     }),
     [
-      { label: "Plan", value: "Starter", description: "active" },
-      { label: "Available credits", value: "6", description: "1 reserved" },
+      { label: "Plan", value: "Starter", description: "Active" },
+      {
+        label: "Available credits",
+        value: "6 credits",
+        description: "1 reserved for an interview",
+      },
       {
         label: "Next expiration",
         value: formatSettingsDateLabel("2026-08-05T00:00:00.000Z"),
-        description: "Subscription ending",
+        description: "Plan scheduled to end",
       },
     ]
   );
