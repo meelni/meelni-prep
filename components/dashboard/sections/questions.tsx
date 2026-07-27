@@ -66,6 +66,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
     Set<string>
   >(new Set());
+  const [bookmarkError, setBookmarkError] = useState<string | null>(null);
   const debouncedSearchQuery = useDebounce(searchQuery, 250);
 
   useEffect(() => {
@@ -128,8 +129,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
         }
         const data = await res.json();
         setBookmarkedQuestionIds(new Set(data.questionIds || []));
+        setBookmarkError(null);
       } catch (error) {
         console.error("Error fetching bookmarks:", error);
+        setBookmarkError(
+          "Saved questions could not be loaded. You can still browse the question bank."
+        );
       }
     }
 
@@ -183,6 +188,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
   const toggleBookmark = async (questionId: string) => {
     const isBookmarked = bookmarkedQuestionIds.has(questionId);
+    setBookmarkError(null);
     setBookmarkedQuestionIds((prev) => {
       const updated = new Set(prev);
       if (isBookmarked) updated.delete(questionId);
@@ -211,6 +217,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
       }
     } catch (error) {
       console.error("Error toggling bookmark:", error);
+      setBookmarkError(
+        "That saved-question change didn’t stick. Please try again."
+      );
       setBookmarkedQuestionIds((prev) => {
         const updated = new Set(prev);
         if (isBookmarked) updated.add(questionId);
@@ -341,6 +350,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
                   ? ` · ${bookmarkedQuestionIds.size} saved`
                   : ""}
               </p>
+              {bookmarkError && (
+                <p role="alert" className="text-destructive mt-2 text-sm">
+                  {bookmarkError}
+                </p>
+              )}
             </div>
             <label className="text-dashboard-muted flex shrink-0 items-center gap-2 text-sm">
               <span className="hidden sm:inline">Sort</span>

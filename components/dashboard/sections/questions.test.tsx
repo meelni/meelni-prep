@@ -78,9 +78,50 @@ describe("QuestionsSection bookmarks", () => {
         screen.getByRole("button", { name: "Save question" })
       ).toHaveAttribute("aria-pressed", "false")
     );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That saved-question change didn’t stick. Please try again."
+    );
     expect(console.error).toHaveBeenCalledWith(
       "Error toggling bookmark:",
       expect.any(Error)
     );
+  });
+
+  it("distinguishes a failed bookmark load from an empty saved list", async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("/api/questions?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            questions: [
+              {
+                id: "question-1",
+                company: "Acme",
+                questionText: "How would you improve onboarding?",
+                questionType: "product_sense",
+                askedAt: "2026-07-01T00:00:00.000Z",
+                isActive: true,
+              },
+            ],
+            pagination: { total: 1 },
+          }),
+        });
+      }
+      if (url === "/api/questions/bookmark") {
+        return Promise.resolve({ ok: false });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<QuestionsSection />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Saved questions could not be loaded. You can still browse the question bank."
+    );
+    expect(
+      screen.getAllByText("How would you improve onboarding?")
+    ).toHaveLength(2);
   });
 });
