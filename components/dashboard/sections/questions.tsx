@@ -123,6 +123,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
     async function fetchBookmarks() {
       try {
         const res = await fetch("/api/questions/bookmark");
+        if (!res.ok) {
+          throw new Error("Failed to fetch bookmarks");
+        }
         const data = await res.json();
         setBookmarkedQuestionIds(new Set(data.questionIds || []));
       } catch (error) {
@@ -188,16 +191,23 @@ export const QuestionsSection = memo(function QuestionsSection() {
     });
 
     try {
+      let response: Response;
       if (isBookmarked) {
-        await fetch(`/api/questions/bookmark?questionId=${questionId}`, {
-          method: "DELETE",
-        });
+        response = await fetch(
+          `/api/questions/bookmark?questionId=${questionId}`,
+          {
+            method: "DELETE",
+          }
+        );
       } else {
-        await fetch("/api/questions/bookmark", {
+        response = await fetch("/api/questions/bookmark", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ questionId }),
         });
+      }
+      if (!response.ok) {
+        throw new Error("Failed to update bookmark");
       }
     } catch (error) {
       console.error("Error toggling bookmark:", error);
