@@ -27,15 +27,15 @@ export function ProgressSignalBars({
       {bars.map((bar, index) => (
         <div
           key={`${bar.score}-${index}`}
-          className={cn(
-            "flex flex-1 flex-col items-center gap-3",
-            !showLabels && "h-full justify-end"
-          )}
+          className="flex h-full min-h-0 flex-1 flex-col items-center gap-3"
         >
-          <div
-            className={cn("bg-primary w-full rounded-md", barClassName)}
-            style={{ height: `${bar.value}%` }}
-          />
+          <div className="flex min-h-0 w-full flex-1 items-end">
+            <div
+              data-progress-signal-bar
+              className={cn("bg-primary w-full rounded-md", barClassName)}
+              style={{ height: `${bar.value}%` }}
+            />
+          </div>
           {showLabels && (
             <span className="text-dashboard-muted text-xs">
               Interview {index + 1}
