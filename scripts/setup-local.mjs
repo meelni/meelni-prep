@@ -207,6 +207,8 @@ function refreshLocalEnvIfNeeded() {
     "--yes",
     "--project",
     "meelni",
+    "--scope",
+    "meelni",
   ]);
   run("npm", ["run", "env:pull"]);
 }
