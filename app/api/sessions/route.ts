@@ -11,7 +11,6 @@
  * @query {string} roundType Optional - Filter by interview type (behavioral | product_sense | execution | strategy)
  * @query {number} limit Optional - Maximum number of results per page (1-100, default: 20)
  * @query {number} offset Optional - Number of results to skip (default: 0)
- * @query {string} sort Optional - Sort order: 'desc' (newest first, default) or 'asc' (oldest first)
  *
  * @response {Object} response - Sessions data with stats and pagination
  * @response.sessions {Array<Object>} - Array of session objects
@@ -27,7 +26,7 @@
  * @response.stats.completionRate {number} - Percentage of completed sessions
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {400} Bad Request - Invalid roundType or limit out of range
+ * @throws {400} Bad Request - Invalid roundType, limit, or offset
  * @throws {500} Internal Server Error - Database query failed
  *
  * @example
@@ -61,6 +60,7 @@ import {
   getUserSessionsByRoundTypePaginated,
   getUserSessionStats,
 } from "@/lib/db/sessions";
+import { parseNonNegativeIntegerParam } from "@/lib/utils/pagination";
 
 export async function GET(req: NextRequest) {
   try {
@@ -80,8 +80,15 @@ export async function GET(req: NextRequest) {
     const roundType = searchParams.get("roundType");
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
-    const limit = limitParam ? parseInt(limitParam, 10) : 20;
-    const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
+    const limit = parseNonNegativeIntegerParam(limitParam, 20);
+    const offset = parseNonNegativeIntegerParam(offsetParam, 0);
+
+    if (limit === null || offset === null) {
+      return NextResponse.json(
+        { error: "Limit and offset must be whole numbers" },
+        { status: 400 }
+      );
+    }
 
     // Validate limit
     if (limit < 1 || limit > 100) {
