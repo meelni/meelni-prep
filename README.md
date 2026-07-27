@@ -50,7 +50,7 @@ User → Next.js UI → LiveKit Room → Python Agent
 ### Prerequisites
 
 - Node.js 22.22.0 and npm (`fnm install 22.22.0 && fnm use 22.22.0`)
-- Python 3.10+
+- Python 3.12 (matches CI and the agent Docker images)
 - Supabase account (database)
 - LiveKit Cloud account
 - API keys: OpenAI, Deepgram, Cartesia

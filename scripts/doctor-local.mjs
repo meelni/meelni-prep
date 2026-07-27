@@ -13,6 +13,7 @@ import {
   nodeVersionRecoveryCommand,
   readPinnedNodeVersion,
 } from "./node-version.mjs";
+import { buildPythonEnv } from "./python-runtime.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
@@ -107,26 +108,51 @@ check("Root env", () => {
 });
 
 check("Python", () => {
-  try {
-    const version = execFileSync("python3", ["--version"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-    return pass(version);
-  } catch {
-    return fail("python3 is unavailable.");
+  for (const command of ["python3.12", "python3"]) {
+    try {
+      const version = execFileSync(command, ["--version"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: buildPythonEnv(),
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+      const [major = 0, minor = 0] = version
+        .replace(/^Python\s+/, "")
+        .split(".")
+        .map(Number);
+
+      return major > 3 || (major === 3 && minor >= 12)
+        ? pass(`${version} is available as ${command}.`)
+        : fail(
+            `${version} is too old; Python 3.12+ is required. On macOS, run \`brew install python@3.12\`.`
+          );
+    } catch {
+      // Try the next supported command name.
+    }
   }
+
+  return fail(
+    "Python 3.12+ is unavailable. On macOS, run `brew install python@3.12`."
+  );
 });
 
 check("Python agent venv", () => {
   const pythonBin = resolve(repoRoot, "agent/venv/bin/python");
 
-  return existsSync(pythonBin)
-    ? pass("agent/venv exists.")
-    : warn(
-        "agent/venv is missing. Run `npm run setup:local` before starting the agent."
-      );
+  if (!existsSync(pythonBin)) {
+    return warn(
+      "agent/venv is missing. Run `npm run setup:local` before starting the agent."
+    );
+  }
+
+  const version = execFileSync(pythonBin, ["--version"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: buildPythonEnv(),
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+
+  return pass(`agent/venv is ready (${version}).`);
 });
 
 check("Conductor config", () => {
