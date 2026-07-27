@@ -1,0 +1,4 @@
+# Copy the local Preview runtime into Codex-managed worktrees.
+# These files remain gitignored; never add Production environment files here.
+.env.local
+.vercel/project.json
