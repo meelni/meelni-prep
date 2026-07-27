@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { Bookmark, CircleAlert, Search } from "lucide-react";
+import { Bookmark, CircleAlert, Loader2, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingMoreQuestions, setLoadingMoreQuestions] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [hasMoreQuestions, setHasMoreQuestions] = useState(false);
+  const [nextQuestionOffset, setNextQuestionOffset] = useState(0);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRound, setSelectedRound] =
@@ -77,6 +82,12 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
   useEffect(() => {
     const controller = new AbortController();
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
+    setLoadingMoreQuestions(false);
+    setLoadMoreError(null);
+    setHasMoreQuestions(false);
+    setNextQuestionOffset(0);
 
     async function fetchQuestions() {
       try {
@@ -102,15 +113,22 @@ export const QuestionsSection = memo(function QuestionsSection() {
               : "question_bank_read_failed"
           );
         }
-        setQuestions(data.questions || []);
-        setTotalQuestions(
-          data.pagination?.total || data.questions?.length || 0
+        const nextQuestions = Array.isArray(data.questions)
+          ? data.questions
+          : [];
+        setQuestions(nextQuestions);
+        setTotalQuestions(data.pagination?.total || nextQuestions.length || 0);
+        setHasMoreQuestions(data.pagination?.hasMore === true);
+        setNextQuestionOffset(
+          getNextQuestionOffset(data.pagination, nextQuestions.length)
         );
       } catch (error) {
         if (controller.signal.aborted) return;
         console.error("Error fetching questions:", error);
         setQuestions([]);
         setTotalQuestions(0);
+        setHasMoreQuestions(false);
+        setNextQuestionOffset(0);
         setLoadError(
           error instanceof Error &&
             error.message === "question_bank_unavailable"
@@ -123,7 +141,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
     }
 
     fetchQuestions();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+    };
   }, [selectedRound, retryCount]);
 
   useEffect(() => {
@@ -199,6 +221,72 @@ export const QuestionsSection = memo(function QuestionsSection() {
         return getTime(b.askedAt) - getTime(a.askedAt);
       });
   }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
+
+  const loadMoreQuestions = async () => {
+    if (
+      loadingMoreQuestions ||
+      loadMoreControllerRef.current ||
+      !hasMoreQuestions
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    setLoadingMoreQuestions(true);
+    setLoadMoreError(null);
+
+    try {
+      const params = new URLSearchParams({
+        limit: "100",
+        offset: String(nextQuestionOffset),
+        activeOnly: "true",
+      });
+      if (selectedRound !== "All rounds") {
+        params.set("type", TYPE_TO_API[selectedRound]);
+      }
+
+      const res = await fetch(`/api/questions?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.questions)) {
+        throw new Error("question_bank_page_read_failed");
+      }
+      if (controller.signal.aborted) return;
+
+      setQuestions((current) => {
+        const seen = new Set(current.map((question) => question.id));
+        const additions = data.questions.filter((question: Question) => {
+          if (seen.has(question.id)) return false;
+          seen.add(question.id);
+          return true;
+        });
+        return [...current, ...additions];
+      });
+      setTotalQuestions((current) =>
+        Number.isSafeInteger(data.pagination?.total) &&
+        Number(data.pagination.total) >= 0
+          ? Number(data.pagination.total)
+          : current
+      );
+      setHasMoreQuestions(data.pagination?.hasMore === true);
+      setNextQuestionOffset(
+        getNextQuestionOffset(data.pagination, data.questions.length)
+      );
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      console.error("Error loading more questions:", error);
+      setLoadMoreError(
+        "More questions couldn’t be loaded. Check your connection and try again."
+      );
+    } finally {
+      if (loadMoreControllerRef.current === controller) {
+        loadMoreControllerRef.current = null;
+        setLoadingMoreQuestions(false);
+      }
+    }
+  };
 
   const toggleBookmark = async (questionId: string) => {
     if (bookmarksLoading || pendingBookmarkIdsRef.current.has(questionId)) {
@@ -407,6 +495,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
             data-question-bank-list
             tabIndex={0}
             aria-label="Question results"
+            aria-busy={loadingMoreQuestions}
           >
             {filteredQuestions.map((question) => (
               <QuestionRow
@@ -423,6 +512,32 @@ export const QuestionsSection = memo(function QuestionsSection() {
             {filteredQuestions.length === 0 && (
               <div className="text-dashboard-muted flex min-h-40 items-center justify-center px-4 text-center text-sm">
                 No questions match the current filters.
+              </div>
+            )}
+
+            {hasMoreQuestions && (
+              <div className="space-y-3 px-4 py-5 text-center">
+                {loadMoreError && (
+                  <p role="alert" className="text-destructive text-sm">
+                    {loadMoreError}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loadingMoreQuestions}
+                  onClick={loadMoreQuestions}
+                >
+                  {loadingMoreQuestions && (
+                    <Loader2
+                      className="mr-2 h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {loadingMoreQuestions
+                    ? "Loading more questions..."
+                    : "Load more questions"}
+                </Button>
               </div>
             )}
           </div>
@@ -658,4 +773,19 @@ function normalizeRoundType(roundType: string) {
 function getTime(date: Date | string | null | undefined) {
   if (!date) return 0;
   return new Date(date).getTime();
+}
+
+function getNextQuestionOffset(
+  pagination: { offset?: unknown; limit?: unknown } | null | undefined,
+  pageLength: number
+) {
+  const offset =
+    Number.isSafeInteger(pagination?.offset) && Number(pagination?.offset) >= 0
+      ? Number(pagination?.offset)
+      : 0;
+  const limit =
+    Number.isSafeInteger(pagination?.limit) && Number(pagination?.limit) > 0
+      ? Number(pagination?.limit)
+      : pageLength;
+  return offset + limit;
 }
