@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { paymentHistory } from "@/lib/db/schema";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { parseNonNegativeIntegerParam } from "@/lib/utils/pagination";
 
 const VISIBLE_PAYMENT_PREDICATE = sql<boolean>`
   ${paymentHistory.failureReason} IS DISTINCT FROM 'legacy_duplicate_quarantined'
@@ -61,11 +62,24 @@ export async function GET(req: Request) {
 
     // Parse query parameters
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(
-      parseInt(searchParams.get("limit") || "10", 10),
-      100
+    const limit = parseNonNegativeIntegerParam(
+      searchParams.get("limit"),
+      10
     );
-    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
+    const offset = parseNonNegativeIntegerParam(
+      searchParams.get("offset"),
+      0
+    );
+
+    if (limit === null || offset === null || limit < 1 || limit > 100) {
+      return NextResponse.json(
+        {
+          error:
+            "Limit must be between 1 and 100 and offset must be non-negative",
+        },
+        { status: 400 }
+      );
+    }
 
     // Fetch total count
     const totalCountResult = await db
