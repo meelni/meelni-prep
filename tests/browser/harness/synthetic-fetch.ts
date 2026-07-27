@@ -1,4 +1,6 @@
 import {
+  analyticsInsights,
+  analyticsSessions,
   comparisonAttempts,
   comparisonFor,
   publicQuestions,
@@ -57,6 +59,12 @@ export function installSyntheticFetch() {
         nextCreditExpiresAt: "2026-08-17T00:00:00.000Z",
         trialAvailable: false,
       });
+    }
+    if (url.pathname === "/api/insights") {
+      return json(analyticsInsights);
+    }
+    if (url.pathname === "/api/sessions") {
+      return json({ sessions: analyticsSessions });
     }
     if (url.pathname === "/api/questions") {
       return json({

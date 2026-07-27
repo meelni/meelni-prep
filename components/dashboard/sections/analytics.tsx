@@ -113,46 +113,64 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
   return (
     <DashboardPage label="Analytics">
       <div className="mx-auto flex w-full max-w-6xl flex-col">
-        <section className="border-dashboard-panel-border grid gap-6 border-b pb-6 lg:grid-cols-[150px_1fr_auto] lg:items-center">
+        <section className="border-dashboard-panel-border grid gap-5 border-b pb-5 lg:grid-cols-[160px_minmax(0,1fr)_auto] lg:items-end">
           <div>
             <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-              {practiceSummary.progress.label}
+              Recent average
             </p>
-            <p className="text-dashboard-foreground font-mono text-5xl font-semibold">
+            <p className="text-dashboard-foreground mt-1 font-mono text-4xl font-semibold">
               {practiceSummary.progress.score?.toFixed(1) ?? "—"}
-              <span className="text-dashboard-muted text-xl">/10</span>
+              <span className="text-dashboard-muted text-base">/10</span>
+            </p>
+            <p className="text-dashboard-muted mt-1 text-xs">
+              {completedSessions} scored interviews
             </p>
           </div>
           <div className="max-w-3xl">
-            <h2 className="text-dashboard-foreground text-xl font-semibold">
-              {getDiagnosis(practiceSummary.focusArea?.label)}
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Next focus
+            </p>
+            <h2 className="text-dashboard-foreground mt-2 text-xl font-semibold">
+              {getFocusTitle(practiceSummary.focusArea?.label)}
             </h2>
-            <p className="text-dashboard-muted mt-2 text-sm leading-6">
+            <p className="text-dashboard-muted mt-1 text-sm leading-6">
               {practiceSummary.focusArea?.description ||
                 "Review completed feedback and choose one concrete improvement before the next interview."}
             </p>
           </div>
-          <Button asChild>
-            <Link href={practiceSummary.recommendation.href}>Practice</Link>
+          <Button asChild className="lg:mb-0.5">
+            <Link href={practiceSummary.recommendation.href}>
+              {practiceSummary.focusArea
+                ? `Practice ${practiceSummary.focusArea.label.toLowerCase()}`
+                : "Start mock interview"}
+            </Link>
           </Button>
         </section>
 
-        <div className="grid gap-8 py-6 lg:grid-cols-[1fr_330px]">
-          <section className="min-w-0 space-y-8">
+        <div className="grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <section className="min-w-0 space-y-7">
             <div>
               <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Competencies
+                Observed dimensions
+              </p>
+              <p className="text-dashboard-muted mt-2 text-sm leading-6">
+                Scores appear only where completed feedback includes that
+                dimension.
               </p>
               <div className="mt-5 space-y-4">
                 {competencies.map((competency) => (
-                  <div
-                    key={competency.label}
-                    className="grid grid-cols-[130px_minmax(0,1fr)_88px] items-center gap-4"
-                  >
-                    <span className="text-dashboard-foreground text-sm font-semibold">
-                      {competency.label}
-                    </span>
-                    <span className="bg-dashboard-muted/15 h-2 overflow-hidden rounded-full">
+                  <div key={competency.label} className="min-w-0">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-dashboard-foreground text-sm font-semibold">
+                        {competency.label}
+                      </span>
+                      <span className="text-dashboard-foreground shrink-0 font-mono text-sm font-semibold">
+                        {competency.value === null
+                          ? "Needs data"
+                          : competency.value.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="bg-dashboard-muted/15 mt-2 block h-2 overflow-hidden rounded-full">
                       <span
                         className="bg-primary block h-full rounded-full"
                         style={{
@@ -162,11 +180,6 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
                               : `${competency.value * 10}%`,
                         }}
                       />
-                    </span>
-                    <span className="text-dashboard-foreground text-right font-mono text-sm font-semibold">
-                      {competency.value === null
-                        ? "Needs data"
-                        : competency.value.toFixed(1)}
                     </span>
                   </div>
                 ))}
@@ -184,46 +197,29 @@ export const AnalyticsSection = memo(function AnalyticsSection() {
               </div>
               <ProgressSignalBars
                 bars={practiceSummary.progressSignal.bars}
-                className="mt-16 h-32 gap-4"
+                className="mt-6 h-40 gap-4"
                 showLabels
               />
             </div>
           </section>
 
           <aside className="border-dashboard-panel-border border-t pt-7 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
-            <div>
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Next target
-              </p>
-              <h3 className="text-dashboard-foreground mt-4 text-xl font-semibold">
-                {practiceSummary.focusArea
-                  ? `Practice ${practiceSummary.focusArea.label.toLowerCase()}`
-                  : "Review completed feedback"}
-              </h3>
-              <p className="text-dashboard-muted mt-3 text-sm leading-6">
-                {practiceSummary.focusArea?.description ||
-                  "No dimension-level practice target is available yet."}
-              </p>
-            </div>
-
-            <div className="mt-8">
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Evidence
-              </p>
-              <div className="mt-5 space-y-5">
-                {evidence.length > 0 ? (
-                  evidence.map((item) => (
-                    <Evidence key={item.title} title={item.title}>
-                      {item.description}
-                    </Evidence>
-                  ))
-                ) : (
-                  <p className="text-dashboard-muted text-sm leading-6">
-                    Evidence appears once recent scored interviews include
-                    dimension feedback.
-                  </p>
-                )}
-              </div>
+            <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
+              Why this focus
+            </p>
+            <div className="mt-5 space-y-5">
+              {evidence.length > 0 ? (
+                evidence.map((item) => (
+                  <Evidence key={item.title} title={item.title}>
+                    {item.description}
+                  </Evidence>
+                ))
+              ) : (
+                <p className="text-dashboard-muted text-sm leading-6">
+                  Evidence appears once recent scored interviews include
+                  dimension feedback.
+                </p>
+              )}
             </div>
           </aside>
         </div>
@@ -265,8 +261,8 @@ function Evidence({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function getDiagnosis(focusLabel: string | undefined) {
+function getFocusTitle(focusLabel: string | undefined) {
   return focusLabel
-    ? `${focusLabel} is the lowest scored dimension in recent completed feedback.`
-    : "Recent feedback does not include a dimension-level practice target yet.";
+    ? `Focus next on ${focusLabel.toLowerCase()}`
+    : "Choose one improvement from recent feedback";
 }
