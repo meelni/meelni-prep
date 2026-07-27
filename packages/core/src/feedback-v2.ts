@@ -2773,10 +2773,6 @@ function getSupportStem(token: string): string {
   return stem.length >= 3 ? stem : token;
 }
 
-function setsIntersect(left: ReadonlySet<string>, right: ReadonlySet<string>) {
-  return [...left].some((value) => right.has(value));
-}
-
 function countIntersection(
   left: ReadonlySet<string>,
   right: ReadonlySet<string>
