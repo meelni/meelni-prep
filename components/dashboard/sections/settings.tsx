@@ -228,16 +228,32 @@ export const SettingsSection = memo(function SettingsSection() {
   }
 
   return (
-    <DashboardPage label="Settings" bodyClassName="px-0 py-0">
-      <div className="flex min-h-full flex-col lg:flex-row">
-        <aside className="border-dashboard-panel-border shrink-0 border-b px-6 py-6 sm:px-8 lg:w-64 lg:border-r lg:border-b-0">
-          <p className="text-dashboard-muted text-xs font-bold tracking-[0.28em] uppercase">
-            Settings
-          </p>
-          <nav
-            aria-label="Settings"
-            className="-mx-1 mt-5 grid grid-cols-2 gap-2 px-1 pb-2 lg:mx-0 lg:flex lg:flex-col lg:px-0 lg:pb-0"
-          >
+    <DashboardPage label="Settings" bodyClassName="overflow-hidden px-0 py-0">
+      <div className="flex h-full min-h-0 flex-col lg:flex-row">
+        <aside className="border-dashboard-panel-border shrink-0 border-b px-6 py-3 sm:px-8 lg:w-60 lg:border-r lg:border-b-0 lg:px-5 lg:py-6">
+          <div className="lg:hidden">
+            <Select
+              value={activeCategory}
+              onValueChange={(value) =>
+                setActiveCategory(value as SettingsCategoryId)
+              }
+            >
+              <SelectTrigger
+                aria-label="Settings section"
+                className="border-dashboard-panel-border text-dashboard-foreground min-h-11 w-full bg-transparent"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SETTINGS_NAV_ITEMS.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <nav aria-label="Settings" className="hidden flex-col gap-2 lg:flex">
             {SETTINGS_NAV_ITEMS.map((category) => {
               const selected = activeCategory === category.id;
 
@@ -254,7 +270,10 @@ export const SettingsSection = memo(function SettingsSection() {
           </nav>
         </aside>
 
-        <section className="min-w-0 flex-1 px-6 py-6 sm:px-8 lg:px-9 lg:py-8">
+        <section
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 lg:px-9 lg:py-8"
+          data-settings-content
+        >
           {loadState === "error" && (
             <SettingsNotice
               tone="warning"
@@ -343,7 +362,7 @@ function AccountPane({
       description="Profile, login, and session controls."
       footer={<SettingsSaveFooter onSave={onSave} saveState={saveState} />}
     >
-      <div className="divide-dashboard-panel-border border-dashboard-panel-border divide-y border-y">
+      <div className="divide-dashboard-panel-border divide-y">
         <div className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <div className="border-primary/40 bg-primary/10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
@@ -724,7 +743,7 @@ function DataPrivacyPane({
       </SettingsGroup>
 
       <SettingsGroup label="Optional analytics">
-        <div className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <p className="text-dashboard-foreground text-sm font-medium">
               Product usage analytics
@@ -855,26 +874,33 @@ function DataPrivacyPane({
             event.preventDefault();
             deleteActionRef.current.focus();
           }}
-          className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground sm:max-w-xl"
+          className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
         >
-          <DialogHeader className="pr-12">
+          <DialogHeader className="pr-12 text-left">
             <div className="bg-destructive/10 text-destructive mb-3 flex h-10 w-10 items-center justify-center rounded-full">
               <Trash2 className="h-5 w-5" aria-hidden="true" />
             </div>
             <DialogTitle>Request account deletion</DialogTitle>
             <DialogDescription className="text-dashboard-muted leading-6">
-              This stores a durable deletion request, signs you out, and starts
-              retryable cleanup for your authentication account, captured
-              billing-provider resources, interviews, transcripts, feedback,
-              settings, and progress. The request cannot be undone after it is
-              accepted. If you have a paid subscription, deletion ends access
-              immediately and does not create an automatic proration, refund, or
-              Stripe account credit; exceptional refund requests require
-              separate support review. Limited security, deletion-audit, backup,
-              and legally required billing records may be retained; Meelni does
-              not claim a fixed deletion period for those records yet.
+              This stores a durable request, signs you out, and starts retryable
+              cleanup of your Meelni account and practice data.
             </DialogDescription>
           </DialogHeader>
+
+          <ul className="text-dashboard-muted list-disc space-y-2 pl-5 text-sm leading-6">
+            <li>
+              The request cannot be undone after it is accepted, and account
+              access ends immediately.
+            </li>
+            <li>
+              Paid access ends without automatic proration, refund, or Stripe
+              account credit. Exceptional refunds require support review.
+            </li>
+            <li>
+              Limited security, deletion-audit, backup, and legally required
+              billing records may be retained without a fixed deletion period.
+            </li>
+          </ul>
 
           {(deleteState === "requested" ||
             deleteState === "retry_scheduled") && (
@@ -1033,8 +1059,8 @@ function PaneShell({
   footer?: ReactNode;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-7">
-      <div className="border-dashboard-panel-border border-b pb-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <div>
         <h2 className="font-display text-dashboard-foreground text-3xl leading-tight font-semibold">
           {title}
         </h2>
@@ -1042,7 +1068,7 @@ function PaneShell({
           {description}
         </p>
       </div>
-      <div className="space-y-7">{children}</div>
+      <div className="space-y-6">{children}</div>
       {footer}
     </div>
   );
@@ -1060,7 +1086,7 @@ function SettingsGroup({
       <p className="text-dashboard-muted text-xs font-bold tracking-[0.28em] uppercase">
         {label}
       </p>
-      <div className="divide-dashboard-panel-border border-dashboard-panel-border mt-4 divide-y border-y">
+      <div className="divide-dashboard-panel-border mt-3 divide-y">
         {children}
       </div>
     </section>
@@ -1153,7 +1179,7 @@ function SettingsSwitchRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="border-dashboard-panel-border flex items-center justify-between gap-6 border-y py-4 first:border-t-0 last:border-b-0">
+    <div className="flex items-center justify-between gap-6 py-4">
       <div className="min-w-0">
         <p className="text-dashboard-foreground text-sm font-bold">{title}</p>
         <p className="text-dashboard-muted mt-1 text-sm leading-5">
@@ -1190,7 +1216,7 @@ function SettingsSelectRow({
   const descriptionId = useId();
 
   return (
-    <div className="border-dashboard-panel-border flex flex-col gap-4 border-y py-4 first:border-t-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p id={titleId} className="text-dashboard-foreground text-sm font-bold">
           {title}
@@ -1230,10 +1256,7 @@ function SettingsSaveFooter({
   saveState: LoadState;
 }) {
   return (
-    <div className="border-dashboard-panel-border flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-dashboard-muted text-sm">
-        Changes save to the existing settings API.
-      </p>
+    <div className="border-dashboard-panel-border flex items-center justify-end gap-3 border-t pt-5">
       <div className="flex items-center gap-3">
         {saveState === "ready" && (
           <span

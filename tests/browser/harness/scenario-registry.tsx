@@ -7,6 +7,7 @@ import { TranscriptPanel } from "@/app/interview/components/transcript-panel";
 import { ExploreClient } from "@/app/explore/explore-client";
 import { SetupContent } from "@/app/setup/setup-content";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
+import { AnalyticsSection } from "@/components/dashboard/sections/analytics";
 import { HistorySection } from "@/components/dashboard/sections/history";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { QuestionsSection } from "@/components/dashboard/sections/questions";
@@ -35,6 +36,7 @@ export const HARNESS_SCENARIOS = [
   "dashboard",
   "dashboard-statuses",
   "history-statuses",
+  "analytics",
   "question-bank",
   "new-interview",
   "interview",
@@ -74,6 +76,7 @@ function Shell({
     | "new-interview"
     | "questions"
     | "history"
+    | "analytics"
     | "settings";
   children: React.ReactNode;
 }) {
@@ -126,6 +129,14 @@ function HistoryStatusesScenario() {
         sessions={dashboardStatusSessions}
         loadingSessions={false}
       />
+    </Shell>
+  );
+}
+
+function AnalyticsScenario() {
+  return (
+    <Shell activeSection="analytics">
+      <AnalyticsSection />
     </Shell>
   );
 }
@@ -296,6 +307,8 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return <DashboardStatusesScenario />;
     case "history-statuses":
       return <HistoryStatusesScenario />;
+    case "analytics":
+      return <AnalyticsScenario />;
     case "question-bank":
       return <QuestionBankScenario />;
     case "new-interview":

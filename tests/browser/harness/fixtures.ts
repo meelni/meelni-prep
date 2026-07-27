@@ -85,6 +85,56 @@ export const dashboardStatusSessions = [
   dashboardSessions[0]!,
 ];
 
+export const analyticsSessions = [
+  dashboardSessions[0]!,
+  {
+    ...dashboardSessions[0]!,
+    id: "browser-qa-analytics-2",
+    startedAt: "2026-07-10T17:00:00.000Z",
+    endedAt: "2026-07-10T17:30:00.000Z",
+    feedback: {
+      status: "completed",
+      overallScore: "7.1",
+      structureScore: 6.5,
+      clarityScore: 7.5,
+      insightScore: 7,
+      communicationScore: 7.5,
+      leadershipScore: 7,
+    },
+  },
+  {
+    ...dashboardSessions[0]!,
+    id: "browser-qa-analytics-3",
+    startedAt: "2026-07-03T17:00:00.000Z",
+    endedAt: "2026-07-03T17:30:00.000Z",
+    feedback: {
+      status: "completed",
+      overallScore: "6.6",
+      structureScore: 6,
+      clarityScore: 7,
+      insightScore: 6.5,
+      communicationScore: 7,
+      leadershipScore: 6.5,
+    },
+  },
+];
+
+export const analyticsInsights = {
+  overall: {
+    totalSessions: analyticsSessions.length,
+    completedSessions: analyticsSessions.length,
+  },
+  trends: {
+    improvementTrend: "improving" as const,
+    velocity: 0.5,
+  },
+  competencies: {
+    structure: 6.5,
+    clarity: 7.5,
+    insight: 7,
+  },
+};
+
 const evidenceTurn = "browser-qa-turn-1";
 
 export const completedFeedback: FeedbackV2View = {
