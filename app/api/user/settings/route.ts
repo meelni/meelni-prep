@@ -108,7 +108,26 @@ export async function PUT(request: NextRequest) {
     }
 
     // Parse and validate request body
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Validation Error",
+          message: "Invalid settings data",
+          issues: [
+            {
+              code: "custom",
+              path: [],
+              message: "Request body must be valid JSON",
+            },
+          ],
+        },
+        { status: 400 }
+      );
+    }
+
     const validationResult = settingsSchema.safeParse(body);
 
     if (!validationResult.success) {
