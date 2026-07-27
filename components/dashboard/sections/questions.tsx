@@ -6,6 +6,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import Link from "next/link";
@@ -66,6 +67,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
     Set<string>
   >(new Set());
+  const [bookmarksLoading, setBookmarksLoading] = useState(true);
+  const [pendingBookmarkIds, setPendingBookmarkIds] = useState<Set<string>>(
+    new Set()
+  );
+  const pendingBookmarkIdsRef = useRef(new Set<string>());
   const [bookmarkError, setBookmarkError] = useState<string | null>(null);
   const debouncedSearchQuery = useDebounce(searchQuery, 250);
 
@@ -121,9 +127,13 @@ export const QuestionsSection = memo(function QuestionsSection() {
   }, [selectedRound, retryCount]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     async function fetchBookmarks() {
       try {
-        const res = await fetch("/api/questions/bookmark");
+        const res = await fetch("/api/questions/bookmark", {
+          signal: controller.signal,
+        });
         if (!res.ok) {
           throw new Error("Failed to fetch bookmarks");
         }
@@ -131,14 +141,18 @@ export const QuestionsSection = memo(function QuestionsSection() {
         setBookmarkedQuestionIds(new Set(data.questionIds || []));
         setBookmarkError(null);
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Error fetching bookmarks:", error);
         setBookmarkError(
           "Saved questions could not be loaded. You can still browse the question bank."
         );
+      } finally {
+        if (!controller.signal.aborted) setBookmarksLoading(false);
       }
     }
 
     fetchBookmarks();
+    return () => controller.abort();
   }, []);
 
   const summary = useMemo(
@@ -187,7 +201,13 @@ export const QuestionsSection = memo(function QuestionsSection() {
   }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
 
   const toggleBookmark = async (questionId: string) => {
+    if (bookmarksLoading || pendingBookmarkIdsRef.current.has(questionId)) {
+      return;
+    }
+
     const isBookmarked = bookmarkedQuestionIds.has(questionId);
+    pendingBookmarkIdsRef.current.add(questionId);
+    setPendingBookmarkIds(new Set(pendingBookmarkIdsRef.current));
     setBookmarkError(null);
     setBookmarkedQuestionIds((prev) => {
       const updated = new Set(prev);
@@ -226,6 +246,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
         else updated.delete(questionId);
         return updated;
       });
+    } finally {
+      pendingBookmarkIdsRef.current.delete(questionId);
+      setPendingBookmarkIds(new Set(pendingBookmarkIdsRef.current));
     }
   };
 
@@ -390,6 +413,9 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 key={question.id}
                 question={question}
                 bookmarked={bookmarkedQuestionIds.has(question.id)}
+                bookmarkPending={
+                  bookmarksLoading || pendingBookmarkIds.has(question.id)
+                }
                 onToggleBookmark={() => toggleBookmark(question.id)}
               />
             ))}
@@ -472,10 +498,12 @@ function CompactFilter({
 function QuestionRow({
   question,
   bookmarked,
+  bookmarkPending,
   onToggleBookmark,
 }: {
   question: Question;
   bookmarked: boolean;
+  bookmarkPending: boolean;
   onToggleBookmark: () => void;
 }) {
   const bookmarkLabel = bookmarked ? "Remove saved question" : "Save question";
@@ -500,6 +528,7 @@ function QuestionRow({
             aria-label={bookmarkLabel}
             aria-pressed={bookmarked}
             title={bookmarkLabel}
+            disabled={bookmarkPending}
             onClick={onToggleBookmark}
             className="text-dashboard-muted hover:text-dashboard-foreground h-9 w-9"
           >
@@ -544,6 +573,7 @@ function QuestionRow({
             variant="ghost"
             size="sm"
             aria-pressed={bookmarked}
+            disabled={bookmarkPending}
             onClick={onToggleBookmark}
             className="text-dashboard-muted hover:text-dashboard-foreground"
           >
