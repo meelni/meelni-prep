@@ -83,7 +83,7 @@ User speaks → Deepgram Nova-3 (STT) → GPT-4/GPT-4.1-mini (LLM) → ElevenLab
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.12 (matches CI and the agent Docker images)
 - Active LiveKit Cloud project
 - API keys: OpenAI, Deepgram
 

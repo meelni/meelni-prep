@@ -10,6 +10,7 @@ import {
 } from "./local-dev-config.mjs";
 import { buildLocalDevEnv } from "./start-local-dev-env.mjs";
 import { getChildExitAction } from "./start-local-dev-processes.mjs";
+import { buildPythonEnv } from "./python-runtime.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const localDevEnv = buildLocalDevEnv({ repoRoot });
@@ -87,10 +88,10 @@ if (serviceIsSkipped(process.env.MEELNI_SKIP_AGENT)) {
 } else if (existsSync(agentPython) && existsSync(interviewAgent)) {
   const agent = spawn(agentPython, [interviewAgent, "dev"], {
     cwd: resolve(repoRoot, "agent/interview"),
-    env: {
+    env: buildPythonEnv({
       ...localEnv(),
       LOCAL_DEV: localDevEnv.LOCAL_DEV ?? "1",
-    },
+    }),
     shell: process.platform === "win32",
     stdio: "inherit",
   });

@@ -11,10 +11,14 @@ import {
   requiredEnvStatus,
 } from "./local-env.mjs";
 import { assertPinnedNodeVersion } from "./node-version.mjs";
+import { buildPythonEnv } from "./python-runtime.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const npmCachePath = resolve(repoRoot, ".context/npm-cache");
+const npmCachePath =
+  process.env.NPM_CONFIG_CACHE || resolve(repoRoot, ".context/npm-cache");
 const envPath = resolve(repoRoot, ".env.local");
+const pythonEnv = buildPythonEnv();
+const pythonCommand = findPythonCommand();
 
 try {
   assertPinnedNodeVersion();
@@ -66,30 +70,74 @@ function setupPythonAgent() {
 
   const venvDir = resolve(agentDir, "venv");
   const pythonBin = resolve(venvDir, "bin/python");
+  const pipBin = resolve(venvDir, "bin/pip");
 
-  if (existsSync(venvDir) && pythonBinUsesSymlink(pythonBin)) {
+  if (
+    existsSync(venvDir) &&
+    (!existsSync(pythonBin) ||
+      !existsSync(pipBin) ||
+      pythonBinUsesSymlink(pythonBin))
+  ) {
     console.log(
-      "Python agent venv uses symlinked binaries; recreating with copied binaries for Next.js build compatibility."
+      "Python agent venv is incomplete or uses symlinked binaries; recreating with copied binaries for Next.js build compatibility."
     );
     rmSync(venvDir, { recursive: true, force: true });
   }
 
   if (!existsSync(venvDir)) {
-    run("python3", ["-m", "venv", "--copies", "venv"], process.env, agentDir);
+    run(
+      pythonCommand,
+      ["-m", "venv", "--copies", "--without-pip", "venv"],
+      pythonEnv,
+      agentDir
+    );
+    run(
+      pythonBin,
+      ["-m", "ensurepip", "--upgrade", "--default-pip"],
+      pythonEnv,
+      agentDir
+    );
   }
 
   run(
     pythonBin,
     ["-m", "pip", "install", "--upgrade", "pip"],
-    process.env,
+    pythonEnv,
     agentDir
   );
   run(
     pythonBin,
     ["-m", "pip", "install", "-r", "requirements.txt"],
-    process.env,
+    pythonEnv,
     agentDir
   );
+}
+
+function findPythonCommand() {
+  for (const command of ["python3.12", "python3"]) {
+    const result = spawnSync(command, ["--version"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: pythonEnv,
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const version = `${result.stdout || ""} ${result.stderr || ""}`
+      .replace(/^Python\s+/, "")
+      .trim()
+      .split(".")
+      .map(Number);
+    const [major = 0, minor = 0] = version;
+
+    if (result.status === 0 && (major > 3 || (major === 3 && minor >= 12))) {
+      return command;
+    }
+  }
+
+  console.error(
+    "Python 3.12+ is required. On macOS, run `brew install python@3.12`, then retry."
+  );
+  process.exit(1);
 }
 
 function pythonBinUsesSymlink(pythonBin) {
