@@ -196,7 +196,7 @@ export default function PricingPage() {
       {/* Footer */}
       <footer className="border-border border-t py-12">
         <div className="text-muted-foreground container mx-auto px-4 text-center text-sm">
-          <p>&copy; 2025 Meelni. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Meelni. All rights reserved.</p>
           <div className="mt-4 flex justify-center gap-6">
             <Link href="/privacy" className="hover:text-foreground">
               Privacy Policy
