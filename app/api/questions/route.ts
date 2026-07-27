@@ -56,6 +56,7 @@ import {
   type QuestionListOptions,
   type QuestionBankRecord,
 } from "@/lib/db/questions";
+import { parseNonNegativeIntegerParam } from "@/lib/utils/pagination";
 import { normalizeQuestionRound, QUESTION_ROUND_TYPES } from "@meelni/core";
 
 const MAX_QUESTION_OFFSET = 100_000;
@@ -171,9 +172,5 @@ export function parseIntegerParam(
   value: string | null,
   fallback: number
 ): number | null {
-  if (value === null) return fallback;
-  if (!/^\d+$/.test(value)) return null;
-
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  return parseNonNegativeIntegerParam(value, fallback);
 }
