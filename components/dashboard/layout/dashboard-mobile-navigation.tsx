@@ -71,7 +71,7 @@ export function DashboardMobileNavigation({
           >
             <NavigationDrawerHeader className="border-dashboard-panel-border">
               <NavigationDrawerTitle>Meelni</NavigationDrawerTitle>
-              <NavigationDrawerDescription className="text-dashboard-muted">
+              <NavigationDrawerDescription className="text-dashboard-muted truncate">
                 Your PM interview practice workspace.
               </NavigationDrawerDescription>
             </NavigationDrawerHeader>

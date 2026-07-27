@@ -117,7 +117,7 @@ export function MobileDrawer() {
               <NavigationDrawerTitle>{siteConfig.name}</NavigationDrawerTitle>
             </Link>
           </NavigationDrawerClose>
-          <NavigationDrawerDescription>
+          <NavigationDrawerDescription className="truncate">
             Live PM interview practice, from question to feedback.
           </NavigationDrawerDescription>
         </NavigationDrawerHeader>
@@ -144,7 +144,7 @@ export function MobileDrawer() {
                       <span className="text-foreground block text-sm font-semibold">
                         {item.label}
                       </span>
-                      <span className="text-muted-foreground block text-xs leading-4">
+                      <span className="text-muted-foreground block truncate text-xs leading-4">
                         {item.description}
                       </span>
                     </span>
