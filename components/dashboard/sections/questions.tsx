@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { Bookmark, CircleAlert, Search } from "lucide-react";
+import { Bookmark, CircleAlert, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +21,10 @@ import {
   DashboardSkeletonCard,
 } from "@/components/dashboard/dashboard-surface";
 import {
-  buildQuestionBankSummary,
   formatRoundType,
   type DashboardQuestionInput,
 } from "@/lib/dashboard/contracts";
+import { buildQuestionBankFacets } from "@/lib/dashboard/question-bank-filters";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
@@ -41,21 +41,10 @@ const ROUND_FILTERS = [
   "Behavioral",
 ] as const;
 
-const TYPE_TO_API: Record<string, string> = {
-  "Product Sense": "product_sense",
-  Execution: "execution",
-  Strategy: "strategy",
-  Behavioral: "behavioral",
-};
-
-const ROUND_FILTER_OPTIONS = ROUND_FILTERS.map((round) => ({
-  value: round,
-  label: round,
-}));
+const QUESTION_PAGE_SIZE = 500;
 
 export const QuestionsSection = memo(function QuestionsSection() {
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [totalQuestions, setTotalQuestions] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -63,6 +52,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
   const [selectedRound, setSelectedRound] =
     useState<(typeof ROUND_FILTERS)[number]>("All rounds");
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<"recent" | "company">("recent");
   const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<
     Set<string>
@@ -82,35 +73,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
       try {
         setLoading(true);
         setLoadError(null);
-        const params = new URLSearchParams({
-          limit: "100",
-          activeOnly: "true",
-        });
-
-        if (selectedRound !== "All rounds") {
-          params.set("type", TYPE_TO_API[selectedRound]);
-        }
-
-        const res = await fetch(`/api/questions?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(
-            data?.code === "question_bank_unavailable"
-              ? "question_bank_unavailable"
-              : "question_bank_read_failed"
-          );
-        }
-        setQuestions(data.questions || []);
-        setTotalQuestions(
-          data.pagination?.total || data.questions?.length || 0
-        );
+        setQuestions(await fetchPublishedQuestionCorpus(controller.signal));
       } catch (error) {
         if (controller.signal.aborted) return;
         console.error("Error fetching questions:", error);
         setQuestions([]);
-        setTotalQuestions(0);
         setLoadError(
           error instanceof Error &&
             error.message === "question_bank_unavailable"
@@ -124,7 +91,7 @@ export const QuestionsSection = memo(function QuestionsSection() {
 
     fetchQuestions();
     return () => controller.abort();
-  }, [selectedRound, retryCount]);
+  }, [retryCount]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -155,50 +122,106 @@ export const QuestionsSection = memo(function QuestionsSection() {
     return () => controller.abort();
   }, []);
 
-  const summary = useMemo(
-    () => buildQuestionBankSummary(questions),
-    [questions]
-  );
-  const companyFilters = useMemo(
+  const filterableQuestions = useMemo(
     () =>
-      Object.entries(summary.companyCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5),
-    [summary.companyCounts]
+      showSavedOnly
+        ? questions.filter((question) => bookmarkedQuestionIds.has(question.id))
+        : questions,
+    [bookmarkedQuestionIds, questions, showSavedOnly]
+  );
+  const facets = useMemo(
+    () =>
+      buildQuestionBankFacets(filterableQuestions, {
+        searchQuery: debouncedSearchQuery,
+        roundLabel: selectedRound,
+        company: selectedCompany,
+      }),
+    [filterableQuestions, debouncedSearchQuery, selectedRound, selectedCompany]
+  );
+  const companyFilters = useMemo(() => {
+    const normalizedQuery = companyQuery.trim().toLocaleLowerCase();
+    const visible = Object.entries(facets.companyCounts)
+      .filter(
+        ([company]) =>
+          normalizedQuery.length === 0 ||
+          company.toLocaleLowerCase().includes(normalizedQuery)
+      )
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+    if (
+      selectedCompany &&
+      normalizedQuery.length === 0 &&
+      !visible.some(([company]) => company === selectedCompany)
+    ) {
+      visible.push([
+        selectedCompany,
+        facets.companyCounts[selectedCompany] || 0,
+      ]);
+    }
+
+    return visible;
+  }, [companyQuery, facets.companyCounts, selectedCompany]);
+  const roundFilterOptions = useMemo(
+    () =>
+      ROUND_FILTERS.map((round) => ({
+        value: round,
+        label: `${round} (${
+          round === "All rounds"
+            ? facets.allRoundsCount
+            : facets.roundCounts[round] || 0
+        })`,
+      })),
+    [facets.allRoundsCount, facets.roundCounts]
   );
   const companyFilterOptions = useMemo(
     () => [
-      { value: "", label: "All companies" },
-      ...companyFilters.map(([company]) => ({
+      {
+        value: "",
+        label: `All companies (${facets.allCompaniesCount})`,
+      },
+      ...companyFilters.map(([company, count]) => ({
         value: company,
-        label: company,
+        label: `${company} (${count})`,
       })),
     ],
-    [companyFilters]
+    [companyFilters, facets.allCompaniesCount]
   );
 
   const filteredQuestions = useMemo(() => {
-    return questions
-      .filter((question) => {
-        const query = debouncedSearchQuery.trim().toLowerCase();
-        const matchesSearch =
-          query.length === 0 ||
-          question.questionText.toLowerCase().includes(query) ||
-          question.company?.toLowerCase().includes(query);
-        const matchesCompany =
-          !selectedCompany || question.company === selectedCompany;
-        return matchesSearch && matchesCompany;
-      })
-      .sort((a, b) => {
-        if (sortBy === "company") {
-          return (a.company || "").localeCompare(b.company || "");
-        }
-        if (sortBy === "recent") {
-          return getTime(b.askedAt) - getTime(a.askedAt);
-        }
+    return [...facets.results].sort((a, b) => {
+      if (sortBy === "company") {
+        return (a.company || "").localeCompare(b.company || "");
+      }
+      if (sortBy === "recent") {
         return getTime(b.askedAt) - getTime(a.askedAt);
-      });
-  }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
+      }
+      return getTime(b.askedAt) - getTime(a.askedAt);
+    });
+  }, [facets.results, sortBy]);
+  const visibleSavedCount = useMemo(
+    () =>
+      filteredQuestions.filter((question) =>
+        bookmarkedQuestionIds.has(question.id)
+      ).length,
+    [filteredQuestions, bookmarkedQuestionIds]
+  );
+  const hasActiveFilters =
+    debouncedSearchQuery.trim().length > 0 ||
+    selectedRound !== "All rounds" ||
+    selectedCompany !== null ||
+    showSavedOnly;
+  const activeFacetCount =
+    (selectedRound === "All rounds" ? 0 : 1) +
+    (selectedCompany === null ? 0 : 1) +
+    (showSavedOnly ? 1 : 0);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedRound("All rounds");
+    setSelectedCompany(null);
+    setCompanyQuery("");
+    setShowSavedOnly(false);
+  };
 
   const toggleBookmark = async (questionId: string) => {
     if (bookmarksLoading || pendingBookmarkIdsRef.current.has(questionId)) {
@@ -284,30 +307,63 @@ export const QuestionsSection = memo(function QuestionsSection() {
     <DashboardPage label="Question Bank" bodyClassName="overflow-hidden">
       <div className="mx-auto grid h-full min-h-0 w-full max-w-6xl grid-rows-[auto_minmax(0,1fr)] gap-5 lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-1 lg:gap-7">
         <div
-          className="border-dashboard-panel-border space-y-4 border-b pb-5 lg:hidden"
+          className="border-dashboard-panel-border bg-dashboard-panel z-10 space-y-3 border-b pb-4 lg:hidden"
           data-question-bank-controls
         >
           <SearchField value={searchQuery} onChange={setSearchQuery} />
-          <div className="grid grid-cols-2 gap-3">
-            <CompactFilter
-              label="Round"
-              value={selectedRound}
-              onChange={(value) =>
-                setSelectedRound(value as (typeof ROUND_FILTERS)[number])
-              }
-              options={ROUND_FILTER_OPTIONS}
-            />
-            <CompactFilter
-              label="Company"
-              value={selectedCompany || ""}
-              onChange={(value) => setSelectedCompany(value || null)}
-              options={companyFilterOptions}
-            />
-          </div>
+          <details
+            className="border-dashboard-panel-border rounded-md border"
+            data-question-bank-mobile-filters
+          >
+            <summary className="text-dashboard-foreground focus-visible:ring-ring flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-3 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none">
+              <span>Filters</span>
+              <span className="text-dashboard-muted text-xs font-normal">
+                {activeFacetCount === 0
+                  ? "All questions"
+                  : `${activeFacetCount} active`}
+              </span>
+            </summary>
+            <div className="border-dashboard-panel-border space-y-3 border-t p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <CompactFilter
+                  label="Round"
+                  value={selectedRound}
+                  onChange={(value) =>
+                    setSelectedRound(value as (typeof ROUND_FILTERS)[number])
+                  }
+                  options={roundFilterOptions}
+                />
+                <CompactFilter
+                  label="Company"
+                  value={selectedCompany || ""}
+                  onChange={(value) => setSelectedCompany(value || null)}
+                  options={companyFilterOptions}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-pressed={showSavedOnly}
+                onClick={() => setShowSavedOnly((current) => !current)}
+                className={cn(
+                  "border-dashboard-panel-border min-h-10 w-full justify-start gap-2 bg-transparent",
+                  showSavedOnly &&
+                    "bg-dashboard-muted/20 text-dashboard-foreground"
+                )}
+              >
+                <Bookmark
+                  className={cn("h-4 w-4", showSavedOnly && "fill-current")}
+                  aria-hidden="true"
+                />
+                {showSavedOnly ? "Showing saved questions" : "Saved questions"}
+              </Button>
+            </div>
+          </details>
         </div>
 
         <aside
-          className="border-dashboard-panel-border hidden min-h-0 flex-col gap-7 border-r pr-7 lg:col-start-1 lg:row-start-1 lg:flex"
+          className="border-dashboard-panel-border hidden min-h-0 flex-col gap-5 border-r pr-7 lg:col-start-1 lg:row-start-1 lg:flex"
           data-question-bank-controls
         >
           <SearchField value={searchQuery} onChange={setSearchQuery} />
@@ -321,8 +377,8 @@ export const QuestionsSection = memo(function QuestionsSection() {
                   label={round}
                   count={
                     round === "All rounds"
-                      ? totalQuestions || summary.totalActive
-                      : summary.roundCounts[round] || 0
+                      ? facets.allRoundsCount
+                      : facets.roundCounts[round] || 0
                   }
                   onClick={() => setSelectedRound(round)}
                 />
@@ -330,31 +386,90 @@ export const QuestionsSection = memo(function QuestionsSection() {
             </FilterGroup>
           </div>
 
-          <FilterGroup title="Company">
-            {companyFilters.map(([company, count]) => (
-              <Button
-                key={company}
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-pressed={selectedCompany === company}
-                onClick={() =>
-                  setSelectedCompany((current) =>
-                    current === company ? null : company
-                  )
-                }
-                className={cn(
-                  "h-auto min-h-9 w-full justify-between rounded-md px-2 py-2 text-left text-sm whitespace-normal",
-                  selectedCompany === company
-                    ? "bg-dashboard-muted/15 text-dashboard-foreground font-semibold"
-                    : "text-dashboard-muted hover:text-dashboard-foreground"
-                )}
+          <Button
+            type="button"
+            variant="ghost"
+            aria-pressed={showSavedOnly}
+            onClick={() => setShowSavedOnly((current) => !current)}
+            className={cn(
+              "border-dashboard-panel-border flex min-h-10 w-full justify-start gap-2 rounded-md border px-3 text-sm",
+              showSavedOnly
+                ? "bg-dashboard-muted/20 text-dashboard-foreground"
+                : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground"
+            )}
+          >
+            <Bookmark
+              className={cn("h-4 w-4", showSavedOnly && "fill-current")}
+              aria-hidden="true"
+            />
+            Saved questions
+            <span className="ml-auto">{bookmarkedQuestionIds.size}</span>
+          </Button>
+
+          <section
+            className="flex min-h-0 flex-1 flex-col"
+            aria-labelledby="company-filter-title"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3
+                id="company-filter-title"
+                className="text-dashboard-foreground text-sm font-semibold"
               >
-                <span className="min-w-0 break-words">{company}</span>
-                <span className="shrink-0 pl-3">{count}</span>
-              </Button>
-            ))}
-          </FilterGroup>
+                Company
+              </h3>
+              {companyQuery && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCompanyQuery("")}
+                  className="text-dashboard-muted hover:text-dashboard-foreground h-8 gap-1 px-2 text-xs"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  Clear
+                </Button>
+              )}
+            </div>
+            <label className="relative mt-3 block">
+              <span className="sr-only">Find a company filter</span>
+              <Search
+                className="text-dashboard-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+                aria-hidden="true"
+              />
+              <Input
+                value={companyQuery}
+                onChange={(event) => setCompanyQuery(event.target.value)}
+                placeholder="Find company"
+                className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground h-10 pl-9"
+              />
+            </label>
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              <FilterButton
+                active={selectedCompany === null}
+                label="All companies"
+                count={facets.allCompaniesCount}
+                onClick={() => setSelectedCompany(null)}
+              />
+              {companyFilters.map(([company, count]) => (
+                <FilterButton
+                  key={company}
+                  active={selectedCompany === company}
+                  label={company}
+                  count={count}
+                  onClick={() =>
+                    setSelectedCompany((current) =>
+                      current === company ? null : company
+                    )
+                  }
+                />
+              ))}
+              {companyFilters.length === 0 && (
+                <p className="text-dashboard-muted px-2 py-3 text-sm">
+                  No companies match “{companyQuery.trim()}”.
+                </p>
+              )}
+            </div>
+          </section>
         </aside>
 
         <section
@@ -366,11 +481,16 @@ export const QuestionsSection = memo(function QuestionsSection() {
               <h2 className="text-dashboard-foreground text-lg font-semibold">
                 All questions
               </h2>
-              <p className="text-dashboard-muted mt-1 text-sm">
-                Showing {filteredQuestions.length} of{" "}
-                {totalQuestions || summary.totalActive}
-                {bookmarkedQuestionIds.size > 0
-                  ? ` · ${bookmarkedQuestionIds.size} saved`
+              <p
+                className="text-dashboard-muted mt-1 text-sm"
+                aria-live="polite"
+              >
+                {formatQuestionCount(
+                  filteredQuestions.length,
+                  hasActiveFilters
+                )}
+                {!showSavedOnly && visibleSavedCount > 0
+                  ? ` · ${visibleSavedCount} saved in results`
                   : ""}
               </p>
               {bookmarkError && (
@@ -395,10 +515,11 @@ export const QuestionsSection = memo(function QuestionsSection() {
             </label>
           </div>
 
-          <div className="border-dashboard-panel-border text-dashboard-muted hidden shrink-0 grid-cols-[100px_110px_minmax(0,1fr)_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase lg:grid">
+          <div className="border-dashboard-panel-border text-dashboard-muted hidden shrink-0 grid-cols-[92px_100px_minmax(0,1fr)_76px_116px] gap-4 border-b py-3 text-xs font-semibold lg:grid">
             <span>Company</span>
             <span>Round</span>
             <span>Question</span>
+            <span>Asked</span>
             <span className="text-right">Actions</span>
           </div>
 
@@ -421,8 +542,17 @@ export const QuestionsSection = memo(function QuestionsSection() {
             ))}
 
             {filteredQuestions.length === 0 && (
-              <div className="text-dashboard-muted flex min-h-40 items-center justify-center px-4 text-center text-sm">
-                No questions match the current filters.
+              <div className="text-dashboard-muted flex min-h-40 flex-col items-center justify-center gap-4 px-4 text-center text-sm">
+                <p>No questions match the current filters.</p>
+                {hasActiveFilters && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearFilters}
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -442,11 +572,8 @@ function SearchField({
   const inputId = useId();
 
   return (
-    <div className="space-y-3">
-      <label
-        htmlFor={inputId}
-        className="text-dashboard-muted block text-xs font-bold tracking-[0.3em] uppercase"
-      >
+    <div>
+      <label htmlFor={inputId} className="sr-only">
         Search
       </label>
       <div className="relative">
@@ -459,7 +586,7 @@ function SearchField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground pl-9"
-          placeholder="Company or keyword"
+          placeholder="Search questions"
         />
       </div>
     </div>
@@ -510,7 +637,7 @@ function QuestionRow({
 
   return (
     <article className="py-4 text-sm" data-question-bank-row>
-      <div className="hidden min-w-0 grid-cols-[100px_110px_minmax(0,1fr)_92px] gap-4 lg:grid">
+      <div className="hidden min-w-0 grid-cols-[92px_100px_minmax(0,1fr)_76px_116px] items-start gap-4 lg:grid">
         <span className="text-dashboard-foreground min-w-0 font-semibold break-words">
           {question.company || "Meelni"}
         </span>
@@ -519,6 +646,9 @@ function QuestionRow({
         </span>
         <span className="text-dashboard-foreground min-w-0 leading-6 break-words">
           {question.questionText}
+        </span>
+        <span className="text-dashboard-muted text-xs leading-6">
+          {formatQuestionDate(question.askedAt ?? question.createdAt)}
         </span>
         <span className="flex items-start justify-end gap-1">
           <Button
@@ -539,11 +669,11 @@ function QuestionRow({
           </Button>
           <Button
             asChild
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="text-primary hover:text-primary h-9 px-2"
+            className="border-dashboard-panel-border h-9 bg-transparent px-3"
           >
-            <Link href={getQuestionStartHref(question)}>Start</Link>
+            <Link href={getQuestionStartHref(question)}>Practice</Link>
           </Button>
         </span>
       </div>
@@ -555,6 +685,10 @@ function QuestionRow({
           </span>
           <span aria-hidden="true">·</span>
           <span>{formatRoundType(question.questionType)}</span>
+          <span aria-hidden="true">·</span>
+          <span>
+            {formatQuestionDate(question.askedAt ?? question.createdAt)}
+          </span>
         </div>
         <p className="text-dashboard-foreground mt-2 leading-6 break-words">
           {question.questionText}
@@ -598,9 +732,7 @@ function FilterGroup({
 }) {
   return (
     <div className="space-y-3">
-      <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-        {title}
-      </p>
+      <p className="text-dashboard-foreground text-sm font-semibold">{title}</p>
       <div className="flex flex-wrap gap-2 lg:block lg:space-y-1">
         {children}
       </div>
@@ -626,16 +758,67 @@ function FilterButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-md px-0 py-2 text-sm",
+        "flex h-auto min-h-9 w-full items-center justify-between rounded-md border px-2 py-2 text-left text-sm whitespace-normal",
         active
-          ? "text-dashboard-foreground font-semibold"
-          : "text-dashboard-muted hover:text-dashboard-foreground"
+          ? "border-dashboard-panel-border bg-dashboard-muted/20 text-dashboard-foreground font-semibold"
+          : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground border-transparent"
       )}
     >
-      <span>{label}</span>
-      <span>{count}</span>
+      <span className="min-w-0 break-words">{label}</span>
+      <span className="shrink-0 pl-3">{count}</span>
     </Button>
   );
+}
+
+interface QuestionPageResponse {
+  questions?: Question[];
+  pagination?: {
+    total?: number;
+    hasMore?: boolean;
+  };
+  code?: string;
+}
+
+async function fetchPublishedQuestionCorpus(signal: AbortSignal) {
+  const questions: Question[] = [];
+  let offset = 0;
+
+  while (true) {
+    const params = new URLSearchParams({
+      limit: String(QUESTION_PAGE_SIZE),
+      offset: String(offset),
+    });
+    const response = await fetch(`/api/questions?${params.toString()}`, {
+      signal,
+    });
+    const data = (await response.json()) as QuestionPageResponse;
+
+    if (!response.ok) {
+      throw new Error(
+        data.code === "question_bank_unavailable"
+          ? "question_bank_unavailable"
+          : "question_bank_read_failed"
+      );
+    }
+
+    const page = data.questions || [];
+    questions.push(...page);
+
+    if (!data.pagination?.hasMore) {
+      return questions;
+    }
+    if (page.length === 0) {
+      throw new Error("question_bank_read_failed");
+    }
+
+    offset = questions.length;
+  }
+}
+
+function formatQuestionCount(count: number, filtered: boolean) {
+  const label = `${count} question${count === 1 ? "" : "s"}`;
+  if (!filtered) return label;
+  return count === 1 ? "1 question matches" : `${label} match`;
 }
 
 function getQuestionStartHref(question: DashboardQuestionInput) {
@@ -658,4 +841,14 @@ function normalizeRoundType(roundType: string) {
 function getTime(date: Date | string | null | undefined) {
   if (!date) return 0;
   return new Date(date).getTime();
+}
+
+function formatQuestionDate(date: Date | string | null | undefined) {
+  if (!date) return "No date";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "No date";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+  }).format(parsed);
 }

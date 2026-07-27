@@ -11,11 +11,13 @@ export interface AnalyticsInsightsResponse {
     velocity?: number;
   };
   competencies?: Record<string, number>;
+  competencySampleSizes?: Record<string, number>;
 }
 
 export interface AnalyticsCompetency {
   label: string;
   value: number | null;
+  sampleSize: number;
   state: "actual" | "placeholder";
 }
 
@@ -28,17 +30,25 @@ export function buildAnalyticsCompetencies(
   insights: AnalyticsInsightsResponse | null
 ): AnalyticsCompetency[] {
   const source = insights?.competencies || {};
+  const sampleSizes = insights?.competencySampleSizes || {};
   const values = [
-    ["Structure", source.structure],
-    ["Clarity", source.clarity],
-    ["Metrics depth", source.insight],
+    ["Structure", source.structure, sampleSizes.structure],
+    ["Clarity", source.clarity, sampleSizes.clarity],
+    ["Metrics depth", source.insight, sampleSizes.insight],
   ] as const;
 
-  return values.map(([label, rawValue]) => {
+  return values.map(([label, rawValue, rawSampleSize]) => {
+    const sampleSize =
+      typeof rawSampleSize === "number" &&
+      Number.isFinite(rawSampleSize) &&
+      rawSampleSize > 0
+        ? Math.floor(rawSampleSize)
+        : 0;
     if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
       return {
         label,
         value: null,
+        sampleSize,
         state: "placeholder",
       };
     }
@@ -46,6 +56,7 @@ export function buildAnalyticsCompetencies(
     return {
       label,
       value: rawValue > 10 ? rawValue / 10 : rawValue,
+      sampleSize,
       state: "actual",
     };
   });
@@ -54,13 +65,9 @@ export function buildAnalyticsCompetencies(
 export function buildAnalyticsEvidence({
   focusAreaLabel,
   focusAreaScore,
-  focusAreaDescription,
-  progressDeltaLabel,
 }: {
   focusAreaLabel: string;
   focusAreaScore: number | null;
-  focusAreaDescription: string;
-  progressDeltaLabel: string;
 }): AnalyticsEvidenceItem[] {
   if (focusAreaScore === null) {
     return [];
@@ -68,12 +75,8 @@ export function buildAnalyticsEvidence({
 
   return [
     {
-      title: "Latest feedback",
-      description: `In the latest completed feedback, ${focusAreaLabel} was the lowest scored dimension. ${focusAreaDescription}`,
-    },
-    {
-      title: "Recent trend",
-      description: `Recent scored interviews: ${progressDeltaLabel}.`,
+      title: "Latest scored feedback",
+      description: `${focusAreaLabel} was the lowest observed dimension at ${focusAreaScore.toFixed(1)}/10.`,
     },
   ];
 }

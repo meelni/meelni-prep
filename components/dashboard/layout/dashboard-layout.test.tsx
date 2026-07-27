@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,6 +13,14 @@ import {
   getSidebarCollapsedForViewport,
 } from "./dashboard-layout";
 import { getDashboardActiveSectionFromPath } from "./dashboard-navigation";
+
+test("dashboard shell loading depends on authentication, not session history", () => {
+  const source = readFileSync("app/dashboard/layout.tsx", "utf8");
+
+  assert.doesNotMatch(source, /useSessions/);
+  assert.doesNotMatch(source, /sessionsLoading/);
+  assert.match(source, /if \(authLoading\)/);
+});
 
 function getMobileWorkspaceNavigation(html: string) {
   const navigation = html.match(
@@ -58,7 +67,7 @@ test("dashboard shell does not reserve desktop sidebar width on mobile", () => {
   assert.match(DASHBOARD_SIDEBAR_SHELL_CLASS_NAME, /md:block/);
 });
 
-test("dashboard shell provides a stable mobile workspace navigation grid", () => {
+test("dashboard shell provides one compact mobile workspace navigation row", () => {
   const html = renderToStaticMarkup(
     <DashboardLayout
       activeSection="analytics"
@@ -71,14 +80,11 @@ test("dashboard shell provides a stable mobile workspace navigation grid", () =>
 
   assert.doesNotMatch(DASHBOARD_MOBILE_NAV_CLASS_NAME, /overflow-x-auto/);
   assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /md:hidden/);
-  assert.match(mobileNavigation, /grid-cols-3/);
-  assert.match(mobileNavigation, /href="\/dashboard\/history"/);
-  assert.match(mobileNavigation, /href="\/dashboard\/questions"/);
-  assert.match(
-    mobileNavigation,
-    /aria-current="page"[^>]*><svg[^>]*>[\s\S]*Analytics/
-  );
-  assert.match(mobileNavigation, /min-h-11/);
+  assert.match(DASHBOARD_MOBILE_NAV_CLASS_NAME, /h-14/);
+  assert.match(mobileNavigation, /aria-label="Open workspace navigation"/);
+  assert.match(mobileNavigation, />Analytics</);
+  assert.doesNotMatch(mobileNavigation, /grid-cols-/);
+  assert.doesNotMatch(mobileNavigation, /overflow-x-/);
 });
 
 test("dashboard shell keeps scrolling inside the content container", () => {
@@ -108,8 +114,8 @@ test("dashboard shell owns the global new mock interview action", () => {
   const mobileNavigation = getMobileWorkspaceNavigation(html);
 
   assert.match(mobileNavigation, /href="\/dashboard\/new-interview"/);
-  assert.match(mobileNavigation, />New Mock Interview</);
-  assert.match(mobileNavigation, /min-h-11/);
+  assert.match(mobileNavigation, />New interview</);
+  assert.match(mobileNavigation, /h-10/);
   assert.doesNotMatch(mobileNavigation, />New rep</i);
 });
 

@@ -20,12 +20,7 @@ export function DashboardError({ error, reset }: DashboardErrorProps) {
   };
 
   return (
-    <DashboardLayout
-      activeSection="overview"
-      totalSessions={0}
-      totalMinutes={0}
-      avgScore={0}
-    >
+    <DashboardLayout activeSection="overview">
       <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="flex min-h-[60vh] items-center justify-center">
           <DashboardStateCard

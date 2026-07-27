@@ -25,7 +25,8 @@ export function DashboardFeedbackStatus({
 
 function getFeedbackStateTone(
   state: DashboardFeedbackDisplayState
-): "primary" | "muted" | "warning" {
+): "primary" | "muted" | "warning" | "success" {
+  if (state === "ready") return "success";
   if (state === "processing") return "primary";
   if (state === "unavailable") return "warning";
   return "muted";

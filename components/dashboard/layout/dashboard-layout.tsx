@@ -1,22 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Mic } from "lucide-react";
-
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { type DashboardActiveSection } from "./dashboard-navigation";
 import {
-  type DashboardActiveSection,
-  DASHBOARD_NAVIGATION_ITEMS,
-} from "./dashboard-navigation";
+  DashboardMobileNavigation,
+  DASHBOARD_MOBILE_NAV_CLASS_NAME,
+} from "./dashboard-mobile-navigation";
 import { Sidebar } from "./sidebar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   activeSection: DashboardActiveSection;
-  totalSessions?: number;
-  totalMinutes?: number;
-  avgScore?: number;
   user?: DashboardUser | null;
   onSignOut?: () => void;
 }
@@ -51,22 +45,17 @@ export function getSidebarCollapsedForViewport({
 
 export const DASHBOARD_SIDEBAR_SHELL_CLASS_NAME = "hidden md:block";
 
-export const DASHBOARD_MOBILE_NAV_CLASS_NAME =
-  "border-dashboard-panel-border bg-dashboard-canvas shrink-0 border-b px-3 py-2 md:hidden";
+export { DASHBOARD_MOBILE_NAV_CLASS_NAME };
 
 export function DashboardLayout({
   children,
   activeSection,
-  totalSessions,
-  totalMinutes,
-  avgScore,
   user,
   onSignOut,
 }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hasSyncedSidebarPreference, setHasSyncedSidebarPreference] =
     useState(false);
-  const activeMobileLinkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
@@ -105,15 +94,8 @@ export function DashboardLayout({
     return () => media.removeEventListener("change", syncSidebarForViewport);
   }, []);
 
-  useEffect(() => {
-    activeMobileLinkRef.current?.scrollIntoView?.({
-      block: "nearest",
-      inline: "nearest",
-    });
-  }, [activeSection]);
-
   return (
-    <div className="bg-dashboard-canvas text-dashboard-foreground flex h-screen flex-col [--accent:#24242a] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--secondary:#24242a] md:flex-row">
+    <div className="bg-dashboard-canvas text-dashboard-foreground flex h-dvh flex-col [--accent:#24242a] [--background:var(--dashboard-panel)] [--border:var(--dashboard-panel-border)] [--card:var(--dashboard-panel)] [--foreground:var(--dashboard-foreground)] [--input:var(--dashboard-panel-border)] [--muted-foreground:var(--dashboard-muted)] [--muted:#2a2a31] [--popover-foreground:var(--dashboard-foreground)] [--popover:var(--dashboard-panel)] [--primary-foreground:var(--dashboard-accent-foreground)] [--primary:var(--dashboard-accent)] [--ring:var(--dashboard-accent)] [--secondary:#24242a] md:flex-row">
       {/* Sidebar */}
       <div className={DASHBOARD_SIDEBAR_SHELL_CLASS_NAME}>
         <Sidebar
@@ -121,9 +103,6 @@ export function DashboardLayout({
           activeSection={activeSection}
           collapsed={sidebarCollapsed}
           setCollapsed={setSidebarCollapsed}
-          totalSessions={totalSessions}
-          totalMinutes={totalMinutes}
-          avgScore={avgScore}
           user={user}
           onSignOut={onSignOut}
         />
@@ -132,51 +111,7 @@ export function DashboardLayout({
       {/* Preserve the shell overlay token without blocking mobile content. */}
       <div className="bg-overlay/50 fixed inset-0 z-40 hidden md:hidden" />
 
-      <nav aria-label="Workspace" className={DASHBOARD_MOBILE_NAV_CLASS_NAME}>
-        <div className="grid grid-cols-3 gap-1 py-0.5">
-          <Link
-            ref={
-              activeSection === "new-interview"
-                ? activeMobileLinkRef
-                : undefined
-            }
-            href="/dashboard/new-interview"
-            aria-current={
-              activeSection === "new-interview" ? "page" : undefined
-            }
-            className={cn(
-              "focus-visible:ring-ring flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-center text-xs leading-tight font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-              activeSection === "new-interview"
-                ? "bg-primary text-primary-foreground"
-                : "bg-dashboard-panel text-dashboard-foreground hover:bg-dashboard-muted"
-            )}
-          >
-            <Mic className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>New Mock Interview</span>
-          </Link>
-          {DASHBOARD_NAVIGATION_ITEMS.map((item) => {
-            const selected = activeSection === item.id;
-
-            return (
-              <Link
-                key={item.id}
-                ref={selected ? activeMobileLinkRef : undefined}
-                href={item.href}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  "focus-visible:ring-ring bg-dashboard-canvas flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-center text-xs leading-tight font-semibold focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-                  selected
-                    ? "bg-dashboard-panel text-dashboard-foreground"
-                    : "text-dashboard-muted hover:bg-dashboard-muted/10 hover:text-dashboard-foreground"
-                )}
-              >
-                <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <DashboardMobileNavigation activeSection={activeSection} />
 
       <main className="bg-dashboard-canvas min-h-0 min-w-0 flex-1 overflow-hidden p-3">
         <section className={DASHBOARD_CONTENT_PANEL_CLASS_NAME}>

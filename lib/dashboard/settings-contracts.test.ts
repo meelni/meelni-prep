@@ -23,7 +23,7 @@ test("settings contract documents backed source and action state for visible con
   for (const item of SETTINGS_DATA_CONTRACT) {
     assert.ok(item.source.length > 0, item.label);
     assert.match(item.action, /^(editable|read-only|external|future)$/);
-    assert.equal(item.shipsNow, true, item.label);
+    assert.equal(item.shipsNow, item.action !== "future", item.label);
   }
 
   assert.ok(
@@ -31,7 +31,8 @@ test("settings contract documents backed source and action state for visible con
       (item) =>
         item.category === "account" &&
         item.label === "Target role and interview timeline" &&
-        item.action === "future"
+        item.action === "future" &&
+        item.shipsNow === false
     )
   );
   assert.ok(

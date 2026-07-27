@@ -16,9 +16,6 @@ interface SidebarProps {
   activeSection: DashboardActiveSection;
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
-  totalSessions?: number;
-  totalMinutes?: number;
-  avgScore?: number;
   user?: DashboardUser | null;
   onSignOut?: () => void;
 }
@@ -55,7 +52,7 @@ export function Sidebar({
       variants={sidebarVariants}
       initial={collapsed ? "collapsed" : "expanded"}
       animate={collapsed ? "collapsed" : "expanded"}
-      className="bg-dashboard-canvas text-dashboard-foreground relative z-50 flex h-screen shrink-0 flex-col p-3 md:z-auto"
+      className="bg-dashboard-canvas text-dashboard-foreground relative z-50 flex h-dvh shrink-0 flex-col p-3 md:z-auto"
     >
       <div className="flex h-10 items-center justify-between px-2">
         <Link href="/dashboard" className={cn("block", collapsed && "hidden")}>

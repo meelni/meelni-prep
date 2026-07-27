@@ -71,6 +71,7 @@ export async function GET() {
         byDifficulty: insights.byDifficulty,
         trends: insights.trends,
         competencies: insights.competencyBreakdown,
+        competencySampleSizes: insights.competencySampleSizes,
         lastUpdated: new Date().toISOString(),
       },
       {
