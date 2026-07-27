@@ -43,6 +43,13 @@ async function assertMobileNavigationDrawerContract({
         .map((animation) => animation.finished)
     );
   });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  const viewport = page.viewportSize();
+  if (viewport) {
+    await page.mouse.move(viewport.width - 1, viewport.height - 1);
+  }
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   const [controlledId, dialogId] = await Promise.all([
     trigger.getAttribute("aria-controls"),
