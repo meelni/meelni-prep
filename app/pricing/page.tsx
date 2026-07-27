@@ -13,6 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Header } from "@/components/sections/header";
 import { AppSurface, StatusPill } from "@/components/ui/app-surface";
 import {
+  CheckoutStartError,
+  CHECKOUT_START_ERROR_MESSAGE,
+} from "@/components/checkout-start-error";
+import {
   getPublicPricingPlans,
   type PublicPricingPlan,
 } from "@/lib/billing/catalog-presentation";
@@ -29,6 +33,7 @@ export default function PricingPage() {
   const activation = usePublicActivationDecision();
   const reactivationEnabled = activation.canActivate;
   const [loadingCatalogId, setLoadingCatalogId] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const plans = getPublicPricingPlans();
 
   async function handlePlanClick(plan: PublicPricingPlan) {
@@ -40,6 +45,7 @@ export default function PricingPage() {
     }
 
     setLoadingCatalogId(plan.catalogId);
+    setCheckoutError(null);
 
     try {
       const response = await fetch("/api/checkout/create-session", {
@@ -69,6 +75,7 @@ export default function PricingPage() {
       window.location.href = data.url;
     } catch (error) {
       console.error("Checkout start failed:", error);
+      setCheckoutError(CHECKOUT_START_ERROR_MESSAGE);
       setLoadingCatalogId(null);
     }
   }
@@ -104,6 +111,7 @@ export default function PricingPage() {
 
       <section className="py-20">
         <div className="container mx-auto max-w-6xl px-4">
+          <CheckoutStartError message={checkoutError} className="mb-8" />
           {!reactivationEnabled && (
             <MarketingCtaCard
               className="mb-8"
