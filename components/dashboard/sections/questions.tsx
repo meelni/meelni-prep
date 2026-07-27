@@ -1,8 +1,15 @@
 "use client";
 
-import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
-import { Bookmark, CircleAlert, Play, Search } from "lucide-react";
+import { Bookmark, CircleAlert, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +46,11 @@ const TYPE_TO_API: Record<string, string> = {
   Strategy: "strategy",
   Behavioral: "behavioral",
 };
+
+const ROUND_FILTER_OPTIONS = ROUND_FILTERS.map((round) => ({
+  value: round,
+  label: round,
+}));
 
 export const QuestionsSection = memo(function QuestionsSection() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -132,6 +144,16 @@ export const QuestionsSection = memo(function QuestionsSection() {
         .slice(0, 5),
     [summary.companyCounts]
   );
+  const companyFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All companies" },
+      ...companyFilters.map(([company]) => ({
+        value: company,
+        label: company,
+      })),
+    ],
+    [companyFilters]
+  );
 
   const filteredQuestions = useMemo(() => {
     return questions
@@ -155,11 +177,6 @@ export const QuestionsSection = memo(function QuestionsSection() {
         return getTime(b.askedAt) - getTime(a.askedAt);
       });
   }, [questions, debouncedSearchQuery, selectedCompany, sortBy]);
-
-  const recommendedQuestion =
-    summary.recommendedQuestion && questions.length > 0
-      ? summary.recommendedQuestion
-      : null;
 
   const toggleBookmark = async (questionId: string) => {
     const isBookmarked = bookmarkedQuestionIds.has(questionId);
@@ -222,68 +239,38 @@ export const QuestionsSection = memo(function QuestionsSection() {
   }
 
   return (
-    <DashboardPage label="Question Bank">
-      <div className="mx-auto flex w-full max-w-6xl flex-col">
-        {recommendedQuestion && (
-          <section className="border-dashboard-panel-border flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-center">
-            <Pill tone="primary">Start here</Pill>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-dashboard-foreground text-lg font-semibold">
-                {recommendedQuestion.questionText}
-              </h2>
-              <p className="text-dashboard-muted mt-1 text-sm">
-                {formatRoundType(recommendedQuestion.questionType)} · Real PM
-                interview question
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button asChild>
-                <Link href={getQuestionStartHref(recommendedQuestion)}>
-                  <Play className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Start
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => toggleBookmark(recommendedQuestion.id)}
-                className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground bg-transparent"
-              >
-                <Bookmark
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    bookmarkedQuestionIds.has(recommendedQuestion.id) &&
-                      "fill-current"
-                  )}
-                  aria-hidden="true"
-                />
-                Save
-              </Button>
-            </div>
-          </section>
-        )}
+    <DashboardPage label="Question Bank" bodyClassName="overflow-hidden">
+      <div className="mx-auto grid h-full min-h-0 w-full max-w-6xl grid-rows-[auto_minmax(0,1fr)] gap-5 lg:grid-cols-[240px_minmax(0,1fr)] lg:grid-rows-1 lg:gap-7">
+        <div
+          className="border-dashboard-panel-border space-y-4 border-b pb-5 lg:hidden"
+          data-question-bank-controls
+        >
+          <SearchField value={searchQuery} onChange={setSearchQuery} />
+          <div className="grid grid-cols-2 gap-3">
+            <CompactFilter
+              label="Round"
+              value={selectedRound}
+              onChange={(value) =>
+                setSelectedRound(value as (typeof ROUND_FILTERS)[number])
+              }
+              options={ROUND_FILTER_OPTIONS}
+            />
+            <CompactFilter
+              label="Company"
+              value={selectedCompany || ""}
+              onChange={(value) => setSelectedCompany(value || null)}
+              options={companyFilterOptions}
+            />
+          </div>
+        </div>
 
-        <div className="grid flex-1 gap-7 py-5 lg:grid-cols-[240px_1fr]">
-          <aside className="lg:border-dashboard-panel-border space-y-7 lg:border-r lg:pr-7">
-            <div className="space-y-3">
-              <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                Search
-              </p>
-              <div className="relative">
-                <Search
-                  className="text-dashboard-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-                  aria-hidden="true"
-                />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground pl-9"
-                  placeholder="Company or keyword"
-                  aria-label="Search questions"
-                />
-              </div>
-            </div>
+        <aside
+          className="border-dashboard-panel-border hidden min-h-0 flex-col gap-7 border-r pr-7 lg:col-start-1 lg:row-start-1 lg:flex"
+          data-question-bank-controls
+        >
+          <SearchField value={searchQuery} onChange={setSearchQuery} />
 
+          <div className="space-y-3">
             <FilterGroup title="Round">
               {ROUND_FILTERS.map((round) => (
                 <FilterButton
@@ -299,113 +286,254 @@ export const QuestionsSection = memo(function QuestionsSection() {
                 />
               ))}
             </FilterGroup>
+          </div>
 
-            <FilterGroup title="Company">
-              {companyFilters.map(([company, count]) => (
-                <Button
-                  key={company}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setSelectedCompany((current) =>
-                      current === company ? null : company
-                    )
-                  }
-                  className={cn(
-                    "h-8 rounded-full border px-3 text-sm",
-                    selectedCompany === company
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-dashboard-panel-border text-dashboard-muted hover:text-dashboard-foreground"
-                  )}
-                >
-                  {company} {count > 1 ? count : ""}
-                </Button>
-              ))}
-            </FilterGroup>
+          <FilterGroup title="Company">
+            {companyFilters.map(([company, count]) => (
+              <Button
+                key={company}
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={selectedCompany === company}
+                onClick={() =>
+                  setSelectedCompany((current) =>
+                    current === company ? null : company
+                  )
+                }
+                className={cn(
+                  "h-auto min-h-9 w-full justify-between rounded-md px-2 py-2 text-left text-sm whitespace-normal",
+                  selectedCompany === company
+                    ? "bg-dashboard-muted/15 text-dashboard-foreground font-semibold"
+                    : "text-dashboard-muted hover:text-dashboard-foreground"
+                )}
+              >
+                <span className="min-w-0 break-words">{company}</span>
+                <span className="shrink-0 pl-3">{count}</span>
+              </Button>
+            ))}
+          </FilterGroup>
+        </aside>
 
-            <div className="border-dashboard-panel-border border-t pt-7">
-              <p className="font-display text-dashboard-foreground text-2xl font-semibold">
-                Queue: {bookmarkedQuestionIds.size}
+        <section
+          className="flex min-h-0 min-w-0 flex-col lg:col-start-2 lg:row-start-1"
+          data-question-bank-results
+        >
+          <div className="flex shrink-0 items-center justify-between gap-4 pb-4">
+            <div className="min-w-0">
+              <h2 className="text-dashboard-foreground text-lg font-semibold">
+                All questions
+              </h2>
+              <p className="text-dashboard-muted mt-1 text-sm">
+                Showing {filteredQuestions.length} of{" "}
+                {totalQuestions || summary.totalActive}
+                {bookmarkedQuestionIds.size > 0
+                  ? ` · ${bookmarkedQuestionIds.size} saved`
+                  : ""}
               </p>
-              <p className="text-dashboard-muted mt-2 text-sm leading-6">
-                Saved prompts become a short practice set.
-              </p>
             </div>
-          </aside>
+            <label className="text-dashboard-muted flex shrink-0 items-center gap-2 text-sm">
+              <span className="hidden sm:inline">Sort</span>
+              <select
+                value={sortBy}
+                onChange={(event) =>
+                  setSortBy(event.target.value as "recent" | "company")
+                }
+                className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground min-h-10 rounded-md border px-3 py-2"
+                aria-label="Sort questions"
+              >
+                <option value="recent">Recent</option>
+                <option value="company">Company</option>
+              </select>
+            </label>
+          </div>
 
-          <section className="min-w-0">
-            <div className="border-dashboard-panel-border flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-dashboard-muted text-xs font-bold tracking-[0.3em] uppercase">
-                  All questions
-                </p>
-                <p className="text-dashboard-muted mt-1 text-sm">
-                  Showing {Math.min(filteredQuestions.length, 8)} of{" "}
-                  {totalQuestions || summary.totalActive}
-                </p>
-              </div>
-              <label className="text-dashboard-muted flex items-center gap-2 text-sm">
-                Sort
-                <select
-                  value={sortBy}
-                  onChange={(event) =>
-                    setSortBy(event.target.value as "recent" | "company")
-                  }
-                  className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground rounded-md border px-3 py-2"
-                >
-                  <option value="recent">Recent</option>
-                  <option value="company">Company</option>
-                </select>
-              </label>
-            </div>
+          <div className="border-dashboard-panel-border text-dashboard-muted hidden shrink-0 grid-cols-[100px_110px_minmax(0,1fr)_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase lg:grid">
+            <span>Company</span>
+            <span>Round</span>
+            <span>Question</span>
+            <span className="text-right">Actions</span>
+          </div>
 
-            <div className="overflow-x-auto">
-              <div className="min-w-[760px]">
-                <div className="border-dashboard-panel-border text-dashboard-muted grid grid-cols-[140px_140px_1fr_92px] gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase">
-                  <span>Company</span>
-                  <span>Round</span>
-                  <span>Question</span>
-                  <span className="text-right">Action</span>
-                </div>
-                <div className="divide-dashboard-panel-border divide-y">
-                  {filteredQuestions.slice(0, 12).map((question) => (
-                    <div
-                      key={question.id}
-                      className="grid grid-cols-[140px_140px_1fr_92px] gap-4 py-4 text-sm"
-                    >
-                      <span className="text-dashboard-foreground font-semibold">
-                        {question.company || "Meelni"}
-                      </span>
-                      <span className="text-dashboard-muted">
-                        {formatRoundType(question.questionType)}
-                      </span>
-                      <span className="text-dashboard-foreground">
-                        {question.questionText}
-                      </span>
-                      <Link
-                        href={getQuestionStartHref(question)}
-                        className="text-primary text-right font-semibold hover:underline"
-                      >
-                        Start
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div
+            className="divide-dashboard-panel-border min-h-0 flex-1 divide-y overflow-y-auto overscroll-contain pr-1"
+            data-question-bank-list
+            tabIndex={0}
+            aria-label="Question results"
+          >
+            {filteredQuestions.map((question) => (
+              <QuestionRow
+                key={question.id}
+                question={question}
+                bookmarked={bookmarkedQuestionIds.has(question.id)}
+                onToggleBookmark={() => toggleBookmark(question.id)}
+              />
+            ))}
 
             {filteredQuestions.length === 0 && (
-              <div className="text-dashboard-muted py-16 text-center text-sm">
+              <div className="text-dashboard-muted flex min-h-40 items-center justify-center px-4 text-center text-sm">
                 No questions match the current filters.
               </div>
             )}
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     </DashboardPage>
   );
 });
+
+function SearchField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const inputId = useId();
+
+  return (
+    <div className="space-y-3">
+      <label
+        htmlFor={inputId}
+        className="text-dashboard-muted block text-xs font-bold tracking-[0.3em] uppercase"
+      >
+        Search
+      </label>
+      <div className="relative">
+        <Search
+          className="text-dashboard-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+          aria-hidden="true"
+        />
+        <Input
+          id={inputId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground pl-9"
+          placeholder="Company or keyword"
+        />
+      </div>
+    </div>
+  );
+}
+
+function CompactFilter({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-dashboard-muted min-w-0 text-xs font-bold tracking-[0.2em] uppercase">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="border-dashboard-panel-border bg-dashboard-panel text-dashboard-foreground mt-2 block min-h-10 w-full min-w-0 rounded-md border px-3 py-2 text-sm font-normal tracking-normal normal-case"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function QuestionRow({
+  question,
+  bookmarked,
+  onToggleBookmark,
+}: {
+  question: Question;
+  bookmarked: boolean;
+  onToggleBookmark: () => void;
+}) {
+  const bookmarkLabel = bookmarked ? "Remove saved question" : "Save question";
+
+  return (
+    <article className="py-4 text-sm" data-question-bank-row>
+      <div className="hidden min-w-0 grid-cols-[100px_110px_minmax(0,1fr)_92px] gap-4 lg:grid">
+        <span className="text-dashboard-foreground min-w-0 font-semibold break-words">
+          {question.company || "Meelni"}
+        </span>
+        <span className="text-dashboard-muted min-w-0 break-words">
+          {formatRoundType(question.questionType)}
+        </span>
+        <span className="text-dashboard-foreground min-w-0 leading-6 break-words">
+          {question.questionText}
+        </span>
+        <span className="flex items-start justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={bookmarkLabel}
+            aria-pressed={bookmarked}
+            title={bookmarkLabel}
+            onClick={onToggleBookmark}
+            className="text-dashboard-muted hover:text-dashboard-foreground h-9 w-9"
+          >
+            <Bookmark
+              className={cn("h-4 w-4", bookmarked && "fill-current")}
+              aria-hidden="true"
+            />
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="text-primary hover:text-primary h-9 px-2"
+          >
+            <Link href={getQuestionStartHref(question)}>Start</Link>
+          </Button>
+        </span>
+      </div>
+
+      <div className="min-w-0 lg:hidden">
+        <div className="text-dashboard-muted flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="text-dashboard-foreground font-semibold">
+            {question.company || "Meelni"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{formatRoundType(question.questionType)}</span>
+        </div>
+        <p className="text-dashboard-foreground mt-2 leading-6 break-words">
+          {question.questionText}
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="border-dashboard-panel-border bg-transparent"
+          >
+            <Link href={getQuestionStartHref(question)}>Start interview</Link>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-pressed={bookmarked}
+            onClick={onToggleBookmark}
+            className="text-dashboard-muted hover:text-dashboard-foreground"
+          >
+            <Bookmark
+              className={cn("mr-2 h-4 w-4", bookmarked && "fill-current")}
+              aria-hidden="true"
+            />
+            {bookmarked ? "Saved" : "Save"}
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function FilterGroup({
   title,
@@ -441,6 +569,7 @@ function FilterButton({
     <Button
       type="button"
       variant="ghost"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "flex h-9 w-full items-center justify-between rounded-md px-0 py-2 text-sm",
@@ -452,27 +581,6 @@ function FilterButton({
       <span>{label}</span>
       <span>{count}</span>
     </Button>
-  );
-}
-
-function Pill({
-  children,
-  tone = "muted",
-}: {
-  children: ReactNode;
-  tone?: "primary" | "muted";
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 rounded-full px-3 py-1.5 text-xs font-bold",
-        tone === "primary"
-          ? "bg-primary text-primary-foreground"
-          : "bg-dashboard-muted/15 text-dashboard-foreground"
-      )}
-    >
-      {children}
-    </span>
   );
 }
 

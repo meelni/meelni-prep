@@ -7,6 +7,7 @@ import {
 
 const nativeFetch = window.fetch.bind(window);
 let comparisonRequests = 0;
+const bookmarkedQuestionIds = new Set<string>();
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -67,6 +68,26 @@ export function installSyntheticFetch() {
           hasMore: false,
         },
       });
+    }
+    if (url.pathname === "/api/questions/bookmark") {
+      if (!init?.method || init.method === "GET") {
+        return json({ questionIds: [...bookmarkedQuestionIds] });
+      }
+
+      if (init.method === "POST") {
+        const body =
+          typeof init.body === "string"
+            ? (JSON.parse(init.body) as { questionId?: string })
+            : {};
+        if (body.questionId) bookmarkedQuestionIds.add(body.questionId);
+        return json({ saved: true });
+      }
+
+      if (init.method === "DELETE") {
+        const questionId = url.searchParams.get("questionId");
+        if (questionId) bookmarkedQuestionIds.delete(questionId);
+        return json({ saved: false });
+      }
     }
     if (
       url.pathname === "/api/feedback/browser-qa-session/attempts" &&
