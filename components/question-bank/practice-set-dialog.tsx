@@ -63,7 +63,7 @@ export function PracticeSetDialog({
 
       // Add selected questions to the set
       if (selectedQuestionIds.length > 0) {
-        await Promise.all(
+        const addResponses = await Promise.all(
           selectedQuestionIds.map((questionId) =>
             fetch(`/api/practice-sets/${set.id}/questions`, {
               method: "POST",
@@ -72,6 +72,9 @@ export function PracticeSetDialog({
             })
           )
         );
+        if (addResponses.some((response) => !response.ok)) {
+          throw new Error("Failed to add questions to practice set");
+        }
       }
 
       // Reset form and close dialog
