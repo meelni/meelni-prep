@@ -77,17 +77,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Parse return URL from request body (optional)
-    let returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/dashboard/subscription`;
-
-    try {
-      const body = await req.json();
-      if (body.returnUrl) {
-        returnUrl = body.returnUrl;
-      }
-    } catch {
-      // No body provided or invalid JSON - use default return URL
-    }
+    const returnUrl = new URL("/dashboard/settings", req.url).toString();
 
     // Verify customer exists in current Stripe mode (test vs live)
     try {

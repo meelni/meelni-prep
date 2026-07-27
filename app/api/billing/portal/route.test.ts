@@ -114,18 +114,32 @@ describe("POST /api/billing/portal operational failures", () => {
     });
     expect(mocks.createPortalSession).toHaveBeenCalledWith({
       customer: "cus_fixture",
-      return_url: "https://preview.meelni.test/dashboard/subscription",
+      return_url: "https://preview.meelni.test/dashboard/settings",
     });
     expect(mocks.report).not.toHaveBeenCalled();
   });
+
+  it("does not allow the client to replace the portal return destination", async () => {
+    const response = await POST(
+      request({ returnUrl: "https://attacker.example/phishing" })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.createPortalSession).toHaveBeenCalledWith({
+      customer: "cus_fixture",
+      return_url: "https://preview.meelni.test/dashboard/settings",
+    });
+  });
 });
 
-function request() {
+function request(body?: unknown) {
   return new Request("https://preview.meelni.test/api/billing/portal", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      returnUrl: "https://preview.meelni.test/dashboard/subscription",
-    }),
+    ...(body === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
   });
 }
