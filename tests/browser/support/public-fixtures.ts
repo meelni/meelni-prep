@@ -9,6 +9,7 @@ const NEXT_INTERNAL_PREFETCH_PATHS = new Set([
   "/auth/signin",
   "/blog",
   "/companies",
+  "/contact",
   "/dashboard/new-interview",
   "/explore",
   "/privacy",
