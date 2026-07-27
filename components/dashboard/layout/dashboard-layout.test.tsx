@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,6 +13,14 @@ import {
   getSidebarCollapsedForViewport,
 } from "./dashboard-layout";
 import { getDashboardActiveSectionFromPath } from "./dashboard-navigation";
+
+test("dashboard shell loading depends on authentication, not session history", () => {
+  const source = readFileSync("app/dashboard/layout.tsx", "utf8");
+
+  assert.doesNotMatch(source, /useSessions/);
+  assert.doesNotMatch(source, /sessionsLoading/);
+  assert.match(source, /if \(authLoading\)/);
+});
 
 function getMobileWorkspaceNavigation(html: string) {
   const navigation = html.match(
