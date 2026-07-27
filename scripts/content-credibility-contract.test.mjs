@@ -26,6 +26,13 @@ test("active acquisition surfaces do not hardcode the retired corpus total", asy
   assert.deepEqual(violations, []);
 });
 
+test("the active pricing footer cannot publish a stale copyright year", async () => {
+  const pricing = await source("app/pricing/page.tsx");
+
+  assert.match(pricing, /new Date\(\)\.getFullYear\(\)/);
+  assert.doesNotMatch(pricing, /&copy;\s+20\d{2}/);
+});
+
 test("active Explore schema excludes invented claim properties", async () => {
   const text = await source("components/explore/structured-data.tsx");
   const forbidden = [
