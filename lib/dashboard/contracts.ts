@@ -37,6 +37,8 @@ export type DashboardFeedbackDisplayState =
 export interface DashboardProgressBar {
   score: number;
   value: number;
+  dateLabel?: string;
+  roundLabel?: string;
 }
 
 export interface DashboardFocusArea {
@@ -62,7 +64,7 @@ export interface DashboardPracticeSummary {
     description: string;
     eyebrow: string;
     roundType: string;
-    difficulty: string;
+    experienceLevel: string;
     creditLabel: string;
     href: string;
   };
@@ -189,10 +191,11 @@ export function buildDashboardPracticeSummary(
     (session) => getCompletedFeedbackScore(session.feedback) !== null
   );
   const latestScored = scoredSessions[0] ?? null;
-  const recentScores = scoredSessions
-    .slice(0, 5)
+  const recentScoredSessions = scoredSessions.slice(0, 5);
+  const recentScores = recentScoredSessions
     .map((session) => getCompletedFeedbackScore(session.feedback))
     .filter((score): score is number => score !== null);
+  const chronologicalScoredSessions = [...recentScoredSessions].reverse();
   const progressScore =
     recentScores.length > 0
       ? roundToOneDecimal(
@@ -244,7 +247,7 @@ export function buildDashboardPracticeSummary(
             "Completed, scored feedback will shape the next evidence-based practice target.",
           eyebrow: isNewUser ? "First interview" : "Next interview",
           roundType: "Product Sense",
-          difficulty: "Intermediate",
+          experienceLevel: "IC PM",
           creditLabel: "1 credit",
           href: "/dashboard/new-interview",
         }
@@ -254,7 +257,7 @@ export function buildDashboardPracticeSummary(
             description: focusArea.description,
             eyebrow: "Based on feedback",
             roundType: latestRound,
-            difficulty: "Intermediate",
+            experienceLevel: "IC PM",
             creditLabel: "1 credit",
             href: `/dashboard/new-interview?interview_type=${encodeURIComponent(roundParam)}`,
           }
@@ -264,7 +267,7 @@ export function buildDashboardPracticeSummary(
               "Use your latest completed feedback to choose one improvement before you start.",
             eyebrow: "Next interview",
             roundType: latestRound,
-            difficulty: "Intermediate",
+            experienceLevel: "IC PM",
             creditLabel: "1 credit",
             href: `/dashboard/new-interview?interview_type=${encodeURIComponent(roundParam)}`,
           },
@@ -323,7 +326,15 @@ export function buildDashboardPracticeSummary(
       };
     }),
     progressSignal: {
-      bars: buildProgressBars(recentScores),
+      bars: buildProgressBars(recentScores).map((bar, index) => {
+        const session = chronologicalScoredSessions[index];
+
+        return {
+          ...bar,
+          dateLabel: session ? formatSessionDate(session.startedAt) : undefined,
+          roundLabel: session ? formatRoundType(session.roundType) : undefined,
+        };
+      }),
       description: getProgressSignalDescription(recentScores),
     },
   };
@@ -400,7 +411,10 @@ export function buildHistorySummary(
     .map(([label, count]) => ({
       label,
       count,
-      description: `${label} was the lowest scored dimension in ${count} completed interview${count === 1 ? "" : "s"}.`,
+      description:
+        count === 1
+          ? `${label} was the lowest scored dimension in your latest scored feedback. Complete more interviews before treating it as a pattern.`
+          : `${label} was the lowest scored dimension in ${count} completed interviews.`,
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 3);
@@ -426,7 +440,10 @@ export function buildHistorySummary(
       feedbackHref: latestReady?.feedbackHref || null,
       repeatHref: latestReady?.repeatHref || "/dashboard/new-interview",
     },
-    filters: ["All interviews", "Product Sense", "Execution", "Behavioral"],
+    filters: [
+      "All interviews",
+      ...Array.from(new Set(rows.map((row) => row.roundLabel))),
+    ],
     rows,
     patterns,
   };
@@ -524,36 +541,37 @@ function getFeedbackDisplay(
     case "processing":
       return {
         focusLabel: "Feedback is being prepared",
-        scoreLabel: "In progress",
-        statusLabel: "In progress",
+        scoreLabel: "Not scored yet",
+        statusLabel: "Feedback processing",
         feedbackState: "processing" as const,
       };
     case "failed":
       return {
-        focusLabel: "Feedback couldn’t be generated",
-        scoreLabel: "Unavailable",
-        statusLabel: "Unavailable",
+        focusLabel:
+          "Feedback generation failed. Your interview is still saved.",
+        scoreLabel: "Not scored",
+        statusLabel: "Feedback failed",
         feedbackState: "unavailable" as const,
       };
     case "skipped":
       return {
-        focusLabel: "Feedback wasn’t generated",
-        scoreLabel: "No feedback",
-        statusLabel: "No feedback",
+        focusLabel: "This interview ended without generated feedback.",
+        scoreLabel: "Not scored",
+        statusLabel: "Feedback not generated",
         feedbackState: "not-generated" as const,
       };
     case "completed":
       return {
-        focusLabel: "This feedback has no score",
-        scoreLabel: "No score",
-        statusLabel: "No score",
+        focusLabel: "Feedback was saved without a valid score.",
+        scoreLabel: "Not scored",
+        statusLabel: "Feedback saved",
         feedbackState: "unscored" as const,
       };
     default:
       return {
-        focusLabel: "No score is available for this interview",
-        scoreLabel: "No score",
-        statusLabel: "No score",
+        focusLabel: "No feedback result is available for this interview.",
+        scoreLabel: "Not scored",
+        statusLabel: "Feedback unavailable",
         feedbackState: "unscored" as const,
       };
   }
@@ -595,9 +613,9 @@ function getSessionQuestionLabel(session: DashboardSessionInput) {
     config?: { questionText?: unknown; question?: unknown };
   };
   const questionText = config.config?.questionText || config.config?.question;
-  return typeof questionText === "string"
+  return typeof questionText === "string" && questionText.trim().length > 0
     ? questionText
-    : `${formatRoundType(session.roundType)} mock interview`;
+    : "—";
 }
 
 function getTime(date: Date | string | null) {

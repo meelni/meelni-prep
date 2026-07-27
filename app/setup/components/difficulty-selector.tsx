@@ -31,10 +31,10 @@ export function DifficultySelector({
     <div className="space-y-4">
       <div className="space-y-2">
         <h3 className="text-dashboard-foreground text-lg font-semibold">
-          Difficulty Level
+          Experience level
         </h3>
         <p className="text-dashboard-muted text-sm">
-          Choose how challenging you want the interview to be
+          Choose the PM seniority level the interviewer should calibrate for.
         </p>
       </div>
 

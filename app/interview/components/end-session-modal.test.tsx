@@ -20,6 +20,7 @@ function ModalHarness({ isLoading = false }: { isLoading?: boolean }) {
       <EndSessionModal
         isOpen={open}
         isLoading={isLoading}
+        capturedAnswerCount={2}
         onClose={() => setOpen(false)}
         onConfirm={vi.fn()}
         returnFocusRef={triggerRef}
@@ -39,10 +40,13 @@ describe("EndSessionModal", () => {
     await user.click(trigger);
 
     expect(
-      await screen.findByRole("dialog", { name: "End Interview?" })
+      await screen.findByRole("dialog", { name: "End interview?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Continue Interview" })
+      screen.getByText(/2 candidate answers are visible/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Continue interview" })
     ).toHaveFocus();
 
     await user.keyboard("{Escape}");
@@ -56,7 +60,7 @@ describe("EndSessionModal", () => {
 
     await user.click(screen.getByRole("button", { name: "End interview" }));
     const dialog = await screen.findByRole("dialog", {
-      name: "End Interview?",
+      name: "End interview?",
     });
     await user.keyboard("{Escape}");
 
