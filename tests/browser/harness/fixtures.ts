@@ -240,6 +240,31 @@ export const publicQuestions = [
     createdAt: "2026-07-02T00:00:00.000Z",
     isActive: true,
   },
+  ...Array.from({ length: 16 }, (_, index) => {
+    const companies = ["Northstar", "Meridian", "Figma", "Stripe"];
+    const questionTypes = [
+      "Product Sense",
+      "Execution",
+      "Strategy",
+      "Behavioral",
+    ];
+    const number = index + 3;
+
+    return {
+      id: `browser-qa-question-${number}`,
+      company: companies[index % companies.length],
+      questionText: [
+        "How would you improve discovery for a collaboration product used by distributed teams?",
+        "A core activation metric fell after launch. How would you find the cause and decide what to do next?",
+        "Your company is entering a crowded market. Which customer segment would you prioritize and why?",
+        "Tell me about a time you changed direction after receiving evidence that challenged your plan.",
+      ][index % 4]!,
+      questionType: questionTypes[index % questionTypes.length]!,
+      askedAt: `2026-07-${String(number).padStart(2, "0")}T00:00:00.000Z`,
+      createdAt: `2026-07-${String(number).padStart(2, "0")}T00:00:00.000Z`,
+      isActive: true,
+    };
+  }),
 ];
 
 function comparisonAttempt(
