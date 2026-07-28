@@ -34,14 +34,10 @@ def build_mock_interview_opening(
 ) -> str:
     """Build the exact first turn spoken by the full-interview runtime."""
     round_name = ROUND_DISPLAY_NAMES.get(round_type, "PM")
-    article = "an" if round_name[0].lower() in "aeiou" else "a"
-    introduction = (
-        "Hi, I'm Meelni, and I'll be your PM interviewer today. "
-        f"We're doing {article} {round_name} mock interview."
-    )
+    introduction = f"Hi, I'm Meelni, your {round_name} interviewer."
     question_text = selected_question_text(question)
     if question_text:
-        return f"{introduction} Here is your question: {question_text}"
+        return f"{introduction} {question_text}"
     return f"{introduction} Ready to begin?"
 
 
@@ -54,7 +50,7 @@ async def speak_mock_interview_opening(
     opening = build_mock_interview_opening(round_type, question)
     await session.say(
         opening,
-        allow_interruptions=False,
+        allow_interruptions=True,
         add_to_chat_ctx=True,
     )
     return opening

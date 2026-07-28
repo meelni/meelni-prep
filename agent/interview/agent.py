@@ -40,7 +40,11 @@ from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
 from shared.dispatch import resolve_cli_dispatch_name
 from shared.mock_interview_opening import speak_mock_interview_opening
-from shared.runtime_config import get_model_config, get_tts_config
+from shared.runtime_config import (
+    get_model_config,
+    get_tts_config,
+    INTERVIEW_VAD_MIN_SILENCE_SECONDS,
+)
 from shared.runtime_events import (
     create_runtime_event,
     provider_failure_code,
@@ -132,7 +136,9 @@ def prewarm(proc: JobProcess):
     # Configure VAD with explicit thresholds to match frontend sensitivity
     proc.userdata["vad"] = silero.VAD.load(
         min_speech_duration=0.2,      # Minimum speech duration in seconds
-        min_silence_duration=0.6,     # Wait 600ms of silence before end-of-speech
+        # Structured PM answers include short thinking pauses. Production
+        # evidence showed 600ms splitting one answer into consecutive turns.
+        min_silence_duration=INTERVIEW_VAD_MIN_SILENCE_SECONDS,
         padding_duration=0.1,          # Padding before/after speech
         activation_threshold=0.5,      # Voice activity threshold (0-1), balanced sensitivity
     )

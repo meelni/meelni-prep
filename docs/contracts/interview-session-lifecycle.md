@@ -132,17 +132,28 @@ session credentials and local transcript/end state, and fences late async
 callbacks. The replacement account is sent to the dashboard instead of
 requesting credentials for the prior account's session URL.
 
-The browser has no transcript persistence or retry queue. An explicit end first
-closes display acceptance and requests trusted runtime settlement. A definitive
-non-success HTTP response proves that the browser received a rejection, so it
-reopens display acceptance and keeps
-the connected retry experience. A transport exception after the request was
-written is ambiguous: the command may already have committed. In that case the
-browser unmounts the room and presents a non-dismissible frozen state. It polls
-owned durable lifecycle and feedback truth and, only while the stored session
-is still joinable, retries the same idempotent `user_end` command at a bounded
-cadence. It does not resume packet acceptance until terminal handoff is
-confirmed.
+The browser has no transcript persistence or retry queue. Confirming explicit
+end immediately closes display acceptance and mutes local input. The browser
+then sends one idempotent `user_end` command; it never calls runtime settlement
+as a prerequisite and does not require a mounted or connected room callback.
+The server attempts a short, bounded runtime settlement and then terminalizes
+from durable evidence regardless of acknowledgment. Missing or degraded writer
+proof fails closed and skips feedback, but cannot veto the user's exit.
+
+A definitive storage failure keeps the interview frozen and permits retrying
+the same End command; it never resumes packet acceptance or microphone input.
+A transport exception after the request was written is ambiguous because the
+command may already have committed. In that case the browser unmounts the room,
+presents a non-dismissible frozen state, polls owned durable lifecycle and
+feedback truth, and retries the same command at a bounded cadence only while
+the stored session remains joinable.
+
+LiveKit transport `connected` is not canonical interview readiness. On every
+initial connection or recovery, the authenticated browser asks the server to
+inspect candidate and agent presence. The server feeds those provider-verified
+facts through the same idempotent presence-reconciliation workflow used for
+missed webhooks. The UI reports `connected` only after the lifecycle is active
+or recovered; otherwise it remains connecting and enters bounded recovery.
 
 ## Room Metadata And Correlation
 

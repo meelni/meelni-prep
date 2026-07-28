@@ -174,20 +174,23 @@ older compatible notifications fall back to `event_id` as their stable UI
 identity.
 
 Transcript insert and terminalization transactions lock the same session row.
-Explicit browser end invokes the runtime's transcript-settlement RPC. The
-runtime interrupts any active interviewer playout, waits for LiveKit to expose
-the synchronized prefix or no-prefix marker, and drains its bounded in-memory
-outbox before the browser requests terminalization. Once the terminal
-transaction owns the row, it calculates feedback eligibility from durable
-turns, markers, registered writers, and per-generation settlements in that
-transaction. A separately claimed `ending` state normally closes distinct
-writes. Reconnect timeout is the narrow exception: while the room stays alive,
-the server sends a reliable trusted metadata-only settlement request targeted
-to the current registered generation and cutoff `D`, awaits durable database
-acknowledgement (settled, degraded, or bounded failure), and only then deletes
-the room. Passive delay is not evidence. Only that generation's pre-cutoff
-drain is accepted; older generations remain fenced. Equivalent replays remain
-idempotent after the cutoff. A hard deadline
+Explicit browser end sends one authenticated terminal command. The server
+attempts a short, bounded reliable metadata-only settlement request before
+terminalization, but runtime timeout, absence, or provider failure cannot reject
+the user's end intent. The runtime interrupts active interviewer playout,
+commits in-progress candidate speech when possible, and drains its bounded
+in-memory outbox. The terminal transaction then calculates feedback eligibility
+from durable turns, markers, registered writers, and per-generation settlements.
+Missing or degraded proof fails closed and skips feedback.
+
+A separately claimed `ending` state normally closes distinct writes. Reconnect
+timeout is the narrow exception: while the room stays alive, the server sends a
+reliable trusted metadata-only settlement request targeted to the current
+registered generation and cutoff `D`, awaits durable database acknowledgement
+(settled, degraded, or bounded failure), and only then deletes the room. Passive
+delay is not evidence. Only that generation's pre-cutoff drain is accepted;
+older generations remain fenced. Equivalent replays remain idempotent after the
+cutoff. A hard deadline
 first claims `ending` with a provisional `time_limit` reason, then the locked
 terminal transaction calculates one durable transcript snapshot. If that
 snapshot is insufficient, only that provisional reason is versionedly refined
