@@ -12,6 +12,7 @@ interface EndSessionModalProps {
   isLoading?: boolean;
   error?: string | null;
   capturedAnswerCount?: number;
+  terminalIntent?: boolean;
   onClose: () => void;
   onConfirm: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
@@ -22,6 +23,7 @@ export function EndSessionModal({
   isLoading = false,
   error,
   capturedAnswerCount = 0,
+  terminalIntent = false,
   onClose,
   onConfirm,
   returnFocusRef,
@@ -33,7 +35,7 @@ export function EndSessionModal({
       <DialogPrimitive.Root
         open={isOpen}
         onOpenChange={(open) => {
-          if (!open && !isLoading) onClose();
+          if (!open && !isLoading && !terminalIntent) onClose();
         }}
       >
         <DialogPrimitive.Portal>
@@ -56,10 +58,10 @@ export function EndSessionModal({
               returnFocusRef.current.focus();
             }}
             onEscapeKeyDown={(event) => {
-              if (isLoading) event.preventDefault();
+              if (isLoading || terminalIntent) event.preventDefault();
             }}
             onPointerDownOutside={(event) => {
-              if (isLoading) event.preventDefault();
+              if (isLoading || terminalIntent) event.preventDefault();
             }}
           >
             <motion.div
@@ -102,15 +104,17 @@ export function EndSessionModal({
               )}
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  ref={cancelButtonRef}
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={isLoading}
-                  className="min-h-11 w-full flex-1"
-                >
-                  Continue interview
-                </Button>
+                {!terminalIntent && (
+                  <Button
+                    ref={cancelButtonRef}
+                    variant="outline"
+                    onClick={onClose}
+                    disabled={isLoading}
+                    className="min-h-11 w-full flex-1"
+                  >
+                    Continue interview
+                  </Button>
+                )}
                 <Button
                   variant="destructive"
                   onClick={onConfirm}

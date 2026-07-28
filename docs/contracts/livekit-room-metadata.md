@@ -130,8 +130,8 @@ for the session workflow described in
 The authenticated full-interview runtime is a realistic PM interviewer, not an
 in-session teaching experience. For every supported round type it:
 
-- speaks one non-interruptible deterministic opening that is retained in model
-  chat context;
+- speaks one concise deterministic opening that is retained in model chat
+  context and permits candidate barge-in;
 - includes the selected question in that first audible turn when one is present,
   then asks one adaptive follow-up at a time;
 - probes the candidate's reasoning, specificity, evidence, trade-offs, and risks;

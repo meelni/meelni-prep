@@ -81,6 +81,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     sessionId: string;
     userId: string;
     env: LiveKitEnvironment;
+    timeoutMs?: number;
   },
   deps: RequestUserEndRuntimeSettlementDeps = createRequestUserEndRuntimeSettlementDeps()
 ): Promise<RequestUserEndRuntimeSettlementResult> {
@@ -164,7 +165,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
   const readiness = await deps.waitForRuntimeSettlement({
     sessionId: input.sessionId,
     writerGeneration,
-    timeoutMs: USER_END_RUNTIME_SETTLEMENT_TIMEOUT_MS,
+    timeoutMs: normalizeSettlementTimeout(input.timeoutMs),
   });
   if (
     readiness.currentWriterGeneration !== writerGeneration ||
@@ -177,6 +178,17 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     ok: true,
     settlement: settlementFromReadiness(readiness),
   };
+}
+
+function normalizeSettlementTimeout(timeoutMs: number | undefined): number {
+  if (
+    timeoutMs === undefined ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1
+  ) {
+    return USER_END_RUNTIME_SETTLEMENT_TIMEOUT_MS;
+  }
+  return Math.min(timeoutMs, USER_END_RUNTIME_SETTLEMENT_TIMEOUT_MS);
 }
 
 export function buildUserEndRuntimeSettlementRequest(input: {

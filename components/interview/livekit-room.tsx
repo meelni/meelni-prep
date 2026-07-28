@@ -21,6 +21,7 @@ import {
   type TranscriptEvent,
 } from "@meelni/agent";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { confirmInterviewRuntimeReady } from "@/lib/interview/runtime-connection-confirmation";
 
 export interface TranscriptTurn {
   persistable?: boolean;
@@ -43,18 +44,6 @@ export interface TranscriptTurn {
   deliveryState?: "delivered" | "partially_delivered";
 }
 
-export interface TranscriptRuntimeSettlement {
-  settled: boolean;
-  pending: number;
-  failed: number;
-  overflowed?: boolean;
-  integrityUnavailable?: boolean;
-}
-
-export type FlushRuntimeTranscript = (
-  timeoutMs?: number
-) => Promise<TranscriptRuntimeSettlement>;
-
 interface LiveKitRoomWrapperProps {
   token: string;
   url: string;
@@ -64,7 +53,6 @@ interface LiveKitRoomWrapperProps {
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   onConnectionStateChange: (state: InterviewConnectionStatus) => void;
-  onTranscriptFlushAvailable: (flush: FlushRuntimeTranscript | null) => void;
   onTranscriptIntegrityChange: (
     state: "healthy" | "retrying" | "degraded"
   ) => void;
@@ -80,7 +68,6 @@ export function LiveKitRoomWrapper({
   onTranscriptUpdate,
   onAgentStateChange,
   onConnectionStateChange,
-  onTranscriptFlushAvailable,
   onTranscriptIntegrityChange,
   children,
 }: LiveKitRoomWrapperProps) {
@@ -144,7 +131,6 @@ export function LiveKitRoomWrapper({
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
         onConnectionStateChange={onConnectionStateChange}
-        onTranscriptFlushAvailable={onTranscriptFlushAvailable}
         onTranscriptIntegrityChange={onTranscriptIntegrityChange}
       >
         {children}
@@ -161,7 +147,6 @@ interface RoomContentProps {
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   onConnectionStateChange: (state: InterviewConnectionStatus) => void;
-  onTranscriptFlushAvailable: (flush: FlushRuntimeTranscript | null) => void;
   onTranscriptIntegrityChange: (
     state: "healthy" | "retrying" | "degraded"
   ) => void;
@@ -176,7 +161,6 @@ function RoomContent({
   onTranscriptUpdate,
   onAgentStateChange,
   onConnectionStateChange,
-  onTranscriptFlushAvailable,
   onTranscriptIntegrityChange,
   children,
 }: RoomContentProps) {
@@ -186,54 +170,6 @@ function RoomContent({
   const connectionStateChangeRef = useRef(onConnectionStateChange);
   transcriptUpdateRef.current = onTranscriptUpdate;
   connectionStateChangeRef.current = onConnectionStateChange;
-
-  useEffect(() => {
-    const flush: FlushRuntimeTranscript = async (timeoutMs = 10_000) => {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-      let response: Response;
-      try {
-        response = await fetch("/api/interview/runtime-settlement", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-          signal: controller.signal,
-        });
-      } catch {
-        throw new Error(
-          "The interview runtime took too long to respond. Please try ending again."
-        );
-      } finally {
-        window.clearTimeout(timeout);
-      }
-      const result = (await response.json().catch(() => null)) as
-        | (Partial<TranscriptRuntimeSettlement> & { message?: string })
-        | null;
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-            "We couldn't verify the complete transcript yet. Please try ending again."
-        );
-      }
-      if (
-        typeof result?.settled !== "boolean" ||
-        !Number.isSafeInteger(result?.pending) ||
-        !Number.isSafeInteger(result?.failed)
-      ) {
-        throw new Error("invalid_runtime_transcript_settlement");
-      }
-      return {
-        settled: result.settled,
-        pending: result.pending!,
-        failed: result.failed!,
-        overflowed: result.overflowed === true,
-        integrityUnavailable: result.integrityUnavailable === true,
-      };
-    };
-
-    onTranscriptFlushAvailable(flush);
-    return () => onTranscriptFlushAvailable(null);
-  }, [onTranscriptFlushAvailable, sessionId]);
 
   // Subscribe to agent state changes
   useEffect(() => {
@@ -248,10 +184,31 @@ function RoomContent({
       connectionState as RealtimeConnectionState
     );
     connectionTracker.current = transition.tracker;
-    if (transition.status) {
+    if (!transition.status) return;
+    if (
+      transition.status !== "connected" &&
+      transition.status !== "recovered"
+    ) {
       connectionStateChangeRef.current(transition.status);
+      return;
     }
-  }, [connectionState, connectionTracker]);
+
+    const controller = new AbortController();
+    const readyStatus = transition.status;
+    connectionStateChangeRef.current(
+      readyStatus === "recovered" ? "reconnecting" : "connecting"
+    );
+    void confirmInterviewRuntimeReady({
+      sessionId,
+      signal: controller.signal,
+    }).then((confirmation) => {
+      if (controller.signal.aborted) return;
+      connectionStateChangeRef.current(
+        confirmation === "ready" ? readyStatus : "disconnected"
+      );
+    });
+    return () => controller.abort();
+  }, [connectionState, connectionTracker, sessionId]);
 
   const handleTranscriptMessage = useCallback(
     (message: { payload: Uint8Array }) => {

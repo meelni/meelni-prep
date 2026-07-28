@@ -48,6 +48,7 @@ from shared.runtime_events import (
 )
 from shared.runtime_config import (
     DEFAULT_INTERVIEW_RUNTIME_CONFIG,
+    INTERVIEW_VAD_MIN_SILENCE_SECONDS,
     get_model_config,
     get_tts_config,
     normalize_runtime_config,
@@ -930,16 +931,15 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(
             spoken,
-            "Hi, I'm Meelni, and I'll be your PM interviewer today. "
-            "We're doing a Product Sense mock interview. "
-            "Here is your question: How would you improve Spotify?",
+            "Hi, I'm Meelni, your Product Sense interviewer. "
+            "How would you improve Spotify?",
         )
         self.assertEqual(
             session.calls,
             [
                 (
                     spoken,
-                    {"allow_interruptions": False, "add_to_chat_ctx": True},
+                    {"allow_interruptions": True, "add_to_chat_ctx": True},
                 )
             ],
         )
@@ -951,9 +951,18 @@ class RuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(
             opening,
-            "Hi, I'm Meelni, and I'll be your PM interviewer today. "
-            "We're doing an Execution mock interview. Ready to begin?",
+            "Hi, I'm Meelni, your Execution interviewer. Ready to begin?",
         )
+
+    def test_mock_opening_intro_is_concise_and_turn_pause_is_deliberate(self):
+        question = "How would you improve a long-running consumer product?"
+        opening = build_mock_interview_opening(
+            "product_sense", {"text": question}
+        )
+
+        intro = opening.removesuffix(question).strip()
+        self.assertLessEqual(len(intro.split()), 8)
+        self.assertEqual(INTERVIEW_VAD_MIN_SILENCE_SECONDS, 0.9)
 
     def test_metadata_to_prompt_keeps_selected_question_and_allows_follow_ups(self):
         metadata = parse_room_metadata(json.dumps({
