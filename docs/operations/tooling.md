@@ -14,24 +14,31 @@ fnm use 22.22.0
 Vercel stays on Node 22 while receiving supported patch updates. Local setup,
 doctor, calibration bundle construction, and calibration verification are more
 strict: they require the exact reviewed `22.22.0` runtime. Setup checks this
-before dependency installation, env refresh, provider access, or Python setup.
+before dependency installation or Python setup.
 
-Run:
-
-```bash
-npm run setup:local
-```
-
-This installs Node dependencies, creates `.context/npm-cache`, ensures `.env.local` exists from `.env.example` when possible, creates the Python virtual environment under `agent/venv`, and installs agent dependencies. The Python venv is created with copied binaries instead of symlinked binaries so local Next.js/Turbopack builds do not walk into invalid absolute interpreter symlinks.
-
-When `.env.local` is missing required runtime values or still contains placeholders from `.env.example`, setup attempts to self-heal by using the authenticated Vercel CLI:
+For a new worktree, run the complete provider-free bootstrap:
 
 ```bash
-npx vercel@55.0.0 link --yes --project meelni --scope meelni
-npm run env:pull
+npm run bootstrap:worktree
 ```
 
-If the Vercel CLI is not logged in, setup keeps going but prints the recovery command. Set `MEELNI_SKIP_ENV_PULL=1` only when you intentionally want to keep the current local env file unchanged.
+The bootstrap selects the pinned Node version when `fnm` is available, uses a
+shared npm cache, runs local setup, and finishes with the provider-free setup
+doctor. Fresh worktrees use `npm ci` for an exact lockfile install. A retry in
+an existing worktree uses incremental `npm install` so an interrupted setup
+does not unnecessarily replace the dependency tree.
+
+`npm run setup:local` remains the lower-level command when the correct Node
+version is already active. It installs Node dependencies, creates
+`.context/npm-cache`, ensures `.env.local` exists from `.env.example` when
+possible, creates the Python virtual environment under `agent/venv`, and
+installs agent dependencies. The Python venv uses copied binaries instead of
+symlinked binaries so local Next.js/Turbopack builds do not walk into invalid
+absolute interpreter symlinks.
+
+Setup never links Vercel or pulls provider credentials. Use the explicit
+**Pull Env** action or `npm run env:pull` only when provider-backed runtime work
+requires it.
 
 If an older `agent/venv` uses symlinked Python binaries, setup recreates it with copied binaries. The venv is generated and gitignored, so this is safe and keeps `npm run build` compatible with a normal local setup.
 
@@ -130,16 +137,26 @@ shared-environment markers or a Production ref.
 
 ## Doctor
 
-Run:
+Use the setup doctor for repository and local dependency readiness without
+requiring provider credentials:
 
 ```bash
-npm run doctor
+npm run doctor:setup
 ```
 
-The doctor checks the exact Node version, npm, dependencies, local env files,
-Python availability, Python agent environment, and Conductor configuration. A
-Node mismatch is a failure and prints the deterministic `fnm install`/`fnm use`
-recovery command while allowing the rest of the diagnostic report to finish.
+Use the runtime doctor before provider-backed work:
+
+```bash
+npm run doctor:runtime
+```
+
+`npm run doctor` remains an alias for the strict runtime doctor. Both modes
+check the exact Node version, npm, dependencies, Python availability, Python
+agent environment, Conductor configuration, and target-worktree bootstrap.
+The setup doctor reports missing or placeholder runtime credentials as
+warnings; the runtime doctor fails on them. A Node mismatch is always a failure
+and prints the deterministic `fnm install`/`fnm use` recovery command while
+allowing the rest of the diagnostic report to finish.
 
 ## Linear And PR Automation Safety
 
@@ -166,7 +183,11 @@ parent only as neutral context, for example: `Parent: SAV-198 remains open`.
 Never make `SAV-198`, `SAV-167`, `SAV-168`, or `SAV-186` the PR title key or
 sole linked issue unless the PR completes every parent acceptance criterion.
 
-The doctor fails when required local runtime envs are missing or contain placeholder values such as `https://xxx.supabase.co`, `wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional: provider placeholders can otherwise look valid until login, LiveKit, or feedback generation fails at runtime.
+The runtime doctor fails when required local runtime envs are missing or contain
+placeholder values such as `https://xxx.supabase.co`,
+`wss://your-project.livekit.cloud`, or `sk-proj-xxx`. This is intentional:
+provider placeholders can otherwise look valid until login, LiveKit, or
+feedback generation fails at runtime.
 
 ## Development
 
@@ -180,15 +201,57 @@ This is the normal coding-agent run target. It starts the Next.js dev server, st
 
 Agent platforms that honor `conductor.json` should use:
 
-- setup: `npm run setup:local`
+- setup: `bash scripts/bootstrap-worktree.sh`
 - run: `npm run dev:local`
 
 Codex local environments should use `.codex/environments/environment.toml`. Its
-setup action runs `npm run setup:local` with `MEELNI_SKIP_ENV_PULL=1`, so fresh
-worktrees can install dependencies and prepare the Python agent without
-requiring provider credentials. Use the explicit **Pull Env** action to refresh
-Preview credentials and **Env Check** to run the strict runtime-readiness
-checks before starting provider-backed workflows.
+setup action only locates and sources `scripts/bootstrap-worktree.sh` from the
+new target worktree. Evolving setup behavior therefore comes from the branch
+being opened instead of a potentially stale anchor checkout. It installs
+dependencies and prepares the Python agent without requiring provider
+credentials. Use **Setup Check** for provider-free readiness, **Pull Env** to
+refresh Preview credentials, and **Env Check** for strict runtime readiness.
+
+Each laptop's selected source checkout must contain this minimal launcher once.
+After this change reaches `main`, update that checkout from `main`. Future
+bootstrap changes normally require no machine-specific edit because the
+launcher delegates to the target worktree; only a change to the launcher path
+or contract would require another anchor update.
+
+### Two-laptop handoff
+
+Before leaving one laptop, refresh local remote metadata and check that the
+current branch is named, clean, and fully pushed:
+
+```bash
+git fetch --prune
+npm run handoff
+```
+
+The command exits nonzero for a detached HEAD, uncommitted changes, no
+upstream, unpushed commits, or commits not yet pulled from the upstream. It
+prints counts but never file names or environment values.
+
+On the other laptop, fetch, switch to the same branch, fast-forward it, and
+bootstrap the worktree:
+
+```bash
+git fetch --prune
+git switch <branch>
+git pull --ff-only
+npm run bootstrap:worktree
+```
+
+For a read-only overview of all worktrees on the current laptop:
+
+```bash
+git fetch --prune
+npm run worktrees:status
+```
+
+The inventory labels dirty, merged, detached, missing, and gone-upstream
+worktrees. It does not delete or modify anything; inspect dirty worktrees
+before removing them manually.
 
 Run individual services only when debugging:
 
@@ -290,8 +353,9 @@ Before opening or merging agent-authored changes, run the standard agent verific
 npm run verify:agent
 ```
 
-This runs the local doctor, canonical skill validation, TypeScript, local
-package tests, Python runtime-contract tests, lint, and the production build.
+This runs the provider-free setup doctor, canonical skill validation,
+TypeScript, local package tests, Python runtime-contract tests, lint, and the
+production build.
 The Python contract suite is mandatory even when `agent/venv` is absent because
 it uses provider-neutral fakes. LiveKit Agents and its plugins are pinned as one
 tested version family in `agent/requirements.txt`; update them together and
