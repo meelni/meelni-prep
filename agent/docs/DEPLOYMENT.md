@@ -136,6 +136,8 @@ Automatically provided by LiveKit Cloud:
 - `LIVEKIT_URL`
 - `LIVEKIT_API_KEY`
 - `LIVEKIT_API_SECRET`
-- `MEELNI_TRANSCRIPT_INGEST_SECRET` for Production full-interview deployments;
-  set it to the web environment's `LIVEKIT_API_SECRET` through the guarded
-  external secrets-file workflow.
+
+Production full-interview deployments additionally require
+`MEELNI_TRANSCRIPT_INGEST_SECRET`. It is not provided automatically: set it to
+the web environment's `LIVEKIT_API_SECRET` only through the guarded external
+secrets-file workflow.

@@ -61,6 +61,7 @@
     "db:push": "node scripts/database-command.mjs push",
     "db:studio": "node scripts/database-command.mjs studio",
     "production-action:consume": "node scripts/consume-production-action-authorization.mjs",
+    "production-action:livekit-interview": "node scripts/livekit-production-interview-authorization.mjs",
     "production-action:owner": "node scripts/production-action-owner.mjs",
     "production-action:synthetic-dry-run": "node scripts/production-action-owner.mjs synthetic-dry-run",
     "relaunch:readiness-snapshot": "node scripts/relaunch-readiness-snapshot.mjs",

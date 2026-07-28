@@ -233,8 +233,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
           ...baseEnv,
           MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG: productionConfigPath,
           MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4",
-          MEELNI_PRODUCTION_LIVEKIT_URL:
-            "wss://meelni-ek4vaisp.livekit.cloud",
+          MEELNI_PRODUCTION_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
         },
       }
     );
@@ -278,7 +277,13 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
     ],
     [
       "agent/interview/deploy.sh",
-      ["livekit-production-interview-deploy", "/usr/local/bin/node"],
+      [
+        "livekit-production-interview-deploy",
+        "/usr/local/bin/node",
+        "prepare-livekit-production-deploy-source.mjs",
+        "meelni.source_sha",
+        "--no-default-attributes",
+      ],
     ],
     [
       "agent/demo/deploy.sh",

@@ -490,11 +490,13 @@ export function InterviewPageContent() {
       }
     };
 
+    // Agent-state transitions provide a bounded per-turn recovery trigger when
+    // a post-persistence LiveKit display notification is delayed or dropped.
     void hydrateDurableTranscript();
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId, connectionOwnerId, connectionStatus]);
+  }, [activeSessionId, agentState, connectionOwnerId, connectionStatus]);
 
   const handleAgentStateChange = useCallback(
     (state: string) => {

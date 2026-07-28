@@ -78,6 +78,7 @@ from shared.transcript_ingest import (
     register_runtime_writer,
     resolve_transcript_ingest_secret,
 )
+from shared.transcript_settlement import settle_session_speech
 from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
@@ -86,6 +87,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SERVER_SETTLEMENT_SHUTDOWN_TIMEOUT_SECONDS = 20.0
+TRANSCRIPT_BACKGROUND_QUIESCE_TIMEOUT_SECONDS = 0.25
+TRANSCRIPT_PROJECTION_TIMEOUT_SECONDS = 0.75
+TRANSCRIPT_SETTLEMENT_FLUSH_TIMEOUT_SECONDS = 1.5
+TRANSCRIPT_SETTLEMENT_PERSIST_TIMEOUT_SECONDS = 0.75
+TRANSCRIPT_SPEECH_SETTLEMENT_TIMEOUT_SECONDS = 2.0
 
 
 def configure_livekit_worker_env() -> None:
@@ -256,7 +262,9 @@ async def entrypoint(ctx: JobContext):
     transcript_sequence = count(1)
     interruption_sequence = count(1)
     background_transcript_tasks: set[asyncio.Task[object]] = set()
+    background_transcript_projection_tasks: set[asyncio.Task[object]] = set()
     background_transcript_flush: asyncio.Task[object] | None = None
+    foreground_transcript_flush_active = False
     transcript_queue_overflowed = False
     transcript_integrity_unavailable = False
     runtime_settlement_payload: dict[str, object] | None = None
@@ -268,7 +276,26 @@ async def entrypoint(ctx: JobContext):
     interruption_markers_by_id: dict[str, dict[str, object]] = {}
 
     async def publish_persisted_transcript(transcript_data: dict[str, object]):
-        await publish_transcript_event(ctx.room.local_participant, transcript_data)
+        async def project_to_room() -> None:
+            try:
+                await asyncio.wait_for(
+                    publish_transcript_event(
+                        ctx.room.local_participant,
+                        transcript_data,
+                    ),
+                    timeout=TRANSCRIPT_PROJECTION_TIMEOUT_SECONDS,
+                )
+            except Exception as error:
+                # Room data is an ephemeral projection. Durable ingest already
+                # succeeded, so a disconnected client must not block settlement.
+                logger.warning(
+                    "Persisted transcript projection failed",
+                    extra={"error_type": type(error).__name__},
+                )
+
+        task = asyncio.create_task(project_to_room())
+        background_transcript_projection_tasks.add(task)
+        task.add_done_callback(background_transcript_projection_tasks.discard)
 
     transcript_queue = TranscriptIngestQueue(
         ingest_url=transcript_ingest_url,
@@ -420,9 +447,12 @@ async def entrypoint(ctx: JobContext):
             "overflowed": overflowed,
         }
         try:
-            await ctx.room.local_participant.publish_data(
-                json.dumps(payload).encode("utf-8"),
-                topic="transcript_status",
+            await asyncio.wait_for(
+                ctx.room.local_participant.publish_data(
+                    json.dumps(payload).encode("utf-8"),
+                    topic="transcript_status",
+                ),
+                timeout=TRANSCRIPT_PROJECTION_TIMEOUT_SECONDS,
             )
         except Exception as error:
             logger.warning(
@@ -431,12 +461,6 @@ async def entrypoint(ctx: JobContext):
             )
 
     async def flush_transcript_in_background(timeout_seconds: float) -> None:
-        await publish_transcript_status(
-            "retrying",
-            pending=transcript_queue.pending_count,
-            failed=len(transcript_queue.permanent_failures),
-            overflowed=transcript_queue_overflowed,
-        )
         result = await transcript_queue.flush(timeout_seconds)
         status = (
             "healthy"
@@ -460,6 +484,8 @@ async def entrypoint(ctx: JobContext):
 
     def schedule_transcript_flush(timeout_seconds: float = 2.0) -> None:
         nonlocal background_transcript_flush
+        if foreground_transcript_flush_active:
+            return
         if (
             background_transcript_flush is not None
             and not background_transcript_flush.done()
@@ -483,10 +509,26 @@ async def entrypoint(ctx: JobContext):
                     "Transcript runtime flush failed",
                     extra={"error_type": type(error).__name__},
                 )
+            if (
+                transcript_queue.pending_count > 0
+                and not foreground_transcript_flush_active
+            ):
+                schedule_transcript_flush(timeout_seconds)
 
         task.add_done_callback(on_flush_done)
 
+    async def quiesce_background_transcript_flush() -> None:
+        """Bound and release the live flush before a foreground settlement."""
+        task = background_transcript_flush
+        if task is None or task.done():
+            return
+        await finish_tasks_before_shutdown(
+            (task,),
+            TRANSCRIPT_BACKGROUND_QUIESCE_TIMEOUT_SECONDS,
+        )
+
     async def drain_transcript_queue() -> None:
+        nonlocal foreground_transcript_flush_active
         runtime_settlement_requests.close()
         active_settlements = tuple(
             task for task in server_settlement_tasks if not task.done()
@@ -501,7 +543,13 @@ async def entrypoint(ctx: JobContext):
                     "Runtime settlement tasks did not finish during shutdown",
                     extra={"pending": cancelled},
                 )
-        result = await transcript_queue.flush(5.0)
+        async with runtime_settlement_lock:
+            foreground_transcript_flush_active = True
+            try:
+                await quiesce_background_transcript_flush()
+                result = await transcript_queue.flush(5.0)
+            finally:
+                foreground_transcript_flush_active = False
         if not result.settled:
             logger.error(
                 "Transcript runtime shutdown drain incomplete",
@@ -510,12 +558,23 @@ async def entrypoint(ctx: JobContext):
                     "permanent": result.permanent,
                     "timed_out": result.timed_out,
                     "overflowed": transcript_queue_overflowed,
+                    "failure_reasons": sorted(
+                        {
+                            failure.reason
+                            for failure in transcript_queue.permanent_failures
+                        }
+                    ),
                 },
             )
 
     ctx.add_shutdown_callback(drain_transcript_queue)
 
-    async def persist_runtime_settlement(state: str, cutoff_at: float) -> bool:
+    async def persist_runtime_settlement(
+        state: str,
+        cutoff_at: float,
+        *,
+        timeout_seconds: float = 5.0,
+    ) -> bool:
         nonlocal runtime_settlement_payload
         if runtime_settlement_payload is None:
             runtime_settlement_payload = create_runtime_settlement(
@@ -529,57 +588,30 @@ async def entrypoint(ctx: JobContext):
             transcript_queue.seal_and_enqueue_runtime_settlement(
                 runtime_settlement_payload
             )
-        await transcript_queue.flush(5.0)
+        await transcript_queue.flush(timeout_seconds)
         return transcript_queue.runtime_settlement_complete
 
     async def settle_current_speech(timeout_seconds: float = 5.0) -> bool:
         nonlocal transcript_integrity_unavailable
-        user_was_speaking = session.user_state == "speaking"
-        session.input.set_audio_enabled(False)
-        current_speech = session.current_speech
-        speech_wait = None
-        if current_speech is not None and not current_speech.done():
-            current_speech.interrupt(force=True)
-            speech_wait = current_speech.wait_for_playout()
-        user_commit = (
-            session.commit_user_turn(
-                transcript_timeout=5.0,
-                stt_flush_duration=1.0,
-                skip_reply=True,
-            )
-            if user_was_speaking
-            else None
+        result = await settle_session_speech(
+            session,
+            timeout_seconds=timeout_seconds,
         )
-        waits = []
-        if speech_wait is not None:
-            waits.append(speech_wait)
-        if user_commit is not None:
-            waits.append(user_commit)
+        if result.settled:
+            return True
 
-        async def await_runtime_idle() -> None:
-            if waits:
-                await asyncio.gather(*waits)
-            await session.wait_for_idle()
-
-        try:
-            await asyncio.wait_for(await_runtime_idle(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            transcript_integrity_unavailable = True
+        transcript_integrity_unavailable = True
+        if result.timed_out:
             logger.error("Voice runtime did not reach idle before settlement")
-            return False
-        except Exception as error:
-            transcript_integrity_unavailable = True
-            log_exception_class(
-                logger,
-                logging.ERROR,
+        else:
+            logger.error(
                 "Voice runtime settlement failed to reach idle",
-                error,
+                extra={"error_type": result.error_type or "UnknownError"},
             )
-            return False
-        await asyncio.sleep(0)
-        return True
+        return False
 
     async def settle_runtime(cutoff_at: float) -> dict[str, object]:
+        nonlocal foreground_transcript_flush_active
         nonlocal runtime_settlement_cutoff, transcript_integrity_unavailable
         async with runtime_settlement_lock:
             if runtime_settlement_cutoff is None:
@@ -588,47 +620,57 @@ async def entrypoint(ctx: JobContext):
             elif runtime_settlement_cutoff != cutoff_at:
                 transcript_integrity_unavailable = True
 
-            if runtime_settlement_payload is not None:
-                await transcript_queue.flush(5.0)
-            else:
-                speech_settled = await settle_current_speech()
-                try:
-                    result = await transcript_queue.flush(7.0)
-                    evidence_settled = result.settled
-                except Exception as error:
-                    transcript_integrity_unavailable = True
-                    evidence_settled = False
-                    log_exception_class(
-                        logger,
-                        logging.ERROR,
-                        "Transcript evidence pre-settlement flush failed",
-                        error,
+            foreground_transcript_flush_active = True
+            try:
+                await quiesce_background_transcript_flush()
+                if runtime_settlement_payload is not None:
+                    await transcript_queue.flush(5.0)
+                else:
+                    speech_settled = await settle_current_speech(
+                        TRANSCRIPT_SPEECH_SETTLEMENT_TIMEOUT_SECONDS
                     )
-                settlement_state = (
-                    "degraded"
-                    if not speech_settled
-                    or not evidence_settled
-                    or transcript_queue_overflowed
-                    or transcript_integrity_unavailable
-                    or transcript_queue.post_cutoff_evidence
-                    else "settled"
-                )
-                await persist_runtime_settlement(
-                    settlement_state,
-                    runtime_settlement_cutoff,
-                )
+                    try:
+                        result = await transcript_queue.flush(
+                            TRANSCRIPT_SETTLEMENT_FLUSH_TIMEOUT_SECONDS
+                        )
+                        evidence_settled = result.settled
+                    except Exception as error:
+                        transcript_integrity_unavailable = True
+                        evidence_settled = False
+                        log_exception_class(
+                            logger,
+                            logging.ERROR,
+                            "Transcript evidence pre-settlement flush failed",
+                            error,
+                        )
+                    settlement_state = (
+                        "degraded"
+                        if not speech_settled
+                        or not evidence_settled
+                        or transcript_queue_overflowed
+                        or transcript_integrity_unavailable
+                        or transcript_queue.post_cutoff_evidence
+                        else "settled"
+                    )
+                    await persist_runtime_settlement(
+                        settlement_state,
+                        runtime_settlement_cutoff,
+                        timeout_seconds=TRANSCRIPT_SETTLEMENT_PERSIST_TIMEOUT_SECONDS,
+                    )
 
-            return {
-                "settled": transcript_queue.runtime_settlement_complete,
-                "pending": transcript_queue.pending_count,
-                "failed": len(transcript_queue.permanent_failures)
-                + (1 if transcript_queue_overflowed else 0),
-                "overflowed": transcript_queue_overflowed,
-                "integrityUnavailable": (
-                    transcript_integrity_unavailable
-                    or transcript_queue.post_cutoff_evidence
-                ),
-            }
+                return {
+                    "settled": transcript_queue.runtime_settlement_complete,
+                    "pending": transcript_queue.pending_count,
+                    "failed": len(transcript_queue.permanent_failures)
+                    + (1 if transcript_queue_overflowed else 0),
+                    "overflowed": transcript_queue_overflowed,
+                    "integrityUnavailable": (
+                        transcript_integrity_unavailable
+                        or transcript_queue.post_cutoff_evidence
+                    ),
+                }
+            finally:
+                foreground_transcript_flush_active = False
 
     async def flush_transcript_rpc(invocation) -> str:
         try:

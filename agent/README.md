@@ -157,9 +157,9 @@ cd interview
 
 Each target uses an explicit external config, URL anchor, and agent ID. A
 Production deploy additionally consumes a signed exact-action artifact before
-`lk` can run. Preview does not require owner Production authorization. No
-owner public key is enrolled yet, so Production deploys intentionally fail
-closed; see
+`lk` can run. Preview does not require owner Production authorization. The
+active owner public key is enrolled, but the private key and executor identity
+remain only on the authorized owner workstation; see
 [Production action authorization](../docs/operations/production-action-authorization.md).
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
@@ -168,15 +168,15 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 
 ## 🔐 Environment Variables
 
-| Variable             | Required | Description                                   |
-| -------------------- | -------- | --------------------------------------------- |
-| `LIVEKIT_URL`        | ✅       | LiveKit WebSocket URL                         |
-| `LIVEKIT_API_KEY`    | ✅       | LiveKit API key                               |
-| `LIVEKIT_API_SECRET` | ✅       | LiveKit API secret                            |
-| `MEELNI_TRANSCRIPT_INGEST_SECRET` | Production | Web/runtime transcript-ingest signing key |
-| `OPENAI_API_KEY`     | ✅       | OpenAI API key                                |
-| `DEEPGRAM_API_KEY`   | ✅       | Deepgram API key (for Nova-3 ASR)             |
-| `CARTESIA_API_KEY`   | ❌       | **Not required** when using LiveKit Inference |
+| Variable                          | Required   | Description                                   |
+| --------------------------------- | ---------- | --------------------------------------------- |
+| `LIVEKIT_URL`                     | ✅         | LiveKit WebSocket URL                         |
+| `LIVEKIT_API_KEY`                 | ✅         | LiveKit API key                               |
+| `LIVEKIT_API_SECRET`              | ✅         | LiveKit API secret                            |
+| `MEELNI_TRANSCRIPT_INGEST_SECRET` | Production | Web/runtime transcript-ingest signing key     |
+| `OPENAI_API_KEY`                  | ✅         | OpenAI API key                                |
+| `DEEPGRAM_API_KEY`                | ✅         | Deepgram API key (for Nova-3 ASR)             |
+| `CARTESIA_API_KEY`                | ❌         | **Not required** when using LiveKit Inference |
 
 **Note:** If running outside of Conductor, create a `.env` file in the `agent/` directory.
 
