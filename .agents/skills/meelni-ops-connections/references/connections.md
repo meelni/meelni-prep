@@ -474,6 +474,15 @@ Operational notes:
     --project-ref rarrrwkjuhfyfatcmrkw --output json
   ```
 
+- If the Supabase CLI is not authenticated and a scoped Production env pull
+  contains a blank `DATABASE_URL`, an existing authenticated Chrome session can
+  be used for narrowly authorized account maintenance in the Supabase SQL
+  Editor. Verify the `Meelni` → `main` → `Production` breadcrumb and project ref
+  `rarrrwkjuhfyfatcmrkw`, confirm a current physical backup, and use an
+  idempotent transaction that preserves the application's ledger/audit
+  invariants. Verify the result through the Meelni product UI afterward. This
+  fallback does not authorize schema changes, migrations, launch actions,
+  bulk data changes, or access to unrelated customer records.
 - As of 2026-07-16, the paid canonical project reported seven completed daily
   physical backups and `pitr_enabled: false`. Verify current backup status
   before every live mutation rather than assuming this observation is still
