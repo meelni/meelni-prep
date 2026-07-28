@@ -10,8 +10,8 @@ the supported web Production path. Direct branch promotion, live schedule
 activation, and relaunch default-on remain unsupported rather than exposing an
 unguarded command. The already-declared scheduled route remains source-fenced
 for any future owner-authorized first activation. Owner enrollment and artifact
-preparation tooling is available, and the active owner public key
-`meelni-owner-2026-07` is enrolled. Guarded Production paths still fail closed
+preparation tooling is available, and the active owner
+public key `meelni-owner-2026-07` is enrolled. Guarded Production paths still fail closed
 unless the owner signs a fresh exact artifact for the reviewed action,
 candidate configuration, target fingerprint, and bounded TTL. Preview, local
 development and ordinary customer/runtime actions are unchanged.
