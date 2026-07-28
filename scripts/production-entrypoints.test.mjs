@@ -36,6 +36,13 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     productionConfigPath,
     '[project]\nsubdomain = "meelni-ek4vaisp"\n[agent]\nid = "CA_yawKG67rCMG4"\n'
   );
+  const productionSecretsPath = join(directory, "production-secrets.env");
+  await writeFile(
+    productionSecretsPath,
+    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n`,
+    { mode: 0o600 }
+  );
+  await chmod(productionSecretsPath, 0o600);
   const commentConfusedInterviewConfigPath = join(
     directory,
     "comment-confused-interview.toml"
@@ -198,6 +205,8 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
           ...baseEnv,
           NODE_OPTIONS: "--require /tmp/meelni-forbidden-injection.cjs",
           MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG: productionConfigPath,
+          MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_SECRETS_FILE:
+            productionSecretsPath,
           MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4",
           MEELNI_PRODUCTION_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
         },
@@ -213,6 +222,31 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
       2
     );
     assert.doesNotMatch(production.stderr, /meelni-ek4vaisp|CA_yawKG67rCMG4/);
+
+    const missingProductionSecret = spawnSync(
+      join(repoRoot, "agent/interview/deploy.sh"),
+      ["production"],
+      {
+        cwd: join(repoRoot, "agent/interview"),
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG: productionConfigPath,
+          MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4",
+          MEELNI_PRODUCTION_LIVEKIT_URL:
+            "wss://meelni-ek4vaisp.livekit.cloud",
+        },
+      }
+    );
+    assert.notEqual(missingProductionSecret.status, 0);
+    assert.match(
+      missingProductionSecret.stderr,
+      /external transcript-ingest secrets file/
+    );
+    assert.equal(
+      (await readFile(logPath, "utf8")).trim().split("\n").length,
+      2
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
