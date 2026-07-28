@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+umask 077
 
 environment="${1:-}"
 secrets_path=""
@@ -130,19 +131,39 @@ if [[ "$environment" == "production" ]]; then
     echo "Production authorization requires the fixed system Node runtime at /usr/local/bin/node." >&2
     exit 1
   fi
+  authorization_receipt="$snapshot_dir/authorization-receipt.json"
   /usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
     "$production_node" "$repo_root/scripts/consume-production-action-authorization.mjs" \
     --action livekit-production-interview-deploy \
     --provider livekit \
     --configuration-file "$config_snapshot" \
-    --target-material "livekit:production:interview:$target_url:$expected_agent_id:transcript-secret-sha256:$(/usr/bin/shasum -a 256 "$secrets_snapshot" | /usr/bin/awk '{print $1}')"
+    --target-material "livekit:production:interview:$target_url:$expected_agent_id:transcript-secret-sha256:$(/usr/bin/shasum -a 256 "$secrets_snapshot" | /usr/bin/awk '{print $1}')" \
+    > "$authorization_receipt"
+  chmod 600 "$authorization_receipt"
+
+  source_snapshot_dir="$snapshot_dir/source"
+  candidate_sha="$(/usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
+    "$production_node" "$repo_root/scripts/prepare-livekit-production-deploy-source.mjs" \
+    --receipt-file "$authorization_receipt" \
+    --output-directory "$source_snapshot_dir")"
+  if [[ ! "$candidate_sha" =~ ^[a-f0-9]{40}$ ]]; then
+    echo "Production LiveKit deploy source identity is invalid." >&2
+    exit 1
+  fi
+  deploy_agent_dir="$source_snapshot_dir/agent"
+else
+  deploy_agent_dir="$agent_dir"
 fi
 
-config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$agent_dir")"
-cd "$agent_dir"
+config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$deploy_agent_dir")"
+cd "$deploy_agent_dir"
 if [[ "$environment" == "production" ]]; then
-  secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$agent_dir")"
-  lk --config "$config_argument" agent deploy --secrets-file "$secrets_argument" .
+  secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$deploy_agent_dir")"
+  lk --config "$config_argument" agent deploy \
+    --no-default-attributes \
+    --attribute "meelni.source_sha=$candidate_sha" \
+    --secrets-file "$secrets_argument" \
+    .
 else
   lk --config "$config_argument" agent deploy .
 fi

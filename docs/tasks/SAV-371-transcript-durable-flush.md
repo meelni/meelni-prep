@@ -4,6 +4,8 @@
 
 - Candidate fix is under review in PR 515.
 - The fix is not deployed or verified in Production.
+- The currently running Production version `nVmPiQtApeze` is not the candidate
+  fix and must not be used as validation evidence.
 - The failed Production session cannot be reconstructed because the missing
   turns were never durably persisted.
 
@@ -42,6 +44,24 @@ bounded runtime-settlement request was unavailable.
 
 No transcript text, recording, room credential, provider secret, email, or
 session identifier is recorded here.
+
+### Post-candidate deployment finding
+
+While PR 515 remained unmerged, another workstation deployed Production
+version `nVmPiQtApeze`. A post-deploy interview queued multiple candidate and
+interviewer turns, then shutdown reported two permanent transcript failures.
+The log omitted the candidate's structured `failure_reasons` field, and the
+LiveKit version has no source attributes. Together with `main` still preceding
+the candidate commits, this proves the running worker is stale rather than the
+reviewed fix.
+
+The stale runtime resolves transcript authentication through LiveKit Cloud's
+provider-generated `LIVEKIT_API_SECRET`. Cloud owns that value and does not
+allow the application to override it, so it cannot reliably match the web
+ingest verifier. The candidate instead resolves the separately injected
+`MEELNI_TRANSCRIPT_INGEST_SECRET`. This is the strongest supported explanation
+for the permanent signed-ingest rejections; the old deployment lacks enough
+structured failure telemetry to classify the exact HTTP response.
 
 ## Root cause
 
@@ -121,12 +141,16 @@ and feedback eligibility.
 4. The human product owner reviews and signs a fresh bounded authorization on
    the authorized workstation. This authorization is not launch GO.
 5. Run `agent/interview/deploy.sh production` from the same clean merged commit.
-   Do not use a direct provider CLI or dashboard deployment.
-6. Confirm the new LiveKit version is running and matches the reviewed source
-   commit before opening a test room. Do not begin the deploy while a controlled
-   test interview is active: LiveKit uses a rolling deployment and may let old
-   instances finish existing sessions for up to one hour, while routing new
-   sessions to healthy new instances.
+   The wrapper consumes the exact authorization, archives the authorized commit
+   into a private build context, and writes
+   `meelni.source_sha=<merged main SHA>` on the LiveKit version. Do not use a
+   direct provider CLI or dashboard deployment.
+6. Query LiveKit versions with the exact `meelni.source_sha` filter and confirm
+   the matching new version is `Running` before opening a test room. An empty
+   result is a failed provenance gate. Do not begin the deploy while a
+   controlled test interview is active: LiveKit uses a rolling deployment and
+   may let old instances finish existing sessions for up to one hour, while
+   routing new sessions to healthy new instances.
 7. Run one controlled Production interview at a time and verify:
    - normal candidate and interviewer turns appear and survive reload;
    - end during silence completes once;
@@ -156,6 +180,9 @@ separately authorized emergency action.
 ### P0 — release and verify
 
 - Merge and deploy SAV-371 from one reviewed commit across web and LiveKit.
+- Reject any Production LiveKit version without an exact authorized
+  `meelni.source_sha` attribute; this closes the verified cross-workstation
+  stale-source gap.
 - Verify SAV-366 lifecycle activation in Production so transport-connected
   rooms cannot remain application-level `connecting`.
 

@@ -107,6 +107,12 @@ environment/action/provider/target/configuration/candidate/executor mismatch,
 mutation-scope mismatch, non-GO default-on, and locally recorded replay all fail
 closed.
 
+For `livekit-production-interview-deploy`, successful consumption also binds
+the provider mutation bytes: the wrapper archives the exact verified
+`candidateSha`, builds only from that private snapshot, and records
+`meelni.source_sha=<candidateSha>` on the LiveKit version. It must not build
+from the mutable working tree or rely on provider-inferred Git metadata.
+
 The repository guard prevents accidental or delegated execution through
 supported tooling. Credential custody, provider roles, branch protection, and
 review remain the outer security boundary because an operator with direct
