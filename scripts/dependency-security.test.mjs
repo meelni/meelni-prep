@@ -9,6 +9,9 @@ const packageJson = JSON.parse(
 const packageLock = JSON.parse(
   await readFile(new URL("package-lock.json", root), "utf8")
 );
+const pinnedNodeVersion = (
+  await readFile(new URL(".node-version", root), "utf8")
+).trim();
 
 function versionAtLeast(version, minimum) {
   const current = version.split(".").map(Number);
@@ -63,6 +66,26 @@ test("dependency overrides remain narrow and explicit", () => {
     "@esbuild-kit/core-utils": {
       esbuild: "0.25.12",
     },
+    "camera-controls": "3.1.0",
     postcss: "8.5.16",
   });
+});
+
+test("camera controls remains compatible with the pinned Node runtime", () => {
+  const cameraControlsPackages = Object.entries(packageLock.packages).filter(
+    ([path]) =>
+      path === "node_modules/camera-controls" ||
+      path.endsWith("/node_modules/camera-controls")
+  );
+
+  assert.equal(cameraControlsPackages.length, 1);
+  for (const [path, metadata] of cameraControlsPackages) {
+    assert.equal(metadata.version, packageJson.overrides["camera-controls"]);
+    assert.match(metadata.engines.node, /^>=\d+\.\d+\.\d+$/);
+    assert.equal(
+      versionAtLeast(pinnedNodeVersion, metadata.engines.node.slice(2)),
+      true,
+      `${path} requires Node ${metadata.engines.node}, but the project pins ${pinnedNodeVersion}`
+    );
+  }
 });
