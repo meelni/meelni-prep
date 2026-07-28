@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "setup": "npm run setup:local",
+    "setup": "bash scripts/bootstrap-worktree.sh",
     "run": "npm run dev:local"
   },
   "runScriptMode": "concurrent"
