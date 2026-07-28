@@ -3,13 +3,8 @@ import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  ensureEnvFile,
-  ensureSymlink,
-  readEnvFile,
-  requiredEnvAlternativesStatus,
-  requiredEnvStatus,
-} from "./local-env.mjs";
+import { ensureEnvFile, ensureSymlink } from "./local-env.mjs";
+import { createNodeInstallPlan } from "./local-setup-plan.mjs";
 import { assertPinnedNodeVersion } from "./node-version.mjs";
 import { buildPythonEnv } from "./python-runtime.mjs";
 
@@ -28,7 +23,12 @@ try {
 }
 mkdirSync(npmCachePath, { recursive: true });
 
-run("npm", ["install"], {
+const nodeInstallPlan = createNodeInstallPlan({
+  nodeModulesExists: existsSync(resolve(repoRoot, "node_modules")),
+  packageLockExists: existsSync(resolve(repoRoot, "package-lock.json")),
+});
+console.log(`Node dependencies: ${nodeInstallPlan.label}.`);
+run("npm", nodeInstallPlan.args, {
   ...process.env,
   NPM_CONFIG_CACHE: npmCachePath,
   npm_config_cache: npmCachePath,
@@ -40,7 +40,6 @@ const envResult = await ensureEnvFile({
 });
 
 console.log(`Root env: ${envResult.status}`);
-refreshLocalEnvIfNeeded();
 
 const agentEnvTarget = envPath;
 const agentEnvLink = resolve(repoRoot, "agent/.env");
@@ -146,71 +145,6 @@ function pythonBinUsesSymlink(pythonBin) {
   } catch {
     return false;
   }
-}
-
-function refreshLocalEnvIfNeeded() {
-  if (process.env.MEELNI_SKIP_ENV_PULL) {
-    console.log("Skipping env refresh because MEELNI_SKIP_ENV_PULL is set.");
-    return;
-  }
-
-  const values = readEnvFile(envPath);
-  const status = requiredEnvStatus(values, [
-    "DATABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "LIVEKIT_API_KEY",
-    "LIVEKIT_API_SECRET",
-    "OPENAI_API_KEY",
-  ]);
-  const liveKitUrlStatus = requiredEnvAlternativesStatus(values, [
-    {
-      label: "NEXT_PUBLIC_LIVEKIT_URL or LIVEKIT_URL",
-      keys: ["NEXT_PUBLIC_LIVEKIT_URL", "LIVEKIT_URL"],
-    },
-  ]);
-  const missing = [...status.missing, ...liveKitUrlStatus.missing];
-  const placeholder = [...status.placeholder, ...liveKitUrlStatus.placeholder];
-
-  if (missing.length === 0 && placeholder.length === 0) {
-    return;
-  }
-
-  console.log(
-    "Root env needs refresh before runtime: " +
-      [
-        missing.length ? `missing ${missing.join(", ")}` : "",
-        placeholder.length ? `placeholder ${placeholder.join(", ")}` : "",
-      ]
-        .filter(Boolean)
-        .join("; ")
-  );
-
-  const whoami = spawnSync("npx", ["--yes", "vercel@55.0.0", "whoami"], {
-    cwd: repoRoot,
-    env: process.env,
-    shell: process.platform === "win32",
-    stdio: ["ignore", "ignore", "ignore"],
-  });
-
-  if (whoami.status !== 0) {
-    console.warn(
-      "Vercel CLI is not authenticated; keeping existing .env.local. Run `npx vercel@55.0.0 login`, then `npm run env:pull`."
-    );
-    return;
-  }
-
-  run("npx", [
-    "--yes",
-    "vercel@55.0.0",
-    "link",
-    "--yes",
-    "--project",
-    "meelni",
-    "--scope",
-    "meelni",
-  ]);
-  run("npm", ["run", "env:pull"]);
 }
 
 function run(command, args, env = process.env, cwd = repoRoot) {

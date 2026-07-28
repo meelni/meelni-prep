@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const requiredChecks = [
-  ["doctor", "npm", ["run", "doctor"]],
+  ["setup doctor", "npm", ["run", "doctor:setup"]],
   ["skills", "npm", ["run", "validate:skills"]],
   ["typecheck", "npm", ["run", "typecheck"]],
   ["local tests", "npm", ["run", "test:local"]],
