@@ -542,12 +542,13 @@ async def entrypoint(ctx: JobContext):
                     "Runtime settlement tasks did not finish during shutdown",
                     extra={"pending": cancelled},
                 )
-        foreground_transcript_flush_active = True
-        try:
-            await quiesce_background_transcript_flush()
-            result = await transcript_queue.flush(5.0)
-        finally:
-            foreground_transcript_flush_active = False
+        async with runtime_settlement_lock:
+            foreground_transcript_flush_active = True
+            try:
+                await quiesce_background_transcript_flush()
+                result = await transcript_queue.flush(5.0)
+            finally:
+                foreground_transcript_flush_active = False
         if not result.settled:
             logger.error(
                 "Transcript runtime shutdown drain incomplete",
