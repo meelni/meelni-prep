@@ -65,6 +65,15 @@ export async function POST(req: NextRequest) {
       session: { id: sessionId, userId: user.id },
       authenticatedUserId: user.id,
     });
+    if (result.creditSettlementStatus === "deferred") {
+      reportOperationalFailure({
+        operation: "interview_end",
+        errorCode: "interview_credit_settlement_deferred",
+        severity: "warning",
+        retryable: true,
+        correlationId,
+      });
+    }
 
     const livekitEnv = getLiveKitEnvironment(process.env);
     if (result.completion.roomName) {

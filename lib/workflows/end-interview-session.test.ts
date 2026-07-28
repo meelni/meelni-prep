@@ -196,23 +196,27 @@ test("terminal credit settlement completes before feedback dispatch", async () =
   assert.deepEqual(order, ["finalize", "settle_credit", "dispatch_feedback"]);
 });
 
-test("a failed terminal credit settlement stays retryable and blocks dispatch", async () => {
+test("a failed terminal credit settlement returns committed truth and blocks dispatch", async () => {
   let dispatches = 0;
-  await assert.rejects(
-    endInterviewSessionWorkflow(
-      userEndInput(),
-      createDeps({
-        settleCredit: async () => {
-          throw new Error("credit settlement unavailable");
-        },
-        dispatch: async () => {
-          dispatches += 1;
-          return sentDispatch();
-        },
-      })
-    ),
-    /credit settlement unavailable/
+  const result = await endInterviewSessionWorkflow(
+    userEndInput(),
+    createDeps({
+      settleCredit: async () => {
+        throw new Error("credit settlement unavailable");
+      },
+      dispatch: async () => {
+        dispatches += 1;
+        return sentDispatch();
+      },
+    })
   );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.completion.lifecycle.state, "completed");
+    assert.equal(result.creditSettlementStatus, "deferred");
+    assert.equal(result.dispatch, null);
+  }
   assert.equal(dispatches, 0);
 });
 
