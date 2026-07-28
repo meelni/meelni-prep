@@ -182,21 +182,24 @@ function defaultRemoteRef() {
   );
 }
 
-function configuredUpstreamState(path, branch) {
+function configuredUpstreamState(branch) {
   if (!branch) return { label: "none", state: "none" };
 
   const upstream = runGit(
-    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-    { cwd: path, allowFailure: true }
+    [
+      "rev-parse",
+      "--abbrev-ref",
+      "--symbolic-full-name",
+      `${branch}@{upstream}`,
+    ],
+    { allowFailure: true }
   );
   if (upstream) return { label: upstream, state: "present" };
 
   const remote = runGit(["config", "--get", `branch.${branch}.remote`], {
-    cwd: path,
     allowFailure: true,
   });
   const mergeRef = runGit(["config", "--get", `branch.${branch}.merge`], {
-    cwd: path,
     allowFailure: true,
   });
 
@@ -229,10 +232,7 @@ function collectWorktreeSnapshots() {
           })
         )
       : summarizePorcelainStatus("");
-    const upstream = configuredUpstreamState(
-      pathExists ? path : repoRoot,
-      branch
-    );
+    const upstream = configuredUpstreamState(branch);
     const snapshot = {
       current: pathExists && realpathSync(path) === currentPath,
       path,
