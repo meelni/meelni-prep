@@ -27,7 +27,7 @@ npx vercel@55.0.0 login
 ### Step 2: Link and verify the Meelni project
 
 ```bash
-npx vercel@55.0.0 link --yes --project meelni
+npx vercel@55.0.0 link --yes --project meelni --scope meelni
 npx vercel@55.0.0 env ls
 ```
 

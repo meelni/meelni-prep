@@ -5,27 +5,7 @@ name = "meelni-prep"
 [setup]
 script = '''
 cd "$CODEX_WORKTREE_PATH"
-
-export NEXT_TELEMETRY_DISABLED=1
-export NPM_CONFIG_CACHE="${CODEX_HOME:-$HOME/.codex}/cache/meelni/npm"
-mkdir -p "$NPM_CONFIG_CACHE"
-
-if [ -d /opt/homebrew/opt/python@3.12/libexec/bin ]; then
-  export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"
-fi
-
-if [ -d /opt/homebrew/opt/expat/lib ]; then
-  export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-fi
-
-if command -v fnm >/dev/null 2>&1; then
-  eval "$(fnm env --shell bash)"
-  fnm install "$(tr -d '[:space:]' < .node-version)"
-  fnm use "$(tr -d '[:space:]' < .node-version)"
-fi
-
-npm run setup:local
-npm run doctor
+. "$CODEX_WORKTREE_PATH/scripts/bootstrap-worktree.sh"
 '''
 
 [cleanup]
@@ -47,7 +27,12 @@ command = "npm run dev:local"
 [[actions]]
 name = "Pull Env"
 icon = "tool"
-command = "npx vercel@55.0.0 link --yes --project meelni && npm run env:pull && npm run doctor"
+command = "npx vercel@55.0.0 link --yes --project meelni --scope meelni && npm run env:pull && npm run doctor:runtime"
+
+[[actions]]
+name = "Setup Check"
+icon = "debug"
+command = "npm run doctor:setup"
 
 [[actions]]
 name = "Check"
@@ -62,7 +47,17 @@ command = "npm run verify:agent"
 [[actions]]
 name = "Env Check"
 icon = "debug"
-command = "npm run doctor && npm run validate:env"
+command = "npm run doctor:runtime && npm run validate:env"
+
+[[actions]]
+name = "Handoff"
+icon = "tool"
+command = "npm run handoff"
+
+[[actions]]
+name = "Worktrees"
+icon = "tool"
+command = "npm run worktrees:status"
 
 [[actions]]
 name = "DB Studio"
