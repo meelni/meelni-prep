@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { User, Bot } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { groupTranscriptTurns } from "./transcript-display";
 
 export interface TranscriptTurn {
   eventId?: string;
@@ -19,17 +19,18 @@ interface TranscriptPanelProps {
 
 export function TranscriptPanel({ turns }: TranscriptPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isPinnedToBottomRef = useRef(true);
   const prefersReducedMotion = useReducedMotion();
+  const displayTurns = groupTranscriptTurns(turns);
 
   useEffect(() => {
-    // Auto-scroll to bottom on new turn
-    if (scrollRef.current) {
+    if (scrollRef.current && isPinnedToBottomRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
+        behavior: prefersReducedMotion ? "auto" : "smooth",
       });
     }
-  }, [turns]);
+  }, [displayTurns, prefersReducedMotion]);
 
   if (turns.length === 0) {
     return (
@@ -47,19 +48,20 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
       ref={scrollRef}
       data-ph-no-capture
       className="scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent h-full space-y-4 overflow-y-auto p-6"
+      onScroll={(event) => {
+        const target = event.currentTarget;
+        isPinnedToBottomRef.current =
+          target.scrollHeight - target.scrollTop - target.clientHeight < 48;
+      }}
     >
       <AnimatePresence mode="popLayout">
-        {turns.map((turn, index) => (
+        {displayTurns.map((turn) => (
           <motion.div
-            key={
-              turn.rowId ??
-              turn.eventId ??
-              `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${index}`
-            }
-            initial={prefersReducedMotion ? false : { y: 20 }}
-            animate={{ y: 0 }}
-            exit={prefersReducedMotion ? undefined : { scale: 0.95 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            key={turn.id}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className={`flex gap-3 ${
               turn.speaker === "user" ? "flex-row-reverse" : "flex-row"
             }`}
@@ -73,9 +75,9 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
               }`}
             >
               {turn.speaker === "user" ? (
-                <User className="h-4 w-4" />
+                <User className="h-4 w-4" aria-hidden="true" />
               ) : (
-                <Bot className="h-4 w-4" />
+                <Bot className="h-4 w-4" aria-hidden="true" />
               )}
             </div>
 
@@ -92,15 +94,13 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
                     : "bg-muted text-foreground rounded-tl-sm"
                 }`}
               >
+                <span className="sr-only">
+                  {turn.speaker === "user" ? "You: " : "Interviewer: "}
+                </span>
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {turn.text}
                 </p>
               </div>
-              <span className="text-muted-foreground px-2 text-xs">
-                {formatDistanceToNow(new Date(turn.timestamp), {
-                  addSuffix: true,
-                })}
-              </span>
             </div>
           </motion.div>
         ))}

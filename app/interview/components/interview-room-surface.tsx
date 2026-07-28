@@ -12,7 +12,6 @@ import {
 import type { InterviewConnectionStatus } from "@/components/interview/session-recovery";
 
 export interface InterviewRoomSurfaceProps {
-  agentState: "idle" | "listening" | "thinking" | "speaking";
   company?: string | null;
   connectionIndicator?: ReactNode;
   connectionStatus: InterviewConnectionStatus;
@@ -28,7 +27,6 @@ export interface InterviewRoomSurfaceProps {
 }
 
 export function InterviewRoomSurface({
-  agentState,
   company,
   connectionIndicator,
   connectionStatus,
@@ -71,24 +69,21 @@ export function InterviewRoomSurface({
 
       <main className="mx-auto grid min-h-[calc(100dvh-3.5rem)] max-w-7xl grid-cols-1 gap-0 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
         <section className="flex min-h-[560px] flex-col items-center justify-between py-6 lg:min-h-[calc(100dvh-6rem)] lg:pr-6">
-          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-8 text-center">
-            <div className="space-y-3">
-              <StatusPill tone="muted">Practice interview</StatusPill>
-              <StatusPill
-                tone={agentState === "listening" ? "primary" : "muted"}
-                aria-live="polite"
-              >
-                {getAgentStateLabel(agentState)}
-              </StatusPill>
-              <h1 className="font-display text-2xl font-light tracking-tight sm:text-3xl">
-                {question || "Your interviewer is ready."}
-              </h1>
-              {company && (
-                <p className="text-muted-foreground text-sm">{company}</p>
-              )}
-            </div>
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5 text-center sm:gap-7">
+            {question ? (
+              <div className="max-w-2xl space-y-2">
+                <h1 className="font-display text-xl leading-tight font-light tracking-tight text-balance sm:text-2xl">
+                  {question}
+                </h1>
+                {company && (
+                  <p className="text-muted-foreground text-sm">{company}</p>
+                )}
+              </div>
+            ) : (
+              <h1 className="sr-only">Live PM interview</h1>
+            )}
 
-            <div className="h-[280px] w-full max-w-[520px] sm:h-[360px]">
+            <div className="h-[260px] w-full max-w-[420px] sm:h-[320px]">
               {mediaVisualizer}
             </div>
           </div>
@@ -105,13 +100,13 @@ export function InterviewRoomSurface({
           <AppSurfaceHeader className="flex items-start justify-between gap-3">
             <div>
               <AppSurfaceTitle>Transcript</AppSurfaceTitle>
-              <AppSurfaceDescription>
-                {transcriptIntegrity === "healthy"
-                  ? "Conversation turns are saved as the room runs."
-                  : transcriptIntegrity === "retrying"
+              {transcriptIntegrity !== "healthy" && (
+                <AppSurfaceDescription>
+                  {transcriptIntegrity === "retrying"
                     ? "Checking that the latest turns are stored before the interview closes."
                     : "Some recent turns could not be verified. Keep the room open and retry ending the interview in a moment."}
-              </AppSurfaceDescription>
+                </AppSurfaceDescription>
+              )}
             </div>
             {transcriptIntegrity !== "healthy" && (
               <StatusPill
@@ -140,18 +135,4 @@ export function InterviewRoomSurface({
       </main>
     </div>
   );
-}
-
-function getAgentStateLabel(state: InterviewRoomSurfaceProps["agentState"]) {
-  switch (state) {
-    case "listening":
-      return "Interviewer is listening";
-    case "thinking":
-      return "Interviewer is preparing a response";
-    case "speaking":
-      return "Interviewer is speaking";
-    case "idle":
-    default:
-      return "Interviewer is ready";
-  }
 }
