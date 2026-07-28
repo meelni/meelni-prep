@@ -799,15 +799,15 @@ export function InterviewPageContent() {
         );
       }
       setTranscriptIntegrity("retrying");
-      let transcriptSettlement:
-        | Awaited<ReturnType<FlushRuntimeTranscript>>
-        | null = null;
+      let transcriptSettlement: Awaited<
+        ReturnType<FlushRuntimeTranscript>
+      > | null = null;
       try {
         transcriptSettlement = await establishTranscriptEndCutoff({
           setEndIntent: (value) => {
             endIntentRef.current = value;
           },
-          flush: () => flushRuntimeTranscript(25_000),
+          flush: () => flushRuntimeTranscript(30_000),
         });
       } catch (settlementError) {
         // A rejected settlement request is terminal for this attempt. Do not

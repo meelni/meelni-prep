@@ -26,9 +26,10 @@ Use an authenticated Preview account and complete these cases:
 - credit interruption: make credit convergence fail after terminal commit,
   verify HTTP 200 with pending feedback dispatch, then replay and confirm credit
   converges before the outbox is claimed;
-- runtime deployment skew: make `meelni.transcript.flush` return LiveKit RPC
-  `1400`, verify End still terminalizes from durable evidence, feedback is
-  skipped rather than invented, and the integrity credit policy converges;
+- participant publish restriction: keep the interview token's
+  `canPublishData=false`, verify End reaches the authenticated runtime-settlement
+  endpoint, the server-authored request receives durable acknowledgement, and
+  terminalization proceeds without a browser RPC timeout;
 - terminal repair: seed or locate a safe test session that is terminal without feedback, retry feedback, and confirm lifecycle state/version do not change;
 - client failure: make the end endpoint return non-2xx and confirm the room stays mounted with an announced retry message.
 

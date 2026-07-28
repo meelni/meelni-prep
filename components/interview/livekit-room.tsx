@@ -5,7 +5,6 @@ import {
   useConnectionState,
   useVoiceAssistant,
   useDataChannel,
-  useRoomContext,
 } from "@livekit/components-react";
 import { useCallback, useEffect, useRef } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
@@ -181,8 +180,7 @@ function RoomContent({
   onTranscriptIntegrityChange,
   children,
 }: RoomContentProps) {
-  const { state, agent } = useVoiceAssistant();
-  const room = useRoomContext();
+  const { state } = useVoiceAssistant();
   const connectionState = useConnectionState();
   const transcriptUpdateRef = useRef(onTranscriptUpdate);
   const connectionStateChangeRef = useRef(onConnectionStateChange);
@@ -190,23 +188,37 @@ function RoomContent({
   connectionStateChangeRef.current = onConnectionStateChange;
 
   useEffect(() => {
-    if (!agent) {
-      onTranscriptFlushAvailable(null);
-      return;
-    }
-
     const flush: FlushRuntimeTranscript = async (timeoutMs = 10_000) => {
-      const raw = await room.localParticipant.performRpc({
-        destinationIdentity: agent.identity,
-        method: "meelni.transcript.flush",
-        payload: JSON.stringify({ sessionId }),
-        responseTimeout: timeoutMs,
-      });
-      const result = JSON.parse(raw) as Partial<TranscriptRuntimeSettlement>;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+      let response: Response;
+      try {
+        response = await fetch("/api/interview/runtime-settlement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+          signal: controller.signal,
+        });
+      } catch {
+        throw new Error(
+          "The interview runtime took too long to respond. Please try ending again."
+        );
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      const result = (await response.json().catch(() => null)) as
+        | (Partial<TranscriptRuntimeSettlement> & { message?: string })
+        | null;
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            "We couldn't verify the complete transcript yet. Please try ending again."
+        );
+      }
       if (
-        typeof result.settled !== "boolean" ||
-        !Number.isSafeInteger(result.pending) ||
-        !Number.isSafeInteger(result.failed)
+        typeof result?.settled !== "boolean" ||
+        !Number.isSafeInteger(result?.pending) ||
+        !Number.isSafeInteger(result?.failed)
       ) {
         throw new Error("invalid_runtime_transcript_settlement");
       }
@@ -221,7 +233,7 @@ function RoomContent({
 
     onTranscriptFlushAvailable(flush);
     return () => onTranscriptFlushAvailable(null);
-  }, [agent, onTranscriptFlushAvailable, room, sessionId]);
+  }, [onTranscriptFlushAvailable, sessionId]);
 
   // Subscribe to agent state changes
   useEffect(() => {

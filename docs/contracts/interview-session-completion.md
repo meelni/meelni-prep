@@ -70,8 +70,10 @@ dispatch or generation outcome never changes billing.
 
 The final stats are calculated inside the terminal transaction after it locks
 the same session row used by canonical transcript ingest. The browser owns no
-transcript write queue; explicit browser end asks the trusted runtime to drain
-and persist per-generation settlement before terminalization. Ingests that
+transcript write queue and cannot publish LiveKit data. Explicit browser end
+first calls the authenticated runtime-settlement endpoint; the server targets
+the current agent and writer generation with a reliable metadata-only request,
+then waits for durable settlement before terminalization. Ingests that
 acquired the row first become visible to terminal validation; once terminal
 truth commits, new distinct events are closed while equivalent event-ID replays
 stay idempotent. Hard deadlines use semantic cutoff `D`: audio stops at `D`,
@@ -145,15 +147,15 @@ The end response remains HTTP 200 when the session committed but provider dispat
 
 The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
 
-LiveKit RPC code `1400` (`UNSUPPORTED_METHOD`) is a narrow exception to the
-ordinary transcript-settlement retry path. It is definitive evidence that the
-deployed voice runtime predates the required flush contract, so retrying the
-same room cannot produce settlement. The browser submits the authenticated end
-command from durable evidence instead. The finalizer treats missing writer
-proof as an integrity fault, terminalizes the session as feedback-ineligible,
-and converges the configured credit recovery policy. Timeouts, disconnects,
-application errors, and other RPC failures remain retryable and keep the room
-open.
+`POST /api/interview/runtime-settlement` accepts only an authenticated,
+owner-scoped `sessionId`. It derives the cutoff from database time bounded by
+the hard deadline, resolves the active agent through server-side LiveKit
+presence, sends the same trusted settlement packet used by reconnect recovery,
+and waits up to 20 seconds for the exact writer generation's durable
+acknowledgement. Missing writer/agent presence and missing acknowledgement
+remain retryable. A durable degraded settlement permits terminalization but
+fails feedback eligibility closed. The browser never calls LiveKit
+`performRpc()` because participant tokens retain `canPublishData=false`.
 
 `GET /api/feedback/:sessionId` reports `settling` for a hard-deadline session
 whose room cleanup is not acknowledged. After acknowledgement it exposes the
@@ -192,8 +194,9 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
   dispatches once; later replay emits no duplicate.
 - Replacement writer B settled while registered writer A is missing or degraded
   remains feedback-ineligible.
-- A voice runtime without the flush RPC cannot strand the End control; the
-  server terminalizes from durable evidence and does not invent feedback.
+- Browser End works while participant data publishing remains disabled; the
+  authenticated server request receives durable writer settlement before the
+  terminal command.
 - A credit-settlement exception after terminal commit returns HTTP 200, leaves
   feedback dispatch pending, and remains idempotently recoverable.
 - Reconnect settlement request and durable acknowledgement occur before room
