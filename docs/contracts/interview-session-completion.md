@@ -86,7 +86,11 @@ rewritten.
 System deadlines settle the durable evidence available when they acquire the
 row. After terminal truth commits, the end workflow converges the version-1
 credit reservation before dispatching feedback; settlement failure stays
-retryable and does not change feedback eligibility.
+retryable and does not change feedback eligibility. Because terminal truth is
+already committed, a credit-settlement exception returns that committed result
+with dispatch still pending instead of turning the end request into a non-2xx
+response. An idempotent replay or recovery worker converges credit before
+claiming the feedback outbox.
 The terminal policy action and support evidence commit with the ledger action
 under the owner/session/reservation/grant lock order. See
 [Interview Credit Recovery](./interview-credit-recovery.md).
@@ -141,6 +145,16 @@ The end response remains HTTP 200 when the session committed but provider dispat
 
 The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
 
+LiveKit RPC code `1400` (`UNSUPPORTED_METHOD`) is a narrow exception to the
+ordinary transcript-settlement retry path. It is definitive evidence that the
+deployed voice runtime predates the required flush contract, so retrying the
+same room cannot produce settlement. The browser submits the authenticated end
+command from durable evidence instead. The finalizer treats missing writer
+proof as an integrity fault, terminalizes the session as feedback-ineligible,
+and converges the configured credit recovery policy. Timeouts, disconnects,
+application errors, and other RPC failures remain retryable and keep the room
+open.
+
 `GET /api/feedback/:sessionId` reports `settling` for a hard-deadline session
 whose room cleanup is not acknowledged. After acknowledgement it exposes the
 durable feedback/dispatch state. Authenticated `POST` cannot bypass pending
@@ -178,5 +192,9 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
   dispatches once; later replay emits no duplicate.
 - Replacement writer B settled while registered writer A is missing or degraded
   remains feedback-ineligible.
+- A voice runtime without the flush RPC cannot strand the End control; the
+  server terminalizes from durable evidence and does not invent feedback.
+- A credit-settlement exception after terminal commit returns HTTP 200, leaves
+  feedback dispatch pending, and remains idempotently recoverable.
 - Reconnect settlement request and durable acknowledgement occur before room
   deletion; missing acknowledgement fails closed.

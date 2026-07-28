@@ -197,6 +197,7 @@ export async function enforceInterviewDeadlineWorkflow(
   }
 
   await deps.markRoomCleanupComplete(input.sessionId);
+  requireCreditSettlementReady(settlement);
   const completion = await deps.dispatchSettlement(completionForDispatch);
   requireFeedbackDispatchReady(completion);
 
@@ -254,6 +255,7 @@ export async function quarantineInvalidInterviewSessionWorkflow(
   }
 
   await deps.markRoomCleanupComplete(input.sessionId);
+  requireCreditSettlementReady(settlement);
   const completion = await deps.dispatchSettlement(settlement.completion);
   requireFeedbackDispatchReady(completion);
 
@@ -333,6 +335,14 @@ function requireFeedbackDispatchReady(
     throw Object.assign(new Error("Deadline feedback dispatch is not ready"), {
       code: "feedback_dispatch_not_ready",
     });
+  }
+}
+
+function requireCreditSettlementReady(
+  settlement: Extract<SettleInterviewSessionResult, { ok: true }>
+): void {
+  if (settlement.creditSettlementStatus === "deferred") {
+    throw new Error("Interview credit settlement deferred");
   }
 }
 

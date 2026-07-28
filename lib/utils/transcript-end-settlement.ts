@@ -4,6 +4,19 @@ export interface TranscriptEndSettlement {
   failed: number;
 }
 
+const LIVEKIT_UNSUPPORTED_RPC_METHOD = 1400;
+
+export function isTranscriptRuntimeContractUnavailable(
+  error: unknown
+): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === LIVEKIT_UNSUPPORTED_RPC_METHOD
+  );
+}
+
 export async function establishTranscriptEndCutoff<
   Settlement extends TranscriptEndSettlement,
 >(input: {

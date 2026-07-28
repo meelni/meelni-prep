@@ -23,6 +23,12 @@ Use an authenticated Preview account and complete these cases:
 - full data queue: verify reserved control capacity still persists the mandatory
   writer-scoped settlement;
 - dispatch interruption: make Inngest unavailable, end the session, verify HTTP 200 with retryable dispatch, restore Inngest, and use Queue Feedback;
+- credit interruption: make credit convergence fail after terminal commit,
+  verify HTTP 200 with pending feedback dispatch, then replay and confirm credit
+  converges before the outbox is claimed;
+- runtime deployment skew: make `meelni.transcript.flush` return LiveKit RPC
+  `1400`, verify End still terminalizes from durable evidence, feedback is
+  skipped rather than invented, and the integrity credit policy converges;
 - terminal repair: seed or locate a safe test session that is terminal without feedback, retry feedback, and confirm lifecycle state/version do not change;
 - client failure: make the end endpoint return non-2xx and confirm the room stays mounted with an announced retry message.
 
