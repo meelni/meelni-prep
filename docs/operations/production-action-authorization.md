@@ -227,6 +227,48 @@ before constructing a Stripe client, invoking `lk`, or spawning Drizzle. The
 artifact is never read from an env value, CLI argument, tracked file, symlink,
 or group/world-readable file.
 
+### Prepare an interview-agent deployment
+
+Run this provider-free preparation only after the reviewed change is merged and
+the authorized workstation is on that exact clean `main` commit. The helper
+validates the canonical Production config and owner-only one-variable secrets
+file, computes the same configuration and target fingerprints as the guarded
+deploy wrapper, and writes only the external unsigned payload:
+
+```bash
+export MEELNI_REVIEWED_MAIN_SHA="<exact 40-character merged main SHA>"
+npm run production-action:livekit-interview -- prepare \
+  --expected-candidate-sha "$MEELNI_REVIEWED_MAIN_SHA" \
+  --config-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG" \
+  --secrets-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_SECRETS_FILE" \
+  --output-path "$HOME/.config/meelni/production-actions/livekit-interview-unsigned.json"
+```
+
+The human owner reviews that payload locally and signs it:
+
+```bash
+npm run production-action:owner -- sign \
+  --payload-path "$HOME/.config/meelni/production-actions/livekit-interview-unsigned.json" \
+  --artifact-path "$HOME/.config/meelni/production-actions/livekit-interview-authorization.json" \
+  --key-id meelni-owner-2026-07
+```
+
+Recompute the exact target fingerprints and verify the signed artifact without
+printing them:
+
+```bash
+npm run production-action:livekit-interview -- verify \
+  --expected-candidate-sha "$MEELNI_REVIEWED_MAIN_SHA" \
+  --config-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG" \
+  --secrets-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_SECRETS_FILE" \
+  --artifact-path "$HOME/.config/meelni/production-actions/livekit-interview-authorization.json"
+```
+
+Then set `MEELNI_PRODUCTION_ACTION_AUTHORIZATION` to that artifact path and run
+`agent/interview/deploy.sh production`. Preparation and verification make zero
+provider calls and do not consume the artifact; the deploy wrapper consumes it
+immediately before invoking `lk`.
+
 Current guarded commands:
 
 ```bash

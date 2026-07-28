@@ -344,10 +344,16 @@ lk project set-default meelni
 Verify:
 
 ```bash
-lk project list
+lk project list --json |
+  jq 'map({name: .Name, projectId: .ProjectId, url: .URL})'
 lk agent status --id CA_yawKG67rCMG4 --project meelni
 lk agent status --id CA_t3sKQEihMQ7x --project meelni
 ```
+
+Do not paste the unfiltered `lk project list` output into chat or operational
+evidence: both its table and JSON forms include the configured API key, and the
+JSON form also includes the API secret. Select only the safe project name, ID,
+and URL fields as shown above.
 
 Docs MCP:
 
@@ -378,6 +384,10 @@ Operational notes:
   same reviewed commit, and require `PASS livekit.project.read_only` before a
   rehearsal. Never copy the default `meelni` Production pair into staging.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+- The owner signing key and executor identity are intentionally present only on
+  the authorized owner workstation. If another laptop lacks those files, do not
+  enroll or recreate them; prepare, sign, verify, and consume the fresh exact
+  artifact on the authorized workstation.
 - Require `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` in every
   worker mode, including local development. An unnamed worker opts into
   LiveKit automatic dispatch and can create an empty-name dispatch in any new

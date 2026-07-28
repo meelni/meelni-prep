@@ -65,11 +65,17 @@ Loopback HTTP is accepted only for local development.
   packets share one task, a successful result replays without new work, and a
   failed or cancelled operation permits only one new retry. The 64-identity
   ledger bounds both request identity and retained task state.
-- Shutdown first fences new settlement dispatch, gives the worst-case 17-second
-  settlement operation a 20-second join, then cancels and awaits every
-  straggler before the final queue drain. A hard process crash can still lose
-  in-memory pending work; feedback eligibility and the relaunch gate fail safe
-  when evidence cannot be proven.
+- Explicit end first gives a live background flush 250ms to quiesce, then
+  cancels and awaits it before foreground replay. Candidate/interviewer speech
+  settlement, evidence flush, and settlement persistence have a combined
+  4.5-second stage budget under the server's five-second wait. Room transcript
+  and status projection are separately bounded best-effort notifications and
+  never retain durable queue ownership.
+- Shutdown first fences new settlement dispatch, gives active server settlement
+  tasks a 20-second join, then serializes through the same settlement lock and
+  performs the final queue drain. A hard process crash can still lose in-memory
+  pending work; feedback eligibility and the relaunch gate fail safe when
+  evidence cannot be proven.
 
 ## Deployment and rehearsal
 
