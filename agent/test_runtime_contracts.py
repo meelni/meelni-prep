@@ -105,6 +105,7 @@ from shared.transcript_events import (
     is_transcript_event,
     publish_transcript_event,
 )
+from shared.transcript_settlement import settle_session_speech
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -622,13 +623,6 @@ class RuntimeContractTests(unittest.TestCase):
             with self.subTest(relative_path=relative_path):
                 source = (Path(__file__).parent / relative_path).read_text()
                 self.assertIn("record=False", source)
-
-    def test_interview_settlement_stops_input_and_commits_active_user_speech(self):
-        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
-
-        self.assertIn("session.input.set_audio_enabled(False)", source)
-        self.assertIn("session.commit_user_turn(", source)
-        self.assertIn("skip_reply=True", source)
 
     def test_interview_registers_writer_before_session_start_or_audible_output(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
@@ -1730,6 +1724,184 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
         ) + output.getvalue()
         self.assertNotIn(sentinel, captured)
         self.assertNotIn("Traceback", captured)
+
+
+class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mid_user_speech_is_committed_without_requesting_a_reply(self):
+        calls = []
+
+        class Session:
+            user_state = "speaking"
+            current_speech = None
+            input = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("audio_enabled", enabled)
+                )
+            )
+
+            def commit_user_turn(self, **kwargs):
+                calls.append(("commit_user_turn", kwargs))
+
+                async def commit():
+                    calls.append(("user_turn_committed",))
+
+                return commit()
+
+            async def wait_for_idle(self):
+                calls.append(("idle",))
+
+        result = await settle_session_speech(Session(), timeout_seconds=0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            calls,
+            [
+                ("audio_enabled", False),
+                (
+                    "commit_user_turn",
+                    {
+                        "transcript_timeout": 5.0,
+                        "stt_flush_duration": 1.0,
+                        "skip_reply": True,
+                    },
+                ),
+                ("user_turn_committed",),
+                ("idle",),
+            ],
+        )
+
+    async def test_mid_interviewer_speech_is_interrupted_and_awaited(self):
+        calls = []
+
+        class Speech:
+            def done(self):
+                return False
+
+            def interrupt(self, *, force):
+                calls.append(("interrupt", force))
+
+            async def wait_for_playout(self):
+                calls.append(("playout_stopped",))
+
+        class Session:
+            user_state = "listening"
+            current_speech = Speech()
+            input = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("audio_enabled", enabled)
+                )
+            )
+
+            def commit_user_turn(self, **_kwargs):
+                raise AssertionError("idle user speech must not be committed")
+
+            async def wait_for_idle(self):
+                calls.append(("idle",))
+
+        result = await settle_session_speech(Session(), timeout_seconds=0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(
+            calls,
+            [
+                ("audio_enabled", False),
+                ("interrupt", True),
+                ("playout_stopped",),
+                ("idle",),
+            ],
+        )
+
+    async def test_model_thinking_without_current_speech_waits_for_idle(self):
+        calls = []
+
+        class Session:
+            user_state = "listening"
+            current_speech = None
+            input = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("audio_enabled", enabled)
+                )
+            )
+
+            def commit_user_turn(self, **_kwargs):
+                raise AssertionError("idle user speech must not be committed")
+
+            async def wait_for_idle(self):
+                calls.append(("idle",))
+
+        result = await settle_session_speech(Session(), timeout_seconds=0.5)
+
+        self.assertTrue(result.settled)
+        self.assertEqual(calls, [("audio_enabled", False), ("idle",)])
+
+    async def test_timeout_cancels_runtime_idle_wait_and_reports_degraded_evidence(self):
+        cancelled = asyncio.Event()
+
+        class Session:
+            user_state = "listening"
+            current_speech = None
+            input = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+
+            async def wait_for_idle(self):
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        result = await settle_session_speech(Session(), timeout_seconds=0.01)
+
+        self.assertFalse(result.settled)
+        self.assertTrue(result.timed_out)
+        self.assertIsNone(result.error_type)
+        self.assertTrue(cancelled.is_set())
+
+    async def test_synchronous_livekit_failure_becomes_degraded_evidence(self):
+        def fail_audio_disable(_enabled):
+            raise RuntimeError("synthetic provider failure")
+
+        session = SimpleNamespace(
+            user_state="listening",
+            current_speech=None,
+            input=SimpleNamespace(set_audio_enabled=fail_audio_disable),
+        )
+
+        result = await settle_session_speech(session, timeout_seconds=0.5)
+
+        self.assertFalse(result.settled)
+        self.assertFalse(result.timed_out)
+        self.assertEqual(result.error_type, "RuntimeError")
+
+    async def test_synchronous_commit_failure_cancels_interviewer_playout_wait(self):
+        playout_wait = asyncio.get_running_loop().create_future()
+
+        class Speech:
+            def done(self):
+                return False
+
+            def interrupt(self, *, force):
+                self.interrupted = force
+
+            def wait_for_playout(self):
+                return playout_wait
+
+        class Session:
+            user_state = "speaking"
+            current_speech = Speech()
+            input = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+
+            def commit_user_turn(self, **_kwargs):
+                raise RuntimeError("synthetic commit failure")
+
+        result = await settle_session_speech(Session(), timeout_seconds=0.5)
+
+        self.assertFalse(result.settled)
+        self.assertFalse(result.timed_out)
+        self.assertEqual(result.error_type, "RuntimeError")
+        self.assertTrue(playout_wait.cancelled())
+
+    async def test_invalid_timeout_fails_before_touching_the_session(self):
+        with self.assertRaises(ValueError):
+            await settle_session_speech(object(), timeout_seconds=0)
 
 
 class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
