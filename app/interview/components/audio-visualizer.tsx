@@ -1,25 +1,28 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useLocalParticipant,
-  useRemoteParticipants,
+  useTrackVolume,
   useVoiceAssistant,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { motion } from "framer-motion";
-import { Orb, AgentState as OrbAgentState } from "@/components/ui/orb";
-import { useTrackVolume } from "@livekit/components-react";
+import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb";
 import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import { mapTrackVolumeToVisualIntensity } from "./audio-level";
 
-export function AudioVisualizer() {
+type AgentState = "idle" | "listening" | "thinking" | "speaking";
+
+interface AudioVisualizerProps {
+  agentState: AgentState;
+}
+
+export function AudioVisualizer({ agentState }: AudioVisualizerProps) {
   const { localParticipant } = useLocalParticipant();
-  const remoteParticipants = useRemoteParticipants();
-  const { state: agentStateFromHook } = useVoiceAssistant();
+  const { audioTrack: agentAudioTrack } = useVoiceAssistant();
 
-  // Debounced agent state to prevent flickering during speech pauses
   const [debouncedAgentState, setDebouncedAgentState] =
-    useState<string>("idle");
+    useState<AgentState>("idle");
   const stateChangeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastSpeakingTimeRef = useRef<number>(0);
 
@@ -27,73 +30,36 @@ export function AudioVisualizer() {
     Track.Source.Microphone
   )?.track;
 
-  const agentParticipant = remoteParticipants[0];
-  const agentAudioTrack = agentParticipant?.getTrackPublication(
-    Track.Source.Microphone
-  )?.track;
-
-  // Get audio volumes for reactivity
   const userVolume = useTrackVolume(
     userAudioTrack as Parameters<typeof useTrackVolume>[0]
   );
-  const agentVolume = useTrackVolume(
-    agentAudioTrack as Parameters<typeof useTrackVolume>[0]
-  );
+  const agentVolume = useTrackVolume(agentAudioTrack);
 
-  // Normalize volumes to 0-1 range (same as demo)
-  const normalizedUserVolume = Math.min(userVolume, 100) / 100;
-  const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
+  const userVisualIntensity = mapTrackVolumeToVisualIntensity(userVolume);
+  const agentVisualIntensity = mapTrackVolumeToVisualIntensity(agentVolume);
+  const hasUserAudio = userVisualIntensity > 0;
+  const hasAgentAudio = agentVisualIntensity > 0;
 
-  // Hybrid approach: Use hook state if available, fall back to volume detection
-  // This handles both voice assistant mode and explicit agent dispatch
   useEffect(() => {
-    const GRACE_PERIOD_MS = 700; // 700ms grace period for natural pauses
+    const GRACE_PERIOD_MS = 700;
+    const currentState =
+      agentState === "idle" && hasAgentAudio ? "speaking" : agentState;
 
-    // Try to use voice assistant state if available
-    let currentState = (agentStateFromHook as string) || "idle";
-
-    // If hook state is stuck on "idle" but we have agent volume, infer from audio
-    // This happens when agent is explicitly dispatched (not voice assistant mode)
-    if (currentState === "idle" && agentParticipant) {
-      if (normalizedAgentVolume > 0.15) {
-        currentState = "speaking";
-      } else if (normalizedUserVolume > 0.3) {
-        currentState = "listening";
-      }
-    }
-
-    console.log(
-      "[AudioVisualizer] Current state:",
-      currentState,
-      "Hook state:",
-      agentStateFromHook,
-      "Agent vol:",
-      normalizedAgentVolume.toFixed(2)
-    );
-
-    // If agent is speaking, update timestamp
     if (currentState === "speaking") {
       lastSpeakingTimeRef.current = Date.now();
 
-      // Immediately show speaking state
       if (debouncedAgentState !== "speaking") {
         setDebouncedAgentState("speaking");
       }
 
-      // Clear any pending state change
       if (stateChangeTimerRef.current) {
         clearTimeout(stateChangeTimerRef.current);
         stateChangeTimerRef.current = undefined;
       }
-    } else if (
-      currentState !== "speaking" &&
-      debouncedAgentState === "speaking"
-    ) {
-      // Agent stopped speaking - check if we should wait before transitioning
+    } else if (debouncedAgentState === "speaking") {
       const timeSinceLastSpeaking = Date.now() - lastSpeakingTimeRef.current;
 
       if (timeSinceLastSpeaking < GRACE_PERIOD_MS) {
-        // Within grace period - delay the state change
         if (!stateChangeTimerRef.current) {
           stateChangeTimerRef.current = setTimeout(() => {
             setDebouncedAgentState(currentState);
@@ -101,14 +67,11 @@ export function AudioVisualizer() {
           }, GRACE_PERIOD_MS - timeSinceLastSpeaking);
         }
       } else {
-        // Grace period passed - update immediately
         setDebouncedAgentState(currentState);
       }
-    } else if (currentState !== "speaking") {
-      // Non-speaking states (thinking, listening, idle) - update immediately
+    } else {
       setDebouncedAgentState(currentState);
 
-      // Clear any pending timer
       if (stateChangeTimerRef.current) {
         clearTimeout(stateChangeTimerRef.current);
         stateChangeTimerRef.current = undefined;
@@ -118,38 +81,26 @@ export function AudioVisualizer() {
     return () => {
       if (stateChangeTimerRef.current) {
         clearTimeout(stateChangeTimerRef.current);
+        stateChangeTimerRef.current = undefined;
       }
     };
-  }, [
-    agentStateFromHook,
-    debouncedAgentState,
-    agentParticipant,
-    normalizedAgentVolume,
-    normalizedUserVolume,
-  ]);
+  }, [agentState, debouncedAgentState, hasAgentAudio]);
 
-  // Debounced user speaking state
   const [isUserSpeakingDebounced, setIsUserSpeakingDebounced] = useState(false);
   const speakingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
-    // Higher threshold (0.3) to reduce false positives from background noise
     const isSpeaking =
-      userAudioTrack &&
-      userAudioTrack.isMuted === false &&
-      normalizedUserVolume > 0.3;
+      userAudioTrack && userAudioTrack.isMuted === false && hasUserAudio;
 
     if (isSpeaking) {
-      // Immediately show "Your Turn" when speaking detected
       if (!isUserSpeakingDebounced) {
         setIsUserSpeakingDebounced(true);
       }
-      // Clear any pending timeout
       if (speakingTimeoutRef.current) {
         clearTimeout(speakingTimeoutRef.current);
       }
     } else if (isUserSpeakingDebounced) {
-      // Delay hiding "Your Turn" by 500ms to prevent flickering
       speakingTimeoutRef.current = setTimeout(() => {
         setIsUserSpeakingDebounced(false);
       }, 500);
@@ -158,14 +109,12 @@ export function AudioVisualizer() {
     return () => {
       if (speakingTimeoutRef.current) {
         clearTimeout(speakingTimeoutRef.current);
+        speakingTimeoutRef.current = undefined;
       }
     };
-  }, [normalizedUserVolume, userAudioTrack, isUserSpeakingDebounced]);
+  }, [hasUserAudio, isUserSpeakingDebounced, userAudioTrack]);
 
-  // Map LiveKit agent state to Orb agent state
-  // Use debounced state for UI display to prevent flickering
   const displayAgentState = debouncedAgentState;
-
   const orbAgentState: OrbAgentState =
     displayAgentState === "thinking"
       ? "thinking"
@@ -175,95 +124,52 @@ export function AudioVisualizer() {
           ? "talking"
           : null;
 
-  // Use debounced states for UI
-  const isUserSpeaking = isUserSpeakingDebounced;
-  const isAgentActive =
-    displayAgentState === "speaking" || displayAgentState === "thinking";
-
-  // Only pass volume to Orb when actually speaking (above threshold) to prevent flickering
-  const displayUserVolume =
-    normalizedUserVolume > 0.3 ? normalizedUserVolume : 0;
-  const displayAgentVolume =
-    normalizedAgentVolume > 0.15 ? normalizedAgentVolume : 0;
+  const statusLabel = getStatusLabel(
+    displayAgentState,
+    isUserSpeakingDebounced
+  );
+  const isActive =
+    displayAgentState === "speaking" ||
+    displayAgentState === "thinking" ||
+    isUserSpeakingDebounced;
 
   return (
-    <div className="interview-container relative flex h-full w-full flex-col items-center justify-center gap-8 p-6">
-      {/* Large Orb with Audio Reactivity */}
-      <div className="relative aspect-square w-full max-w-md">
+    <div className="interview-container flex h-full w-full flex-col items-center justify-center gap-3">
+      <div className="relative aspect-square min-h-0 w-full max-w-[300px] flex-1">
         <Orb
           colors={MEELNI_ORB_COLORS}
           agentState={orbAgentState}
           volumeMode="manual"
-          getInputVolume={() => displayUserVolume}
-          getOutputVolume={() => displayAgentVolume}
+          getInputVolume={() => userVisualIntensity}
+          getOutputVolume={() => agentVisualIntensity}
           className="h-full w-full"
         />
       </div>
 
-      {/* Turn Indicator - Agent Active States */}
-      {isAgentActive && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className="from-primary/10 to-primary/5 border-primary/30 relative space-y-2 rounded-2xl border bg-gradient-to-br px-6 py-4 text-center shadow-lg backdrop-blur-sm"
-        >
-          <p className="text-primary font-sans text-2xl font-medium">
-            {displayAgentState === "thinking"
-              ? "Meelni is thinking..."
-              : "Meelni is speaking"}
-          </p>
-          <p className="text-muted-foreground font-sans text-sm">
-            {displayAgentState === "thinking"
-              ? "Preparing response"
-              : "Listen carefully"}
-          </p>
-        </motion.div>
-      )}
-
-      {/* Turn Indicator - User's Turn */}
-      {isUserSpeaking && !isAgentActive && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className="from-primary/10 to-primary/5 border-primary/30 relative space-y-2 rounded-2xl border bg-gradient-to-br px-6 py-4 text-center shadow-lg backdrop-blur-sm"
-        >
-          <div className="flex items-center justify-center gap-2">
-            <motion.div
-              className="bg-primary h-2 w-2 rounded-full"
-              animate={{ scale: [1, 1.2, 1], opacity: [0.6, 1, 0.6] }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-            />
-            <p className="text-primary font-sans text-2xl font-medium">
-              Your Turn
-            </p>
-          </div>
-          <p className="text-muted-foreground font-sans text-sm">
-            Meelni is listening
-          </p>
-        </motion.div>
-      )}
-
-      {/* Ready state message */}
-      {!isAgentActive && !isUserSpeaking && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-2 text-center"
-        >
-          <p className="font-display text-foreground text-lg font-medium">
-            Ready to begin
-          </p>
-          <p className="text-muted-foreground font-sans text-sm">
-            Start speaking to continue the interview
-          </p>
-        </motion.div>
-      )}
+      <div
+        className="text-muted-foreground flex h-6 items-center justify-center gap-2 text-sm"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span
+          className={
+            isActive
+              ? "bg-primary h-1.5 w-1.5 rounded-full"
+              : "bg-muted-foreground/40 h-1.5 w-1.5 rounded-full"
+          }
+          aria-hidden="true"
+        />
+        <span>{statusLabel}</span>
+      </div>
     </div>
   );
+}
+
+function getStatusLabel(agentState: AgentState, isUserSpeaking: boolean) {
+  if (agentState === "speaking") return "Interviewer speaking";
+  if (agentState === "thinking") return "Interviewer thinking";
+  if (isUserSpeaking) return "Listening";
+  if (agentState === "listening") return "Your turn";
+  return "Ready";
 }

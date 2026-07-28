@@ -4,6 +4,7 @@ import { InterviewControls } from "@/app/interview/components/interview-controls
 import { InterviewRoomSurface } from "@/app/interview/components/interview-room-surface";
 import { TimerDisplay } from "@/app/interview/components/timer-display";
 import { TranscriptPanel } from "@/app/interview/components/transcript-panel";
+import { groupTranscriptTurns } from "@/app/interview/components/transcript-display";
 import { ExploreClient } from "@/app/explore/explore-client";
 import { SetupContent } from "@/app/setup/setup-content";
 import { DashboardLayout } from "@/components/dashboard/layout/dashboard-layout";
@@ -185,7 +186,6 @@ function InterviewScenario() {
   return (
     <>
       <InterviewRoomSurface
-        agentState="listening"
         company="Acme"
         connectionIndicator={
           <span className="text-foreground text-sm">Connected</span>
@@ -226,7 +226,9 @@ function InterviewScenario() {
       <EndSessionModal
         isOpen={showEndModal}
         capturedAnswerCount={
-          transcriptTurns.filter((turn) => turn.speaker === "user").length
+          groupTranscriptTurns(transcriptTurns).filter(
+            (turn) => turn.speaker === "user"
+          ).length
         }
         onClose={() => setShowEndModal(false)}
         onConfirm={() => setShowEndModal(false)}

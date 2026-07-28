@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { InterviewRoomSurface } from "./interview-room-surface";
 import { InterviewControls } from "./interview-controls";
+import { mapTrackVolumeToVisualIntensity } from "./audio-level";
+import { groupTranscriptTurns } from "./transcript-display";
+import { TranscriptPanel } from "./transcript-panel";
 
 function renderSurface({
   connectionStatus = "connected" as const,
@@ -13,7 +16,6 @@ function renderSurface({
 } = {}) {
   return renderToStaticMarkup(
     <InterviewRoomSurface
-      agentState="listening"
       company="Fixture Company"
       connectionIndicator={<span>Fixture connection</span>}
       connectionStatus={connectionStatus}
@@ -38,10 +40,69 @@ test("renders the interview room through provider-free injected visual slots", (
   assert.match(html, /Fixture media/);
   assert.match(html, /Design a product for a synthetic PM interview fixture/);
   assert.match(html, /This is synthetic interview content/);
-  assert.match(html, /Practice interview/);
-  assert.match(html, /Interviewer is listening/);
+  assert.doesNotMatch(html, /Practice interview/);
+  assert.doesNotMatch(html, /Interviewer is listening/);
+  assert.doesNotMatch(html, /Conversation turns are saved/);
   assert.doesNotMatch(html, /Gentle hints on/);
   assert.match(html, /aria-label="End interview"/);
+});
+
+test("keeps the stage free of redundant ready copy when no question is available", () => {
+  const html = renderToStaticMarkup(
+    <InterviewRoomSurface
+      connectionStatus="connected"
+      deadlineReached={false}
+      mediaVisualizer={<div>Fixture media</div>}
+      recoveringConnection={false}
+      transcriptIntegrity="healthy"
+    />
+  );
+
+  assert.doesNotMatch(html, /Your interviewer is ready/);
+  assert.match(html, /Live PM interview/);
+});
+
+test("groups consecutive transcript fragments into speaker turns", () => {
+  const timestamp = new Date("2026-07-27T20:00:00.000Z");
+  const grouped = groupTranscriptTurns([
+    { eventId: "1", speaker: "user", text: "I would start", timestamp },
+    { eventId: "2", speaker: "user", text: "with the user.", timestamp },
+    { eventId: "3", speaker: "interviewer", text: "Why?", timestamp },
+    { eventId: "4", speaker: "user", text: "To reduce risk.", timestamp },
+  ]);
+
+  assert.deepEqual(grouped, [
+    {
+      id: "1",
+      speaker: "user",
+      text: "I would start with the user.",
+    },
+    { id: "3", speaker: "interviewer", text: "Why?" },
+    { id: "4", speaker: "user", text: "To reduce risk." },
+  ]);
+});
+
+test("renders a grouped live transcript without per-message timestamps", () => {
+  const timestamp = new Date("2026-07-27T20:00:00.000Z");
+  const html = renderToStaticMarkup(
+    <TranscriptPanel
+      turns={[
+        { eventId: "1", speaker: "user", text: "I would start", timestamp },
+        { eventId: "2", speaker: "user", text: "with the user.", timestamp },
+      ]}
+    />
+  );
+
+  assert.match(html, /I would start with the user\./);
+  assert.doesNotMatch(html, /ago/);
+  assert.doesNotMatch(html, /2026/);
+});
+
+test("maps normalized LiveKit volume into a responsive visual range", () => {
+  assert.equal(mapTrackVolumeToVisualIntensity(0), 0);
+  assert.equal(mapTrackVolumeToVisualIntensity(0.015), 0);
+  assert.ok(mapTrackVolumeToVisualIntensity(0.1) > 0.35);
+  assert.equal(mapTrackVolumeToVisualIntensity(1), 1);
 });
 
 test("keeps interview controls unavailable while connection recovery owns the room", () => {
