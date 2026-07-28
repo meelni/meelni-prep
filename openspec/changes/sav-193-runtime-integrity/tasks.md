@@ -5,6 +5,8 @@
 - [x] Require every registered generation to settle before feedback eligibility.
 - [x] Use semantic deadline/reconnect cutoffs for events and watermarks.
 - [x] Add an explicit reconnect settlement request/acknowledgement before room deletion.
+- [x] Route explicit user-end settlement through authenticated server-authored
+      reliable data while participant data publishing remains disabled.
 - [x] Reserve runtime queue capacity for settlement control evidence.
 - [x] Remove browser transcript persistence/retry and preserve owner/session lifecycle fencing.
 - [x] Redact content-bearing Python and TypeScript logs with sentinel regressions.

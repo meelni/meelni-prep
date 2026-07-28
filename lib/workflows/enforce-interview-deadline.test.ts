@@ -149,6 +149,36 @@ test("deadline persists cleanup ownership before room deletion, then acknowledge
   ]);
 });
 
+test("deadline retries credit convergence before feedback dispatch", async () => {
+  let settlements = 0;
+  let dispatches = 0;
+  const run = () =>
+    enforceInterviewDeadlineWorkflow(
+      { sessionId: SESSION_ID, deadlineAt: DEADLINE, env: ENV },
+      createDeps({
+        settleSession: async () => {
+          settlements += 1;
+          return {
+            ...settlement(),
+            creditSettlementStatus:
+              settlements === 1 ? "deferred" : "settled",
+          };
+        },
+        dispatchSettlement: async (completion) => {
+          dispatches += 1;
+          return completedSettlement(completion);
+        },
+      })
+    );
+
+  await assert.rejects(run, /credit settlement deferred/);
+  assert.equal(dispatches, 0);
+
+  const retry = await run();
+  assert.equal(retry.ok, true);
+  assert.equal(dispatches, 1);
+});
+
 test("room deletion failure commits terminal truth but defers feedback until acknowledged cleanup", async () => {
   let stored: InterviewSessionSettlement | null = null;
   let feedbackEvents = 0;

@@ -19,7 +19,10 @@ Audio input and output stop at the semantic cutoff `D`. Cleanup may continue for
 5. Await durable settled/degraded evidence for a bounded interval.
 6. Delete the room and finalize. Missing/degraded evidence becomes insufficient signal and never dispatches feedback.
 
-The browser RPC, deadline path, and server request share one idempotent runtime flush implementation. A timer alone is never settlement evidence.
+Authenticated user end, the deadline path, and reconnect recovery send the same
+trusted server-authored metadata-only request into one idempotent runtime flush
+implementation. Participant tokens keep data publishing disabled; a timer or a
+browser-to-agent RPC is never settlement evidence.
 
 ## Privacy and product truth
 

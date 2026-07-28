@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { establishTranscriptEndCutoff } from "./transcript-end-settlement";
+import {
+  establishTranscriptEndCutoff,
+  isTranscriptRuntimeContractUnavailable,
+} from "./transcript-end-settlement";
 
 test("explicit end establishes its packet cutoff before draining", async () => {
   let endIntent = false;
@@ -49,4 +52,25 @@ test("a drain exception safely reopens packet acceptance", async () => {
     /storage unavailable/
   );
   assert.equal(endIntent, false);
+});
+
+test("only LiveKit's unsupported-method code identifies runtime contract skew", () => {
+  assert.equal(
+    isTranscriptRuntimeContractUnavailable({
+      code: 1400,
+      message: "Method not supported at destination",
+    }),
+    true
+  );
+  assert.equal(
+    isTranscriptRuntimeContractUnavailable({
+      code: 1502,
+      message: "Response timeout",
+    }),
+    false
+  );
+  assert.equal(
+    isTranscriptRuntimeContractUnavailable(new Error("network unavailable")),
+    false
+  );
 });
