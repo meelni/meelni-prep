@@ -46,10 +46,13 @@ Loopback HTTP is accepted only for local development.
   ingest acknowledgement's durable `row_id` is added to that post-persistence
   display notification so live rendering and durable hydration use the same
   stable row identity and final ordering.
-- Explicit end calls the runtime settlement RPC. Active playout is interrupted,
-  the exact heard prefix or no-prefix marker is enqueued, and the outbox drains
-  before application terminalization. Every registered writer generation must
-  have durable `settled` proof; missing or degraded proof fails closed.
+- Explicit end calls the authenticated runtime-settlement endpoint. The server
+  sends a reliable metadata-only packet to the current agent and writer
+  generation while the browser token retains `canPublishData=false`. Active
+  playout is interrupted, the exact heard prefix or no-prefix marker is
+  enqueued, and the outbox drains before application terminalization. Every
+  registered writer generation must have durable `settled` proof; missing or
+  degraded proof fails closed.
 - Hard deadline uses semantic cutoff `D`: input and output stop at `D`, accepted
   event time cannot exceed `D`, and each writer's `settled_at` is `D` even when
   its durable acknowledgement arrives during the cleanup grace.
@@ -93,7 +96,9 @@ Loopback HTTP is accepted only for local development.
    writer A plus writer B: feedback remains ineligible when A is missing or
    degraded even if B is settled; it becomes eligible only when all registered
    generations are settled and no marker exists.
-10. Confirm explicit end disables audio input, commits active user speech,
+10. Confirm explicit end reaches `/api/interview/runtime-settlement`, sends a
+    trusted server-authored packet while the participant grant keeps
+    `canPublishData=false`, disables audio input, commits active user speech,
     drains the outbox, and persists writer-scoped `runtime_settlement` rows
     before the browser calls the terminal API.
 11. Confirm reconnect timeout delivers a targeted request/ack while the room is

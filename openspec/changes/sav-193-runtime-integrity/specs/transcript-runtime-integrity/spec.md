@@ -32,6 +32,14 @@ Reconnect enforcement MUST request runtime settlement while the room and agent e
 
 If the settlement request is unavailable or acknowledgement is missing/degraded at the bound, the room MUST still be deleted and the session MUST terminalize without feedback as insufficient signal.
 
+## Requirement: explicit-end settlement handshake
+
+Authenticated user End MUST ask the application server to send a reliable,
+writer-generation-scoped settlement request and await durable acknowledgement
+before terminalization. The participant token MUST keep data publishing
+disabled, and the browser MUST NOT depend on LiveKit participant RPC for this
+control operation.
+
 ## Requirement: privacy boundary
 
 The browser MUST NOT persist or retry raw transcript writes. Content-bearing runtime/application paths MUST NOT log questions, prompts, greetings, transcript text, unrestricted error messages, or tracebacks.
