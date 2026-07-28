@@ -10,7 +10,12 @@
   },
   "scripts": {
     "setup:local": "node scripts/setup-local.mjs",
-    "doctor": "node scripts/doctor-local.mjs",
+    "bootstrap:worktree": "bash scripts/bootstrap-worktree.sh",
+    "doctor": "npm run doctor:runtime",
+    "doctor:setup": "node scripts/doctor-local.mjs --setup",
+    "doctor:runtime": "node scripts/doctor-local.mjs --runtime",
+    "handoff": "node scripts/developer-workflow.mjs handoff",
+    "worktrees:status": "node scripts/developer-workflow.mjs worktrees",
     "env:pull": "node scripts/pull-vercel-env.mjs .env.local preview",
     "env:pull:preview": "node scripts/pull-vercel-env.mjs .env.local preview",
     "env:pull:production": "node scripts/pull-vercel-env.mjs .env.production.local production",
@@ -221,6 +226,7 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },
+    "camera-controls": "3.1.0",
     "postcss": "8.5.16"
   }
 }

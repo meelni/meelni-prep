@@ -16,9 +16,19 @@ import {
 import { buildPythonEnv } from "./python-runtime.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const requestedMode = process.argv[2] || "--runtime";
+if (!["--setup", "--runtime"].includes(requestedMode)) {
+  console.error("Usage: node scripts/doctor-local.mjs [--setup|--runtime]");
+  process.exit(1);
+}
+const runtimeMode = requestedMode === "--runtime";
+const doctorLabel = runtimeMode ? "Runtime doctor" : "Setup doctor";
 const results = [];
 const packageJson = readJson("package.json");
 const conductorJson = readJson("conductor.json", { optional: true });
+const codexEnvironment = readText(".codex/environments/environment.toml", {
+  optional: true,
+});
 
 check("Node", () => {
   const requiredVersion = readPinnedNodeVersion(repoRoot);
@@ -67,8 +77,8 @@ check("Root env", () => {
   const envPath = resolve(repoRoot, ".env.local");
 
   if (!existsSync(envPath)) {
-    return warn(
-      ".env.local is missing. Run `npm run setup:local` and fill in required secrets."
+    return runtimeReadiness(
+      ".env.local is missing. Run `npm run setup:local`, then use the explicit Pull Env action before provider-backed runtime work."
     );
   }
 
@@ -91,14 +101,14 @@ check("Root env", () => {
   const placeholder = [...status.placeholder, ...liveKitUrlStatus.placeholder];
 
   if (missing.length > 0) {
-    return fail(
-      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni\`, then \`npm run env:pull\`.`
+    return runtimeReadiness(
+      `.env.local is missing required runtime value(s): ${missing.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni --scope meelni\`, then \`npm run env:pull\`.`
     );
   }
 
   if (placeholder.length > 0) {
-    return fail(
-      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni\`, then \`npm run env:pull\`.`
+    return runtimeReadiness(
+      `.env.local contains placeholder value(s): ${placeholder.join(", ")}. Run \`npx vercel@55.0.0 link --yes --project meelni --scope meelni\`, then \`npm run env:pull\`.`
     );
   }
 
@@ -160,8 +170,10 @@ check("Conductor config", () => {
     return fail("conductor.json is missing.");
   }
 
-  if (conductorJson.scripts?.setup !== "npm run setup:local") {
-    return fail("conductor.json setup should be `npm run setup:local`.");
+  if (conductorJson.scripts?.setup !== "bash scripts/bootstrap-worktree.sh") {
+    return fail(
+      "conductor.json setup should be `bash scripts/bootstrap-worktree.sh`."
+    );
   }
 
   if (conductorJson.scripts?.run !== "npm run dev:local") {
@@ -169,6 +181,25 @@ check("Conductor config", () => {
   }
 
   return pass("conductor.json points to local setup/run scripts.");
+});
+
+check("Codex worktree bootstrap", () => {
+  if (!codexEnvironment) {
+    return fail(".codex/environments/environment.toml is missing.");
+  }
+  if (
+    !codexEnvironment.includes(
+      '. "$CODEX_WORKTREE_PATH/scripts/bootstrap-worktree.sh"'
+    )
+  ) {
+    return fail(
+      "Codex setup must source scripts/bootstrap-worktree.sh from the target worktree."
+    );
+  }
+  if (!existsSync(resolve(repoRoot, "scripts/bootstrap-worktree.sh"))) {
+    return fail("scripts/bootstrap-worktree.sh is missing.");
+  }
+  return pass("Codex delegates setup to the target worktree bootstrap.");
 });
 
 for (const result of results) {
@@ -182,12 +213,12 @@ console.log("");
 
 if (failures.length > 0) {
   console.log(
-    `Doctor found ${failures.length} failure(s) and ${warnings.length} warning(s).`
+    `${doctorLabel} found ${failures.length} failure(s) and ${warnings.length} warning(s).`
   );
   process.exit(1);
 }
 
-console.log(`Doctor passed with ${warnings.length} warning(s).`);
+console.log(`${doctorLabel} passed with ${warnings.length} warning(s).`);
 
 function check(name, fn) {
   try {
@@ -213,6 +244,12 @@ function fail(message) {
   return { status: "fail", message };
 }
 
+function runtimeReadiness(message) {
+  return runtimeMode
+    ? fail(message)
+    : warn(`${message} Setup remains provider-free.`);
+}
+
 function readJson(relativePath, options = {}) {
   const path = resolve(repoRoot, relativePath);
 
@@ -225,4 +262,13 @@ function readJson(relativePath, options = {}) {
   }
 
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function readText(relativePath, options = {}) {
+  const path = resolve(repoRoot, relativePath);
+  if (!existsSync(path)) {
+    if (options.optional) return undefined;
+    throw new Error(`${relativePath} is missing.`);
+  }
+  return readFileSync(path, "utf8");
 }
