@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { createClient } from "@/lib/supabase/server";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { endUserInterviewSessionWorkflow } from "@/lib/workflows/end-user-interview-session";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import {
@@ -49,10 +49,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await endInterviewSessionWorkflow({
+    const livekitEnv = getLiveKitEnvironment(process.env);
+    const result = await endUserInterviewSessionWorkflow({
       sessionId,
-      actor: { type: "user", userId: user.id },
-      requestedTerminalReason: "user_end",
+      userId: user.id,
+      env: livekitEnv.ok ? livekitEnv.data : null,
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -74,8 +75,19 @@ export async function POST(req: NextRequest) {
         correlationId,
       });
     }
+    if (
+      result.runtimeSettlement !== "settled" &&
+      result.runtimeSettlement !== "degraded"
+    ) {
+      reportOperationalFailure({
+        operation: "interview_end",
+        errorCode: "interview_end_runtime_settlement_unavailable",
+        severity: "warning",
+        retryable: false,
+        correlationId,
+      });
+    }
 
-    const livekitEnv = getLiveKitEnvironment(process.env);
     if (result.completion.roomName) {
       if (livekitEnv.ok) {
         try {
@@ -125,6 +137,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       status,
+      runtimeSettlement: result.runtimeSettlement,
       session: {
         lifecycleState: result.completion.lifecycle.state,
         terminalReason: result.completion.lifecycle.terminalReason,
@@ -158,7 +171,7 @@ export async function POST(req: NextRequest) {
       {
         error: "session_end_failed",
         message:
-          "We couldn't end the interview yet. You're still connected and can try again.",
+          "Your interview is paused, but we couldn't confirm completion yet. Please try End Interview again.",
       },
       { status: 500 }
     );

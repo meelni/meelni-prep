@@ -7,6 +7,8 @@ from typing import Any, Dict
 
 from shared.session_deadline import normalize_duration_minutes
 
+INTERVIEW_VAD_MIN_SILENCE_SECONDS = 0.9
+
 DEFAULT_INTERVIEW_RUNTIME_CONFIG: Dict[str, Any] = {
     "difficulty": "intermediate",
     "voice": "cgSgspJ2msm6clMCkdW9",
