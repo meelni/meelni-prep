@@ -72,6 +72,7 @@ from shared.transcript_ingest import (
     parse_runtime_settlement_request,
     post_ingest_request,
     register_runtime_writer,
+    resolve_transcript_ingest_secret,
 )
 from shared.utils.prompt_builder import build_agent_prompt
 
@@ -217,6 +218,7 @@ async def entrypoint(ctx: JobContext):
     # Establish the signed provider-neutral failure path before constructing
     # provider-backed voice components.
     # The runtime must register durably before it can produce audible output.
+    transcript_ingest_secret = resolve_transcript_ingest_secret(os.environ)
     transcript_writer_id = str(uuid4())
     writer_registration = create_runtime_writer_registration(
         session_id=session_id,
@@ -228,7 +230,7 @@ async def entrypoint(ctx: JobContext):
         transcript_writer_generation = await asyncio.wait_for(
             register_runtime_writer(
                 ingest_url=transcript_ingest_url,
-                livekit_api_secret=get_required_env("LIVEKIT_API_SECRET"),
+                livekit_api_secret=transcript_ingest_secret,
                 registration=writer_registration,
                 transport=post_ingest_request,
             ),
@@ -264,7 +266,7 @@ async def entrypoint(ctx: JobContext):
 
     transcript_queue = TranscriptIngestQueue(
         ingest_url=transcript_ingest_url,
-        livekit_api_secret=get_required_env("LIVEKIT_API_SECRET"),
+        livekit_api_secret=transcript_ingest_secret,
         transport=post_ingest_request,
         publisher=publish_persisted_transcript,
         hard_evidence_cutoff=(

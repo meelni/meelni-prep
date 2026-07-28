@@ -12,9 +12,13 @@ The runtime posts the exact compact JSON body to
 - `x-meelni-timestamp`: ten-digit epoch seconds
 - `x-meelni-signature`: lowercase HMAC-SHA256 hex
 
-Both services derive a domain-separated signing key from the server-only
-`LIVEKIT_API_SECRET` using context `meelni/transcript-ingest/v1`, then sign
-`<timestamp>.<raw-body>`. Requests outside the five-minute clock window,
+Both services derive a domain-separated signing key using context
+`meelni/transcript-ingest/v1`, then sign `<timestamp>.<raw-body>`. The web
+verifier uses its server-only `LIVEKIT_API_SECRET`. LiveKit Cloud generates a
+distinct provider credential for each deployed agent, so the Production
+runtime receives the web environment's value through the dedicated
+`MEELNI_TRANSCRIPT_INGEST_SECRET` deployment secret. Local and Preview runtimes
+may fall back to their `LIVEKIT_API_SECRET`. Requests outside the five-minute clock window,
 malformed signatures, weak/missing server configuration, or body mutation fail
 closed. Never log the secret, signature, raw body, or transcript text.
 The server reads the request as an abort-aware byte stream, cancels it as soon
@@ -71,7 +75,10 @@ Loopback HTTP is accepted only for local development.
    `0029_durable_contact_submission` and require the thirty-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
-4. Deploy the Python runtime with the same environment's `LIVEKIT_API_SECRET`.
+4. Deploy the Python runtime through the guarded wrapper with an external,
+   owner-only secrets file containing
+   `MEELNI_TRANSCRIPT_INGEST_SECRET=<web LIVEKIT_API_SECRET>`. The authorization
+   target binds the snapshot's SHA-256 without exposing its value.
 5. In an isolated Preview environment, verify completed speech, mid-sentence
    interruption, zero-prefix interruption, transient 503, conflict, overflow,
    reserved settlement capacity at a full data queue, explicit end, tab close,
@@ -105,9 +112,10 @@ need recorded Preview evidence before the relaunch gate can change.
 
 ## Rotation and rollback
 
-Rotate the LiveKit API secret in the app and agent together. During mismatch,
-runtime ingest returns unauthorized and the outbox retries only when the status
-is retryable; keep the relaunch gate off until both sides converge.
+Rotate the web `LIVEKIT_API_SECRET` and the agent's
+`MEELNI_TRANSCRIPT_INGEST_SECRET` together. During mismatch, runtime ingest
+returns unauthorized and the outbox retries only when the status is retryable;
+keep the relaunch gate off until both sides converge.
 
 Rollback may leave the additive marker table and policies in place. Do not
 restore browser transcript-write endpoints, browser raw persistence, public

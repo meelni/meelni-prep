@@ -173,6 +173,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 | `LIVEKIT_URL`        | ✅       | LiveKit WebSocket URL                         |
 | `LIVEKIT_API_KEY`    | ✅       | LiveKit API key                               |
 | `LIVEKIT_API_SECRET` | ✅       | LiveKit API secret                            |
+| `MEELNI_TRANSCRIPT_INGEST_SECRET` | Production | Web/runtime transcript-ingest signing key |
 | `OPENAI_API_KEY`     | ✅       | OpenAI API key                                |
 | `DEEPGRAM_API_KEY`   | ✅       | Deepgram API key (for Nova-3 ASR)             |
 | `CARTESIA_API_KEY`   | ❌       | **Not required** when using LiveKit Inference |

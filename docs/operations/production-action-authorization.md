@@ -224,6 +224,11 @@ The selected config must be a real file rather than a symlink. The wrapper
 copies it into a private snapshot, authorizes the snapshot bytes, and passes
 that same snapshot to `lk` so path replacement cannot change the approved
 configuration.
+The Production interview-agent wrapper also requires an external, owner-only
+secrets file containing only `MEELNI_TRANSCRIPT_INGEST_SECRET`. It snapshots
+that file, includes the snapshot SHA-256 in the authorized target fingerprint,
+and passes the same private snapshot to `lk`. The secret value is never printed
+or stored in the authorization artifact.
 
 The supported wrapper then verifies and consumes the exact authorization
 before constructing a Stripe client, invoking `lk`, or spawning Drizzle. The
