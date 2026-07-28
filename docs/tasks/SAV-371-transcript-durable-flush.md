@@ -102,15 +102,31 @@ and feedback eligibility.
 1. Merge the reviewed web/API and Python runtime changes together.
 2. Record the exact merged `main` commit and wait for the matching Vercel
    Production deployment to report healthy.
-3. Prepare the guarded `livekit-production-interview-deploy` payload for that
-   exact commit, current Production target, reviewed configuration, validation
-   plan, and rollback plan.
+3. On the authorized owner workstation, prepare the guarded
+   `livekit-production-interview-deploy` payload for that exact commit and
+   current Production target without printing fingerprints or secret material:
+
+   ```bash
+   export MEELNI_REVIEWED_MAIN_SHA="<exact 40-character merged main SHA>"
+   npm run production-action:livekit-interview -- prepare \
+     --expected-candidate-sha "$MEELNI_REVIEWED_MAIN_SHA" \
+     --config-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG" \
+     --secrets-file "$MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_SECRETS_FILE" \
+     --output-path "$HOME/.config/meelni/production-actions/livekit-interview-unsigned.json"
+   ```
+
+   The provider-free helper validates the reviewed config and owner-only secret
+   file and binds the exact clean Git candidate.
+
 4. The human product owner reviews and signs a fresh bounded authorization on
    the authorized workstation. This authorization is not launch GO.
 5. Run `agent/interview/deploy.sh production` from the same clean merged commit.
    Do not use a direct provider CLI or dashboard deployment.
 6. Confirm the new LiveKit version is running and matches the reviewed source
-   commit before opening a test room.
+   commit before opening a test room. Do not begin the deploy while a controlled
+   test interview is active: LiveKit uses a rolling deployment and may let old
+   instances finish existing sessions for up to one hour, while routing new
+   sessions to healthy new instances.
 7. Run one controlled Production interview at a time and verify:
    - normal candidate and interviewer turns appear and survive reload;
    - end during silence completes once;
