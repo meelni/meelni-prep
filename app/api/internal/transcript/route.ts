@@ -185,6 +185,10 @@ function mapIngestResult(
       200
     );
   }
+  console.warn("Runtime transcript ingest rejected", {
+    kind,
+    reason: result.reason,
+  });
   if (result.reason === "session_capacity_exceeded") {
     return response({ error: "transcript_session_capacity_exceeded" }, 429);
   }
