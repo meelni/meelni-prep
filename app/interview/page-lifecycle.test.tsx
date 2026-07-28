@@ -3,7 +3,6 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -16,7 +15,6 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 const mocks = vi.hoisted(() => ({
   authUser: { id: "owner-a" } as { id: string } | null,
-  flush: vi.fn(),
   invalidateQueries: vi.fn(),
   livekitMounted: vi.fn(),
   livekitUnmounted: vi.fn(),
@@ -47,12 +45,10 @@ vi.mock("@/components/interview/livekit-room", async () => {
     LiveKitRoomWrapper: ({
       children,
       onConnectionStateChange,
-      onTranscriptFlushAvailable,
       onTranscriptUpdate,
     }: {
       children: React.ReactNode;
       onConnectionStateChange(status: "connected"): void;
-      onTranscriptFlushAvailable(flush: typeof mocks.flush | null): void;
       onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
       ReactModule.useEffect(() => {
@@ -61,12 +57,10 @@ vi.mock("@/components/interview/livekit-room", async () => {
       }, []);
       ReactModule.useEffect(() => {
         mocks.onTranscriptUpdate = onTranscriptUpdate;
-        onTranscriptFlushAvailable(mocks.flush);
         return () => {
           mocks.onTranscriptUpdate = null;
-          onTranscriptFlushAvailable(null);
         };
-      }, [onTranscriptFlushAvailable, onTranscriptUpdate]);
+      }, [onTranscriptUpdate]);
       ReactModule.useEffect(() => {
         onConnectionStateChange("connected");
       }, [onConnectionStateChange]);
@@ -117,16 +111,21 @@ vi.mock("./components/interview-controls", () => ({
 
 vi.mock("./components/end-session-modal", () => ({
   EndSessionModal: ({
+    error,
     isOpen,
     onConfirm,
   }: {
+    error?: string | null;
     isOpen: boolean;
     onConfirm(): void;
   }) =>
     isOpen ? (
-      <button type="button" onClick={onConfirm}>
-        Confirm end
-      </button>
+      <>
+        {error && <div role="alert">{error}</div>}
+        <button type="button" onClick={onConfirm}>
+          Confirm end
+        </button>
+      </>
     ) : null,
 }));
 
@@ -136,7 +135,6 @@ import { InterviewPageContent } from "./page";
 describe("active interview page lifecycle", () => {
   beforeEach(() => {
     mocks.authUser = { id: "owner-a" };
-    mocks.flush.mockResolvedValue({ settled: true, pending: 0, failed: 0 });
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
@@ -399,14 +397,21 @@ describe("active interview page lifecycle", () => {
     expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
   });
 
-  it("terminates transcript verification as an actionable alert when settlement rejects", async () => {
-    let rejectSettlement: ((reason: Error) => void) | undefined;
-    mocks.flush.mockImplementationOnce(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectSettlement = reject;
-        })
-    );
+  it("keeps the interview frozen and offers the same End command after a definitive server failure", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/interview/end") {
+        return Response.json(
+          {
+            error: "session_end_failed",
+            message:
+              "Your interview is paused, but we couldn't confirm completion yet. Please try End Interview again.",
+          },
+          { status: 500 }
+        );
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
 
     render(<InterviewPageContent />);
     expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
@@ -415,30 +420,27 @@ describe("active interview page lifecycle", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
 
-    const verifying = await screen.findByRole("status");
-    expect(verifying).toHaveAttribute("aria-live", "polite");
-    expect(verifying).toHaveTextContent("Verifying");
-    expect(screen.getByText(/checking that the latest turns/i)).toBeVisible();
-
-    await act(async () => {
-      rejectSettlement?.(new Error("synthetic settlement failure"));
-    });
-
-    const degraded = await screen.findByRole("alert");
-    expect(degraded).toHaveAttribute("aria-live", "assertive");
-    expect(degraded).toHaveTextContent("Needs recovery");
-    expect(degraded).toHaveTextContent(/keep the room open and retry ending/i);
-    expect(screen.queryByText("Verifying")).not.toBeInTheDocument();
+    const alerts = await screen.findAllByRole("alert");
     expect(
-      screen.queryByText("Conversation turns are saved as the room runs.")
-    ).not.toBeInTheDocument();
+      alerts.some((alert) => /Needs recovery/i.test(alert.textContent ?? ""))
+    ).toBe(true);
+    expect(
+      alerts.some((alert) =>
+        /try End Interview again/i.test(alert.textContent ?? "")
+      )
+    ).toBe(true);
+    expect(request).toHaveBeenCalledWith(
+      "/api/interview/end",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/interview/runtime-settlement"
+      )
+    ).toBe(false);
   });
 
-  it("terminalizes safely when the deployed runtime lacks the flush contract", async () => {
-    mocks.flush.mockRejectedValueOnce({
-      code: 1400,
-      message: "Method not supported at destination",
-    });
+  it("terminalizes with one command without a browser runtime-settlement prerequisite", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/interview/end") {
@@ -465,10 +467,13 @@ describe("active interview page lifecycle", () => {
       )
     );
     await waitFor(() =>
-      expect(mocks.push).toHaveBeenCalledWith(
-        `/feedback/${SESSION_ID}/loading`
-      )
+      expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`)
     );
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/interview/runtime-settlement"
+      )
+    ).toBe(false);
   });
 });
 

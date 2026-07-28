@@ -143,6 +143,26 @@ test("a durable degraded settlement permits safe terminalization without feedbac
   });
 });
 
+test("explicit end can apply a shorter settlement budget than background cleanup", async () => {
+  const fixture = createFixture();
+  fixture.deps.waitForRuntimeSettlement = async ({ timeoutMs }) => {
+    assert.equal(timeoutMs, 5_000);
+    return readiness("settled", 2);
+  };
+
+  const result = await requestUserEndRuntimeSettlementWorkflow(
+    {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      env: ENV,
+      timeoutMs: 5_000,
+    },
+    fixture.deps
+  );
+
+  assert.equal(result.ok, true);
+});
+
 function createFixture(overrides: Partial<UserEndSettlementSession> = {}): {
   deps: RequestUserEndRuntimeSettlementDeps;
   calls: string[];

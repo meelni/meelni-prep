@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/workflows/end-interview-session", () => ({
-  endInterviewSessionWorkflow: vi.fn(),
+vi.mock("@/lib/workflows/end-user-interview-session", () => ({
+  endUserInterviewSessionWorkflow: vi.fn(),
 }));
 vi.mock("@/lib/workflows/cleanup-interview-room", () => ({
   cleanupInterviewRoomWorkflow: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock("@/lib/internal/integrations", () => ({
 import { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { endInterviewSessionWorkflow } from "@/lib/workflows/end-interview-session";
+import { endUserInterviewSessionWorkflow } from "@/lib/workflows/end-user-interview-session";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { POST } from "../route";
@@ -56,12 +56,12 @@ describe("POST /api/interview/end", () => {
     mockAuth({ id: "user-invalid" });
     const response = await POST(request({ sessionId: "not-a-uuid" }));
     expect(response.status).toBe(400);
-    expect(endInterviewSessionWorkflow).not.toHaveBeenCalled();
+    expect(endUserInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
   it("returns stored terminal truth when dispatch remains retryable", async () => {
     mockAuth({ id: "user-dispatch-failure" });
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(
+    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
       completionResult({ dispatchStatus: "failed", dispatchOk: false }) as never
     );
 
@@ -85,9 +85,10 @@ describe("POST /api/interview/end", () => {
 
   it("maps an indistinguishable missing or cross-user session to 404", async () => {
     mockAuth({ id: "user-not-found" });
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue({
+    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue({
       ok: false,
       reason: "not_found",
+      runtimeSettlement: "not_found",
     });
     const response = await POST(request({ sessionId: SESSION_ID }));
     expect(response.status).toBe(404);
@@ -95,7 +96,7 @@ describe("POST /api/interview/end", () => {
 
   it("returns a non-2xx error only when completion was not confirmed", async () => {
     mockAuth({ id: "user-storage-failure" });
-    vi.mocked(endInterviewSessionWorkflow).mockRejectedValue(
+    vi.mocked(endUserInterviewSessionWorkflow).mockRejectedValue(
       new Error("database unavailable")
     );
     const response = await POST(request({ sessionId: SESSION_ID }));
@@ -108,16 +109,20 @@ describe("POST /api/interview/end", () => {
 
   it("delegates completion side effects to the shared workflow", async () => {
     mockAuth({ id: "user-motivation" });
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(
+    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
       completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
     );
     const response = await POST(request({ sessionId: SESSION_ID }));
 
     expect(response.status).toBe(200);
-    expect(endInterviewSessionWorkflow).toHaveBeenCalledWith({
+    expect(endUserInterviewSessionWorkflow).toHaveBeenCalledWith({
       sessionId: SESSION_ID,
-      actor: { type: "user", userId: "user-motivation" },
-      requestedTerminalReason: "user_end",
+      userId: "user-motivation",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+      },
     });
     expect(cleanupInterviewRoomWorkflow).toHaveBeenCalledWith({
       sessionId: SESSION_ID,
@@ -131,7 +136,7 @@ describe("POST /api/interview/end", () => {
 
   it("returns committed terminal truth when room cleanup is deferred", async () => {
     mockAuth({ id: "user-cleanup-retry" });
-    vi.mocked(endInterviewSessionWorkflow).mockResolvedValue(
+    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
       completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
     );
     vi.mocked(cleanupInterviewRoomWorkflow).mockRejectedValue(
@@ -175,6 +180,7 @@ function completionResult(input: {
   };
   return {
     ok: true,
+    runtimeSettlement: "settled",
     completion: {
       ok: true,
       disposition: "applied",

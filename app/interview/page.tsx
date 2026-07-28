@@ -8,7 +8,6 @@ import { sessionKeys } from "@/lib/api/queries";
 import {
   LiveKitRoomWrapper,
   TranscriptTurn,
-  type FlushRuntimeTranscript,
 } from "@/components/interview/livekit-room";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { groupTranscriptTurns } from "./components/transcript-display";
@@ -43,10 +42,6 @@ import {
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
 import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
-import {
-  establishTranscriptEndCutoff,
-  isTranscriptRuntimeContractUnavailable,
-} from "@/lib/utils/transcript-end-settlement";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
@@ -136,7 +131,6 @@ export function InterviewPageContent() {
   const [transcriptIntegrity, setTranscriptIntegrity] = useState<
     "healthy" | "retrying" | "degraded"
   >("healthy");
-  const transcriptFlushRef = useRef<FlushRuntimeTranscript | null>(null);
   const [agentState, setAgentState] = useState<
     "idle" | "listening" | "thinking" | "speaking"
   >("idle");
@@ -193,7 +187,6 @@ export function InterviewPageContent() {
     deadlineReachedRef.current = false;
     endIntentRef.current = false;
     nextEndRetryAtRef.current = 0;
-    transcriptFlushRef.current = null;
 
     setConnectionOwnerId(null);
     setSession(null);
@@ -220,13 +213,6 @@ export function InterviewPageContent() {
       nextOwnerId ? "/dashboard" : "/auth/signin?redirectTo=/interview"
     );
   }, [router, user?.id]);
-
-  const handleTranscriptFlushAvailable = useCallback(
-    (flush: FlushRuntimeTranscript | null) => {
-      transcriptFlushRef.current = flush;
-    },
-    []
-  );
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -790,55 +776,15 @@ export function InterviewPageContent() {
     const requestOwnerId = connectionOwnerId;
     const requestSessionId = activeSessionId;
 
+    // Explicit end is a terminal intent. Freeze browser-side evidence and mute
+    // immediately; the server owns bounded runtime settlement and durable
+    // finalization from this point forward.
+    endIntentRef.current = true;
+    setIsMuted(true);
     setIsEndingSession(true);
     setEndSessionError(null);
+    setTranscriptIntegrity("retrying");
     try {
-      const flushRuntimeTranscript = transcriptFlushRef.current;
-      if (!flushRuntimeTranscript) {
-        throw new Error(
-          "The interview runtime is still reconnecting. Please wait a moment and try again."
-        );
-      }
-      setTranscriptIntegrity("retrying");
-      let transcriptSettlement: Awaited<
-        ReturnType<FlushRuntimeTranscript>
-      > | null = null;
-      try {
-        transcriptSettlement = await establishTranscriptEndCutoff({
-          setEndIntent: (value) => {
-            endIntentRef.current = value;
-          },
-          flush: () => flushRuntimeTranscript(30_000),
-        });
-      } catch (settlementError) {
-        // A rejected settlement request is terminal for this attempt. Do not
-        // leave the interface claiming an active verification is still running.
-        setTranscriptIntegrity("degraded");
-        if (!isTranscriptRuntimeContractUnavailable(settlementError)) {
-          throw settlementError;
-        }
-        // An unsupported method is definitive deployment skew, not an
-        // ambiguous transport failure. Let the server terminalize from durable
-        // evidence; it will classify missing writer proof as an integrity fault.
-        endIntentRef.current = true;
-        console.warn("[Interview] transcript_runtime_contract_unavailable", {
-          code: "transcript_runtime_contract_unavailable",
-        });
-      }
-      if (ownerIdRef.current !== requestOwnerId) return;
-      if (transcriptSettlement && !transcriptSettlement.settled) {
-        setTranscriptIntegrity("degraded");
-        throw new Error(
-          transcriptSettlement.failed > 0
-            ? "We couldn't verify the complete transcript. Your interview is paused; please retry in a moment."
-            : "We're still saving your latest response. Your interview is paused; please retry in a moment."
-        );
-      }
-      if (transcriptSettlement) {
-        setTranscriptIntegrity(
-          transcriptSettlement.integrityUnavailable ? "degraded" : "healthy"
-        );
-      }
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;
@@ -875,13 +821,10 @@ export function InterviewPageContent() {
       if (ownerIdRef.current !== requestOwnerId) return;
 
       if (!response.ok) {
-        // A definitive server rejection means no terminal handoff occurred;
-        // reopen packet acceptance before presenting the retry path. Network
-        // ambiguity keeps the cutoff in place because the end may have committed.
-        endIntentRef.current = false;
+        setTranscriptIntegrity("degraded");
         throw new Error(
           data?.message ||
-            "We couldn't end the interview yet. You're still connected and can try again."
+            "Your interview is paused, but we couldn't confirm completion yet. Please try End Interview again."
         );
       }
 
@@ -910,7 +853,7 @@ export function InterviewPageContent() {
       setEndSessionError(
         error instanceof Error
           ? error.message
-          : "We couldn't end the interview yet. You're still connected and can try again."
+          : "Your interview is paused, but we couldn't confirm completion yet. Please try End Interview again."
       );
       setIsEndingSession(false);
     }
@@ -988,7 +931,6 @@ export function InterviewPageContent() {
       onTranscriptUpdate={handleTranscriptUpdate}
       onAgentStateChange={handleAgentStateChange}
       onConnectionStateChange={handleConnectionStateChange}
-      onTranscriptFlushAvailable={handleTranscriptFlushAvailable}
       onTranscriptIntegrityChange={setTranscriptIntegrity}
     >
       <RoomAudioRenderer />
@@ -1030,6 +972,7 @@ export function InterviewPageContent() {
             (turn) => turn.speaker === "user" && turn.text.trim().length > 0
           ).length
         }
+        terminalIntent={endSessionError !== null}
         onClose={() => {
           setShowEndModal(false);
           setEndSessionError(null);
