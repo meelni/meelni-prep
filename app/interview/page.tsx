@@ -11,6 +11,7 @@ import {
   type FlushRuntimeTranscript,
 } from "@/components/interview/livekit-room";
 import { TranscriptPanel } from "./components/transcript-panel";
+import { groupTranscriptTurns } from "./components/transcript-display";
 import { AudioVisualizer } from "./components/audio-visualizer";
 import { InterviewControls } from "./components/interview-controls";
 import { TimerDisplay } from "./components/timer-display";
@@ -1009,7 +1010,7 @@ export function InterviewPageContent() {
         isLoading={isEndingSession}
         error={endSessionError}
         capturedAnswerCount={
-          transcript.filter(
+          groupTranscriptTurns(transcript).filter(
             (turn) => turn.speaker === "user" && turn.text.trim().length > 0
           ).length
         }
@@ -1072,7 +1073,6 @@ function InterviewRoomContent({
 
   return (
     <InterviewRoomSurface
-      agentState={agentState}
       company={session.question?.company}
       connectionIndicator={<ConnectionIndicator />}
       connectionStatus={connectionStatus}
@@ -1084,7 +1084,7 @@ function InterviewRoomContent({
         />
       }
       deadlineReached={deadlineReached}
-      mediaVisualizer={<AudioVisualizer />}
+      mediaVisualizer={<AudioVisualizer agentState={agentState} />}
       question={session.question?.text}
       recoveringConnection={recoveringConnection}
       roundType={session.config?.roundType}
