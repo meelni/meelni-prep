@@ -11,6 +11,7 @@ const codexEnvironment = readFileSync(
   ".codex/environments/environment.toml",
   "utf8"
 );
+const localSetup = readFileSync("scripts/setup-local.mjs", "utf8");
 
 test("agent workflow docs protect long-running parent issues from child PR auto-close drift", () => {
   for (const [label, path] of Object.entries(files)) {
@@ -57,8 +58,13 @@ test("Codex worktree setup does not require provider credentials", () => {
   );
   assert.match(
     codexEnvironment,
-    /name = "Pull Env"[\s\S]*?npm run env:pull[\s\S]*?npm run doctor/,
+    /name = "Pull Env"[\s\S]*?--project meelni --scope meelni[\s\S]*?npm run env:pull[\s\S]*?npm run doctor/,
     "the environment should retain an explicit credential refresh action"
+  );
+  assert.match(
+    localSetup,
+    /"--project",\s+"meelni",\s+"--scope",\s+"meelni"/,
+    "automatic Vercel linking should target the canonical Meelni team"
   );
   assert.match(
     codexEnvironment,

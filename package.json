@@ -221,6 +221,7 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },
+    "camera-controls": "3.1.0",
     "postcss": "8.5.16"
   }
 }

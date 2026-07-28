@@ -27,7 +27,7 @@ This installs Node dependencies, creates `.context/npm-cache`, ensures `.env.loc
 When `.env.local` is missing required runtime values or still contains placeholders from `.env.example`, setup attempts to self-heal by using the authenticated Vercel CLI:
 
 ```bash
-npx vercel@55.0.0 link --yes --project meelni
+npx vercel@55.0.0 link --yes --project meelni --scope meelni
 npm run env:pull
 ```
 
