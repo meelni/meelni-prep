@@ -2112,6 +2112,42 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headers[SIGNATURE_HEADER], expected_signature)
         self.assertEqual(calls[1], ("publish", {**event, "row_id": row_id}))
 
+    async def test_cancelled_background_flush_releases_lock_for_foreground_replay(self):
+        transport_started = asyncio.Event()
+        attempts = 0
+        published = []
+
+        async def transport(_url, _body, _headers):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                transport_started.set()
+                await asyncio.Event().wait()
+            return IngestResponse(200)
+
+        async def publisher(event):
+            published.append(event["event_id"])
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        event = self.make_event()
+        queue.enqueue_transcript(event)
+        background = asyncio.create_task(queue.flush(30))
+        await transport_started.wait()
+
+        cancelled = await finish_tasks_before_shutdown((background,), 0.01)
+        foreground = await queue.flush(0.5)
+
+        self.assertEqual(cancelled, 1)
+        self.assertTrue(background.cancelled())
+        self.assertTrue(foreground.settled)
+        self.assertEqual(attempts, 2)
+        self.assertEqual(published, [event["event_id"]])
+
     async def test_integrity_marker_uses_separate_envelope_and_is_never_published(self):
         bodies = []
         published = []
