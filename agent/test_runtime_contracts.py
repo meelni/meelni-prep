@@ -85,6 +85,7 @@ from shared.transcript_ingest import (
     is_retryable_status,
     parse_runtime_settlement_request,
     register_runtime_writer,
+    resolve_transcript_ingest_secret,
     sign_ingest_body,
     validate_internal_ingest_url,
 )
@@ -106,6 +107,25 @@ from shared.transcript_events import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_transcript_ingest_prefers_cross_service_secret(self):
+        self.assertEqual(
+            resolve_transcript_ingest_secret(
+                {
+                    "MEELNI_TRANSCRIPT_INGEST_SECRET": "  shared-ingest-key  ",
+                    "LIVEKIT_API_SECRET": "provider-owned-key",
+                }
+            ),
+            "shared-ingest-key",
+        )
+        self.assertEqual(
+            resolve_transcript_ingest_secret(
+                {"LIVEKIT_API_SECRET": " provider-owned-key "}
+            ),
+            "provider-owned-key",
+        )
+        with self.assertRaises(TranscriptIngestError):
+            resolve_transcript_ingest_secret({})
+
     def test_every_worker_mode_requires_an_explicit_dispatch_name(self):
         for variable in (
             "LIVEKIT_INTERVIEW_AGENT_NAME",
