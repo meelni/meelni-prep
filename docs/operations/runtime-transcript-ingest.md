@@ -87,7 +87,10 @@ Loopback HTTP is accepted only for local development.
 4. Deploy the Python runtime through the guarded wrapper with an external,
    owner-only secrets file containing
    `MEELNI_TRANSCRIPT_INGEST_SECRET=<web LIVEKIT_API_SECRET>`. The authorization
-   target binds the snapshot's SHA-256 without exposing its value.
+   target binds the secret snapshot's SHA-256 without exposing its value. The
+   wrapper builds from the exact authorized Git commit and labels the LiveKit
+   version with `meelni.source_sha`; require an exact attribute match before
+   opening a test room.
 5. In an isolated Preview environment, verify completed speech, mid-sentence
    interruption, zero-prefix interruption, transient 503, conflict, overflow,
    reserved settlement capacity at a full data queue, explicit end, tab close,

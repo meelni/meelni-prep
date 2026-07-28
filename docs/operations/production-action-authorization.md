@@ -221,6 +221,14 @@ secrets file containing only `MEELNI_TRANSCRIPT_INGEST_SECRET`. It snapshots
 that file, includes the snapshot SHA-256 in the authorized target fingerprint,
 and passes the same private snapshot to `lk`. The secret value is never printed
 or stored in the authorization artifact.
+After consuming the authorization, the wrapper reads the verified candidate
+SHA from the private consumption receipt and uses `git archive` to create a
+private build snapshot from that exact commit. LiveKit never builds the
+Production interview worker from mutable working-tree bytes. The deploy omits
+LiveKit's inferred Git attributes and writes the explicit
+`meelni.source_sha=<authorized candidate SHA>` version attribute instead. A
+failed archive, receipt validation, or source-identity check occurs after
+consumption and therefore requires a fresh authorization.
 
 The supported wrapper then verifies and consumes the exact authorization
 before constructing a Stripe client, invoking `lk`, or spawning Drizzle. The
@@ -268,6 +276,22 @@ Then set `MEELNI_PRODUCTION_ACTION_AUTHORIZATION` to that artifact path and run
 `agent/interview/deploy.sh production`. Preparation and verification make zero
 provider calls and do not consume the artifact; the deploy wrapper consumes it
 immediately before invoking `lk`.
+
+Before opening a Production test room, prove that LiveKit recorded the exact
+reviewed source identity:
+
+```bash
+lk agent versions \
+  --id CA_yawKG67rCMG4 \
+  --project meelni \
+  --attribute "meelni.source_sha=$MEELNI_REVIEWED_MAIN_SHA" \
+  --json |
+  jq -e '(.versions // []) | length >= 1'
+```
+
+Then inspect the agent status and require the matching new version to be
+`Running`. An empty attribute-filtered result means the deploy is unproven or
+came from the retired mutable-working-tree path; do not run an interview.
 
 Current guarded commands:
 
