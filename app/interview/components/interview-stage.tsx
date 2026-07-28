@@ -78,7 +78,7 @@ export function InterviewStage({
             transition={{ duration: 0.3 }}
             className="w-full max-w-2xl"
           >
-            <AudioVisualizer />
+            <AudioVisualizer agentState={agentState} />
           </motion.div>
         )}
       </AnimatePresence>
