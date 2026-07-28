@@ -3,6 +3,7 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   livekitMounted: vi.fn(),
   livekitUnmounted: vi.fn(),
+  onAgentStateChange: null as null | ((state: string) => void),
   onTranscriptUpdate: null as
     | null
     | ((turn: Record<string, unknown>) => Promise<void> | void),
@@ -44,10 +46,12 @@ vi.mock("@/components/interview/livekit-room", async () => {
   return {
     LiveKitRoomWrapper: ({
       children,
+      onAgentStateChange,
       onConnectionStateChange,
       onTranscriptUpdate,
     }: {
       children: React.ReactNode;
+      onAgentStateChange(state: string): void;
       onConnectionStateChange(status: "connected"): void;
       onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
@@ -57,10 +61,12 @@ vi.mock("@/components/interview/livekit-room", async () => {
       }, []);
       ReactModule.useEffect(() => {
         mocks.onTranscriptUpdate = onTranscriptUpdate;
+        mocks.onAgentStateChange = onAgentStateChange;
         return () => {
           mocks.onTranscriptUpdate = null;
+          mocks.onAgentStateChange = null;
         };
-      }, [onTranscriptUpdate]);
+      }, [onAgentStateChange, onTranscriptUpdate]);
       ReactModule.useEffect(() => {
         onConnectionStateChange("connected");
       }, [onConnectionStateChange]);
@@ -135,6 +141,7 @@ import { InterviewPageContent } from "./page";
 describe("active interview page lifecycle", () => {
   beforeEach(() => {
     mocks.authUser = { id: "owner-a" };
+    mocks.onAgentStateChange = null;
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
@@ -265,6 +272,62 @@ describe("active interview page lifecycle", () => {
           String(input).includes("transcript") && init?.method === "POST"
       )
     ).toBe(false);
+  });
+
+  it("rehydrates durable turns after an agent-state transition when room data is missed", async () => {
+    let durableTurnAvailable = false;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}/transcript`) {
+        return Response.json({
+          turns: durableTurnAvailable
+            ? [
+                {
+                  id: "f47ac10b-58cc-4372-a567-0e02b2c3d481",
+                  eventId: "event-recovered",
+                  writerId: "writer-a",
+                  writerGeneration: 1,
+                  sequence: 2,
+                  sessionId: SESSION_ID,
+                  roomName: "interview-room",
+                  speaker: "user",
+                  text: "Recovered durable turn",
+                  startedAt: "2099-07-15T21:00:02.000Z",
+                  endedAt: "2099-07-15T21:00:03.000Z",
+                  audioMs: 1000,
+                  section: "product_sense",
+                  deliveryState: "delivered",
+                },
+              ]
+            : [],
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          ([input]) => String(input) === `/api/session/${SESSION_ID}/transcript`
+        )
+      ).toBe(true)
+    );
+    await waitFor(() => expect(mocks.onAgentStateChange).not.toBeNull());
+
+    durableTurnAvailable = true;
+    act(() => mocks.onAgentStateChange?.("thinking"));
+
+    await waitFor(() =>
+      expect(mocks.transcriptTurns).toEqual([
+        expect.objectContaining({
+          eventId: "event-recovered",
+          text: "Recovered durable turn",
+        }),
+      ])
+    );
   });
 
   it("keeps full mock hints off for legacy gentle session metadata", async () => {

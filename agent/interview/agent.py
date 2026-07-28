@@ -78,6 +78,7 @@ from shared.transcript_ingest import (
     register_runtime_writer,
     resolve_transcript_ingest_secret,
 )
+from shared.transcript_settlement import settle_session_speech
 from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
@@ -592,50 +593,22 @@ async def entrypoint(ctx: JobContext):
 
     async def settle_current_speech(timeout_seconds: float = 5.0) -> bool:
         nonlocal transcript_integrity_unavailable
-        user_was_speaking = session.user_state == "speaking"
-        session.input.set_audio_enabled(False)
-        current_speech = session.current_speech
-        speech_wait = None
-        if current_speech is not None and not current_speech.done():
-            current_speech.interrupt(force=True)
-            speech_wait = current_speech.wait_for_playout()
-        user_commit = (
-            session.commit_user_turn(
-                transcript_timeout=5.0,
-                stt_flush_duration=1.0,
-                skip_reply=True,
-            )
-            if user_was_speaking
-            else None
+        result = await settle_session_speech(
+            session,
+            timeout_seconds=timeout_seconds,
         )
-        waits = []
-        if speech_wait is not None:
-            waits.append(speech_wait)
-        if user_commit is not None:
-            waits.append(user_commit)
+        if result.settled:
+            return True
 
-        async def await_runtime_idle() -> None:
-            if waits:
-                await asyncio.gather(*waits)
-            await session.wait_for_idle()
-
-        try:
-            await asyncio.wait_for(await_runtime_idle(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            transcript_integrity_unavailable = True
+        transcript_integrity_unavailable = True
+        if result.timed_out:
             logger.error("Voice runtime did not reach idle before settlement")
-            return False
-        except Exception as error:
-            transcript_integrity_unavailable = True
-            log_exception_class(
-                logger,
-                logging.ERROR,
+        else:
+            logger.error(
                 "Voice runtime settlement failed to reach idle",
-                error,
+                extra={"error_type": result.error_type or "UnknownError"},
             )
-            return False
-        await asyncio.sleep(0)
-        return True
+        return False
 
     async def settle_runtime(cutoff_at: float) -> dict[str, object]:
         nonlocal foreground_transcript_flush_active
