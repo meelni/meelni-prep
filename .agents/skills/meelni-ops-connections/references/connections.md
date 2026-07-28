@@ -217,6 +217,11 @@ Repository transfer and CI recovery:
 Production guardrails:
 
 - Confirm the current branch, diff, and intended remote before pushing or opening a PR.
+- Repository policy builds Vercel Preview deployments for branches and
+  Production deployments only for Git ref `main`; all other Production refs
+  are ignored by `scripts/vercel-ignore-build.mjs`. A reviewed merge to `main`
+  is therefore the supported web Production path. Do not directly promote a
+  branch deployment as a substitute.
 - Do not print or document the keyring token reported by `gh auth status`.
 - Do not change repository settings, protections, secrets, or Actions variables without explicit scope from the user.
 - SAV-198 paid calibration never trusts the local remote. Its one-time authority
@@ -447,6 +452,7 @@ Operational notes:
   Keep `site_url` at `https://www.meelni.com` and keep the redirect allowlist
   scoped to Meelni production, Vercel deployment aliases, and local dev
   callback URLs. Do not print or document the Supabase CLI token.
+
 - Use `npm run setup:local` or run `npx vercel@55.0.0 link --yes --project meelni` from the worktree, then `npm run env:pull` to refresh local auth envs.
 - Restart `npm run dev:local` after env changes so Next.js serves the updated public Supabase URL.
 - Shared database tooling uses `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` as a
@@ -474,6 +480,15 @@ Operational notes:
     --project-ref rarrrwkjuhfyfatcmrkw --output json
   ```
 
+- If the Supabase CLI is not authenticated and a scoped Production env pull
+  contains a blank `DATABASE_URL`, an existing authenticated Chrome session can
+  be used for narrowly authorized account maintenance in the Supabase SQL
+  Editor. Verify the `Meelni` → `main` → `Production` breadcrumb and project ref
+  `rarrrwkjuhfyfatcmrkw`, confirm a current physical backup, and use an
+  idempotent transaction that preserves the application's ledger/audit
+  invariants. Verify the result through the Meelni product UI afterward. This
+  fallback does not authorize schema changes, migrations, launch actions,
+  bulk data changes, or access to unrelated customer records.
 - As of 2026-07-16, the paid canonical project reported seven completed daily
   physical backups and `pitr_enabled: false`. Verify current backup status
   before every live mutation rather than assuming this observation is still

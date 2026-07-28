@@ -105,6 +105,34 @@ export async function getSessionForLiveKitJoin(sessionId: string) {
 }
 
 /**
+ * Get the minimal owner-scoped facts required for explicit runtime settlement.
+ */
+export async function getSessionForUserEndSettlement(
+  sessionId: string,
+  userId: string
+) {
+  const [session] = await db
+    .select({
+      userId: interviewSession.userId,
+      livekitRoomName: interviewSession.livekitRoomName,
+      config: interviewSession.config,
+      startedAt: interviewSession.startedAt,
+      lifecycleState: interviewSession.lifecycleState,
+      databaseNow: sql<Date>`clock_timestamp()`,
+    })
+    .from(interviewSession)
+    .where(
+      and(
+        eq(interviewSession.id, sessionId),
+        eq(interviewSession.userId, userId)
+      )
+    )
+    .limit(1);
+
+  return session;
+}
+
+/**
  * Get a session by ID with user information
  */
 export async function getSessionWithUser(sessionId: string) {
