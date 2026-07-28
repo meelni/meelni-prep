@@ -42,7 +42,10 @@ import {
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
 import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
-import { establishTranscriptEndCutoff } from "@/lib/utils/transcript-end-settlement";
+import {
+  establishTranscriptEndCutoff,
+  isTranscriptRuntimeContractUnavailable,
+} from "@/lib/utils/transcript-end-settlement";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
@@ -796,22 +799,33 @@ export function InterviewPageContent() {
         );
       }
       setTranscriptIntegrity("retrying");
-      let transcriptSettlement: Awaited<ReturnType<FlushRuntimeTranscript>>;
+      let transcriptSettlement: Awaited<
+        ReturnType<FlushRuntimeTranscript>
+      > | null = null;
       try {
         transcriptSettlement = await establishTranscriptEndCutoff({
           setEndIntent: (value) => {
             endIntentRef.current = value;
           },
-          flush: () => flushRuntimeTranscript(25_000),
+          flush: () => flushRuntimeTranscript(30_000),
         });
       } catch (settlementError) {
         // A rejected settlement request is terminal for this attempt. Do not
         // leave the interface claiming an active verification is still running.
         setTranscriptIntegrity("degraded");
-        throw settlementError;
+        if (!isTranscriptRuntimeContractUnavailable(settlementError)) {
+          throw settlementError;
+        }
+        // An unsupported method is definitive deployment skew, not an
+        // ambiguous transport failure. Let the server terminalize from durable
+        // evidence; it will classify missing writer proof as an integrity fault.
+        endIntentRef.current = true;
+        console.warn("[Interview] transcript_runtime_contract_unavailable", {
+          code: "transcript_runtime_contract_unavailable",
+        });
       }
       if (ownerIdRef.current !== requestOwnerId) return;
-      if (!transcriptSettlement.settled) {
+      if (transcriptSettlement && !transcriptSettlement.settled) {
         setTranscriptIntegrity("degraded");
         throw new Error(
           transcriptSettlement.failed > 0
@@ -819,9 +833,11 @@ export function InterviewPageContent() {
             : "We're still saving your latest response. Your interview is paused; please retry in a moment."
         );
       }
-      setTranscriptIntegrity(
-        transcriptSettlement.integrityUnavailable ? "degraded" : "healthy"
-      );
+      if (transcriptSettlement) {
+        setTranscriptIntegrity(
+          transcriptSettlement.integrityUnavailable ? "degraded" : "healthy"
+        );
+      }
       const duration = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : 0;

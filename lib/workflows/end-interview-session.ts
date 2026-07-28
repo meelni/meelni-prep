@@ -31,9 +31,15 @@ export type InterviewSessionSettlement = Extract<
   { ok: true }
 >;
 
+export type InterviewCreditSettlementStatus = "settled" | "deferred";
+
 export type SettleInterviewSessionResult =
   | { ok: false; reason: "not_found" }
-  | { ok: true; completion: InterviewSessionSettlement };
+  | {
+      ok: true;
+      completion: InterviewSessionSettlement;
+      creditSettlementStatus?: InterviewCreditSettlementStatus;
+    };
 
 export type EndInterviewSessionResult =
   | { ok: false; reason: "not_found" }
@@ -41,7 +47,14 @@ export type EndInterviewSessionResult =
       ok: true;
       completion: Extract<FinalizeInterviewSessionResult, { ok: true }>;
       dispatch: DispatchFeedbackGenerationResult | null;
+      creditSettlementStatus?: InterviewCreditSettlementStatus;
     };
+
+type DispatchInterviewSessionSettlementResult = {
+  ok: true;
+  completion: InterviewSessionSettlement;
+  dispatch: DispatchFeedbackGenerationResult | null;
+};
 
 export async function endInterviewSessionWorkflow(
   input: EndInterviewSessionInput,
@@ -49,7 +62,18 @@ export async function endInterviewSessionWorkflow(
 ): Promise<EndInterviewSessionResult> {
   const settlement = await settleInterviewSessionWorkflow(input, deps);
   if (!settlement.ok) return settlement;
-  return dispatchInterviewSessionSettlement(settlement.completion, deps);
+  if (settlement.creditSettlementStatus === "deferred") {
+    return {
+      ok: true,
+      completion: settlement.completion,
+      dispatch: null,
+      creditSettlementStatus: "deferred",
+    };
+  }
+  return {
+    ...(await dispatchInterviewSessionSettlement(settlement.completion, deps)),
+    creditSettlementStatus: "settled",
+  };
 }
 
 export async function settleInterviewSessionWorkflow(
@@ -73,10 +97,15 @@ async function completeInterviewSession(
   const completion = await deps.finalize(input);
   if (!completion.ok) return completion;
 
-  // Terminal truth is durable at this point. Keep settlement failures visible
-  // so an authoritative caller retries the same idempotent completion.
-  await deps.settleCredit(input.sessionId);
-  return { ok: true, completion };
+  // Terminal truth is durable at this point. Credit convergence is idempotent
+  // and recoverable, so a transient billing-store failure must not turn a
+  // committed interview completion into a client-visible end failure.
+  try {
+    await deps.settleCredit(input.sessionId);
+    return { ok: true, completion, creditSettlementStatus: "settled" };
+  } catch {
+    return { ok: true, completion, creditSettlementStatus: "deferred" };
+  }
 }
 
 export async function dispatchInterviewSessionSettlement(
@@ -85,7 +114,7 @@ export async function dispatchInterviewSessionSettlement(
     EndInterviewSessionDeps,
     "dispatch"
   > = createEndInterviewSessionDeps()
-): Promise<Extract<EndInterviewSessionResult, { ok: true }>> {
+): Promise<DispatchInterviewSessionSettlementResult> {
   if (completion.deadlineRoomCleanupStatus === "pending") {
     return { ok: true, completion, dispatch: null };
   }

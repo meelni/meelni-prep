@@ -433,6 +433,43 @@ describe("active interview page lifecycle", () => {
       screen.queryByText("Conversation turns are saved as the room runs.")
     ).not.toBeInTheDocument();
   });
+
+  it("terminalizes safely when the deployed runtime lacks the flush contract", async () => {
+    mocks.flush.mockRejectedValueOnce({
+      code: 1400,
+      message: "Method not supported at destination",
+    });
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/interview/end") {
+        return Response.json({
+          status: "skipped",
+          nextHref: `/feedback/${SESSION_ID}/loading`,
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open end confirmation" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        "/api/interview/end",
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
+    );
+  });
 });
 
 function activeInterviewResponse(

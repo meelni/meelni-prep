@@ -20,6 +20,7 @@ from .transcript_events import MAX_SAFE_INTEGER, is_transcript_event
 from .runtime_events import is_runtime_event
 
 INGEST_KEY_CONTEXT = b"meelni/transcript-ingest/v1"
+TRANSCRIPT_INGEST_SECRET_ENV = "MEELNI_TRANSCRIPT_INGEST_SECRET"
 TIMESTAMP_HEADER = "x-meelni-timestamp"
 SIGNATURE_HEADER = "x-meelni-signature"
 INTERRUPTION_MARKER_CONTRACT_VERSION = 1
@@ -126,6 +127,15 @@ class TranscriptIngestQueueSealed(TranscriptIngestError):
 
 class TranscriptIngestAfterCutoff(TranscriptIngestError):
     """Raised when evidence claims media or occurrence after the active cutoff."""
+
+
+def resolve_transcript_ingest_secret(env: Mapping[str, str]) -> str:
+    """Prefer the cross-service ingest key over provider-owned credentials."""
+    for name in (TRANSCRIPT_INGEST_SECRET_ENV, "LIVEKIT_API_SECRET"):
+        value = env.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    raise TranscriptIngestError("transcript ingest signing secret is unavailable")
 
 
 class RuntimeSettlementRequestLedger:

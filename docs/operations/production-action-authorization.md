@@ -4,25 +4,17 @@ Status: repository-owned executable paths are guarded for Stripe live-catalog
 setup, LiveKit Production deploys, Production database migrations, and manual
 Production question sync. Legacy database-mutating scripts reject Production
 and unmarked shared targets before their database adapter loads. Repository
-policy ignores every Vercel Git build except Preview, and the already-declared
-scheduled route is source-fenced for any future owner-authorized first
-activation. Production promotion, live schedule activation, and relaunch
-default-on remain unsupported rather than exposing an unguarded command. Owner
-enrollment and artifact preparation tooling is available, and the active owner
-public key `meelni-owner-2026-07` is enrolled. Guarded Production paths still
-fail closed unless the owner signs a fresh exact artifact for the reviewed
-action, candidate configuration, target fingerprint, and bounded TTL. Preview,
-local development and ordinary customer/runtime actions are unchanged.
-
-Provider-state evidence recorded on 2026-07-17: the correct Vercel project,
-`meelni/meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), reported `live: false`;
-the current and recent Production deployment attempts were in `ERROR`. There
-was therefore no active Production deployment or cron to bootstrap before this
-repository policy began ignoring Production builds. This is time-sensitive
-external evidence, not a code invariant: recheck it before merging this guard
-or attempting first Production activation. If the project reports a live
-deployment, stop and design a separately owner-authorized fence-first rollout
-instead of merging both changes together.
+policy accepts Vercel Preview builds and Production Git builds only from
+`main`; all other Production refs are ignored. A reviewed merge to `main` is
+the supported web Production path. Direct branch promotion, live schedule
+activation, and relaunch default-on remain unsupported rather than exposing an
+unguarded command. The already-declared scheduled route remains source-fenced
+for any future owner-authorized first activation. Owner enrollment and artifact
+preparation tooling is available, and the active owner
+public key `meelni-owner-2026-07` is enrolled. Guarded Production paths still fail closed
+unless the owner signs a fresh exact artifact for the reviewed action,
+candidate configuration, target fingerprint, and bounded TTL. Preview, local
+development and ordinary customer/runtime actions are unchanged.
 
 ## Ownership Boundary
 
@@ -224,6 +216,11 @@ The selected config must be a real file rather than a symlink. The wrapper
 copies it into a private snapshot, authorizes the snapshot bytes, and passes
 that same snapshot to `lk` so path replacement cannot change the approved
 configuration.
+The Production interview-agent wrapper also requires an external, owner-only
+secrets file containing only `MEELNI_TRANSCRIPT_INGEST_SECRET`. It snapshots
+that file, includes the snapshot SHA-256 in the authorized target fingerprint,
+and passes the same private snapshot to `lk`. The secret value is never printed
+or stored in the authorization artifact.
 
 The supported wrapper then verifies and consumes the exact authorization
 before constructing a Stripe client, invoking `lk`, or spawning Drizzle. The
@@ -259,9 +256,10 @@ not permission to reintroduce the demo experience.
 
 SAV-254 follow-up remains for:
 
-1. adding controlled Vercel Production promotion, live question-sync schedule
-   activation, and relaunch default-on provider adapters; Git Production builds
-   are ignored and Production schedule requests are inert until those adapters exist;
+1. adding controlled direct/non-main Vercel Production promotion, live
+   question-sync schedule activation, and relaunch default-on provider adapters;
+   reviewed `main` Git builds are already supported, while Production schedule
+   requests remain inert until those adapters exist;
 2. the human owner running the provider-free enrollment workflow and merging
    only the reviewed public key when ready;
 3. adding central protected compare-and-swap consumption before claiming
