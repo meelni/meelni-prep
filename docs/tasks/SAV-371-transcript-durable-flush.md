@@ -2,10 +2,17 @@
 
 ## Status
 
-- Candidate fix is under review in PR 515.
-- The fix is not deployed or verified in Production.
-- The currently running Production version `nVmPiQtApeze` is not the candidate
-  fix and must not be used as validation evidence.
+- PR 515 merged at `05cffa73a40fa104e45dcb497f9f9242a04ae4ea`;
+  its tree exactly matches reviewed head
+  `ed582c23a8b25cb03cb149f1c375b41da09201dc`.
+- The matching Vercel Production deployment is healthy.
+- Guarded LiveKit Production deployment `FoSWAvSiRZS7` is current, active,
+  `Running`, and `Available` with one healthy replica. Its exact source
+  attribute is
+  `meelni.source_sha=05cffa73a40fa104e45dcb497f9f9242a04ae4ea`.
+- The code and provenance rollout are complete. One controlled owned
+  Production interview still must verify durable transcript visibility,
+  reload, and end settlement before the incident is considered live-validated.
 - The failed Production session cannot be reconstructed because the missing
   turns were never durably persisted.
 
@@ -31,7 +38,8 @@
 - Project: Meelni.
 - Parent slice issue: SAV-365.
 - Child deliverable issue: SAV-371.
-- Current Linear state: In Review.
+- Current Linear state: SAV-371 is Done after merge; SAV-365 remains In
+  Progress through controlled Production validation.
 
 ## Verified incident evidence
 
@@ -166,6 +174,28 @@ and feedback eligibility.
    prepare a forward fix; do not repeat end requests or expose incomplete
    feedback.
 
+### Rollout evidence
+
+- Reviewed PR head:
+  `ed582c23a8b25cb03cb149f1c375b41da09201dc`.
+- Merged `main` and Vercel Production source:
+  `05cffa73a40fa104e45dcb497f9f9242a04ae4ea`.
+- Vercel Production deployment:
+  `dpl_GAfACf7A51mAQPDkBgHc5UaQp5dS`, `READY`.
+- LiveKit interview agent: `CA_yawKG67rCMG4`.
+- Previous stale version: `nVmPiQtApeze`.
+- Provenance-matched version: `FoSWAvSiRZS7`, `Running` and `Available`, one
+  healthy replica.
+- The exact authorization was cryptographically verified and consumed once.
+  The guarded wrapper built from the archived authorized commit and reported a
+  successful deploy.
+- The owner workstation's LiveKit CLI 2.12.8 did not support
+  `--no-default-attributes` or `--attribute`. It was upgraded through the
+  official Homebrew package to 2.18.2 before authorization preparation.
+  Future wrappers fail before authorization consumption when these capability
+  flags are absent.
+- No interview was opened during deployment. This rollout is not launch GO.
+
 ### Recovery boundary
 
 The guarded Production wrapper consumes authorization before provider mutation,
@@ -179,10 +209,14 @@ separately authorized emergency action.
 
 ### P0 — release and verify
 
-- Merge and deploy SAV-371 from one reviewed commit across web and LiveKit.
-- Reject any Production LiveKit version without an exact authorized
+- Completed: merge and deploy SAV-371 from one reviewed commit across web and
+  LiveKit.
+- Completed: reject any Production LiveKit version without an exact authorized
   `meelni.source_sha` attribute; this closes the verified cross-workstation
   stale-source gap.
+- Run one controlled owned Production interview and verify durable turn count,
+  reload hydration, writer settlement, terminal replay, and honest feedback
+  eligibility.
 - Verify SAV-366 lifecycle activation in Production so transport-connected
   rooms cannot remain application-level `connecting`.
 
