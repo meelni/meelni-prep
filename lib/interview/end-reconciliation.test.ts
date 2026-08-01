@@ -26,6 +26,23 @@ test("terminal truth navigates without repeating the end command", async () => {
   assert.deepEqual(requests, [`/api/session/${SESSION_ID}`]);
 });
 
+test("terminal truth navigates while feedback dispatch is still pending", async () => {
+  const result = await reconcileAmbiguousInterviewEnd({
+    sessionId: SESSION_ID,
+    retryEnd: true,
+    request: async () =>
+      Response.json({
+        session: { lifecycleState: "completed", feedbackReady: false },
+      }),
+  });
+
+  assert.deepEqual(result, {
+    status: "resolved",
+    nextHref: `/feedback/${SESSION_ID}/loading`,
+    retryAttempted: false,
+  });
+});
+
 test("an active session retries the same idempotent end command", async () => {
   const requests: Array<{ url: string; method: string }> = [];
   const result = await reconcileAmbiguousInterviewEnd({
