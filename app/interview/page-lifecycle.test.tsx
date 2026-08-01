@@ -460,6 +460,40 @@ describe("active interview page lifecycle", () => {
     expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves reconciliation for feedback once terminal truth commits even while feedback is pending", async () => {
+    let endRequested = false;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/interview/end") {
+        endRequested = true;
+        throw new TypeError("connection reset after request write");
+      }
+      if (url === `/api/session/${SESSION_ID}` && endRequested) {
+        return Response.json({
+          session: {
+            lifecycleState: "completed",
+            feedbackReady: false,
+          },
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open end confirmation" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
+    );
+  });
+
   it("keeps the interview frozen and offers the same End command after a definitive server failure", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === "/api/interview/end") {
