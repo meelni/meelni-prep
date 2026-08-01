@@ -38,6 +38,9 @@ export type CreditLedgerDatabase = typeof db;
 export type CreditLedgerTransactionDatabase = Parameters<
   Parameters<CreditLedgerDatabase["transaction"]>[0]
 >[0];
+export type CreditLedgerTransactionSetup = (
+  database: CreditLedgerTransactionDatabase
+) => Promise<void>;
 type CreditLedgerExecutor =
   | CreditLedgerDatabase
   | CreditLedgerTransactionDatabase;
@@ -96,9 +99,11 @@ export async function withDrizzleCreditLedgerUserTransaction<T>(
     database: CreditLedgerTransactionDatabase;
     ledger: CreditLedgerTransaction;
   }) => Promise<T>,
-  database: CreditLedgerDatabase = db
+  database: CreditLedgerDatabase = db,
+  setup?: CreditLedgerTransactionSetup
 ): Promise<T> {
   return database.transaction(async (transaction) => {
+    await setup?.(transaction);
     const users = await transaction
       .select({ id: appUser.id })
       .from(appUser)
