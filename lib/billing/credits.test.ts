@@ -739,6 +739,45 @@ test("release and refund restore credits exactly once", async () => {
   assert.equal((await ledger.getCreditBalance("user-1")).availableCredits, 1);
 });
 
+test("public refund settlement uses one clock for expired-credit recovery", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const issued = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-06-29T00:00:00.000Z"),
+  });
+  await issued.grantCredits({
+    userId: "user-expired-refund",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:public-expired-refund",
+  });
+  await issued.reserveCredit({
+    userId: "user-expired-refund",
+    reservationKey: "session:public-expired-refund",
+    sessionId: "session-public-expired-refund",
+  });
+  await issued.consumeReservation({
+    reservationKey: "session:public-expired-refund",
+    idempotencyKey: "consume:session:public-expired-refund",
+  });
+
+  const expired = createCreditLedgerService({
+    store,
+    now: () => new Date("2026-08-01T00:00:00.000Z"),
+  });
+  const refund = () =>
+    expired.refundReservation({
+      reservationKey: "session:public-expired-refund",
+      idempotencyKey: "refund:session:public-expired-refund",
+    });
+  await refund();
+  await refund();
+
+  const grants = await store.listUserGrants("user-expired-refund");
+  assert.equal(grants.filter((grant) => grant.source === "refund").length, 1);
+  assert.equal((await expired.getCreditBalance("user-expired-refund")).availableCredits, 1);
+});
+
 test("exact terminal replays do not emit duplicate settlement analytics", async () => {
   const store = createMemoryCreditLedgerStore();
   const terminalEvents: Array<{
