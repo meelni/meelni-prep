@@ -35,6 +35,8 @@ export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
 const MAX_CANONICAL_TURNS_PER_SESSION = 1_000;
 const MAX_INTERRUPTION_MARKERS_PER_SESSION = 1_000;
 const MAX_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
+export const TRANSCRIPT_PERSISTENCE_LOCK_TIMEOUT_MS = 2_000;
+export const TRANSCRIPT_PERSISTENCE_STATEMENT_TIMEOUT_MS = 5_000;
 
 export type PersistedTranscriptInterruptionMarker =
   typeof transcriptInterruptionMarker.$inferSelect;
@@ -116,6 +118,7 @@ export function createDrizzleTranscriptRuntimeWriterStore(
   return {
     async register(registration) {
       return database.transaction(async (tx) => {
+        await configureTranscriptPersistenceTimeouts(tx);
         const sessions = await tx
           .select({
             roomName: interviewSession.livekitRoomName,
@@ -221,6 +224,7 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
   return {
     async persist(settlement) {
       return database.transaction(async (tx) => {
+        await configureTranscriptPersistenceTimeouts(tx);
         const sessions = await tx
           .select({
             roomName: interviewSession.livekitRoomName,
@@ -319,6 +323,7 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
   return {
     async persist(marker) {
       return database.transaction(async (tx) => {
+        await configureTranscriptPersistenceTimeouts(tx);
         const sessions = await tx
           .select({
             roomName: interviewSession.livekitRoomName,
@@ -475,9 +480,14 @@ export function createDrizzleTranscriptIngestStore(
 ): TranscriptIngestStore<PersistedTranscriptTurn> {
   return {
     convergeCredit: (sessionId) =>
-      convergeDrizzleInterviewCreditSettlement(sessionId),
+      convergeDrizzleInterviewCreditSettlement(
+        sessionId,
+        db,
+        configureTranscriptPersistenceTimeouts
+      ),
     async persist({ principal, event }) {
       return database.transaction(async (tx) => {
+        await configureTranscriptPersistenceTimeouts(tx);
         const ownershipPredicate =
           principal.kind === "authenticated_user"
             ? and(
@@ -669,6 +679,21 @@ export function createDrizzleTranscriptIngestStore(
       });
     },
   };
+}
+
+async function configureTranscriptPersistenceTimeouts(tx: {
+  execute(query: ReturnType<typeof sql.raw>): Promise<unknown>;
+}): Promise<void> {
+  await tx.execute(
+    sql.raw(
+      `set local lock_timeout = '${TRANSCRIPT_PERSISTENCE_LOCK_TIMEOUT_MS}ms'`
+    )
+  );
+  await tx.execute(
+    sql.raw(
+      `set local statement_timeout = '${TRANSCRIPT_PERSISTENCE_STATEMENT_TIMEOUT_MS}ms'`
+    )
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

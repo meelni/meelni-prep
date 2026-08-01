@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   withDrizzleCreditLedgerUserTransaction,
   type CreditLedgerDatabase,
+  type CreditLedgerTransactionSetup,
 } from "@/lib/billing/credit-ledger-store";
 import {
   settleReservationInTransaction,
@@ -18,11 +19,16 @@ import { interviewSession, transcriptTurn } from "./schema";
 
 export async function convergeDrizzleInterviewCreditSettlement(
   sessionId: string,
-  database: CreditLedgerDatabase = db
+  database: CreditLedgerDatabase = db,
+  setup?: CreditLedgerTransactionSetup
 ) {
   return convergeInterviewCreditSettlement({
     sessionId,
-    store: createDrizzleInterviewCreditSettlementStore(database),
+    store: createDrizzleInterviewCreditSettlementStore(
+      database,
+      trackCompletedInterviewCreditSettlement,
+      setup
+    ),
   });
 }
 
@@ -30,7 +36,8 @@ export function createDrizzleInterviewCreditSettlementStore(
   database: CreditLedgerDatabase = db,
   trackCompletedSettlement: (
     evidence: InterviewCreditSettlementEvidence
-  ) => void = trackCompletedInterviewCreditSettlement
+  ) => void = trackCompletedInterviewCreditSettlement,
+  setup?: CreditLedgerTransactionSetup
 ): InterviewCreditSettlementStore {
   return {
     async lookupOwner(sessionId) {
@@ -211,7 +218,8 @@ export function createDrizzleInterviewCreditSettlementStore(
             },
           });
         },
-        database
+        database,
+        setup
       );
     },
     trackCompletedSettlement,
