@@ -153,11 +153,19 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
       - name: Install Node.js dependencies
         run: npm ci --no-audit --no-fund
 
       - name: Run local tooling tests
         run: npm run test:local
+
+      - name: Run end-interview resilience contract
+        run: npm run test:interview-resilience
 
       - name: Run regression tests
         run: npm run test:ci
