@@ -60,10 +60,11 @@ export async function reconcileAmbiguousInterviewEnd(input: {
   }
 
   const lifecycleState = lifecycle.lifecycleState;
+  // Terminal lifecycle truth proves the end command committed. The feedback
+  // route owns settling, dispatch, generation, and recovery states.
   if (
     typeof lifecycleState === "string" &&
-    TERMINAL_SESSION_STATES.has(lifecycleState) &&
-    lifecycle.feedbackReady === true
+    TERMINAL_SESSION_STATES.has(lifecycleState)
   ) {
     return {
       status: "resolved",
@@ -72,11 +73,7 @@ export async function reconcileAmbiguousInterviewEnd(input: {
     };
   }
 
-  if (
-    lifecycleState === "ending" ||
-    (typeof lifecycleState === "string" &&
-      TERMINAL_SESSION_STATES.has(lifecycleState))
-  ) {
+  if (lifecycleState === "ending") {
     return {
       status: "waiting",
       retryAttempted: false,
