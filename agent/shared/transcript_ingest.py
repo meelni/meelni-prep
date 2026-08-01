@@ -99,6 +99,7 @@ class _QueueItem:
     attempts: int = 0
     last_status: int | None = None
     last_error: str | None = None
+    transport_task: asyncio.Task[IngestResponse] | None = None
 
 
 @dataclass(frozen=True)
@@ -974,29 +975,51 @@ class TranscriptIngestQueue:
         if item.state == "persisted":
             return await self._publish_persisted(item)
 
-        timestamp = int(self._now())
-        if timestamp <= 0:
-            raise TranscriptIngestError("request clock returned an invalid timestamp")
-        headers = {
-            "content-type": "application/json",
-            TIMESTAMP_HEADER: str(timestamp),
-            SIGNATURE_HEADER: sign_ingest_body(
-                self._signing_key,
-                timestamp,
-                item.canonical_payload,
-            ),
-        }
-        item.attempts += 1
-        try:
-            response = await self._transport(
-                self.ingest_url,
-                item.canonical_payload,
-                headers,
+        transport_task = item.transport_task
+        if transport_task is None or transport_task.cancelled():
+            timestamp = int(self._now())
+            if timestamp <= 0:
+                raise TranscriptIngestError(
+                    "request clock returned an invalid timestamp"
+                )
+            headers = {
+                "content-type": "application/json",
+                TIMESTAMP_HEADER: str(timestamp),
+                SIGNATURE_HEADER: sign_ingest_body(
+                    self._signing_key,
+                    timestamp,
+                    item.canonical_payload,
+                ),
+            }
+            item.attempts += 1
+            transport_task = asyncio.create_task(
+                self._transport(
+                    self.ingest_url,
+                    item.canonical_payload,
+                    headers,
+                )
             )
+            transport_task.add_done_callback(_observe_task_exception)
+            item.transport_task = transport_task
+
+        try:
+            response = await asyncio.shield(transport_task)
+        except asyncio.CancelledError:
+            if transport_task.cancelled():
+                if item.transport_task is transport_task:
+                    item.transport_task = None
+                item.last_status = None
+                item.last_error = "CancelledError"
+                return True
+            raise
         except Exception as error:
+            if item.transport_task is transport_task:
+                item.transport_task = None
             item.last_status = None
             item.last_error = type(error).__name__
             return True
+        if item.transport_task is transport_task:
+            item.transport_task = None
 
         if not isinstance(response, IngestResponse):
             raise TranscriptIngestError("transport returned an invalid response")
@@ -1043,3 +1066,9 @@ class TranscriptIngestQueue:
             permanent=states.count("permanent"),
             timed_out=timed_out,
         )
+
+
+def _observe_task_exception(task: asyncio.Task[object]) -> None:
+    """Retrieve detached transport failures until a later flush handles them."""
+    if not task.cancelled():
+        task.exception()

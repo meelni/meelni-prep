@@ -393,6 +393,33 @@ describe("POST /api/internal/transcript", () => {
       consoleError.mockRestore();
     }
   });
+
+  it("maps database lock and statement timeouts to retryable 503s", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      for (const code of ["55P03", "57014"]) {
+        const error = Object.assign(new Error("private database detail"), {
+          code,
+        });
+        vi.mocked(ingestTranscriptEvent).mockRejectedValueOnce(error);
+
+        const response = await POST(
+          request({ sessionId: SESSION_ID, event: { event_id: code } })
+        );
+
+        expect(response.status).toBe(503);
+        await expect(response.json()).resolves.toEqual({
+          error: "runtime_transcript_ingest_unavailable",
+        });
+      }
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain(
+        "private database detail"
+      );
+    } finally {
+      consoleWarn.mockRestore();
+    }
+  });
 });
 
 function request(body: Record<string, unknown>) {
