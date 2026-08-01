@@ -36,6 +36,23 @@ test("settling explains that feedback will begin after safe session closure", ()
   assert.doesNotMatch(html, /Queue feedback/);
 });
 
+test("retryable failure exposes recovery instead of an indefinite loading state", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "failed-retryable",
+        message: "The saved interview is ready to retry.",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(html, /Feedback review failed/);
+  assert.match(html, /Try feedback again/);
+  assert.doesNotMatch(html, /Loading your saved feedback/);
+});
+
 test("invalid completed feedback exposes no inferred score", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {

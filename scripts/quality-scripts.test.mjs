@@ -31,6 +31,7 @@ test("package scripts expose the aggregate quality gates", () => {
     "test:quality",
     "test:stack",
     "test:ui",
+    "test:interview-resilience",
   ]) {
     assert.equal(
       typeof scripts[scriptName],
@@ -38,6 +39,21 @@ test("package scripts expose the aggregate quality gates", () => {
       `${scriptName} should be defined in package.json`
     );
   }
+});
+
+test("CI owns one named end-interview resilience contract", () => {
+  assert.equal(
+    scripts["test:interview-resilience"],
+    "tsx --test lib/workflows/end-interview-session.test.ts lib/interview/end-reconciliation.test.ts lib/utils/feedback-client-recovery.test.ts components/feedback/feedback-response.test.ts components/feedback/feedback-lifecycle-status.test.tsx && vitest run --fileParallelism=false app/api/interview/end/__tests__/route.test.ts app/interview/page-lifecycle.test.tsx 'app/feedback/[sessionId]/page.test.tsx' && python3 -m unittest agent.test_runtime_contracts.TranscriptIngestQueueTests"
+  );
+  assert.equal(
+    ciWorkflow.match(/run:\s+npm run test:interview-resilience/g)?.length,
+    1
+  );
+  assert.match(
+    ciWorkflow,
+    /tests:[\s\S]*?- name: Run end-interview resilience contract\s+run: npm run test:interview-resilience[\s\S]*?- name: Run regression tests/
+  );
 });
 
 test("CI includes deterministic stacked PR regression fixtures", () => {
