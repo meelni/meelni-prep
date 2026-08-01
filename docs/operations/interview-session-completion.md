@@ -4,7 +4,11 @@ The product contract is [Interview Session Completion](../contracts/interview-se
 
 ## Before Deploying
 
-1. Run `npm run check:ci` and `npm run build`.
+1. Run `npm run test:interview-resilience`, `npm run check:ci`, and
+   `npm run build`. The named resilience contract binds committed terminal
+   workflow truth, the end API response, ambiguous client reconciliation, and
+   pending/processing feedback rendering. It must remain an explicit required
+   CI step so a green lower-level test cannot hide a broken handoff.
 2. Run `npm run test:database-migrations` against disposable PostgreSQL 17 with `MIGRATION_TEST_DATABASE_URL` pointing to a local `*_test` database.
 3. Run `npm run db:preflight` against the explicitly selected Preview environment.
 4. Confirm the preflight reports eight migrations after application and schema fingerprint `db50dd715e13bcc70277b98e182c743293d5e6681d30c3d1e84ec24813476500`.
@@ -81,6 +85,25 @@ Alert on:
 - provider/integrity faults whose reservation is not refunded;
 - user-fault sessions whose consumed reservation was unexpectedly refunded.
 - registered writer generations without durable settled proof.
+
+## Regression Ownership
+
+`npm run test:interview-resilience` is the incident-derived contract for the
+end-to-feedback handoff. It covers these invariants together:
+
+- repeated bounded transcript flushes reuse one in-flight runtime delivery;
+- dispatch failure cannot turn committed terminal truth into a failed End
+  response;
+- a terminal lifecycle state navigates to the feedback loading route without
+  waiting for `feedbackReady`;
+- an ambiguous End transport result converges through durable session truth;
+- the feedback route renders pending, processing, settling, failed, and
+  recovery states instead of leaving the interview spinner mounted.
+
+The `Unit and Contract Tests` CI lane runs this command by name for every
+non-documentation code change. Keep the lower-level workflow, route, page, and
+feedback tests in their normal suites as independent coverage; this named gate
+exists to make ownership of the complete handoff visible in CI.
 
 ## Rollback
 

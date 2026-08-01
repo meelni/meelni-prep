@@ -184,6 +184,9 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
 
 ## Acceptance Evidence
 
+- The named `test:interview-resilience` contract proves the workflow, end API,
+  transcript single-flight boundary, ambiguous client reconciliation, and
+  pending feedback UI handoff together in required CI.
 - Ten simultaneous end commands converge on one terminal result, one feedback row, and one event ID.
 - At most one non-expired dispatch claim is accepted.
 - Send failure and expired-lease recovery create one unique event ID per accepted attempt.
