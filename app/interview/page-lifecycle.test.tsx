@@ -136,6 +136,7 @@ vi.mock("./components/end-session-modal", () => ({
 }));
 
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
+import { FeedbackReview } from "@/components/feedback/feedback-review";
 import { InterviewPageContent } from "./page";
 
 describe("active interview page lifecycle", () => {
@@ -492,6 +493,55 @@ describe("active interview page lifecycle", () => {
         `/feedback/${SESSION_ID}/loading`
       )
     );
+  });
+
+  it("hands a committed ambiguous end to the feedback page while generation is pending", async () => {
+    let endRequested = false;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/interview/end") {
+        endRequested = true;
+        throw new TypeError("connection reset after committed end");
+      }
+      if (url === `/api/session/${SESSION_ID}` && endRequested) {
+        return Response.json({
+          session: {
+            lifecycleState: "completed",
+            feedbackReady: false,
+          },
+        });
+      }
+      if (url === `/api/feedback/${SESSION_ID}`) {
+        return Response.json({ status: "pending", retryable: false });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    const interview = render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open end confirmation" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
+    );
+    interview.unmount();
+    render(<FeedbackReview sessionId={SESSION_ID} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Feedback queued" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Loading feedback")).not.toBeInTheDocument();
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === `/api/feedback/${SESSION_ID}`
+      )
+    ).toBe(true);
   });
 
   it("keeps the interview frozen and offers the same End command after a definitive server failure", async () => {
