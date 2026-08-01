@@ -795,19 +795,23 @@ export function createCreditLedgerService({
     async refundReservation(
       input: CompleteReservationInput
     ): Promise<CompleteReservationResult> {
+      const currentTime = operationNow();
       return completeReservation({
         store,
         trackTerminalSettlement,
         reservationKey: input.reservationKey,
         idempotencyKey: input.idempotencyKey,
+        currentTime,
         nextStatus: "refunded",
         transactionType: "refund",
         applyAllocation: ({ grant, allocation }) => ({
           remainingCredits:
-            grant.remainingCredits +
-            (grant.revokedAt
-              ? 0
-              : allocation.credits - allocation.revokedCredits),
+            grant.revokedAt !== null ||
+            (grant.expiresAt !== null && grant.expiresAt <= currentTime)
+              ? grant.remainingCredits
+              : grant.remainingCredits +
+                allocation.credits -
+                allocation.revokedCredits,
           reservedCredits: grant.reservedCredits,
         }),
       });
@@ -3649,6 +3653,7 @@ async function completeReservation({
   trackTerminalSettlement,
   reservationKey,
   idempotencyKey,
+  currentTime,
   nextStatus,
   transactionType,
   applyAllocation,
@@ -3657,6 +3662,7 @@ async function completeReservation({
   trackTerminalSettlement: CreditTerminalSettlementTracker;
   reservationKey: string;
   idempotencyKey: string;
+  currentTime?: Date;
   nextStatus: CreditReservationStatus;
   transactionType: CreditTerminalSettlementEvent["transactionType"];
   applyAllocation(input: {
@@ -3676,6 +3682,7 @@ async function completeReservation({
         expectedUserId: ownerLookup.userId,
         reservationKey,
         idempotencyKey,
+        currentTime,
         nextStatus,
         transactionType,
         applyAllocation,
