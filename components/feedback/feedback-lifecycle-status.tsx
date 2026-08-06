@@ -131,9 +131,14 @@ export function FeedbackLifecycleStatus({
           "Your interview is saved while the session finishes closing safely."
         }
         actions={
-          <p className="text-muted-foreground text-sm">
-            Feedback will begin automatically when closing is complete.
-          </p>
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            <Button asChild>
+              <Link href="/dashboard/history">View interview history</Link>
+            </Button>
+            <p className="text-muted-foreground text-sm">
+              You can safely leave; feedback starts automatically.
+            </p>
+          </div>
         }
       />
     );

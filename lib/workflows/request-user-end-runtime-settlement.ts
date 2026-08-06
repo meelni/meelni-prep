@@ -32,6 +32,8 @@ export interface UserEndSettlementSession {
   userId: string;
   roomName: string | null;
   lifecycleState: string;
+  terminalReason: string | null;
+  endingAt: Date | null;
   startedAt: Date | null;
   config: unknown;
   databaseNow: Date;
@@ -90,7 +92,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     return { ok: false, reason: "not_found", retryable: false };
   }
 
-  if (isEndingOrTerminal(session.lifecycleState)) {
+  if (isTerminal(session.lifecycleState)) {
     return {
       ok: true,
       settlement: {
@@ -113,7 +115,15 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
 
-  const initial = await deps.getSettlementReadiness(input.sessionId);
+  const timeoutMs = normalizeSettlementTimeout(input.timeoutMs);
+  const deadline = Date.now() + timeoutMs;
+  const initial = await withinDeadline(
+    deps.getSettlementReadiness(input.sessionId),
+    deadline
+  );
+  if (!initial) {
+    return { ok: false, reason: "runtime_not_ready", retryable: true };
+  }
   if (initial.currentWriterState !== null) {
     return {
       ok: true,
@@ -125,11 +135,17 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
 
-  const presence = await deps.inspectPresence({
-    roomName: session.roomName,
-    participantIdentity: session.userId,
-    env: input.env,
-  });
+  const presence = await withinDeadline(
+    deps.inspectPresence({
+      roomName: session.roomName,
+      participantIdentity: session.userId,
+      env: input.env,
+    }),
+    deadline
+  );
+  if (!presence) {
+    return { ok: false, reason: "provider_unavailable", retryable: true };
+  }
   if (!presence.ok) {
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
@@ -143,30 +159,47 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     startedAt: session.startedAt,
     durationMinutes: config.duration,
   });
-  const cutoffAt = new Date(
-    Math.min(session.databaseNow.getTime(), hardDeadlineAt.getTime())
-  );
+  const cutoffAt =
+    session.lifecycleState === "ending" &&
+    session.terminalReason === "user_end" &&
+    session.endingAt
+      ? session.endingAt
+      : new Date(
+          Math.min(session.databaseNow.getTime(), hardDeadlineAt.getTime())
+        );
   const request = buildUserEndRuntimeSettlementRequest({
     sessionId: input.sessionId,
     roomName: session.roomName,
     writerGeneration,
     cutoffAt,
   });
-  const requested = await deps.requestRuntimeSettlement({
-    roomName: session.roomName,
-    agentIdentity,
-    request,
-    env: input.env,
-  });
+  const requested = await withinDeadline(
+    deps.requestRuntimeSettlement({
+      roomName: session.roomName,
+      agentIdentity,
+      request,
+      env: input.env,
+    }),
+    deadline
+  );
+  if (!requested) {
+    return { ok: false, reason: "provider_unavailable", retryable: true };
+  }
   if (!requested.ok) {
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
 
-  const readiness = await deps.waitForRuntimeSettlement({
-    sessionId: input.sessionId,
-    writerGeneration,
-    timeoutMs: normalizeSettlementTimeout(input.timeoutMs),
-  });
+  const readiness = await withinDeadline(
+    deps.waitForRuntimeSettlement({
+      sessionId: input.sessionId,
+      writerGeneration,
+      timeoutMs: Math.max(1, deadline - Date.now()),
+    }),
+    deadline
+  );
+  if (!readiness) {
+    return { ok: false, reason: "runtime_not_ready", retryable: true };
+  }
   if (
     readiness.currentWriterGeneration !== writerGeneration ||
     readiness.currentWriterState === null
@@ -218,6 +251,8 @@ export function createRequestUserEndRuntimeSettlementDeps(): RequestUserEndRunti
         userId: session.userId,
         roomName: session.livekitRoomName,
         lifecycleState: session.lifecycleState,
+        terminalReason: session.terminalReason,
+        endingAt: session.endingAt,
         startedAt: session.startedAt,
         config: session.config,
         databaseNow: session.databaseNow,
@@ -269,8 +304,29 @@ function settlementFromReadiness(
   };
 }
 
-function isEndingOrTerminal(state: string): boolean {
-  return ["ending", "completed", "abandoned", "failed"].includes(state);
+function isTerminal(state: string): boolean {
+  return ["completed", "abandoned", "failed"].includes(state);
+}
+
+async function withinDeadline<T>(
+  work: Promise<T>,
+  deadline: number
+): Promise<T | null> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), remaining);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -587,14 +587,17 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 
-  it("terminalizes with one command without a browser runtime-settlement prerequisite", async () => {
+  it("navigates immediately after the server accepts background finalization", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/interview/end") {
-        return Response.json({
-          status: "skipped",
-          nextHref: `/feedback/${SESSION_ID}/loading`,
-        });
+        return Response.json(
+          {
+            status: "settling",
+            nextHref: `/feedback/${SESSION_ID}/loading`,
+          },
+          { status: 202 }
+        );
       }
       return activeInterviewResponse(input);
     });
@@ -610,7 +613,10 @@ describe("active interview page lifecycle", () => {
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "/api/interview/end",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({
+          method: "POST",
+          signal: expect.any(AbortSignal),
+        })
       )
     );
     await waitFor(() =>

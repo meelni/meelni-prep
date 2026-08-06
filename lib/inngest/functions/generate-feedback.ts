@@ -8,6 +8,7 @@ import {
 } from "@/lib/workflows/generate-feedback";
 import { inngest } from "../client";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { reportInterviewEndStage } from "@/lib/operations/interview-end-stage";
 
 interface FeedbackGenerationEventData {
   sessionId: string;
@@ -62,9 +63,32 @@ export const generateFeedback = inngest.createFunction(
       },
     };
 
-    return generateFeedbackWorkflow(
-      { sessionId, userId, eventId },
-      createGenerateFeedbackWorkflowDeps(steps)
-    );
+    const startedAt = Date.now();
+    try {
+      const result = await generateFeedbackWorkflow(
+        { sessionId, userId, eventId },
+        createGenerateFeedbackWorkflowDeps(steps)
+      );
+      reportInterviewEndStage({
+        stage: "feedback_generation",
+        outcome:
+          result.status === "completed"
+            ? "succeeded"
+            : result.status === "skipped"
+              ? "skipped"
+              : "deferred",
+        durationMs: Date.now() - startedAt,
+        sessionId,
+      });
+      return result;
+    } catch (error) {
+      reportInterviewEndStage({
+        stage: "feedback_generation",
+        outcome: "failed",
+        durationMs: Date.now() - startedAt,
+        sessionId,
+      });
+      throw error;
+    }
   }
 );

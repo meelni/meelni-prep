@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import { createClient } from "@/lib/supabase/server";
-import { endUserInterviewSessionWorkflow } from "@/lib/workflows/end-user-interview-session";
-import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
-import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import {
   readOwnedInterviewSessionCorrelationId,
   reportOperationalFailure,
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
+import { reportInterviewEndStage } from "@/lib/operations/interview-end-stage";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;
@@ -49,11 +47,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const livekitEnv = getLiveKitEnvironment(process.env);
-    const result = await endUserInterviewSessionWorkflow({
+    const acceptanceStartedAt = Date.now();
+    const result = await acceptUserInterviewEndWorkflow({
       sessionId,
       userId: user.id,
-      env: livekitEnv.ok ? livekitEnv.data : null,
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -66,99 +63,38 @@ export async function POST(req: NextRequest) {
       session: { id: sessionId, userId: user.id },
       authenticatedUserId: user.id,
     });
-    if (result.creditSettlementStatus === "deferred") {
+    reportInterviewEndStage({
+      stage: "accept",
+      outcome: result.delivery === "deferred" ? "deferred" : "succeeded",
+      durationMs: Date.now() - acceptanceStartedAt,
+      sessionId,
+    });
+    if (result.delivery === "deferred") {
       reportOperationalFailure({
         operation: "interview_end",
-        errorCode: "interview_credit_settlement_deferred",
+        errorCode: "interview_end_dispatch_deferred",
         severity: "warning",
         retryable: true,
         correlationId,
       });
     }
-    if (
-      result.runtimeSettlement !== "settled" &&
-      result.runtimeSettlement !== "degraded"
-    ) {
-      reportOperationalFailure({
-        operation: "interview_end",
-        errorCode: "interview_end_runtime_settlement_unavailable",
-        severity: "warning",
-        retryable: false,
-        correlationId,
-      });
-    }
 
-    if (result.completion.roomName) {
-      if (livekitEnv.ok) {
-        try {
-          await cleanupInterviewRoomWorkflow({
-            sessionId,
-            env: livekitEnv.data,
-          });
-        } catch {
-          // Terminal truth is already committed. The durable cleanup marker and
-          // recovery worker own provider retries; do not ask the user to end twice.
-          reportOperationalFailure({
-            operation: "interview_end",
-            errorCode: "interview_room_cleanup_deferred",
-            severity: "warning",
-            retryable: true,
-            correlationId,
-          });
-        }
-      } else {
-        reportOperationalFailure({
-          operation: "interview_end",
-          errorCode: "interview_room_cleanup_deferred",
-          severity: "warning",
-          retryable: true,
-          correlationId,
-        });
-      }
-    }
-
-    const dispatchStatus =
-      result.dispatch?.dispatch?.status ??
-      result.completion.feedback.dispatchStatus;
-    const dispatchRetryable =
-      result.completion.feedback.status === "pending" &&
-      isFeedbackDispatchRetryable({
-        status: dispatchStatus,
-        claimedAt:
-          result.dispatch?.dispatch?.claimedAt ??
-          result.completion.feedback.dispatchClaimedAt,
-      });
-    const status =
-      result.completion.feedback.status === "skipped"
-        ? "skipped"
-        : dispatchRetryable
-          ? "pending_dispatch"
-          : "queued";
-
-    return NextResponse.json({
-      status,
-      runtimeSettlement: result.runtimeSettlement,
-      session: {
-        lifecycleState: result.completion.lifecycle.state,
-        terminalReason: result.completion.lifecycle.terminalReason,
-        endedAt: result.completion.lifecycle.endedAt,
-        disposition: result.completion.disposition,
+    const terminal = result.disposition === "already_terminal";
+    return NextResponse.json(
+      {
+        status: terminal ? "completed" : "settling",
+        delivery: result.delivery,
+        session: {
+          lifecycleState: result.session.lifecycleState,
+          terminalReason: result.session.terminalReason,
+          endingAt: result.session.endingAt,
+          endedAt: result.session.endedAt,
+          disposition: result.disposition,
+        },
+        nextHref: `/feedback/${sessionId}/loading`,
       },
-      feedback: {
-        id: result.completion.feedback.id,
-        status: result.completion.feedback.status,
-        dispatchStatus,
-        retryable: dispatchRetryable,
-      },
-      feedbackId: result.completion.feedback.id,
-      tier: result.completion.tier,
-      stats: result.completion.stats,
-      recommendations: result.completion.recommendations,
-      ...(result.completion.feedback.status === "skipped"
-        ? { reason: result.completion.feedback.statusReason }
-        : {}),
-      nextHref: `/feedback/${sessionId}/loading`,
-    });
+      { status: terminal ? 200 : 202 }
+    );
   } catch {
     reportOperationalFailure({
       operation: "interview_end",

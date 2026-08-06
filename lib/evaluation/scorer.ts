@@ -28,6 +28,9 @@ export const FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY =
 export const FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY =
   "feedback_configuration_invalid_openai_key";
 export const FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
+export const FEEDBACK_REQUEST_TIMEOUT_MS = 75_000;
+export const FEEDBACK_MAX_SDK_RETRIES = 0;
+export const FEEDBACK_MAX_COMPLETION_TOKENS = 2_000;
 
 import {
   CALIBRATION_MAX_COMPLETION_TOKENS,
@@ -243,9 +246,7 @@ export async function generateFeedbackWithUsage(
         : { type: "json_object" },
       ...(options.calibrationPaidMode
         ? getCalibrationProviderRequestFields()
-        : options.maxCompletionTokens === undefined
-          ? {}
-          : { max_completion_tokens: options.maxCompletionTokens }),
+        : getFeedbackProviderRequestFields(options.maxCompletionTokens)),
     });
 
     const observedServiceTier = completion.service_tier ?? null;
@@ -712,7 +713,11 @@ function getOpenAI() {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
-  return new OpenAI({ apiKey });
+  return new OpenAI({
+    apiKey,
+    maxRetries: FEEDBACK_MAX_SDK_RETRIES,
+    timeout: FEEDBACK_REQUEST_TIMEOUT_MS,
+  });
 }
 
 export type CalibrationOpenAIEnvironment = Record<
@@ -756,6 +761,15 @@ export function getCalibrationProviderRequestFields(): {
   return {
     max_completion_tokens: CALIBRATION_MAX_COMPLETION_TOKENS,
     service_tier: CALIBRATION_SERVICE_TIER,
+  };
+}
+
+export function getFeedbackProviderRequestFields(
+  maxCompletionTokens?: number
+): { max_completion_tokens: number } {
+  return {
+    max_completion_tokens:
+      maxCompletionTokens ?? FEEDBACK_MAX_COMPLETION_TOKENS,
   };
 }
 
