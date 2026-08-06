@@ -1,152 +1,107 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/workflows/end-user-interview-session", () => ({
-  endUserInterviewSessionWorkflow: vi.fn(),
-}));
-vi.mock("@/lib/workflows/cleanup-interview-room", () => ({
-  cleanupInterviewRoomWorkflow: vi.fn(),
-}));
-vi.mock("@/lib/internal/integrations", () => ({
-  getLiveKitEnvironment: vi.fn(),
+vi.mock("@/lib/workflows/accept-user-interview-end", () => ({
+  acceptUserInterviewEndWorkflow: vi.fn(),
 }));
 
 import { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { endUserInterviewSessionWorkflow } from "@/lib/workflows/end-user-interview-session";
-import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
-import { getLiveKitEnvironment } from "@/lib/internal/integrations";
+import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import { POST } from "../route";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ENDING_AT = new Date("2026-08-05T20:00:00.000Z");
 
 describe("POST /api/interview/end", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getLiveKitEnvironment).mockReturnValue({
-      ok: true,
-      provider: "livekit",
-      data: {
-        apiKey: "key",
-        apiSecret: "secret",
-        url: "wss://test.livekit.cloud",
-      },
-    });
-    vi.mocked(cleanupInterviewRoomWorkflow).mockResolvedValue({
-      ok: true,
-      disposition: "cleaned",
-      room: {
-        roomName: "interview-room",
-        disposition: "deleted",
-      },
-    });
-  });
+  beforeEach(() => vi.clearAllMocks());
 
   it("rejects unauthenticated requests", async () => {
     mockAuth(null, new Error("expired"));
     const response = await POST(request({ sessionId: SESSION_ID }));
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Unauthorized",
-    });
   });
 
-  it("validates the session ID before invoking the workflow", async () => {
+  it("validates the session ID before accepting terminal intent", async () => {
     mockAuth({ id: "user-invalid" });
     const response = await POST(request({ sessionId: "not-a-uuid" }));
     expect(response.status).toBe(400);
-    expect(endUserInterviewSessionWorkflow).not.toHaveBeenCalled();
+    expect(acceptUserInterviewEndWorkflow).not.toHaveBeenCalled();
   });
 
-  it("returns stored terminal truth when dispatch remains retryable", async () => {
-    mockAuth({ id: "user-dispatch-failure" });
-    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
-      completionResult({ dispatchStatus: "failed", dispatchOk: false }) as never
+  it("returns 202 as soon as durable ending truth is accepted", async () => {
+    mockAuth({ id: "user-1" });
+    vi.mocked(acceptUserInterviewEndWorkflow).mockResolvedValue(
+      acceptedResult("accepted")
     );
 
     const response = await POST(request({ sessionId: SESSION_ID }));
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      status: "pending_dispatch",
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      delivery: "scheduled",
       session: {
-        lifecycleState: "completed",
+        lifecycleState: "ending",
         terminalReason: "user_end",
-      },
-      feedback: {
-        status: "pending",
-        dispatchStatus: "failed",
-        retryable: true,
+        disposition: "accepted",
       },
       nextHref: `/feedback/${SESSION_ID}/loading`,
+    });
+    expect(response.status).toBe(202);
+    expect(acceptUserInterviewEndWorkflow).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      userId: "user-1",
+    });
+  });
+
+  it("still exits when immediate event delivery is deferred", async () => {
+    mockAuth({ id: "user-2" });
+    vi.mocked(acceptUserInterviewEndWorkflow).mockResolvedValue({
+      ...acceptedResult("already_ending"),
+      delivery: "deferred",
+    });
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      delivery: "deferred",
+    });
+  });
+
+  it("replays existing terminal truth without scheduling more work", async () => {
+    mockAuth({ id: "user-3" });
+    vi.mocked(acceptUserInterviewEndWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "already_terminal",
+      delivery: "not_required",
+      session: {
+        sessionId: SESSION_ID,
+        userId: "user-3",
+        lifecycleState: "completed",
+        lifecycleVersion: 5,
+        terminalReason: "user_end",
+        endingAt: ENDING_AT,
+        endedAt: new Date("2026-08-05T20:00:04.000Z"),
+      },
+    });
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      delivery: "not_required",
     });
   });
 
   it("maps an indistinguishable missing or cross-user session to 404", async () => {
     mockAuth({ id: "user-not-found" });
-    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue({
+    vi.mocked(acceptUserInterviewEndWorkflow).mockResolvedValue({
       ok: false,
       reason: "not_found",
-      runtimeSettlement: "not_found",
     });
     const response = await POST(request({ sessionId: SESSION_ID }));
     expect(response.status).toBe(404);
-  });
-
-  it("returns a non-2xx error only when completion was not confirmed", async () => {
-    mockAuth({ id: "user-storage-failure" });
-    vi.mocked(endUserInterviewSessionWorkflow).mockRejectedValue(
-      new Error("database unavailable")
-    );
-    const response = await POST(request({ sessionId: SESSION_ID }));
-    const body = await response.json();
-    expect(response.status).toBe(500);
-    expect(body).toMatchObject({
-      error: "session_end_failed",
-    });
-  });
-
-  it("delegates completion side effects to the shared workflow", async () => {
-    mockAuth({ id: "user-motivation" });
-    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
-      completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
-    );
-    const response = await POST(request({ sessionId: SESSION_ID }));
-
-    expect(response.status).toBe(200);
-    expect(endUserInterviewSessionWorkflow).toHaveBeenCalledWith({
-      sessionId: SESSION_ID,
-      userId: "user-motivation",
-      env: {
-        apiKey: "key",
-        apiSecret: "secret",
-        url: "wss://test.livekit.cloud",
-      },
-    });
-    expect(cleanupInterviewRoomWorkflow).toHaveBeenCalledWith({
-      sessionId: SESSION_ID,
-      env: {
-        apiKey: "key",
-        apiSecret: "secret",
-        url: "wss://test.livekit.cloud",
-      },
-    });
-  });
-
-  it("returns committed terminal truth when room cleanup is deferred", async () => {
-    mockAuth({ id: "user-cleanup-retry" });
-    vi.mocked(endUserInterviewSessionWorkflow).mockResolvedValue(
-      completionResult({ dispatchStatus: "sent", dispatchOk: true }) as never
-    );
-    vi.mocked(cleanupInterviewRoomWorkflow).mockRejectedValue(
-      new Error("provider unavailable")
-    );
-
-    const response = await POST(request({ sessionId: SESSION_ID }));
-
-    expect(response.status).toBe(200);
-    expect(cleanupInterviewRoomWorkflow).toHaveBeenCalledOnce();
   });
 });
 
@@ -166,51 +121,19 @@ function mockAuth(user: { id: string } | null, error: Error | null = null) {
   } as never);
 }
 
-function completionResult(input: {
-  dispatchStatus: "sent" | "failed";
-  dispatchOk: boolean;
-}) {
-  const dispatch = {
-    sessionId: SESSION_ID,
-    eventId: `feedback/generate.requested:${SESSION_ID}:1`,
-    status: input.dispatchStatus,
-    attempts: 1,
-    claimedAt: new Date("2026-07-09T22:00:00.000Z"),
-    dispatchedAt: null,
-  };
+function acceptedResult(disposition: "accepted" | "already_ending") {
   return {
-    ok: true,
-    runtimeSettlement: "settled",
-    completion: {
-      ok: true,
-      disposition: "applied",
-      roomName: "interview-room",
-      lifecycle: {
-        state: "completed",
-        version: 3,
-        terminalReason: "user_end",
-        endedAt: new Date("2026-07-09T22:00:00.000Z"),
-      },
-      feedback: {
-        id: "650e8400-e29b-41d4-a716-446655440000",
-        status: "pending",
-        dispatchStatus: input.dispatchStatus,
-        statusReason: null,
-      },
-      tier: "full",
-      stats: {
-        totalTurns: 20,
-        userTurns: 10,
-        totalWords: 800,
-        durationSeconds: 1200,
-        substantiveResponses: 8,
-      },
-      recommendations: [],
-    },
-    dispatch: {
-      ok: input.dispatchOk,
-      disposition: input.dispatchOk ? "sent" : "failed",
-      dispatch,
+    ok: true as const,
+    disposition,
+    delivery: "scheduled" as const,
+    session: {
+      sessionId: SESSION_ID,
+      userId: "user-1",
+      lifecycleState: "ending" as const,
+      lifecycleVersion: 4,
+      terminalReason: "user_end" as const,
+      endingAt: ENDING_AT,
+      endedAt: null,
     },
   };
 }

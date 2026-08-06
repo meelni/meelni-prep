@@ -13,22 +13,25 @@ checked before transcript validation and rechecked inside the terminalization
 transaction. System `time_limit` authority is available only to the internal
 deadline consumer; actor and requested reason are one discriminated command.
 
-For an unclaimed user end, the workflow:
+For an unclaimed user end, the request path:
 
-1. authorizes the command without reading transcript content;
-2. locks the session row and rechecks authority;
-3. calculates feedback eligibility from durable transcript turns, integrity
-   markers, registered `writer_generation` records, and writer-scoped settlements while
-   holding the same row lock used by canonical ingest; every registered
-   generation must be settled and none may be missing or degraded;
-4. preserves an existing terminal result or advances a nonterminal session through valid lifecycle edges;
-5. records final statistics;
-6. creates the unique feedback row if it is missing;
-7. stores a deterministic feedback event ID when feedback is eligible;
-8. commits all database state before attempting provider dispatch.
+1. locks the owner-scoped session row;
+2. atomically advances it to `ending/user_end`, increments the lifecycle
+   version, and records millisecond-precision `ending_at`;
+3. attempts bounded delivery of a versioned, idempotent background event;
+4. returns HTTP 202 with the feedback loading URL. The durable `ending` row is
+   also the recovery signal if event delivery is lost.
 
-Settlement and dispatch are separate typed workflow boundaries. Ordinary
-authenticated end commands call both boundaries in sequence. A hard-deadline
+The background finalizer asks the current LiveKit writer to settle exactly at
+`ending_at` within a 20-second provider budget. It then calculates feedback
+eligibility under the session-row lock; every registered generation must be
+settled, with none missing or degraded. It commits terminal truth and the
+unique feedback row, dispatches eligible feedback, schedules room cleanup, and
+converges credit. Cleanup and credit cannot delay feedback dispatch or reopen
+terminal truth.
+
+Settlement and dispatch are separate typed workflow boundaries. Background
+user-end and system workflows call both boundaries in sequence. A hard-deadline
 command may commit settlement while LiveKit room deletion is retryable, but it
 must not enter the dispatch boundary until room deletion is acknowledged as
 `deleted` or `already_absent`. The accepted hard-deadline command independently
@@ -38,8 +41,7 @@ claim commits before the first provider deletion attempt, remains immutable
 through concurrent ordinary-end and idempotent settlement calls, and is the
 recovery worker's durable ownership record after a deletion failure. Both the
 settlement dispatch boundary and the central outbox claim refuse dispatch while
-that record is `pending`.
-claim remains authoritative when validation refines the lifecycle reason to
+that record is `pending`. The claim remains authoritative when validation refines the lifecycle reason to
 `insufficient_signal`, so this gate also applies when feedback is skipped and
 dispatch is `not_required`. A concurrent `user_end` winner never gains a
 deadline cleanup claim.
@@ -71,28 +73,26 @@ dispatch or generation outcome never changes billing.
 The final stats are calculated inside the terminal transaction after it locks
 the same session row used by canonical transcript ingest. The browser owns no
 transcript write queue and cannot publish LiveKit data. Explicit browser end
-first calls the authenticated runtime-settlement endpoint; the server targets
-the current agent and writer generation with a reliable metadata-only request,
-then waits for durable settlement before terminalization. Ingests that
+commits `ending_at` and leaves; the background worker targets the current agent
+and writer generation with a reliable metadata-only request, then waits for
+durable settlement before terminalization. While `ending/user_end`, events at
+or before `ending_at` and settlement exactly at `ending_at` remain admissible;
+later evidence is rejected. Ingests that
 acquired the row first become visible to terminal validation; once terminal
 truth commits, new distinct events are closed while equivalent event-ID replays
 stay idempotent. Hard deadlines use semantic cutoff `D`: audio stops at `D`,
 only evidence measured at or before `D` is eligible, and settlement records `D`
 even if its database acknowledgement arrives during cleanup grace. The
 finalizer then calculates one locked transcript snapshot for statistics,
-feedback eligibility, and outcome. An
-invalid snapshot may versionedly refine only that provisional ending reason to
-`insufficient_signal`; user, provider, reconnect, and terminal reasons are not
-rewritten.
+feedback eligibility, and outcome. An invalid snapshot may versionedly refine
+the matching provisional user-end, deadline, or reconnect reason to
+`insufficient_signal`; provider and terminal reasons are not rewritten.
 
 System deadlines settle the durable evidence available when they acquire the
-row. After terminal truth commits, the end workflow converges the version-1
-credit reservation before dispatching feedback; settlement failure stays
-retryable and does not change feedback eligibility. Because terminal truth is
-already committed, a credit-settlement exception returns that committed result
-with dispatch still pending instead of turning the end request into a non-2xx
-response. An idempotent replay or recovery worker converges credit before
-claiming the feedback outbox.
+row. For explicit user end, eligible feedback dispatch occurs immediately
+after terminal truth commits and before version-1 credit convergence or room
+cleanup. Credit and cleanup failures remain recoverable and do not change
+feedback eligibility.
 The terminal policy action and support evidence commit with the ledger action
 under the owner/session/reservation/grant lock order. See
 [Interview Credit Recovery](./interview-credit-recovery.md).
@@ -143,9 +143,16 @@ concurrent or delayed events converge on the same feedback row.
 
 ## API And Client Behavior
 
-The end response remains HTTP 200 when the session committed but provider dispatch is delayed. It returns a retryable dispatch state and the stable feedback ID. Database, authorization, or validation failures return non-2xx.
+The first accepted end response is HTTP 202 with `status=settling`, durable
+session truth, delivery status, and a safe feedback URL. An already-terminal
+replay returns HTTP 200. A deferred immediate event send still returns 202
+because the `ending` row is recovered every minute. Storage and authorization
+failures return non-2xx.
 
-The browser must inspect `response.ok`. On a non-2xx response it keeps the interview room open, keeps the end modal available, shows the user-safe error, and offers retry. It navigates to feedback only after the end command confirms a committed result.
+The browser bounds acceptance to five seconds. On any 2xx response it closes
+the interview surface and navigates immediately. On an ambiguous transport
+failure it polls lifecycle truth; `ending` is sufficient for navigation and
+never requires the candidate to keep the room page open.
 
 `POST /api/interview/runtime-settlement` accepts only an authenticated,
 owner-scoped `sessionId`. It derives the cutoff from database time bounded by
@@ -157,7 +164,8 @@ remain retryable. A durable degraded settlement permits terminalization but
 fails feedback eligibility closed. The browser never calls LiveKit
 `performRpc()` because participant tokens retain `canPublishData=false`.
 
-`GET /api/feedback/:sessionId` reports `settling` for a hard-deadline session
+`GET /api/feedback/:sessionId` reports non-retryable `settling` for every
+`ending` session and for a hard-deadline session
 whose room cleanup is not acknowledged. After acknowledgement it exposes the
 durable feedback/dispatch state. Authenticated `POST` cannot bypass pending
 cleanup; once acknowledged, it uses the same idempotent outbox retry path as
@@ -198,9 +206,9 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
 - Replacement writer B settled while registered writer A is missing or degraded
   remains feedback-ineligible.
 - Browser End works while participant data publishing remains disabled; the
-  authenticated server request receives durable writer settlement before the
-  terminal command.
-- A credit-settlement exception after terminal commit returns HTTP 200, leaves
-  feedback dispatch pending, and remains idempotently recoverable.
+  accepted background command receives durable writer settlement before
+  terminalization.
+- A credit-settlement exception after terminal commit leaves already-dispatched
+  feedback unchanged and remains idempotently recoverable.
 - Reconnect settlement request and durable acknowledgement occur before room
   deletion; missing acknowledgement fails closed.

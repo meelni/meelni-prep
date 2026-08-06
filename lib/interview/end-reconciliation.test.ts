@@ -72,7 +72,7 @@ test("an active session retries the same idempotent end command", async () => {
   ]);
 });
 
-test("ending truth remains frozen and is only polled", async () => {
+test("durable ending truth hands off immediately to the feedback lifecycle", async () => {
   let requests = 0;
   const result = await reconcileAmbiguousInterviewEnd({
     sessionId: SESSION_ID,
@@ -86,9 +86,9 @@ test("ending truth remains frozen and is only polled", async () => {
   });
 
   assert.deepEqual(result, {
-    status: "waiting",
+    status: "resolved",
+    nextHref: `/feedback/${SESSION_ID}/loading`,
     retryAttempted: false,
-    reason: "terminalizing",
   });
   assert.equal(requests, 1);
 });

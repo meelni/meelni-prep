@@ -67,7 +67,7 @@ test("invalid-session recovery preserves provider failure without transcript sig
   );
 });
 
-test("only matching invalid deadline and reconnect provisional claims may refine", () => {
+test("matching invalid provisional claims refine to insufficient signal", () => {
   assert.equal(
     shouldRefineProvisionalTerminalReason({
       state: "ending",
@@ -86,9 +86,17 @@ test("only matching invalid deadline and reconnect provisional claims may refine
     }),
     true
   );
+  assert.equal(
+    shouldRefineProvisionalTerminalReason({
+      state: "ending",
+      terminalReason: "user_end",
+      isValid: false,
+      source: "user_end",
+    }),
+    true
+  );
 
   for (const [terminalReason, source] of [
-    ["user_end", "user_end"],
     ["provider_failure", "invalid_session_recovery"],
     ["disconnect_timeout", "hard_deadline"],
     ["time_limit", "reconnect_timeout"],

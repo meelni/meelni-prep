@@ -124,6 +124,7 @@ export function createDrizzleTranscriptRuntimeWriterStore(
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
             terminalReason: interviewSession.terminalReason,
+            endingAt: interviewSession.endingAt,
             reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
@@ -230,6 +231,7 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
             terminalReason: interviewSession.terminalReason,
+            endingAt: interviewSession.endingAt,
             reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
@@ -329,6 +331,7 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
             terminalReason: interviewSession.terminalReason,
+            endingAt: interviewSession.endingAt,
             reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
@@ -500,6 +503,7 @@ export function createDrizzleTranscriptIngestStore(
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
             terminalReason: interviewSession.terminalReason,
+            endingAt: interviewSession.endingAt,
             reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
             startedAt: interviewSession.startedAt,
             config: interviewSession.config,
@@ -767,6 +771,7 @@ function isEndingEvidenceWithinCutoff(
   session: {
     lifecycleState: string;
     terminalReason: string | null;
+    endingAt: Date | null;
     reconnectDeadlineAt: Date | null;
     startedAt: Date | null;
     config: unknown;
@@ -786,6 +791,7 @@ function isEndingSettlementAtCutoff(
   session: {
     lifecycleState: string;
     terminalReason: string | null;
+    endingAt: Date | null;
     reconnectDeadlineAt: Date | null;
     startedAt: Date | null;
     config: unknown;
@@ -798,12 +804,16 @@ function isEndingSettlementAtCutoff(
   );
 }
 
-function endingTranscriptCutoff(session: {
+export function endingTranscriptCutoff(session: {
   terminalReason: string | null;
+  endingAt: Date | null;
   reconnectDeadlineAt: Date | null;
   startedAt: Date | null;
   config: unknown;
 }): Date | null {
+  if (session.terminalReason === "user_end" && session.endingAt) {
+    return session.endingAt;
+  }
   if (
     session.terminalReason === "disconnect_timeout" &&
     session.reconnectDeadlineAt

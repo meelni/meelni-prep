@@ -75,9 +75,9 @@ export async function reconcileAmbiguousInterviewEnd(input: {
 
   if (lifecycleState === "ending") {
     return {
-      status: "waiting",
+      status: "resolved",
+      nextHref: `/feedback/${input.sessionId}/loading`,
       retryAttempted: false,
-      reason: "terminalizing",
     };
   }
 
