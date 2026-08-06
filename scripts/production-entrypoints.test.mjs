@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rm,
   symlink,
   writeFile,
@@ -37,12 +37,26 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     '[project]\nsubdomain = "meelni-ek4vaisp"\n[agent]\nid = "CA_yawKG67rCMG4"\n'
   );
   const productionSecretsPath = join(directory, "production-secrets.env");
+  const productionDemoSecretsPath = join(
+    directory,
+    "production-demo-secrets.env"
+  );
+  const opikSecrets = [
+    "OPIK_TRACING_ENABLED=true",
+    `OPIK_API_KEY=${"k".repeat(25)}`,
+    "OPIK_WORKSPACE=savi-singh",
+    "OPIK_PROJECT_NAME=meelni",
+    "OPIK_CAPTURE_CONTENT=true",
+    "",
+  ].join("\n");
   await writeFile(
     productionSecretsPath,
-    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n`,
+    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n${opikSecrets}`,
     { mode: 0o600 }
   );
+  await writeFile(productionDemoSecretsPath, opikSecrets, { mode: 0o600 });
   await chmod(productionSecretsPath, 0o600);
+  await chmod(productionDemoSecretsPath, 0o600);
   const commentConfusedInterviewConfigPath = join(
     directory,
     "comment-confused-interview.toml"
@@ -161,6 +175,8 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
           ...baseEnv,
           MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG: commentConfusedDemoConfigPath,
           MEELNI_LIVEKIT_PRODUCTION_DEMO_AGENT_ID: "CA_t3sKQEihMQ7x",
+          MEELNI_LIVEKIT_PRODUCTION_DEMO_SECRETS_FILE:
+            productionDemoSecretsPath,
           MEELNI_PRODUCTION_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
         },
       }
@@ -240,7 +256,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     assert.notEqual(missingProductionSecret.status, 0);
     assert.match(
       missingProductionSecret.stderr,
-      /external transcript-ingest secrets file/
+      /external runtime secrets file/
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
@@ -287,7 +303,14 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
     ],
     [
       "agent/demo/deploy.sh",
-      ["livekit-production-demo-deploy", "/usr/local/bin/node"],
+      [
+        "livekit-production-demo-deploy",
+        "/usr/local/bin/node",
+        "prepare-livekit-production-deploy-source.mjs",
+        "meelni.source_sha",
+        "--no-default-attributes",
+        "--secrets-file",
+      ],
     ],
     [
       "app/api/cron/sync-questions/manual/route.ts",

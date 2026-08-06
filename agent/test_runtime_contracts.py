@@ -188,6 +188,7 @@ class RuntimeContractTests(unittest.TestCase):
                     "os": os,
                     "prewarm": object(),
                     "resolve_cli_dispatch_name": resolve_cli_dispatch_name,
+                    "setup_opik_tracing": lambda _service_name: False,
                     "WorkerOptions": lambda **options: SimpleNamespace(**options),
                 }
                 with (

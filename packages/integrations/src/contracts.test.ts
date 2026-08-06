@@ -34,6 +34,7 @@ test("declares the provider set used by the current app", () => {
     "livekit",
     "stripe",
     "posthog",
+    "opik",
     "google_sheets",
     "inngest",
   ]);
@@ -51,6 +52,21 @@ test("livekit env contract captures server keys and websocket URL alternatives",
     "LIVEKIT_DEMO_AGENT_NAME",
     "NEXT_PUBLIC_LIVEKIT_URL",
     "LIVEKIT_URL",
+  ]);
+});
+
+test("Opik env contract keeps tracing and content capture explicitly optional", () => {
+  const contract = getProviderEnvContract("opik");
+
+  assert.equal(contract.provider, "opik");
+  assert.deepEqual(contract.required, []);
+  assert.deepEqual(listProviderEnvVars("opik"), [
+    "OPIK_TRACING_ENABLED",
+    "OPIK_API_KEY",
+    "OPIK_WORKSPACE",
+    "OPIK_PROJECT_NAME",
+    "OPIK_URL_OVERRIDE",
+    "OPIK_CAPTURE_CONTENT",
   ]);
 });
 

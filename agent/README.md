@@ -175,6 +175,11 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 | `LIVEKIT_API_SECRET`              | ✅         | LiveKit API secret                            |
 | `MEELNI_TRANSCRIPT_INGEST_SECRET` | Production | Web/runtime transcript-ingest signing key     |
 | `OPENAI_API_KEY`                  | ✅         | OpenAI API key                                |
+| `OPIK_TRACING_ENABLED`            | ❌         | Explicit switch for Opik trace export         |
+| `OPIK_API_KEY`                    | Opik only  | Comet/Opik API key                            |
+| `OPIK_WORKSPACE`                  | Opik only  | Comet workspace name                          |
+| `OPIK_PROJECT_NAME`               | Opik only  | Opik project name                             |
+| `OPIK_CAPTURE_CONTENT`            | ❌         | Include conversation content when `true`      |
 | `DEEPGRAM_API_KEY`                | ✅         | Deepgram API key (for Nova-3 ASR)             |
 | `CARTESIA_API_KEY`                | ❌         | **Not required** when using LiveKit Inference |
 

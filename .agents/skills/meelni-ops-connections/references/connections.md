@@ -384,6 +384,16 @@ Operational notes:
   same reviewed commit, and require `PASS livekit.project.read_only` before a
   rehearsal. Never copy the default `meelni` Production pair into staging.
 - After changing Vercel envs, redeploy affected Vercel environments. After changing agent code/secrets, redeploy the corresponding LiveKit Cloud agent.
+- For raw Preview `lk agent status` or `lk agent update-secrets` commands that
+  use explicit deployment IDs, run outside any repository directory containing
+  a Production `livekit.toml` and pass `--project meelni-preview`. The CLI can
+  otherwise combine the explicit Preview ID with the repository's Production
+  subdomain. Restore the default project to `meelni` after Preview operations.
+- Production Opik enablement uses the guarded runtime-secrets files and two
+  separately signed deploy actions. The interview file contains the existing
+  transcript-ingest secret plus the five canonical Opik variables; the demo
+  file contains only the five Opik variables. Do not use raw
+  `lk agent update-secrets` to bypass those target-bound wrappers.
 - The owner signing key and executor identity are intentionally present only on
   the authorized owner workstation. If another laptop lacks those files, do not
   enroll or recreate them; prepare, sign, verify, and consume the fresh exact
@@ -699,6 +709,84 @@ gh api orgs/meelni/installations \
 The result must report `repository_selection: selected` and
 `suspended_at: null`. A fresh draft PR is the end-to-end proof that GitGuardian
 can publish its security check for the transferred repository.
+
+## Comet Opik
+
+Canonical target:
+
+- Account/workspace: `savi-singh`
+- Project: `meelni` (`019fd58a-ac4d-70be-967f-fa30459c6c29`)
+- Surfaces: Vercel feedback evaluation and the LiveKit demo/interview workers.
+
+Auth:
+
+- Codex operations use the hosted Opik MCP with browser OAuth:
+
+  ```bash
+  codex mcp add opik --url https://www.comet.com/opik/api/v1/mcp
+  codex mcp login opik
+  ```
+
+- In the Comet/Opik UI, open the profile menu and choose **API Key**. The
+  compact key panel shows a masked credential and a copy button; its linked
+  account-settings page manages API keys. Treat copying or revealing the key
+  as credential access and obtain confirmation immediately before doing it.
+- Enter it directly into `.env.local`, Vercel, or the LiveKit agent secret
+  manager. Never pass it through chat or a tracked file.
+
+Verify:
+
+```bash
+codex mcp get opik
+npm run test:integrations
+agent/venv/bin/python -m unittest agent/test_opik_tracing.py
+```
+
+Ask Codex to list Opik projects and require workspace `savi-singh`, project
+`meelni`, and project ID `019fd58a-ac4d-70be-967f-fa30459c6c29`. The initial
+MCP verification created one content-free synthetic trace named
+`meelni-opik-mcp-setup` to establish and prove the project.
+
+Then run one synthetic or owner-controlled Preview interview and feedback
+generation. Confirm the isolated `meelni-preview` Opik project contains both the
+`feedback-generation` trace and a LiveKit voice-agent OTLP trace. MCP access is
+verified, but runtime ingestion still requires an `OPIK_API_KEY` in each target
+environment.
+
+Read/write boundary:
+
+- The TypeScript SDK writes feedback traces and token usage.
+- The Python worker writes sanitized LiveKit OpenTelemetry traces to Opik's
+  OTLP HTTP endpoint.
+- The hosted MCP can read traces, scores, prompts, and experiments and can also
+  write them. In Codex, `list`, `read`, and `schema` are pre-approved;
+  `write`, `ask_ollie`, and `run_experiment` remain approval-gated because
+  Ollie can perform writes inside an investigative call.
+- Account creation, API key creation, project retention, membership, and access
+  policies require the Comet UI.
+
+Env and secrets:
+
+- `OPIK_TRACING_ENABLED`
+- `OPIK_API_KEY` (secret)
+- `OPIK_WORKSPACE`
+- `OPIK_PROJECT_NAME`
+- `OPIK_URL_OVERRIDE` (self-hosted only)
+- `OPIK_CAPTURE_CONTENT`
+
+Production guardrails:
+
+- Tracing and content capture default off.
+- Before Production enablement, approve the public provider disclosure,
+  retention/access controls, and the guarded LiveKit Production secret/deploy
+  path.
+- `OPIK_CAPTURE_CONTENT=true` permits prompts, interview transcripts, and model
+  responses but still excludes identities, room names, provider request IDs,
+  raw errors, and secrets.
+- Disable with `OPIK_TRACING_ENABLED=false` and redeploy; product state is
+  unaffected.
+- Disconnect local Codex access with `codex mcp logout opik` followed by
+  `codex mcp remove opik`; this does not remove remote projects or traces.
 
 ## MCP And Future Providers
 
