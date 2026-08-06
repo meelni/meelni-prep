@@ -458,7 +458,9 @@ describe("active interview page lifecycle", () => {
     expect(screen.getByText(/interview cannot resume/i)).toBeInTheDocument();
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1)
+    );
   });
 
   it("leaves reconciliation for feedback once terminal truth commits even while feedback is pending", async () => {
