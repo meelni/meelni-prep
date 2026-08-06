@@ -44,6 +44,7 @@ from demo.runtime import (
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.dispatch import resolve_cli_dispatch_name
+from shared.opik_tracing import setup_opik_tracing
 from shared.prompt_contracts import DEMO_PROMPT_CONTRACT, PromptContract
 from shared.safe_logging import log_exception_class
 
@@ -532,6 +533,7 @@ if __name__ == "__main__":
     # Asset builds use a non-routable sentinel; every worker command still
     # requires its environment-owned explicit dispatch name.
     agent_name = resolve_cli_dispatch_name("LIVEKIT_DEMO_AGENT_NAME")
+    setup_opik_tracing("meelni-demo-agent")
 
     options = {
         "entrypoint_fnc": entrypoint,

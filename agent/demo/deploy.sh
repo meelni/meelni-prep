@@ -2,6 +2,7 @@
 set -euo pipefail
 
 environment="${1:-}"
+secrets_path=""
 case "$environment" in
   preview)
     config_path="${MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG:-}"
@@ -12,6 +13,7 @@ case "$environment" in
     ;;
   production)
     config_path="${MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG:-}"
+    secrets_path="${MEELNI_LIVEKIT_PRODUCTION_DEMO_SECRETS_FILE:-}"
     expected_agent_id="${MEELNI_LIVEKIT_PRODUCTION_DEMO_AGENT_ID:-}"
     target_url="${MEELNI_PRODUCTION_LIVEKIT_URL:-}"
     canonical_project_host="meelni-ek4vaisp.livekit.cloud"
@@ -33,10 +35,32 @@ fi
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 agent_dir="$(cd "$script_dir/.." && pwd)"
 repo_root="$(cd "$agent_dir/.." && pwd)"
+
+if [[ "$environment" == "production" ]]; then
+  if [[ -z "$secrets_path" ]] || \
+    [[ -L "$secrets_path" ]] || \
+    ! secrets_path="$(realpath "$secrets_path" 2>/dev/null)" || \
+    [[ ! -f "$secrets_path" ]] || \
+    [[ "$secrets_path" == "$repo_root" ]] || \
+    [[ "$secrets_path" == "$repo_root/"* ]]; then
+    echo "Production LiveKit demo deploy requires an external runtime secrets file." >&2
+    exit 1
+  fi
+  secrets_mode=""
+  secrets_owner_uid=""
+  read -r secrets_mode _ secrets_owner_uid _ < <(/bin/ls -dn "$secrets_path" 2>/dev/null || true)
+  if [[ "$secrets_owner_uid" != "$(/usr/bin/id -u)" ]] || \
+    [[ "${secrets_mode:4:6}" != "------" ]]; then
+    echo "Production LiveKit demo runtime secrets must be owner-only." >&2
+    exit 1
+  fi
+fi
+
 snapshot_dir="$(mktemp -d)"
 config_snapshot="$snapshot_dir/livekit.toml"
 cp "$config_path" "$config_snapshot"
 chmod 600 "$config_snapshot"
+secrets_snapshot=""
 tmp_dockerfile=""
 cleanup() {
   if [[ -n "$tmp_dockerfile" ]]; then
@@ -48,6 +72,41 @@ cleanup() {
   rm -rf "$snapshot_dir"
 }
 trap cleanup EXIT
+
+if [[ "$environment" == "production" ]]; then
+  secrets_snapshot="$snapshot_dir/demo-secrets.env"
+  cp "$secrets_path" "$secrets_snapshot"
+  chmod 600 "$secrets_snapshot"
+  if ! /usr/bin/awk '
+      function remember(name, value) {
+        if (seen[name]++) invalid = 1
+        values[name] = value
+      }
+      $0 ~ /^OPIK_TRACING_ENABLED=true$/ { remember("OPIK_TRACING_ENABLED", "true"); next }
+      $0 ~ /^OPIK_API_KEY=[A-Za-z0-9._-]+$/ {
+        value = $0
+        sub(/^OPIK_API_KEY=/, "", value)
+        remember("OPIK_API_KEY", value)
+        next
+      }
+      $0 ~ /^OPIK_WORKSPACE=savi-singh$/ { remember("OPIK_WORKSPACE", "savi-singh"); next }
+      $0 ~ /^OPIK_PROJECT_NAME=meelni$/ { remember("OPIK_PROJECT_NAME", "meelni"); next }
+      $0 ~ /^OPIK_CAPTURE_CONTENT=true$/ { remember("OPIK_CAPTURE_CONTENT", "true"); next }
+      { invalid = 1 }
+      END {
+        exit !(NR == 5 && invalid != 1 &&
+          length(values["OPIK_API_KEY"]) >= 20 &&
+          length(values["OPIK_API_KEY"]) <= 4096 &&
+          values["OPIK_TRACING_ENABLED"] == "true" &&
+          values["OPIK_WORKSPACE"] == "savi-singh" &&
+          values["OPIK_PROJECT_NAME"] == "meelni" &&
+          values["OPIK_CAPTURE_CONTENT"] == "true")
+      }
+    ' "$secrets_snapshot"; then
+    echo "Production LiveKit demo runtime secrets file is invalid." >&2
+    exit 1
+  fi
+fi
 
 canonical_subdomain="${canonical_project_host%.livekit.cloud}"
 if [[ "$target_url" != "wss://$canonical_project_host" ]] || \
@@ -99,19 +158,46 @@ if [[ "$environment" == "production" ]]; then
     echo "Production authorization requires the fixed system Node runtime at /usr/local/bin/node." >&2
     exit 1
   fi
+  authorization_receipt="$snapshot_dir/authorization-receipt.json"
   /usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
     "$production_node" "$repo_root/scripts/consume-production-action-authorization.mjs" \
     --action livekit-production-demo-deploy \
     --provider livekit \
     --configuration-file "$config_snapshot" \
-    --target-material "livekit:production:demo:$target_url:$expected_agent_id"
+    --target-material "livekit:production:demo:$target_url:$expected_agent_id:runtime-secrets-sha256:$(/usr/bin/shasum -a 256 "$secrets_snapshot" | /usr/bin/awk '{print $1}')" \
+    > "$authorization_receipt"
+  chmod 600 "$authorization_receipt"
+
+  source_snapshot_dir="$snapshot_dir/source"
+  candidate_sha="$(/usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
+    "$production_node" "$repo_root/scripts/prepare-livekit-production-deploy-source.mjs" \
+    --receipt-file "$authorization_receipt" \
+    --output-directory "$source_snapshot_dir")"
+  if [[ ! "$candidate_sha" =~ ^[a-f0-9]{40}$ ]]; then
+    echo "Production LiveKit demo deploy source identity is invalid." >&2
+    exit 1
+  fi
+  deploy_agent_dir="$source_snapshot_dir/agent"
+else
+  deploy_agent_dir="$agent_dir"
 fi
 
-config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$agent_dir")"
-cd "$agent_dir"
+config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$config_snapshot" "$deploy_agent_dir")"
+cd "$deploy_agent_dir"
 
-tmp_dockerfile="$(mktemp)"
-cp Dockerfile "$tmp_dockerfile"
+if [[ "$environment" == "preview" ]]; then
+  tmp_dockerfile="$(mktemp)"
+  cp Dockerfile "$tmp_dockerfile"
+fi
 
 cp demo/Dockerfile Dockerfile
-lk --config "$config_argument" agent deploy .
+if [[ "$environment" == "production" ]]; then
+  secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$deploy_agent_dir")"
+  lk --config "$config_argument" agent deploy \
+    --no-default-attributes \
+    --attribute "meelni.source_sha=$candidate_sha" \
+    --secrets-file "$secrets_argument" \
+    .
+else
+  lk --config "$config_argument" agent deploy .
+fi

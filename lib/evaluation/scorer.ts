@@ -8,6 +8,10 @@ import {
   parseFeedbackV2,
   prepareFeedbackTranscript,
 } from "@meelni/core";
+import {
+  type OpikLlmTrace,
+  startOpikFeedbackEvaluationTrace,
+} from "@meelni/integrations";
 import OpenAI from "openai";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
@@ -213,6 +217,8 @@ export async function generateFeedbackWithUsage(
       options.onRawSyntheticOutput
     );
   }
+  let opikTrace: OpikLlmTrace | undefined;
+  let rawProviderResponse: string | undefined;
   try {
     const client = options.calibrationPaidMode
       ? createCalibrationOpenAIClient(
@@ -231,6 +237,12 @@ export async function generateFeedbackWithUsage(
         : undefined,
       aliasProjection.canonicalIdByAlias
     );
+    if (!options.calibrationPaidMode) {
+      opikTrace = startOpikFeedbackEvaluationTrace({
+        model: modelVersion,
+        prompt: userPrompt,
+      });
+    }
     const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
@@ -257,6 +269,10 @@ export async function generateFeedbackWithUsage(
     );
 
     const choice = completion.choices[0];
+    rawProviderResponse =
+      typeof choice?.message.content === "string"
+        ? choice.message.content
+        : undefined;
     const refusal = choice?.message.refusal;
     if (typeof refusal === "string" && refusal.trim()) {
       throw new FeedbackProviderInvocationError(
@@ -330,7 +346,7 @@ export async function generateFeedbackWithUsage(
 
     // Preserve the model identity reported by the provider, which may resolve a
     // configured alias to a dated snapshot.
-    return parseFeedbackProviderEvaluation({
+    const result = parseFeedbackProviderEvaluation({
       value: unknownResponse,
       transcript: aliasProjection.transcript,
       canonicalIdByAlias: aliasProjection.canonicalIdByAlias,
@@ -342,7 +358,21 @@ export async function generateFeedbackWithUsage(
         ? options.calibrationEvidenceHints
         : undefined,
     });
+    await opikTrace?.end({
+      status: "success",
+      usage,
+      response: rawProviderResponse,
+    });
+    return result;
   } catch (error) {
+    await opikTrace?.end({
+      status: "error",
+      usage:
+        error instanceof FeedbackProviderInvocationError
+          ? error.usage
+          : undefined,
+      response: rawProviderResponse,
+    });
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_invocation_failed",

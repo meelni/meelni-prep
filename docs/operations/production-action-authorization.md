@@ -217,10 +217,12 @@ copies it into a private snapshot, authorizes the snapshot bytes, and passes
 that same snapshot to `lk` so path replacement cannot change the approved
 configuration.
 The Production interview-agent wrapper also requires an external, owner-only
-secrets file containing only `MEELNI_TRANSCRIPT_INGEST_SECRET`. It snapshots
-that file, includes the snapshot SHA-256 in the authorized target fingerprint,
-and passes the same private snapshot to `lk`. The secret value is never printed
-or stored in the authorization artifact.
+runtime secrets file containing exactly `MEELNI_TRANSCRIPT_INGEST_SECRET` and
+the five hosted-Opik variables documented below. The Production demo wrapper
+requires a separate owner-only file containing exactly the five Opik variables.
+Each wrapper snapshots its file, includes the snapshot SHA-256 in the authorized
+target fingerprint, and passes the same private snapshot to `lk`. Secret values
+are never printed or stored in authorization artifacts.
 After consuming the authorization, the wrapper reads the verified candidate
 SHA from the private consumption receipt and uses `git archive` to create a
 private build snapshot from that exact commit. LiveKit never builds the
@@ -276,6 +278,43 @@ Then set `MEELNI_PRODUCTION_ACTION_AUTHORIZATION` to that artifact path and run
 `agent/interview/deploy.sh production`. Preparation and verification make zero
 provider calls and do not consume the artifact; the deploy wrapper consumes it
 immediately before invoking `lk`.
+
+The interview secrets file contains exactly these names, one per line, with no
+comments or blank lines:
+
+```dotenv
+MEELNI_TRANSCRIPT_INGEST_SECRET=<existing-production-secret>
+OPIK_TRACING_ENABLED=true
+OPIK_API_KEY=<secret>
+OPIK_WORKSPACE=savi-singh
+OPIK_PROJECT_NAME=meelni
+OPIK_CAPTURE_CONTENT=true
+```
+
+### Prepare a demo-agent deployment
+
+After the same reviewed change is merged and the workstation is on the exact
+clean `main` commit, prepare the separate demo action:
+
+```bash
+export MEELNI_REVIEWED_MAIN_SHA="<exact 40-character merged main SHA>"
+npm run production-action:livekit-demo -- prepare \
+  --expected-candidate-sha "$MEELNI_REVIEWED_MAIN_SHA" \
+  --config-file "$MEELNI_LIVEKIT_PRODUCTION_DEMO_CONFIG" \
+  --secrets-file "$MEELNI_LIVEKIT_PRODUCTION_DEMO_SECRETS_FILE" \
+  --output-path "$HOME/.config/meelni/production-actions/livekit-demo-unsigned.json"
+```
+
+The owner reviews and signs this payload as a separate
+`livekit-production-demo-deploy` action, then verifies it with the same command
+using `verify` and `--artifact-path`. Set the authorization path and run
+`agent/demo/deploy.sh production`. The demo secrets file contains exactly the
+five `OPIK_*` lines shown above and omits
+`MEELNI_TRANSCRIPT_INGEST_SECRET`.
+
+Both wrappers archive and build the exact authorized candidate commit, omit
+inferred Git attributes, and record
+`meelni.source_sha=<authorized candidate SHA>` on the new LiveKit version.
 
 Before opening a Production test room, prove that LiveKit recorded the exact
 reviewed source identity:

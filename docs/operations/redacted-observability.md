@@ -6,6 +6,14 @@ Meelni emits one-line JSON operational-failure events to server stderr. Vercel c
 
 The reporter accepts only fixed classifications plus environment, release, and an ownership-derived interview-session correlation. It never accepts exception text, payloads, transcripts, email, provider IDs, user IDs, tokens, or secrets. Inngest final-failure hooks also emit only the closed event before durable retry/recovery behavior continues.
 
+Opik LLM tracing is a separate, default-off provider boundary. When explicitly
+enabled it records feedback and LiveKit LLM traces. Its default mode is
+metadata-only; the separate `OPIK_CAPTURE_CONTENT=true` switch may include
+prompt, transcript, and response content while continuing to remove identities,
+room names, provider request IDs, exception bodies, stack traces, and secrets.
+See [Opik Observability Setup](opik-observability.md). This does not broaden the
+closed `meelni_operational_failure@1` event or authorize a general log drain.
+
 Server-side PostHog events pass through the shared recursive analytics privacy
 boundary immediately before capture or identify transmission. Raw Stripe
 Checkout Session IDs are redacted from all string values, including billing
