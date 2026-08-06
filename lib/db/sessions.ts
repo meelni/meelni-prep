@@ -118,6 +118,8 @@ export async function getSessionForUserEndSettlement(
       config: interviewSession.config,
       startedAt: interviewSession.startedAt,
       lifecycleState: interviewSession.lifecycleState,
+      terminalReason: interviewSession.terminalReason,
+      endingAt: interviewSession.endingAt,
       databaseNow: sql<Date>`clock_timestamp()`,
     })
     .from(interviewSession)

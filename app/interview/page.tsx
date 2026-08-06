@@ -47,6 +47,7 @@ import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-cre
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
+const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
 
 interface InterviewSession {
   id: string;
@@ -792,11 +793,17 @@ export function InterviewPageContent() {
         : 0;
 
       let response: Response;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(
+        () => controller.abort(),
+        END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
+      );
       try {
         response = await fetch("/api/interview/end", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId: requestSessionId }),
+          signal: controller.signal,
         });
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
@@ -814,6 +821,8 @@ export function InterviewPageContent() {
           durationSeconds: duration,
         });
         return;
+      } finally {
+        window.clearTimeout(timeout);
       }
       if (ownerIdRef.current !== requestOwnerId) return;
       const data = (await response.json().catch(() => null)) as {
@@ -1111,7 +1120,7 @@ export function EndReconciliationOverlay() {
         </AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
           Your room is disconnected while we confirm the saved interview state
-          and safely retry the same end request. Keep this page open. This
+          and safely retry the same end request. You may leave this page; the
           interview cannot resume while the check is running.
         </AppSurfaceDescription>
       </AppSurface>

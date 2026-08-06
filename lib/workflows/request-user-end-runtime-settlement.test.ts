@@ -38,7 +38,8 @@ test("user end settles through trusted server data before terminalization", asyn
   }) => {
     fixture.calls.push("ack");
     assert.equal(writerGeneration, 2);
-    assert.equal(timeoutMs, USER_END_RUNTIME_SETTLEMENT_TIMEOUT_MS);
+    assert.ok(timeoutMs <= USER_END_RUNTIME_SETTLEMENT_TIMEOUT_MS);
+    assert.ok(timeoutMs > 0);
     return readiness("settled", 2);
   };
 
@@ -146,7 +147,8 @@ test("a durable degraded settlement permits safe terminalization without feedbac
 test("explicit end can apply a shorter settlement budget than background cleanup", async () => {
   const fixture = createFixture();
   fixture.deps.waitForRuntimeSettlement = async ({ timeoutMs }) => {
-    assert.equal(timeoutMs, 5_000);
+    assert.ok(timeoutMs <= 5_000);
+    assert.ok(timeoutMs > 0);
     return readiness("settled", 2);
   };
 
@@ -163,6 +165,43 @@ test("explicit end can apply a shorter settlement budget than background cleanup
   assert.equal(result.ok, true);
 });
 
+test("an accepted user end settles at the durable ending timestamp", async () => {
+  const endingAt = new Date("2026-07-28T00:43:35.123Z");
+  const fixture = createFixture({
+    lifecycleState: "ending",
+    terminalReason: "user_end",
+    endingAt,
+  });
+  fixture.deps.requestRuntimeSettlement = async ({ request }) => {
+    assert.equal(request.cutoff_at, endingAt.toISOString());
+    return providerSuccess("livekit", {});
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+});
+
+test("a hanging provider call cannot exceed the settlement budget", async () => {
+  const fixture = createFixture();
+  fixture.deps.inspectPresence = async () => new Promise(() => {});
+  const startedAt = Date.now();
+
+  const result = await requestUserEndRuntimeSettlementWorkflow(
+    {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      env: ENV,
+      timeoutMs: 10,
+    },
+    fixture.deps
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "provider_unavailable");
+  assert.ok(Date.now() - startedAt < 250);
+});
+
 function createFixture(overrides: Partial<UserEndSettlementSession> = {}): {
   deps: RequestUserEndRuntimeSettlementDeps;
   calls: string[];
@@ -172,6 +211,8 @@ function createFixture(overrides: Partial<UserEndSettlementSession> = {}): {
     userId: USER_ID,
     roomName: "interview-room",
     lifecycleState: "active",
+    terminalReason: null,
+    endingAt: null,
     startedAt: new Date("2026-07-28T00:35:38.384Z"),
     config: { duration: 30 },
     databaseNow: new Date("2026-07-28T00:43:37.000Z"),
