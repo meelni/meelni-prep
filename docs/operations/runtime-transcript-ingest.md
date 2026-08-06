@@ -46,13 +46,18 @@ Loopback HTTP is accepted only for local development.
   ingest acknowledgement's durable `row_id` is added to that post-persistence
   display notification so live rendering and durable hydration use the same
   stable row identity and final ordering.
-- Explicit end calls the authenticated runtime-settlement endpoint. The server
-  sends a reliable metadata-only packet to the current agent and writer
+- Explicit end atomically records `ending/user_end` and `ending_at`; a
+  recoverable background server worker sends a reliable metadata-only packet
+  to the current agent and writer
   generation while the browser token retains `canPublishData=false`. Active
   playout is interrupted, the exact heard prefix or no-prefix marker is
   enqueued, and the outbox drains before application terminalization. Every
   registered writer generation must have durable `settled` proof; missing or
   degraded proof fails closed.
+- While `ending/user_end`, turns and interruption markers measured at or before
+  `ending_at` remain admissible and the writer settlement must equal
+  `ending_at` exactly. Later evidence is rejected. The session row is the
+  durable outbox if immediate background-event delivery fails.
 - Hard deadline uses semantic cutoff `D`: input and output stop at `D`, accepted
   event time cannot exceed `D`, and each writer's `settled_at` is `D` even when
   its durable acknowledgement arrives during the cleanup grace.

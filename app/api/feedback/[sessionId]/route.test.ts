@@ -125,7 +125,7 @@ describe("/api/feedback/[sessionId]", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
-  it("returns a recoverable state while ending still needs feedback finalization", async () => {
+  it("keeps ending non-retryable while durable finalization runs", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
     vi.mocked(getSessionById).mockResolvedValue({
       lifecycleState: "ending",
@@ -134,8 +134,8 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      status: "missing",
-      retryable: true,
+      status: "settling",
+      retryable: false,
     });
   });
 

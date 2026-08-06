@@ -234,7 +234,7 @@ export async function finalizeInterviewSession(
         });
       if (!refined[0]) {
         throw new Error(
-          "Hard-deadline reason changed while its row was locked"
+          "Provisional terminal reason changed while its row was locked"
         );
       }
       version = refined[0].version;
@@ -474,7 +474,8 @@ export function shouldRefineProvisionalTerminalReason(input: {
     ((input.source === "hard_deadline" &&
       input.terminalReason === "time_limit") ||
       (input.source === "reconnect_timeout" &&
-        input.terminalReason === "disconnect_timeout")) &&
+        input.terminalReason === "disconnect_timeout") ||
+      (input.source === "user_end" && input.terminalReason === "user_end")) &&
     !input.isValid
   );
 }

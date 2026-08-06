@@ -46,6 +46,8 @@ export const OPERATIONAL_FAILURE_ERROR_CODES = [
   "interview_credit_recovery_failed",
   "interview_credit_settlement_deferred",
   "interview_end_failed",
+  "interview_end_dispatch_deferred",
+  "interview_end_finalization_failed",
   "interview_end_runtime_settlement_unavailable",
   "interview_presence_reconciliation_failed",
   "interview_reconnect_enforcement_failed",

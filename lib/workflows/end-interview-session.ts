@@ -90,6 +90,24 @@ export async function settleInterviewSessionWorkflow(
   return completeInterviewSession(input, deps);
 }
 
+/**
+ * Commits terminal session and feedback eligibility truth without coupling it
+ * to billing convergence. Background end workflows can dispatch eligible
+ * feedback immediately, then reconcile credits independently.
+ */
+export async function finalizeInterviewSessionWorkflow(
+  input: EndInterviewSessionInput,
+  deps: Pick<
+    EndInterviewSessionDeps,
+    "authorize" | "finalize"
+  > = createEndInterviewSessionDeps()
+): Promise<FinalizeInterviewSessionResult> {
+  if (!(await deps.authorize(input))) {
+    return { ok: false, reason: "not_found" };
+  }
+  return deps.finalize(input);
+}
+
 async function completeInterviewSession(
   input: EndInterviewSessionInput,
   deps: Pick<EndInterviewSessionDeps, "finalize" | "settleCredit">

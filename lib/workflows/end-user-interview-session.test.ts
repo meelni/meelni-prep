@@ -6,7 +6,7 @@ import { SessionTier } from "@/lib/evaluation/session-validator";
 import {
   classifyRuntimeSettlement,
   endUserInterviewSessionWorkflow,
-  EXPLICIT_END_RUNTIME_SETTLEMENT_TIMEOUT_MS,
+  BACKGROUND_USER_END_SETTLEMENT_TIMEOUT_MS,
   type EndUserInterviewSessionDeps,
 } from "./end-user-interview-session";
 
@@ -18,7 +18,7 @@ const ENV = {
   url: "wss://test.livekit.cloud",
 };
 
-test("explicit end requests bounded settlement before durable completion", async () => {
+test("explicit end dispatches feedback before cleanup and credit convergence", async () => {
   const calls: string[] = [];
   const result = await endUserInterviewSessionWorkflow(
     { sessionId: SESSION_ID, userId: USER_ID, env: ENV },
@@ -27,23 +27,39 @@ test("explicit end requests bounded settlement before durable completion", async
         calls.push("settlement");
         assert.equal(
           input.timeoutMs,
-          EXPLICIT_END_RUNTIME_SETTLEMENT_TIMEOUT_MS
+          BACKGROUND_USER_END_SETTLEMENT_TIMEOUT_MS
         );
         return settledRuntime();
       },
-      endSession: async (input) => {
+      finalizeSession: async (input) => {
         calls.push("completion");
         assert.deepEqual(input, {
           sessionId: SESSION_ID,
           actor: { type: "user", userId: USER_ID },
           requestedTerminalReason: "user_end",
         });
-        return completedInterview();
+        return completedInterview().completion;
+      },
+      dispatch: async (completion) => {
+        calls.push("dispatch");
+        return { ok: true, completion, dispatch: null };
+      },
+      scheduleCleanup: async () => {
+        calls.push("cleanup");
+      },
+      settleCredit: async () => {
+        calls.push("credit");
       },
     })
   );
 
-  assert.deepEqual(calls, ["settlement", "completion"]);
+  assert.deepEqual(calls, [
+    "settlement",
+    "completion",
+    "dispatch",
+    "cleanup",
+    "credit",
+  ]);
   assert.equal(result.ok, true);
   assert.equal(result.runtimeSettlement, "settled");
 });
@@ -58,9 +74,9 @@ test("missing agent during an early exit cannot veto durable completion", async 
         reason: "runtime_not_ready",
         retryable: true,
       }),
-      endSession: async () => {
+      finalizeSession: async () => {
         completions += 1;
-        return skippedInterview();
+        return skippedInterview().completion;
       },
     })
   );
@@ -80,7 +96,7 @@ test("provider unavailability still terminalizes the interview", async () => {
         settlementCalls += 1;
         return settledRuntime();
       },
-      endSession: async () => skippedInterview(),
+      finalizeSession: async () => skippedInterview().completion,
     })
   );
 
@@ -97,9 +113,9 @@ test("settlement exceptions during in-flight speech or model work are fail-open 
       requestRuntimeSettlement: async () => {
         throw new Error("runtime closed while settling");
       },
-      endSession: async () => {
+      finalizeSession: async () => {
         completions += 1;
-        return skippedInterview();
+        return skippedInterview().completion;
       },
     })
   );
@@ -130,12 +146,9 @@ test("already-terminal or duplicate end replays stored terminal truth", async ()
     { sessionId: SESSION_ID, userId: USER_ID, env: ENV },
     createDeps({
       requestRuntimeSettlement: async () => settledRuntime(),
-      endSession: async () => ({
-        ...completedInterview(),
-        completion: {
-          ...completedInterview().completion,
-          disposition: "existing",
-        },
+      finalizeSession: async () => ({
+        ...completedInterview().completion,
+        disposition: "existing",
       }),
     })
   );
@@ -144,12 +157,40 @@ test("already-terminal or duplicate end replays stored terminal truth", async ()
   if (result.ok) assert.equal(result.completion.disposition, "existing");
 });
 
+test("credit failure is deferred after eligible feedback is dispatched", async () => {
+  const calls: string[] = [];
+  const result = await endUserInterviewSessionWorkflow(
+    { sessionId: SESSION_ID, userId: USER_ID, env: null },
+    createDeps({
+      dispatch: async (completion) => {
+        calls.push("dispatch");
+        return { ok: true, completion, dispatch: null };
+      },
+      settleCredit: async () => {
+        calls.push("credit");
+        throw new Error("ledger unavailable");
+      },
+    })
+  );
+
+  assert.deepEqual(calls, ["dispatch", "credit"]);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.creditSettlementStatus, "deferred");
+});
+
 function createDeps(
   overrides: Partial<EndUserInterviewSessionDeps> = {}
 ): EndUserInterviewSessionDeps {
   return {
     requestRuntimeSettlement: async () => settledRuntime(),
-    endSession: async () => completedInterview(),
+    finalizeSession: async () => completedInterview().completion,
+    dispatch: async (completion) => ({
+      ok: true,
+      completion,
+      dispatch: null,
+    }),
+    scheduleCleanup: async () => undefined,
+    settleCredit: async () => undefined,
     ...overrides,
   };
 }

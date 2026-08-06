@@ -77,6 +77,18 @@ export async function GET(
     // Get feedback
     const feedbackRecord = await getFeedbackBySessionId(sessionId);
 
+    if (session?.lifecycleState === "ending") {
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable: false,
+          message:
+            "Your interview is saved. We’re finishing the transcript and will begin feedback automatically.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     if (
       session &&
       hasInterviewDeadlineRoomCleanupClaim(session) &&
@@ -94,11 +106,7 @@ export async function GET(
     }
 
     if (!feedbackRecord) {
-      if (
-        session &&
-        (session.lifecycleState === "ending" ||
-          isInterviewTerminalState(session.lifecycleState))
-      ) {
+      if (session && isInterviewTerminalState(session.lifecycleState)) {
         return NextResponse.json(
           {
             status: "missing",

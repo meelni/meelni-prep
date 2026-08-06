@@ -28915,6 +28915,9 @@ function getFeedbackCalibrationRequestPolicyHash() {
 }
 
 // lib/evaluation/scorer.ts
+var FEEDBACK_REQUEST_TIMEOUT_MS = 75e3;
+var FEEDBACK_MAX_SDK_RETRIES = 0;
+var FEEDBACK_MAX_COMPLETION_TOKENS = 2e3;
 var feedbackRejectionCodesByError = /* @__PURE__ */ new WeakMap();
 var FeedbackProviderInvocationError = class extends Error {
   constructor(code, usage, observedModel, observedServiceTier, options) {
@@ -29000,7 +29003,7 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       ],
       temperature: FEEDBACK_CALIBRATION_TEMPERATURE,
       response_format: options.calibrationPaidMode ? getFeedbackProviderResponseFormat(evaluationState) : { type: "json_object" },
-      ...options.calibrationPaidMode ? getCalibrationProviderRequestFields() : options.maxCompletionTokens === void 0 ? {} : { max_completion_tokens: options.maxCompletionTokens }
+      ...options.calibrationPaidMode ? getCalibrationProviderRequestFields() : getFeedbackProviderRequestFields(options.maxCompletionTokens)
     });
     const observedServiceTier = completion.service_tier ?? null;
     const usage = parseProviderUsage(
@@ -29337,7 +29340,11 @@ function getOpenAI() {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
-  return new OpenAI({ apiKey });
+  return new OpenAI({
+    apiKey,
+    maxRetries: FEEDBACK_MAX_SDK_RETRIES,
+    timeout: FEEDBACK_REQUEST_TIMEOUT_MS
+  });
 }
 function assertCalibrationOpenAIEnvironment(env = process.env) {
   if (env.OPENAI_BASE_URL !== void 0) {
@@ -29353,6 +29360,11 @@ function getCalibrationProviderRequestFields() {
   return {
     max_completion_tokens: CALIBRATION_MAX_COMPLETION_TOKENS,
     service_tier: CALIBRATION_SERVICE_TIER
+  };
+}
+function getFeedbackProviderRequestFields(maxCompletionTokens) {
+  return {
+    max_completion_tokens: maxCompletionTokens ?? FEEDBACK_MAX_COMPLETION_TOKENS
   };
 }
 function createCalibrationOpenAIClient(env = process.env, beforePhysicalRequest = () => {

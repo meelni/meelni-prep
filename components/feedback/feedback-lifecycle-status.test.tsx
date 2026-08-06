@@ -32,7 +32,9 @@ test("settling explains that feedback will begin after safe session closure", ()
     })
   );
   assert.match(html, /Saving your interview/);
-  assert.match(html, /begin automatically/);
+  assert.match(html, /feedback starts automatically/i);
+  assert.match(html, /View interview history/);
+  assert.match(html, /href="\/dashboard\/history"/);
   assert.doesNotMatch(html, /Queue feedback/);
 });
 
