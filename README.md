@@ -104,6 +104,11 @@ Create `.env.local` in the project root with these variables:
 | `LIVEKIT_API_SECRET`            | ✅       | LiveKit Cloud API secret                                                   |
 | `NEXT_PUBLIC_LIVEKIT_URL`       | ✅       | LiveKit WebSocket URL (e.g., `wss://your-project.livekit.cloud`)           |
 | `OPENAI_API_KEY`                | ✅       | OpenAI API key (for GPT-4.1-mini)                                          |
+| `OPIK_TRACING_ENABLED`          | ❌       | Explicit server-side switch for Opik LLM tracing                           |
+| `OPIK_API_KEY`                  | ❌       | Comet/Opik API key; required only when Opik tracing is enabled             |
+| `OPIK_WORKSPACE`                | ❌       | Comet workspace that receives Opik traces                                  |
+| `OPIK_PROJECT_NAME`             | ❌       | Opik project name, normally `meelni`                                       |
+| `OPIK_CAPTURE_CONTENT`          | ❌       | Explicit prompt/transcript/response capture switch; defaults to `false`    |
 | `DEEPGRAM_API_KEY`              | ✅       | Deepgram API key (for Nova-3 ASR)                                          |
 | `CARTESIA_API_KEY`              | ⚠️       | **Not required** when using LiveKit Inference (only for direct API access) |
 | `NEXT_PUBLIC_SUPABASE_URL`      | 🔜       | Supabase project URL (planned for auth)                                    |

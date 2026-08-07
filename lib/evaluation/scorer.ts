@@ -49,6 +49,19 @@ export interface FeedbackProviderUsage {
   totalTokens: number;
 }
 
+export interface FeedbackObservabilityTrace {
+  end(result: {
+    status: "success" | "error";
+    usage?: FeedbackProviderUsage;
+    response?: string;
+  }): Promise<void>;
+}
+
+export type StartFeedbackObservabilityTrace = (input: {
+  model: string;
+  prompt: string;
+}) => FeedbackObservabilityTrace;
+
 export interface FeedbackProviderResult {
   evaluation: FeedbackV2Result;
   usage: FeedbackProviderUsage;
@@ -164,11 +177,16 @@ function classifyFeedbackParserFailure(
 export async function generateFeedback(
   roundType: string,
   transcript: FeedbackTranscriptTurn[],
-  evaluationState: FeedbackEvaluationState
+  evaluationState: FeedbackEvaluationState,
+  dependencies: {
+    startObservabilityTrace?: StartFeedbackObservabilityTrace;
+  } = {}
 ): Promise<FeedbackV2Result> {
   try {
     return (
-      await generateFeedbackWithUsage(roundType, transcript, evaluationState)
+      await generateFeedbackWithUsage(roundType, transcript, evaluationState, {
+        startObservabilityTrace: dependencies.startObservabilityTrace,
+      })
     ).evaluation;
   } catch (error) {
     const code = getEvaluationFailureCode(error);
@@ -191,6 +209,7 @@ export async function generateFeedbackWithUsage(
     onRawSyntheticOutput?: (rawResponse: Uint8Array) => void | Promise<void>;
     calibrationCredentials?: { openaiApiKey: string };
     calibrationEvidenceHints?: readonly CalibrationEvidenceHint[];
+    startObservabilityTrace?: StartFeedbackObservabilityTrace;
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -213,6 +232,8 @@ export async function generateFeedbackWithUsage(
       options.onRawSyntheticOutput
     );
   }
+  let observabilityTrace: FeedbackObservabilityTrace | undefined;
+  let rawProviderResponse: string | undefined;
   try {
     const client = options.calibrationPaidMode
       ? createCalibrationOpenAIClient(
@@ -231,6 +252,12 @@ export async function generateFeedbackWithUsage(
         : undefined,
       aliasProjection.canonicalIdByAlias
     );
+    if (!options.calibrationPaidMode && options.startObservabilityTrace) {
+      observabilityTrace = options.startObservabilityTrace({
+        model: modelVersion,
+        prompt: userPrompt,
+      });
+    }
     const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
@@ -257,6 +284,10 @@ export async function generateFeedbackWithUsage(
     );
 
     const choice = completion.choices[0];
+    rawProviderResponse =
+      typeof choice?.message.content === "string"
+        ? choice.message.content
+        : undefined;
     const refusal = choice?.message.refusal;
     if (typeof refusal === "string" && refusal.trim()) {
       throw new FeedbackProviderInvocationError(
@@ -330,7 +361,7 @@ export async function generateFeedbackWithUsage(
 
     // Preserve the model identity reported by the provider, which may resolve a
     // configured alias to a dated snapshot.
-    return parseFeedbackProviderEvaluation({
+    const result = parseFeedbackProviderEvaluation({
       value: unknownResponse,
       transcript: aliasProjection.transcript,
       canonicalIdByAlias: aliasProjection.canonicalIdByAlias,
@@ -342,7 +373,21 @@ export async function generateFeedbackWithUsage(
         ? options.calibrationEvidenceHints
         : undefined,
     });
+    await observabilityTrace?.end({
+      status: "success",
+      usage,
+      response: rawProviderResponse,
+    });
+    return result;
   } catch (error) {
+    await observabilityTrace?.end({
+      status: "error",
+      usage:
+        error instanceof FeedbackProviderInvocationError
+          ? error.usage
+          : undefined,
+      response: rawProviderResponse,
+    });
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_invocation_failed",

@@ -28978,6 +28978,8 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       options.onRawSyntheticOutput
     );
   }
+  let observabilityTrace;
+  let rawProviderResponse;
   try {
     const client = options.calibrationPaidMode ? createCalibrationOpenAIClient(
       { OPENAI_API_KEY: options.calibrationCredentials?.openaiApiKey },
@@ -28992,6 +28994,12 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       options.calibrationPaidMode ? options.calibrationEvidenceHints : void 0,
       aliasProjection.canonicalIdByAlias
     );
+    if (!options.calibrationPaidMode && options.startObservabilityTrace) {
+      observabilityTrace = options.startObservabilityTrace({
+        model: modelVersion,
+        prompt: userPrompt
+      });
+    }
     const completion = await client.chat.completions.create({
       model: modelVersion,
       messages: [
@@ -29012,6 +29020,7 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       observedServiceTier
     );
     const choice = completion.choices[0];
+    rawProviderResponse = typeof choice?.message.content === "string" ? choice.message.content : void 0;
     const refusal = choice?.message.refusal;
     if (typeof refusal === "string" && refusal.trim()) {
       throw new FeedbackProviderInvocationError(
@@ -29079,7 +29088,7 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
         { cause: error }
       );
     }
-    return parseFeedbackProviderEvaluation({
+    const result = parseFeedbackProviderEvaluation({
       value: unknownResponse,
       transcript: aliasProjection.transcript,
       canonicalIdByAlias: aliasProjection.canonicalIdByAlias,
@@ -29089,7 +29098,18 @@ async function generateFeedbackWithUsage(roundType, transcript, evaluationState,
       usage,
       calibrationEvidenceHints: options.calibrationPaidMode ? options.calibrationEvidenceHints : void 0
     });
+    await observabilityTrace?.end({
+      status: "success",
+      usage,
+      response: rawProviderResponse
+    });
+    return result;
   } catch (error) {
+    await observabilityTrace?.end({
+      status: "error",
+      usage: error instanceof FeedbackProviderInvocationError ? error.usage : void 0,
+      response: rawProviderResponse
+    });
     if (error instanceof FeedbackProviderInvocationError) throw error;
     throw new FeedbackProviderInvocationError(
       "evaluation_provider_invocation_failed",

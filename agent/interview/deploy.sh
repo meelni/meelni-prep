@@ -45,7 +45,7 @@ if [[ "$environment" == "production" ]]; then
     [[ ! -f "$secrets_path" ]] || \
     [[ "$secrets_path" == "$repo_root" ]] || \
     [[ "$secrets_path" == "$repo_root/"* ]]; then
-    echo "Production LiveKit deploy requires an external transcript-ingest secrets file." >&2
+    echo "Production LiveKit deploy requires an external runtime secrets file." >&2
     exit 1
   fi
   secrets_mode=""
@@ -53,7 +53,7 @@ if [[ "$environment" == "production" ]]; then
   read -r secrets_mode _ secrets_owner_uid _ < <(/bin/ls -dn "$secrets_path" 2>/dev/null || true)
   if [[ "$secrets_owner_uid" != "$(/usr/bin/id -u)" ]] || \
     [[ "${secrets_mode:4:6}" != "------" ]]; then
-    echo "Production LiveKit transcript-ingest secrets must be owner-only." >&2
+    echo "Production LiveKit runtime secrets must be owner-only." >&2
     exit 1
   fi
 fi
@@ -70,14 +70,39 @@ if [[ "$environment" == "production" ]]; then
   cp "$secrets_path" "$secrets_snapshot"
   chmod 600 "$secrets_snapshot"
   if ! /usr/bin/awk '
-      NR == 1 && $0 ~ /^MEELNI_TRANSCRIPT_INGEST_SECRET=[A-Za-z0-9_-]+$/ {
+      function remember(name, value) {
+        if (seen[name]++) invalid = 1
+        values[name] = value
+      }
+      $0 ~ /^MEELNI_TRANSCRIPT_INGEST_SECRET=[A-Za-z0-9_-]+$/ {
         value = $0
         sub(/^MEELNI_TRANSCRIPT_INGEST_SECRET=/, "", value)
-        valid = length(value) >= 32
+        remember("MEELNI_TRANSCRIPT_INGEST_SECRET", value)
+        next
       }
-      END { exit !(NR == 1 && valid) }
+      $0 ~ /^OPIK_TRACING_ENABLED=true$/ { remember("OPIK_TRACING_ENABLED", "true"); next }
+      $0 ~ /^OPIK_API_KEY=[A-Za-z0-9._-]+$/ {
+        value = $0
+        sub(/^OPIK_API_KEY=/, "", value)
+        remember("OPIK_API_KEY", value)
+        next
+      }
+      $0 ~ /^OPIK_WORKSPACE=savi-singh$/ { remember("OPIK_WORKSPACE", "savi-singh"); next }
+      $0 ~ /^OPIK_PROJECT_NAME=meelni$/ { remember("OPIK_PROJECT_NAME", "meelni"); next }
+      $0 ~ /^OPIK_CAPTURE_CONTENT=true$/ { remember("OPIK_CAPTURE_CONTENT", "true"); next }
+      { invalid = 1 }
+      END {
+        exit !(NR == 6 && invalid != 1 &&
+          length(values["MEELNI_TRANSCRIPT_INGEST_SECRET"]) >= 32 &&
+          length(values["OPIK_API_KEY"]) >= 20 &&
+          length(values["OPIK_API_KEY"]) <= 4096 &&
+          values["OPIK_TRACING_ENABLED"] == "true" &&
+          values["OPIK_WORKSPACE"] == "savi-singh" &&
+          values["OPIK_PROJECT_NAME"] == "meelni" &&
+          values["OPIK_CAPTURE_CONTENT"] == "true")
+      }
     ' "$secrets_snapshot"; then
-    echo "Production LiveKit secrets file must contain only the transcript-ingest secret." >&2
+    echo "Production LiveKit runtime secrets file is invalid." >&2
     exit 1
   fi
 fi
@@ -152,7 +177,7 @@ if [[ "$environment" == "production" ]]; then
     --action livekit-production-interview-deploy \
     --provider livekit \
     --configuration-file "$config_snapshot" \
-    --target-material "livekit:production:interview:$target_url:$expected_agent_id:transcript-secret-sha256:$(/usr/bin/shasum -a 256 "$secrets_snapshot" | /usr/bin/awk '{print $1}')" \
+    --target-material "livekit:production:interview:$target_url:$expected_agent_id:runtime-secrets-sha256:$(/usr/bin/shasum -a 256 "$secrets_snapshot" | /usr/bin/awk '{print $1}')" \
     > "$authorization_receipt"
   chmod 600 "$authorization_receipt"
 

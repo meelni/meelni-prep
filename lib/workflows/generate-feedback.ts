@@ -13,7 +13,10 @@ import {
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
 import { getSessionTranscript } from "@/lib/db/transcripts";
-import { generateFeedback as generateEvaluation } from "@/lib/evaluation/scorer";
+import {
+  generateFeedback as generateEvaluation,
+  type StartFeedbackObservabilityTrace,
+} from "@/lib/evaluation/scorer";
 import {
   SessionTier,
   validateSessionCompleteness,
@@ -277,7 +280,10 @@ export function createFeedbackGenerationFailureDeps(): Pick<
 }
 
 export function createGenerateFeedbackWorkflowDeps(
-  steps: FeedbackGenerationSteps
+  steps: FeedbackGenerationSteps,
+  dependencies: {
+    startObservabilityTrace?: StartFeedbackObservabilityTrace;
+  } = {}
 ): GenerateFeedbackWorkflowDeps {
   return {
     store: createDrizzleFeedbackGenerationStore(),
@@ -297,7 +303,9 @@ export function createGenerateFeedbackWorkflowDeps(
       });
     },
     evaluate: ({ roundType, transcript, evaluationState }) =>
-      generateEvaluation(roundType, transcript, evaluationState),
+      generateEvaluation(roundType, transcript, evaluationState, {
+        startObservabilityTrace: dependencies.startObservabilityTrace,
+      }),
   };
 }
 

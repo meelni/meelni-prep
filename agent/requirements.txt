@@ -8,3 +8,4 @@ livekit-plugins-turn-detector==1.6.5
 
 # Core dependencies
 python-dotenv==1.2.2
+opentelemetry-exporter-otlp-proto-http==1.39.1

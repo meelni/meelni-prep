@@ -68,6 +68,23 @@ const envVars: EnvVarConfig[] = [
     pattern: /^sk-/,
   },
 
+  // Opik (optional and explicitly enabled)
+  {
+    name: "OPIK_API_KEY",
+    required: false,
+    description: "Server-side Comet/Opik API key",
+  },
+  {
+    name: "OPIK_WORKSPACE",
+    required: false,
+    description: "Comet workspace for Meelni traces",
+  },
+  {
+    name: "OPIK_PROJECT_NAME",
+    required: false,
+    description: "Opik project name",
+  },
+
   // Deepgram (ASR)
   {
     name: "DEEPGRAM_API_KEY",

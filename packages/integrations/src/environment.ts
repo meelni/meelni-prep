@@ -153,6 +153,43 @@ export const PROVIDER_ENV_CONTRACTS: Record<
       ),
     ],
   },
+  opik: {
+    provider: "opik",
+    required: [],
+    optional: [
+      env(
+        "OPIK_TRACING_ENABLED",
+        "Explicit server-side switch for Opik LLM tracing.",
+        "server",
+        false
+      ),
+      env("OPIK_API_KEY", "Server-side Comet/Opik API key.", "server", false),
+      env(
+        "OPIK_WORKSPACE",
+        "Comet workspace that owns Meelni traces.",
+        "server",
+        false
+      ),
+      env(
+        "OPIK_PROJECT_NAME",
+        "Opik project that receives Meelni traces.",
+        "server",
+        false
+      ),
+      env(
+        "OPIK_URL_OVERRIDE",
+        "Optional Opik API base URL for self-hosted deployments.",
+        "server",
+        false
+      ),
+      env(
+        "OPIK_CAPTURE_CONTENT",
+        "Explicit switch for prompt, transcript, and response capture.",
+        "server",
+        false
+      ),
+    ],
+  },
   google_sheets: {
     provider: "google_sheets",
     required: [],

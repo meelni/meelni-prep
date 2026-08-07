@@ -24,6 +24,7 @@
       "@meelni/core": ["./packages/core/src/index.ts"],
       "@meelni/agent": ["./packages/agent/src/index.ts"],
       "@meelni/integrations": ["./packages/integrations/src/index.ts"],
+      "@meelni/integrations/opik": ["./packages/integrations/src/opik.ts"],
       "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"]
     }
   },

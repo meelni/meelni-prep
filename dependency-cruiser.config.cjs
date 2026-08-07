@@ -26,7 +26,7 @@ module.exports = {
         pathNot: "^packages/(core|agent|integrations|test-fixtures)/",
       },
       to: {
-        path: "^packages/(core|agent|integrations|test-fixtures)/src/(?!index[.]ts$)",
+        path: "^packages/(core|agent|test-fixtures)/src/(?!index[.]ts$)|^packages/integrations/src/(?!(?:index|opik)[.]ts$)",
       },
     },
     {
