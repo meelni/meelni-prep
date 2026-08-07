@@ -215,12 +215,21 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     assert.notEqual(production.status, 0);
     assert.match(
       production.stderr,
-      /authorization_file_path_invalid|fixed system Node runtime/
+      /authorization_file_path_invalid|fixed system Node runtime|LiveKit CLI must support explicit source attributes/
+    );
+    const callsAfterProduction = (await readFile(logPath, "utf8"))
+      .trim()
+      .split("\n");
+    const reachedLiveKitCapabilityCheck = production.stderr.includes(
+      "LiveKit CLI must support explicit source attributes"
     );
     assert.equal(
-      (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
+      callsAfterProduction.length,
+      reachedLiveKitCapabilityCheck ? 3 : 2
     );
+    if (reachedLiveKitCapabilityCheck) {
+      assert.equal(callsAfterProduction.at(-1), "agent deploy --help");
+    }
     assert.doesNotMatch(production.stderr, /meelni-ek4vaisp|CA_yawKG67rCMG4/);
 
     const missingProductionSecret = spawnSync(
@@ -244,7 +253,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
+      callsAfterProduction.length
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -283,6 +292,7 @@ test("repository-owned Production entrypoints stay in the reviewed inventory", a
         "prepare-livekit-production-deploy-source.mjs",
         "meelni.source_sha",
         "--no-default-attributes",
+        "LiveKit CLI must support explicit source attributes",
       ],
     ],
     [
