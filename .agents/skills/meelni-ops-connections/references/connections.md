@@ -640,9 +640,21 @@ Canonical target:
 Local development:
 
 ```bash
-npx inngest-cli@latest dev
-npm run dev
+npm run dev:local
 ```
+
+`npm run dev:local` starts the local Inngest dev server alongside Next.js. The
+dev server exposes an unauthenticated, local-only MCP endpoint while it is
+running:
+
+```bash
+codex mcp add inngest-dev --url http://127.0.0.1:8288/mcp
+codex mcp get inngest-dev
+```
+
+Restart Codex after adding the MCP. This MCP can inspect and invoke only the
+local dev server's functions, events, and runs; it cannot inspect Inngest
+Cloud or Production.
 
 Verify local server:
 
@@ -654,14 +666,39 @@ Env and secrets:
 
 - Cloud event sending requires `INNGEST_EVENT_KEY`.
 - Function signature verification requires `INNGEST_SIGNING_KEY`.
+- Cloud CLI inspection uses a separate, environment-scoped
+  `INNGEST_API_KEY`. Create it under Inngest Settings -> API Keys, scope it to
+  the intended environment, and keep it in an owner-only keychain or private
+  env file. Do not substitute the event or signing key.
 - Local dev server sends do not need cloud keys when the app runs in explicit Inngest dev mode.
 - `OPENAI_API_KEY` is also required before `feedback/generate.requested` can complete evaluation.
+
+Cloud inspection with the current CLI:
+
+```bash
+INNGEST_API_KEY=... inngest api --prod get-function-run <run-id>
+INNGEST_API_KEY=... inngest api --prod get-event-runs <event-id> --include-output --limit 5
+INNGEST_API_KEY=... inngest api --prod get-function-trace <run-id> --include-output
+```
 
 Operational notes:
 
 - `.env.local` can include `VERCEL` and `VERCEL_ENV` metadata from `npm run env:pull`; do not let those make local code infer Inngest cloud mode.
 - Vercel encrypted/sensitive values pull as blanks. Preserve existing local `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, and `OPENAI_API_KEY` values when refreshing envs.
-- As of 2026-06-29, Vercel had `OPENAI_API_KEY` for Preview/Production and `INNGEST_SIGNING_KEY` for Preview/Production, but no `INNGEST_EVENT_KEY` listed. Production/Preview event dispatch should not be considered ready until a real event key is added.
+- A hosted `serve()` app must be synced to its environment after deploying new
+  function configuration. Production uses
+  `https://www.meelni.com/api/inngest`; verify the `meelni` app, all expected
+  functions, and recent sync history in Inngest -> Production -> Apps. In
+  particular, require `Finalize User-Ended Interview` and
+  `Recover User-Ended Interviews` before testing the post-interview flow.
+- As of 2026-08-06, Vercel lists both `INNGEST_EVENT_KEY` and
+  `INNGEST_SIGNING_KEY` for Production. The Production `meelni` app was absent
+  until a direct sync at 19:46 PDT registered 33 functions. The recovery cron
+  then ran and returned an event ID, but no corresponding Production event or
+  finalizer run appeared. Treat Production event dispatch as unready until the
+  deployed `INNGEST_EVENT_KEY` is verified against the Production environment's
+  ingest key and a fresh event is observed in Production. Do not reveal key
+  values in logs or chat.
 
 ## Linear
 
