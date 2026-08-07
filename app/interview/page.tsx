@@ -1057,6 +1057,7 @@ function InterviewRoomContent({
       controls={
         <InterviewControls
           isMuted={isMuted}
+          muteDisabled={!connectionReady || recoveringConnection}
           onToggleMute={onToggleMute}
           onEndSession={onEndSession}
         />
@@ -1064,7 +1065,6 @@ function InterviewRoomContent({
       deadlineReached={deadlineReached}
       mediaVisualizer={<AudioVisualizer agentState={agentState} />}
       question={session.question?.text}
-      recoveringConnection={recoveringConnection}
       roundType={session.config?.roundType}
       timer={
         <TimerDisplay

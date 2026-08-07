@@ -6,6 +6,9 @@ import { inngest } from "@/lib/inngest/client";
 
 export const USER_INTERVIEW_END_EVENT_NAME = "interview/end.requested" as const;
 export const USER_INTERVIEW_END_DISPATCH_TIMEOUT_MS = 750;
+export type UserInterviewEndResumeFrom =
+  | "runtime_settlement"
+  | "feedback_dispatch";
 
 export interface AcceptUserInterviewEndDeps {
   accept(input: {
@@ -29,6 +32,7 @@ export function buildUserInterviewEndEvent(
     sessionId: string;
     userId: string;
     lifecycleVersion: number;
+    resumeFrom?: UserInterviewEndResumeFrom;
   },
   deliveryId = "initial"
 ) {
@@ -39,6 +43,7 @@ export function buildUserInterviewEndEvent(
       sessionId: input.sessionId,
       userId: input.userId,
       lifecycleVersion: input.lifecycleVersion,
+      resumeFrom: input.resumeFrom ?? "runtime_settlement",
     },
   } as const;
 }

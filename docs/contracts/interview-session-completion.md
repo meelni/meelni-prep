@@ -25,10 +25,12 @@ For an unclaimed user end, the request path:
 The background finalizer asks the current LiveKit writer to settle exactly at
 `ending_at` within a 20-second provider budget. It then calculates feedback
 eligibility under the session-row lock; every registered generation must be
-settled, with none missing or degraded. It commits terminal truth and the
-unique feedback row, dispatches eligible feedback, schedules room cleanup, and
-converges credit. Cleanup and credit cannot delay feedback dispatch or reopen
-terminal truth.
+settled, with none missing or degraded. Runtime settlement, terminalization,
+feedback dispatch, room-cleanup scheduling, and credit convergence use stable,
+versioned durable checkpoints. After terminal truth commits, dispatch, cleanup,
+and credit run as sibling checkpoints; a failed operation retries without
+replaying successful siblings. Cleanup and credit cannot delay feedback
+dispatch or reopen terminal truth.
 
 Settlement and dispatch are separate typed workflow boundaries. Background
 user-end and system workflows call both boundaries in sequence. A hard-deadline
@@ -190,6 +192,12 @@ deadline room-cleanup claim is still `pending`, including refined
 a retryable eligible feedback outbox. Exhausting one event's retry budget
 therefore cannot strand a live room or an acknowledged feedback dispatch.
 
+The minute user-end recovery scan includes both accepted `ending/user_end`
+sessions and terminal sessions whose eligible feedback generation/outbox state
+is retryable. Terminal outbox recovery resumes at feedback dispatch and does
+not repeat the LiveKit settlement request. Deadline-owned sessions with pending
+room-cleanup acknowledgement remain owned by the deadline recovery scan.
+
 ## Acceptance Evidence
 
 - The named `test:interview-resilience` contract proves the workflow, end API,
@@ -210,5 +218,8 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
   terminalization.
 - A credit-settlement exception after terminal commit leaves already-dispatched
   feedback unchanged and remains idempotently recoverable.
+- A failure at finalization, feedback dispatch, cleanup scheduling, or credit
+  convergence retries only that durable checkpoint; successful sibling steps
+  remain memoized.
 - Reconnect settlement request and durable acknowledgement occur before room
   deletion; missing acknowledgement fails closed.

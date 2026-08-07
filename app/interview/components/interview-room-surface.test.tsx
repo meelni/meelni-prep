@@ -5,14 +5,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { InterviewRoomSurface } from "./interview-room-surface";
 import { InterviewControls } from "./interview-controls";
+import type { InterviewConnectionStatus } from "@/components/interview/session-recovery";
 import { mapTrackVolumeToVisualIntensity } from "./audio-level";
 import { groupTranscriptTurns } from "./transcript-display";
 import { TranscriptPanel } from "./transcript-panel";
 
 function renderSurface({
-  connectionStatus = "connected" as const,
+  connectionStatus = "connected",
   deadlineReached = false,
-  recoveringConnection = false,
+}: {
+  connectionStatus?: InterviewConnectionStatus;
+  deadlineReached?: boolean;
 } = {}) {
   return renderToStaticMarkup(
     <InterviewRoomSurface
@@ -23,7 +26,6 @@ function renderSurface({
       deadlineReached={deadlineReached}
       mediaVisualizer={<div>Fixture media</div>}
       question="Design a product for a synthetic PM interview fixture."
-      recoveringConnection={recoveringConnection}
       roundType="product_sense"
       timer={<span>30:00 remaining</span>}
       transcriptIntegrity="healthy"
@@ -53,7 +55,6 @@ test("keeps the stage free of redundant ready copy when no question is available
       connectionStatus="connected"
       deadlineReached={false}
       mediaVisualizer={<div>Fixture media</div>}
-      recoveringConnection={false}
       transcriptIntegrity="healthy"
     />
   );
@@ -105,10 +106,28 @@ test("maps normalized LiveKit volume into a responsive visual range", () => {
   assert.equal(mapTrackVolumeToVisualIntensity(1), 1);
 });
 
-test("keeps interview controls unavailable while connection recovery owns the room", () => {
-  const html = renderSurface({ recoveringConnection: true });
+test("keeps End Interview available before the room reconnects", () => {
+  const html = renderSurface({ connectionStatus: "reconnecting" });
 
-  assert.doesNotMatch(html, /aria-label="End interview"/);
+  assert.match(html, /aria-label="End interview"/);
+});
+
+test("disables only mute during reconnect and preserves the end escape hatch", () => {
+  const html = renderToStaticMarkup(
+    <InterviewControls
+      isMuted={true}
+      muteDisabled={true}
+      onToggleMute={() => undefined}
+      onEndSession={() => undefined}
+    />
+  );
+
+  assert.match(
+    html,
+    /<button[^>]*disabled=""[^>]*aria-label="Microphone controls unavailable while reconnecting"/
+  );
+  assert.match(html, /aria-label="End interview"/);
+  assert.doesNotMatch(html, /aria-label="End interview"[^>]*disabled=""/);
 });
 
 test("full mock interview controls do not expose the unsupported hints toggle", () => {

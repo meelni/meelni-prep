@@ -212,7 +212,6 @@ function InterviewScenario() {
           </div>
         }
         question="Design a product that helps new parents find trusted support."
-        recoveringConnection={false}
         roundType="product_sense"
         timer={
           <TimerDisplay

@@ -6,12 +6,14 @@ import { motion } from "framer-motion";
 
 interface InterviewControlsProps {
   isMuted: boolean;
+  muteDisabled?: boolean;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
 
 export function InterviewControls({
   isMuted,
+  muteDisabled = false,
   onToggleMute,
   onEndSession,
 }: InterviewControlsProps) {
@@ -27,10 +29,23 @@ export function InterviewControls({
           <Button
             variant={isMuted ? "outline" : "default"}
             onClick={onToggleMute}
+            disabled={muteDisabled}
             className="min-h-12 gap-2 rounded-lg px-4"
-            title={isMuted ? "Unmute microphone" : "Mute microphone"}
-            aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-            aria-pressed={!isMuted}
+            title={
+              muteDisabled
+                ? "Microphone controls are unavailable while reconnecting"
+                : isMuted
+                  ? "Unmute microphone"
+                  : "Mute microphone"
+            }
+            aria-label={
+              muteDisabled
+                ? "Microphone controls unavailable while reconnecting"
+                : isMuted
+                  ? "Unmute microphone"
+                  : "Mute microphone"
+            }
+            aria-pressed={isMuted}
           >
             {isMuted ? (
               <MicOff className="h-5 w-5" aria-hidden="true" />
@@ -53,7 +68,11 @@ export function InterviewControls({
         </div>
       </motion.div>
       <span className="sr-only" role="status" aria-live="polite">
-        {isMuted ? "Microphone is off" : "Microphone is on"}
+        {muteDisabled
+          ? "Microphone controls are unavailable while reconnecting. End interview remains available."
+          : isMuted
+            ? "Microphone is off"
+            : "Microphone is on"}
       </span>
     </div>
   );

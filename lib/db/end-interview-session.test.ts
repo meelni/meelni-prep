@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyTranscriptIntegrityValidation,
+  classifyTranscriptEvidence,
   finalizeInterviewSession,
   resolveInterviewTerminalReason,
   shouldPreservePostUsableDisconnectCharge,
@@ -208,6 +209,36 @@ test("runtime settlement and textless interruption own final feedback eligibilit
     }),
     baseValidation
   );
+});
+
+test("terminalization exposes a copy-independent transcript evidence classification", () => {
+  assert.equal(
+    classifyTranscriptEvidence({
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
+    }),
+    "available"
+  );
+  assert.equal(
+    classifyTranscriptEvidence({
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: "degraded" }],
+    }),
+    "degraded"
+  );
+  for (const input of [
+    { interruptionCount: 0, runtimeWriterStates: [] },
+    {
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: null }],
+    },
+    {
+      interruptionCount: 1,
+      runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
+    },
+  ]) {
+    assert.equal(classifyTranscriptEvidence(input), "missing");
+  }
 });
 
 test("durable turns do not synthesize canonical activation during terminalization", async () => {
