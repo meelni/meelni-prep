@@ -83,6 +83,47 @@ describe("feedback transcript read states", () => {
     expect(feedbackPostAttempts).toBe(0);
   });
 
+  it("ends a stalled feedback GET before continuing the bounded poll loop", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    const request = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        feedbackGetAttempts += 1;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("request deadline");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true }
+          );
+        });
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await act(async () => undefined);
+    expect(feedbackGetAttempts).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_500);
+    });
+
+    expect(screen.getByText("Saving your interview")).toBeInTheDocument();
+    expect(
+      screen.getByText(/reconnecting to your saved interview/i)
+    ).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(feedbackGetAttempts).toBe(2);
+  });
+
   it("distinguishes a failed transcript read from a successful empty transcript and supports retry", async () => {
     let transcriptAttempts = 0;
     const request = vi.fn(async (input: RequestInfo | URL) => {

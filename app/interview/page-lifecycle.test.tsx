@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   livekitMounted: vi.fn(),
   livekitUnmounted: vi.fn(),
   onAgentStateChange: null as null | ((state: string) => void),
+  onConnectionStateChange: null as
+    | null
+    | ((state: "connected" | "recovered") => void),
   onTranscriptUpdate: null as
     | null
     | ((turn: Record<string, unknown>) => Promise<void> | void),
@@ -52,7 +55,7 @@ vi.mock("@/components/interview/livekit-room", async () => {
     }: {
       children: React.ReactNode;
       onAgentStateChange(state: string): void;
-      onConnectionStateChange(status: "connected"): void;
+      onConnectionStateChange(status: "connected" | "recovered"): void;
       onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
       ReactModule.useEffect(() => {
@@ -62,9 +65,11 @@ vi.mock("@/components/interview/livekit-room", async () => {
       ReactModule.useEffect(() => {
         mocks.onTranscriptUpdate = onTranscriptUpdate;
         mocks.onAgentStateChange = onAgentStateChange;
+        mocks.onConnectionStateChange = onConnectionStateChange;
         return () => {
           mocks.onTranscriptUpdate = null;
           mocks.onAgentStateChange = null;
+          mocks.onConnectionStateChange = null;
         };
       }, [onAgentStateChange, onTranscriptUpdate]);
       ReactModule.useEffect(() => {
@@ -143,6 +148,7 @@ describe("active interview page lifecycle", () => {
   beforeEach(() => {
     mocks.authUser = { id: "owner-a" };
     mocks.onAgentStateChange = null;
+    mocks.onConnectionStateChange = null;
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
@@ -275,51 +281,66 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 
-  it("rehydrates durable turns after an agent-state transition when room data is missed", async () => {
-    let durableTurnAvailable = false;
-    const request = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
-        return Response.json({
-          turns: durableTurnAvailable
-            ? [
-                {
-                  id: "f47ac10b-58cc-4372-a567-0e02b2c3d481",
-                  eventId: "event-recovered",
-                  writerId: "writer-a",
-                  writerGeneration: 1,
-                  sequence: 2,
-                  sessionId: SESSION_ID,
-                  roomName: "interview-room",
-                  speaker: "user",
-                  text: "Recovered durable turn",
-                  startedAt: "2099-07-15T21:00:02.000Z",
-                  endedAt: "2099-07-15T21:00:03.000Z",
-                  audioMs: 1000,
-                  section: "product_sense",
-                  deliveryState: "delivered",
+  it("does not fan out transcript reads on agent-state churn and resyncs after recovery", async () => {
+    let transcriptReads = 0;
+    let firstRequestAborted = false;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          if (transcriptReads === 1) {
+            return new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                "abort",
+                () => {
+                  firstRequestAborted = true;
+                  const error = new Error("superseded hydration");
+                  error.name = "AbortError";
+                  reject(error);
                 },
-              ]
-            : [],
-        });
+                { once: true }
+              );
+            });
+          }
+          return Response.json({
+            turns: [
+              {
+                id: "f47ac10b-58cc-4372-a567-0e02b2c3d481",
+                eventId: "event-recovered",
+                writerId: "writer-a",
+                writerGeneration: 1,
+                sequence: 2,
+                sessionId: SESSION_ID,
+                roomName: "interview-room",
+                speaker: "user",
+                text: "Recovered durable turn",
+                startedAt: "2099-07-15T21:00:02.000Z",
+                endedAt: "2099-07-15T21:00:03.000Z",
+                audioMs: 1000,
+                section: "product_sense",
+                deliveryState: "delivered",
+              },
+            ],
+          });
+        }
+        return activeInterviewResponse(input, init);
       }
-      return activeInterviewResponse(input);
-    });
+    );
     vi.stubGlobal("fetch", request);
 
     render(<InterviewPageContent />);
     expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        request.mock.calls.some(
-          ([input]) => String(input) === `/api/session/${SESSION_ID}/transcript`
-        )
-      ).toBe(true)
-    );
+    await waitFor(() => expect(transcriptReads).toBe(1));
     await waitFor(() => expect(mocks.onAgentStateChange).not.toBeNull());
+    await waitFor(() => expect(mocks.onConnectionStateChange).not.toBeNull());
 
-    durableTurnAvailable = true;
     act(() => mocks.onAgentStateChange?.("thinking"));
+    act(() => mocks.onAgentStateChange?.("speaking"));
+    act(() => mocks.onAgentStateChange?.("listening"));
+    expect(transcriptReads).toBe(1);
+
+    act(() => mocks.onConnectionStateChange?.("recovered"));
 
     await waitFor(() =>
       expect(mocks.transcriptTurns).toEqual([
@@ -329,6 +350,8 @@ describe("active interview page lifecycle", () => {
         }),
       ])
     );
+    expect(firstRequestAborted).toBe(true);
+    expect(transcriptReads).toBe(2);
   });
 
   it("keeps full mock hints off for legacy gentle session metadata", async () => {

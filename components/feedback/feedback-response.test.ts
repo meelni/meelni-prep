@@ -96,3 +96,14 @@ test("network failures are classified as retryable transport failures", () => {
     null
   );
 });
+
+test("request deadline aborts are classified as retryable transport failures", () => {
+  const error = new Error("request aborted");
+  error.name = "AbortError";
+
+  assert.deepEqual(toFeedbackTransportFailure(error), {
+    message:
+      "We’re reconnecting to your saved interview. This page will update automatically.",
+    retryable: true,
+  });
+});

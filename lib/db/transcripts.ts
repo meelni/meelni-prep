@@ -925,8 +925,11 @@ function storedSettlementMatches(
 /**
  * Get all transcript turns for a session, ordered chronologically
  */
-export async function getSessionTranscript(sessionId: string) {
-  const turns = await db
+export async function getSessionTranscript(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  const turns = await database
     .select()
     .from(transcriptTurn)
     .where(eq(transcriptTurn.sessionId, sessionId))
@@ -939,8 +942,11 @@ export async function getSessionTranscript(sessionId: string) {
  * Return only the canonical user-turn fields required to verify persisted
  * feedback evidence at the authenticated read boundary.
  */
-export async function getFeedbackEvidenceTurns(sessionId: string) {
-  return buildFeedbackEvidenceTurnsQuery(db, sessionId);
+export async function getFeedbackEvidenceTurns(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  return buildFeedbackEvidenceTurnsQuery(database, sessionId);
 }
 
 export function buildFeedbackEvidenceTurnsQuery(

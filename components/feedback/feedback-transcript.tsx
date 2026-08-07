@@ -12,6 +12,7 @@ import {
 import { FeedbackSectionCard } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
 import type { FeedbackEvidence } from "@meelni/core";
+import { fetchWithDeadline } from "@/lib/http/deadline";
 
 export interface FeedbackTranscriptTurn {
   id: string;
@@ -56,10 +57,13 @@ export function useEvidenceTranscript(sessionId: string) {
   useEffect(() => {
     if (!expanded || turns.length > 0) return;
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setLoaded(false);
     setError(null);
-    fetch(`/api/session/${sessionId}/transcript`)
+    fetchWithDeadline(`/api/session/${sessionId}/transcript`, {
+      signal: controller.signal,
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error("Transcript could not be loaded.");
         return (await response.json()) as TranscriptResponse;
@@ -80,6 +84,7 @@ export function useEvidenceTranscript(sessionId: string) {
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [expanded, requestVersion, sessionId, turns.length]);
 
