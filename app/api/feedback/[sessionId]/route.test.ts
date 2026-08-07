@@ -42,6 +42,11 @@ vi.mock("@/lib/db/transcripts", () => ({
 vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
   recoverFeedbackGenerationWorkflow: vi.fn(),
 }));
+vi.mock("@/lib/db/interactive-read", () => ({
+  withInteractiveReadTransaction: vi.fn(
+    (work: (database: object) => Promise<unknown>) => work({})
+  ),
+}));
 
 import { NextRequest } from "next/server";
 
@@ -553,6 +558,30 @@ describe("/api/feedback/[sessionId]", () => {
     });
     consoleError.mockRestore();
   });
+
+  it.each([
+    Object.assign(new Error("private statement detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])(
+    "returns a retryable 503 for a stalled read dependency",
+    async (failure) => {
+      if (failure.name === "AuthRetryableFetchError") {
+        mockAuth(null, failure);
+      } else {
+        vi.mocked(getFeedbackBySessionId).mockRejectedValue(failure);
+      }
+
+      const response = await GET(request(), PARAMS);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_read_unavailable",
+      });
+    }
+  );
 
   it("returns structured feedback v2 findings and stored versions", async () => {
     const finding = {

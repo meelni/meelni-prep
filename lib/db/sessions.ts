@@ -60,8 +60,11 @@ export async function createSession(input: CreateSessionInput) {
 /**
  * Get a session by ID
  */
-export async function getSessionById(sessionId: string) {
-  const [session] = await db
+export async function getSessionById(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  const [session] = await database
     .select()
     .from(interviewSession)
     .where(eq(interviewSession.id, sessionId))
@@ -393,9 +396,10 @@ export async function getUserSessionStats(userId: string) {
  */
 export async function isSessionOwnedByUser(
   sessionId: string,
-  userId: string
+  userId: string,
+  database: Pick<typeof db, "select"> = db
 ): Promise<boolean> {
-  const [session] = await db
+  const [session] = await database
     .select({ userId: interviewSession.userId })
     .from(interviewSession)
     .where(eq(interviewSession.id, sessionId))

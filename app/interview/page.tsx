@@ -45,6 +45,7 @@ import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { fetchWithDeadline } from "@/lib/http/deadline";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
@@ -145,6 +146,8 @@ export function InterviewPageContent() {
   const [connectionOwnerId, setConnectionOwnerId] = useState<string | null>(
     null
   );
+  const [transcriptHydrationGeneration, setTranscriptHydrationGeneration] =
+    useState(0);
   const [endReconciliation, setEndReconciliation] =
     useState<EndReconciliationState | null>(null);
   const initializedRef = useRef(false);
@@ -203,6 +206,7 @@ export function InterviewPageContent() {
     setRecoveringConnection(false);
     setDisconnectTimedOut(false);
     setCredentialGeneration(0);
+    setTranscriptHydrationGeneration(0);
     setShowEndModal(false);
     setIsEndingSession(false);
     setEndSessionError(null);
@@ -416,12 +420,13 @@ export function InterviewPageContent() {
     const requestOwnerId = connectionOwnerId;
     const requestSessionId = activeSessionId;
     let cancelled = false;
+    const controller = new AbortController();
 
     const hydrateDurableTranscript = async () => {
       try {
-        const response = await fetch(
+        const response = await fetchWithDeadline(
           `/api/session/${requestSessionId}/transcript`,
-          { cache: "no-store" }
+          { cache: "no-store", signal: controller.signal }
         );
         if (!response.ok) return;
         const payload = (await response.json()) as {
@@ -491,13 +496,15 @@ export function InterviewPageContent() {
       }
     };
 
-    // Agent-state transitions provide a bounded per-turn recovery trigger when
-    // a post-persistence LiveKit display notification is delayed or dropped.
+    // Runtime packets are the normal post-persistence display path. Hydrate
+    // once after authorization and resync only after a real connection
+    // recovery; turn-state churn must never fan out full transcript reads.
     void hydrateDurableTranscript();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [activeSessionId, agentState, connectionOwnerId, connectionStatus]);
+  }, [activeSessionId, connectionOwnerId, transcriptHydrationGeneration]);
 
   const handleAgentStateChange = useCallback(
     (state: string) => {
@@ -623,6 +630,7 @@ export function InterviewPageContent() {
           credentialRetryTimerRef.current = undefined;
         }
         setRecoveringConnection(false);
+        setTranscriptHydrationGeneration((generation) => generation + 1);
         recoveredStatusTimerRef.current = window.setTimeout(() => {
           setConnectionStatus("connected");
           recoveredStatusTimerRef.current = undefined;

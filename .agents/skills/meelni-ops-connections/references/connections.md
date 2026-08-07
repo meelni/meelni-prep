@@ -699,6 +699,15 @@ Operational notes:
   deployed `INNGEST_EVENT_KEY` is verified against the Production environment's
   ingest key and a fresh event is observed in Production. Do not reveal key
   values in logs or chat.
+- A 2026-08-07 Production user-end trace proved that an accepted end command
+  can finalize while runtime settlement is deferred and feedback dispatch is
+  skipped. In the same trace, owner-scoped transcript and feedback reads
+  exhausted Vercel's 300-second function limit. Treat a persistent “Saving
+  your interview” screen as a runtime/API incident, not normal model latency:
+  correlate the session across `/api/interview/end`, `/api/inngest`, and
+  `/api/feedback/:sessionId`; distinguish `feedback_dispatch=skipped` from a
+  queued generation; and check for 300-second read timeouts before waiting on
+  Inngest or OpenAI. Do not record the customer session ID or transcript.
 
 ## Linear
 

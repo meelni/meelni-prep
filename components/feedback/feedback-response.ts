@@ -61,7 +61,10 @@ export function toFeedbackTransportFailure(
   if (error instanceof FeedbackTransportError) {
     return { message: error.message, retryable: error.retryable };
   }
-  if (error instanceof TypeError) {
+  if (
+    error instanceof TypeError ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
     return { message: FEEDBACK_TRANSPORT_RETRY_MESSAGE, retryable: true };
   }
   return null;

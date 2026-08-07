@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import {
+  fetchWithDeadline,
+  SUPABASE_SERVER_FETCH_DEADLINE_MS,
+} from "@/lib/http/deadline";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -8,6 +12,10 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      global: {
+        fetch: (input, init) =>
+          fetchWithDeadline(input, init, SUPABASE_SERVER_FETCH_DEADLINE_MS),
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

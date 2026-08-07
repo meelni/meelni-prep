@@ -28,6 +28,7 @@ import {
   type FeedbackLifecycleResponse,
   type FeedbackViewState,
 } from "@meelni/core";
+import { fetchWithDeadline } from "@/lib/http/deadline";
 
 const FEEDBACK_POLL_INTERVAL_MS = 3000;
 const MAX_FEEDBACK_POLLS = 30;
@@ -53,6 +54,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     if (!sessionId) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
 
     const schedulePoll = () => {
       if (!pollBudget.current.consume()) {
@@ -74,7 +76,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
         try {
           const recovery = await recoveryCoordinator.current.attempt(
             response,
-            () => requestFeedbackRecovery(sessionId)
+            () => requestFeedbackRecovery(sessionId, controller.signal)
           );
           if (!active) return;
           if (recovery.disposition === "recovered") {
@@ -110,7 +112,9 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
 
     async function fetchFeedback() {
       try {
-        const response = await fetch(`/api/feedback/${sessionId}`);
+        const response = await fetchWithDeadline(`/api/feedback/${sessionId}`, {
+          signal: controller.signal,
+        });
         const payload: unknown = await response.json().catch(() => null);
         if (response.status === 401) {
           router.replace("/auth/signin");
@@ -143,6 +147,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     void fetchFeedback();
     return () => {
       active = false;
+      controller.abort();
       if (timer) clearTimeout(timer);
     };
   }, [router, sessionId]);
@@ -202,10 +207,12 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
 }
 
 async function requestFeedbackRecovery(
-  sessionId: string
+  sessionId: string,
+  signal?: AbortSignal
 ): Promise<FeedbackLifecycleResponse> {
-  const response = await fetch(`/api/feedback/${sessionId}`, {
+  const response = await fetchWithDeadline(`/api/feedback/${sessionId}`, {
     method: "POST",
+    signal,
   });
   const payload: unknown = await response.json().catch(() => null);
   const errorMessage =
@@ -228,7 +235,9 @@ async function requestFeedbackRecovery(
       ? payload.status
       : null;
   if (status === "completed" || status === "skipped" || status === "failed") {
-    const refreshed = await fetch(`/api/feedback/${sessionId}`);
+    const refreshed = await fetchWithDeadline(`/api/feedback/${sessionId}`, {
+      signal,
+    });
     const refreshedPayload: unknown = await refreshed.json().catch(() => null);
     if (!refreshed.ok) {
       throw new Error("Feedback status could not be refreshed.");
