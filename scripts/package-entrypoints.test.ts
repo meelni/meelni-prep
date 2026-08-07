@@ -115,6 +115,7 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   const core = await import("@meelni/core");
   const agent = await import("@meelni/agent");
   const integrations = await import("@meelni/integrations");
+  const opik = await import("@meelni/integrations/opik");
 
   assert.equal(typeof core.buildFullConfig, "function");
   assert.equal(typeof core.calculateOverallScore, "function");
@@ -127,6 +128,7 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   assert.equal(typeof agent.createTranscriptEvent, "function");
   assert.equal(typeof integrations.buildInterviewRoomName, "function");
   assert.equal(typeof integrations.getLiveKitEnvironment, "function");
+  assert.equal(typeof opik.startOpikFeedbackEvaluationTrace, "function");
 });
 
 test("server transcript persistence has no direct mutation bypass", async () => {

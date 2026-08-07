@@ -32,7 +32,15 @@ async function fixture() {
   const secretsFile = join(directory, "interview-secrets.env");
   const configuration =
     '[project]\nsubdomain = "meelni-ek4vaisp"\n\n[agent]\nid = "CA_yawKG67rCMG4"\n';
-  const secrets = `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\n`;
+  const secrets = [
+    `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}`,
+    "OPIK_TRACING_ENABLED=true",
+    `OPIK_API_KEY=${"k".repeat(25)}`,
+    "OPIK_WORKSPACE=savi-singh",
+    "OPIK_PROJECT_NAME=meelni",
+    "OPIK_CAPTURE_CONTENT=true",
+    "",
+  ].join("\n");
   await writeFile(configFile, configuration, { mode: 0o600 });
   await writeFile(secretsFile, secrets, { mode: 0o600 });
   await chmod(secretsFile, 0o600);
@@ -58,7 +66,7 @@ test("resolves the exact guarded Production interview fingerprints", async () =>
           "interview",
           LIVEKIT_PRODUCTION_INTERVIEW_URL,
           LIVEKIT_PRODUCTION_INTERVIEW_AGENT_ID,
-          "transcript-secret-sha256",
+          "runtime-secrets-sha256",
           secretSha256,
         ].join(":")
       ),
@@ -86,7 +94,7 @@ test("uses the same canonical identity and target-material shape as deploy", asy
   );
   assert.match(
     deploySource,
-    /livekit:production:interview:\$target_url:\$expected_agent_id:transcript-secret-sha256:/
+    /livekit:production:interview:\$target_url:\$expected_agent_id:runtime-secrets-sha256:/
   );
 });
 
@@ -118,18 +126,16 @@ test("rejects target skew, symlinked config, and malformed secrets", async () =>
       { message: "livekit_production_config_path_invalid" }
     );
 
-    await writeFile(
-      value.secretsFile,
-      `MEELNI_TRANSCRIPT_INGEST_SECRET=${"a".repeat(32)}\nEXTRA=value\n`,
-      { mode: 0o600 }
-    );
+    await writeFile(value.secretsFile, `${value.secrets}EXTRA=value\n`, {
+      mode: 0o600,
+    });
     await assert.rejects(
       resolveLiveKitProductionInterviewAuthorizationInput({
         configFile: value.configFile,
         secretsFile: value.secretsFile,
         repoRoot: process.cwd(),
       }),
-      { message: "livekit_transcript_secrets_invalid" }
+      { message: "livekit_runtime_secrets_invalid" }
     );
   } finally {
     await rm(value.directory, { recursive: true, force: true });
@@ -194,7 +200,7 @@ test("prepares and verifies without printing fingerprints or secret material", a
       '{"result":"authorization_valid"}\n',
     ]);
     assert.deepEqual(stderr, []);
-    assert.doesNotMatch(stdout.join(""), /a{32}|[a-f0-9]{64}/);
+    assert.doesNotMatch(stdout.join(""), /a{32}|k{25}|[a-f0-9]{64}/);
   } finally {
     await rm(value.directory, { recursive: true, force: true });
   }

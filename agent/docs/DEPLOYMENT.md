@@ -130,6 +130,10 @@ Set via LiveKit Cloud secrets:
 - `LIVEKIT_DEMO_AGENT_NAME` - Required by the demo worker
 - `OPENAI_API_KEY` - Required for GPT models
 - `DEEPGRAM_API_KEY` - Required for STT
+- `OPIK_TRACING_ENABLED`, `OPIK_API_KEY`, `OPIK_WORKSPACE`, and
+  `OPIK_PROJECT_NAME` - Optional Opik trace export
+- `OPIK_CAPTURE_CONTENT` - Optional explicit conversation-content capture;
+  defaults to false
 
 Automatically provided by LiveKit Cloud:
 
@@ -138,6 +142,8 @@ Automatically provided by LiveKit Cloud:
 - `LIVEKIT_API_SECRET`
 
 Production full-interview deployments additionally require
-`MEELNI_TRANSCRIPT_INGEST_SECRET`. It is not provided automatically: set it to
-the web environment's `LIVEKIT_API_SECRET` only through the guarded external
-secrets-file workflow.
+`MEELNI_TRANSCRIPT_INGEST_SECRET`. The guarded external interview runtime file
+contains that value plus the five canonical `OPIK_*` variables. The guarded
+demo runtime file contains only those five Opik variables. Each file is
+owner-only, external to the repository, bound into its signed deployment
+authorization, and passed to LiveKit without printing its values.

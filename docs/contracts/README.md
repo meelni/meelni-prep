@@ -14,6 +14,7 @@ Good candidates:
 - [deterministic focused-practice plans from accepted recommendations](./focused-practice-plans.md);
 - [focused-practice attempt lifecycle and authenticated workflow boundary](./focused-practice-attempts.md);
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
+- [LLM observability and transcript-capture boundaries](./llm-observability.md);
 - [evaluation calibration gold set and report](./evaluation-calibration.md);
 - [synthetic calibration output semantic adjudication](./evaluation-output-semantic-adjudication.md);
 - [dashboard progress evidence](./dashboard-progress.md);

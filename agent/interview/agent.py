@@ -40,6 +40,7 @@ from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
 from shared.dispatch import resolve_cli_dispatch_name
 from shared.mock_interview_opening import speak_mock_interview_opening
+from shared.opik_tracing import setup_opik_tracing
 from shared.runtime_config import (
     get_model_config,
     get_tts_config,
@@ -1074,6 +1075,7 @@ if __name__ == "__main__":
     # Asset builds use a non-routable sentinel; every worker command still
     # requires its environment-owned explicit dispatch name.
     agent_name = resolve_cli_dispatch_name("LIVEKIT_INTERVIEW_AGENT_NAME")
+    setup_opik_tracing("meelni-interview-agent")
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
     # Cloud doesn't support num_idle_processes or load_threshold
