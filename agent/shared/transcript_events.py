@@ -172,6 +172,22 @@ def create_transcript_event_from_message(
     )
 
 
+def has_runtime_measured_delivery(message: object) -> bool:
+    """Return whether LiveKit attached a valid measured speech interval."""
+    metrics = getattr(message, "metrics", None)
+    if not isinstance(metrics, dict):
+        return False
+    started_at = metrics.get("started_speaking_at")
+    ended_at = metrics.get("stopped_speaking_at")
+    return (
+        isinstance(started_at, (int, float))
+        and not isinstance(started_at, bool)
+        and isinstance(ended_at, (int, float))
+        and not isinstance(ended_at, bool)
+        and ended_at > started_at
+    )
+
+
 async def publish_transcript_event(local_participant: object, event: Dict[str, object]) -> None:
     """Publish one already-validated event through the LiveKit participant adapter."""
     publish_data = getattr(local_participant, "publish_data")

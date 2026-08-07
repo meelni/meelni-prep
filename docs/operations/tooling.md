@@ -323,6 +323,16 @@ npx inngest-cli@latest dev
 
 The app explicitly uses Inngest dev mode outside `NODE_ENV=production`, so copied Vercel metadata in `.env.local` does not require `INNGEST_EVENT_KEY` for local event sends. Feedback evaluation still requires a nonblank `OPENAI_API_KEY` in `.env.local`.
 
+In Production, `INNGEST_EVENT_KEY` must be an active key from the Inngest
+Production environment and the Vercel deployment must be rebuilt after the
+value changes. Verify delivery with a narrowly scoped event before revoking a
+replaced key; never record the key value in logs or repository files.
+
+Vercel serverless database traffic uses the Supabase transaction pooler on port 6543. The database adapter keeps prepared statements disabled for transaction
+pooling. Keep direct database hosts and session-pooler connections out of the
+Production `DATABASE_URL`; migration commands continue to use their separately
+guarded direct connection path.
+
 ## Evaluation Calibration
 
 The PM feedback gold-set preflight and deterministic harness are local and

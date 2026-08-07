@@ -51,6 +51,13 @@ Each mounted feedback client may automatically invoke authenticated `POST` recov
 
 Every GET, recovery POST, and terminal refresh payload crosses the same runtime lifecycle decoder. Unknown statuses or malformed variants render an explicit unavailable state; they never fall through to an indefinite loading state.
 
+Transient GET transport failures (network errors, timeouts, rate limits, and
+server 5xx responses) do not cross the lifecycle decoder. The client keeps the
+saved-interview status visible and continues bounded GET polling. A transient
+error payload therefore cannot be misreported as an unsupported lifecycle
+response. Non-retryable HTTP failures and malformed successful responses still
+render an explicit unavailable state.
+
 Deadline-ended interviews whose room cleanup has not been acknowledged return `settling` with `retryable: false`. Clients poll that state only with `GET`; neither automatic nor manual recovery can dispatch feedback until cleanup settles.
 
 Eligible user-ended feedback is dispatched before room cleanup and credit
