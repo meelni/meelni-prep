@@ -61,6 +61,7 @@ from shared.session_deadline import (
 )
 from shared.transcript_events import (
     create_transcript_event_from_message,
+    has_runtime_measured_delivery,
     publish_transcript_event,
 )
 from shared.transcript_ingest import (
@@ -78,6 +79,7 @@ from shared.transcript_ingest import (
     post_ingest_request,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
+    should_record_unconfirmed_interruption,
 )
 from shared.transcript_settlement import settle_session_speech
 from shared.utils.prompt_builder import build_agent_prompt
@@ -832,6 +834,9 @@ async def entrypoint(ctx: JobContext):
                 section=round_type,
             )
             if transcript_data is None:
+                if item.role == "user" and not has_runtime_measured_delivery(item):
+                    logger.debug("Ignoring unmeasured user transcript hypothesis")
+                    return
                 logger.warning(
                     "Committed turn lacked canonical measured delivery",
                     extra={"speaker": item.role},
@@ -901,8 +906,6 @@ async def entrypoint(ctx: JobContext):
         handle = event.speech_handle
 
         def on_speech_done(done_handle) -> None:
-            if not done_handle.interrupted:
-                return
             has_confirmed_prefix = any(
                 isinstance(item, ChatMessage)
                 and item.role == "assistant"
@@ -910,7 +913,11 @@ async def entrypoint(ctx: JobContext):
                 and bool(item.text_content.strip())
                 for item in done_handle.chat_items
             )
-            if has_confirmed_prefix:
+            if not should_record_unconfirmed_interruption(
+                scheduled=done_handle.scheduled,
+                interrupted=done_handle.interrupted,
+                has_confirmed_prefix=has_confirmed_prefix,
+            ):
                 return
             queue_integrity_marker(
                 event_id=f"{transcript_writer_id}:{done_handle.id}:unavailable",

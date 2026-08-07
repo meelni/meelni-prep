@@ -130,6 +130,13 @@ class TranscriptIngestAfterCutoff(TranscriptIngestError):
     """Raised when evidence claims media or occurrence after the active cutoff."""
 
 
+def should_record_unconfirmed_interruption(
+    *, scheduled: bool, interrupted: bool, has_confirmed_prefix: bool
+) -> bool:
+    """Record uncertainty only for speech that reached the playout schedule."""
+    return scheduled and interrupted and not has_confirmed_prefix
+
+
 def resolve_transcript_ingest_secret(env: Mapping[str, str]) -> str:
     """Prefer the cross-service ingest key over provider-owned credentials."""
     for name in (TRANSCRIPT_INGEST_SECRET_ENV, "LIVEKIT_API_SECRET"):

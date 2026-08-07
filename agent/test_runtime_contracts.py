@@ -87,6 +87,7 @@ from shared.transcript_ingest import (
     parse_runtime_settlement_request,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
+    should_record_unconfirmed_interruption,
     sign_ingest_body,
     validate_internal_ingest_url,
 )
@@ -102,6 +103,7 @@ from shared.transcript_events import (
     TRANSCRIPT_DATA_TOPIC,
     create_transcript_event,
     create_transcript_event_from_message,
+    has_runtime_measured_delivery,
     is_transcript_event,
     publish_transcript_event,
 )
@@ -109,6 +111,42 @@ from shared.transcript_settlement import settle_session_speech
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_unmeasured_user_hypotheses_are_not_canonical_delivery(self):
+        hypothesis = SimpleNamespace(role="user", metrics={})
+        measured = SimpleNamespace(
+            role="user",
+            metrics={
+                "started_speaking_at": 100.0,
+                "stopped_speaking_at": 101.0,
+            },
+        )
+
+        self.assertFalse(has_runtime_measured_delivery(hypothesis))
+        self.assertTrue(has_runtime_measured_delivery(measured))
+
+    def test_unscheduled_speculative_speech_does_not_create_integrity_marker(self):
+        self.assertFalse(
+            should_record_unconfirmed_interruption(
+                scheduled=False,
+                interrupted=True,
+                has_confirmed_prefix=False,
+            )
+        )
+        self.assertTrue(
+            should_record_unconfirmed_interruption(
+                scheduled=True,
+                interrupted=True,
+                has_confirmed_prefix=False,
+            )
+        )
+        self.assertFalse(
+            should_record_unconfirmed_interruption(
+                scheduled=True,
+                interrupted=True,
+                has_confirmed_prefix=True,
+            )
+        )
+
     def test_transcript_ingest_prefers_cross_service_secret(self):
         self.assertEqual(
             resolve_transcript_ingest_secret(

@@ -6,7 +6,10 @@ import {
   transcriptRuntimeWriter,
   transcriptTurn,
 } from "./schema";
-import { transcriptChronologicalOrder } from "./transcript-ordering";
+import {
+  hasImpossibleWriterTurnOrder,
+  transcriptChronologicalOrder,
+} from "./transcript-ordering";
 import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import type {
   TranscriptEvent,
@@ -610,7 +613,7 @@ export function createDrizzleTranscriptIngestStore(
             .orderBy(desc(transcriptTurn.sequence))
             .limit(1),
           tx
-            .select({ startedAt: transcriptTurn.startedAt })
+            .select({ endedAt: transcriptTurn.endedAt })
             .from(transcriptTurn)
             .where(
               and(
@@ -622,12 +625,13 @@ export function createDrizzleTranscriptIngestStore(
             .orderBy(asc(transcriptTurn.sequence))
             .limit(1),
         ]);
-        const eventStartedAt = Date.parse(event.started_at);
         if (
-          (previousRows[0]?.startedAt &&
-            previousRows[0].startedAt.getTime() > eventStartedAt) ||
-          (nextRows[0]?.startedAt &&
-            nextRows[0].startedAt.getTime() < eventStartedAt)
+          hasImpossibleWriterTurnOrder({
+            eventStartedAt: Date.parse(event.started_at),
+            eventEndedAt: Date.parse(event.ended_at),
+            previousStartedAt: previousRows[0]?.startedAt,
+            nextEndedAt: nextRows[0]?.endedAt,
+          })
         ) {
           return { ok: false, reason: "writer_order_conflict" } as const;
         }
