@@ -5,15 +5,8 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
-
-from livekit.agents.telemetry import set_tracer_provider
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import Event, ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
-from opentelemetry.trace import Status
 
 DEFAULT_OPIK_API_URL = "https://www.comet.com/opik/api"
 
@@ -92,14 +85,14 @@ class OpikTracingConfig:
     release: str | None
 
 
-class ContentControlledSpanExporter(SpanExporter):
+class ContentControlledSpanExporter:
     """Export copies of spans after removing identities and unsafe payloads."""
 
-    def __init__(self, delegate: SpanExporter, capture_content: bool) -> None:
+    def __init__(self, delegate: Any, capture_content: bool) -> None:
         self._delegate = delegate
         self._capture_content = capture_content
 
-    def export(self, spans: Sequence[ReadableSpan]):
+    def export(self, spans: Sequence[Any]):
         sanitized = tuple(
             sanitize_livekit_span(span, self._capture_content) for span in spans
         )
@@ -122,6 +115,14 @@ def setup_opik_tracing(
         return False
 
     try:
+        from livekit.agents.telemetry import set_tracer_provider
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
         resource_attributes: dict[str, str] = {
             "service.name": normalize_service_name(service_name),
             "deployment.environment.name": config.environment,
@@ -186,8 +187,8 @@ def read_opik_tracing_config(
 
 
 def sanitize_livekit_span(
-    span: ReadableSpan, capture_content: bool
-) -> ReadableSpan:
+    span: Any, capture_content: bool
+) -> Any:
     allowed_attributes = set(_SAFE_ATTRIBUTES)
     if capture_content:
         allowed_attributes.update(_CONTENT_ATTRIBUTES)
@@ -197,7 +198,7 @@ def sanitize_livekit_span(
         for key, value in span.attributes.items()
         if key in allowed_attributes
     }
-    resource = Resource(
+    resource = type(span.resource)(
         {
             key: value
             for key, value in span.resource.attributes.items()
@@ -210,7 +211,7 @@ def sanitize_livekit_span(
         if capture_content and event.name in _CONTENT_EVENT_NAMES
     )
 
-    return ReadableSpan(
+    return type(span)(
         name=span.name if span.name in _SAFE_SPAN_NAMES else "livekit_operation",
         context=span.context,
         parent=span.parent,
@@ -219,16 +220,16 @@ def sanitize_livekit_span(
         events=events,
         links=(),
         kind=span.kind,
-        status=Status(span.status.status_code),
+        status=type(span.status)(span.status.status_code),
         start_time=span.start_time,
         end_time=span.end_time,
         instrumentation_scope=span.instrumentation_scope,
     )
 
 
-def sanitize_content_event(event: Event) -> Event:
+def sanitize_content_event(event: Any) -> Any:
     attributes = event.attributes or {}
-    return Event(
+    return type(event)(
         event.name,
         attributes={
             key: value

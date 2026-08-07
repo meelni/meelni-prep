@@ -4,25 +4,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import Event, ReadableSpan
-from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
-from opentelemetry.trace import Status, StatusCode
-
 from shared.opik_tracing import (
     ContentControlledSpanExporter,
     read_opik_tracing_config,
 )
 
 
-class CapturingExporter(SpanExporter):
+class CapturingExporter:
     def __init__(self) -> None:
         self.spans = []
         self.shutdown_called = False
 
     def export(self, spans):
         self.spans.extend(spans)
-        return SpanExportResult.SUCCESS
+        return "success"
 
     def shutdown(self) -> None:
         self.shutdown_called = True
@@ -108,10 +103,59 @@ class OpikTracingTests(unittest.TestCase):
         self.assertIsNone(exported.status.description)
 
 
-def private_livekit_span() -> ReadableSpan:
-    return ReadableSpan(
+class FakeResource:
+    def __init__(self, attributes):
+        self.attributes = attributes
+
+
+class FakeStatus:
+    def __init__(self, status_code, description=None):
+        self.status_code = status_code
+        self.description = description
+
+
+class FakeEvent:
+    def __init__(self, name, attributes, timestamp=None):
+        self.name = name
+        self.attributes = attributes
+        self.timestamp = timestamp
+
+
+class FakeReadableSpan:
+    def __init__(
+        self,
+        *,
+        name,
+        context=None,
+        parent=None,
+        resource,
+        attributes,
+        events=(),
+        links=(),
+        kind=None,
+        status=None,
+        start_time=None,
+        end_time=None,
+        instrumentation_scope=None,
+    ):
+        self.name = name
+        self.context = context
+        self.parent = parent
+        self.resource = resource
+        self.attributes = attributes
+        self.events = events
+        self.links = links
+        self.kind = kind
+        self.status = status or FakeStatus("unset")
+        self.start_time = start_time
+        self.end_time = end_time
+        self.instrumentation_scope = instrumentation_scope
+
+
+def private_livekit_span() -> FakeReadableSpan:
+    return FakeReadableSpan(
         name="llm_request",
-        resource=Resource(
+        resource=FakeResource(
             {
                 "service.name": "meelni-interview-agent",
                 "deployment.environment.name": "preview",
@@ -127,7 +171,7 @@ def private_livekit_span() -> ReadableSpan:
             "exception.stacktrace": "private traceback",
         },
         events=(
-            Event(
+            FakeEvent(
                 "gen_ai.user.message",
                 {
                     "content": "private answer",
@@ -136,7 +180,7 @@ def private_livekit_span() -> ReadableSpan:
                 },
             ),
         ),
-        status=Status(StatusCode.ERROR, "private provider error"),
+        status=FakeStatus("error", "private provider error"),
     )
 
 
