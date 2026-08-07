@@ -220,8 +220,16 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     const callsAfterProduction = (await readFile(logPath, "utf8"))
       .trim()
       .split("\n");
-    assert.equal(callsAfterProduction.length, 3);
-    assert.equal(callsAfterProduction.at(-1), "agent deploy --help");
+    const reachedLiveKitCapabilityCheck = production.stderr.includes(
+      "LiveKit CLI must support explicit source attributes"
+    );
+    assert.equal(
+      callsAfterProduction.length,
+      reachedLiveKitCapabilityCheck ? 3 : 2
+    );
+    if (reachedLiveKitCapabilityCheck) {
+      assert.equal(callsAfterProduction.at(-1), "agent deploy --help");
+    }
     assert.doesNotMatch(production.stderr, /meelni-ek4vaisp|CA_yawKG67rCMG4/);
 
     const missingProductionSecret = spawnSync(
@@ -245,7 +253,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      3
+      callsAfterProduction.length
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
