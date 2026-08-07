@@ -1,3 +1,5 @@
+import { startOpikFeedbackEvaluationTrace } from "@meelni/integrations/opik";
+
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import {
   createFeedbackGenerationFailureDeps,
@@ -67,7 +69,9 @@ export const generateFeedback = inngest.createFunction(
     try {
       const result = await generateFeedbackWorkflow(
         { sessionId, userId, eventId },
-        createGenerateFeedbackWorkflowDeps(steps)
+        createGenerateFeedbackWorkflowDeps(steps, {
+          startObservabilityTrace: startOpikFeedbackEvaluationTrace,
+        })
       );
       reportInterviewEndStage({
         stage: "feedback_generation",

@@ -8,10 +8,6 @@ import {
   parseFeedbackV2,
   prepareFeedbackTranscript,
 } from "@meelni/core";
-import {
-  type OpikLlmTrace,
-  startOpikFeedbackEvaluationTrace,
-} from "@meelni/integrations";
 import OpenAI from "openai";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { normalizePracticeRecommendations } from "@/lib/product-language";
@@ -52,6 +48,19 @@ export interface FeedbackProviderUsage {
   outputTokens: number;
   totalTokens: number;
 }
+
+export interface FeedbackObservabilityTrace {
+  end(result: {
+    status: "success" | "error";
+    usage?: FeedbackProviderUsage;
+    response?: string;
+  }): Promise<void>;
+}
+
+export type StartFeedbackObservabilityTrace = (input: {
+  model: string;
+  prompt: string;
+}) => FeedbackObservabilityTrace;
 
 export interface FeedbackProviderResult {
   evaluation: FeedbackV2Result;
@@ -168,11 +177,16 @@ function classifyFeedbackParserFailure(
 export async function generateFeedback(
   roundType: string,
   transcript: FeedbackTranscriptTurn[],
-  evaluationState: FeedbackEvaluationState
+  evaluationState: FeedbackEvaluationState,
+  dependencies: {
+    startObservabilityTrace?: StartFeedbackObservabilityTrace;
+  } = {}
 ): Promise<FeedbackV2Result> {
   try {
     return (
-      await generateFeedbackWithUsage(roundType, transcript, evaluationState)
+      await generateFeedbackWithUsage(roundType, transcript, evaluationState, {
+        startObservabilityTrace: dependencies.startObservabilityTrace,
+      })
     ).evaluation;
   } catch (error) {
     const code = getEvaluationFailureCode(error);
@@ -195,6 +209,7 @@ export async function generateFeedbackWithUsage(
     onRawSyntheticOutput?: (rawResponse: Uint8Array) => void | Promise<void>;
     calibrationCredentials?: { openaiApiKey: string };
     calibrationEvidenceHints?: readonly CalibrationEvidenceHint[];
+    startObservabilityTrace?: StartFeedbackObservabilityTrace;
   } = {}
 ): Promise<FeedbackProviderResult> {
   const prepared = prepareFeedbackTranscript(transcript);
@@ -217,7 +232,7 @@ export async function generateFeedbackWithUsage(
       options.onRawSyntheticOutput
     );
   }
-  let opikTrace: OpikLlmTrace | undefined;
+  let observabilityTrace: FeedbackObservabilityTrace | undefined;
   let rawProviderResponse: string | undefined;
   try {
     const client = options.calibrationPaidMode
@@ -237,8 +252,8 @@ export async function generateFeedbackWithUsage(
         : undefined,
       aliasProjection.canonicalIdByAlias
     );
-    if (!options.calibrationPaidMode) {
-      opikTrace = startOpikFeedbackEvaluationTrace({
+    if (!options.calibrationPaidMode && options.startObservabilityTrace) {
+      observabilityTrace = options.startObservabilityTrace({
         model: modelVersion,
         prompt: userPrompt,
       });
@@ -358,14 +373,14 @@ export async function generateFeedbackWithUsage(
         ? options.calibrationEvidenceHints
         : undefined,
     });
-    await opikTrace?.end({
+    await observabilityTrace?.end({
       status: "success",
       usage,
       response: rawProviderResponse,
     });
     return result;
   } catch (error) {
-    await opikTrace?.end({
+    await observabilityTrace?.end({
       status: "error",
       usage:
         error instanceof FeedbackProviderInvocationError
