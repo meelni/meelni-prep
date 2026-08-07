@@ -19,15 +19,36 @@ test("interview-end timing accepts only bounded stage metadata", () => {
 
   assert.deepEqual(event, {
     event: "meelni_interview_end_stage",
-    version: 1,
+    version: 2,
     occurredAt: event?.occurredAt,
     stage: "feedback_dispatch",
     outcome: "succeeded",
     durationMs: 43,
+    reason: null,
     correlationId: "550e8400-e29b-41d4-a716-446655440000",
   });
   assert.ok(Number.isFinite(Date.parse(event?.occurredAt ?? "")));
   assert.doesNotMatch(serialized, /transcript|userId|provider/i);
+});
+
+test("interview-end timing accepts only privacy-safe reason codes", () => {
+  const event = reportInterviewEndStage({
+    stage: "runtime_settlement",
+    outcome: "deferred",
+    durationMs: 20_000,
+    reason: "runtime_timeout",
+  });
+
+  assert.equal(event?.reason, "runtime_timeout");
+  assert.equal(
+    reportInterviewEndStage({
+      stage: "runtime_settlement",
+      outcome: "failed",
+      durationMs: 1,
+      reason: "customer transcript leaked" as never,
+    }),
+    null
+  );
 });
 
 test("invalid timing is rejected without logging", () => {

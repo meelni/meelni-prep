@@ -61,6 +61,7 @@ export type FinalizeInterviewSessionResult =
         terminalReason: InterviewTerminalReason;
         endedAt: Date;
       };
+      transcriptEvidence: "available" | "degraded" | "missing";
       feedback: typeof feedback.$inferSelect;
       deadlineRoomCleanupStatus:
         | "pending"
@@ -165,6 +166,10 @@ export async function finalizeInterviewSession(
       generation: writer.generation,
       state: writer.state as "settled" | "degraded" | null,
     }));
+    const transcriptEvidence = classifyTranscriptEvidence({
+      interruptionCount: unavailableInterruptions,
+      runtimeWriterStates,
+    });
     const preservePostUsableDisconnectCharge =
       shouldPreservePostUsableDisconnectCharge({
         requestedTerminalReason: input.requestedTerminalReason,
@@ -445,6 +450,7 @@ export async function finalizeInterviewSession(
       userId: stored.userId,
       roomName: stored.livekitRoomName,
       lifecycle: { state, version, terminalReason, endedAt },
+      transcriptEvidence,
       feedback: feedbackRecord,
       deadlineRoomCleanupStatus: hardDeadlineOwnsCleanup
         ? (stored.deadlineRoomCleanupStatus ?? "pending")
@@ -457,6 +463,25 @@ export async function finalizeInterviewSession(
         feedbackRecord.completionRecommendations ?? validation.recommendations,
     } as const;
   });
+}
+
+export function classifyTranscriptEvidence(input: {
+  interruptionCount: number;
+  runtimeWriterStates: Array<{
+    generation: number;
+    state: "settled" | "degraded" | null;
+  }>;
+}): "available" | "degraded" | "missing" {
+  if (
+    input.interruptionCount > 0 ||
+    input.runtimeWriterStates.length === 0 ||
+    input.runtimeWriterStates.some((writer) => writer.state === null)
+  ) {
+    return "missing";
+  }
+  return input.runtimeWriterStates.some((writer) => writer.state === "degraded")
+    ? "degraded"
+    : "available";
 }
 
 export function shouldRefineProvisionalTerminalReason(input: {

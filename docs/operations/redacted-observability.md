@@ -43,6 +43,13 @@ Filter Runtime Logs for:
 
 Group only by `environment`, `release`, `operation`, `errorCode`, `severity`, and `retryable`. An owned `correlationId` may connect failures from one interview session; it is not a user or provider identifier.
 
+Interview end-stage timing events use schema version 2. They add only one
+closed, allowlisted `reason` field so operators can distinguish runtime timeout,
+runtime unavailability/readiness, missing or degraded transcript evidence,
+terminal replay, dispatch failure/in-progress, and stage exceptions. Never add
+raw exceptions, transcript or feedback content, provider payloads, room names,
+or user identifiers to this event.
+
 For a bounded query:
 
 ```bash

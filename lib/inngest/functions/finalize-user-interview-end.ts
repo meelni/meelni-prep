@@ -2,11 +2,11 @@ import { listUserInterviewEndsToRecover } from "@/lib/db/user-end-recovery";
 import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
-import { endUserInterviewSessionWorkflow } from "@/lib/workflows/end-user-interview-session";
 import {
   buildUserInterviewEndEvent,
   USER_INTERVIEW_END_EVENT_NAME,
 } from "@/lib/workflows/accept-user-interview-end";
+import { durableUserInterviewEndWorkflow } from "@/lib/workflows/durable-user-interview-end";
 
 export const finalizeUserInterviewEnd = inngest.createFunction(
   {
@@ -26,12 +26,23 @@ export const finalizeUserInterviewEnd = inngest.createFunction(
   { event: USER_INTERVIEW_END_EVENT_NAME },
   async ({ event, step }) => {
     const env = getLiveKitEnvironment();
-    return step.run("settle-finalize-and-dispatch", () =>
-      endUserInterviewSessionWorkflow({
+    return durableUserInterviewEndWorkflow(
+      {
         sessionId: String(event.data.sessionId ?? ""),
         userId: String(event.data.userId ?? ""),
         env: env.ok ? env.data : null,
-      })
+        resumeFrom:
+          event.data.resumeFrom === "feedback_dispatch"
+            ? "feedback_dispatch"
+            : "runtime_settlement",
+      },
+      {
+        // Every durable checkpoint intentionally returns JSON-only summaries.
+        // Inngest types the replayed value as Jsonify<T>; this boundary restores
+        // the equivalent workflow type after provider serialization.
+        run: (id, work) =>
+          step.run(id, work) as unknown as ReturnType<typeof work>,
+      }
     );
   }
 );

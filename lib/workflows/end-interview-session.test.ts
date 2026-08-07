@@ -156,8 +156,9 @@ test("authorization runs before atomic transcript settlement", async () => {
 });
 
 test("workflow passes only the authorized end command to finalization", async () => {
-  let finalizedInput: Parameters<EndInterviewSessionDeps["finalize"]>[0] | null =
-    null;
+  let finalizedInput:
+    | Parameters<EndInterviewSessionDeps["finalize"]>[0]
+    | null = null;
   const input = userEndInput();
   const result = await endInterviewSessionWorkflow(
     input,
@@ -305,6 +306,7 @@ function completion(
     tier: SessionTier.FULL,
     recommendations: [],
     ...overrides,
+    transcriptEvidence: overrides.transcriptEvidence ?? "available",
   };
 }
 

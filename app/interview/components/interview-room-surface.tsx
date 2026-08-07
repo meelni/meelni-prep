@@ -19,7 +19,6 @@ export interface InterviewRoomSurfaceProps {
   deadlineReached: boolean;
   mediaVisualizer?: ReactNode;
   question?: string | null;
-  recoveringConnection: boolean;
   roundType?: string | null;
   timer?: ReactNode;
   transcriptIntegrity: "healthy" | "retrying" | "degraded";
@@ -34,14 +33,11 @@ export function InterviewRoomSurface({
   deadlineReached,
   mediaVisualizer,
   question,
-  recoveringConnection,
   roundType,
   timer,
   transcriptIntegrity,
   transcriptPanel,
 }: InterviewRoomSurfaceProps) {
-  const connectionReady =
-    connectionStatus === "connected" || connectionStatus === "recovered";
   const roundLabel = roundType
     ? roundType
         .replace(/_/g, " ")
@@ -89,10 +85,7 @@ export function InterviewRoomSurface({
           </div>
 
           <div className="sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 mt-6">
-            {!deadlineReached &&
-              !recoveringConnection &&
-              connectionReady &&
-              controls}
+            {!deadlineReached && controls}
           </div>
         </section>
 

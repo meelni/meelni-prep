@@ -52,6 +52,20 @@ test("recovery deliveries bypass an exhausted provider event identity", () => {
   assert.deepEqual(initial.data, recovery.data);
 });
 
+test("terminal outbox recovery carries an explicit feedback resume boundary", () => {
+  const event = buildUserInterviewEndEvent(
+    {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      lifecycleVersion: 4,
+      resumeFrom: "feedback_dispatch",
+    },
+    "recovery:terminal-outbox"
+  );
+
+  assert.equal(event.data.resumeFrom, "feedback_dispatch");
+});
+
 test("a lost event delivery cannot undo accepted ending truth", async () => {
   const result = await acceptUserInterviewEndWorkflow(
     { sessionId: SESSION_ID, userId: USER_ID },

@@ -1,7 +1,7 @@
 # Interview lifecycle reliability direction
 
-Status: proposed direction with the first containment slice in progress under
-SAV-380. The open program parent is SAV-365.
+Status: accepted implementation direction. SAV-380 is checkpointed locally and
+SAV-383 is in progress. The open program parent is SAV-365.
 
 ## Outcome and ownership
 
@@ -56,6 +56,8 @@ The immediate causes are structural rather than one provider outage:
   or explicit reconnect/integrity recovery only.
 - Every network and database dependency has a smaller deadline than its caller.
 - An accepted End command never depends on the browser remaining mounted.
+- End Interview remains available during room reconnect/degradation; mute may be
+  temporarily disabled when no controllable microphone connection exists.
 - Every background stage is idempotent and can resume after the last committed
   boundary.
 - Feedback uses only canonical persisted evidence and never infers missing
