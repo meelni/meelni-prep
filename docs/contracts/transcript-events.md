@@ -58,9 +58,12 @@ metrics. LiveKit Agents 1.6.5 truncates an interrupted interviewer message to
 the TTS-synchronized prefix that was actually played. That prefix is persisted
 as `partially_delivered`; generated continuation is never stored.
 
-When an interruption has no provider-confirmed text—or a committed user or
-interviewer turn cannot be normalized to canonical measured evidence—the
-runtime persists a separate `integrity_unavailable` marker. It contains
+When scheduled interviewer output is interrupted after entering the playout
+schedule but has no provider-confirmed text—or a committed measured user or
+interviewer turn cannot be normalized to canonical evidence—the runtime
+persists a separate `integrity_unavailable` marker. Unscheduled speculative
+generation and unmeasured user hypotheses are not audible evidence and do not
+create markers. A marker contains
 correlation, writer generation, identity, speaker, reason, and occurrence time but no `text`
 field. Markers live outside `transcript_turn`, are never rendered or passed to
 evaluation, and make the session ineligible for feedback because complete
@@ -86,7 +89,9 @@ Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.
 
 Consumers deduplicate globally by `event_id`. They order events from one writer
-generation by `sequence`; across replacement writers they order by measured
+generation by `sequence`; overlapping user and interviewer speech may have
+non-monotonic start times without violating that sequence. Disjoint reversed
+intervals remain invalid. Across replacement writers they order by measured
 `started_at`, then `writer_generation`, `writer_id`, and `sequence` as
 deterministic tie-breakers. A sequence value without its generation and
 `writer_id` has no ordering meaning.

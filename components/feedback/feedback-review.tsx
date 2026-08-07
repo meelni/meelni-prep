@@ -13,7 +13,11 @@ import {
   FeedbackLoadingSkeleton,
 } from "./feedback-lifecycle-status";
 import { FeedbackDashboardLink } from "./feedback-navigation";
-import { decodeFeedbackResponseOrThrow } from "./feedback-response";
+import {
+  decodeFeedbackHttpResponseOrThrow,
+  decodeFeedbackResponseOrThrow,
+  toFeedbackTransportFailure,
+} from "./feedback-response";
 import { FeedbackStatusPage } from "./feedback-surface";
 import {
   createFeedbackPollBudget,
@@ -112,17 +116,27 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
           router.replace("/auth/signin");
           return;
         }
-        const body = decodeFeedbackResponseOrThrow(payload);
-        if (!response.ok && body.status !== "session_not_ended") {
-          throw new Error("Feedback could not be loaded.");
-        }
+        const body = decodeFeedbackHttpResponseOrThrow(response, payload);
         await applyResponse(body);
       } catch (error) {
-        if (active) {
-          const message = getErrorMessage(error);
-          setViewState({ kind: "unavailable", message });
-          setTransportError(message);
+        if (!active) return;
+        const transportFailure = toFeedbackTransportFailure(error);
+        if (transportFailure?.retryable) {
+          setViewState(
+            (current) =>
+              current ?? {
+                kind: "settling",
+                message: transportFailure.message,
+              }
+          );
+          setTransportError(transportFailure.message);
+          schedulePoll();
+          return;
         }
+
+        const message = transportFailure?.message || getErrorMessage(error);
+        setViewState({ kind: "unavailable", message });
+        setTransportError(message);
       }
     }
 

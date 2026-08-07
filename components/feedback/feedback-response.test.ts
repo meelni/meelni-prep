@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decodeFeedbackResponseOrThrow } from "./feedback-response";
+import {
+  FeedbackTransportError,
+  decodeFeedbackHttpResponseOrThrow,
+  decodeFeedbackResponseOrThrow,
+  toFeedbackTransportFailure,
+} from "./feedback-response";
 
 test("component response boundary rejects unknown and malformed lifecycle payloads", () => {
   for (const payload of [
@@ -22,5 +27,72 @@ test("component response boundary returns a decoded lifecycle response", () => {
   assert.deepEqual(
     decodeFeedbackResponseOrThrow({ status: "processing", retryable: true }),
     { status: "processing", retryable: true }
+  );
+});
+
+test("transient HTTP failures remain retryable before lifecycle decoding", () => {
+  for (const status of [408, 425, 429, 500, 503]) {
+    assert.throws(
+      () =>
+        decodeFeedbackHttpResponseOrThrow(
+          { ok: false, status },
+          { error: "provider details must not become lifecycle copy" }
+        ),
+      (error) =>
+        error instanceof FeedbackTransportError &&
+        error.retryable === true &&
+        /reconnecting to your saved interview/.test(error.message)
+    );
+  }
+});
+
+test("non-retryable HTTP failures use generic transport copy", () => {
+  assert.throws(
+    () =>
+      decodeFeedbackHttpResponseOrThrow(
+        { ok: false, status: 400 },
+        { error: "internal details" }
+      ),
+    (error) =>
+      error instanceof FeedbackTransportError &&
+      error.retryable === false &&
+      error.message === "Feedback could not be loaded."
+  );
+});
+
+test("active-session conflict remains a decoded lifecycle response", () => {
+  assert.deepEqual(
+    decodeFeedbackHttpResponseOrThrow(
+      { ok: false, status: 409 },
+      {
+        status: "session_not_ended",
+        retryable: false,
+        message: "This interview has not ended yet.",
+      }
+    ),
+    {
+      status: "session_not_ended",
+      retryable: false,
+      message: "This interview has not ended yet.",
+    }
+  );
+});
+
+test("successful malformed responses remain unsupported lifecycle responses", () => {
+  assert.throws(
+    () => decodeFeedbackHttpResponseOrThrow({ ok: true, status: 200 }, {}),
+    /unsupported response/
+  );
+});
+
+test("network failures are classified as retryable transport failures", () => {
+  assert.deepEqual(toFeedbackTransportFailure(new TypeError("fetch failed")), {
+    message:
+      "We’re reconnecting to your saved interview. This page will update automatically.",
+    retryable: true,
+  });
+  assert.equal(
+    toFeedbackTransportFailure(new Error("unsupported response")),
+    null
   );
 });
