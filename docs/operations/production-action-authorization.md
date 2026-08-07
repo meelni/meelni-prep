@@ -232,6 +232,13 @@ LiveKit's inferred Git attributes and writes the explicit
 failed archive, receipt validation, or source-identity check occurs after
 consumption and therefore requires a fresh authorization.
 
+Before consuming authorization, the wrapper resolves the installed `lk`
+executable and requires `lk agent deploy --help` to expose both
+`--no-default-attributes` and `--attribute`. LiveKit CLI 2.12.8 does not expose
+these flags; official CLI 2.18.2 does. Upgrade through the existing official
+package-manager installation and re-run this capability check before preparing
+the owner payload. Never sign an action that the installed CLI cannot execute.
+
 The supported wrapper then verifies and consumes the exact authorization
 before constructing a Stripe client, invoking `lk`, or spawning Drizzle. The
 artifact is never read from an env value, CLI argument, tracked file, symlink,
