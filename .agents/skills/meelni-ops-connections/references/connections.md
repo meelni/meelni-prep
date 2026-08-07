@@ -398,6 +398,12 @@ Operational notes:
   the authorized owner workstation. If another laptop lacks those files, do not
   enroll or recreate them; prepare, sign, verify, and consume the fresh exact
   artifact on the authorized workstation.
+- Production interview deploys require a LiveKit CLI whose
+  `lk agent deploy --help` exposes both `--no-default-attributes` and
+  `--attribute`. CLI 2.12.8 lacks these flags; the official Homebrew 2.18.2
+  release supports them. The guarded wrapper checks this capability before
+  consuming authorization. Upgrade the existing official package in place
+  without replacing or printing the authenticated project configuration.
 - Require `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` in every
   worker mode, including local development. An unnamed worker opts into
   LiveKit automatic dispatch and can create an empty-name dispatch in any new

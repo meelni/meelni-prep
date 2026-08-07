@@ -4,6 +4,7 @@ umask 077
 
 environment="${1:-}"
 secrets_path=""
+lk_path=""
 case "$environment" in
   preview)
     config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}"
@@ -156,6 +157,20 @@ if [[ "$environment" == "production" ]]; then
     echo "Production authorization requires the fixed system Node runtime at /usr/local/bin/node." >&2
     exit 1
   fi
+  if ! lk_path="$(command -v lk 2>/dev/null)" || \
+    ! lk_path="$(realpath "$lk_path" 2>/dev/null)" || \
+    [[ ! -f "$lk_path" ]] || \
+    [[ ! -x "$lk_path" ]]; then
+    echo "Production LiveKit deploy requires an installed LiveKit CLI." >&2
+    exit 1
+  fi
+  if ! lk_deploy_help="$("$lk_path" agent deploy --help 2>&1)" || \
+    [[ "$lk_deploy_help" != *"--no-default-attributes"* ]] || \
+    [[ "$lk_deploy_help" != *"--attribute"* ]]; then
+    echo "Production LiveKit CLI must support explicit source attributes." >&2
+    exit 1
+  fi
+  unset lk_deploy_help
   authorization_receipt="$snapshot_dir/authorization-receipt.json"
   /usr/bin/env -u NODE_OPTIONS -u NODE_PATH \
     "$production_node" "$repo_root/scripts/consume-production-action-authorization.mjs" \
@@ -184,7 +199,7 @@ config_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sy
 cd "$deploy_agent_dir"
 if [[ "$environment" == "production" ]]; then
   secrets_argument="$(/usr/bin/python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$secrets_snapshot" "$deploy_agent_dir")"
-  lk --config "$config_argument" agent deploy \
+  "$lk_path" --config "$config_argument" agent deploy \
     --no-default-attributes \
     --attribute "meelni.source_sha=$candidate_sha" \
     --secrets-file "$secrets_argument" \
