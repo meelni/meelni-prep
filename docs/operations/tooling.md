@@ -158,6 +158,31 @@ warnings; the runtime doctor fails on them. A Node mismatch is always a failure
 and prints the deterministic `fnm install`/`fnm use` recovery command while
 allowing the rest of the diagnostic report to finish.
 
+### Integration discovery
+
+Before using a provider, inspect the repository's machine-readable agent
+catalog through its stable commands:
+
+```bash
+npm run agent:services
+npm run agent:service -- supabase
+npm run agent:doctor
+```
+
+`agent:services` lists active runtime and operational services with the
+preferred agent surface. `agent:service` shows the canonical targets,
+repository commands, CLI/MCP setup, environment variable names, write policy,
+and runbooks for one service. `agent:doctor` validates the catalog and inspects
+installed CLIs and Codex MCP registrations without reading or printing secret
+values. Optional workstation gaps are warnings so provider-free bootstrap and
+CI remain usable.
+
+The catalog is a decision layer, not a provider client. Application runtime
+continues through SDK/API adapters, and existing guarded repository commands
+remain the mutation boundary. In particular, the recommended Supabase MCP is
+scoped to the isolated Preview project with `read_only=true`; an unscoped
+Supabase MCP is reported as unsafe for Meelni agent work.
+
 ## Linear And PR Automation Safety
 
 Treat Linear parent issues as durable outcome trackers and child issues as the

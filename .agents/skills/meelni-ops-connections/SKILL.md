@@ -18,14 +18,15 @@ Use this skill before changing Meelni external systems. It records stable accoun
 
 ## Workflow
 
-1. Read `references/connections.md` before authenticating, adding env vars, creating Stripe catalog objects, or filing/updating operational tickets.
-2. Prefer installed service-specific skills when they apply:
+1. Run `npm run agent:service -- <service>` to resolve the preferred MCP/CLI/repository boundary and canonical target. Run `npm run agent:doctor -- <service>` when workstation readiness is uncertain.
+2. Read `references/connections.md` before authenticating, adding env vars, creating Stripe catalog objects, or filing/updating operational tickets.
+3. Prefer installed service-specific skills when they apply:
    - `stripe-best-practices` for Stripe design, billing, webhooks, API version, and security decisions.
    - Vercel skills such as `vercel:env-vars`, `vercel:payments`, or `vercel:deployments-cicd` for platform details.
    - `linear:linear` for issue/project work.
-3. Never paste secrets into chat, Linear, docs, or tracked files. Write only env variable names, target environments, IDs that are safe to share, and redacted summaries.
-4. When adding a new MCP/provider, extend `references/connections.md` with: canonical account/project, auth command, verification command, safe write path, production guardrails, and cleanup notes.
-5. Before finalizing any external-system investigation, run the capture check in `references/connections.md`. If the agent learned a reusable connection/auth/env/deployment detail that was missing or wrong, update this skill in the same turn.
+4. Never paste secrets into chat, Linear, docs, or tracked files. Write only env variable names, target environments, IDs that are safe to share, and redacted summaries.
+5. When adding a new MCP/provider, extend `config/agent-integrations.json` and `references/connections.md` with the decision boundary, canonical target, auth command, verification command, safe write path, production guardrails, and cleanup notes.
+6. Before finalizing any external-system investigation, run the capture check in `references/connections.md`. If the agent learned a reusable connection/auth/env/deployment detail that was missing or wrong, update the catalog and this skill in the same turn.
 
 ## Common Mistakes
 

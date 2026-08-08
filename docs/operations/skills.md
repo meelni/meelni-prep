@@ -24,6 +24,7 @@ Edit `.agents/skills/*` first. Do not hand-edit symlinked copies.
 - `meelni-question-bank-seo`: explore pages, company pages, structured data, Google Sheets sync, and conversion from content to practice.
 - `meelni-product-strategy`: Product Compass, PM-focused product direction, relaunch strategy, pricing, trials, positioning, growth loops, AI/agent learning expansion, and enterprise path. Its stable workflow lives in `SKILL.md`; product truth and lenses live in `references/`.
 - `meelni-linear-workstream`: Linear project, slice issue, child issue, progress comment, handoff, and closure workflow for Meelni agent/human work streams.
+- `meelni-ops-connections`: provider accounts, MCP/CLI authentication, canonical targets, safe write paths, and durable connection memory.
 - `meelni-vertical-slice-playbooks`: feature playbooks for interview/session, feedback/evaluation, billing/trials, question-bank SEO, and agent tooling changes.
 - `meelni-engineering-memory`: decisions, architecture docs, contracts, operations docs, product current-state updates, and OpenSpec maintenance.
 - `meelni-pr-prep`: pre-PR validation, docs/spec checks, and PR summary preparation.
