@@ -51,10 +51,10 @@ Inngest does not expose a safe read-only Event Key validation endpoint. An autho
 - Demo and interview dispatch names must be distinct. A shared name cannot satisfy demo readiness and fails before any room is created.
 - Public and server URLs match.
 - Production is pinned to `meelni-ek4vaisp.livekit.cloud` and exact source-owned runtime values `CA_yawKG67rCMG4` (interview) and `CA_t3sKQEihMQ7x` (demo). These values are verified Cloud deployment IDs and the currently expected dispatch names; a controlled provider rehearsal must still prove that each registered dispatch name is identical before launch readiness is claimed.
-- Preview is pinned to project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. The reviewed interview deployment is `CA_ZbGxFjfEYwsD`, dispatched as `meelni-preview-interview`; the reviewed demo deployment is `CA_M5XTD4CMyXk3`, dispatched as `meelni-preview-demo`.
+- Preview is pinned to the Meelni-owned project `meelni-preview` (`p_175dshlwom7`) at `meelni-preview-gui1i7s9.livekit.cloud`. Build-plan deployment `CA_ovn67QQ7ywmJ` supervises both reviewed workers: `meelni-preview-interview` and `meelni-preview-demo`. A shared deployment ID is intentional; the dispatch names must remain distinct.
 - Preview agent identity is exact and source-owned; merely using any non-Production `*.livekit.cloud` host or any syntactically valid dispatch name is insufficient.
 - A read-only room-list request against a guaranteed nonexistent room verifies project access without reading active rooms.
-- Preview requires these two distinct deployments and dispatch names; neither may be replaced with a Production identity or collapsed into a shared dispatch.
+- Preview requires the exact single-deployment topology and two distinct dispatch names; neither name may be replaced with a Production identity or collapsed into a shared dispatch.
 
 ### Relaunch state
 
