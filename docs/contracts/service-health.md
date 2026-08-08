@@ -59,11 +59,15 @@ also requires `checkedAt` to round-trip as an exact canonical UTC timestamp.
 Each server instance coalesces concurrent checks and reuses a result for at most
 ten seconds to bound database load without hiding sustained degradation.
 
-Database evidence checks for feedback dispatches and Stripe webhook rows stuck
-for more than ten minutes, plus any unresolved failed work. Failed evidence
-outranks stale evidence. Failed Stripe rows are not also classified as stale.
-The evidence query runs under a transaction-local PostgreSQL statement timeout;
-the store retains one underlying in-flight operation after an application-level
+Database evidence checks for feedback dispatch claims and Stripe webhook rows
+stuck for more than ten minutes, plus any unresolved failed work. Feedback is
+also stale when a sent event remains pending beyond the canonical 90-second
+queue upper bound, or generation remains processing beyond its five-minute
+lease. Missing sent or processing timestamps are treated as invalid stale
+evidence. Work inside either lease remains healthy. Failed evidence outranks
+stale evidence. Failed Stripe rows are not also classified as stale. The
+evidence query runs under a transaction-local PostgreSQL statement timeout; the
+store retains one underlying in-flight operation after an application-level
 timeout so cache expiry cannot start duplicate database work. It does not infer
 health from customer traffic volume or reveal when the last customer event
 occurred.

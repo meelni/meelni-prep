@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   classifyInterviewLifecycleLatency,
   elapsedInterviewLifecycleMs,
+  FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
   INTERVIEW_LIFECYCLE_SLOS,
 } from "./interview-lifecycle-slo";
 
@@ -15,6 +17,8 @@ test("canonical interview lifecycle SLOs retain their product boundaries", () =>
     feedback_completion: { targetMs: 45_000, upperBoundMs: 90_000 },
     lifecycle_read: { targetMs: 5_000, upperBoundMs: 8_000 },
   });
+  assert.equal(FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS, 90_000);
+  assert.equal(FEEDBACK_GENERATION_LEASE_MS, 300_000);
 });
 
 test("latency classification is deterministic at both boundaries", () => {

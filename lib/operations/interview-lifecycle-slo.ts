@@ -6,6 +6,10 @@ export const INTERVIEW_LIFECYCLE_SLOS = {
   lifecycle_read: { targetMs: 5_000, upperBoundMs: 8_000 },
 } as const;
 
+export const FEEDBACK_GENERATION_LEASE_MS = 5 * 60 * 1000;
+export const FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS =
+  INTERVIEW_LIFECYCLE_SLOS.feedback_completion.upperBoundMs;
+
 export type InterviewLifecycleSlo = keyof typeof INTERVIEW_LIFECYCLE_SLOS;
 export type InterviewLifecycleLatencyClass =
   | "within_target"
