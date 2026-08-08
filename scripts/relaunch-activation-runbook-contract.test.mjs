@@ -20,6 +20,8 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
     "Statsig gate `meelni_reactivation_access`",
     "`MEELNI_REACTIVATION_DEFAULT=false`",
     "`MEELNI_RELAUNCH_PHASE=prelaunch`",
+    "`MEELNI_REACTIVATION_DEFAULT=true`",
+    "`MEELNI_RELAUNCH_PHASE=launched`",
     "`MEELNI_RELAUNCH_PHASE=rehearsal`",
     "`MEELNI_REHEARSAL_COMMIT_SHA=<40hex>`",
     "`meelni_preview_rehearsal_authority`",
@@ -51,12 +53,12 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
   );
   assert.match(
     runbook,
-    /only the product owner may create the final Production\s+GO record/i
+    /only the product owner may authorize a new\s+Production access-state change/i
   );
   assert.match(runbook, /A successful Preview rehearsal is evidence only/i);
   assert.match(
     runbook,
-    /Turn off the Statsig gate `meelni_reactivation_access` in Preview/i
+    /Do not change the\s+shared Statsig gate `meelni_reactivation_access`/i
   );
   assert.match(
     runbook,
@@ -72,7 +74,7 @@ test("relaunch activation runbook keeps owner authority and rollback contract ex
   );
   assert.match(
     runbook,
-    /Production rollback[\s\S]*must not create automatic refunds,\s+prorations, or compensation/i
+    /Production rollback[\s\S]*must\s+not create automatic refunds,\s+prorations, or compensation/i
   );
 });
 
@@ -155,7 +157,8 @@ test("Statsig governance runbook records owner-only eligibility and required-rev
   const runbook = await readFile(STATSIG_GOVERNANCE_RUNBOOK_PATH, "utf8");
 
   for (const required of [
-    "Statsig checks on 2026-07-23 returned",
+    "governance checks on 2026-07-23 returned",
+    "read-only Statsig\ncheck on 2026-08-08",
     "Gate `meelni_reactivation_access`",
     "Dynamic config `meelni_preview_rehearsal_authority`",
     "`reviewSettings.requiredReview: false`",
@@ -165,10 +168,12 @@ test("Statsig governance runbook records owner-only eligibility and required-rev
     "`defaultValue.active: false`",
     "retained historical rehearsal metadata",
     "inactive and expired",
-    "required-review enforcement is not yet\nproven",
+    "gate version 97 is enabled",
+    "`Launch all users`",
+    "required-review enforcement is not\nyet proven",
     "preserving the\n  owner-only reviewer constraint",
     "do not activate Preview rehearsal authority",
-    "do not change enabled state,\n> dynamic config active state",
+    "preserve the current enabled\n> gate and public targeting rule",
     "defaultValue.active: false",
   ]) {
     assert.match(runbook, escapeForRegex(required));
@@ -176,12 +181,16 @@ test("Statsig governance runbook records owner-only eligibility and required-rev
 
   assert.match(
     runbook,
-    /both controls are safely off[\s\S]*limits\s+eligible reviewers for both controls to the owner account/i
+    /dynamic config therefore grants no current rehearsal authority[\s\S]*limits eligible reviewers for both controls to the owner account/i
   );
-  assert.match(runbook, /required-review enforcement is not yet\s+proven/i);
+  assert.match(runbook, /required-review enforcement is not\s+yet proven/i);
   assert.match(
     runbook,
-    /Do not propose `is_enabled: true` or `default_value\.active: true`/i
+    /Do not propose a gate enabled-state or targeting change, or\s+`default_value\.active: true`/i
+  );
+  assert.match(
+    runbook,
+    /preserves the gate's current enabled state, version-97 public\s+`Launch all users` rule/i
   );
   assert.match(runbook, /self-commit for the single-operator workflow/i);
 });
