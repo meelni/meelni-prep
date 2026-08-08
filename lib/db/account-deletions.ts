@@ -23,6 +23,7 @@ import {
   sessionQuestion,
   stripeEventLog,
   stripeCustomerMapping,
+  transcriptEvidenceWriterCutoff,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
   transcriptRuntimeWriter,
@@ -817,6 +818,9 @@ export async function deleteUserApplicationData(userId: string) {
       await tx
         .delete(transcriptRuntimeSettlement)
         .where(eq(transcriptRuntimeSettlement.sessionId, sessionId));
+      await tx
+        .delete(transcriptEvidenceWriterCutoff)
+        .where(eq(transcriptEvidenceWriterCutoff.sessionId, sessionId));
       await tx
         .delete(transcriptRuntimeWriter)
         .where(eq(transcriptRuntimeWriter.sessionId, sessionId));

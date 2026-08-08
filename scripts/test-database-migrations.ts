@@ -56,6 +56,7 @@ import {
   SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
   TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT,
+  TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
   WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT,
 } from "./database-schema-contract";
 
@@ -285,7 +286,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, DURABLE_CONTACT_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -476,9 +477,10 @@ async function run() {
         QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
         FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
         DURABLE_CONTACT_SCHEMA_FINGERPRINT,
+        TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 29; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 30; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -498,7 +500,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 30; found 22/
+            /Strict launch preflight requires the exact latest migration count 31; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -799,7 +801,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 30);
+      assert.equal(await migrationCount(sql), 31);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -863,7 +865,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      DURABLE_CONTACT_SCHEMA_FINGERPRINT
+      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1108,7 +1110,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 30; found 25/
+      /exact latest migration count 31; found 25/
     );
 
     const genericRows = await sql<
@@ -1207,21 +1209,18 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 30);
+    assert.equal(await migrationCount(sql), 31);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      finalPreflight.startingContract,
-      "durable_contact_submissions"
-    );
+    assert.equal(finalPreflight.startingContract, "transcript_watermarks");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 36);
-    assert.equal(finalPreflight.rls_tables, 36);
+    assert.equal(finalPreflight.tables, 37);
+    assert.equal(finalPreflight.rls_tables, 37);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      DURABLE_CONTACT_SCHEMA_FINGERPRINT
+      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -2303,48 +2302,57 @@ async function seedValidTranscriptIntegrityFixture(
   const startedAt = Date.parse(input.startedAt);
   const at = (offsetMs: number) => new Date(startedAt + offsetMs).toISOString();
   await sql`
-    INSERT INTO transcript_turn (
-      session_id, speaker, started_at, ended_at, text, audio_ms, section
-    ) VALUES
-      (
-        ${input.sessionId}::uuid, 'user', ${at(0)}::timestamptz,
-        ${at(1_000)}::timestamptz,
-        'I would begin by clarifying the target customer problem and defining the measurable outcome before considering solutions.',
-        1000, 'answer'
-      ),
-      (
-        ${input.sessionId}::uuid, 'interviewer', ${at(60_000)}::timestamptz,
-        ${at(61_000)}::timestamptz,
-        'Which customer segment would you prioritize first and why?',
-        1000, 'follow_up'
-      ),
-      (
-        ${input.sessionId}::uuid, 'user', ${at(180_000)}::timestamptz,
-        ${at(181_000)}::timestamptz,
-        'I would compare reach severity strategic alignment confidence and implementation effort before selecting the first segment.',
-        1000, 'answer'
-      ),
-      (
-        ${input.sessionId}::uuid, 'interviewer', ${at(240_000)}::timestamptz,
-        ${at(241_000)}::timestamptz,
-        'How would you know whether the product change worked?',
-        1000, 'follow_up'
-      ),
-      (
-        ${input.sessionId}::uuid, 'user', ${at(301_000)}::timestamptz,
-        ${at(302_000)}::timestamptz,
-        'I would measure retained customer value with adoption quality and operational guardrail metrics explaining movement in the outcome.',
-        1000, 'answer'
-      )
-  `;
-  await sql`
     INSERT INTO transcript_runtime_writer (
       session_id, generation, contract_version, room_name, writer_id,
-      registered_at
+      registered_at, last_observed_sequence, committed_sequence,
+      committed_event_id, committed_through_at
     ) VALUES (
       ${input.sessionId}::uuid, 1, 1, ${input.roomName}, ${input.writerId},
-      ${input.startedAt}::timestamptz
+      ${input.startedAt}::timestamptz, 5, 5,
+      ${`${input.writerId}:5`}, ${at(302_000)}::timestamptz
     )
+  `;
+  await sql`
+    INSERT INTO transcript_turn (
+      session_id, contract_version, event_id, writer_id, writer_generation,
+      sequence, room_name, speaker, started_at, ended_at, text, audio_ms,
+      section, delivery_state
+    ) VALUES
+      (
+        ${input.sessionId}::uuid, 2, ${`${input.writerId}:1`},
+        ${input.writerId}, 1, 1, ${input.roomName}, 'user', ${at(0)}::timestamptz,
+        ${at(1_000)}::timestamptz,
+        'I would begin by clarifying the target customer problem and defining the measurable outcome before considering solutions.',
+        1000, 'answer', 'delivered'
+      ),
+      (
+        ${input.sessionId}::uuid, 2, ${`${input.writerId}:2`},
+        ${input.writerId}, 1, 2, ${input.roomName}, 'interviewer', ${at(60_000)}::timestamptz,
+        ${at(61_000)}::timestamptz,
+        'Which customer segment would you prioritize first and why?',
+        1000, 'follow_up', 'delivered'
+      ),
+      (
+        ${input.sessionId}::uuid, 2, ${`${input.writerId}:3`},
+        ${input.writerId}, 1, 3, ${input.roomName}, 'user', ${at(180_000)}::timestamptz,
+        ${at(181_000)}::timestamptz,
+        'I would compare reach severity strategic alignment confidence and implementation effort before selecting the first segment.',
+        1000, 'answer', 'delivered'
+      ),
+      (
+        ${input.sessionId}::uuid, 2, ${`${input.writerId}:4`},
+        ${input.writerId}, 1, 4, ${input.roomName}, 'interviewer', ${at(240_000)}::timestamptz,
+        ${at(241_000)}::timestamptz,
+        'How would you know whether the product change worked?',
+        1000, 'follow_up', 'delivered'
+      ),
+      (
+        ${input.sessionId}::uuid, 2, ${`${input.writerId}:5`},
+        ${input.writerId}, 1, 5, ${input.roomName}, 'user', ${at(301_000)}::timestamptz,
+        ${at(302_000)}::timestamptz,
+        'I would measure retained customer value with adoption quality and operational guardrail metrics explaining movement in the outcome.',
+        1000, 'answer', 'delivered'
+      )
   `;
   await sql`
     INSERT INTO transcript_runtime_settlement (
@@ -3647,6 +3655,30 @@ async function verifyAtomicSessionCompletion(
       event_ids: 1,
       dispatch_attempts: 0,
     });
+    const [frozenEvidence] = await sql<
+      {
+        version: number;
+        state: string;
+        writer_count: number;
+        committed_sequence: number;
+      }[]
+    >`
+      SELECT session.transcript_evidence_version AS version,
+        session.transcript_evidence_state AS state,
+        count(cutoff.writer_generation)::int AS writer_count,
+        max(cutoff.committed_sequence)::int AS committed_sequence
+      FROM interview_session session
+      LEFT JOIN transcript_evidence_writer_cutoff cutoff
+        ON cutoff.session_id = session.id
+      WHERE session.id = ${SESSION_ATOMIC_END}::uuid
+      GROUP BY session.id
+    `;
+    assert.deepEqual(frozenEvidence, {
+      version: 1,
+      state: "complete",
+      writer_count: 1,
+      committed_sequence: 5,
+    });
 
     const stores = databases.map((database) =>
       createDrizzleFeedbackDispatchStore(database)
@@ -4576,6 +4608,8 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         missingCount: 0,
         currentWriterGeneration: 2,
         currentWriterState: "settled",
+        unhealthyWriterCount: 0,
+        gapWriterCount: 1,
         ready: false,
       }
     );
@@ -5003,9 +5037,10 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       sessionId: SESSION_RECONNECT_INTEGRITY_MISSING,
       settlement: null,
       interruption: false,
-      expectedReason: "insufficient_signal",
-      expectedState: "abandoned",
-      expectedFeedback: "skipped",
+      expectedReason: "disconnect_timeout",
+      expectedState: "completed",
+      expectedFeedback: "pending",
+      expectedEvidence: "partial",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_DEGRADED,
@@ -5014,6 +5049,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedReason: "insufficient_signal",
       expectedState: "abandoned",
       expectedFeedback: "skipped",
+      expectedEvidence: "degraded",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_INTERRUPTED,
@@ -5022,6 +5058,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedReason: "insufficient_signal",
       expectedState: "abandoned",
       expectedFeedback: "skipped",
+      expectedEvidence: "degraded",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_VALID,
@@ -5030,6 +5067,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedReason: "disconnect_timeout",
       expectedState: "completed",
       expectedFeedback: "pending",
+      expectedEvidence: "complete",
     },
   ] as const;
 
@@ -5086,15 +5124,39 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
     await sql`
       INSERT INTO transcript_runtime_writer (
         session_id, generation, contract_version, room_name, writer_id,
-        registered_at
+        registered_at, last_observed_sequence, committed_sequence,
+        committed_event_id, committed_through_at
       ) VALUES (
         ${testCase.sessionId}::uuid,
         1,
         1,
         ${roomName},
         ${`reconnect-integrity-writer-${caseIndex}`},
-        '2026-07-10T07:45:00.000Z'::timestamptz
+        '2026-07-10T07:45:00.000Z'::timestamptz,
+        5,
+        5,
+        ${`reconnect-integrity-writer-${caseIndex}:5`},
+        '2026-07-10T07:52:01.000Z'::timestamptz
       )
+    `;
+    await sql`
+      WITH ordered AS (
+        SELECT id, row_number() OVER (ORDER BY started_at, id)::int AS sequence
+        FROM transcript_turn
+        WHERE session_id = ${testCase.sessionId}::uuid
+      )
+      UPDATE transcript_turn turn_row
+      SET contract_version = 2,
+        event_id = ${`reconnect-integrity-writer-${caseIndex}:`} || ordered.sequence,
+        writer_id = ${`reconnect-integrity-writer-${caseIndex}`},
+        writer_generation = 1,
+        sequence = ordered.sequence,
+        room_name = ${roomName},
+        audio_ms = 1000,
+        section = CASE WHEN turn_row.speaker = 'user' THEN 'answer' ELSE 'follow_up' END,
+        delivery_state = 'delivered'
+      FROM ordered
+      WHERE turn_row.id = ordered.id
     `;
     if (testCase.settlement) {
       await sql`
@@ -5215,9 +5277,11 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
         terminal_reason: string;
         feedback_status: string;
         dispatch_status: string;
+        transcript_evidence_state: string;
       }[]
     >`
       SELECT session.lifecycle_state, session.terminal_reason,
+        session.transcript_evidence_state,
         feedback.status AS feedback_status, feedback.dispatch_status
       FROM interview_session session
       JOIN feedback ON feedback.session_id = session.id
@@ -5227,6 +5291,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       lifecycle_state: testCase.expectedState,
       terminal_reason: testCase.expectedReason,
       feedback_status: testCase.expectedFeedback,
+      transcript_evidence_state: testCase.expectedEvidence,
       dispatch_status:
         testCase.expectedFeedback === "pending" ? "pending" : "not_required",
     });
@@ -6289,10 +6354,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      refundedPreflight.startingContract,
-      "durable_contact_submissions"
-    );
+    assert.equal(refundedPreflight.startingContract, "transcript_watermarks");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -7110,7 +7172,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 30);
+  assert.equal(await migrationCount(sql), 31);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -7118,7 +7180,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 36);
+  assert.equal(tables.length, 37);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -7145,6 +7207,11 @@ async function verifyDatabase(sql: postgres.Sql) {
   );
   assert.ok(
     tables.some(({ table_name }) => table_name === "transcript_runtime_writer")
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "transcript_evidence_writer_cutoff"
+    )
   );
   assert.ok(
     tables.some(
@@ -7497,7 +7564,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND table_name = 'transcript_runtime_writer'
     ORDER BY ordinal_position
   `;
-  assert.equal(writerColumns.length, 7);
+  assert.equal(writerColumns.length, 13);
 
   const writerConstraints = await sql<{ conname: string }[]>`
     SELECT conname
@@ -7505,12 +7572,15 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE conname IN (
       'transcript_runtime_writer_contract_check',
       'transcript_runtime_writer_generation_check',
+      'transcript_runtime_writer_integrity_state_check',
       'transcript_runtime_writer_pkey',
+      'transcript_runtime_writer_progress_boundary_check',
+      'transcript_runtime_writer_progress_sequence_check',
       'transcript_runtime_writer_session_id_interview_session_id_fk'
     )
     ORDER BY conname
   `;
-  assert.equal(writerConstraints.length, 4);
+  assert.equal(writerConstraints.length, 7);
 
   const writerIndexes = await sql<{ indexname: string }[]>`
     SELECT indexname
@@ -7567,7 +7637,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 36);
+  assert.equal(rls.length, 37);
   assert.ok(rls.every((table) => table.enabled));
 
   const contactRls = await sql<

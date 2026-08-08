@@ -24,8 +24,12 @@ For an unclaimed user end, the request path:
 
 The background finalizer asks the current LiveKit writer to settle exactly at
 `ending_at` within a 20-second provider budget. It then calculates feedback
-eligibility under the session-row lock; every registered generation must be
-settled, with none missing or degraded. Runtime settlement, terminalization,
+eligibility under the session-row lock from each writer's contiguous committed
+database watermark. Every registered generation must be healthy and gap-free.
+Complete evidence also requires settlement no later than the terminal cutoff;
+when settlement is missing, an otherwise eligible database-proven prefix is
+explicitly downgraded to partial feedback. Degraded settlement, markers, gaps,
+and malformed boundaries fail closed. Runtime settlement, terminalization,
 feedback dispatch, room-cleanup scheduling, and credit convergence use stable,
 versioned durable checkpoints. After terminal truth commits, dispatch, cleanup,
 and credit run as sibling checkpoints; a failed operation retries without
@@ -85,8 +89,12 @@ truth commits, new distinct events are closed while equivalent event-ID replays
 stay idempotent. Hard deadlines use semantic cutoff `D`: audio stops at `D`,
 only evidence measured at or before `D` is eligible, and settlement records `D`
 even if its database acknowledgement arrives during cleanup grace. The
-finalizer then calculates one locked transcript snapshot for statistics,
-feedback eligibility, and outcome. An invalid snapshot may versionedly refine
+finalizer then freezes `transcript_evidence_version=1`, the semantic cutoff,
+the evidence classification, and one immutable committed boundary per writer
+in the same transaction as terminal truth and the feedback outbox. Statistics,
+feedback eligibility, and outcome use only turns inside those boundaries. The
+feedback worker later reads that frozen prefix, never the mutable session tail.
+An invalid snapshot may versionedly refine
 the matching provisional user-end, deadline, or reconnect reason to
 `insufficient_signal`; provider and terminal reasons are not rewritten.
 

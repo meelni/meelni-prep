@@ -23,6 +23,7 @@ export const INTERVIEW_END_STAGE_REASONS = [
   "runtime_not_ready",
   "runtime_failed",
   "transcript_evidence_degraded",
+  "transcript_evidence_partial",
   "transcript_evidence_missing",
   "finalized",
   "already_complete",

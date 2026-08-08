@@ -86,7 +86,7 @@ export type UserInterviewEndFinalizationCheckpoint =
       roomName: string | null;
       feedbackStatus: InterviewSessionSettlement["feedback"]["status"];
       feedbackDispatchStatus: InterviewSessionSettlement["feedback"]["dispatchStatus"];
-      transcriptEvidence: "available" | "degraded" | "missing";
+      transcriptEvidence: "available" | "partial" | "degraded" | "missing";
     };
 
 export interface DurableUserInterviewEndResult {
@@ -433,9 +433,10 @@ export function classifyRuntimeSettlement(
 
 function finalizationReason(
   completion: InterviewSessionSettlement,
-  evidence: "available" | "degraded" | "missing"
+  evidence: "available" | "partial" | "degraded" | "missing"
 ): InterviewEndStageReason {
   if (evidence === "degraded") return "transcript_evidence_degraded";
+  if (evidence === "partial") return "transcript_evidence_partial";
   if (evidence === "missing") return "transcript_evidence_missing";
   if (completion.disposition === "existing") return "already_complete";
   if (completion.disposition === "repaired") return "terminal_repaired";

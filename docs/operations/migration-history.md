@@ -36,10 +36,11 @@
 |    27 | `0027_question_provenance`               |
 |    28 | `0028_focused_practice_attempts`         |
 |    29 | `0029_durable_contact_submission`        |
+|    30 | `0030_transcript_committed_watermarks`   |
 
 <!-- migration-journal:end -->
 
-This thirty-entry inventory is generated from the same ordered contract as
+This thirty-one-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -321,3 +322,15 @@ and browser roles cannot execute PII triage functions. Runtime limiter and
 bounded cleanup execution remain separately scoped to `service_role`, which
 has no direct contact-table privileges. Preview and Production validation also
 require the dedicated contact HMAC secret before a deployment may proceed.
+
+## Committed transcript watermarks
+
+Migration `0030_transcript_committed_watermarks` adds an observed and contiguous
+committed sequence boundary to each registered runtime writer, backfills those
+boundaries from canonical turns and interruption markers, and marks ambiguous
+or marker-bearing histories degraded. It also adds the service-owned immutable
+per-writer cutoff table and terminal session evidence fields. Terminalization
+can therefore freeze the exact database-proven prefix used by feedback without
+making availability depend on a final LiveKit round trip. Legacy terminal rows
+remain readable through the bounded compatibility path; rollback leaves the
+additive evidence fields and table unused rather than deleting customer data.

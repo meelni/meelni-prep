@@ -80,11 +80,23 @@ targeted reconnect-settlement request carries the registered generation.
 At an explicit end or semantic cutoff `D`, the runtime first disables audio
 input and output at `D`, commits only measured evidence whose event time is at
 or before `D`, interrupts active interviewer speech, and drains the signed
-outbox. Every registered writer generation then persists its own metadata-only
-`runtime_settlement` with `settled_at = D` and state `settled` or `degraded`;
-database creation time records later operational arrival separately. Terminal
-completion requires every registered generation to have durable `settled`
-proof and no integrity markers. A missing or degraded generation fails closed.
+outbox. Each writer persists its own metadata-only `runtime_settlement` at its
+semantic drain boundary: the active ending generation uses `D`, while a fenced
+generation may retain its earlier reconnect/handoff cutoff. Database creation
+time records later operational arrival separately. In the same transaction as
+each canonical turn or marker, the database records the highest observed
+sequence and the highest contiguous committed sequence for that writer.
+Out-of-order delivery may temporarily create a gap; the committed watermark
+does not cross it, and arrival of the missing sequence converges the already
+stored suffix. A marker permanently degrades the writer. A `settled` assertion
+is rejected while the registered writer has a gap or degraded watermark.
+
+Terminal completion freezes the per-writer committed boundaries and the
+terminal cutoff. Complete evidence requires every registered generation to
+have durable `settled` proof and no integrity fault. Missing settlement can
+produce partial feedback only when the frozen database prefix is healthy,
+gap-free, and independently passes the canonical partial threshold. A gap,
+marker, degraded settlement, or malformed boundary fails closed.
 Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.
 

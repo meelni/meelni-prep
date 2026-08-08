@@ -567,6 +567,23 @@ export const transcriptRuntimeWriter = pgTable(
     roomName: text("room_name").notNull(),
     writerId: text("writer_id").notNull(),
     registeredAt: timestamp("registered_at", { withTimezone: true }).notNull(),
+    lastObservedSequence: bigint("last_observed_sequence", { mode: "number" })
+      .default(0)
+      .notNull(),
+    committedSequence: bigint("committed_sequence", { mode: "number" })
+      .default(0)
+      .notNull(),
+    committedEventId: text("committed_event_id"),
+    committedThroughAt: timestamp("committed_through_at", {
+      withTimezone: true,
+    }),
+    integrityState: text("integrity_state")
+      .$type<"healthy" | "degraded">()
+      .default("healthy")
+      .notNull(),
+    progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -583,6 +600,26 @@ export const transcriptRuntimeWriter = pgTable(
     generationCheck: check(
       "transcript_runtime_writer_generation_check",
       sql`${table.generation} > 0`
+    ),
+    progressSequenceCheck: check(
+      "transcript_runtime_writer_progress_sequence_check",
+      sql`${table.lastObservedSequence} >= ${table.committedSequence} AND ${table.committedSequence} >= 0`
+    ),
+    progressBoundaryCheck: check(
+      "transcript_runtime_writer_progress_boundary_check",
+      sql`(
+        ${table.committedSequence} = 0 AND
+        ${table.committedEventId} IS NULL AND
+        ${table.committedThroughAt} IS NULL
+      ) OR (
+        ${table.committedSequence} > 0 AND
+        ${table.committedEventId} IS NOT NULL AND
+        ${table.committedThroughAt} IS NOT NULL
+      )`
+    ),
+    integrityStateCheck: check(
+      "transcript_runtime_writer_integrity_state_check",
+      sql`${table.integrityState} IN ('healthy', 'degraded')`
     ),
     writerUnique: uniqueIndex(
       "transcript_runtime_writer_session_writer_idx"
@@ -643,6 +680,87 @@ export const transcriptRuntimeSettlement = pgTable(
     roomSettledAtIdx: index(
       "transcript_runtime_settlement_room_settled_at_idx"
     ).on(table.roomName, table.settledAt),
+  })
+);
+
+// Immutable per-writer boundary copied when terminalization freezes the exact
+// transcript prefix that feedback is allowed to consume.
+export const transcriptEvidenceWriterCutoff = pgTable(
+  "transcript_evidence_writer_cutoff",
+  {
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id)
+      .notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    writerId: text("writer_id").notNull(),
+    committedSequence: bigint("committed_sequence", {
+      mode: "number",
+    }).notNull(),
+    lastObservedSequence: bigint("last_observed_sequence", {
+      mode: "number",
+    }).notNull(),
+    committedEventId: text("committed_event_id"),
+    committedThroughAt: timestamp("committed_through_at", {
+      withTimezone: true,
+    }),
+    integrityState: text("integrity_state")
+      .$type<"healthy" | "degraded">()
+      .notNull(),
+    settlementState: text("settlement_state")
+      .$type<"settled" | "missing" | "degraded">()
+      .notNull(),
+    frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_evidence_writer_cutoff_pkey",
+      columns: [table.sessionId, table.writerGeneration],
+    }),
+    contractCheck: check(
+      "transcript_evidence_writer_cutoff_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    generationCheck: check(
+      "transcript_evidence_writer_cutoff_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
+    progressSequenceCheck: check(
+      "transcript_evidence_writer_cutoff_progress_sequence_check",
+      sql`${table.lastObservedSequence} >= ${table.committedSequence} AND ${table.committedSequence} >= 0`
+    ),
+    progressBoundaryCheck: check(
+      "transcript_evidence_writer_cutoff_progress_boundary_check",
+      sql`(
+        ${table.committedSequence} = 0 AND
+        ${table.committedEventId} IS NULL AND
+        ${table.committedThroughAt} IS NULL
+      ) OR (
+        ${table.committedSequence} > 0 AND
+        ${table.committedEventId} IS NOT NULL AND
+        ${table.committedThroughAt} IS NOT NULL
+      )`
+    ),
+    integrityStateCheck: check(
+      "transcript_evidence_writer_cutoff_integrity_state_check",
+      sql`${table.integrityState} IN ('healthy', 'degraded')`
+    ),
+    settlementStateCheck: check(
+      "transcript_evidence_writer_cutoff_settlement_state_check",
+      sql`${table.settlementState} IN ('settled', 'missing', 'degraded')`
+    ),
+    writerForeignKey: foreignKey({
+      name: "transcript_evidence_writer_cutoff_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId,
+      ],
+    }),
+    sessionFrozenIdx: index(
+      "transcript_evidence_writer_cutoff_session_frozen_idx"
+    ).on(table.sessionId, table.frozenAt),
   })
 );
 
@@ -1315,6 +1433,7 @@ export const interviewSessionRelations = relations(
     transcriptInterruptionMarkers: many(transcriptInterruptionMarker),
     transcriptRuntimeWriters: many(transcriptRuntimeWriter),
     transcriptRuntimeSettlements: many(transcriptRuntimeSettlement),
+    transcriptEvidenceWriterCutoffs: many(transcriptEvidenceWriterCutoff),
     sessionQuestions: many(sessionQuestion),
   })
 );
@@ -1389,6 +1508,27 @@ export const transcriptRuntimeWriterRelations = relations(
       references: [interviewSession.id],
     }),
     settlements: many(transcriptRuntimeSettlement),
+    evidenceCutoffs: many(transcriptEvidenceWriterCutoff),
+  })
+);
+
+export const transcriptEvidenceWriterCutoffRelations = relations(
+  transcriptEvidenceWriterCutoff,
+  ({ one }) => ({
+    session: one(interviewSession, {
+      fields: [transcriptEvidenceWriterCutoff.sessionId],
+      references: [interviewSession.id],
+    }),
+    writer: one(transcriptRuntimeWriter, {
+      fields: [
+        transcriptEvidenceWriterCutoff.sessionId,
+        transcriptEvidenceWriterCutoff.writerGeneration,
+      ],
+      references: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+      ],
+    }),
   })
 );
 

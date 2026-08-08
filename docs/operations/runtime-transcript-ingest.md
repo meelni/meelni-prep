@@ -86,7 +86,7 @@ Loopback HTTP is accepted only for local development.
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0029_durable_contact_submission` and require the thirty-entry schema
+   `0030_transcript_committed_watermarks` and require the thirty-one-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime through the guarded wrapper with an external,
