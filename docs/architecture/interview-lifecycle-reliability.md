@@ -1,7 +1,10 @@
 # Interview lifecycle reliability direction
 
-Status: accepted implementation direction. SAV-380 is checkpointed locally and
-SAV-383 is in progress. The open program parent is SAV-365.
+Status: accepted and implemented on draft PR #525. Runtime implementation head
+`ca5910a1bd13a3d31e969e62f9adcbaf38b32703` passed provider-free, database,
+browser, hosted CI, and exact-head Preview health checks. The open program
+parent is SAV-365; authenticated isolated-staging rehearsal and human-owned
+rollout approval remain open.
 
 ## Outcome and ownership
 
@@ -92,14 +95,17 @@ boundaries:
 Feedback dispatch is never gated by cleanup or credit convergence. Each stage
 records a privacy-safe outcome and can be retried independently.
 
-### Transcript settlement evolution
+### Transcript settlement boundary
 
-The durable end-state should eventually be resolvable without a fragile final
-LiveKit round trip. Each writer generation will continuously store its last
-committed sequence, health, and timestamp. End compares that watermark with
-the cutoff and recorded gaps/interruptions. Missing or corrupted evidence
-still fails closed. A partial-feedback policy for a sufficiently complete
-verified prefix requires a separate product decision and rollout contract.
+The durable end-state no longer relies on a successful final LiveKit round
+trip as its only evidence. Each writer generation continuously stores its
+observed and gap-free committed sequence, health, and measured boundary. End
+freezes those watermarks with the semantic cutoff and evaluates only that
+immutable database prefix. A healthy, sufficiently complete prefix with
+missing final settlement is explicitly partial; gaps, interruption markers,
+degraded writers, malformed boundaries, and insufficient signal fail closed.
+The runtime settlement remains useful exact-drain evidence, but provider
+unavailability cannot veto the user's terminal intent.
 
 ## Initial SLOs
 
@@ -127,7 +133,32 @@ treated as stable.
    availability as the sole proof of an otherwise durable transcript.
 4. **SAV-382 — enforce SLOs and user states.** Add aggregation, alerts,
    runbooks, and bounded lifecycle presentation.
+5. **SAV-384 — bound start and canonical readiness.** Preserve one launch
+   intent, separate transport from canonical activation, and keep a safe exit
+   available through delayed readiness.
+6. **SAV-386 — preserve interview controls.** Keep End Interview reachable
+   during credential loading and reconnect while disabling only unsafe mute
+   interaction.
 
 Each slice must land with Production-shaped fixtures and preserve the existing
 fail-closed evidence boundary. Production rollout remains a human-owner
 decision.
+
+## Verification status
+
+| Boundary                            | Automated or hosted evidence                                                                                                                                  | Remaining live evidence                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stable start and credential handoff | Same-attempt replay, lost acknowledgement, bounded reads, token fencing, delayed canonical readiness, and no-token-churn tests pass.                          | Authenticated warm start, simulated 20-second cold start, stalled provider read, and lost-response replay in isolated staging.              |
+| Transcript durability               | Version-2 ingest, idempotency, writer registration, gaps, marker degradation, settlement, committed watermark, frozen prefix, and migration tests pass.       | Observe signed Python runtime writes and frozen per-generation evidence for a real synthetic staging interview.                             |
+| Explicit end                        | Acceptance-before-provider-work, ambiguous client reconciliation, persistent End controls, independent finalizer checkpoints, and recovery tests pass.        | Measure acceptance and terminalization latency while exercising normal end and a deliberately dropped finalizer delivery in staging.        |
+| Feedback dispatch and generation    | Outbox fencing, stale queue identity rotation, generation leases, terminal repair, delayed/recovery UI, and completed/skipped/failed presentation tests pass. | Exercise unclaimed delivery, slow generation, partial/insufficient outcomes, and one recovery without duplicate evaluation in staging.      |
+| Operational readiness               | Exact-head `npm run test:ci`, `npm run check`, PostgreSQL 17 migration rehearsal, hosted CI, isolated browser QA, and Preview dependency health pass.         | Record privacy-safe stage events against database truth, then tune or enable alerts only through the separately authorized rollout process. |
+
+Automated evidence proves deterministic contracts and failure convergence; it
+does not prove provider latency, webhook delivery, worker registration, or
+cross-service credentials in the target environment. The remaining rehearsal
+must use the isolated `staging` Vercel environment, Preview database and
+LiveKit project, the exact candidate commit/ref, and the time-bounded Statsig
+`meelni_preview_rehearsal_authority`. Enabling that authority or aligning the
+staging branch is a separately owner-authorized action and is not implied by a
+green PR.
