@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
           | "recovered"
           | "disconnected"
       ) => void),
+  onDeadlineReached: null as null | (() => void),
   onTranscriptUpdate: null as
     | null
     | ((turn: Record<string, unknown>) => Promise<void> | void),
@@ -119,7 +120,10 @@ vi.mock("./components/connection-indicator", () => ({
 }));
 
 vi.mock("./components/timer-display", () => ({
-  TimerDisplay: () => null,
+  TimerDisplay: ({ onDeadlineReached }: { onDeadlineReached(): void }) => {
+    mocks.onDeadlineReached = onDeadlineReached;
+    return null;
+  },
 }));
 
 vi.mock("./components/transcript-panel", () => ({
@@ -170,6 +174,7 @@ vi.mock("./components/end-session-modal", () => ({
 
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { FeedbackReview } from "@/components/feedback/feedback-review";
+import { CUSTOMER_CLIENT_FETCH_DEADLINE_MS } from "@/lib/http/deadline";
 import { InterviewPageContent } from "./page";
 
 describe("active interview page lifecycle", () => {
@@ -177,6 +182,7 @@ describe("active interview page lifecycle", () => {
     mocks.authUser = { id: "owner-a" };
     mocks.onAgentStateChange = null;
     mocks.onConnectionStateChange = null;
+    mocks.onDeadlineReached = null;
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
     vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
@@ -451,6 +457,45 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 
+  it("hands an ending session reload to feedback before requesting room credentials", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}`) {
+        return Response.json({
+          session: {
+            id: SESSION_ID,
+            livekitRoomName: "interview-room",
+            startedAt: "2099-07-15T21:00:00.000Z",
+            deadlineAt: "2099-07-15T22:00:00.000Z",
+            lifecycleState: "ending",
+            lifecycleVersion: 4,
+            endedAt: null,
+            feedbackReady: false,
+            roundType: "product_sense",
+            mode: "voice_video",
+            config: { difficulty: "intermediate" },
+          },
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
+    );
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/livekit/token"
+      )
+    ).toBe(false);
+    expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
+  });
+
   it("keeps End available without rotating credentials while runtime readiness is delayed", async () => {
     const request = vi.fn(activeInterviewResponse);
     vi.stubGlobal("fetch", request);
@@ -550,6 +595,72 @@ describe("active interview page lifecycle", () => {
 
     await waitFor(() => expect(endRequests).toBe(1));
     expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`);
+  });
+
+  it("aborts a stalled automatic-deadline read and continues polling terminal truth", async () => {
+    let deadlinePolling = false;
+    let deadlineReads = 0;
+    let firstReadAborted = false;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}` && deadlinePolling) {
+          deadlineReads += 1;
+          if (deadlineReads === 1) {
+            return new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                "abort",
+                () => {
+                  firstReadAborted = true;
+                  const error = new Error("deadline poll aborted");
+                  error.name = "AbortError";
+                  reject(error);
+                },
+                { once: true }
+              );
+            });
+          }
+          return Response.json({
+            session: {
+              lifecycleState: "completed",
+              feedbackReady: false,
+            },
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onDeadlineReached).not.toBeNull());
+
+    vi.useFakeTimers();
+    try {
+      deadlinePolling = true;
+      await act(async () => {
+        mocks.onDeadlineReached?.();
+        await Promise.resolve();
+      });
+      expect(deadlineReads).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          CUSTOMER_CLIENT_FETCH_DEADLINE_MS + 1_100
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(firstReadAborted).toBe(true);
+      expect(deadlineReads).toBe(2);
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows an actionable failure instead of spinning forever when initial authorization is rejected", async () => {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DeadlineExceededError,
   fetchWithDeadline,
+  fetchWithDeadlineUsing,
   withDeadline,
 } from "./deadline";
 
@@ -42,4 +43,28 @@ test("fetchWithDeadline aborts the underlying request", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("fetchWithDeadlineUsing bounds an injected transport", async () => {
+  let observedSignal: AbortSignal | undefined;
+  const request = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    observedSignal = init?.signal ?? undefined;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        },
+        { once: true }
+      );
+    });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    fetchWithDeadlineUsing(request, "https://example.test", {}, 5),
+    { name: "AbortError" }
+  );
+  assert.equal(observedSignal?.aborted, true);
 });

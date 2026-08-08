@@ -161,8 +161,10 @@ failures return non-2xx.
 
 The browser bounds acceptance to five seconds. On any 2xx response it closes
 the interview surface and navigates immediately. On an ambiguous transport
-failure it polls lifecycle truth; `ending` is sufficient for navigation and
-never requires the candidate to keep the room page open.
+failure it polls lifecycle truth through bounded, abortable reads; `ending` is
+sufficient for navigation and never requires the candidate to keep the room
+page open. The same client deadline applies to an idempotent End retry, so a
+stalled transport cannot permanently own the reconciliation loop.
 
 `POST /api/interview/runtime-settlement` accepts only an authenticated,
 owner-scoped `sessionId`. It derives the cutoff from database time bounded by
@@ -183,9 +185,11 @@ deadline recovery. Other terminal reasons preserve the existing retry behavior
 and claim a new attempt identity only when the stored state is retryable. No
 path creates a second feedback row.
 
-`GET /api/session/:sessionId` exposes `feedbackReady`. The deadline UI waits
-for both terminal lifecycle truth and `feedbackReady=true` before navigating
-away from the interview saving state.
+`GET /api/session/:sessionId` exposes `feedbackReady` for compatibility and
+diagnostics. The focused room hands presentation to the feedback lifecycle as
+soon as owned truth is `ending` or terminal; it does not wait for
+`feedbackReady=true`. The feedback API continues to report `settling` and to
+withhold dispatch/content while deadline room cleanup is unacknowledged.
 
 A reconnect-timeout owner must keep the room and agent alive long enough to
 send a reliable trusted metadata-only settlement request targeted to the

@@ -96,8 +96,12 @@ sanitized event counts match database truth.
    the five-minute lease expires. Confirm the customer sees the delayed state.
 8. If a lifecycle read reaches its eight-second deadline, investigate auth or
    database contention; the response must remain private and retryable.
-9. Record a sanitized fixture for every confirmed failure mode before closing
-   the incident.
+9. Once durable session truth is `ending` or terminal, confirm the focused
+   interview room has handed control to the feedback lifecycle. Do not wait for
+   `feedbackReady` in the room; the feedback route owns settling, delayed,
+   recovery, and terminal presentation.
+10. Record a sanitized fixture for every confirmed failure mode before closing
+    the incident.
 
 ## Preview evidence required for rollout
 
@@ -111,6 +115,9 @@ sanitized event counts match database truth.
   the original session.
 - End acceptance and terminalization timestamps meet their target on a normal
   interview.
+- Automatic deadline completion hands `ending` or terminal session truth to the
+  feedback lifecycle even while feedback dispatch is still settling, and a
+  stalled terminal-truth request aborts before the next bounded poll.
 - A deliberately dropped finalizer delivery becomes retryable at 30 seconds
   and converges after redelivery.
 - A deliberately unclaimed feedback event becomes retryable at 90 seconds,

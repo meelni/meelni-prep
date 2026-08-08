@@ -42,6 +42,15 @@ export async function fetchWithDeadline(
   init: RequestInit = {},
   timeoutMs = CUSTOMER_CLIENT_FETCH_DEADLINE_MS
 ): Promise<Response> {
+  return fetchWithDeadlineUsing(fetch, input, init, timeoutMs);
+}
+
+export async function fetchWithDeadlineUsing(
+  fetcher: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = CUSTOMER_CLIENT_FETCH_DEADLINE_MS
+): Promise<Response> {
   const controller = new AbortController();
   const parentSignal = init.signal;
   const abortFromParent = () => controller.abort(parentSignal?.reason);
@@ -53,7 +62,7 @@ export async function fetchWithDeadline(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await fetcher(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
     parentSignal?.removeEventListener("abort", abortFromParent);

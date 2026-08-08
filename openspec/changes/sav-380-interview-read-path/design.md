@@ -8,9 +8,11 @@ read path. A confirmed connection recovery advances an explicit resync
 generation. Effect cleanup aborts the superseded request, and every request has
 a short deadline.
 
-Feedback GET, recovery POST, and terminal refresh use the same bounded fetch
-primitive. Polling schedules the next attempt only after the current attempt
-settles, preserving one in-flight request per mounted feedback client.
+Feedback GET, recovery POST, automatic-deadline terminal refresh, ambiguous-End
+lifecycle reads, and idempotent End retries use the same bounded fetch
+primitive. Effect cleanup aborts owned work. Polling schedules the next attempt
+only after the current attempt settles, preserving one in-flight request per
+mounted lifecycle client.
 
 ## Server deadlines
 

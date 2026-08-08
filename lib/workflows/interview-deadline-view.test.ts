@@ -34,26 +34,29 @@ test("countdown formatting is stable and defensive", () => {
   assert.equal(formatInterviewTime(Number.NaN), "00:00");
 });
 
-test("feedback navigation requires terminal truth and acknowledged handoff", () => {
+test("feedback navigation hands ending and terminal truth to the feedback lifecycle", () => {
+  assert.equal(
+    canNavigateToInterviewFeedback({
+      lifecycleState: "ending",
+    }),
+    true
+  );
   assert.equal(
     canNavigateToInterviewFeedback({
       lifecycleState: "completed",
-      feedbackReady: false,
     }),
-    false
+    true
   );
   assert.equal(
     canNavigateToInterviewFeedback({
       lifecycleState: "active",
-      feedbackReady: true,
     }),
     false
   );
   assert.equal(
     canNavigateToInterviewFeedback({
-      lifecycleState: "completed",
-      feedbackReady: true,
+      lifecycleState: "ready",
     }),
-    true
+    false
   );
 });
