@@ -414,7 +414,7 @@ test("rejects non-canonical createdAt strings instead of normalizing them", () =
 test("keeps recovery attached to the authoritative lifecycle status", () => {
   assert.deepEqual(
     toFeedbackViewState({ status: "processing", retryable: true }),
-    { kind: "processing", retryable: true }
+    { kind: "processing", retryable: true, delayed: false }
   );
   assert.deepEqual(
     toFeedbackViewState({
@@ -486,6 +486,7 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "missing", retryable: true },
     { status: "session_not_ended", retryable: false },
     { status: "settling", retryable: false },
+    { status: "settling", retryable: true, delayed: true },
     { status: "pending", retryable: true, estimatedTimeRemaining: 10 },
     { status: "processing", retryable: false },
     { status: "failed", retryable: true, message: "Try again." },
@@ -506,7 +507,7 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "unknown", retryable: false },
     { status: "missing", retryable: false },
     { status: "session_not_ended", retryable: true },
-    { status: "settling", retryable: true },
+    { status: "settling", retryable: true, delayed: "yes" },
     { status: "pending", retryable: "yes" },
     { status: "processing", retryable: false, estimatedTimeRemaining: -1 },
     { status: "failed", retryable: true },

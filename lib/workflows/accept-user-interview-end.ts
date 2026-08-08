@@ -6,6 +6,7 @@ import { inngest } from "@/lib/inngest/client";
 
 export const USER_INTERVIEW_END_EVENT_NAME = "interview/end.requested" as const;
 export const USER_INTERVIEW_END_DISPATCH_TIMEOUT_MS = 750;
+export const USER_INTERVIEW_END_REDELIVERY_BUCKET_MS = 60_000;
 export type UserInterviewEndResumeFrom =
   | "runtime_settlement"
   | "feedback_dispatch";
@@ -49,7 +50,7 @@ export function buildUserInterviewEndEvent(
 }
 
 export async function acceptUserInterviewEndWorkflow(
-  input: { sessionId: string; userId: string },
+  input: { sessionId: string; userId: string; deliveryId?: string },
   deps: AcceptUserInterviewEndDeps = createAcceptUserInterviewEndDeps()
 ): Promise<AcceptUserInterviewEndWorkflowResult> {
   const accepted = await deps.accept(input);
@@ -58,16 +59,26 @@ export async function acceptUserInterviewEndWorkflow(
     return { ...accepted, delivery: "not_required" };
   }
 
-  const event = buildUserInterviewEndEvent({
-    sessionId: accepted.session.sessionId,
-    userId: accepted.session.userId,
-    lifecycleVersion: accepted.session.lifecycleVersion,
-  });
+  const event = buildUserInterviewEndEvent(
+    {
+      sessionId: accepted.session.sessionId,
+      userId: accepted.session.userId,
+      lifecycleVersion: accepted.session.lifecycleVersion,
+    },
+    input.deliveryId ?? "initial"
+  );
   const delivery = await settleWithin(
     deps.schedule(event),
     deps.dispatchTimeoutMs ?? USER_INTERVIEW_END_DISPATCH_TIMEOUT_MS
   );
   return { ...accepted, delivery: delivery ? "scheduled" : "deferred" };
+}
+
+export function userInterviewEndRedeliveryId(now = new Date()): string {
+  const timestamp = Number.isFinite(now.getTime()) ? now.getTime() : 0;
+  return `feedback-recovery:${Math.floor(
+    timestamp / USER_INTERVIEW_END_REDELIVERY_BUCKET_MS
+  )}`;
 }
 
 function createAcceptUserInterviewEndDeps(): AcceptUserInterviewEndDeps {

@@ -17,6 +17,7 @@ import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
   isFeedbackGenerationLeaseExpired,
+  isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
 import {
@@ -37,6 +38,15 @@ import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedb
 import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
 import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
 import {
+  elapsedInterviewLifecycleMs,
+  INTERVIEW_LIFECYCLE_SLOS,
+} from "@/lib/operations/interview-lifecycle-slo";
+import { reportInterviewEndStage } from "@/lib/operations/interview-end-stage";
+import {
+  acceptUserInterviewEndWorkflow,
+  userInterviewEndRedeliveryId,
+} from "@/lib/workflows/accept-user-interview-end";
+import {
   CUSTOMER_READ_ROUTE_DEADLINE_MS,
   DEPENDENCY_RETRY_AFTER_SECONDS,
   isDeadlineExceededError,
@@ -51,8 +61,9 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   let correlationId: InterviewSessionCorrelationId | null = null;
+  const readStartedAt = Date.now();
   try {
-    return await withDeadline(
+    const response = await withDeadline(
       "feedback_read",
       (async () => {
         // Verify authentication
@@ -101,12 +112,25 @@ export async function GET(
           );
 
           if (session?.lifecycleState === "ending") {
+            const elapsedMs = elapsedInterviewLifecycleMs(
+              session.endingAt,
+              new Date(Date.now())
+            );
+            const delayed =
+              elapsedMs !== null &&
+              elapsedMs >=
+                INTERVIEW_LIFECYCLE_SLOS.terminalization.upperBoundMs;
+            const retryable = delayed && session.terminalReason === "user_end";
             return NextResponse.json(
               {
                 status: "settling",
-                retryable: false,
-                message:
-                  "Your interview is saved. We’re finishing the transcript and will begin feedback automatically.",
+                retryable,
+                delayed,
+                message: delayed
+                  ? retryable
+                    ? "Your interview is saved, but final processing is delayed. Retry the handoff to continue."
+                    : "Your interview is saved, but final processing is taking longer. Recovery will continue automatically."
+                  : "Your interview is saved. We’re finishing the transcript and will begin feedback automatically.",
               },
               { headers: { "Cache-Control": "private, no-store" } }
             );
@@ -117,10 +141,19 @@ export async function GET(
             hasInterviewDeadlineRoomCleanupClaim(session) &&
             !isInterviewDeadlineRoomCleanupAcknowledged(session)
           ) {
+            const elapsedMs = elapsedInterviewLifecycleMs(
+              session.endedAt ?? session.endingAt,
+              new Date(Date.now())
+            );
+            const delayed =
+              elapsedMs !== null &&
+              elapsedMs >=
+                INTERVIEW_LIFECYCLE_SLOS.terminalization.upperBoundMs;
             return NextResponse.json(
               {
                 status: "settling",
                 retryable: false,
+                delayed,
                 message:
                   "The interview is saved and its room is still being closed safely.",
               },
@@ -174,16 +207,29 @@ export async function GET(
 
           // Case 1: Pending - waiting to start processing
           if (status === "pending") {
+            const queuedElapsedMs = elapsedInterviewLifecycleMs(
+              feedbackRecord.dispatchedAt ?? feedbackRecord.createdAt,
+              new Date(Date.now())
+            );
+            const delayed =
+              queuedElapsedMs !== null &&
+              queuedElapsedMs >=
+                INTERVIEW_LIFECYCLE_SLOS.feedback_completion.targetMs;
             const retryable =
               feedbackRecord.completionTier !== null &&
-              isFeedbackDispatchRetryable({
+              (isFeedbackDispatchRetryable({
                 status: feedbackRecord.dispatchStatus,
                 claimedAt: feedbackRecord.dispatchClaimedAt,
-              });
+              }) ||
+                isFeedbackQueueLeaseExpired(
+                  feedbackRecord,
+                  new Date(Date.now())
+                ));
             return NextResponse.json(
               {
                 status: "pending",
                 retryable,
+                delayed,
                 estimatedTimeRemaining: ESTIMATED_PROCESSING_TIME,
                 dispatch: {
                   status: feedbackRecord.dispatchStatus,
@@ -220,10 +266,18 @@ export async function GET(
                 retryable:
                   feedbackRecord.dispatchStatus !== "not_required" &&
                   feedbackRecord.dispatchEventId !== null &&
-                  isFeedbackGenerationLeaseExpired({
-                    status,
-                    processingStartedAt: feedbackRecord.processingStartedAt,
-                  }),
+                  isFeedbackGenerationLeaseExpired(
+                    {
+                      status,
+                      processingStartedAt: feedbackRecord.processingStartedAt,
+                    },
+                    new Date(Date.now())
+                  ),
+                delayed:
+                  feedbackRecord.processingStartedAt !== null &&
+                  Date.now() -
+                    new Date(feedbackRecord.processingStartedAt).getTime() >=
+                    INTERVIEW_LIFECYCLE_SLOS.feedback_completion.targetMs,
                 estimatedTimeRemaining,
               },
               {
@@ -370,7 +424,24 @@ export async function GET(
       })(),
       CUSTOMER_READ_ROUTE_DEADLINE_MS
     );
+    reportInterviewEndStage({
+      stage: "lifecycle_read",
+      outcome: "succeeded",
+      durationMs: Date.now() - readStartedAt,
+      reason: "feedback_read_succeeded",
+      sessionId: correlationId ?? undefined,
+      slo: "lifecycle_read",
+    });
+    return response;
   } catch (error) {
+    reportInterviewEndStage({
+      stage: "lifecycle_read",
+      outcome: "failed",
+      durationMs: Date.now() - readStartedAt,
+      reason: "feedback_read_failed",
+      sessionId: correlationId ?? undefined,
+      slo: "lifecycle_read",
+    });
     reportOperationalFailure({
       operation: "feedback_dispatch",
       errorCode: "feedback_read_failed",
@@ -424,6 +495,43 @@ export async function POST(
     }
 
     const { sessionId } = await params;
+    const session = await getSessionById(sessionId);
+    if (!session || session.userId !== user.id) {
+      return NextResponse.json(
+        { error: "Session not found or access denied" },
+        { status: 404 }
+      );
+    }
+    if (session.lifecycleState === "ending") {
+      const elapsedMs = elapsedInterviewLifecycleMs(
+        session.endingAt,
+        new Date(Date.now())
+      );
+      const delayed =
+        elapsedMs !== null &&
+        elapsedMs >= INTERVIEW_LIFECYCLE_SLOS.terminalization.upperBoundMs;
+      const retryable = delayed && session.terminalReason === "user_end";
+      if (retryable) {
+        await acceptUserInterviewEndWorkflow({
+          sessionId,
+          userId: user.id,
+          deliveryId: userInterviewEndRedeliveryId(),
+        });
+      }
+      return NextResponse.json(
+        {
+          status: "settling",
+          retryable,
+          delayed,
+          message: retryable
+            ? "The saved interview handoff was retried. We’ll keep checking its progress."
+            : delayed
+              ? "The interview is saved. Recovery is continuing automatically."
+              : "The interview is still closing safely.",
+        },
+        { headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
     const result = await recoverFeedbackGenerationWorkflow({
       sessionId,
       userId: user.id,

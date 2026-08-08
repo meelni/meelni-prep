@@ -70,7 +70,7 @@ test("dispatch detail cannot override top-level non-retryable truth", async () =
   assert.equal(postCalls, 0);
 });
 
-test("settling remains GET-only and cannot trigger automatic recovery", async () => {
+test("non-retryable settling cannot trigger automatic recovery", async () => {
   const coordinator = createFeedbackRecoveryCoordinator();
   let postCalls = 0;
 

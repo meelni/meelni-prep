@@ -67,6 +67,27 @@ test("stale processing is recoverable but an active lease is not reopened", asyn
   assert.equal(activeDispatches.length, 0);
 });
 
+test("a sent queue item that was never claimed rotates identity before redispatch", async () => {
+  const store = new RecoveryStore(
+    record({
+      status: "pending",
+      dispatchStatus: "sent",
+      dispatchedAt: new Date("2026-07-10T14:58:30.000Z"),
+    })
+  );
+  const dispatched: string[] = [];
+
+  const result = await recoverFeedbackGenerationWorkflow(
+    input(),
+    dependencies(store, dispatched)
+  );
+
+  assert.equal(result.ok && result.status, "pending");
+  assert.equal(store.prepareCount, 1);
+  assert.equal(store.current?.eventId, EVENT_2);
+  assert.equal(dispatched.length, 1);
+});
+
 test("terminal outcomes and cross-user requests cannot mutate state", async () => {
   for (const status of ["completed", "skipped"] as const) {
     const store = new RecoveryStore(record({ status }));
@@ -291,7 +312,11 @@ class RecoveryStore implements FeedbackGenerationStore {
     if (
       !this.current ||
       (this.current.status !== "failed" &&
-        this.current.status !== "processing") ||
+        this.current.status !== "processing" &&
+        !(
+          this.current.status === "pending" &&
+          this.current.dispatchStatus === "sent"
+        )) ||
       this.current.eventId === null ||
       this.current.dispatchStatus === "not_required"
     ) {

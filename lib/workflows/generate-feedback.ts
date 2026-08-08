@@ -33,6 +33,7 @@ export interface GenerateFeedbackWorkflowInput {
 export interface FeedbackGenerationSession {
   userId: string;
   roundType: string;
+  endingAtMs?: number | null;
 }
 
 export interface FeedbackGenerationSteps {
@@ -65,12 +66,14 @@ export type GenerateFeedbackWorkflowResult =
       disposition: "applied" | "already_terminal";
       sessionId: string;
       overallScore?: number;
+      endToFeedbackMs?: number;
     }
   | {
       status: "skipped";
       disposition: "applied" | "already_terminal";
       sessionId: string;
       reason?: string;
+      endToFeedbackMs?: number;
     }
   | {
       status: "processing";
@@ -145,6 +148,7 @@ export async function generateFeedbackWorkflow(
       return skipClaimedFeedback({
         input,
         deps,
+        endingAtMs: authorization.session.endingAtMs,
         reason:
           validation.reasons.join(", ") ||
           "Session is not eligible for feedback",
@@ -156,6 +160,7 @@ export async function generateFeedbackWorkflow(
     return skipClaimedFeedback({
       input,
       deps,
+      endingAtMs: authorization.session.endingAtMs,
       reason: "Session is not eligible for feedback",
     });
   }
@@ -167,6 +172,7 @@ export async function generateFeedbackWorkflow(
     return skipClaimedFeedback({
       input,
       deps,
+      endingAtMs: authorization.session.endingAtMs,
       reason:
         transcript.reasons[0] || "No trustworthy transcript evidence found",
       completionTier: "insufficient",
@@ -228,6 +234,7 @@ export async function generateFeedbackWorkflow(
     );
     return unclaimedResult(input, current);
   }
+  const completedAt = deps.now();
 
   await deps.steps.sendInsights({
     id: `insights:update:${input.sessionId}:${input.eventId}`,
@@ -240,6 +247,7 @@ export async function generateFeedbackWorkflow(
     disposition: "applied",
     sessionId: input.sessionId,
     overallScore: evaluated.evaluation.overallScore,
+    ...endToFeedbackTiming(authorization.session.endingAtMs, completedAt),
   };
 }
 
@@ -274,7 +282,11 @@ export function createFeedbackGenerationFailureDeps(): Pick<
     async getSession(sessionId) {
       const session = await getSessionById(sessionId);
       return session
-        ? { userId: session.userId, roundType: session.roundType }
+        ? {
+            userId: session.userId,
+            roundType: session.roundType,
+            endingAtMs: session.endingAt?.getTime() ?? null,
+          }
         : null;
     },
   };
@@ -294,7 +306,11 @@ export function createGenerateFeedbackWorkflowDeps(
     async getSession(sessionId) {
       const session = await getSessionById(sessionId);
       return session
-        ? { userId: session.userId, roundType: session.roundType }
+        ? {
+            userId: session.userId,
+            roundType: session.roundType,
+            endingAtMs: session.endingAt?.getTime() ?? null,
+          }
         : null;
     },
     validateLegacy: validateSessionCompleteness,
@@ -323,6 +339,7 @@ async function assertAccountIsActive(
 async function skipClaimedFeedback(input: {
   input: GenerateFeedbackWorkflowInput;
   deps: GenerateFeedbackWorkflowDeps;
+  endingAtMs: number | null | undefined;
   reason: string;
   completionTier?: "insufficient";
 }): Promise<GenerateFeedbackWorkflowResult> {
@@ -347,6 +364,23 @@ async function skipClaimedFeedback(input: {
     disposition: "applied",
     sessionId: input.input.sessionId,
     reason: input.reason,
+    ...endToFeedbackTiming(input.endingAtMs, input.deps.now()),
+  };
+}
+
+function endToFeedbackTiming(
+  endingAtMs: number | null | undefined,
+  completedAt: Date
+): { endToFeedbackMs: number } | Record<string, never> {
+  if (
+    typeof endingAtMs !== "number" ||
+    !Number.isFinite(endingAtMs) ||
+    !Number.isFinite(completedAt.getTime())
+  ) {
+    return {};
+  }
+  return {
+    endToFeedbackMs: Math.max(0, completedAt.getTime() - endingAtMs),
   };
 }
 

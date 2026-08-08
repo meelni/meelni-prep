@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 import { db } from "./index";
 import { FEEDBACK_DISPATCH_LEASE_MS } from "./feedback-dispatch";
+import { FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS } from "./feedback-generation-state";
 import { feedback, interviewSession } from "./schema";
 
 export interface UserEndRecoveryItem {
@@ -22,6 +23,9 @@ export async function listUserInterviewEndsToRecover(
 ): Promise<UserEndRecoveryItem[]> {
   const staleDispatchBefore = new Date(
     now.getTime() - FEEDBACK_DISPATCH_LEASE_MS
+  );
+  const staleQueueBefore = new Date(
+    now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
   );
   const rows = await database
     .select({
@@ -59,6 +63,14 @@ export async function listUserInterviewEndsToRecover(
             and(
               eq(feedback.status, "failed"),
               eq(feedback.dispatchStatus, "sent")
+            ),
+            and(
+              eq(feedback.status, "pending"),
+              eq(feedback.dispatchStatus, "sent"),
+              or(
+                isNull(feedback.dispatchedAt),
+                lte(feedback.dispatchedAt, staleQueueBefore)
+              )
             ),
             and(
               eq(feedback.dispatchStatus, "sending"),

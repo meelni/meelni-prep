@@ -8,7 +8,7 @@ import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
 test("retryable processing remains visibly processing while recovery is available", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {
-      state: { kind: "processing", retryable: true },
+      state: { kind: "processing", retryable: true, delayed: false },
       recovering: false,
       recoveryError: null,
       onRecover() {},
@@ -19,11 +19,46 @@ test("retryable processing remains visibly processing while recovery is availabl
   assert.doesNotMatch(html, /waiting to start/i);
 });
 
+test("delayed processing explains that the saved interview remains available", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "processing", retryable: false, delayed: true },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(html, /Feedback is taking longer/);
+  assert.match(html, /interview is saved/i);
+  assert.match(html, /Interview history/);
+  assert.match(html, /href="\/dashboard\/history"/);
+});
+
+test("delayed settling offers a direct retry without trapping the customer", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "settling",
+        retryable: true,
+        delayed: true,
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(html, /Interview saving is delayed/);
+  assert.match(html, /Retry saving/);
+  assert.match(html, /View interview history/);
+});
+
 test("settling explains that feedback will begin after safe session closure", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {
       state: {
         kind: "settling",
+        retryable: false,
+        delayed: false,
         message: "The interview is saved and its room is still closing safely.",
       },
       recovering: false,

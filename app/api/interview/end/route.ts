@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
       outcome: result.delivery === "deferred" ? "deferred" : "succeeded",
       durationMs: Date.now() - acceptanceStartedAt,
       sessionId,
+      slo: "end_acceptance",
     });
     if (result.delivery === "deferred") {
       reportOperationalFailure({

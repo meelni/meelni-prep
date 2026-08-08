@@ -8,6 +8,7 @@ import {
   type InterviewEndStageOutcome,
   type InterviewEndStageReason,
 } from "@/lib/operations/interview-end-stage";
+import type { InterviewLifecycleSlo } from "@/lib/operations/interview-lifecycle-slo";
 import {
   finalizeInterviewSessionWorkflow,
   type InterviewSessionSettlement,
@@ -83,6 +84,8 @@ export type UserInterviewEndFinalizationCheckpoint =
       lifecycleState: InterviewSessionSettlement["lifecycle"]["state"];
       lifecycleVersion: number;
       terminalReason: InterviewSessionSettlement["lifecycle"]["terminalReason"];
+      terminalizationDurationMs: number;
+      terminalizedAtMs: number;
       roomName: string | null;
       feedbackStatus: InterviewSessionSettlement["feedback"]["status"];
       feedbackDispatchStatus: InterviewSessionSettlement["feedback"]["dispatchStatus"];
@@ -221,12 +224,18 @@ async function finalizeSession(
       return completion;
     }
     const transcriptEvidence = completion.transcriptEvidence;
+    const terminalizationDurationMs =
+      lifecycleLatency(
+        completion.lifecycle.endingAt,
+        completion.lifecycle.endedAt
+      ) ?? elapsed(deps, startedAt);
     reportStage(
       input.sessionId,
       "finalize",
       "succeeded",
-      elapsed(deps, startedAt),
-      finalizationReason(completion, transcriptEvidence)
+      terminalizationDurationMs,
+      finalizationReason(completion, transcriptEvidence),
+      "terminalization"
     );
     return {
       ok: true,
@@ -234,6 +243,8 @@ async function finalizeSession(
       lifecycleState: completion.lifecycle.state,
       lifecycleVersion: completion.lifecycle.version,
       terminalReason: completion.lifecycle.terminalReason,
+      terminalizationDurationMs,
+      terminalizedAtMs: completion.lifecycle.endedAt.getTime(),
       roomName: completion.roomName,
       feedbackStatus: completion.feedback.status,
       feedbackDispatchStatus: completion.feedback.dispatchStatus,
@@ -316,8 +327,12 @@ async function dispatchFeedback(
       input.sessionId,
       "feedback_dispatch",
       "succeeded",
-      elapsed(deps, startedAt),
-      "feedback_queued"
+      lifecycleLatency(
+        new Date(finalization.terminalizedAtMs),
+        recovered.dispatch?.dispatchedAt ?? null
+      ) ?? elapsed(deps, startedAt),
+      "feedback_queued",
+      "feedback_dispatch"
     );
     return { status: "queued" };
   } catch (error) {
@@ -452,9 +467,26 @@ function reportStage(
   stage: InterviewEndStage,
   outcome: InterviewEndStageOutcome,
   durationMs: number,
-  reason: InterviewEndStageReason
+  reason: InterviewEndStageReason,
+  slo?: InterviewLifecycleSlo
 ): void {
-  reportInterviewEndStage({ stage, outcome, durationMs, reason, sessionId });
+  reportInterviewEndStage({
+    stage,
+    outcome,
+    durationMs,
+    reason,
+    sessionId,
+    slo,
+  });
+}
+
+function lifecycleLatency(
+  startedAt: Date | null,
+  completedAt: Date | null
+): number | null {
+  if (!startedAt || !completedAt) return null;
+  const durationMs = completedAt.getTime() - startedAt.getTime();
+  return Number.isFinite(durationMs) ? Math.max(0, durationMs) : null;
 }
 
 class UserInterviewEndStageError extends Error {

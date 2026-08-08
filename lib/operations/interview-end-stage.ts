@@ -1,9 +1,17 @@
+import {
+  classifyInterviewLifecycleLatency,
+  INTERVIEW_LIFECYCLE_SLOS,
+  type InterviewLifecycleLatencyClass,
+  type InterviewLifecycleSlo,
+} from "./interview-lifecycle-slo";
+
 export const INTERVIEW_END_STAGES = [
   "accept",
   "runtime_settlement",
   "finalize",
   "feedback_dispatch",
   "feedback_generation",
+  "lifecycle_read",
   "cleanup_schedule",
   "credit_settlement",
 ] as const;
@@ -32,6 +40,8 @@ export const INTERVIEW_END_STAGE_REASONS = [
   "feedback_in_progress",
   "feedback_not_required",
   "feedback_dispatch_failed",
+  "feedback_read_succeeded",
+  "feedback_read_failed",
   "cleanup_scheduled",
   "cleanup_not_required",
   "credit_settled",
@@ -44,13 +54,17 @@ export type InterviewEndStageReason =
 
 export interface InterviewEndStageEvent {
   event: "meelni_interview_end_stage";
-  version: 2;
+  version: 3;
   occurredAt: string;
   stage: InterviewEndStage;
   outcome: InterviewEndStageOutcome;
   durationMs: number;
   reason: InterviewEndStageReason | null;
   correlationId: string | null;
+  slo: InterviewLifecycleSlo | null;
+  sloTargetMs: number | null;
+  sloUpperBoundMs: number | null;
+  latencyClass: InterviewLifecycleLatencyClass | null;
 }
 
 const UUID_PATTERN =
@@ -72,6 +86,7 @@ export function reportInterviewEndStage(
     durationMs: number;
     reason?: InterviewEndStageReason;
     sessionId?: unknown;
+    slo?: InterviewLifecycleSlo;
   },
   write: (serialized: string) => void = console.info
 ): InterviewEndStageEvent | null {
@@ -79,14 +94,21 @@ export function reportInterviewEndStage(
     !STAGES.has(input.stage) ||
     !OUTCOMES.has(input.outcome) ||
     (input.reason !== undefined && !REASONS.has(input.reason)) ||
+    (input.slo !== undefined &&
+      !Object.prototype.hasOwnProperty.call(
+        INTERVIEW_LIFECYCLE_SLOS,
+        input.slo
+      )) ||
     !Number.isFinite(input.durationMs) ||
     input.durationMs < 0
   ) {
     return null;
   }
+  const slo = input.slo ?? null;
+  const threshold = slo ? INTERVIEW_LIFECYCLE_SLOS[slo] : null;
   const event: InterviewEndStageEvent = {
     event: "meelni_interview_end_stage",
-    version: 2,
+    version: 3,
     occurredAt: new Date().toISOString(),
     stage: input.stage,
     outcome: input.outcome,
@@ -96,6 +118,12 @@ export function reportInterviewEndStage(
       typeof input.sessionId === "string" && UUID_PATTERN.test(input.sessionId)
         ? input.sessionId
         : null,
+    slo,
+    sloTargetMs: threshold?.targetMs ?? null,
+    sloUpperBoundMs: threshold?.upperBoundMs ?? null,
+    latencyClass: slo
+      ? classifyInterviewLifecycleLatency(slo, input.durationMs)
+      : null,
   };
   try {
     write(JSON.stringify(event));
