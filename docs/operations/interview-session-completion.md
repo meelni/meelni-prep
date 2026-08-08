@@ -99,6 +99,13 @@ end-to-feedback handoff. It covers these invariants together:
 - stalled automatic-deadline reads abort before the next bounded poll;
 - an ambiguous End transport result converges through bounded durable session
   reads and an abortable idempotent retry;
+- the End row lock and transaction expire below the acceptance SLO, the End
+  route expires before the browser, and retryable auth/database contention is
+  never reported as unauthorized;
+- a stalled feedback event send fails the current fenced claim inside three
+  seconds instead of waiting for the stale-sender lease;
+- session ownership, lifecycle, and feedback readiness share one bounded
+  transaction so a timed-out poll releases its database connection;
 - the feedback route renders pending, processing, settling, failed, and
   recovery states instead of leaving the interview spinner mounted.
 

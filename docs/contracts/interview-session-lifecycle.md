@@ -168,6 +168,13 @@ creating a second interview. Owned session and credential reads have an
 eight-second customer bound and return retryable unavailability rather than
 holding the UI until a platform timeout.
 
+Authenticated session lifecycle reads use one database transaction for
+ownership, session state, and feedback visibility. The transaction-local
+statement deadline is five seconds, the route deadline is 5.5 seconds, and the
+browser deadline is 6.5 seconds. A database or auth timeout returns a private
+retryable `503`; the timed-out transaction must release its connection before
+the browser schedules another attempt.
+
 ## Room Metadata And Correlation
 
 Canonical room metadata contract version 1 requires `contract_version: 1` and `session_id`. New SAV-189 writers also supply one canonical UTC `deadline_at`; missing values remain readable only during the staged rollout. The runtime reference, selected question, transcript events, logs, and feedback request must remain correlated to the same session ID.

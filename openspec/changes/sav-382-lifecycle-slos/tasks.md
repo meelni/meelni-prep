@@ -2,6 +2,7 @@
 
 - [x] Audit saving, dispatch, generation, polling, recovery, and UI paths.
 - [x] Define canonical SLO and stale-state ownership boundaries.
+- [x] Enforce nested End/read/recovery deadline budgets below the browser.
 - [x] Add versioned SLO classification and privacy-safe telemetry contracts.
 - [x] Make stale `ending/user_end` directly and idempotently redeliverable.
 - [x] Add an expiring sent-but-unclaimed feedback queue lease.

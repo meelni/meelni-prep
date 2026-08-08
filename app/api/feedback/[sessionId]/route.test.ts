@@ -636,6 +636,53 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("bounds a stalled feedback recovery before the browser deadline", async () => {
+    vi.useFakeTimers();
+    vi.mocked(recoverFeedbackGenerationWorkflow).mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = POST(request("POST"), PARAMS);
+      await vi.advanceTimersByTimeAsync(5_500);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_retry_unavailable",
+        retryable: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    Object.assign(new Error("private statement detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])(
+    "returns a private retryable response for a stalled recovery dependency",
+    async (failure) => {
+      if (failure.name === "AuthRetryableFetchError") {
+        mockAuth(null, failure);
+      } else {
+        vi.mocked(getSessionById).mockRejectedValue(failure);
+      }
+
+      const response = await POST(request("POST"), PARAMS);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_retry_unavailable",
+        retryable: true,
+      });
+    }
+  );
+
   it("keeps authenticated completed feedback out of shared caches", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({

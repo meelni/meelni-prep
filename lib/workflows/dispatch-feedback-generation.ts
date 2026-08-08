@@ -10,6 +10,9 @@ import {
   reportOperationalFailure,
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
+import { withDeadline } from "@/lib/http/deadline";
+
+export const FEEDBACK_DISPATCH_SEND_TIMEOUT_MS = 3_000;
 
 export interface DispatchFeedbackGenerationInput {
   sessionId: string;
@@ -20,6 +23,7 @@ export interface DispatchFeedbackGenerationInput {
 export interface DispatchFeedbackGenerationDeps {
   store: FeedbackDispatchStore;
   now(): Date;
+  sendTimeoutMs?: number;
   reportFailure(correlationId: InterviewSessionCorrelationId | null): void;
   send(event: {
     id: string;
@@ -91,11 +95,15 @@ export async function dispatchFeedbackGenerationWorkflow(
   }
 
   try {
-    await deps.send({
-      id: claimed.eventId,
-      name: "feedback/generate.requested",
-      data: input,
-    });
+    await withDeadline(
+      "feedback_dispatch_send",
+      deps.send({
+        id: claimed.eventId,
+        name: "feedback/generate.requested",
+        data: input,
+      }),
+      deps.sendTimeoutMs ?? FEEDBACK_DISPATCH_SEND_TIMEOUT_MS
+    );
     const acknowledged = await deps.store.markSent({
       sessionId: input.sessionId,
       eventId: claimed.eventId,

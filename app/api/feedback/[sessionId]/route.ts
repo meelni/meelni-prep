@@ -48,6 +48,7 @@ import {
 } from "@/lib/workflows/accept-user-interview-end";
 import {
   CUSTOMER_READ_ROUTE_DEADLINE_MS,
+  CUSTOMER_WRITE_ROUTE_DEADLINE_MS,
   DEPENDENCY_RETRY_AFTER_SECONDS,
   isDeadlineExceededError,
   withDeadline,
@@ -485,108 +486,42 @@ export async function POST(
 ) {
   let correlationId: InterviewSessionCorrelationId | null = null;
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { sessionId } = await params;
-    const session = await getSessionById(sessionId);
-    if (!session || session.userId !== user.id) {
-      return NextResponse.json(
-        { error: "Session not found or access denied" },
-        { status: 404 }
-      );
-    }
-    if (session.lifecycleState === "ending") {
-      const elapsedMs = elapsedInterviewLifecycleMs(
-        session.endingAt,
-        new Date(Date.now())
-      );
-      const delayed =
-        elapsedMs !== null &&
-        elapsedMs >= INTERVIEW_LIFECYCLE_SLOS.terminalization.upperBoundMs;
-      const retryable = delayed && session.terminalReason === "user_end";
-      if (retryable) {
-        await acceptUserInterviewEndWorkflow({
-          sessionId,
-          userId: user.id,
-          deliveryId: userInterviewEndRedeliveryId(),
-        });
-      }
-      return NextResponse.json(
-        {
-          status: "settling",
-          retryable,
-          delayed,
-          message: retryable
-            ? "The saved interview handoff was retried. We’ll keep checking its progress."
-            : delayed
-              ? "The interview is saved. Recovery is continuing automatically."
-              : "The interview is still closing safely.",
-        },
-        { headers: { "Cache-Control": "private, no-store" } }
-      );
-    }
-    const result = await recoverFeedbackGenerationWorkflow({
-      sessionId,
-      userId: user.id,
-    });
-    if (!result.ok && result.reason === "not_found") {
-      return NextResponse.json(
-        { error: "Session not found or access denied" },
-        { status: 404 }
-      );
-    }
-    if (!result.ok && result.reason === "deadline_settlement_pending") {
-      return NextResponse.json(
-        {
-          error: "deadline_settlement_pending",
-          message:
-            "The interview room is still being closed safely. Feedback will start automatically.",
-        },
-        {
-          status: 409,
-          headers: { "Cache-Control": "private, no-store" },
-        }
-      );
-    }
-    if (!result.ok) {
-      return NextResponse.json(
-        {
-          error: "session_not_ended",
-          message: "End the interview before queueing feedback.",
-        },
-        { status: 409 }
-      );
-    }
-    correlationId = readOwnedInterviewSessionCorrelationId({
-      kind: "owned_interview_session",
-      session: { id: sessionId, userId: user.id },
-      authenticatedUserId: user.id,
-    });
-    return NextResponse.json(
-      {
-        status: result.status,
-        retryable: result.retryable,
-        dispatch: result.dispatch
-          ? { status: result.dispatch.status, retryable: result.retryable }
-          : null,
-      },
-      { headers: { "Cache-Control": "private, no-store" } }
+    return await withDeadline(
+      "feedback_recovery",
+      handleFeedbackRecovery(params, (value) => {
+        correlationId = value;
+      }),
+      CUSTOMER_WRITE_ROUTE_DEADLINE_MS
     );
-  } catch {
+  } catch (error) {
+    const retryableDependencyFailure =
+      isDeadlineExceededError(error) ||
+      isRetryableDatabaseContentionError(error) ||
+      isRetryableSupabaseAuthError(error);
     reportOperationalFailure({
       operation: "feedback_dispatch",
       errorCode: "feedback_retry_failed",
       severity: "error",
-      retryable: true,
+      retryable: retryableDependencyFailure,
       correlationId,
     });
+    if (retryableDependencyFailure) {
+      return NextResponse.json(
+        {
+          error: "feedback_retry_unavailable",
+          message:
+            "Feedback recovery is temporarily unavailable. Please try again shortly.",
+          retryable: true,
+        },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Retry-After": String(DEPENDENCY_RETRY_AFTER_SECONDS),
+          },
+        }
+      );
+    }
     return NextResponse.json(
       {
         error: "feedback_retry_failed",
@@ -595,4 +530,109 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+async function handleFeedbackRecovery(
+  params: Promise<{ sessionId: string }>,
+  setCorrelationId: (value: InterviewSessionCorrelationId | null) => void
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError && isRetryableSupabaseAuthError(authError)) {
+    throw authError;
+  }
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { sessionId } = await params;
+  const session = await getSessionById(sessionId);
+  if (!session || session.userId !== user.id) {
+    return NextResponse.json(
+      { error: "Session not found or access denied" },
+      { status: 404 }
+    );
+  }
+  setCorrelationId(
+    readOwnedInterviewSessionCorrelationId({
+      kind: "owned_interview_session",
+      session: { id: sessionId, userId: user.id },
+      authenticatedUserId: user.id,
+    })
+  );
+  if (session.lifecycleState === "ending") {
+    const elapsedMs = elapsedInterviewLifecycleMs(
+      session.endingAt,
+      new Date(Date.now())
+    );
+    const delayed =
+      elapsedMs !== null &&
+      elapsedMs >= INTERVIEW_LIFECYCLE_SLOS.terminalization.upperBoundMs;
+    const retryable = delayed && session.terminalReason === "user_end";
+    if (retryable) {
+      await acceptUserInterviewEndWorkflow({
+        sessionId,
+        userId: user.id,
+        deliveryId: userInterviewEndRedeliveryId(),
+      });
+    }
+    return NextResponse.json(
+      {
+        status: "settling",
+        retryable,
+        delayed,
+        message: retryable
+          ? "The saved interview handoff was retried. We’ll keep checking its progress."
+          : delayed
+            ? "The interview is saved. Recovery is continuing automatically."
+            : "The interview is still closing safely.",
+      },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
+  }
+  const result = await recoverFeedbackGenerationWorkflow({
+    sessionId,
+    userId: user.id,
+  });
+  if (!result.ok && result.reason === "not_found") {
+    return NextResponse.json(
+      { error: "Session not found or access denied" },
+      { status: 404 }
+    );
+  }
+  if (!result.ok && result.reason === "deadline_settlement_pending") {
+    return NextResponse.json(
+      {
+        error: "deadline_settlement_pending",
+        message:
+          "The interview room is still being closed safely. Feedback will start automatically.",
+      },
+      {
+        status: 409,
+        headers: { "Cache-Control": "private, no-store" },
+      }
+    );
+  }
+  if (!result.ok) {
+    return NextResponse.json(
+      {
+        error: "session_not_ended",
+        message: "End the interview before queueing feedback.",
+      },
+      { status: 409 }
+    );
+  }
+  return NextResponse.json(
+    {
+      status: result.status,
+      retryable: result.retryable,
+      dispatch: result.dispatch
+        ? { status: result.dispatch.status, retryable: result.retryable }
+        : null,
+    },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }

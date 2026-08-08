@@ -15,7 +15,8 @@ deadline consumer; actor and requested reason are one discriminated command.
 
 For an unclaimed user end, the request path:
 
-1. locks the owner-scoped session row;
+1. locks the owner-scoped session row with a 1.5-second lock timeout and a
+   2.5-second transaction-local statement timeout;
 2. atomically advances it to `ending/user_end`, increments the lifecycle
    version, and records millisecond-precision `ending_at`;
 3. attempts bounded delivery of a versioned, idempotent background event;
@@ -35,6 +36,13 @@ versioned durable checkpoints. After terminal truth commits, dispatch, cleanup,
 and credit run as sibling checkpoints; a failed operation retries without
 replaying successful siblings. Cleanup and credit cannot delay feedback
 dispatch or reopen terminal truth.
+
+The synchronous End route has a 5.5-second server breaker below the browser's
+6.5-second transport deadline. Lock, statement, auth, or route exhaustion is a
+private retryable `503`; it is not an authorization failure. The three-second
+End acceptance SLO remains the operating upper bound, while the larger route
+breaker is a fail-safe that guarantees control returns to the reconciliation
+loop.
 
 Settlement and dispatch are separate typed workflow boundaries. Background
 user-end and system workflows call both boundaries in sequence. A hard-deadline
@@ -147,9 +155,12 @@ after dispatch is `sent` or feedback is `not_required`, and only when the
 independent room-cleanup claim is acknowledged. A replay reuses terminal truth and the outbox
 fence, so it cannot emit a second accepted feedback event.
 
-A crash between provider acknowledgement and the `sent` write can cause a
-later attempt. Attempt fencing and the idempotent feedback worker make
-concurrent or delayed events converge on the same feedback row.
+A feedback event send has a three-second provider deadline. A send timeout
+marks only the matching fenced claim `failed`, allowing an immediate safe retry
+without waiting for the two-minute stale-sender lease. A crash between provider
+acknowledgement and the `sent` write can cause a later attempt. Attempt fencing
+and the idempotent feedback worker make concurrent or delayed events converge
+on the same feedback row.
 
 ## API And Client Behavior
 
@@ -159,7 +170,8 @@ replay returns HTTP 200. A deferred immediate event send still returns 202
 because the `ending` row is recovered every minute. Storage and authorization
 failures return non-2xx.
 
-The browser bounds acceptance to five seconds. On any 2xx response it closes
+The browser bounds acceptance transport to 6.5 seconds, while the operating
+acceptance upper bound remains three seconds. On any 2xx response it closes
 the interview surface and navigates immediately. On an ambiguous transport
 failure it polls lifecycle truth through bounded, abortable reads; `ending` is
 sufficient for navigation and never requires the candidate to keep the room

@@ -67,8 +67,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
+import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
 import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 import { isInterviewDeadlineRoomCleanupAcknowledged } from "@/lib/db/session-deadlines";
 import {
@@ -93,7 +96,11 @@ export async function GET(
       CUSTOMER_READ_ROUTE_DEADLINE_MS
     );
   } catch (error) {
-    if (isDeadlineExceededError(error)) {
+    if (
+      isDeadlineExceededError(error) ||
+      isRetryableDatabaseContentionError(error) ||
+      isRetryableSupabaseAuthError(error)
+    ) {
       return NextResponse.json(
         { error: "session_read_unavailable", retryable: true },
         {
@@ -121,51 +128,57 @@ async function handleSessionRead(params: Promise<{ sessionId: string }>) {
     error: authError,
   } = await supabase.auth.getUser();
 
+  if (authError && isRetryableSupabaseAuthError(authError)) {
+    throw authError;
+  }
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { sessionId } = await params;
 
-  // Verify user owns the session
-  const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-  if (!isOwner) {
-    return NextResponse.json(
-      { error: "Session not found or access denied" },
-      { status: 403 }
-    );
-  }
-
-  // Get session
-  const session = await getSessionById(sessionId);
-  if (!session) {
-    return NextResponse.json({ error: "Session not found" }, { status: 404 });
-  }
-
-  try {
-    const feedback = await getFeedbackBySessionId(sessionId);
-    return NextResponse.json({
-      session: {
-        ...attachCanonicalInterviewDeadline(session),
-        feedbackReady: Boolean(
-          feedback &&
-            isInterviewDeadlineRoomCleanupAcknowledged(session) &&
-            isFeedbackDispatchReadyForVisibility({
-              status: feedback.dispatchStatus,
-            })
-        ),
-      },
-    });
-  } catch (error) {
-    if (error instanceof InterviewSessionDeadlineUnavailableError) {
+  return withInteractiveReadTransaction(async (database) => {
+    // Ownership, lifecycle, and feedback visibility come from one bounded
+    // database snapshot. A timed-out read must release the single serverless
+    // connection before the browser retries.
+    const isOwner = await isSessionOwnedByUser(sessionId, user.id, database);
+    if (!isOwner) {
       return NextResponse.json(
-        {
-          error: error.code,
-          message: "This interview session cannot be resumed safely.",
-        },
-        { status: 409 }
+        { error: "Session not found or access denied" },
+        { status: 403 }
       );
     }
-    throw error;
-  }
+
+    const session = await getSessionById(sessionId, database);
+    if (!session) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    try {
+      const feedback = await getFeedbackBySessionId(sessionId, database);
+      return NextResponse.json({
+        session: {
+          ...attachCanonicalInterviewDeadline(session),
+          feedbackReady: Boolean(
+            feedback &&
+              isInterviewDeadlineRoomCleanupAcknowledged(session) &&
+              isFeedbackDispatchReadyForVisibility({
+                status: feedback.dispatchStatus,
+              })
+          ),
+        },
+      });
+    } catch (error) {
+      if (error instanceof InterviewSessionDeadlineUnavailableError) {
+        return NextResponse.json(
+          {
+            error: error.code,
+            message: "This interview session cannot be resumed safely.",
+          },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+  });
 }
