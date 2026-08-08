@@ -16,8 +16,14 @@ pairings and a canonical UTC timestamp; transport or schema mismatches use the
 fixed `health_endpoint_invalid` result.
 
 No scheduler, alert receiver, status vendor, or receipt claim is configured by
-this change. The relaunch gate remains off until a controlled isolated-Preview
-degradation is received and acknowledged by an approved operator destination.
+this change. Production is owner-launched; service-health evidence and alert
+receipt remain independently unproved and must not be inferred from launch
+state.
+
+The canonical staging alias returned HTTP 503 on 2026-08-08: web and LiveKit
+were healthy while database, feedback dispatch, and Stripe webhook were
+unavailable. Treat staging as rehearsal-ineligible until SAV-387 restores the
+required dependencies and a fresh healthy result is recorded.
 
 ## Check Interpretation
 
@@ -44,7 +50,9 @@ Prerequisites:
 
 1. SAV-226 provides an isolated Preview Supabase project.
 2. The target deployment, operator, schedule, and alert destination are approved.
-3. The relaunch flag remains off and rollback ownership is recorded.
+3. The shared Production gate remains unchanged, Preview rehearsal authority
+   remains inactive until separately authorized, and rollback ownership is
+   recorded.
 
 Then:
 
