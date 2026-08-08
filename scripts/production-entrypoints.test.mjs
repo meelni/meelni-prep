@@ -15,22 +15,37 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
-test("LiveKit Preview remains usable while Production denies before lk", async () => {
+test("LiveKit Preview deploys one guarded topology while Production denies before lk", async () => {
   const directory = await mkdtemp(join(tmpdir(), "meelni-livekit-guard-"));
   const fakeBin = join(directory, "bin");
   const logPath = join(directory, "lk.log");
-  const configPath = join(directory, "interview.toml");
+  const configPath = join(directory, "preview.toml");
+  const previewSecretsPath = join(directory, "preview-runtime.env");
+  const candidateSha = "a".repeat(40);
   const { mkdir, chmod } = await import("node:fs/promises");
   await mkdir(fakeBin);
   await writeFile(
     configPath,
-    '[project]\nsubdomain = "meelni-preview-dk7443ua"\n[agent]\nid = "CA_ZbGxFjfEYwsD"\n'
+    '[project]\nsubdomain = "meelni-preview-gui1i7s9"\n[agent]\nid = "CA_ovn67QQ7ywmJ"\n'
   );
-  const previewDemoConfigPath = join(directory, "preview-demo.toml");
   await writeFile(
-    previewDemoConfigPath,
-    '[project]\nsubdomain = "meelni-preview-dk7443ua"\n[agent]\nid = "CA_M5XTD4CMyXk3"\n'
+    previewSecretsPath,
+    [
+      "MEELNI_RUNTIME_ENVIRONMENT=preview",
+      "LIVEKIT_INTERVIEW_AGENT_NAME=meelni-preview-interview",
+      "LIVEKIT_DEMO_AGENT_NAME=meelni-preview-demo",
+      `OPENAI_API_KEY=sk-${"a".repeat(24)}`,
+      "MEELNI_INTERVIEW_STT_MODEL=deepgram/nova-3",
+      "MEELNI_INTERVIEW_LLM_MODEL=openai/gpt-4.1-mini",
+      "MEELNI_INTERVIEW_TTS_MODEL=cartesia/sonic-3",
+      "MEELNI_INTERVIEW_VOICE=preview-voice",
+      "MEELNI_INTERVIEW_TTS_SPEED=1.0",
+      "MEELNI_INTERVIEW_TTS_EMOTION=professional",
+      "MEELNI_INTERVIEW_TTS_VOLUME=1.0",
+    ].join("\n"),
+    { mode: 0o600 }
   );
+  await chmod(previewSecretsPath, 0o600);
   const productionConfigPath = join(directory, "production.toml");
   await writeFile(
     productionConfigPath,
@@ -63,7 +78,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
   );
   await writeFile(
     commentConfusedInterviewConfigPath,
-    '[project]\nsubdomain = "meelni-ek4vaisp" # = "meelni-preview-dk7443ua"\n[agent]\nid = "wrong" # = "CA_ZbGxFjfEYwsD"\n'
+    '[project]\nsubdomain = "meelni-ek4vaisp" # = "meelni-preview-gui1i7s9"\n[agent]\nid = "wrong" # = "CA_ovn67QQ7ywmJ"\n'
   );
   const commentConfusedDemoConfigPath = join(
     directory,
@@ -76,60 +91,64 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
   const fakeLk = join(fakeBin, "lk");
   await writeFile(fakeLk, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LK_LOG"\n');
   await chmod(fakeLk, 0o755);
+  const fakeGit = join(fakeBin, "git");
+  await writeFile(
+    fakeGit,
+    `#!/bin/sh\nif [ "$3" = "rev-parse" ]; then printf "%s\\n" "${candidateSha}"; fi\n`
+  );
+  await chmod(fakeGit, 0o755);
 
   const baseEnv = {
     ...process.env,
     PATH: `${fakeBin}:${process.env.PATH}`,
     LK_LOG: logPath,
-    MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: configPath,
-    MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID: "CA_ZbGxFjfEYwsD",
-    MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG: previewDemoConfigPath,
-    MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID: "CA_M5XTD4CMyXk3",
-    MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-preview-dk7443ua.livekit.cloud",
+    MEELNI_LIVEKIT_PREVIEW_RUNTIME_CONFIG: configPath,
+    MEELNI_LIVEKIT_PREVIEW_RUNTIME_SECRETS_FILE: previewSecretsPath,
+    MEELNI_LIVEKIT_PREVIEW_RUNTIME_AGENT_ID: "CA_ovn67QQ7ywmJ",
+    MEELNI_LIVEKIT_PREVIEW_SOURCE_SHA: candidateSha,
+    MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-preview-gui1i7s9.livekit.cloud",
   };
   try {
-    const preview = spawnSync(
-      join(repoRoot, "agent/interview/deploy.sh"),
-      ["preview"],
-      {
-        cwd: join(repoRoot, "agent/interview"),
-        env: baseEnv,
-        encoding: "utf8",
-      }
-    );
+    const preview = spawnSync(join(repoRoot, "agent/preview/deploy.sh"), [], {
+      cwd: join(repoRoot, "agent/preview"),
+      env: baseEnv,
+      encoding: "utf8",
+    });
     assert.equal(preview.status, 0, preview.stderr);
     const callsAfterPreview = (await readFile(logPath, "utf8"))
       .trim()
       .split("\n");
     assert.equal(callsAfterPreview.length, 1);
 
-    const previewDemo = spawnSync(
-      join(repoRoot, "agent/demo/deploy.sh"),
-      ["preview"],
-      {
-        cwd: join(repoRoot, "agent/demo"),
-        env: baseEnv,
-        encoding: "utf8",
-      }
+    assert.match(
+      callsAfterPreview[0],
+      /meelni\.runtime_topology=preview-single-deployment/
     );
-    assert.equal(previewDemo.status, 0, previewDemo.stderr);
-    assert.equal(
-      (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
-    );
+    assert.match(callsAfterPreview[0], /--secrets-file/);
+
+    for (const entrypoint of ["interview", "demo"]) {
+      const splitPreviewDeploy = spawnSync(
+        join(repoRoot, `agent/${entrypoint}/deploy.sh`),
+        ["preview"],
+        { cwd: repoRoot, env: baseEnv, encoding: "utf8" }
+      );
+      assert.notEqual(splitPreviewDeploy.status, 0);
+      assert.match(splitPreviewDeploy.stderr, /one fail-together deployment/);
+    }
 
     for (const mutation of [
-      { MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: productionConfigPath },
+      { MEELNI_LIVEKIT_PREVIEW_RUNTIME_CONFIG: productionConfigPath },
       {
-        MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:
+        MEELNI_LIVEKIT_PREVIEW_RUNTIME_CONFIG:
           commentConfusedInterviewConfigPath,
       },
-      { MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID: "CA_yawKG67rCMG4" },
+      { MEELNI_LIVEKIT_PREVIEW_RUNTIME_AGENT_ID: "CA_yawKG67rCMG4" },
       { MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud" },
+      { MEELNI_LIVEKIT_PREVIEW_SOURCE_SHA: "b".repeat(40) },
     ]) {
       const confused = spawnSync(
-        join(repoRoot, "agent/interview/deploy.sh"),
-        ["preview"],
+        join(repoRoot, "agent/preview/deploy.sh"),
+        [],
         {
           cwd: repoRoot,
           encoding: "utf8",
@@ -137,33 +156,15 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
         }
       );
       assert.notEqual(confused.status, 0);
-      assert.match(confused.stderr, /canonical preview interview target/);
+      assert.match(
+        confused.stderr,
+        /canonical Preview runtime target|clean, committed candidate/
+      );
       assert.equal(
         (await readFile(logPath, "utf8")).trim().split("\n").length,
-        2
+        1
       );
     }
-
-    const confusedDemo = spawnSync(
-      join(repoRoot, "agent/demo/deploy.sh"),
-      ["preview"],
-      {
-        cwd: join(repoRoot, "agent/demo"),
-        encoding: "utf8",
-        env: {
-          ...baseEnv,
-          MEELNI_LIVEKIT_PREVIEW_DEMO_CONFIG: productionConfigPath,
-          MEELNI_LIVEKIT_PREVIEW_DEMO_AGENT_ID: "CA_t3sKQEihMQ7x",
-          MEELNI_PREVIEW_LIVEKIT_URL: "wss://meelni-ek4vaisp.livekit.cloud",
-        },
-      }
-    );
-    assert.notEqual(confusedDemo.status, 0);
-    assert.match(confusedDemo.stderr, /canonical preview demo target/);
-    assert.equal(
-      (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
-    );
 
     const confusedProductionDemo = spawnSync(
       join(repoRoot, "agent/demo/deploy.sh"),
@@ -188,27 +189,23 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
+      1
     );
 
     const linkedConfig = join(directory, "linked.toml");
     await symlink(configPath, linkedConfig);
-    const linked = spawnSync(
-      join(repoRoot, "agent/interview/deploy.sh"),
-      ["preview"],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        env: {
-          ...baseEnv,
-          MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG: linkedConfig,
-        },
-      }
-    );
+    const linked = spawnSync(join(repoRoot, "agent/preview/deploy.sh"), [], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...baseEnv,
+        MEELNI_LIVEKIT_PREVIEW_RUNTIME_CONFIG: linkedConfig,
+      },
+    });
     assert.notEqual(linked.status, 0);
     assert.equal(
       (await readFile(logPath, "utf8")).trim().split("\n").length,
-      2
+      1
     );
 
     const production = spawnSync(
@@ -241,7 +238,7 @@ test("LiveKit Preview remains usable while Production denies before lk", async (
     );
     assert.equal(
       callsAfterProduction.length,
-      reachedLiveKitCapabilityCheck ? 3 : 2
+      reachedLiveKitCapabilityCheck ? 2 : 1
     );
     if (reachedLiveKitCapabilityCheck) {
       assert.equal(callsAfterProduction.at(-1), "agent deploy --help");
