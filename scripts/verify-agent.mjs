@@ -7,6 +7,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const requiredChecks = [
   ["setup doctor", "npm", ["run", "doctor:setup"]],
   ["skills", "npm", ["run", "validate:skills"]],
+  ["integration catalog", "npm", ["run", "agent:doctor"]],
   ["typecheck", "npm", ["run", "typecheck"]],
   ["local tests", "npm", ["run", "test:local"]],
   ["fixture tests", "npm", ["run", "test:fixtures"]],

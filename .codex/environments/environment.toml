@@ -50,6 +50,16 @@ icon = "debug"
 command = "npm run doctor:runtime && npm run validate:env"
 
 [[actions]]
+name = "Services"
+icon = "tool"
+command = "npm run agent:services"
+
+[[actions]]
+name = "Service Check"
+icon = "debug"
+command = "npm run agent:doctor"
+
+[[actions]]
 name = "Handoff"
 icon = "tool"
 command = "npm run handoff"
