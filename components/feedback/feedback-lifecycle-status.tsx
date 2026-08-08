@@ -38,7 +38,7 @@ export function FeedbackLifecycleStatus({
   onRecover: () => void;
 }) {
   const retryAction = (label: string) => (
-    <Button onClick={onRecover} disabled={recovering}>
+    <Button className="min-h-11" onClick={onRecover} disabled={recovering}>
       {recovering ? (
         <LoaderCircle className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
       ) : (
@@ -84,7 +84,11 @@ export function FeedbackLifecycleStatus({
             {state.retryable &&
               retryAction(processing ? "Restart review" : "Queue feedback")}
             {delayed ? (
-              <Button asChild variant={state.retryable ? "outline" : "default"}>
+              <Button
+                asChild
+                className="min-h-11"
+                variant={state.retryable ? "outline" : "default"}
+              >
                 <Link href="/dashboard/history">View interview history</Link>
               </Button>
             ) : !state.retryable ? (

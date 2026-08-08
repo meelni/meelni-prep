@@ -17263,6 +17263,8 @@ __export(schema_exports, {
   stripeEventLog: () => stripeEventLog,
   subscription: () => subscription,
   subscriptionRelations: () => subscriptionRelations,
+  transcriptEvidenceWriterCutoff: () => transcriptEvidenceWriterCutoff,
+  transcriptEvidenceWriterCutoffRelations: () => transcriptEvidenceWriterCutoffRelations,
   transcriptInterruptionMarker: () => transcriptInterruptionMarker,
   transcriptInterruptionMarkerRelations: () => transcriptInterruptionMarkerRelations,
   transcriptRuntimeSettlement: () => transcriptRuntimeSettlement,
@@ -17345,6 +17347,14 @@ var interviewSession = pgTable(
     terminalReason: text("terminal_reason").$type(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     endingAt: timestamp("ending_at", { withTimezone: true }),
+    transcriptEvidenceVersion: integer("transcript_evidence_version"),
+    transcriptEvidenceState: text("transcript_evidence_state").$type(),
+    transcriptCutoffAt: timestamp("transcript_cutoff_at", {
+      withTimezone: true
+    }),
+    transcriptEvidenceFrozenAt: timestamp("transcript_evidence_frozen_at", {
+      withTimezone: true
+    }),
     reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
       withTimezone: true
     }),
@@ -17555,6 +17565,21 @@ var interviewSession = pgTable(
     endingAtStateCheck: check(
       "interview_session_ending_at_state_check",
       sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
+    ),
+    transcriptEvidenceShapeCheck: check(
+      "interview_session_transcript_evidence_shape_check",
+      sql`(
+        ${table.transcriptEvidenceVersion} IS NULL AND
+        ${table.transcriptEvidenceState} IS NULL AND
+        ${table.transcriptCutoffAt} IS NULL AND
+        ${table.transcriptEvidenceFrozenAt} IS NULL
+      ) OR (
+        ${table.transcriptEvidenceVersion} = 1 AND
+        ${table.transcriptEvidenceState} IN ('complete', 'partial', 'insufficient', 'degraded') AND
+        ${table.transcriptCutoffAt} IS NOT NULL AND
+        ${table.transcriptEvidenceFrozenAt} IS NOT NULL AND
+        ${table.lifecycleState} IN ('completed', 'abandoned', 'failed')
+      )`
     ),
     roomProvisioningClaimCheck: check(
       "interview_session_room_provisioning_claim_check",
@@ -18716,6 +18741,14 @@ var transcriptRuntimeWriter = pgTable(
     roomName: text("room_name").notNull(),
     writerId: text("writer_id").notNull(),
     registeredAt: timestamp("registered_at", { withTimezone: true }).notNull(),
+    lastObservedSequence: bigint("last_observed_sequence", { mode: "number" }).default(0).notNull(),
+    committedSequence: bigint("committed_sequence", { mode: "number" }).default(0).notNull(),
+    committedEventId: text("committed_event_id"),
+    committedThroughAt: timestamp("committed_through_at", {
+      withTimezone: true
+    }),
+    integrityState: text("integrity_state").$type().default("healthy").notNull(),
+    progressUpdatedAt: timestamp("progress_updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
@@ -18730,6 +18763,26 @@ var transcriptRuntimeWriter = pgTable(
     generationCheck: check(
       "transcript_runtime_writer_generation_check",
       sql`${table.generation} > 0`
+    ),
+    progressSequenceCheck: check(
+      "transcript_runtime_writer_progress_sequence_check",
+      sql`${table.lastObservedSequence} >= ${table.committedSequence} AND ${table.committedSequence} >= 0`
+    ),
+    progressBoundaryCheck: check(
+      "transcript_runtime_writer_progress_boundary_check",
+      sql`(
+        ${table.committedSequence} = 0 AND
+        ${table.committedEventId} IS NULL AND
+        ${table.committedThroughAt} IS NULL
+      ) OR (
+        ${table.committedSequence} > 0 AND
+        ${table.committedEventId} IS NOT NULL AND
+        ${table.committedThroughAt} IS NOT NULL
+      )`
+    ),
+    integrityStateCheck: check(
+      "transcript_runtime_writer_integrity_state_check",
+      sql`${table.integrityState} IN ('healthy', 'degraded')`
     ),
     writerUnique: uniqueIndex(
       "transcript_runtime_writer_session_writer_idx"
@@ -18783,6 +18836,78 @@ var transcriptRuntimeSettlement = pgTable(
     roomSettledAtIdx: index(
       "transcript_runtime_settlement_room_settled_at_idx"
     ).on(table.roomName, table.settledAt)
+  })
+);
+var transcriptEvidenceWriterCutoff = pgTable(
+  "transcript_evidence_writer_cutoff",
+  {
+    sessionId: uuid("session_id").references(() => interviewSession.id).notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    writerId: text("writer_id").notNull(),
+    committedSequence: bigint("committed_sequence", {
+      mode: "number"
+    }).notNull(),
+    lastObservedSequence: bigint("last_observed_sequence", {
+      mode: "number"
+    }).notNull(),
+    committedEventId: text("committed_event_id"),
+    committedThroughAt: timestamp("committed_through_at", {
+      withTimezone: true
+    }),
+    integrityState: text("integrity_state").$type().notNull(),
+    settlementState: text("settlement_state").$type().notNull(),
+    frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull()
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_evidence_writer_cutoff_pkey",
+      columns: [table.sessionId, table.writerGeneration]
+    }),
+    contractCheck: check(
+      "transcript_evidence_writer_cutoff_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    generationCheck: check(
+      "transcript_evidence_writer_cutoff_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
+    progressSequenceCheck: check(
+      "transcript_evidence_writer_cutoff_progress_sequence_check",
+      sql`${table.lastObservedSequence} >= ${table.committedSequence} AND ${table.committedSequence} >= 0`
+    ),
+    progressBoundaryCheck: check(
+      "transcript_evidence_writer_cutoff_progress_boundary_check",
+      sql`(
+        ${table.committedSequence} = 0 AND
+        ${table.committedEventId} IS NULL AND
+        ${table.committedThroughAt} IS NULL
+      ) OR (
+        ${table.committedSequence} > 0 AND
+        ${table.committedEventId} IS NOT NULL AND
+        ${table.committedThroughAt} IS NOT NULL
+      )`
+    ),
+    integrityStateCheck: check(
+      "transcript_evidence_writer_cutoff_integrity_state_check",
+      sql`${table.integrityState} IN ('healthy', 'degraded')`
+    ),
+    settlementStateCheck: check(
+      "transcript_evidence_writer_cutoff_settlement_state_check",
+      sql`${table.settlementState} IN ('settled', 'missing', 'degraded')`
+    ),
+    writerForeignKey: foreignKey({
+      name: "transcript_evidence_writer_cutoff_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId
+      ]
+    }),
+    sessionFrozenIdx: index(
+      "transcript_evidence_writer_cutoff_session_frozen_idx"
+    ).on(table.sessionId, table.frozenAt)
   })
 );
 var feedback = pgTable(
@@ -19300,6 +19425,7 @@ var interviewSessionRelations = relations(
     transcriptInterruptionMarkers: many(transcriptInterruptionMarker),
     transcriptRuntimeWriters: many(transcriptRuntimeWriter),
     transcriptRuntimeSettlements: many(transcriptRuntimeSettlement),
+    transcriptEvidenceWriterCutoffs: many(transcriptEvidenceWriterCutoff),
     sessionQuestions: many(sessionQuestion)
   })
 );
@@ -19367,7 +19493,27 @@ var transcriptRuntimeWriterRelations = relations(
       fields: [transcriptRuntimeWriter.sessionId],
       references: [interviewSession.id]
     }),
-    settlements: many(transcriptRuntimeSettlement)
+    settlements: many(transcriptRuntimeSettlement),
+    evidenceCutoffs: many(transcriptEvidenceWriterCutoff)
+  })
+);
+var transcriptEvidenceWriterCutoffRelations = relations(
+  transcriptEvidenceWriterCutoff,
+  ({ one }) => ({
+    session: one(interviewSession, {
+      fields: [transcriptEvidenceWriterCutoff.sessionId],
+      references: [interviewSession.id]
+    }),
+    writer: one(transcriptRuntimeWriter, {
+      fields: [
+        transcriptEvidenceWriterCutoff.sessionId,
+        transcriptEvidenceWriterCutoff.writerGeneration
+      ],
+      references: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation
+      ]
+    })
   })
 );
 var appUserRelations = relations(appUser, ({ many, one }) => ({
@@ -19668,8 +19814,18 @@ function validateSessionStats(stats) {
   };
 }
 
+// lib/operations/interview-lifecycle-slo.ts
+var INTERVIEW_LIFECYCLE_SLOS = {
+  end_acceptance: { targetMs: 1e3, upperBoundMs: 3e3 },
+  terminalization: { targetMs: 1e4, upperBoundMs: 3e4 },
+  feedback_dispatch: { targetMs: 5e3, upperBoundMs: 3e4 },
+  feedback_completion: { targetMs: 45e3, upperBoundMs: 9e4 },
+  lifecycle_read: { targetMs: 5e3, upperBoundMs: 8e3 }
+};
+
 // lib/db/feedback-generation-state.ts
 var FEEDBACK_GENERATION_LEASE_MS = 5 * 60 * 1e3;
+var FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS = INTERVIEW_LIFECYCLE_SLOS.feedback_completion.upperBoundMs;
 
 // lib/db/account-deletions.ts
 var LIVEKIT_DELETION_PROVISIONING_LEASE_MS = 10 * 60 * 1e3;
@@ -19830,6 +19986,15 @@ var ALLOWED_PROPERTIES = {
     "connection_time_ms",
     "region",
     "connection_quality"
+  ],
+  interview_start_stage: [
+    "version",
+    "stage",
+    "outcome",
+    "duration_ms",
+    "slo_target_ms",
+    "slo_upper_bound_ms",
+    "latency_class"
   ],
   error_boundary_triggered: ["error_code", "page"],
   public_demo_authorization: ["outcome", "reason"]
@@ -29490,6 +29655,7 @@ async function generateFeedbackWorkflow(input, deps) {
       return skipClaimedFeedback({
         input,
         deps,
+        endingAtMs: authorization.session.endingAtMs,
         reason: validation.reasons.join(", ") || "Session is not eligible for feedback",
         completionTier: "insufficient"
       });
@@ -29499,6 +29665,7 @@ async function generateFeedbackWorkflow(input, deps) {
     return skipClaimedFeedback({
       input,
       deps,
+      endingAtMs: authorization.session.endingAtMs,
       reason: "Session is not eligible for feedback"
     });
   }
@@ -29510,6 +29677,7 @@ async function generateFeedbackWorkflow(input, deps) {
     return skipClaimedFeedback({
       input,
       deps,
+      endingAtMs: authorization.session.endingAtMs,
       reason: transcript.reasons[0] || "No trustworthy transcript evidence found",
       completionTier: "insufficient"
     });
@@ -29563,6 +29731,7 @@ async function generateFeedbackWorkflow(input, deps) {
     );
     return unclaimedResult(input, current);
   }
+  const completedAt = deps.now();
   await deps.steps.sendInsights({
     id: `insights:update:${input.sessionId}:${input.eventId}`,
     name: "insights/update.requested",
@@ -29572,7 +29741,8 @@ async function generateFeedbackWorkflow(input, deps) {
     status: "completed",
     disposition: "applied",
     sessionId: input.sessionId,
-    overallScore: evaluated.evaluation.overallScore
+    overallScore: evaluated.evaluation.overallScore,
+    ...endToFeedbackTiming(authorization.session.endingAtMs, completedAt)
   };
 }
 async function assertAccountIsActive(userId, deps) {
@@ -29602,7 +29772,16 @@ async function skipClaimedFeedback(input) {
     status: "skipped",
     disposition: "applied",
     sessionId: input.input.sessionId,
-    reason: input.reason
+    reason: input.reason,
+    ...endToFeedbackTiming(input.endingAtMs, input.deps.now())
+  };
+}
+function endToFeedbackTiming(endingAtMs, completedAt) {
+  if (typeof endingAtMs !== "number" || !Number.isFinite(endingAtMs) || !Number.isFinite(completedAt.getTime())) {
+    return {};
+  }
+  return {
+    endToFeedbackMs: Math.max(0, completedAt.getTime() - endingAtMs)
   };
 }
 function unclaimedResult(input, current) {
