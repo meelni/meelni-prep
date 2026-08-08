@@ -258,6 +258,10 @@ export function InterviewPageContent() {
       if (ownerIdRef.current !== requestOwnerId) return;
       const normalizedSession = normalizePersistedSession(sessionData);
       setSession(normalizedSession);
+      // The authenticated session read establishes ownership before LiveKit
+      // credentials exist. Keep the server-owned End command reachable while
+      // the provider handoff is still pending.
+      setConnectionOwnerId(requestOwnerId);
       setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       if (
@@ -289,7 +293,6 @@ export function InterviewPageContent() {
       if (initialCredentials) {
         setToken(initialCredentials.token);
         setUrl(initialCredentials.url);
-        setConnectionOwnerId(requestOwnerId);
         setLoading(false);
         return;
       }
@@ -299,6 +302,7 @@ export function InterviewPageContent() {
         normalizedSession.livekit_room_name
       );
       if (ownerIdRef.current !== requestOwnerId) return;
+      if (endIntentRef.current) return;
       if (!credentialResult.ok) {
         if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
           setToken("");
@@ -329,7 +333,6 @@ export function InterviewPageContent() {
 
       setToken(credentialResult.credentials.token);
       setUrl(credentialResult.credentials.url);
-      setConnectionOwnerId(requestOwnerId);
       setLoading(false);
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
@@ -533,6 +536,7 @@ export function InterviewPageContent() {
       !connectionOwnerId ||
       connectionOwnerId !== ownerIdRef.current ||
       deadlineReachedRef.current ||
+      endIntentRef.current ||
       disconnectTimedOut ||
       credentialRequestInFlightRef.current ||
       Date.now() - lastCredentialRequestAtRef.current < 750
@@ -551,6 +555,7 @@ export function InterviewPageContent() {
 
     if (
       deadlineReachedRef.current ||
+      endIntentRef.current ||
       ownerIdRef.current !== requestOwnerId ||
       connectionOwnerId !== requestOwnerId
     ) {
@@ -885,7 +890,36 @@ export function InterviewPageContent() {
     }
   };
 
-  if (authLoading || loading) {
+  const openEndSessionConfirmation = () => {
+    if (deadlineReached || endIntentRef.current || endReconciliation) return;
+    endSessionReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setShowEndModal(true);
+  };
+
+  const endSessionModal = session ? (
+    <EndSessionModal
+      isOpen={showEndModal && !deadlineReached}
+      isLoading={isEndingSession}
+      error={endSessionError}
+      capturedAnswerCount={
+        groupTranscriptTurns(transcript).filter(
+          (turn) => turn.speaker === "user" && turn.text.trim().length > 0
+        ).length
+      }
+      terminalIntent={endSessionError !== null}
+      onClose={() => {
+        setShowEndModal(false);
+        setEndSessionError(null);
+      }}
+      onConfirm={handleEndSession}
+      returnFocusRef={endSessionReturnFocusRef}
+    />
+  ) : null;
+
+  if (authLoading || (loading && (!session || !hasCurrentConnectionOwner))) {
     return (
       <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
@@ -933,10 +967,30 @@ export function InterviewPageContent() {
     recoveringConnection &&
     (!token || !url)
   ) {
-    return <ConnectionRecoveryOverlay status="disconnected" />;
+    return (
+      <>
+        <ConnectionRecoveryOverlay
+          status="disconnected"
+          onEndSession={openEndSessionConfirmation}
+        />
+        {endSessionModal}
+      </>
+    );
   }
 
-  if (!session || !token || !url || !hasCurrentConnectionOwner) {
+  if (session && hasCurrentConnectionOwner && (loading || !token || !url)) {
+    return (
+      <>
+        <ConnectionRecoveryOverlay
+          status="connecting"
+          onEndSession={openEndSessionConfirmation}
+        />
+        {endSessionModal}
+      </>
+    );
+  }
+
+  if (!session || !hasCurrentConnectionOwner) {
     return (
       <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
@@ -980,38 +1034,19 @@ export function InterviewPageContent() {
           });
         }}
         onEndSession={() => {
-          if (!deadlineReached) {
-            endSessionReturnFocusRef.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-            setShowEndModal(true);
-          }
+          openEndSessionConfirmation();
         }}
       />
-      <EndSessionModal
-        isOpen={showEndModal && !deadlineReached}
-        isLoading={isEndingSession}
-        error={endSessionError}
-        capturedAnswerCount={
-          groupTranscriptTurns(transcript).filter(
-            (turn) => turn.speaker === "user" && turn.text.trim().length > 0
-          ).length
-        }
-        terminalIntent={endSessionError !== null}
-        onClose={() => {
-          setShowEndModal(false);
-          setEndSessionError(null);
-        }}
-        onConfirm={handleEndSession}
-        returnFocusRef={endSessionReturnFocusRef}
-      />
+      {endSessionModal}
       {deadlineReached && <DeadlineReachedOverlay />}
       {!deadlineReached && disconnectTimedOut && (
         <ConnectionRecoveryOverlay status="timed_out" />
       )}
       {!deadlineReached && !disconnectTimedOut && recoveringConnection && (
-        <ConnectionRecoveryOverlay status={connectionStatus} />
+        <ConnectionRecoveryOverlay
+          status={connectionStatus}
+          onEndSession={openEndSessionConfirmation}
+        />
       )}
     </LiveKitRoomWrapper>
   );
@@ -1145,10 +1180,13 @@ export function EndReconciliationOverlay() {
 
 function ConnectionRecoveryOverlay({
   status,
+  onEndSession,
 }: {
   status: InterviewConnectionStatus | "timed_out";
+  onEndSession?: () => void;
 }) {
   const timedOut = status === "timed_out";
+  const connecting = status === "connecting";
   return (
     <div
       className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
@@ -1166,16 +1204,36 @@ function ConnectionRecoveryOverlay({
           <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
         )}
         <StatusPill tone={timedOut ? "warning" : "primary"} className="mb-3">
-          {timedOut ? "Connection ended" : "Reconnecting"}
+          {timedOut
+            ? "Connection ended"
+            : connecting
+              ? "Connecting"
+              : "Reconnecting"}
         </StatusPill>
         <AppSurfaceTitle className="mb-2">
-          {timedOut ? "Closing your interview" : "Restoring your interview"}
+          {timedOut
+            ? "Closing your interview"
+            : connecting
+              ? "Connecting to your interviewer"
+              : "Restoring your interview"}
         </AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
           {timedOut
             ? "The reconnect window ended. We’re closing this interview once and preparing the available feedback. Keep this page open."
-            : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection."}
+            : connecting
+              ? "Your interview is saved while we prepare the room. You can end safely without waiting for the connection."
+              : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection. You can still end safely."}
         </AppSurfaceDescription>
+        {!timedOut && onEndSession && (
+          <div className="mt-6 flex justify-center">
+            <InterviewControls
+              isMuted
+              muteDisabled
+              onToggleMute={() => undefined}
+              onEndSession={onEndSession}
+            />
+          </div>
+        )}
       </AppSurface>
     </div>
   );

@@ -50,6 +50,12 @@ The connection indicator prioritizes canonical status over provider quality:
 `Disconnected`. After the readiness upper bound, calm inline copy explains the
 delay. The microphone stays disabled; End Interview remains enabled.
 
+Before room credentials exist, and while reconnect credentials are being
+refreshed, the authenticated session shell renders the same controls above the
+connection state: microphone remains visibly disabled and End Interview stays
+enabled. All states reuse one confirmation and server-owned end command. A
+late credential response is ignored after terminal intent.
+
 ## Telemetry
 
 Start/readiness stage telemetry is versioned and allowlisted. It may contain

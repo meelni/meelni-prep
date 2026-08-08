@@ -8,6 +8,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -482,6 +483,73 @@ describe("active interview page lifecycle", () => {
         ([input]) => String(input) === "/api/livekit/token"
       )
     ).toHaveLength(1);
+  });
+
+  it("keeps End available while initial room credentials are still loading", async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/livekit/token") {
+        return new Promise<Response>(() => undefined);
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    const heading = await screen.findByRole("heading", {
+      name: "Connecting to your interviewer",
+    });
+    const overlay = heading.closest('[role="status"]');
+    expect(overlay).not.toBeNull();
+    expect(
+      within(overlay as HTMLElement).getByRole("button", {
+        name: "Microphone controls",
+      })
+    ).toBeDisabled();
+
+    fireEvent.click(
+      within(overlay as HTMLElement).getByRole("button", {
+        name: "Open end confirmation",
+      })
+    );
+    expect(screen.getByRole("button", { name: "Confirm end" })).toBeEnabled();
+  });
+
+  it("uses the same single end command while the room reconnects", async () => {
+    let endRequests = 0;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/interview/end") {
+        endRequests += 1;
+        return Response.json({
+          nextHref: `/feedback/${SESSION_ID}/loading`,
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onConnectionStateChange).not.toBeNull());
+
+    act(() => mocks.onConnectionStateChange?.("reconnecting"));
+
+    const heading = await screen.findByRole("heading", {
+      name: "Restoring your interview",
+    });
+    const overlay = heading.closest('[role="status"]');
+    expect(overlay).not.toBeNull();
+    fireEvent.click(
+      within(overlay as HTMLElement).getByRole("button", {
+        name: "Open end confirmation",
+      })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    await waitFor(() => expect(endRequests).toBe(1));
+    expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`);
   });
 
   it("shows an actionable failure instead of spinning forever when initial authorization is rejected", async () => {
