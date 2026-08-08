@@ -84,6 +84,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
             setRecoveryError(null);
             pollBudget.current.reset();
             if (
+              recovery.value.status === "settling" ||
               recovery.value.status === "pending" ||
               recovery.value.status === "processing"
             ) {
@@ -130,6 +131,8 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
             (current) =>
               current ?? {
                 kind: "settling",
+                retryable: false,
+                delayed: false,
                 message: transportFailure.message,
               }
           );

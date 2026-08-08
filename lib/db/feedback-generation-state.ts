@@ -3,8 +3,11 @@ import type { FeedbackV2Result } from "@meelni/core";
 
 import { db } from "./index";
 import { feedback } from "./schema";
+import { INTERVIEW_LIFECYCLE_SLOS } from "@/lib/operations/interview-lifecycle-slo";
 
 export const FEEDBACK_GENERATION_LEASE_MS = 5 * 60 * 1000;
+export const FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS =
+  INTERVIEW_LIFECYCLE_SLOS.feedback_completion.upperBoundMs;
 
 export type FeedbackGenerationStatus =
   | "pending"
@@ -77,8 +80,24 @@ export function isFeedbackGenerationRetryable(
   now = new Date()
 ): boolean {
   return (
-    record.status === "failed" ||
-    isFeedbackGenerationLeaseExpired(record, now)
+    record.status === "failed" || isFeedbackGenerationLeaseExpired(record, now)
+  );
+}
+
+export function isFeedbackQueueLeaseExpired(
+  record: {
+    status: string;
+    dispatchStatus: string;
+    dispatchedAt: Date | null;
+  },
+  now = new Date()
+): boolean {
+  return (
+    record.status === "pending" &&
+    record.dispatchStatus === "sent" &&
+    (record.dispatchedAt === null ||
+      record.dispatchedAt.getTime() <=
+        now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS)
   );
 }
 
@@ -111,12 +130,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
       return rows[0] ? mapRecord(rows[0]) : null;
     },
 
-    async complete({
-      sessionId,
-      eventId,
-      evaluation,
-      processingDurationMs,
-    }) {
+    async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
       const rows = await db
         .update(feedback)
         .set({
@@ -190,6 +204,9 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
       const staleBefore = new Date(
         now.getTime() - FEEDBACK_GENERATION_LEASE_MS
       );
+      const staleQueueBefore = new Date(
+        now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
+      );
       const rows = await db
         .update(feedback)
         .set({
@@ -206,6 +223,14 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
             eq(feedback.sessionId, sessionId),
             or(
               eq(feedback.status, "failed"),
+              and(
+                eq(feedback.status, "pending"),
+                eq(feedback.dispatchStatus, "sent"),
+                or(
+                  sql`${feedback.dispatchedAt} IS NULL`,
+                  lte(feedback.dispatchedAt, staleQueueBefore)
+                )
+              ),
               and(
                 eq(feedback.status, "processing"),
                 or(
@@ -235,7 +260,9 @@ function activeClaim(sessionId: string, eventId: string) {
   );
 }
 
-function mapRecord(row: typeof feedback.$inferSelect): FeedbackGenerationRecord {
+function mapRecord(
+  row: typeof feedback.$inferSelect
+): FeedbackGenerationRecord {
   return {
     sessionId: row.sessionId,
     status: row.status as FeedbackGenerationStatus,

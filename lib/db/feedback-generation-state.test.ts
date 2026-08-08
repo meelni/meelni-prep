@@ -4,7 +4,9 @@ import test from "node:test";
 
 import {
   FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
   isFeedbackGenerationLeaseExpired,
+  isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "./feedback-generation-state";
 
@@ -47,13 +49,50 @@ test("failed and stale processing feedback are retryable", () => {
 test("terminal and pending feedback never reopen through lease recovery", () => {
   for (const status of ["pending", "completed", "skipped"] as const) {
     assert.equal(
-      isFeedbackGenerationRetryable(
-        { status, processingStartedAt: null },
-        NOW
-      ),
+      isFeedbackGenerationRetryable({ status, processingStartedAt: null }, NOW),
       false
     );
   }
+});
+
+test("an acknowledged queue delivery expires exactly at the customer upper bound", () => {
+  const base = {
+    status: "pending",
+    dispatchStatus: "sent",
+  } as const;
+  assert.equal(
+    isFeedbackQueueLeaseExpired(
+      {
+        ...base,
+        dispatchedAt: new Date(
+          NOW.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS + 1
+        ),
+      },
+      NOW
+    ),
+    false
+  );
+  assert.equal(
+    isFeedbackQueueLeaseExpired(
+      {
+        ...base,
+        dispatchedAt: new Date(NOW.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS),
+      },
+      NOW
+    ),
+    true
+  );
+  assert.equal(
+    isFeedbackQueueLeaseExpired({ ...base, dispatchedAt: null }, NOW),
+    true
+  );
+  assert.equal(
+    isFeedbackQueueLeaseExpired(
+      { ...base, status: "completed", dispatchedAt: null },
+      NOW
+    ),
+    false
+  );
 });
 
 test("database claims and terminal writes are fenced by the exact event", () => {

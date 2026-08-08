@@ -125,17 +125,20 @@ export type FeedbackLifecycleResponse =
     }
   | {
       status: "settling";
-      retryable: false;
+      retryable: boolean;
+      delayed?: boolean;
       message?: string;
     }
   | {
       status: "pending";
       retryable: boolean;
+      delayed?: boolean;
       estimatedTimeRemaining?: number;
     }
   | {
       status: "processing";
       retryable: boolean;
+      delayed?: boolean;
       estimatedTimeRemaining?: number;
     }
   | {
@@ -158,9 +161,14 @@ export type FeedbackViewState =
   | { kind: "unavailable"; message: string }
   | { kind: "missing"; retryable: true; message?: string }
   | { kind: "session-active"; message?: string }
-  | { kind: "settling"; message?: string }
-  | { kind: "pending"; retryable: boolean }
-  | { kind: "processing"; retryable: boolean }
+  | {
+      kind: "settling";
+      retryable: boolean;
+      delayed: boolean;
+      message?: string;
+    }
+  | { kind: "pending"; retryable: boolean; delayed: boolean }
+  | { kind: "processing"; retryable: boolean; delayed: boolean }
   | { kind: "completed-full"; feedback: FeedbackV2View }
   | { kind: "completed-partial"; feedback: FeedbackV2View }
   | { kind: "completed-legacy"; feedback: FeedbackLegacyView }
@@ -282,12 +290,22 @@ export function toFeedbackViewState(
     case "settling":
       return {
         kind: "settling",
+        retryable: response.retryable,
+        delayed: response.delayed === true,
         ...(response.message ? { message: response.message } : {}),
       };
     case "pending":
-      return { kind: "pending", retryable: response.retryable };
+      return {
+        kind: "pending",
+        retryable: response.retryable,
+        delayed: response.delayed === true,
+      };
     case "processing":
-      return { kind: "processing", retryable: response.retryable };
+      return {
+        kind: "processing",
+        retryable: response.retryable,
+        delayed: response.delayed === true,
+      };
     case "failed":
       return response.retryable
         ? { kind: "failed-retryable", message: response.message }
@@ -337,20 +355,25 @@ export function decodeFeedbackLifecycleResponse(
           }
         : null;
     case "settling":
-      return value.retryable === false && isOptionalString(value.message)
+      return typeof value.retryable === "boolean" &&
+        isOptionalBoolean(value.delayed) &&
+        isOptionalString(value.message)
         ? {
             status: "settling",
-            retryable: false,
+            retryable: value.retryable,
+            ...(value.delayed !== undefined ? { delayed: value.delayed } : {}),
             ...(value.message ? { message: value.message } : {}),
           }
         : null;
     case "pending":
     case "processing":
       return typeof value.retryable === "boolean" &&
+        isOptionalBoolean(value.delayed) &&
         isOptionalNonNegativeNumber(value.estimatedTimeRemaining)
         ? {
             status: value.status,
             retryable: value.retryable,
+            ...(value.delayed !== undefined ? { delayed: value.delayed } : {}),
             ...(value.estimatedTimeRemaining !== undefined
               ? { estimatedTimeRemaining: value.estimatedTimeRemaining }
               : {}),
@@ -547,6 +570,10 @@ function isOptionalString(value: unknown): value is string | undefined {
   return (
     value === undefined || isBoundedString(value, FEEDBACK_READ_LIMITS.summary)
   );
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean";
 }
 
 function isOptionalNonNegativeNumber(

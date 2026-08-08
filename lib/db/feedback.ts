@@ -89,6 +89,7 @@ export function buildFeedbackReadQuery(
         string | null
       >`left(${feedback.dispatchEventId}, ${FEEDBACK_DB_READ_LIMITS.dispatchEventId + 1})`,
       dispatchClaimedAt: feedback.dispatchClaimedAt,
+      dispatchedAt: feedback.dispatchedAt,
     })
     .from(feedback)
     .where(eq(feedback.sessionId, sessionId))

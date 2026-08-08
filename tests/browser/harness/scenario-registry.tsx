@@ -353,13 +353,13 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
     case "feedback-pending":
       return (
         <FeedbackLifecycleScenario
-          state={{ kind: "pending", retryable: true }}
+          state={{ kind: "pending", retryable: true, delayed: true }}
         />
       );
     case "feedback-processing":
       return (
         <FeedbackLifecycleScenario
-          state={{ kind: "processing", retryable: true }}
+          state={{ kind: "processing", retryable: true, delayed: true }}
         />
       );
     case "feedback-failed":

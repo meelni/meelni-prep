@@ -238,6 +238,7 @@ test("hard deadline sends a system time-limit command and dispatches for the sto
             state: "completed",
             version: 3,
             terminalReason: "time_limit",
+            endingAt: new Date("2026-07-09T21:59:55.000Z"),
             endedAt: new Date("2026-07-09T22:00:00.000Z"),
           },
         });
@@ -298,6 +299,7 @@ function completion(
       state: "completed",
       version: 3,
       terminalReason: "user_end",
+      endingAt: new Date("2026-07-09T21:59:55.000Z"),
       endedAt: new Date("2026-07-09T22:00:00.000Z"),
     },
     feedback: feedbackRecord(),

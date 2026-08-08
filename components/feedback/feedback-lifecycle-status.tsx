@@ -50,30 +50,49 @@ export function FeedbackLifecycleStatus({
 
   if (state.kind === "pending" || state.kind === "processing") {
     const processing = state.kind === "processing";
+    const delayed = state.delayed;
     return (
       <FeedbackStatusPage
         role="status"
         aria-live="polite"
         aria-busy="true"
-        tone="info"
+        tone={delayed ? "warning" : "info"}
         icon={
           <LoaderCircle className="h-8 w-8 animate-spin motion-reduce:animate-none" />
         }
-        title={processing ? "Reviewing your interview" : "Feedback queued"}
+        title={
+          delayed
+            ? processing
+              ? "Feedback is taking longer"
+              : "Feedback queue is delayed"
+            : processing
+              ? "Reviewing your interview"
+              : "Feedback queued"
+        }
         description={
           recoveryError ||
-          (processing
-            ? "We’re connecting observations to your recorded answers. This page updates automatically."
-            : "Your interview is saved and waiting for feedback review.")
+          (delayed
+            ? processing
+              ? "Your interview is saved and feedback is still being prepared. You can safely leave and return from Interview history."
+              : "Your interview is saved, but feedback has not started on time. We’ll keep checking the queue."
+            : processing
+              ? "We’re connecting observations to your recorded answers. This page updates automatically."
+              : "Your interview is saved and waiting for feedback review.")
         }
         actions={
-          state.retryable ? (
-            retryAction(processing ? "Restart review" : "Queue feedback")
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              You can leave this page and return from Interview history.
-            </p>
-          )
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            {state.retryable &&
+              retryAction(processing ? "Restart review" : "Queue feedback")}
+            {delayed ? (
+              <Button asChild variant={state.retryable ? "outline" : "default"}>
+                <Link href="/dashboard/history">View interview history</Link>
+              </Button>
+            ) : !state.retryable ? (
+              <p className="text-muted-foreground text-sm">
+                You can leave this page and return from Interview history.
+              </p>
+            ) : null}
+          </div>
         }
       />
     );
@@ -121,18 +140,25 @@ export function FeedbackLifecycleStatus({
         role="status"
         aria-live="polite"
         aria-busy="true"
-        tone="info"
+        tone={state.delayed ? "warning" : "info"}
         icon={
           <LoaderCircle className="h-8 w-8 animate-spin motion-reduce:animate-none" />
         }
-        title="Saving your interview"
+        title={
+          state.delayed
+            ? "Interview saving is delayed"
+            : "Saving your interview"
+        }
         description={
           state.message ||
-          "Your interview is saved while the session finishes closing safely."
+          (state.delayed
+            ? "Your interview is saved, but the final handoff did not finish on time. Retry the handoff or return from Interview history."
+            : "Your interview is saved while the session finishes closing safely.")
         }
         actions={
           <div className="flex flex-col items-center gap-3 sm:flex-row">
-            <Button asChild>
+            {state.retryable && retryAction("Retry saving")}
+            <Button asChild variant={state.retryable ? "outline" : "default"}>
               <Link href="/dashboard/history">View interview history</Link>
             </Button>
             <p className="text-muted-foreground text-sm">

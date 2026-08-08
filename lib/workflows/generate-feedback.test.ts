@@ -54,6 +54,21 @@ test("concurrent deliveries claim once and emit insights once", async () => {
   );
 });
 
+test("completion latency is anchored to accepted end truth", async () => {
+  const store = new MemoryGenerationStore(record());
+  const deps = dependencies(store);
+  deps.getSession = async () => ({
+    userId: USER_ID,
+    roundType: "strategy",
+    endingAtMs: NOW.getTime() - 90_000,
+  });
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.endToFeedbackMs, 90_000);
+});
+
 test("owner and event identity are required before provider work", async () => {
   const store = new MemoryGenerationStore(record());
   let evaluations = 0;
@@ -198,25 +213,29 @@ test("untrusted transcript is skipped without provider or insight work", async (
   const store = new MemoryGenerationStore(record());
   let evaluations = 0;
   const insights: string[] = [];
-  const result = await generateFeedbackWorkflow(
-    input(EVENT_1),
-    dependencies(store, {
-      insights,
-      transcript: {
-        eligible: false,
-        transcript: [],
-        reasons: ["Transcript data is incomplete or corrupted"],
-        issues: [],
-        duplicateTurnsRemoved: 0,
-      },
-      async evaluate() {
-        evaluations += 1;
-        return evaluation("full");
-      },
-    })
-  );
+  const deps = dependencies(store, {
+    insights,
+    transcript: {
+      eligible: false,
+      transcript: [],
+      reasons: ["Transcript data is incomplete or corrupted"],
+      issues: [],
+      duplicateTurnsRemoved: 0,
+    },
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+  });
+  deps.getSession = async () => ({
+    userId: USER_ID,
+    roundType: "strategy",
+    endingAtMs: NOW.getTime() - 45_000,
+  });
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
 
   assert.equal(result.status, "skipped");
+  assert.equal(result.endToFeedbackMs, 45_000);
   assert.equal(store.current.status, "skipped");
   assert.equal(evaluations, 0);
   assert.equal(insights.length, 0);
@@ -251,9 +270,10 @@ test("durable replay closes the completion-to-insights crash window exactly once
   assert.equal(replay.status, "completed");
   assert.equal(replay.disposition, "applied");
   assert.equal(sendAttempts, 2);
-  assert.deepEqual([...acceptedInsights], [
-    `insights:update:${SESSION_ID}:${EVENT_1}`,
-  ]);
+  assert.deepEqual(
+    [...acceptedInsights],
+    [`insights:update:${SESSION_ID}:${EVENT_1}`]
+  );
 });
 
 test("legacy rows without a durable event identity fail closed", async () => {

@@ -65,6 +65,7 @@ export type FinalizeInterviewSessionResult =
         state: InterviewLifecycleState;
         version: number;
         terminalReason: InterviewTerminalReason;
+        endingAt: Date | null;
         endedAt: Date;
       };
       transcriptEvidence: "available" | "partial" | "degraded" | "missing";
@@ -128,8 +129,7 @@ export async function finalizeInterviewSession(
       stored.transcriptCutoffAt ??
       endingTranscriptCutoff({
         ...stored,
-        terminalReason:
-          stored.terminalReason ?? input.requestedTerminalReason,
+        terminalReason: stored.terminalReason ?? input.requestedTerminalReason,
         endingAt:
           stored.endingAt ??
           (input.requestedTerminalReason === "user_end" ? now : null),
@@ -549,7 +549,7 @@ export async function finalizeInterviewSession(
         : "applied",
       userId: stored.userId,
       roomName: stored.livekitRoomName,
-      lifecycle: { state, version, terminalReason, endedAt },
+      lifecycle: { state, version, terminalReason, endingAt, endedAt },
       transcriptEvidence,
       feedback: feedbackRecord,
       deadlineRoomCleanupStatus: hardDeadlineOwnsCleanup

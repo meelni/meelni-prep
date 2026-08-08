@@ -23,6 +23,7 @@ responses use private caching.
 {
   "status": "settling",
   "retryable": false,
+  "delayed": false,
   "message": "The interview is saved and its room is still being closed safely."
 }
 ```
@@ -36,17 +37,41 @@ responses use private caching.
 ```
 
 ```json
-{ "status": "pending", "retryable": false, "estimatedTimeRemaining": 45 }
+{
+  "status": "pending",
+  "retryable": false,
+  "delayed": false,
+  "estimatedTimeRemaining": 45
+}
 ```
 
 ```json
-{ "status": "processing", "retryable": false, "estimatedTimeRemaining": 25 }
+{
+  "status": "processing",
+  "retryable": false,
+  "delayed": false,
+  "estimatedTimeRemaining": 25
+}
 ```
 
-`missing`, `pending`, and `processing` can be retryable when the server has
-proved that recovery is safe. `settling` is GET-only: feedback begins after the
-deadline room-cleanup claim is acknowledged. Polling uses a three-second
-interval and a 30-request budget.
+`missing`, `settling`, `pending`, and `processing` can be retryable only when
+the server has proved that recovery is safe. A user-ended `settling` session is
+retryable after the 30-second terminalization upper bound; deadline room
+cleanup remains non-retryable. `pending + sent` becomes retryable after its
+90-second queue claim lease expires. `processing` becomes visibly delayed at
+45 seconds but retains its five-minute execution lease to prevent duplicate
+model calls. Polling uses a three-second interval and a 30-request budget.
+
+Recovery uses the same owner-scoped endpoint:
+
+```http
+POST /api/feedback/[sessionId]
+```
+
+For stale user-end settlement, POST redelivers durable finalization and returns
+`settling`. For feedback states, POST repairs or redispatches the stored work.
+The client continues polling every returned `settling`, `pending`, or
+`processing` state, including after a successful recovery request.
 
 ## Completed v2
 
