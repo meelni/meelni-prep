@@ -19822,8 +19822,6 @@ var INTERVIEW_LIFECYCLE_SLOS = {
   feedback_completion: { targetMs: 45e3, upperBoundMs: 9e4 },
   lifecycle_read: { targetMs: 5e3, upperBoundMs: 8e3 }
 };
-
-// lib/db/feedback-generation-state.ts
 var FEEDBACK_GENERATION_LEASE_MS = 5 * 60 * 1e3;
 var FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS = INTERVIEW_LIFECYCLE_SLOS.feedback_completion.upperBoundMs;
 
