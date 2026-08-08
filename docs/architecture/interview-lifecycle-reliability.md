@@ -1,10 +1,9 @@
 # Interview lifecycle reliability direction
 
-Status: accepted and implemented on draft PR #525. Runtime implementation head
-`ca5910a1bd13a3d31e969e62f9adcbaf38b32703` passed provider-free, database,
-browser, hosted CI, and exact-head Preview health checks. The open program
-parent is SAV-365; authenticated isolated-staging rehearsal and human-owned
-rollout approval remain open.
+Status: accepted and implemented on draft PR #525. The candidate has passed
+provider-free, database, browser, hosted CI, and exact-head Preview health
+checks. The open program parent is SAV-365; authenticated isolated-staging
+rehearsal and human-owned rollout approval remain open.
 
 ## Outcome and ownership
 
@@ -39,6 +38,11 @@ A sanitized 2026-08-07 trace showed:
   300-second function limit.
 - The user-facing result was a persistent “Saving your interview” state even
   though this was an infrastructure incident, not ordinary evaluation latency.
+- A later Production health response was green while aggregate runtime evidence
+  still contained invalid Inngest signatures and lifecycle route failures. The
+  source audit showed that health checked only nonblank Inngest configuration
+  and old pending/sending dispatch claims, not sent-unclaimed events or expired
+  generation leases.
 
 The immediate causes are structural rather than one provider outage:
 
@@ -139,6 +143,9 @@ treated as stable.
 6. **SAV-386 — preserve interview controls.** Keep End Interview reachable
    during credential loading and reconnect while disabling only unsafe mute
    interaction.
+7. **SAV-388 — close false-green feedback health.** Degrade readiness when a
+   sent event is not claimed inside 90 seconds or generation exceeds its
+   five-minute lease, while preserving fixed privacy-safe public codes.
 
 Each slice must land with Production-shaped fixtures and preserve the existing
 fail-closed evidence boundary. Production rollout remains a human-owner
@@ -151,7 +158,7 @@ decision.
 | Stable start and credential handoff | Same-attempt replay, lost acknowledgement, bounded reads, token fencing, delayed canonical readiness, and no-token-churn tests pass.                                                                                                         | Authenticated warm start, simulated 20-second cold start, stalled provider read, and lost-response replay in isolated staging.                                               |
 | Transcript durability               | Version-2 ingest, idempotency, writer registration, gaps, marker degradation, settlement, committed watermark, frozen prefix, and migration tests pass.                                                                                      | Observe signed Python runtime writes and frozen per-generation evidence for a real synthetic staging interview.                                                              |
 | Explicit end                        | Acceptance-before-provider-work, ambiguous client reconciliation, persistent End controls, independent finalizer checkpoints, and recovery tests pass.                                                                                       | Measure acceptance and terminalization latency while exercising normal end and a deliberately dropped finalizer delivery in staging.                                         |
-| Feedback dispatch and generation    | Outbox fencing, stale queue identity rotation, generation leases, terminal repair, delayed/recovery UI, and completed/skipped/failed presentation tests pass.                                                                                | Exercise unclaimed delivery, slow generation, partial/insufficient outcomes, and one recovery without duplicate evaluation in staging.                                       |
+| Feedback dispatch and generation    | Outbox fencing, stale queue identity rotation, generation leases, lease-aware health evidence, terminal repair, delayed/recovery UI, and completed/skipped/failed presentation tests pass.                                                   | Exercise unclaimed delivery, slow generation, partial/insufficient outcomes, and one recovery without duplicate evaluation in staging.                                       |
 | Operational readiness               | Exact-head `npm run test:ci`, `npm run check`, PostgreSQL 17 migration rehearsal, hosted CI, isolated browser QA, and exact-PR Preview dependency health passed. Canonical staging is currently dependency-unhealthy and tracked by SAV-387. | Restore isolated staging, apply migration 0030, run the authenticated lifecycle rehearsal, and record privacy-safe stage events against database truth before tuning alerts. |
 
 Automated evidence proves deterministic contracts and failure convergence; it

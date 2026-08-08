@@ -44,8 +44,17 @@ export function createDrizzleServiceHealthEvidenceReader(
   database: Pick<typeof db, "transaction"> = db
 ): ServiceHealthEvidenceReader {
   return {
-    async read({ staleBefore, queryTimeoutMs }) {
+    async read({
+      staleBefore,
+      feedbackQueueStaleBefore,
+      feedbackGenerationStaleBefore,
+      queryTimeoutMs,
+    }) {
       const staleBeforeIso = staleBefore.toISOString();
+      const feedbackQueueStaleBeforeIso =
+        feedbackQueueStaleBefore.toISOString();
+      const feedbackGenerationStaleBeforeIso =
+        feedbackGenerationStaleBefore.toISOString();
       return database.transaction(async (transaction) => {
         await transaction.execute(
           sql`select set_config('statement_timeout', ${`${queryTimeoutMs}ms`}, true)`
@@ -56,8 +65,23 @@ export function createDrizzleServiceHealthEvidenceReader(
           ${allQuestionRoundsReadySql()} as "questionBankReady",
           exists (
             select 1 from ${feedback}
-            where ${feedback.dispatchStatus} in ('pending', 'sending')
+            where (
+              ${feedback.dispatchStatus} in ('pending', 'sending')
               and coalesce(${feedback.dispatchClaimedAt}, ${feedback.createdAt}) < ${staleBeforeIso}
+            ) or (
+              ${feedback.status} = 'pending'
+              and ${feedback.dispatchStatus} = 'sent'
+              and (
+                ${feedback.dispatchedAt} is null
+                or ${feedback.dispatchedAt} <= ${feedbackQueueStaleBeforeIso}
+              )
+            ) or (
+              ${feedback.status} = 'processing'
+              and (
+                ${feedback.processingStartedAt} is null
+                or ${feedback.processingStartedAt} <= ${feedbackGenerationStaleBeforeIso}
+              )
+            )
           ) as "feedbackDispatchStale",
           exists (
             select 1 from ${feedback}

@@ -3,11 +3,15 @@ import type { FeedbackV2Result } from "@meelni/core";
 
 import { db } from "./index";
 import { feedback } from "./schema";
-import { INTERVIEW_LIFECYCLE_SLOS } from "@/lib/operations/interview-lifecycle-slo";
+import {
+  FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
+} from "@/lib/operations/interview-lifecycle-slo";
 
-export const FEEDBACK_GENERATION_LEASE_MS = 5 * 60 * 1000;
-export const FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS =
-  INTERVIEW_LIFECYCLE_SLOS.feedback_completion.upperBoundMs;
+export {
+  FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
+} from "@/lib/operations/interview-lifecycle-slo";
 
 export type FeedbackGenerationStatus =
   | "pending"

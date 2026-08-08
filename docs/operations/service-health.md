@@ -27,18 +27,25 @@ required dependencies and a fresh healthy result is recorded.
 
 ## Check Interpretation
 
-| Check             | Healthy evidence                                     | Degraded/unavailable response                                      |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
-| Web               | The dynamic route executed.                          | Transport failure is detected by the external synthetic.           |
-| Database          | Bounded workflow-evidence queries completed in time. | `database_unavailable`; investigate connectivity/migrations.       |
-| LiveKit           | Server credentials, URL, and interview agent name.   | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
-| Feedback dispatch | Hosted Inngest config and no stale or failed work.   | Preserve rows; use the feedback recovery workflow.                 |
-| Stripe webhook    | Signing config and no stale or failed work.          | Inspect Stripe delivery and redacted durable evidence.             |
+| Check             | Healthy evidence                                                                                                                            | Degraded/unavailable response                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Web               | The dynamic route executed.                                                                                                                 | Transport failure is detected by the external synthetic.           |
+| Database          | Bounded workflow-evidence queries completed in time.                                                                                        | `database_unavailable`; investigate connectivity/migrations.       |
+| LiveKit           | Server credentials, URL, and interview agent name.                                                                                          | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
+| Feedback dispatch | Hosted Inngest config; dispatch is claimed inside 90 seconds; generation stays inside its five-minute lease; no older stale or failed work. | Preserve rows; use the feedback recovery workflow.                 |
+| Stripe webhook    | Signing config and no stale or failed work.                                                                                                 | Inspect Stripe delivery and redacted durable evidence.             |
 
 Unresolved failed workflow evidence takes precedence over stale evidence. The
 database evidence transaction has a PostgreSQL statement timeout shorter than
 the route deadline, and one unresolved underlying read remains single-flight
 across application timeout and cache expiry.
+
+Treat `feedback_dispatch_stale` as a customer-impacting lifecycle signal. It
+includes a feedback event sent but not claimed inside the 90-second upper bound,
+generation that exceeded its five-minute lease, and older unclaimed dispatch
+work. It is not proof that provider configuration is valid: nonblank Inngest
+keys can still be mismatched, so provider-backed event receipt must be verified
+in the controlled rehearsal.
 
 The endpoint intentionally does not call LiveKit or Stripe. Provider-backed
 reachability and the full fresh-user path belong to the controlled Preview
