@@ -208,6 +208,23 @@ export async function assertCriticalAccessibility(
   surfaceId: string,
   options: { exclude?: string[] } = {}
 ) {
+  await expect
+    .poll(() =>
+      page
+        .locator("body")
+        .evaluate(
+          (element) =>
+            element
+              .getAnimations({ subtree: true })
+              .filter(
+                (animation) =>
+                  animation.effect?.getTiming().iterations !== Infinity &&
+                  animation.playState !== "finished" &&
+                  animation.playState !== "idle"
+              ).length
+        )
+    )
+    .toBe(0);
   await page.evaluate(async () => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();

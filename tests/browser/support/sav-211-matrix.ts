@@ -28,10 +28,10 @@ export const SAV_211_BROWSER_SCENARIOS: Sav211BrowserScenario[] = [
     expectedText: "Not enough evidence for feedback",
   },
   { id: "feedback-loading", expectedText: "Loading feedback" },
-  { id: "feedback-pending", expectedText: "Feedback queued" },
+  { id: "feedback-pending", expectedText: "Feedback queue is delayed" },
   {
     id: "feedback-processing",
-    expectedText: "Reviewing your interview",
+    expectedText: "Feedback is taking longer",
   },
   { id: "feedback-failed", expectedText: "Feedback review failed" },
   { id: "feedback-unavailable", expectedText: "Feedback unavailable" },
