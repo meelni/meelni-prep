@@ -58,6 +58,12 @@ export function InterviewRoomSurface({
                 Connection restored
               </StatusPill>
             )}
+            {connectionStatus === "delayed" && (
+              <StatusPill tone="warning" role="status" aria-live="polite">
+                Room connected. The interviewer is still joining; End remains
+                available.
+              </StatusPill>
+            )}
           </div>
           <div className="self-end sm:self-auto">{timer}</div>
         </div>

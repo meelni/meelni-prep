@@ -33,14 +33,14 @@ export function InterviewControls({
             className="min-h-12 gap-2 rounded-lg px-4"
             title={
               muteDisabled
-                ? "Microphone controls are unavailable while reconnecting"
+                ? "Microphone controls are unavailable while the interviewer joins or the connection recovers"
                 : isMuted
                   ? "Unmute microphone"
                   : "Mute microphone"
             }
             aria-label={
               muteDisabled
-                ? "Microphone controls unavailable while reconnecting"
+                ? "Microphone controls unavailable while the interviewer joins or the connection recovers"
                 : isMuted
                   ? "Unmute microphone"
                   : "Mute microphone"
@@ -69,7 +69,7 @@ export function InterviewControls({
       </motion.div>
       <span className="sr-only" role="status" aria-live="polite">
         {muteDisabled
-          ? "Microphone controls are unavailable while reconnecting. End interview remains available."
+          ? "Microphone controls are unavailable while the interviewer joins or the connection recovers. End interview remains available."
           : isMuted
             ? "Microphone is off"
             : "Microphone is on"}

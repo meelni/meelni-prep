@@ -126,6 +126,28 @@ describe("GET /api/session/:sessionId", () => {
       message: "This interview session cannot be resumed safely.",
     });
   });
+
+  it("bounds a stalled session read before the customer request deadline", async () => {
+    vi.useFakeTimers();
+    vi.mocked(isSessionOwnedByUser).mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = GET(request(), context());
+      await vi.advanceTimersByTimeAsync(8_000);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toEqual({
+        error: "session_read_unavailable",
+        retryable: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function request(): NextRequest {

@@ -205,6 +205,36 @@ describe("POST /api/livekit/token", () => {
       consoleError.mockRestore();
     }
   });
+
+  it("bounds a stalled token workflow and returns a retryable response", async () => {
+    vi.useFakeTimers();
+    mocks.createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "authenticated-user", email: null } },
+          error: null,
+        }),
+      },
+    });
+    mocks.joinInterviewSessionWorkflow.mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = POST(createRequest({ sessionId }));
+      await vi.advanceTimersByTimeAsync(8_000);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      expect(await response.json()).toEqual({
+        error: "interview_token_unavailable",
+        retryable: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function createRequest(body: Record<string, unknown>): NextRequest {
