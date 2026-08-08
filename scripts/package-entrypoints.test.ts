@@ -179,6 +179,10 @@ test("session finalization has no caller-supplied validation bypass", async () =
   );
   assert.match(
     databaseSource,
-    /const validation = applyTranscriptIntegrityValidation\(/
+    /const evidenceSnapshot = buildTranscriptEvidenceSnapshot\(/
+  );
+  assert.match(
+    databaseSource,
+    /const validation = evidenceSnapshot\.validation/
   );
 });
