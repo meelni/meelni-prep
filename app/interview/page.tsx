@@ -48,7 +48,6 @@ import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { fetchWithDeadline } from "@/lib/http/deadline";
 import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
 
-const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
 
 interface InterviewSession {
@@ -257,33 +256,22 @@ export function InterviewPageContent() {
       };
       if (ownerIdRef.current !== requestOwnerId) return;
       const normalizedSession = normalizePersistedSession(sessionData);
-      setSession(normalizedSession);
-      // The authenticated session read establishes ownership before LiveKit
-      // credentials exist. Keep the server-owned End command reachable while
-      // the provider handoff is still pending.
-      setConnectionOwnerId(requestOwnerId);
-      setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       if (
         canNavigateToInterviewFeedback({
           lifecycleState: normalizedSession.lifecycle_state,
-          feedbackReady: sessionData.feedbackReady,
         })
       ) {
         router.replace(`/feedback/${sessionId}/loading`);
         return;
       }
 
-      if (
-        normalizedSession.lifecycle_state === "ending" ||
-        (normalizedSession.lifecycle_state !== undefined &&
-          normalizedSession.lifecycle_state !== null &&
-          TERMINAL_SESSION_STATES.has(normalizedSession.lifecycle_state))
-      ) {
-        setDisconnectTimedOut(true);
-        setLoading(false);
-        return;
-      }
+      setSession(normalizedSession);
+      // The authenticated session read establishes ownership before LiveKit
+      // credentials exist. Keep the server-owned End command reachable while
+      // the provider handoff is still pending.
+      setConnectionOwnerId(requestOwnerId);
+      setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       const initialCredentials = consumeInitialInterviewRoomCredentials({
         sessionId,
@@ -676,19 +664,23 @@ export function InterviewPageContent() {
     let cancelled = false;
     let pollInFlight = false;
     let pollTimer: number | undefined;
+    const controller = new AbortController();
 
     const pollTerminalTruth = async () => {
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        const response = await fetch(`/api/session/${activeSessionId}`, {
-          cache: "no-store",
-        });
+        const response = await fetchWithDeadline(
+          `/api/session/${activeSessionId}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
         if (response.ok) {
           const payload = (await response.json()) as {
             session?: {
               lifecycleState?: string | null;
-              feedbackReady?: boolean;
             };
           };
           if (cancelled) return;
@@ -723,6 +715,7 @@ export function InterviewPageContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      controller.abort();
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -738,6 +731,7 @@ export function InterviewPageContent() {
     let cancelled = false;
     let pollInFlight = false;
     let pollTimer: number | undefined;
+    const controller = new AbortController();
 
     const pollEndReconciliation = async () => {
       if (pollInFlight || cancelled) return;
@@ -747,6 +741,7 @@ export function InterviewPageContent() {
       const result = await reconcileAmbiguousInterviewEnd({
         sessionId: endReconciliation.sessionId,
         retryEnd,
+        signal: controller.signal,
       });
       pollInFlight = false;
       if (cancelled || ownerIdRef.current !== endReconciliation.ownerId) return;
@@ -780,6 +775,7 @@ export function InterviewPageContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      controller.abort();
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -813,18 +809,16 @@ export function InterviewPageContent() {
         : 0;
 
       let response: Response;
-      const controller = new AbortController();
-      const timeout = window.setTimeout(
-        () => controller.abort(),
-        END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
-      );
       try {
-        response = await fetch("/api/interview/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: requestSessionId }),
-          signal: controller.signal,
-        });
+        response = await fetchWithDeadline(
+          "/api/interview/end",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: requestSessionId }),
+          },
+          END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
+        );
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
         console.warn("[Interview] end_transport_ambiguous", {
@@ -841,8 +835,6 @@ export function InterviewPageContent() {
           durationSeconds: duration,
         });
         return;
-      } finally {
-        window.clearTimeout(timeout);
       }
       if (ownerIdRef.current !== requestOwnerId) return;
       const data = (await response.json().catch(() => null)) as {

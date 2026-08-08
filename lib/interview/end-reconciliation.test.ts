@@ -108,3 +108,67 @@ test("transport ambiguity never authorizes a resume or navigation", async () => 
     reason: "truth_unavailable",
   });
 });
+
+test("a stalled lifecycle read is aborted before the next reconciliation poll", async () => {
+  let aborted = false;
+  const result = await reconcileAmbiguousInterviewEnd({
+    sessionId: SESSION_ID,
+    retryEnd: true,
+    requestDeadlineMs: 5,
+    request: async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true }
+        );
+      }),
+  });
+
+  assert.equal(aborted, true);
+  assert.deepEqual(result, {
+    status: "waiting",
+    retryAttempted: false,
+    reason: "truth_unavailable",
+  });
+});
+
+test("a stalled idempotent End retry is aborted before reconciliation continues", async () => {
+  let endRetryAborted = false;
+  const result = await reconcileAmbiguousInterviewEnd({
+    sessionId: SESSION_ID,
+    retryEnd: true,
+    requestDeadlineMs: 5,
+    request: async (input, init) => {
+      if (String(input).includes("/api/session/")) {
+        return Response.json({
+          session: { lifecycleState: "active", feedbackReady: false },
+        });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            endRetryAborted = true;
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true }
+        );
+      });
+    },
+  });
+
+  assert.equal(endRetryAborted, true);
+  assert.deepEqual(result, {
+    status: "waiting",
+    retryAttempted: true,
+    reason: "end_retry_pending",
+  });
+});

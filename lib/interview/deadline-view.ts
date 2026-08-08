@@ -1,6 +1,11 @@
 import { getInterviewDeadlineRemainingMs } from "@meelni/core";
 
-const TERMINAL_INTERVIEW_STATES = new Set(["completed", "abandoned", "failed"]);
+const FEEDBACK_HANDOFF_STATES = new Set([
+  "ending",
+  "completed",
+  "abandoned",
+  "failed",
+]);
 
 export function getRemainingSeconds(
   deadlineAt: Date | null,
@@ -21,12 +26,10 @@ export function formatInterviewTime(seconds: number): string {
 
 export function canNavigateToInterviewFeedback(input: {
   lifecycleState?: string | null;
-  feedbackReady?: boolean | null;
 }): boolean {
   const lifecycleState = input.lifecycleState;
   return (
     typeof lifecycleState === "string" &&
-    TERMINAL_INTERVIEW_STATES.has(lifecycleState) &&
-    input.feedbackReady === true
+    FEEDBACK_HANDOFF_STATES.has(lifecycleState)
   );
 }

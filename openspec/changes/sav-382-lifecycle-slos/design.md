@@ -41,6 +41,11 @@ is reduced to phase, `delayed`, `retryable`, and bounded estimates; no provider
 state is exposed. The primary action appears only when recovery can perform a
 real durable mutation. Interview history remains the safe secondary exit.
 
+The focused room transfers presentation ownership when durable lifecycle truth
+is `ending` or terminal. It does not wait for `feedbackReady`: the feedback API
+already reports safe `settling` until hard-deadline room cleanup is acknowledged
+and continues to gate dispatch and feedback content on server truth.
+
 ## Telemetry
 
 Stage events carry a versioned SLO name, target, upper bound, and latency class

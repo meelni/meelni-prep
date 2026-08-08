@@ -220,11 +220,13 @@ and uses a unique delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
-saving state, and polls stored terminal truth plus feedback readiness before
-navigating to feedback. Direct feedback polling reports `settling` until room
-cleanup is acknowledged. After acknowledgement, polling exposes the durable
-dispatch state and direct retry uses the same idempotent outbox claim as
-scheduled recovery; it cannot bypass unacknowledged hard-deadline room cleanup.
+saving state, and polls stored lifecycle truth. Once truth is `ending` or
+terminal, the focused room unmounts and the feedback lifecycle owns every
+remaining state; it does not wait for `feedbackReady`. Direct feedback polling
+reports `settling` until room cleanup is acknowledged. After acknowledgement,
+polling exposes the durable dispatch state and direct retry uses the same
+idempotent outbox claim as scheduled recovery; it cannot bypass unacknowledged
+hard-deadline room cleanup.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
 

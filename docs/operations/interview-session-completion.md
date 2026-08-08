@@ -94,9 +94,11 @@ end-to-feedback handoff. It covers these invariants together:
 - repeated bounded transcript flushes reuse one in-flight runtime delivery;
 - dispatch failure cannot turn committed terminal truth into a failed End
   response;
-- a terminal lifecycle state navigates to the feedback loading route without
-  waiting for `feedbackReady`;
-- an ambiguous End transport result converges through durable session truth;
+- an automatic deadline hands `ending` or terminal lifecycle truth to the
+  feedback route without waiting for `feedbackReady`;
+- stalled automatic-deadline reads abort before the next bounded poll;
+- an ambiguous End transport result converges through bounded durable session
+  reads and an abortable idempotent retry;
 - the feedback route renders pending, processing, settling, failed, and
   recovery states instead of leaving the interview spinner mounted.
 
