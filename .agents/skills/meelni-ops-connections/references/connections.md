@@ -53,11 +53,12 @@ npx vercel@55.0.0 link --yes --project meelni --scope meelni
 npx vercel@55.0.0 env ls
 ```
 
-The personal CLI identity `meelnis` is not authoritative for Meelni operations.
-Do not inspect or mutate the project through that identity even if it can see the
-project. Authenticate as `contact@meelni.com`, verify the `meelni` team scope and
-dashboard URL, and then link local worktrees with
-`npx vercel@55.0.0 link --yes --project meelni --scope meelni`.
+The `contact@meelni.com` account currently has Vercel username `meelnis`, so
+`vercel whoami` returning `meelnis` is not enough to distinguish the intended
+account from stale local auth. During device-flow login, verify the authorization
+page identifies `Savi Meelni` / `contact@meelni.com`; afterward verify the exact
+`meelni` team scope and project ID before any mutation. Then link local worktrees
+with `npx vercel@55.0.0 link --yes --project meelni --scope meelni`.
 
 After a GitHub repository ownership transfer, inspect the Vercel project's Git
 link before assuming the integration followed the repository. A retained link
@@ -148,13 +149,13 @@ Custom staging environment:
 - The staging environment remains fail-closed under the normal Preview product
   controls. Creating or updating the environment does not authorize a
   relaunch-gate change.
-- Read-only evidence on 2026-08-08 found the stable alias still serving commit
-  `67b0247d62d23f4a61e1bacd4d94aebe97f78455`. The deployment is `READY`, but
-  `/api/health` returns HTTP 503: web and LiveKit are healthy while database,
-  feedback dispatch, and Stripe webhook are unavailable. Both isolated
-  LiveKit agents are running. SAV-387 owns restoration and exact-candidate
-  verification; do not activate rehearsal authority until every required
-  health check is green.
+- Read-only evidence on 2026-08-08 after the SAV-391 cutover found exact staging
+  commit `2e6cde805fa5cd079822a40a56c93b85be8b5c43` `READY` on the stable alias.
+  `/api/health` returns HTTP 503 only because the isolated question bank is
+  empty; web, database, LiveKit, feedback dispatch, and Stripe webhook checks
+  are healthy. SAV-387 owns approved non-production question-data restoration
+  and exact-candidate verification; do not activate rehearsal authority until
+  every required health check is green.
 
 ## GitHub
 

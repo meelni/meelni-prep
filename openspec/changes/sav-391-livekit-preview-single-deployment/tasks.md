@@ -7,5 +7,5 @@
 - [x] Deploy the combined image to `CA_ovn67QQ7ywmJ`.
 - [x] Prove both exact dispatch names register and accept synthetic jobs.
 - [x] Update provider identity pins, preflight tests, contracts, and runbooks.
-- [ ] Update staging-only Vercel LiveKit values and redeploy exact head.
+- [x] Update staging-only Vercel LiveKit values and redeploy exact head.
 - [ ] Record verification in SAV-391 and hand SAV-387 back to rehearsal.
