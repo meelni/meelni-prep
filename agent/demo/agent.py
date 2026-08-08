@@ -44,6 +44,7 @@ from demo.runtime import (
 )
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.dispatch import resolve_cli_dispatch_name
+from shared.worker_runtime import resolve_worker_runtime_options
 from shared.opik_tracing import setup_opik_tracing
 from shared.prompt_contracts import DEMO_PROMPT_CONTRACT, PromptContract
 from shared.safe_logging import log_exception_class
@@ -540,5 +541,6 @@ if __name__ == "__main__":
         "prewarm_fnc": prewarm,
         "agent_name": agent_name,
     }
+    options.update(resolve_worker_runtime_options())
 
     cli.run_app(WorkerOptions(**options))

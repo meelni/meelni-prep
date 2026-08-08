@@ -7,11 +7,8 @@ secrets_path=""
 lk_path=""
 case "$environment" in
   preview)
-    config_path="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_CONFIG:-}"
-    expected_agent_id="${MEELNI_LIVEKIT_PREVIEW_INTERVIEW_AGENT_ID:-}"
-    target_url="${MEELNI_PREVIEW_LIVEKIT_URL:-}"
-    canonical_project_host="meelni-preview-dk7443ua.livekit.cloud"
-    canonical_agent_id="CA_ZbGxFjfEYwsD"
+    echo "Preview uses one fail-together deployment; run agent/preview/deploy.sh." >&2
+    exit 1
     ;;
   production)
     config_path="${MEELNI_LIVEKIT_PRODUCTION_INTERVIEW_CONFIG:-}"

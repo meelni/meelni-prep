@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.candidate_presence import wait_for_candidate_before_greeting
 from shared.config import parse_room_metadata
 from shared.dispatch import resolve_cli_dispatch_name
+from shared.worker_runtime import resolve_worker_runtime_options
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import setup_opik_tracing
 from shared.runtime_config import (
@@ -1085,22 +1086,21 @@ if __name__ == "__main__":
     setup_opik_tracing("meelni-interview-agent")
     is_cloud = bool(os.getenv("LIVEKIT_URL")) and not os.getenv("LOCAL_DEV")
 
-    # Cloud doesn't support num_idle_processes or load_threshold
+    options = {
+        "entrypoint_fnc": entrypoint,
+        "prewarm_fnc": prewarm,
+        "agent_name": agent_name,
+    }
+
     if is_cloud:
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=prewarm,
-                agent_name=agent_name,
-            ),
-        )
+        options.update(resolve_worker_runtime_options())
     else:
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=prewarm,
-                agent_name=agent_name,
-                num_idle_processes=2,  # Keep 2 idle processes ready for new jobs
-                load_threshold=0.9,  # Increase threshold to accept more jobs (default: 0.7)
-            ),
+        options.update(
+            {
+                "num_idle_processes": 2,
+                "load_threshold": 0.9,
+            }
         )
+        options.update(resolve_worker_runtime_options())
+
+    cli.run_app(WorkerOptions(**options))
