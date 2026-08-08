@@ -31,6 +31,21 @@ BASE_ENV = {
 
 
 class PreviewSupervisorTests(unittest.TestCase):
+    def test_supervisor_imports_from_the_container_entrypoint_path(self):
+        supervisor = Path(__file__).parent / "preview/supervisor.py"
+        result = subprocess.run(
+            [sys.executable, str(supervisor)],
+            cwd=Path(__file__).parent,
+            env={**os.environ, "MEELNI_RUNTIME_ENVIRONMENT": "invalid"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("preview_supervisor_environment_invalid", result.stderr)
+        self.assertNotIn("ModuleNotFoundError", result.stderr)
+
     def test_builds_distinct_workers_with_separate_ports(self):
         root = Path("/tmp/agent-root").resolve()
         interview, demo = build_child_specs(

@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from shared.dispatch import require_dispatch_name
 from shared.worker_runtime import (
     WORKER_HTTP_PORT_ENV,
