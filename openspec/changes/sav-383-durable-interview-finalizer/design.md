@@ -32,6 +32,9 @@ The terminalization step emits only lifecycle, room, feedback-state, and
 allowlisted evidence classifications. Feedback dispatch does not deserialize a
 rich ORM record from Inngest. It re-enters the existing owner-scoped feedback
 recovery workflow, which reads and atomically claims the canonical outbox.
+The provider event send is bounded at three seconds. Timeout or failure marks
+only the matching fenced claim failed, so a retry can proceed immediately and
+a late sender cannot acknowledge a newer claim.
 
 ## Recovery
 

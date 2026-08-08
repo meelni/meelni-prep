@@ -27,6 +27,27 @@ bound. The UI becomes explicitly delayed at 45 seconds, while automatic or
 manual generation retry becomes available only after the execution lease
 expires.
 
+### Implemented deadline ladder
+
+The SLO table describes customer objectives and stale-state transitions. The
+current synchronous circuit breakers are intentionally nested below the
+browser transport:
+
+| Operation                        | Breaker |
+| -------------------------------- | ------: |
+| Supabase server auth transport   |     4 s |
+| Interactive read statement       |     5 s |
+| End row-lock acquisition         |   1.5 s |
+| End database statement           |   2.5 s |
+| End/read/recovery route response |   5.5 s |
+| Browser lifecycle transport      |   6.5 s |
+| Feedback provider event send     |     3 s |
+
+The route breaker bounds the customer response; the transaction-local database
+breakers also stop timed-out work from retaining a pooled connection after the
+response. Do not replace them with session-level Postgres settings because the
+runtime uses a transaction pooler.
+
 ## State ownership and safe retry
 
 - A timed-out start is ambiguous. Preserve its client-generated attempt UUID;

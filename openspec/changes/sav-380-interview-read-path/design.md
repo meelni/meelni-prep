@@ -21,6 +21,9 @@ error is not treated as an invalid user session. Customer read routes also
 have an outer deadline. Their database work executes in a transaction with a
 transaction-local statement timeout below the route limit. Dependency
 deadlines return privacy-safe 503 responses with a short `Retry-After` header.
+The concrete order is auth at 4 seconds, database statements at 5 seconds,
+route response at 5.5 seconds, and browser transport at 6.5 seconds. Session
+ownership, lifecycle state, and feedback visibility share one bounded snapshot.
 
 ## Runtime database policy
 

@@ -11,6 +11,11 @@
 The product uses the upper bounds to change user-visible state, not to claim an
 SLO has been achieved before measured rollout evidence exists.
 
+The implemented customer-path breakers are stricter than the stale-state upper
+bounds: End lock acquisition is 1.5 seconds, End database work is 2.5 seconds,
+End/read/recovery routes are 5.5 seconds, and browser transport is 6.5 seconds.
+Retryable auth, lock, statement, and route exhaustion returns a private `503`.
+
 ## Stale user-end recovery
 
 `ending_at` is the durable acceptance boundary. Before 30 seconds, the feedback

@@ -9,6 +9,16 @@ import {
 import { db } from "./index";
 import { interviewSession } from "./schema";
 
+export const USER_END_ACCEPTANCE_LOCK_TIMEOUT_MS = 1_500;
+export const USER_END_ACCEPTANCE_STATEMENT_TIMEOUT_MS = 2_500;
+
+export function getUserEndAcceptanceTimeoutSql(): readonly [string, string] {
+  return [
+    `set local lock_timeout = '${USER_END_ACCEPTANCE_LOCK_TIMEOUT_MS}ms'`,
+    `set local statement_timeout = '${USER_END_ACCEPTANCE_STATEMENT_TIMEOUT_MS}ms'`,
+  ];
+}
+
 export interface AcceptedUserInterviewEnd {
   sessionId: string;
   userId: string;
@@ -37,6 +47,12 @@ export async function acceptUserInterviewEnd(
   database: typeof db = db
 ): Promise<AcceptUserInterviewEndResult> {
   return database.transaction(async (tx) => {
+    // End acceptance is the customer's synchronous safety boundary. Bound
+    // both row-lock acquisition and total database work below the 3s SLO so a
+    // conflicting finalizer cannot hold this request until the platform limit.
+    for (const timeoutSql of getUserEndAcceptanceTimeoutSql()) {
+      await tx.execute(sql.raw(timeoutSql));
+    }
     const rows = await tx
       .select({
         sessionId: interviewSession.id,

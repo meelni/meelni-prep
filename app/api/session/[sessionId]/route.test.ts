@@ -8,6 +8,11 @@ vi.mock("@/lib/db/sessions", () => ({
 vi.mock("@/lib/db/feedback", () => ({
   getFeedbackBySessionId: vi.fn(),
 }));
+vi.mock("@/lib/db/interactive-read", () => ({
+  withInteractiveReadTransaction: vi.fn(
+    (work: (database: object) => Promise<unknown>) => work(DATABASE)
+  ),
+}));
 
 import { NextRequest } from "next/server";
 
@@ -17,6 +22,7 @@ import { createClient } from "@/lib/supabase/server";
 import { GET } from "./route";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const DATABASE = { select: "bounded-transaction" };
 
 describe("GET /api/session/:sessionId", () => {
   beforeEach(() => {
@@ -50,6 +56,13 @@ describe("GET /api/session/:sessionId", () => {
     expect(response.status).toBe(200);
     expect(body.session.deadlineAt).toBe("2026-07-10T06:45:00.000Z");
     expect(body.session.feedbackReady).toBe(true);
+    expect(isSessionOwnedByUser).toHaveBeenCalledWith(
+      SESSION_ID,
+      "user-1",
+      DATABASE
+    );
+    expect(getSessionById).toHaveBeenCalledWith(SESSION_ID, DATABASE);
+    expect(getFeedbackBySessionId).toHaveBeenCalledWith(SESSION_ID, DATABASE);
   });
 
   it("keeps terminal navigation blocked until feedback dispatch is acknowledged", async () => {
@@ -147,6 +160,35 @@ describe("GET /api/session/:sessionId", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it.each([
+    Object.assign(new Error("private lock detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])("returns a private retryable response for %s", async (failure) => {
+    if (failure.name === "AuthRetryableFetchError") {
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: failure,
+          }),
+        },
+      } as never);
+    } else {
+      vi.mocked(isSessionOwnedByUser).mockRejectedValue(failure);
+    }
+
+    const response = await GET(request(), context());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("3");
+    await expect(response.json()).resolves.toEqual({
+      error: "session_read_unavailable",
+      retryable: true,
+    });
   });
 });
 
