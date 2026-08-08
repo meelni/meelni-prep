@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/feedback-generation-state";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
-import { getSessionTranscript } from "@/lib/db/transcripts";
+import { getFrozenFeedbackTranscriptTurns } from "@/lib/db/transcripts";
 import {
   generateFeedback as generateEvaluation,
   type StartFeedbackObservabilityTrace,
@@ -222,8 +222,9 @@ export async function generateFeedbackWorkflow(
     )
   );
   if (!applied) {
-    const current = await deps.steps.run("read-fenced-feedback-generation", () =>
-      deps.store.get(input.sessionId)
+    const current = await deps.steps.run(
+      "read-fenced-feedback-generation",
+      () => deps.store.get(input.sessionId)
     );
     return unclaimedResult(input, current);
   }
@@ -298,9 +299,10 @@ export function createGenerateFeedbackWorkflowDeps(
     },
     validateLegacy: validateSessionCompleteness,
     async getTranscript(sessionId) {
-      return prepareFeedbackTranscript(await getSessionTranscript(sessionId), {
-        requireContractV2: true,
-      });
+      return prepareFeedbackTranscript(
+        await getFrozenFeedbackTranscriptTurns(sessionId),
+        { requireContractV2: true }
+      );
     },
     evaluate: ({ roundType, transcript, evaluationState }) =>
       generateEvaluation(roundType, transcript, evaluationState, {
@@ -362,10 +364,7 @@ function unclaimedResult(
   if (current.eventId === input.eventId && isTerminal(current)) {
     return terminalResult(input.sessionId, current);
   }
-  if (
-    current.eventId === input.eventId &&
-    current.status === "processing"
-  ) {
+  if (current.eventId === input.eventId && current.status === "processing") {
     return {
       status: "processing",
       disposition: "in_progress",
@@ -382,9 +381,7 @@ function unclaimedResult(
   };
 }
 
-function isTerminal(
-  record: Pick<FeedbackGenerationRecord, "status">
-): boolean {
+function isTerminal(record: Pick<FeedbackGenerationRecord, "status">): boolean {
   return record.status === "completed" || record.status === "skipped";
 }
 

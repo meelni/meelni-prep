@@ -92,7 +92,7 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 
 1. Keep the global relaunch feature gate off while validating the sync path.
 2. Generate independent Preview credentials and configure the Preview cron and operator secrets.
-3. Deploy to Preview and apply the canonical migration chain through `0029_durable_contact_submission`. Confirm strict preflight reports 30 migrations and the durable-contact schema fingerprint recorded in the migration runbook. The question-sync behavior continues to depend specifically on `0027_question_provenance`.
+3. Deploy to Preview and apply the canonical migration chain through `0030_transcript_committed_watermarks`. Confirm strict preflight reports 31 migrations and the transcript-watermark schema fingerprint recorded in the migration runbook. The question-sync behavior continues to depend specifically on `0027_question_provenance`.
 4. Verify unauthenticated and ordinary signed-in manual requests fail, then run a manual dry run with the operator credential.
 5. Run one Preview live sync in a disposable or approved non-production dataset. Start a second request concurrently and confirm it receives `409` before database work; confirm a sequential retry converges without duplicate composite identities and an inactive unverified identity is adopted and published in place.
 6. Generate new, independent Production credentials and run a Production dry
@@ -104,7 +104,7 @@ The server emits a `question_sync_audit` JSON event containing trigger, dry-run 
 
 After every approved live sync, require `/api/health` to report `question_bank_ready` and rerun Production deployment preflight. Both Production checks fail closed unless every canonical interview round has at least one published question. Preview builds do not require a copied corpus in their isolated database; Preview runtime health still reports an unavailable question bank until approved non-production data is synced.
 
-The question-sync migration is `0027_question_provenance`; the canonical chain now continues through `0029_durable_contact_submission`. If any migration's predecessor changes or another migration lands first, regenerate the affected SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
+The question-sync migration is `0027_question_provenance`; the canonical chain now continues through `0030_transcript_committed_watermarks`. If any migration's predecessor changes or another migration lands first, regenerate the affected SQL, journal entry, snapshot, preflight count, and schema fingerprint before Preview rehearsal. Production application requires a separate exact owner authorization; this runbook does not grant it.
 
 The concurrency rehearsal and live data verification require an approved environment and operator authority; local automated tests cover the fail-closed and overlap branches without touching a provider or remote database.
 

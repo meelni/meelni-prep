@@ -14,11 +14,17 @@ import {
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
 import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
+import { endingTranscriptCutoff } from "@/lib/db/transcripts";
+import {
+  buildTranscriptEvidenceSnapshot,
+  type TranscriptEvidenceState,
+} from "@/lib/workflows/transcript-evidence-snapshot";
 import { feedbackGenerationEventId } from "./feedback-event-id";
 import { db } from "./index";
 import {
   feedback,
   interviewSession,
+  transcriptEvidenceWriterCutoff,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
   transcriptRuntimeWriter,
@@ -61,7 +67,7 @@ export type FinalizeInterviewSessionResult =
         terminalReason: InterviewTerminalReason;
         endedAt: Date;
       };
-      transcriptEvidence: "available" | "degraded" | "missing";
+      transcriptEvidence: "available" | "partial" | "degraded" | "missing";
       feedback: typeof feedback.$inferSelect;
       deadlineRoomCleanupStatus:
         | "pending"
@@ -118,58 +124,140 @@ export async function finalizeInterviewSession(
     const stored = rows[0];
     if (!stored) return { ok: false, reason: "not_found" } as const;
 
-    const [turns, interruptionCounts, writerEvidence] = await Promise.all([
-      tx
-        .select({
-          contractVersion: transcriptTurn.contractVersion,
-          eventId: transcriptTurn.eventId,
-          speaker: transcriptTurn.speaker,
-          text: transcriptTurn.text,
-          startedAt: transcriptTurn.startedAt,
-          endedAt: transcriptTurn.endedAt,
-        })
-        .from(transcriptTurn)
-        .where(eq(transcriptTurn.sessionId, input.sessionId))
-        .orderBy(...transcriptChronologicalOrder()),
-      tx
-        .select({ value: sql<number>`count(*)::int` })
-        .from(transcriptInterruptionMarker)
-        .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
-      tx
-        .select({
-          generation: transcriptRuntimeWriter.generation,
-          state: transcriptRuntimeSettlement.state,
-        })
-        .from(transcriptRuntimeWriter)
-        .leftJoin(
-          transcriptRuntimeSettlement,
-          and(
-            eq(
-              transcriptRuntimeSettlement.sessionId,
-              transcriptRuntimeWriter.sessionId
-            ),
-            eq(
-              transcriptRuntimeSettlement.writerGeneration,
-              transcriptRuntimeWriter.generation
-            ),
-            eq(
-              transcriptRuntimeSettlement.writerId,
-              transcriptRuntimeWriter.writerId
+    const cutoffAt =
+      stored.transcriptCutoffAt ??
+      endingTranscriptCutoff({
+        ...stored,
+        terminalReason:
+          stored.terminalReason ?? input.requestedTerminalReason,
+        endingAt:
+          stored.endingAt ??
+          (input.requestedTerminalReason === "user_end" ? now : null),
+      }) ??
+      stored.endingAt ??
+      now;
+    const [storedTurns, interruptionCounts, liveWriterEvidence, frozenWriters] =
+      await Promise.all([
+        tx
+          .select({
+            contractVersion: transcriptTurn.contractVersion,
+            eventId: transcriptTurn.eventId,
+            writerGeneration: transcriptTurn.writerGeneration,
+            sequence: transcriptTurn.sequence,
+            speaker: transcriptTurn.speaker,
+            text: transcriptTurn.text,
+            startedAt: transcriptTurn.startedAt,
+            endedAt: transcriptTurn.endedAt,
+          })
+          .from(transcriptTurn)
+          .where(eq(transcriptTurn.sessionId, input.sessionId))
+          .orderBy(...transcriptChronologicalOrder()),
+        tx
+          .select({ value: sql<number>`count(*)::int` })
+          .from(transcriptInterruptionMarker)
+          .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
+        tx
+          .select({
+            generation: transcriptRuntimeWriter.generation,
+            contractVersion: transcriptRuntimeWriter.contractVersion,
+            writerId: transcriptRuntimeWriter.writerId,
+            lastObservedSequence: transcriptRuntimeWriter.lastObservedSequence,
+            committedSequence: transcriptRuntimeWriter.committedSequence,
+            committedEventId: transcriptRuntimeWriter.committedEventId,
+            committedThroughAt: transcriptRuntimeWriter.committedThroughAt,
+            integrityState: transcriptRuntimeWriter.integrityState,
+            settlementState: transcriptRuntimeSettlement.state,
+            settledAt: transcriptRuntimeSettlement.settledAt,
+          })
+          .from(transcriptRuntimeWriter)
+          .leftJoin(
+            transcriptRuntimeSettlement,
+            and(
+              eq(
+                transcriptRuntimeSettlement.sessionId,
+                transcriptRuntimeWriter.sessionId
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerGeneration,
+                transcriptRuntimeWriter.generation
+              ),
+              eq(
+                transcriptRuntimeSettlement.writerId,
+                transcriptRuntimeWriter.writerId
+              )
             )
           )
-        )
-        .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
-    ]);
+          .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId)),
+        tx
+          .select()
+          .from(transcriptEvidenceWriterCutoff)
+          .where(eq(transcriptEvidenceWriterCutoff.sessionId, input.sessionId)),
+      ]);
+    const useFrozenEvidence =
+      isInterviewTerminalState(stored.lifecycleState) &&
+      stored.transcriptEvidenceVersion === 1;
+    const writerEvidence = useFrozenEvidence
+      ? frozenWriters.map((writer) => ({
+          generation: writer.writerGeneration,
+          contractVersion: writer.contractVersion,
+          writerId: writer.writerId,
+          lastObservedSequence: writer.lastObservedSequence,
+          committedSequence: writer.committedSequence,
+          committedEventId: writer.committedEventId,
+          committedThroughAt: writer.committedThroughAt,
+          integrityState: writer.integrityState,
+          settlementState:
+            writer.settlementState === "missing"
+              ? null
+              : writer.settlementState,
+          settledAt: writer.settlementState === "settled" ? cutoffAt : null,
+        }))
+      : liveWriterEvidence.map((writer) => ({
+          ...writer,
+          settlementState: writer.settlementState as
+            | "settled"
+            | "degraded"
+            | null,
+        }));
+    const committedByGeneration = new Map(
+      writerEvidence.map((writer) => [
+        writer.generation,
+        writer.committedSequence,
+      ])
+    );
+    const turns = storedTurns.filter((turn) => {
+      if (
+        turn.writerGeneration === null ||
+        turn.sequence === null ||
+        !turn.endedAt ||
+        turn.endedAt.getTime() > cutoffAt.getTime()
+      ) {
+        return false;
+      }
+      const committedSequence = committedByGeneration.get(
+        turn.writerGeneration
+      );
+      return (
+        committedSequence !== undefined && turn.sequence <= committedSequence
+      );
+    });
     const baseValidation = calculateValidatedSessionFromTurns(turns);
     const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
     const runtimeWriterStates = writerEvidence.map((writer) => ({
       generation: writer.generation,
-      state: writer.state as "settled" | "degraded" | null,
+      state: writer.settlementState,
     }));
-    const transcriptEvidence = classifyTranscriptEvidence({
+    const evidenceSnapshot = buildTranscriptEvidenceSnapshot({
+      cutoffAt,
       interruptionCount: unavailableInterruptions,
-      runtimeWriterStates,
+      writers: writerEvidence,
+      baseValidation,
     });
+    const transcriptEvidence = presentTranscriptEvidence(
+      useFrozenEvidence
+        ? (stored.transcriptEvidenceState as TranscriptEvidenceState)
+        : evidenceSnapshot.state
+    );
     const preservePostUsableDisconnectCharge =
       shouldPreservePostUsableDisconnectCharge({
         requestedTerminalReason: input.requestedTerminalReason,
@@ -180,15 +268,9 @@ export async function finalizeInterviewSession(
         unavailableInterruptions,
       });
     const hasIntegrityFault =
-      (unavailableInterruptions > 0 ||
-        runtimeWriterStates.length === 0 ||
-        runtimeWriterStates.some((writer) => writer.state !== "settled")) &&
+      evidenceSnapshot.state === "degraded" &&
       !preservePostUsableDisconnectCharge;
-    const validation = applyTranscriptIntegrityValidation({
-      baseValidation,
-      interruptionCount: unavailableInterruptions,
-      runtimeWriterStates,
-    });
+    const validation = evidenceSnapshot.validation;
 
     let state = stored.lifecycleState;
     let version = stored.lifecycleVersion;
@@ -298,6 +380,14 @@ export async function finalizeInterviewSession(
           ...(isInterviewTerminalState(nextState)
             ? {
                 endedAt: nextEndedAt,
+                ...(!wasTerminal
+                  ? {
+                      transcriptEvidenceVersion: 1,
+                      transcriptEvidenceState: evidenceSnapshot.state,
+                      transcriptCutoffAt: cutoffAt,
+                      transcriptEvidenceFrozenAt: now,
+                    }
+                  : {}),
                 ...(stored.reconnectDeadlineAt &&
                 (reason === "disconnect_timeout" ||
                   reason === "insufficient_signal")
@@ -384,6 +474,16 @@ export async function finalizeInterviewSession(
 
     if (!isInterviewTerminalState(state) || !terminalReason || !endedAt) {
       throw new Error("Interview completion did not reach a terminal outcome");
+    }
+
+    if (!wasTerminal && evidenceSnapshot.writers.length > 0) {
+      await tx.insert(transcriptEvidenceWriterCutoff).values(
+        evidenceSnapshot.writers.map((writer) => ({
+          sessionId: input.sessionId,
+          ...writer,
+          frozenAt: now,
+        }))
+      );
     }
 
     if (hardDeadlineOwnsCleanup && stored.deadlineRoomCleanupStatus === null) {
@@ -482,6 +582,15 @@ export function classifyTranscriptEvidence(input: {
   return input.runtimeWriterStates.some((writer) => writer.state === "degraded")
     ? "degraded"
     : "available";
+}
+
+function presentTranscriptEvidence(
+  state: TranscriptEvidenceState
+): "available" | "partial" | "degraded" | "missing" {
+  if (state === "complete") return "available";
+  if (state === "partial") return "partial";
+  if (state === "degraded") return "degraded";
+  return "missing";
 }
 
 export function shouldRefineProvisionalTerminalReason(input: {
