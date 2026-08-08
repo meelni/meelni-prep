@@ -112,6 +112,14 @@ test("keeps End Interview available before the room reconnects", () => {
   assert.match(html, /aria-label="End interview"/);
 });
 
+test("renders delayed canonical readiness without removing the end escape hatch", () => {
+  const html = renderSurface({ connectionStatus: "delayed" });
+
+  assert.match(html, /The interviewer is still joining/);
+  assert.match(html, /End remains available/);
+  assert.match(html, /aria-label="End interview"/);
+});
+
 test("disables only mute during reconnect and preserves the end escape hatch", () => {
   const html = renderToStaticMarkup(
     <InterviewControls
@@ -124,7 +132,7 @@ test("disables only mute during reconnect and preserves the end escape hatch", (
 
   assert.match(
     html,
-    /<button[^>]*disabled=""[^>]*aria-label="Microphone controls unavailable while reconnecting"/
+    /<button[^>]*disabled=""[^>]*aria-label="Microphone controls unavailable while the interviewer joins or the connection recovers"/
   );
   assert.match(html, /aria-label="End interview"/);
   assert.doesNotMatch(html, /aria-label="End interview"[^>]*disabled=""/);

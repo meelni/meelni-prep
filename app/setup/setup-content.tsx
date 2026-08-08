@@ -52,6 +52,11 @@ import {
 } from "@/lib/interview/start-attempt";
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { fetchWithDeadline } from "@/lib/http/deadline";
+import {
+  buildInterviewStartStageEvent,
+  INTERVIEW_START_SLOS,
+} from "@/lib/operations/interview-start-slo";
 
 export function SetupContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -377,11 +382,31 @@ export function SetupContent() {
       const startBody = { ...validation.data, startAttemptId };
 
       // Call session start API
-      const response = await fetch("/api/session/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(startBody),
-      });
+      const launchStartedAt = Date.now();
+      let response: Response;
+      try {
+        response = await fetchWithDeadline(
+          "/api/session/start",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(startBody),
+          },
+          INTERVIEW_START_SLOS.launch_request.upperBoundMs
+        );
+      } catch (launchError) {
+        trackStartStage(
+          launchError instanceof Error && launchError.name === "AbortError"
+            ? "delayed"
+            : "failed",
+          Date.now() - launchStartedAt
+        );
+        throw launchError;
+      }
+      trackStartStage(
+        response.ok ? "succeeded" : "failed",
+        Date.now() - launchStartedAt
+      );
       const responseData: unknown = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -457,6 +482,13 @@ export function SetupContent() {
       // start already authorized; reloads still use the reconnect endpoint.
       router.push(getCanonicalInterviewHref(sessionId));
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setError(
+          "Starting the interview is taking longer than expected. Try again to safely resume the same start attempt."
+        );
+        setIsCreatingSession(false);
+        return;
+      }
       console.error("[Interview Setup] start_failed", {
         code: "interview_start_failed",
         ...toSafeErrorLog(err),
@@ -793,4 +825,25 @@ export function SetupContent() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function trackStartStage(
+  outcome: "succeeded" | "delayed" | "failed",
+  durationMs: number
+) {
+  const event = buildInterviewStartStageEvent({
+    stage: "launch_request",
+    outcome,
+    durationMs,
+  });
+  if (!event) return;
+  analytics.track("interview_start_stage", {
+    version: event.version,
+    stage: event.stage,
+    outcome: event.outcome,
+    duration_ms: event.durationMs,
+    slo_target_ms: event.sloTargetMs,
+    slo_upper_bound_ms: event.sloUpperBoundMs,
+    latency_class: event.latencyClass,
+  });
 }

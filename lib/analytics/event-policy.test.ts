@@ -74,3 +74,29 @@ test("current deadline and INP observability survive the privacy allowlist", () 
     { page: "/feedback/:sessionId", inp: 147 }
   );
 });
+
+test("interview start SLO events retain only closed content-free fields", () => {
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("interview_start_stage", {
+      version: 1,
+      stage: "canonical_readiness",
+      outcome: "delayed",
+      duration_ms: 25_001,
+      slo_target_ms: 10_000,
+      slo_upper_bound_ms: 25_000,
+      latency_class: "above_upper_bound",
+      session_id: "private-session",
+      room_name: "private-room",
+      transcript: "private transcript content",
+    }),
+    {
+      version: 1,
+      stage: "canonical_readiness",
+      outcome: "delayed",
+      duration_ms: 25_001,
+      slo_target_ms: 10_000,
+      slo_upper_bound_ms: 25_000,
+      latency_class: "above_upper_bound",
+    }
+  );
+});

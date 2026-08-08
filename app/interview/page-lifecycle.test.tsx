@@ -22,7 +22,15 @@ const mocks = vi.hoisted(() => ({
   onAgentStateChange: null as null | ((state: string) => void),
   onConnectionStateChange: null as
     | null
-    | ((state: "connected" | "recovered") => void),
+    | ((
+        state:
+          | "connecting"
+          | "connected"
+          | "delayed"
+          | "reconnecting"
+          | "recovered"
+          | "disconnected"
+      ) => void),
   onTranscriptUpdate: null as
     | null
     | ((turn: Record<string, unknown>) => Promise<void> | void),
@@ -55,7 +63,15 @@ vi.mock("@/components/interview/livekit-room", async () => {
     }: {
       children: React.ReactNode;
       onAgentStateChange(state: string): void;
-      onConnectionStateChange(status: "connected" | "recovered"): void;
+      onConnectionStateChange(
+        status:
+          | "connecting"
+          | "connected"
+          | "delayed"
+          | "reconnecting"
+          | "recovered"
+          | "disconnected"
+      ): void;
       onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
       ReactModule.useEffect(() => {
@@ -113,10 +129,21 @@ vi.mock("./components/transcript-panel", () => ({
 }));
 
 vi.mock("./components/interview-controls", () => ({
-  InterviewControls: ({ onEndSession }: { onEndSession(): void }) => (
-    <button type="button" onClick={onEndSession}>
-      Open end confirmation
-    </button>
+  InterviewControls: ({
+    muteDisabled,
+    onEndSession,
+  }: {
+    muteDisabled?: boolean;
+    onEndSession(): void;
+  }) => (
+    <>
+      <button type="button" disabled={muteDisabled}>
+        Microphone controls
+      </button>
+      <button type="button" onClick={onEndSession}>
+        Open end confirmation
+      </button>
+    </>
   ),
 }));
 
@@ -421,6 +448,40 @@ describe("active interview page lifecycle", () => {
         ([input]) => String(input) === "/api/livekit/token"
       )
     ).toBe(false);
+  });
+
+  it("keeps End available without rotating credentials while runtime readiness is delayed", async () => {
+    const request = vi.fn(activeInterviewResponse);
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onConnectionStateChange).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        request.mock.calls.filter(
+          ([input]) => String(input) === "/api/livekit/token"
+        )
+      ).toHaveLength(1)
+    );
+
+    act(() => mocks.onConnectionStateChange?.("delayed"));
+
+    expect(
+      await screen.findByText(/the interviewer is still joining/i)
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Microphone controls" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Open end confirmation" })
+    ).toBeEnabled();
+    expect(
+      request.mock.calls.filter(
+        ([input]) => String(input) === "/api/livekit/token"
+      )
+    ).toHaveLength(1);
   });
 
   it("shows an actionable failure instead of spinning forever when initial authorization is rejected", async () => {

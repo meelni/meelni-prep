@@ -75,71 +75,97 @@ import {
   attachCanonicalInterviewDeadline,
   InterviewSessionDeadlineUnavailableError,
 } from "@/lib/workflows/interview-session-details";
+import {
+  CUSTOMER_READ_ROUTE_DEADLINE_MS,
+  DEPENDENCY_RETRY_AFTER_SECONDS,
+  isDeadlineExceededError,
+  withDeadline,
+} from "@/lib/http/deadline";
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    // Verify authentication
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { sessionId } = await params;
-
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
+    return await withDeadline(
+      "interview_session_read",
+      handleSessionRead(params),
+      CUSTOMER_READ_ROUTE_DEADLINE_MS
+    );
+  } catch (error) {
+    if (isDeadlineExceededError(error)) {
       return NextResponse.json(
-        { error: "Session not found or access denied" },
-        { status: 403 }
+        { error: "session_read_unavailable", retryable: true },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Retry-After": String(DEPENDENCY_RETRY_AFTER_SECONDS),
+          },
+        }
       );
     }
-
-    // Get session
-    const session = await getSessionById(sessionId);
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    try {
-      const feedback = await getFeedbackBySessionId(sessionId);
-      return NextResponse.json({
-        session: {
-          ...attachCanonicalInterviewDeadline(session),
-          feedbackReady: Boolean(
-            feedback &&
-              isInterviewDeadlineRoomCleanupAcknowledged(session) &&
-              isFeedbackDispatchReadyForVisibility({
-                status: feedback.dispatchStatus,
-              })
-          ),
-        },
-      });
-    } catch (error) {
-      if (error instanceof InterviewSessionDeadlineUnavailableError) {
-        return NextResponse.json(
-          {
-            error: error.code,
-            message: "This interview session cannot be resumed safely.",
-          },
-          { status: 409 }
-        );
-      }
-      throw error;
-    }
-  } catch {
     console.error("session_read_failed");
     return NextResponse.json(
       { error: "Failed to fetch session" },
       { status: 500 }
     );
+  }
+}
+
+async function handleSessionRead(params: Promise<{ sessionId: string }>) {
+  // Verify authentication
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { sessionId } = await params;
+
+  // Verify user owns the session
+  const isOwner = await isSessionOwnedByUser(sessionId, user.id);
+  if (!isOwner) {
+    return NextResponse.json(
+      { error: "Session not found or access denied" },
+      { status: 403 }
+    );
+  }
+
+  // Get session
+  const session = await getSessionById(sessionId);
+  if (!session) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  try {
+    const feedback = await getFeedbackBySessionId(sessionId);
+    return NextResponse.json({
+      session: {
+        ...attachCanonicalInterviewDeadline(session),
+        feedbackReady: Boolean(
+          feedback &&
+            isInterviewDeadlineRoomCleanupAcknowledged(session) &&
+            isFeedbackDispatchReadyForVisibility({
+              status: feedback.dispatchStatus,
+            })
+        ),
+      },
+    });
+  } catch (error) {
+    if (error instanceof InterviewSessionDeadlineUnavailableError) {
+      return NextResponse.json(
+        {
+          error: error.code,
+          message: "This interview session cannot be resumed safely.",
+        },
+        { status: 409 }
+      );
+    }
+    throw error;
   }
 }

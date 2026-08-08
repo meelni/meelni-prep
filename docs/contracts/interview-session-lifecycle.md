@@ -153,7 +153,20 @@ initial connection or recovery, the authenticated browser asks the server to
 inspect candidate and agent presence. The server feeds those provider-verified
 facts through the same idempotent presence-reconciliation workflow used for
 missed webhooks. The UI reports `connected` only after the lifecycle is active
-or recovered; otherwise it remains connecting and enters bounded recovery.
+or recovered. A presence request has a three-second bound, while initial
+canonical readiness has a 25-second customer bound so normal provider cold
+starts can converge. Exhaustion is `delayed`, not `disconnected`: the existing
+room and credential stay mounted, microphone input remains disabled, End
+Interview remains available, and one later bounded confirmation is scheduled.
+Only terminal authorization loss or a real transport disconnect may enter the
+credential-recovery path.
+
+The browser bounds the idempotent session-start request at ten seconds. Because
+an aborted request may already have committed, it retains the stable
+start-attempt UUID; customer retry replays the same start intent instead of
+creating a second interview. Owned session and credential reads have an
+eight-second customer bound and return retryable unavailability rather than
+holding the UI until a platform timeout.
 
 ## Room Metadata And Correlation
 

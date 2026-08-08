@@ -1,6 +1,7 @@
 export type InterviewConnectionStatus =
   | "connecting"
   | "connected"
+  | "delayed"
   | "reconnecting"
   | "recovered"
   | "disconnected";

@@ -46,6 +46,7 @@ import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliati
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { fetchWithDeadline } from "@/lib/http/deadline";
+import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
 
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
@@ -241,9 +242,11 @@ export function InterviewPageContent() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`/api/session/${sessionId}`, {
-        cache: "no-store",
-      });
+      const response = await fetchWithDeadline(
+        `/api/session/${sessionId}`,
+        { cache: "no-store" },
+        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch session details");
@@ -610,6 +613,10 @@ export function InterviewPageContent() {
       setConnectionStatus(state);
       if (state === "reconnecting" || state === "disconnected") {
         setRecoveringConnection(true);
+      }
+
+      if (state === "delayed") {
+        setRecoveringConnection(false);
       }
 
       if (state === "disconnected") {
@@ -1052,7 +1059,7 @@ function InterviewRoomContent({
   return (
     <InterviewRoomSurface
       company={session.question?.company}
-      connectionIndicator={<ConnectionIndicator />}
+      connectionIndicator={<ConnectionIndicator status={connectionStatus} />}
       connectionStatus={connectionStatus}
       controls={
         <InterviewControls
@@ -1189,11 +1196,15 @@ async function requestInterviewRoomCredentialsWithRetry(
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      const response = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
+      const response = await fetchWithDeadline(
+        "/api/livekit/token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        },
+        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      );
       const payload = await response.json().catch(() => null);
 
       if (response.ok) {
@@ -1202,9 +1213,11 @@ async function requestInterviewRoomCredentialsWithRetry(
           expectedRoomName
         );
         if (credentials) {
-          const lifecycleResponse = await fetch(`/api/session/${sessionId}`, {
-            cache: "no-store",
-          });
+          const lifecycleResponse = await fetchWithDeadline(
+            `/api/session/${sessionId}`,
+            { cache: "no-store" },
+            INTERVIEW_START_SLOS.customer_read.upperBoundMs
+          );
           const lifecyclePayload = await lifecycleResponse
             .json()
             .catch(() => null);
