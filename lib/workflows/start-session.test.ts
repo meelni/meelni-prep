@@ -51,6 +51,42 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
   assert.equal(fixture.metadata?.candidate_identity, USER_ID);
 });
 
+test("cold start reports content-free timings for every owned stage", async () => {
+  const fixture = createFixture();
+  const stages: string[] = [];
+  let clock = 0;
+  fixture.deps.monotonicNow = () => (clock += 10);
+  fixture.deps.reportStage = ({ stage }) => stages.push(stage);
+  const startRoom = fixture.deps.livekitProvider.startInterviewRoom.bind(
+    fixture.deps.livekitProvider
+  );
+  fixture.deps.livekitProvider = {
+    startInterviewRoom: async (providerInput) => {
+      providerInput.onStage?.("room_create", "succeeded", 20);
+      providerInput.onStage?.("room_verification", "succeeded", 30);
+      providerInput.onStage?.("dispatch_verification", "succeeded", 40);
+      return startRoom(providerInput);
+    },
+  };
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(stages, [
+    "account_trial",
+    "question_selection",
+    "durable_session_credit_reservation",
+    "provisioning_claim",
+    "deadline_scheduling",
+    "livekit_room_create",
+    "livekit_room_verification",
+    "livekit_dispatch_verification",
+    "readiness_persistence",
+    "token_issuance",
+  ]);
+  assert.doesNotMatch(JSON.stringify(stages), new RegExp(START_ATTEMPT_ID));
+});
+
 test("post-provider deletion fence withholds credentials and schedules room cleanup", async () => {
   const fixture = createFixture({ deletionPendingAfterProvider: true });
 

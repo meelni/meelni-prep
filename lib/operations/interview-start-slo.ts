@@ -1,5 +1,20 @@
 export const INTERVIEW_START_SLOS = {
   launch_request: { targetMs: 3_000, upperBoundMs: 10_000 },
+  launch_recovery: { targetMs: 10_000, upperBoundMs: 60_000 },
+  authorization_gate: { targetMs: 500, upperBoundMs: 2_000 },
+  account_trial: { targetMs: 600, upperBoundMs: 2_500 },
+  question_selection: { targetMs: 400, upperBoundMs: 1_500 },
+  durable_session_credit_reservation: {
+    targetMs: 600,
+    upperBoundMs: 2_500,
+  },
+  provisioning_claim: { targetMs: 250, upperBoundMs: 1_000 },
+  deadline_scheduling: { targetMs: 250, upperBoundMs: 1_000 },
+  livekit_room_create: { targetMs: 750, upperBoundMs: 3_000 },
+  livekit_room_verification: { targetMs: 500, upperBoundMs: 2_000 },
+  livekit_dispatch_verification: { targetMs: 500, upperBoundMs: 2_000 },
+  readiness_persistence: { targetMs: 500, upperBoundMs: 2_000 },
+  token_issuance: { targetMs: 250, upperBoundMs: 1_000 },
   transport_connection: { targetMs: 5_000, upperBoundMs: 10_000 },
   canonical_readiness: { targetMs: 10_000, upperBoundMs: 25_000 },
   presence_reconciliation: { targetMs: 1_000, upperBoundMs: 3_000 },
@@ -67,4 +82,23 @@ export function buildInterviewStartStageEvent(input: {
     sloUpperBoundMs: threshold.upperBoundMs,
     latencyClass,
   };
+}
+
+/** Emits an aggregateable, content-free server timing event. */
+export function reportInterviewStartStage(
+  input: {
+    stage: InterviewStartSlo;
+    outcome: InterviewStartStageOutcome;
+    durationMs: number;
+  },
+  write: (serialized: string) => void = console.info
+): InterviewStartStageEvent | null {
+  const event = buildInterviewStartStageEvent(input);
+  if (!event) return null;
+  try {
+    write(JSON.stringify(event));
+  } catch {
+    return null;
+  }
+  return event;
 }

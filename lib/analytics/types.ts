@@ -3,6 +3,8 @@
  * Type-safe event tracking system for Meelni
  */
 
+import type { InterviewStartSlo } from "@/lib/operations/interview-start-slo";
+
 // =============================================================================
 // Event Names
 // =============================================================================
@@ -433,12 +435,7 @@ interface PerformanceProperties {
   };
   interview_start_stage: {
     version: 1;
-    stage:
-      | "launch_request"
-      | "transport_connection"
-      | "canonical_readiness"
-      | "presence_reconciliation"
-      | "customer_read";
+    stage: InterviewStartSlo;
     outcome: "succeeded" | "delayed" | "terminal" | "aborted" | "failed";
     duration_ms: number;
     slo_target_ms: number;

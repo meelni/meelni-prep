@@ -5,6 +5,7 @@ import {
   buildInterviewStartStageEvent,
   classifyInterviewStartLatency,
   INTERVIEW_START_SLOS,
+  reportInterviewStartStage,
 } from "./interview-start-slo";
 
 test("interview start SLO boundaries classify equality as breached", () => {
@@ -50,4 +51,23 @@ test("start stage events contain only closed operational fields", () => {
     "stage",
     "version",
   ]);
+});
+
+test("server stage reporting serializes only the closed timing contract", () => {
+  const writes: string[] = [];
+  const event = reportInterviewStartStage(
+    {
+      stage: "livekit_dispatch_verification",
+      outcome: "succeeded",
+      durationMs: 321.4,
+    },
+    (serialized) => writes.push(serialized)
+  );
+
+  assert.deepEqual(
+    writes.map((value) => JSON.parse(value)),
+    [event]
+  );
+  assert.equal(event?.durationMs, 321);
+  assert.equal(JSON.stringify(event).includes("session"), false);
 });
