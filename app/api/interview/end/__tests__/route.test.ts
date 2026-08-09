@@ -8,6 +8,7 @@ vi.mock("@/lib/workflows/accept-user-interview-end", () => ({
 import { NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { CUSTOMER_WRITE_ROUTE_DEADLINE_MS } from "@/lib/http/deadline";
 import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import { POST } from "../route";
 
@@ -21,6 +22,56 @@ describe("POST /api/interview/end", () => {
     mockAuth(null, new Error("expired"));
     const response = await POST(request({ sessionId: SESSION_ID }));
     expect(response.status).toBe(401);
+  });
+
+  it.each([
+    Object.assign(new Error("private lock detail"), { code: "55P03" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])(
+    "returns a private retryable response when acceptance is temporarily blocked",
+    async (failure) => {
+      if (failure.name === "AuthRetryableFetchError") {
+        mockAuth(null, failure);
+      } else {
+        mockAuth({ id: "user-retry" });
+        vi.mocked(acceptUserInterviewEndWorkflow).mockRejectedValue(failure);
+      }
+
+      const response = await POST(request({ sessionId: SESSION_ID }));
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "interview_end_temporarily_unavailable",
+        retryable: true,
+      });
+    }
+  );
+
+  it("bounds stalled acceptance before the browser request deadline", async () => {
+    vi.useFakeTimers();
+    mockAuth({ id: "user-stalled" });
+    vi.mocked(acceptUserInterviewEndWorkflow).mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = POST(request({ sessionId: SESSION_ID }));
+      await vi.advanceTimersByTimeAsync(CUSTOMER_WRITE_ROUTE_DEADLINE_MS);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "interview_end_temporarily_unavailable",
+        retryable: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("validates the session ID before accepting terminal intent", async () => {

@@ -73,6 +73,10 @@ export const generateFeedback = inngest.createFunction(
           startObservabilityTrace: startOpikFeedbackEvaluationTrace,
         })
       );
+      const endToFeedbackMs =
+        result.status === "completed" || result.status === "skipped"
+          ? result.endToFeedbackMs
+          : undefined;
       reportInterviewEndStage({
         stage: "feedback_generation",
         outcome:
@@ -81,8 +85,11 @@ export const generateFeedback = inngest.createFunction(
             : result.status === "skipped"
               ? "skipped"
               : "deferred",
-        durationMs: Date.now() - startedAt,
+        durationMs: endToFeedbackMs ?? Date.now() - startedAt,
         sessionId,
+        ...(endToFeedbackMs !== undefined
+          ? { slo: "feedback_completion" as const }
+          : {}),
       });
       return result;
     } catch (error) {

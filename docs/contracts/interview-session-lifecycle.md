@@ -153,7 +153,27 @@ initial connection or recovery, the authenticated browser asks the server to
 inspect candidate and agent presence. The server feeds those provider-verified
 facts through the same idempotent presence-reconciliation workflow used for
 missed webhooks. The UI reports `connected` only after the lifecycle is active
-or recovered; otherwise it remains connecting and enters bounded recovery.
+or recovered. A presence request has a three-second bound, while initial
+canonical readiness has a 25-second customer bound so normal provider cold
+starts can converge. Exhaustion is `delayed`, not `disconnected`: the existing
+room and credential stay mounted, microphone input remains disabled, End
+Interview remains available, and one later bounded confirmation is scheduled.
+Only terminal authorization loss or a real transport disconnect may enter the
+credential-recovery path.
+
+The browser bounds the idempotent session-start request at ten seconds. Because
+an aborted request may already have committed, it retains the stable
+start-attempt UUID; customer retry replays the same start intent instead of
+creating a second interview. Owned session and credential reads have an
+eight-second customer bound and return retryable unavailability rather than
+holding the UI until a platform timeout.
+
+Authenticated session lifecycle reads use one database transaction for
+ownership, session state, and feedback visibility. The transaction-local
+statement deadline is five seconds, the route deadline is 5.5 seconds, and the
+browser deadline is 6.5 seconds. A database or auth timeout returns a private
+retryable `503`; the timed-out transaction must release its connection before
+the browser schedules another attempt.
 
 ## Room Metadata And Correlation
 
@@ -207,11 +227,13 @@ and uses a unique delivery identity per recovery run.
 
 The client countdown reflects this deadline but never claims `time_limit`. At
 zero it mutes local input, removes voluntary controls, presents a non-dismissible
-saving state, and polls stored terminal truth plus feedback readiness before
-navigating to feedback. Direct feedback polling reports `settling` until room
-cleanup is acknowledged. After acknowledgement, polling exposes the durable
-dispatch state and direct retry uses the same idempotent outbox claim as
-scheduled recovery; it cannot bypass unacknowledged hard-deadline room cleanup.
+saving state, and polls stored lifecycle truth. Once truth is `ending` or
+terminal, the focused room unmounts and the feedback lifecycle owns every
+remaining state; it does not wait for `feedbackReady`. Direct feedback polling
+reports `settling` until room cleanup is acknowledged. After acknowledgement,
+polling exposes the durable dispatch state and direct retry uses the same
+idempotent outbox claim as scheduled recovery; it cannot bypass unacknowledged
+hard-deadline room cleanup.
 The relaunch gate remains off until Preview timing evidence and rollback are
 verified.
 

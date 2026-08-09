@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyTranscriptIntegrityValidation,
+  classifyTranscriptEvidence,
   finalizeInterviewSession,
   resolveInterviewTerminalReason,
   shouldPreservePostUsableDisconnectCharge,
@@ -210,13 +211,55 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   );
 });
 
+test("terminalization exposes a copy-independent transcript evidence classification", () => {
+  assert.equal(
+    classifyTranscriptEvidence({
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
+    }),
+    "available"
+  );
+  assert.equal(
+    classifyTranscriptEvidence({
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: "degraded" }],
+    }),
+    "degraded"
+  );
+  for (const input of [
+    { interruptionCount: 0, runtimeWriterStates: [] },
+    {
+      interruptionCount: 0,
+      runtimeWriterStates: [{ generation: 1, state: null }],
+    },
+    {
+      interruptionCount: 1,
+      runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
+    },
+  ]) {
+    assert.equal(classifyTranscriptEvidence(input), "missing");
+  }
+});
+
 test("durable turns do not synthesize canonical activation during terminalization", async () => {
   const transitions: string[] = [];
-  const answer =
-    "I would prioritize enterprise users, validate their security problem, and measure retention before expanding the product workflow.";
+  const candidateAnswers = [
+    "I would start with enterprise administrators, validate the security workflow through interviews, and measure successful policy completion before expanding.",
+    "The primary user problem is slow access approval, so I would compare time to approval and weekly retained teams against the current baseline.",
+    "My first experiment would target ten design partners, instrument each approval step, and use completion rate plus qualitative friction to decide whether to iterate.",
+    "I would prioritize the smallest workflow that removes the security bottleneck, while explicitly deferring reporting features until the core behavior is repeatable.",
+    "The main risk is that buyers care about compliance but end users avoid the workflow, so I would test both purchase intent and sustained employee adoption.",
+  ];
   const validTurns = Array.from({ length: 20 }, (_, index) => ({
+    contractVersion: 2,
+    eventId: `writer-1:${index + 1}`,
+    writerGeneration: 1,
+    sequence: index + 1,
     speaker: index % 2 === 0 ? "user" : "interviewer",
-    text: answer,
+    text:
+      index % 2 === 0
+        ? candidateAnswers[(index / 2) % candidateAnswers.length]
+        : "Tell me more about the evidence and tradeoffs behind that decision.",
     startedAt: new Date(Date.UTC(2026, 6, 10, 7, index)),
     endedAt: new Date(Date.UTC(2026, 6, 10, 7, index, 30)),
   }));
@@ -268,7 +311,22 @@ test("durable turns do not synthesize canonical activation during terminalizatio
                   ? validTurns
                   : selectCall === 3
                     ? [{ value: 0 }]
-                    : [{ generation: 1, state: "settled" }];
+                    : selectCall === 4
+                      ? [
+                          {
+                            generation: 1,
+                            contractVersion: 1,
+                            writerId: "writer-1",
+                            lastObservedSequence: 20,
+                            committedSequence: 20,
+                            committedEventId: "writer-1:20",
+                            committedThroughAt: validTurns[19]?.endedAt,
+                            integrityState: "healthy",
+                            settlementState: "settled",
+                            settledAt: new Date("2026-07-10T08:00:00.000Z"),
+                          },
+                        ]
+                      : [];
               const chain = {
                 leftJoin() {
                   return chain;

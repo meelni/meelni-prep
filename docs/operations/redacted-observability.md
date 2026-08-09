@@ -24,7 +24,10 @@ PostHog session recording is disabled globally because its compressed DOM
 snapshots do not pass through the ordinary event sanitizer. Keep it disabled
 until a separate replay privacy boundary is implemented and verified.
 
-The relaunch gate remains off until a controlled isolated-Preview failure proves the selected operator receives, acknowledges, and recovers the paired SAV-215 event and SAV-216 health alert.
+Production is owner-launched. Alert-receipt evidence remains independently
+unproved: run the controlled isolated-Preview failure before claiming the
+selected operator receives, acknowledges, and recovers the paired SAV-215
+event and SAV-216 health alert.
 
 Do not substitute a broad project-wide Runtime Log drain for the closed event
 receiver. Deployed API and launch-critical server boundaries reject direct
@@ -42,6 +45,13 @@ Filter Runtime Logs for:
 ```
 
 Group only by `environment`, `release`, `operation`, `errorCode`, `severity`, and `retryable`. An owned `correlationId` may connect failures from one interview session; it is not a user or provider identifier.
+
+Interview end-stage timing events use schema version 2. They add only one
+closed, allowlisted `reason` field so operators can distinguish runtime timeout,
+runtime unavailability/readiness, missing or degraded transcript evidence,
+terminal replay, dispatch failure/in-progress, and stage exceptions. Never add
+raw exceptions, transcript or feedback content, provider payloads, room names,
+or user identifiers to this event.
 
 For a bounded query:
 
@@ -77,7 +87,8 @@ Prerequisites:
 
 1. Use the isolated Preview Supabase/provider identities from SAV-226.
 2. Name the target deployment, operator, and alert destination.
-3. Record the Preview release and confirm the relaunch gate remains off.
+3. Record the Preview release, confirm the shared Production gate is unchanged,
+   and keep Preview rehearsal authority inactive until the authorized window.
 
 Then induce one safe Preview-only failure that cannot touch Production or incur a customer charge. Verify exactly one expected event, matching environment/release, null request ID, only ownership-valid correlation, absence of sensitive content, alert receipt/acknowledgement, and healthy recovery.
 

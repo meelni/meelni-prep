@@ -4,6 +4,11 @@ import { NextRequest } from "next/server";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/db/transcripts", () => ({ getSessionTranscript: vi.fn() }));
 vi.mock("@/lib/db/sessions", () => ({ isSessionOwnedByUser: vi.fn() }));
+vi.mock("@/lib/db/interactive-read", () => ({
+  withInteractiveReadTransaction: vi.fn(
+    (work: (database: object) => Promise<unknown>) => work({})
+  ),
+}));
 
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
@@ -53,7 +58,11 @@ describe("GET /api/session/:sessionId/transcript", () => {
 
     expect(response.status).toBe(403);
     expect(response.headers.get("cache-control")).toBe(PRIVATE_NO_STORE);
-    expect(isSessionOwnedByUser).toHaveBeenCalledWith(SESSION_ID, "user-1");
+    expect(isSessionOwnedByUser).toHaveBeenCalledWith(
+      SESSION_ID,
+      "user-1",
+      expect.anything()
+    );
     expect(getSessionTranscript).not.toHaveBeenCalled();
   });
 
@@ -90,6 +99,59 @@ describe("GET /api/session/:sessionId/transcript", () => {
       expect(JSON.stringify(consoleError.mock.calls)).not.toContain(sentinel);
     } finally {
       consoleError.mockRestore();
+    }
+  });
+
+  it.each([
+    Object.assign(new Error("private lock detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])("returns a retryable 503 for a stalled dependency", async (failure) => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    if (failure.name === "AuthRetryableFetchError") {
+      vi.mocked(createClient).mockResolvedValue({
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: null },
+            error: failure,
+          }),
+        },
+      } as never);
+    } else {
+      vi.mocked(getSessionTranscript).mockRejectedValue(failure);
+    }
+
+    try {
+      const response = await GET(request(), context());
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("3");
+      await expect(response.json()).resolves.toEqual({
+        error: "transcript_read_unavailable",
+      });
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain("private");
+    } finally {
+      consoleWarn.mockRestore();
+    }
+  });
+
+  it("cuts off a transcript read before the platform function ceiling", async () => {
+    vi.useFakeTimers();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(getSessionTranscript).mockImplementation(
+      () => new Promise<never>(() => undefined)
+    );
+
+    try {
+      const pendingResponse = GET(request(), context());
+      await vi.advanceTimersByTimeAsync(7_500);
+      const response = await pendingResponse;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("3");
+    } finally {
+      vi.useRealTimers();
+      consoleWarn.mockRestore();
     }
   });
 });

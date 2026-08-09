@@ -42,6 +42,15 @@ vi.mock("@/lib/db/transcripts", () => ({
 vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
   recoverFeedbackGenerationWorkflow: vi.fn(),
 }));
+vi.mock("@/lib/workflows/accept-user-interview-end", () => ({
+  acceptUserInterviewEndWorkflow: vi.fn(),
+  userInterviewEndRedeliveryId: vi.fn(() => "feedback-recovery:test-bucket"),
+}));
+vi.mock("@/lib/db/interactive-read", () => ({
+  withInteractiveReadTransaction: vi.fn(
+    (work: (database: object) => Promise<unknown>) => work({})
+  ),
+}));
 
 import { NextRequest } from "next/server";
 
@@ -49,6 +58,7 @@ import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
 import { createClient } from "@/lib/supabase/server";
+import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
 import { GET, POST } from "./route";
 
@@ -61,6 +71,7 @@ describe("/api/feedback/[sessionId]", () => {
     mockAuth({ id: "user-1" });
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
     vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
       lifecycleState: "completed",
       terminalReason: "user_end",
     } as never);
@@ -139,6 +150,76 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("makes a user-ended session actionable at the terminalization upper bound", async () => {
+    const now = new Date("2026-08-08T00:00:30.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      lifecycleState: "ending",
+      terminalReason: "user_end",
+      endingAt: new Date("2026-08-08T00:00:00.000Z"),
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      retryable: true,
+      delayed: true,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("does not expose finalizer recovery before the terminalization upper bound", async () => {
+    const now = new Date("2026-08-08T00:00:29.999Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      lifecycleState: "ending",
+      terminalReason: "user_end",
+      endingAt: new Date("2026-08-08T00:00:00.000Z"),
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      retryable: false,
+      delayed: false,
+    });
+    expect(acceptUserInterviewEndWorkflow).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
+  it("redelivers a stale user-end finalizer with a fresh bounded identity", async () => {
+    const now = new Date("2026-08-08T00:00:30.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      lifecycleState: "ending",
+      terminalReason: "user_end",
+      endingAt: new Date("2026-08-08T00:00:00.000Z"),
+    } as never);
+
+    const response = await POST(request("POST"), PARAMS);
+
+    expect(response.status).toBe(200);
+    expect(acceptUserInterviewEndWorkflow).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      userId: "user-1",
+      deliveryId: "feedback-recovery:test-bucket",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      retryable: true,
+      delayed: true,
+    });
+    expect(recoverFeedbackGenerationWorkflow).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
   it("keeps missing hard-deadline feedback settling until cleanup is acknowledged", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
     vi.mocked(getSessionById).mockResolvedValue({
@@ -182,6 +263,46 @@ describe("/api/feedback/[sessionId]", () => {
       dispatch: { status: "failed", retryable: true },
     });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("makes an acknowledged queue delivery retryable after 90 seconds", async () => {
+    const now = new Date("2026-08-08T00:01:30.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        dispatchedAt: new Date("2026-08-08T00:00:00.000Z"),
+        createdAt: new Date("2026-08-08T00:00:00.000Z"),
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "pending",
+      retryable: true,
+      delayed: true,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("labels 45-second processing as delayed without reopening its active lease", async () => {
+    const now = new Date("2026-08-08T00:00:45.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now.getTime());
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "processing",
+        processingStartedAt: new Date("2026-08-08T00:00:00.000Z"),
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "processing",
+      retryable: false,
+      delayed: true,
+    });
+    nowSpy.mockRestore();
   });
 
   it("keeps hard-deadline feedback hidden until room cleanup is acknowledged", async () => {
@@ -515,6 +636,53 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("bounds a stalled feedback recovery before the browser deadline", async () => {
+    vi.useFakeTimers();
+    vi.mocked(recoverFeedbackGenerationWorkflow).mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = POST(request("POST"), PARAMS);
+      await vi.advanceTimersByTimeAsync(5_500);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_retry_unavailable",
+        retryable: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    Object.assign(new Error("private statement detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])(
+    "returns a private retryable response for a stalled recovery dependency",
+    async (failure) => {
+      if (failure.name === "AuthRetryableFetchError") {
+        mockAuth(null, failure);
+      } else {
+        vi.mocked(getSessionById).mockRejectedValue(failure);
+      }
+
+      const response = await POST(request("POST"), PARAMS);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_retry_unavailable",
+        retryable: true,
+      });
+    }
+  );
+
   it("keeps authenticated completed feedback out of shared caches", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({
@@ -553,6 +721,30 @@ describe("/api/feedback/[sessionId]", () => {
     });
     consoleError.mockRestore();
   });
+
+  it.each([
+    Object.assign(new Error("private statement detail"), { code: "57014" }),
+    Object.assign(new Error("private auth detail"), {
+      name: "AuthRetryableFetchError",
+    }),
+  ])(
+    "returns a retryable 503 for a stalled read dependency",
+    async (failure) => {
+      if (failure.name === "AuthRetryableFetchError") {
+        mockAuth(null, failure);
+      } else {
+        vi.mocked(getFeedbackBySessionId).mockRejectedValue(failure);
+      }
+
+      const response = await GET(request(), PARAMS);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("3");
+      await expect(response.json()).resolves.toMatchObject({
+        error: "feedback_read_unavailable",
+      });
+    }
+  );
 
   it("returns structured feedback v2 findings and stored versions", async () => {
     const finding = {

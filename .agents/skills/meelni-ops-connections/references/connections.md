@@ -148,6 +148,13 @@ Custom staging environment:
 - The staging environment remains fail-closed under the normal Preview product
   controls. Creating or updating the environment does not authorize a
   relaunch-gate change.
+- Read-only evidence on 2026-08-08 found the stable alias still serving commit
+  `67b0247d62d23f4a61e1bacd4d94aebe97f78455`. The deployment is `READY`, but
+  `/api/health` returns HTTP 503: web and LiveKit are healthy while database,
+  feedback dispatch, and Stripe webhook are unavailable. Both isolated
+  LiveKit agents are running. SAV-387 owns restoration and exact-candidate
+  verification; do not activate rehearsal authority until every required
+  health check is green.
 
 ## GitHub
 
@@ -256,7 +263,21 @@ Safe read-only verification:
 - List gate eligible reviewers.
 - List gate reviews.
 
-Current SAV-283 evidence from 2026-07-23:
+Current launch evidence:
+
+- The product owner recorded launch completion in SAV-176 on 2026-07-26.
+- A read-only 2026-08-08 Statsig read confirms gate version 97 is enabled with
+  one public 100% rule, `Launch all users`.
+- The same read confirms dynamic config
+  `meelni_preview_rehearsal_authority` remains disabled with `active: false`
+  and expired metadata bound to staging commit
+  `67b0247d62d23f4a61e1bacd4d94aebe97f78455`.
+- Preview rehearsals must not disable, retarget, or otherwise mutate the shared
+  launched gate. Preview remains fail-closed until its deployment SHA and the
+  separately owner-authorized dynamic config both match the exact staging
+  commit/ref.
+
+Historical SAV-283 governance evidence from 2026-07-23:
 
 - Gate status: `Disabled`
 - `isEnabled: false`
@@ -699,6 +720,15 @@ Operational notes:
   deployed `INNGEST_EVENT_KEY` is verified against the Production environment's
   ingest key and a fresh event is observed in Production. Do not reveal key
   values in logs or chat.
+- A 2026-08-07 Production user-end trace proved that an accepted end command
+  can finalize while runtime settlement is deferred and feedback dispatch is
+  skipped. In the same trace, owner-scoped transcript and feedback reads
+  exhausted Vercel's 300-second function limit. Treat a persistent “Saving
+  your interview” screen as a runtime/API incident, not normal model latency:
+  correlate the session across `/api/interview/end`, `/api/inngest`, and
+  `/api/feedback/:sessionId`; distinguish `feedback_dispatch=skipped` from a
+  queued generation; and check for 300-second read timeouts before waiting on
+  Inngest or OpenAI. Do not record the customer session ID or transcript.
 
 ## Linear
 

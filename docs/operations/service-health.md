@@ -16,23 +16,36 @@ pairings and a canonical UTC timestamp; transport or schema mismatches use the
 fixed `health_endpoint_invalid` result.
 
 No scheduler, alert receiver, status vendor, or receipt claim is configured by
-this change. The relaunch gate remains off until a controlled isolated-Preview
-degradation is received and acknowledged by an approved operator destination.
+this change. Production is owner-launched; service-health evidence and alert
+receipt remain independently unproved and must not be inferred from launch
+state.
+
+The canonical staging alias returned HTTP 503 on 2026-08-08: web and LiveKit
+were healthy while database, feedback dispatch, and Stripe webhook were
+unavailable. Treat staging as rehearsal-ineligible until SAV-387 restores the
+required dependencies and a fresh healthy result is recorded.
 
 ## Check Interpretation
 
-| Check             | Healthy evidence                                     | Degraded/unavailable response                                      |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
-| Web               | The dynamic route executed.                          | Transport failure is detected by the external synthetic.           |
-| Database          | Bounded workflow-evidence queries completed in time. | `database_unavailable`; investigate connectivity/migrations.       |
-| LiveKit           | Server credentials, URL, and interview agent name.   | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
-| Feedback dispatch | Hosted Inngest config and no stale or failed work.   | Preserve rows; use the feedback recovery workflow.                 |
-| Stripe webhook    | Signing config and no stale or failed work.          | Inspect Stripe delivery and redacted durable evidence.             |
+| Check             | Healthy evidence                                                                                                                            | Degraded/unavailable response                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Web               | The dynamic route executed.                                                                                                                 | Transport failure is detected by the external synthetic.           |
+| Database          | Bounded workflow-evidence queries completed in time.                                                                                        | `database_unavailable`; investigate connectivity/migrations.       |
+| LiveKit           | Server credentials, URL, and interview agent name.                                                                                          | `livekit_unavailable`; do not attempt a shared-provider rehearsal. |
+| Feedback dispatch | Hosted Inngest config; dispatch is claimed inside 90 seconds; generation stays inside its five-minute lease; no older stale or failed work. | Preserve rows; use the feedback recovery workflow.                 |
+| Stripe webhook    | Signing config and no stale or failed work.                                                                                                 | Inspect Stripe delivery and redacted durable evidence.             |
 
 Unresolved failed workflow evidence takes precedence over stale evidence. The
 database evidence transaction has a PostgreSQL statement timeout shorter than
 the route deadline, and one unresolved underlying read remains single-flight
 across application timeout and cache expiry.
+
+Treat `feedback_dispatch_stale` as a customer-impacting lifecycle signal. It
+includes a feedback event sent but not claimed inside the 90-second upper bound,
+generation that exceeded its five-minute lease, and older unclaimed dispatch
+work. It is not proof that provider configuration is valid: nonblank Inngest
+keys can still be mismatched, so provider-backed event receipt must be verified
+in the controlled rehearsal.
 
 The endpoint intentionally does not call LiveKit or Stripe. Provider-backed
 reachability and the full fresh-user path belong to the controlled Preview
@@ -44,7 +57,9 @@ Prerequisites:
 
 1. SAV-226 provides an isolated Preview Supabase project.
 2. The target deployment, operator, schedule, and alert destination are approved.
-3. The relaunch flag remains off and rollback ownership is recorded.
+3. The shared Production gate remains unchanged, Preview rehearsal authority
+   remains inactive until separately authorized, and rollback ownership is
+   recorded.
 
 Then:
 

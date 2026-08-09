@@ -86,6 +86,16 @@ export const interviewSession = pgTable(
     terminalReason: text("terminal_reason").$type<InterviewTerminalReason>(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     endingAt: timestamp("ending_at", { withTimezone: true }),
+    transcriptEvidenceVersion: integer("transcript_evidence_version"),
+    transcriptEvidenceState: text("transcript_evidence_state").$type<
+      "complete" | "partial" | "insufficient" | "degraded"
+    >(),
+    transcriptCutoffAt: timestamp("transcript_cutoff_at", {
+      withTimezone: true,
+    }),
+    transcriptEvidenceFrozenAt: timestamp("transcript_evidence_frozen_at", {
+      withTimezone: true,
+    }),
     reconnectDeadlineAt: timestamp("reconnect_deadline_at", {
       withTimezone: true,
     }),
@@ -310,6 +320,21 @@ export const interviewSession = pgTable(
     endingAtStateCheck: check(
       "interview_session_ending_at_state_check",
       sql`${table.endingAt} IS NULL OR ${table.lifecycleState} IN ('ending', 'completed', 'abandoned', 'failed')`
+    ),
+    transcriptEvidenceShapeCheck: check(
+      "interview_session_transcript_evidence_shape_check",
+      sql`(
+        ${table.transcriptEvidenceVersion} IS NULL AND
+        ${table.transcriptEvidenceState} IS NULL AND
+        ${table.transcriptCutoffAt} IS NULL AND
+        ${table.transcriptEvidenceFrozenAt} IS NULL
+      ) OR (
+        ${table.transcriptEvidenceVersion} = 1 AND
+        ${table.transcriptEvidenceState} IN ('complete', 'partial', 'insufficient', 'degraded') AND
+        ${table.transcriptCutoffAt} IS NOT NULL AND
+        ${table.transcriptEvidenceFrozenAt} IS NOT NULL AND
+        ${table.lifecycleState} IN ('completed', 'abandoned', 'failed')
+      )`
     ),
     roomProvisioningClaimCheck: check(
       "interview_session_room_provisioning_claim_check",

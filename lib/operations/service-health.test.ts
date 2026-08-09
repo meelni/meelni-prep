@@ -136,8 +136,15 @@ test("database and LiveKit failures make practice unavailable", async () => {
   assert.doesNotMatch(JSON.stringify(report), /postgres|password|private/i);
 });
 
-test("database evidence uses one bounded stale-work cutoff", async () => {
-  let captured: { staleBefore: Date; queryTimeoutMs: number } | undefined;
+test("database evidence uses canonical feedback lease cutoffs", async () => {
+  let captured:
+    | {
+        staleBefore: Date;
+        feedbackQueueStaleBefore: Date;
+        feedbackGenerationStaleBefore: Date;
+        queryTimeoutMs: number;
+      }
+    | undefined;
   const capturingStore: ServiceHealthStore = {
     readEvidence: async (input) => {
       captured = input;
@@ -148,6 +155,14 @@ test("database evidence uses one bounded stale-work cutoff", async () => {
   await assessServiceHealth(dependencies(capturingStore, READY_ENV));
 
   assert.equal(captured?.staleBefore.toISOString(), "2026-07-10T19:50:00.000Z");
+  assert.equal(
+    captured?.feedbackQueueStaleBefore.toISOString(),
+    "2026-07-10T19:58:30.000Z"
+  );
+  assert.equal(
+    captured?.feedbackGenerationStaleBefore.toISOString(),
+    "2026-07-10T19:55:00.000Z"
+  );
   assert.equal(captured?.queryTimeoutMs, 1);
 });
 

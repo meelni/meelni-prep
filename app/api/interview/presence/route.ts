@@ -4,8 +4,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { createClient } from "@/lib/supabase/server";
 import { reconcileOwnedInterviewPresenceWorkflow } from "@/lib/workflows/reconcile-owned-interview-presence";
+import { withDeadline } from "@/lib/http/deadline";
+import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
+
+const PRESENCE_ROUTE_DEADLINE_MS =
+  INTERVIEW_START_SLOS.presence_reconciliation.upperBoundMs - 250;
 
 export async function POST(req: NextRequest) {
+  try {
+    return await withDeadline(
+      "interview_presence_reconciliation",
+      handlePresenceRequest(req),
+      PRESENCE_ROUTE_DEADLINE_MS
+    );
+  } catch {
+    return response({ error: "interview_presence_unavailable" }, 503);
+  }
+}
+
+async function handlePresenceRequest(req: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,35 +43,34 @@ export async function POST(req: NextRequest) {
     return response({ error: "interview_presence_unavailable" }, 503);
   }
 
-  try {
-    const result = await reconcileOwnedInterviewPresenceWorkflow({
-      sessionId,
-      userId: user.id,
-      deliveryId: `browser-presence:${sessionId}:${randomUUID()}`,
-      env: env.data,
-    });
-    if (!result.ok) {
-      return response(
-        {
-          error:
-            result.disposition === "not_found"
-              ? "session_not_found"
-              : "interview_presence_conflict",
-        },
-        result.disposition === "not_found" ? 404 : 409
-      );
-    }
-
-    const ready = ["activated", "present", "recovered"].includes(
-      result.disposition
-    );
-    return response(
-      { ready, disposition: result.disposition },
-      ready ? 200 : 202
-    );
-  } catch {
-    return response({ error: "interview_presence_unavailable" }, 503);
+  const result = await reconcileOwnedInterviewPresenceWorkflow({
+    sessionId,
+    userId: user.id,
+    deliveryId: `browser-presence:${sessionId}:${randomUUID()}`,
+    env: env.data,
+  });
+  if (result.ok && result.disposition === "terminal") {
+    return response({ error: "session_not_joinable" }, 409);
   }
+  if (!result.ok) {
+    return response(
+      {
+        error:
+          result.disposition === "not_found"
+            ? "session_not_found"
+            : "interview_presence_conflict",
+      },
+      result.disposition === "not_found" ? 404 : 409
+    );
+  }
+
+  const ready = ["activated", "present", "recovered"].includes(
+    result.disposition
+  );
+  return response(
+    { ready, disposition: result.disposition },
+    ready ? 200 : 202
+  );
 }
 
 function response(body: object, status: number) {

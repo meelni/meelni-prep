@@ -1,25 +1,29 @@
 # Relaunch Activation and Rollback Runbook
 
-Updated: 2026-07-22
+Updated: 2026-08-08
 Owner: Product owner `contact@meelni.com`
-Status: Runbook ready; Preview flip evidence pending upstream launch gates
+Status: Production launch completed; isolated post-launch Preview rehearsal and rollback evidence pending
 Linear: SAV-176
 
-This runbook makes relaunch activation a controlled, reversible operator
-procedure. It does not authorize launch. Agents may gather evidence and
-recommend GO/NO-GO, but only the product owner may create the final Production
-GO record and execute default-on.
+This runbook makes post-launch Preview rehearsal and any future Production
+rollback a controlled, reversible operator procedure. It does not authorize a
+provider mutation. The product owner created the final Production GO record and
+executed default-on on 2026-07-26; only the product owner may authorize a new
+Production access-state change.
 
 ## Non-negotiable launch authority
 
-- Keep the Statsig gate `meelni_reactivation_access` off for Production.
-- Keep `MEELNI_REACTIVATION_DEFAULT=false` for Production.
-- Keep `MEELNI_RELAUNCH_PHASE=prelaunch` for Production.
-- Do not use `relaunch-default-on` until the product owner signs an explicit
-  GO bound to the exact release candidate.
-- After that exact owner GO, Production default-on is represented by the
-  paired state `MEELNI_RELAUNCH_PHASE=launched` and
+- Preserve the owner-launched Statsig gate `meelni_reactivation_access`: gate
+  version 97 is enabled with the public `Launch all users` rule.
+- Preserve the paired Production state `MEELNI_RELAUNCH_PHASE=launched` and
   `MEELNI_REACTIVATION_DEFAULT=true`; either value alone is not a valid launch.
+- Do not disable, retarget, or otherwise mutate the shared gate for an isolated
+  Preview rehearsal.
+- Preview stays fail-closed until its exact deployment SHA/ref and the current,
+  matching `meelni_preview_rehearsal_authority` are both present.
+- The prior prelaunch pair was `MEELNI_RELAUNCH_PHASE=prelaunch` and
+  `MEELNI_REACTIVATION_DEFAULT=false`; restoring a Production hard-off state is
+  a separate owner-authorized emergency action, not Preview cleanup.
 - A successful Preview rehearsal is evidence only. It is not launch approval.
 
 Automatic NO-GO recommendation applies when any required gate is missing,
@@ -27,25 +31,27 @@ stale, ambiguous, unverifiable, or failing.
 
 ## Exact controls
 
-| Control           | Preview rehearsal                                                                             | Production prelaunch                | Production launch            |
-| ----------------- | --------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------- |
-| Statsig tier      | `preview`                                                                                     | `production`                        | `production`                 |
-| Statsig gate      | `meelni_reactivation_access` targeted only to the exact reviewed commit/ref                   | off                                 | owner-approved target        |
-| Dynamic config    | `meelni_preview_rehearsal_authority` with `active=true`, exact commit/ref, and ≤2h UTC window | absent or inactive                  | not launch authority         |
-| Vercel phase      | `MEELNI_RELAUNCH_PHASE=rehearsal`                                                             | `MEELNI_RELAUNCH_PHASE=prelaunch`   | `MEELNI_RELAUNCH_PHASE=launched` |
-| Vercel fallback   | `MEELNI_REACTIVATION_DEFAULT=false`                                                           | `MEELNI_REACTIVATION_DEFAULT=false` | `MEELNI_REACTIVATION_DEFAULT=true` |
-| Deployment anchor | Branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA=<40hex>`                                           | none                                | exact candidate in GO record |
+| Control           | Preview rehearsal                                                                             | Production current                                       | Production emergency rollback                 |
+| ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------- |
+| Statsig tier      | `preview`                                                                                     | `production`                                             | `production`                                  |
+| Statsig gate      | Read only; preserve the shared owner-launched state                                           | enabled, public `Launch all users`, version 97           | change only with explicit owner authorization |
+| Dynamic config    | `meelni_preview_rehearsal_authority` with `active=true`, exact commit/ref, and ≤2h UTC window | inactive; not Production launch authority                | inactive                                      |
+| Vercel phase      | `MEELNI_RELAUNCH_PHASE=rehearsal`                                                             | `MEELNI_RELAUNCH_PHASE=launched`                         | `MEELNI_RELAUNCH_PHASE=prelaunch`             |
+| Vercel fallback   | `MEELNI_REACTIVATION_DEFAULT=false`                                                           | `MEELNI_REACTIVATION_DEFAULT=true`                       | `MEELNI_REACTIVATION_DEFAULT=false`           |
+| Deployment anchor | Branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA=<40hex>`                                           | exact launched release recorded in the owner GO evidence | none                                          |
 
 ## Prerequisites before Preview flip
 
-Record evidence links in SAV-176 before enabling the Preview gate:
+Record evidence links in SAV-176/SAV-387 before activating Preview rehearsal
+authority:
 
 1. Exact-head GitHub PR queue is empty or contains only intentionally open
    non-launch work, and all accepted launch-critical PRs are merged.
 2. Hosted CI/security/deployment checks are green at the candidate commit.
-3. SAV-226 proves isolated Preview Supabase, Stripe test mode/webhook, LiveKit
-   project/agents, and Inngest configuration with no shared Production provider
-   identity.
+3. SAV-226 proves the intended isolated Preview identities, and SAV-387 proves
+   their current health. The canonical staging alias must return all required
+   `/api/health` dependencies healthy before authority activation. A `READY`
+   Vercel deployment alone is insufficient.
 4. SAV-198/SAV-248 v10 terminal calibration evidence is recorded truthfully,
    including the bounded synthetic provider run if separately authorized. The
    consumed v3 through v7 lanes are historical failure evidence, not the current
@@ -55,9 +61,9 @@ Record evidence links in SAV-176 before enabling the Preview gate:
    billing cancellation policy, and irreversible deletion policy.
 6. SAV-211, SAV-215, SAV-178, SAV-180, and SAV-268 are Done or have an explicit
    accepted non-blocking disposition.
-7. Production preflight remains hard-off: `prelaunch`, fallback `false`, live
-   Stripe mode/catalog/webhook, Production-only LiveKit identity, database
-   identity/migration ledger, required Inngest keys, and no secret exposure.
+7. A read-only Production check confirms the owner-launched pair and shared
+   gate are unchanged. Preview must still use isolated Stripe test mode,
+   LiveKit, Supabase, and Inngest identities with no Production provider reuse.
 
 ## Preview flip procedure
 
@@ -96,12 +102,13 @@ Record evidence links in SAV-176 before enabling the Preview gate:
 
    The interval from `authorizedAt` to `expiresAt` must be at most two hours.
 
-5. In Statsig Preview, target `meelni_reactivation_access` only where custom
-   attributes `meelni_deployment_commit_sha` and
-   `meelni_deployment_git_ref` match the same candidate.
+5. Read `meelni_reactivation_access` and record that it still matches the
+   owner-launched state. Do not change its enabled state or targeting rules for
+   Preview.
 6. Run the Preview smoke matrix with synthetic/approved identities only.
-7. Turn the Preview gate off immediately after the rehearsal, even when it
-   passes.
+7. Disable or remove `meelni_preview_rehearsal_authority` immediately after the
+   rehearsal, even when it passes, then complete the deployment-anchor cleanup
+   in the rollback path. Leave the shared gate unchanged.
 
 ## Required Preview smoke matrix
 
@@ -142,9 +149,9 @@ Minimum signals to inspect during the rehearsal:
 
 Rollback immediately when any threshold is breached:
 
-- Any Production surface evaluates the relaunch gate on or fallback true before
-  owner GO.
-- Preview gate targets a commit/ref different from the reviewed candidate.
+- Any unapproved change appears in the owner-launched Production gate, phase,
+  or fallback state.
+- Preview authority names a commit/ref different from the reviewed candidate.
 - Any Preview provider identity points at Production.
 - Any smoke state issues an interview token or consumes/grants credit outside
   the expected entitlement path.
@@ -160,29 +167,33 @@ Rollback immediately when any threshold is breached:
 
 Execute in this order:
 
-1. Turn off the Statsig gate `meelni_reactivation_access` in Preview.
-2. Disable or remove `meelni_preview_rehearsal_authority`.
-3. Verify revocation on the current branch alias and at least one prior
+1. Disable or remove `meelni_preview_rehearsal_authority`. Do not change the
+   shared Statsig gate `meelni_reactivation_access`.
+2. Verify revocation on the current branch alias and at least one prior
    deployment URL with a unique query string. Both must render the off/holding
    experience on a fresh request.
-4. Remove the branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA` and redeploy the
+3. Remove the branch-scoped `MEELNI_REHEARSAL_COMMIT_SHA` and redeploy the
    branch.
-5. Run:
+4. Run:
 
    ```bash
    npm run deploy:preflight:preview
    npm run test:feature-flags
    ```
 
-6. Record the failed exact commit, rollback timestamps, both-URL hard-off
+5. Record the failed exact commit, rollback timestamps, both-URL hard-off
    verification, metrics, cleanup state, and next owner in SAV-176.
+6. Read the shared gate again and confirm the owner-launched version and public
+   rule did not change during rehearsal or cleanup.
 7. Do not attempt another rehearsal until the root cause has a linked issue or
    explicit accepted disposition.
 
-Production rollback after a future owner GO must turn off both the Statsig gate
-and `MEELNI_REACTIVATION_DEFAULT`, then run anonymous/authenticated/paid smoke
-checks proving the hard-off state. It must not create automatic refunds,
-prorations, or compensation.
+Production rollback after the recorded owner GO is a separate emergency
+operation. It requires explicit owner authorization to turn off the Statsig
+gate and restore the paired `MEELNI_RELAUNCH_PHASE=prelaunch` and
+`MEELNI_REACTIVATION_DEFAULT=false` state, then requires
+anonymous/authenticated/paid smoke checks proving the hard-off state. It must
+not create automatic refunds, prorations, or compensation.
 
 ## Evidence packet
 

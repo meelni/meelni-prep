@@ -24,6 +24,7 @@ export type LiveKitAgentKind = "interview" | "demo";
 
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
+const INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS = 2;
 export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
 export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
@@ -966,7 +967,9 @@ export async function inspectInterviewParticipantPresence(
   },
   {
     roomServiceClientFactory = (url, apiKey, apiSecret) =>
-      new RoomServiceClient(url, apiKey, apiSecret),
+      new RoomServiceClient(url, apiKey, apiSecret, {
+        requestTimeout: INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS,
+      }),
   }: LiveKitProviderDependencies = {}
 ): Promise<ProviderResult<InterviewParticipantPresence>> {
   const roomClient = roomServiceClientFactory(

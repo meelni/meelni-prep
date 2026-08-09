@@ -89,6 +89,7 @@ export function buildFeedbackReadQuery(
         string | null
       >`left(${feedback.dispatchEventId}, ${FEEDBACK_DB_READ_LIMITS.dispatchEventId + 1})`,
       dispatchClaimedAt: feedback.dispatchClaimedAt,
+      dispatchedAt: feedback.dispatchedAt,
     })
     .from(feedback)
     .where(eq(feedback.sessionId, sessionId))
@@ -152,8 +153,11 @@ export function hasValidFeedbackLifecycleFields(record: {
 }
 
 /** Get an owner-checked session's bounded feedback lifecycle record. */
-export async function getFeedbackBySessionId(sessionId: string) {
-  const [row] = await buildFeedbackReadQuery(db, sessionId);
+export async function getFeedbackBySessionId(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  const [row] = await buildFeedbackReadQuery(database, sessionId);
   return row ? decodeBoundedFeedbackReadRow(row) : undefined;
 }
 
