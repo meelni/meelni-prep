@@ -27,8 +27,9 @@ configuration, not source-owned constants.
 
 ## Environment
 
-Set these in local `.env.local` / agent env files and in Vercel or LiveKit Cloud
-as appropriate:
+Set these in local `.env.local`, the Vercel `staging` custom environment,
+Production, or LiveKit Cloud agent envs as appropriate. Do not put them in
+generic Vercel PR Preview:
 
 ```bash
 LIVEKIT_API_KEY=...
@@ -53,7 +54,9 @@ chat; use Vercel env pull scripts or the provider dashboards.
 5. Deploy the interview and demo agents from `agent/interview` and `agent/demo`.
 6. Set `LIVEKIT_INTERVIEW_AGENT_NAME` and `LIVEKIT_DEMO_AGENT_NAME` to the names
    used by those deployed agents.
-7. In Vercel, set the same LiveKit server env vars for Preview and Production.
+7. In Vercel, scope the isolated non-Production LiveKit values only to the
+   trusted `staging` custom environment. Keep Production values separate and
+   leave generic PR Preview intentionally LiveKit-disabled.
 8. In LiveKit Cloud agent secrets, set the agent-name env var that matches each
    worker plus model provider keys.
 9. Run validation:
@@ -68,6 +71,16 @@ npm run typecheck
 
 ## Operational Rules
 
+- Resolve web-runtime capability through
+  `resolveLiveKitDeploymentCapability` in `@meelni/integrations`. The exact
+  Vercel-owned tuple `VERCEL=1`, `VERCEL_ENV=preview`, and
+  `VERCEL_TARGET_ENV=preview` is web-only; `staging`, Production, local, and
+  unclassified targets remain LiveKit-enabled and strict.
+- Generic Preview voice routes share one fail-closed `503`
+  `voice_unavailable_in_preview` response before auth, credits, durable session
+  mutation, configuration parsing, or provider I/O. Background LiveKit work
+  skips before database/provider work. Production credentials cannot override
+  this boundary.
 - Keep explicit dispatch. Demo and full interview agents should not compete for
   the same room jobs.
 - Register every cloud worker with its configured agent name. An unnamed worker

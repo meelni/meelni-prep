@@ -75,6 +75,19 @@ test("public demo client maps 429 to an explicit non-immediate cooldown", () => 
 });
 
 test("public demo client distinguishes paused, provisioning, and unavailable states", () => {
+  assert.deepEqual(
+    interpretPublicDemoStartFailure({
+      status: 503,
+      body: { error: "voice_unavailable_in_preview" },
+      retryAfterHeader: null,
+    }),
+    {
+      title: "Voice is off in this web Preview",
+      message:
+        "Use the trusted staging environment for LiveKit rehearsal. Non-voice Preview pages remain available.",
+      paused: true,
+    }
+  );
   assert.equal(
     interpretPublicDemoStartFailure({
       status: 404,

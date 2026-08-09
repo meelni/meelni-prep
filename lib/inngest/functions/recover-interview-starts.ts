@@ -3,6 +3,7 @@ import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { recoverInterviewStartWorkflow } from "@/lib/workflows/recover-interview-start";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { isLiveKitIntentionallyDisabled } from "@meelni/integrations";
 
 export const recoverInterviewStarts = inngest.createFunction(
   {
@@ -21,6 +22,15 @@ export const recoverInterviewStarts = inngest.createFunction(
   },
   { cron: "*/5 * * * *" },
   async ({ step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return {
+        attempted: 0,
+        cleanupEnvironmentAvailable: false,
+        results: [],
+        skipped: "livekit_intentionally_disabled",
+      };
+    }
+
     const candidates = await step.run("find-stale-interview-starts", () =>
       listInterviewStartRecoveryCandidates()
     );

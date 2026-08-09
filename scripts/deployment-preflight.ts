@@ -13,6 +13,7 @@ import {
 } from "@/lib/deployment/deployment-preflight";
 import { PREVIEW_LIVEKIT_IDENTITY } from "@/lib/deployment/provider-identities";
 import { createStripeCatalogReader } from "@/lib/deployment/stripe-catalog-reader";
+import { resolveLiveKitDeploymentCapability } from "@meelni/integrations";
 
 export const CANONICAL_VERCEL_DEPLOYMENT_IDENTITY = {
   projectId: "prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4",
@@ -50,7 +51,11 @@ async function main() {
   const stripeCatalogReader = stripeSecretKey
     ? createStripeCatalogReader(stripeSecretKey)
     : undefined;
-  const liveKitProjectReader = createLiveKitProjectReader(process.env);
+  const liveKitCapability = resolveLiveKitDeploymentCapability(process.env);
+  const liveKitProjectReader =
+    liveKitCapability.mode === "enabled"
+      ? createLiveKitProjectReader(process.env)
+      : undefined;
   const openAiModelReader = createOpenAiModelReader(process.env.OPENAI_API_KEY);
   const supabaseProjectReader = createSupabaseProjectReader(process.env);
   const result = await runDeploymentPreflight({
@@ -66,6 +71,11 @@ async function main() {
   console.log(`Deployment preflight target: ${result.target}`);
   for (const check of result.passedChecks) {
     console.log(`PASS ${check}`);
+  }
+  for (const skipped of result.skippedChecks) {
+    console.log(
+      `SKIP ${skipped.check} ${skipped.reason} (voice is intentionally disabled in generic Preview)`
+    );
   }
 
   if (!result.ok) {

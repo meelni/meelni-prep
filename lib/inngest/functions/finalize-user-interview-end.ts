@@ -7,6 +7,7 @@ import {
   USER_INTERVIEW_END_EVENT_NAME,
 } from "@/lib/workflows/accept-user-interview-end";
 import { durableUserInterviewEndWorkflow } from "@/lib/workflows/durable-user-interview-end";
+import { isLiveKitIntentionallyDisabled } from "@meelni/integrations";
 
 export const finalizeUserInterviewEnd = inngest.createFunction(
   {
@@ -25,6 +26,10 @@ export const finalizeUserInterviewEnd = inngest.createFunction(
   },
   { event: USER_INTERVIEW_END_EVENT_NAME },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { skipped: "livekit_intentionally_disabled" };
+    }
+
     const env = getLiveKitEnvironment();
     return durableUserInterviewEndWorkflow(
       {
@@ -64,6 +69,10 @@ export const recoverUserInterviewEnds = inngest.createFunction(
   },
   { cron: "* * * * *" },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { scheduled: 0, skipped: "livekit_intentionally_disabled" };
+    }
+
     const sessions = await step.run("find-user-ends-to-recover", () =>
       listUserInterviewEndsToRecover()
     );

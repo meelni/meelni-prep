@@ -3,8 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { createClient } from "@/lib/supabase/server";
 import { requestUserEndRuntimeSettlementWorkflow } from "@/lib/workflows/request-user-end-runtime-settlement";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   const supabase = await createClient();
   const {
     data: { user },

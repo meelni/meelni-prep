@@ -110,8 +110,12 @@ import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-acce
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { resolveInterviewAppBaseUrl } from "@/lib/interview/app-base-url";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   try {
     // Verify authentication
     const supabase = await createClient();

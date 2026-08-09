@@ -22,8 +22,12 @@ import {
   getPublicDemoDeploymentScope,
   startPublicDemoWorkflow,
 } from "@/lib/workflows/start-public-demo";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   if (!(await isPublicDemoEnabled())) {
     return noStore(
       NextResponse.json({ error: "demo_unavailable" }, { status: 404 })

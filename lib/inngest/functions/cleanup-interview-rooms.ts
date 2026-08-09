@@ -3,6 +3,7 @@ import { inngest } from "@/lib/inngest/client";
 import { getLiveKitEnvironment } from "@/lib/internal/integrations";
 import { cleanupInterviewRoomWorkflow } from "@/lib/workflows/cleanup-interview-room";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { isLiveKitIntentionallyDisabled } from "@meelni/integrations";
 
 export const INTERVIEW_ROOM_CLEANUP_EVENT_NAME =
   "interview/room.cleanup.requested" as const;
@@ -35,6 +36,10 @@ export const cleanupInterviewRoom = inngest.createFunction(
   },
   { event: INTERVIEW_ROOM_CLEANUP_EVENT_NAME },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { skipped: "livekit_intentionally_disabled" };
+    }
+
     const env = getLiveKitEnvironment();
     if (!env.ok) throw new Error(env.error.code);
 
@@ -64,6 +69,10 @@ export const recoverInterviewRoomCleanup = inngest.createFunction(
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { scheduled: 0, skipped: "livekit_intentionally_disabled" };
+    }
+
     const sessions = await step.run("find-terminal-rooms-to-clean", () =>
       listInterviewRoomCleanupSessions()
     );

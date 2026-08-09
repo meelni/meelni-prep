@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
@@ -34,6 +34,8 @@ const livekitEnv = {
 };
 
 describe("POST /api/livekit/token", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getLiveKitEnvironment.mockReturnValue({
@@ -45,6 +47,19 @@ describe("POST /api/livekit/token", () => {
       source: "statsig",
       value: true,
     });
+  });
+
+  it("refuses generic Preview before auth, session reads, or token provider work", async () => {
+    stubGenericPreview();
+
+    const response = await POST(createRequest({ sessionId }));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(previewUnavailableBody());
+    expect(mocks.createClient).not.toHaveBeenCalled();
+    expect(mocks.resolveReactivationAccess).not.toHaveBeenCalled();
+    expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(mocks.joinInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
   it("rejects token issuance while relaunch access is disabled", async () => {
@@ -243,4 +258,19 @@ function createRequest(body: Record<string, unknown>): NextRequest {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}
+
+function previewUnavailableBody() {
+  return {
+    error: "voice_unavailable_in_preview",
+    message:
+      "Voice practice is unavailable in this web Preview. Use the trusted staging environment for voice rehearsal.",
+    retryable: false,
+  };
 }
