@@ -87,6 +87,11 @@ interface PersistedInterviewSession {
   lifecycleState?: string | null;
   roundType?: string | null;
   mode?: string | null;
+  question?: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
   config?:
     | (Record<string, unknown> & {
         roundType?: string | null;
@@ -1490,7 +1495,7 @@ function normalizePersistedSession(
       mode: session.mode || config.mode || undefined,
       difficulty: config.difficulty || undefined,
     },
-    question: null,
+    question: session.question ?? null,
   };
 }
 
