@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -22,6 +22,8 @@ import { startInterviewSessionWorkflow } from "@/lib/workflows/start-session";
 import { POST } from "./route";
 
 describe("POST /api/session/start logging", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createClient).mockResolvedValue({
@@ -47,6 +49,19 @@ describe("POST /api/session/start logging", () => {
       provider: "livekit",
       data: "interview-agent",
     });
+  });
+
+  it("refuses generic Preview before auth, credits, configuration, or provider work", async () => {
+    stubGenericPreview();
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(previewUnavailableBody());
+    expect(createClient).not.toHaveBeenCalled();
+    expect(getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(getLiveKitAgentName).not.toHaveBeenCalled();
+    expect(startInterviewSessionWorkflow).not.toHaveBeenCalled();
   });
 
   it("does not log unrestricted workflow errors", async () => {
@@ -149,4 +164,19 @@ function request() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ roundType: "product_sense" }),
   });
+}
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}
+
+function previewUnavailableBody() {
+  return {
+    error: "voice_unavailable_in_preview",
+    message:
+      "Voice practice is unavailable in this web Preview. Use the trusted staging environment for voice rehearsal.",
+    retryable: false,
+  };
 }

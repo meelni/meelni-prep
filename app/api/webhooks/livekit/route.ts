@@ -5,10 +5,14 @@ import {
   receiveLiveKitParticipantWebhook,
 } from "@/lib/internal/integrations";
 import { handleLiveKitInterviewEventWorkflow } from "@/lib/workflows/handle-livekit-interview-event";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 const MAX_LIVEKIT_WEBHOOK_BODY_BYTES = 64 * 1024;
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   const env = getLiveKitEnvironment(process.env);
   if (!env.ok) {
     console.error("LiveKit webhook configuration error", env.error.code);

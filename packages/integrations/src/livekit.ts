@@ -8,6 +8,7 @@ import {
 } from "livekit-server-sdk";
 
 import { findMissingRequiredEnv } from "./environment";
+import { resolveLiveKitDeploymentCapability } from "./livekit-capability";
 import {
   providerFailure,
   providerSuccess,
@@ -225,6 +226,14 @@ type RoomServiceClientFactory = (
 export function getLiveKitEnvironment(
   envSource: Record<string, string | undefined> = process.env
 ): ProviderResult<LiveKitEnvironment> {
+  if (resolveLiveKitDeploymentCapability(envSource).mode === "disabled") {
+    return providerFailure("livekit", {
+      code: "livekit_disabled_in_generic_preview",
+      message: "LiveKit is intentionally disabled in generic Vercel Preview.",
+      retryable: false,
+    });
+  }
+
   const missing = findMissingRequiredEnv("livekit", envSource);
 
   if (missing.length > 0) {

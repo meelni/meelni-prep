@@ -9,6 +9,8 @@ import {
   inferSupabaseDatabaseProjectRef,
   inferSupabaseProjectRef,
   isSupabaseProjectRef,
+  resolveLiveKitDeploymentCapability,
+  type LiveKitDeploymentCapability,
 } from "@meelni/integrations";
 import {
   EXPECTED_PREVIEW_SUPABASE_PROJECT_REF,
@@ -92,9 +94,17 @@ export interface DeploymentPreflightFailure {
 
 export interface DeploymentPreflightResult {
   failures: DeploymentPreflightFailure[];
+  liveKitCapability: LiveKitDeploymentCapability;
   ok: boolean;
   target: DeploymentTarget;
   passedChecks: string[];
+  skippedChecks: DeploymentPreflightSkip[];
+}
+
+export interface DeploymentPreflightSkip {
+  area: "livekit";
+  check: "livekit.configuration_and_project_access";
+  reason: "intentionally_disabled_for_generic_preview";
 }
 
 type Environment = Record<string, string | undefined>;
@@ -148,27 +158,39 @@ export async function runDeploymentPreflight({
 }): Promise<DeploymentPreflightResult> {
   const failures: DeploymentPreflightFailure[] = [];
   const passedChecks: string[] = [];
+  const skippedChecks: DeploymentPreflightSkip[] = [];
+  const liveKitCapability = resolveLiveKitDeploymentCapability(env);
 
   validateSupabaseEnvironment({ env, failures, target, passedChecks });
   validateStripeEnvironment({ env, failures, target, passedChecks });
   validateInngestEnvironment({ env, failures, target, passedChecks });
   validateOpenAiEnvironment({ env, failures, passedChecks });
-  validateLiveKitEnvironment({
-    env,
-    failures,
-    passedChecks,
-    previewLiveKitIdentity,
-    target,
-  });
+  if (liveKitCapability.mode === "disabled") {
+    skippedChecks.push({
+      area: "livekit",
+      check: "livekit.configuration_and_project_access",
+      reason: "intentionally_disabled_for_generic_preview",
+    });
+  } else {
+    validateLiveKitEnvironment({
+      env,
+      failures,
+      passedChecks,
+      previewLiveKitIdentity,
+      target,
+    });
+  }
   validateStatsigEnvironment({ env, failures, target, passedChecks });
   validateContactEnvironment({ env, failures, passedChecks });
 
   if (failures.some((failure) => failure.area === "contact")) {
     return {
       failures,
+      liveKitCapability,
       ok: false,
       target,
       passedChecks,
+      skippedChecks,
     };
   }
 
@@ -254,7 +276,10 @@ export async function runDeploymentPreflight({
     }
   }
 
-  if (!failures.some((failure) => failure.area === "livekit")) {
+  if (
+    liveKitCapability.mode === "enabled" &&
+    !failures.some((failure) => failure.area === "livekit")
+  ) {
     if (!liveKitProjectReader) {
       failures.push({
         area: "livekit",
@@ -304,9 +329,11 @@ export async function runDeploymentPreflight({
 
   return {
     failures,
+    liveKitCapability,
     ok: failures.length === 0,
     target,
     passedChecks,
+    skippedChecks,
   };
 }
 

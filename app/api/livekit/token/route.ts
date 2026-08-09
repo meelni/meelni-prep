@@ -20,8 +20,12 @@ import {
   isDeadlineExceededError,
   withDeadline,
 } from "@/lib/http/deadline";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   try {
     return await withDeadline(
       "interview_token_issue",

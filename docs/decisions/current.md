@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Generic Preview LiveKit Capability](2026-08-09-generic-preview-livekit-capability.md): Keep generic Vercel PR Preview web-only with LiveKit intentionally disabled from Vercel system identity, while trusted staging and Production remain provider-backed and strict.
 - [Public Privacy Policy Approval](2026-07-26-public-privacy-policy.md): Publish the July 26, 2026 Privacy Policy with Meelni and `contact@meelni.com` as the accountable public identity, disclose implemented data and consent behavior, index `/privacy`, and keep Terms separate and unapproved.
 - [Delegated Agent Authorization Boundary](2026-07-23-delegated-agent-authorization-boundary.md): Allow explicitly labeled bounded agent authorization for repeat repo-only or synthetic-only work while preserving human-owner-only launch, spend, Production data, billing, destructive-action, and live-provider boundaries.
 - [Forward Runtime-Settlement Reconciliation](2026-07-17-forward-runtime-settlement-reconciliation.md): Preserve the historical ledger, recognize only the exact legacy Preview lineage, and converge through a fail-closed forward migration with no inferred writer evidence.

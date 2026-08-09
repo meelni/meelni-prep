@@ -73,7 +73,8 @@
         "guidance": "Use the LiveKit Docs MCP for current API and deployment knowledge, the lk CLI for project inspection, and guarded repository deploy wrappers for Production workers."
       },
       "targets": {
-        "preview": "meelni-preview (p_16unz4e48is)",
+        "genericPreview": "Vercel target preview; LiveKit intentionally disabled",
+        "staging": "meelni-preview (p_16unz4e48is)",
         "production": "meelni"
       },
       "repoCommands": [
@@ -109,7 +110,7 @@
         "LIVEKIT_DEMO_AGENT_NAME",
         "DEEPGRAM_API_KEY"
       ],
-      "writePolicy": "Preview uses its isolated project. Production worker deploys must use the signed repository authorization wrappers and must build from the exact reviewed source snapshot.",
+      "writePolicy": "Generic Vercel Preview receives no LiveKit credentials. Trusted staging uses the isolated project. Production worker deploys must use the signed repository authorization wrappers and must build from the exact reviewed source snapshot.",
       "docs": [
         "docs/integrations/livekit.md",
         "docs/operations/interview-runtime-configuration.md",
@@ -372,6 +373,7 @@
       "targets": {
         "team": "meelni",
         "project": "meelni (prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4)",
+        "genericPreview": "VERCEL_ENV=preview, VERCEL_TARGET_ENV=preview; LiveKit disabled",
         "staging": "custom environment staging on codex/staging"
       },
       "repoCommands": [
