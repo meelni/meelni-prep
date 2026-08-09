@@ -11,9 +11,11 @@ import { EndSessionModal } from "./end-session-modal";
 function ModalHarness({
   isLoading = false,
   terminalIntent = false,
+  capturedAnswerCount = 2,
 }: {
   isLoading?: boolean;
   terminalIntent?: boolean;
+  capturedAnswerCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -32,7 +34,7 @@ function ModalHarness({
             : null
         }
         terminalIntent={terminalIntent}
-        capturedAnswerCount={2}
+        capturedAnswerCount={capturedAnswerCount}
         onClose={() => setOpen(false)}
         onConfirm={vi.fn()}
         returnFocusRef={triggerRef}
@@ -55,8 +57,9 @@ describe("EndSessionModal", () => {
       await screen.findByRole("dialog", { name: "End interview?" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/2 candidate answers are visible/)
+      screen.getByText(/this tab currently displays 2 candidate answers/i)
     ).toBeInTheDocument();
+    expect(screen.getByText(/not a save confirmation/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Continue interview" })
     ).toHaveFocus();
@@ -78,6 +81,21 @@ describe("EndSessionModal", () => {
 
     expect(dialog).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ending..." })).toBeDisabled();
+  });
+
+  it("does not present an empty browser display as proof that durable evidence is absent", async () => {
+    const user = userEvent.setup();
+    render(<ModalHarness capturedAnswerCount={0} />);
+
+    await user.click(screen.getByRole("button", { name: "End interview" }));
+
+    expect(
+      await screen.findByText(
+        /this tab does not currently display a candidate answer/i
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not a save confirmation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no candidate answers/i)).toBeNull();
   });
 
   it("cannot resume or dismiss after the server has accepted terminal intent", async () => {

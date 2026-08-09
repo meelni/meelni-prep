@@ -24,7 +24,7 @@
  * @response.turns[].section {string|null} - Section/phase of interview
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
- * @throws {403} Forbidden - User does not own this session
+ * @throws {404} Not Found - Session is missing or not owned by the user
  * @throws {500} Internal Server Error - Database query failed
  *
  * @example
@@ -61,7 +61,7 @@
  *   ]
  * }
  *
- * // Error Response (403 Forbidden)
+ * // Error Response (404 Not Found)
  * {
  *   "error": "Session not found or access denied"
  * }
@@ -134,7 +134,7 @@ export async function GET(
         if (transcript === null) {
           return transcriptResponse(
             { error: "Session not found or access denied" },
-            403
+            404
           );
         }
 

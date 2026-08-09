@@ -220,6 +220,7 @@ function InterviewScenario() {
           />
         }
         transcriptIntegrity="healthy"
+        transcriptHydrationState="ready"
         transcriptPanel={<TranscriptPanel turns={transcriptTurns} />}
       />
       <EndSessionModal

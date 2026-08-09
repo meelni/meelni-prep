@@ -193,6 +193,7 @@ describe("active interview page lifecycle", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -315,6 +316,461 @@ describe("active interview page lifecycle", () => {
           String(input).includes("transcript") && init?.method === "POST"
       )
     ).toBe(false);
+  });
+
+  it("recovers a transient transcript read while preserving a runtime packet received during retry", async () => {
+    let transcriptReads = 0;
+    let resolveHydration: ((response: Response) => void) | undefined;
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          if (transcriptReads === 1) {
+            return Response.json(
+              { error: "transcript_read_unavailable" },
+              { status: 503 }
+            );
+          }
+          return new Promise<Response>((resolve) => {
+            resolveHydration = resolve;
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(transcriptReads).toBe(1));
+    await waitFor(() => expect(mocks.onTranscriptUpdate).not.toBeNull());
+    await waitFor(() => expect(transcriptReads).toBe(2), { timeout: 2_000 });
+
+    await mocks.onTranscriptUpdate?.({
+      persistable: true,
+      eventId: "event-runtime-during-retry",
+      rowId: "f47ac10b-58cc-4372-a567-0e02b2c3d483",
+      writerId: "writer-a",
+      writerGeneration: 1,
+      sequence: 2,
+      sessionId: SESSION_ID,
+      speaker: "user",
+      text: "Runtime turn during retry",
+      timestamp: new Date("2099-07-15T21:00:02.000Z"),
+      startedAt: new Date("2099-07-15T21:00:02.000Z"),
+      event: {
+        contract_version: 2,
+        event_id: "event-runtime-during-retry",
+        writer_id: "writer-a",
+        writer_generation: 1,
+        sequence: 2,
+        session_id: SESSION_ID,
+        room_name: "interview-room",
+        speaker: "user",
+        text: "Runtime turn during retry",
+        is_final: true,
+        started_at: "2099-07-15T21:00:02.000Z",
+        ended_at: "2099-07-15T21:00:03.000Z",
+        audio_duration_ms: 1000,
+        section: "product_sense",
+        delivery_state: "delivered",
+      },
+    });
+
+    await waitFor(() =>
+      expect(mocks.transcriptTurns.map((turn) => turn.text)).toEqual([
+        "Runtime turn during retry",
+      ])
+    );
+    expect(resolveHydration).toBeDefined();
+    await act(async () => {
+      resolveHydration?.(
+        Response.json({
+          turns: [
+            {
+              id: "f47ac10b-58cc-4372-a567-0e02b2c3d482",
+              eventId: "event-hydrated-earlier",
+              writerId: "writer-a",
+              writerGeneration: 1,
+              sequence: 1,
+              sessionId: SESSION_ID,
+              roomName: "interview-room",
+              speaker: "interviewer",
+              text: "Earlier durable turn",
+              startedAt: "2099-07-15T21:00:00.000Z",
+              endedAt: "2099-07-15T21:00:01.000Z",
+              audioMs: 1000,
+              section: "product_sense",
+              deliveryState: "delivered",
+            },
+            {
+              id: "f47ac10b-58cc-4372-a567-0e02b2c3d483",
+              eventId: "event-runtime-during-retry",
+              writerId: "writer-a",
+              writerGeneration: 1,
+              sequence: 2,
+              sessionId: SESSION_ID,
+              roomName: "interview-room",
+              speaker: "user",
+              text: "Runtime turn during retry",
+              startedAt: "2099-07-15T21:00:02.000Z",
+              endedAt: "2099-07-15T21:00:03.000Z",
+              audioMs: 1000,
+              section: "product_sense",
+              deliveryState: "delivered",
+            },
+          ],
+        })
+      );
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(mocks.transcriptTurns.map((turn) => turn.text)).toEqual([
+        "Earlier durable turn",
+        "Runtime turn during retry",
+      ])
+    );
+    const telemetry = JSON.stringify([
+      ...consoleWarn.mock.calls,
+      ...consoleInfo.mock.calls,
+    ]);
+    expect(telemetry).toContain("transcript_hydration_retry");
+    expect(telemetry).toContain("http_503");
+    expect(telemetry).toContain("transcript_hydration_recovered");
+    expect(telemetry).not.toContain(SESSION_ID);
+    expect(telemetry).not.toContain("Runtime turn during retry");
+  });
+
+  it("recovers a transcript read after its browser deadline on an otherwise healthy connection", async () => {
+    let transcriptReads = 0;
+    let deadlineRequestAborted = false;
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          if (transcriptReads === 1) {
+            return new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                "abort",
+                () => {
+                  deadlineRequestAborted = true;
+                  const error = new Error("transcript request deadline");
+                  error.name = "AbortError";
+                  reject(error);
+                },
+                { once: true }
+              );
+            });
+          }
+          return Response.json({ turns: [] });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    vi.useFakeTimers();
+    try {
+      render(<InterviewPageContent />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId("livekit-room")).toBeInTheDocument();
+      expect(transcriptReads).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          CUSTOMER_CLIENT_FETCH_DEADLINE_MS + 2_000
+        );
+        await Promise.resolve();
+      });
+
+      expect(deadlineRequestAborted).toBe(true);
+      expect(transcriptReads).toBe(2);
+      const telemetry = JSON.stringify([
+        ...consoleWarn.mock.calls,
+        ...consoleInfo.mock.calls,
+      ]);
+      expect(telemetry).toContain("timeout");
+      expect(telemetry).toContain("transcript_hydration_recovered");
+      expect(telemetry).not.toContain(SESSION_ID);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces bounded hydration failure and supports a single manual read retry", async () => {
+    let transcriptReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}/transcript`) {
+        transcriptReads += 1;
+        return transcriptReads <= 3
+          ? Response.json(
+              { error: "transcript_read_unavailable" },
+              { status: 503 }
+            )
+          : Response.json({ turns: [] });
+      }
+      return activeInterviewResponse(input, init);
+    });
+    vi.stubGlobal("fetch", request);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    const retry = await screen.findByRole(
+      "button",
+      { name: "Retry transcript" },
+      { timeout: 3_000 }
+    );
+    expect(transcriptReads).toBe(3);
+    expect(
+      screen.getByText(/saved transcript couldn’t be loaded/i)
+    ).toBeVisible();
+    expect(screen.queryByText("Needs recovery")).toBeNull();
+
+    fireEvent.click(retry);
+
+    expect(
+      await screen.findByText("No saved transcript turns yet.")
+    ).toBeVisible();
+    expect(transcriptReads).toBe(4);
+    expect(
+      screen.queryByRole("button", { name: "Retry transcript" })
+    ).toBeNull();
+  });
+
+  it("retries a malformed successful hydration instead of presenting it as empty", async () => {
+    let transcriptReads = 0;
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
+        transcriptReads += 1;
+        return transcriptReads === 1
+          ? Response.json({ turns: { invalid: true } })
+          : Response.json({ turns: [] });
+      }
+      return activeInterviewResponse(input, init);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(
+      await screen.findByText("No saved transcript turns yet.")
+    ).toBeVisible();
+    expect(transcriptReads).toBe(2);
+    expect(JSON.stringify(consoleWarn.mock.calls)).toContain("invalid_payload");
+    expect(JSON.stringify(consoleInfo.mock.calls)).toContain(
+      "transcript_hydration_recovered"
+    );
+  });
+
+  it("clears an empty hydration label when a persisted runtime turn arrives", async () => {
+    render(<InterviewPageContent />);
+
+    expect(
+      await screen.findByText("No saved transcript turns yet.")
+    ).toBeVisible();
+    await waitFor(() => expect(mocks.onTranscriptUpdate).not.toBeNull());
+
+    await mocks.onTranscriptUpdate?.({
+      persistable: true,
+      eventId: "event-after-empty-hydration",
+      sessionId: SESSION_ID,
+      speaker: "user",
+      text: "Persisted runtime answer",
+      timestamp: new Date("2099-07-15T21:00:02.000Z"),
+      event: {
+        contract_version: 2,
+        event_id: "event-after-empty-hydration",
+        writer_id: "writer-a",
+        writer_generation: 1,
+        sequence: 1,
+        session_id: SESSION_ID,
+        room_name: "interview-room",
+        speaker: "user",
+        text: "Persisted runtime answer",
+        is_final: true,
+        started_at: "2099-07-15T21:00:02.000Z",
+        ended_at: "2099-07-15T21:00:03.000Z",
+        audio_duration_ms: 1000,
+        section: "product_sense",
+        delivery_state: "delivered",
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("No saved transcript turns yet.")
+      ).toBeNull()
+    );
+    expect(mocks.transcriptTurns).toEqual([
+      expect.objectContaining({ text: "Persisted runtime answer" }),
+    ]);
+  });
+
+  it("retries a degraded hydration once when the tab becomes visible", async () => {
+    let transcriptReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}/transcript`) {
+        transcriptReads += 1;
+        return transcriptReads <= 3
+          ? Response.json(
+              { error: "transcript_read_unavailable" },
+              { status: 503 }
+            )
+          : Response.json({ turns: [] });
+      }
+      return activeInterviewResponse(input, init);
+    });
+    vi.stubGlobal("fetch", request);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    render(<InterviewPageContent />);
+    expect(
+      await screen.findByRole(
+        "button",
+        { name: "Retry transcript" },
+        { timeout: 3_000 }
+      )
+    ).toBeVisible();
+    expect(transcriptReads).toBe(3);
+
+    fireEvent(document, new Event("visibilitychange"));
+
+    expect(
+      await screen.findByText("No saved transcript turns yet.")
+    ).toBeVisible();
+    expect(transcriptReads).toBe(4);
+  });
+
+  it.each([
+    [401, "/auth/signin?redirectTo=/interview"],
+    [404, "/dashboard"],
+  ])(
+    "fences transcript hydration after a definitive %s response",
+    async (status, destination) => {
+      let transcriptReads = 0;
+      const request = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
+            transcriptReads += 1;
+            return Response.json({ error: "unavailable" }, { status });
+          }
+          return activeInterviewResponse(input, init);
+        }
+      );
+      vi.stubGlobal("fetch", request);
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      render(<InterviewPageContent />);
+
+      await waitFor(() =>
+        expect(mocks.replace).toHaveBeenCalledWith(destination)
+      );
+      expect(screen.queryByTestId("livekit-room")).toBeNull();
+      expect(transcriptReads).toBe(1);
+      expect(mocks.transcriptTurns).toEqual([]);
+    }
+  );
+
+  it("aborts and fences a stale hydration response when the owner changes", async () => {
+    let resolveHydration: ((response: Response) => void) | undefined;
+    let hydrationAborted = false;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
+          return new Promise<Response>((resolve) => {
+            resolveHydration = resolve;
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                hydrationAborted = true;
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(resolveHydration).toBeDefined());
+
+    mocks.authUser = { id: "owner-b" };
+    view.rerender(<InterviewPageContent />);
+    await waitFor(() => expect(hydrationAborted).toBe(true));
+    await act(async () => {
+      resolveHydration?.(
+        Response.json({
+          turns: [
+            {
+              id: "stale-row",
+              eventId: "stale-event",
+              sessionId: SESSION_ID,
+              speaker: "user",
+              text: "Stale owner content",
+              startedAt: "2099-07-15T21:00:00.000Z",
+            },
+          ],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(mocks.transcriptTurns).toEqual([]);
+    expect(mocks.replace).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("aborts a stalled transcript hydration when the interview page unmounts", async () => {
+    let hydrationStarted = false;
+    let hydrationAborted = false;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
+          hydrationStarted = true;
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                hydrationAborted = true;
+                const error = new Error("unmounted hydration");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(hydrationStarted).toBe(true));
+
+    view.unmount();
+
+    expect(hydrationAborted).toBe(true);
   });
 
   it("does not fan out transcript reads on agent-state churn and resyncs after recovery", async () => {

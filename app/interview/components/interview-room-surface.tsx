@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 
 import {
   AppSurfaceDescription,
@@ -10,6 +10,8 @@ import {
   StatusPill,
 } from "@/components/ui/app-surface";
 import type { InterviewConnectionStatus } from "@/components/interview/session-recovery";
+import { Button } from "@/components/ui/button";
+import type { DurableTranscriptHydrationState } from "@/lib/interview/transcript-hydration";
 
 export interface InterviewRoomSurfaceProps {
   company?: string | null;
@@ -22,6 +24,8 @@ export interface InterviewRoomSurfaceProps {
   roundType?: string | null;
   timer?: ReactNode;
   transcriptIntegrity: "healthy" | "retrying" | "degraded";
+  transcriptHydrationState: DurableTranscriptHydrationState;
+  onRetryTranscriptHydration?: () => void;
   transcriptPanel?: ReactNode;
 }
 
@@ -36,6 +40,8 @@ export function InterviewRoomSurface({
   roundType,
   timer,
   transcriptIntegrity,
+  transcriptHydrationState,
+  onRetryTranscriptHydration,
   transcriptPanel,
 }: InterviewRoomSurfaceProps) {
   const roundLabel = roundType
@@ -134,9 +140,64 @@ export function InterviewRoomSurface({
               </StatusPill>
             )}
           </AppSurfaceHeader>
+          {transcriptHydrationState !== "ready" && (
+            <TranscriptHydrationStatus
+              state={transcriptHydrationState}
+              onRetry={onRetryTranscriptHydration}
+            />
+          )}
           <div className="min-h-0 flex-1">{transcriptPanel}</div>
         </aside>
       </main>
+    </div>
+  );
+}
+
+function TranscriptHydrationStatus({
+  state,
+  onRetry,
+}: {
+  state: Exclude<DurableTranscriptHydrationState, "ready">;
+  onRetry?: () => void;
+}) {
+  const busy = state === "loading" || state === "retrying";
+  const message =
+    state === "loading"
+      ? "Loading saved transcript…"
+      : state === "empty"
+        ? "No saved transcript turns yet."
+        : state === "retrying"
+          ? "Saved transcript is taking longer to load. New turns will still appear here."
+          : "Saved transcript couldn’t be loaded. New turns will still appear here.";
+
+  return (
+    <div
+      className="border-border bg-muted/30 text-muted-foreground flex min-h-11 items-center gap-2 border-b px-4 py-2 text-xs"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-busy={busy}
+    >
+      {busy ? (
+        <Loader2
+          className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+          aria-hidden="true"
+        />
+      ) : state === "degraded" ? (
+        <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      ) : null}
+      <span className="min-w-0 flex-1">{message}</span>
+      {state === "degraded" && onRetry && (
+        <Button
+          type="button"
+          variant="quiet"
+          size="sm"
+          className="shrink-0 px-2.5 text-xs"
+          onClick={onRetry}
+        >
+          Retry transcript
+        </Button>
+      )}
     </div>
   );
 }

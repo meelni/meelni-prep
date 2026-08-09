@@ -29,6 +29,7 @@ function renderSurface({
       roundType="product_sense"
       timer={<span>30:00 remaining</span>}
       transcriptIntegrity="healthy"
+      transcriptHydrationState="ready"
       transcriptPanel={<div>This is synthetic interview content.</div>}
     />
   );
@@ -56,6 +57,7 @@ test("keeps the stage free of redundant ready copy when no question is available
       deadlineReached={false}
       mediaVisualizer={<div>Fixture media</div>}
       transcriptIntegrity="healthy"
+      transcriptHydrationState="ready"
     />
   );
 
@@ -97,6 +99,35 @@ test("renders a grouped live transcript without per-message timestamps", () => {
   assert.match(html, /I would start with the user\./);
   assert.doesNotMatch(html, /ago/);
   assert.doesNotMatch(html, /2026/);
+});
+
+test("distinguishes an empty saved transcript from a degraded transcript read", () => {
+  const emptyHtml = renderToStaticMarkup(
+    <InterviewRoomSurface
+      connectionStatus="connected"
+      deadlineReached={false}
+      transcriptIntegrity="healthy"
+      transcriptHydrationState="empty"
+    />
+  );
+  const degradedHtml = renderToStaticMarkup(
+    <InterviewRoomSurface
+      connectionStatus="connected"
+      deadlineReached={false}
+      transcriptIntegrity="healthy"
+      transcriptHydrationState="degraded"
+      onRetryTranscriptHydration={() => undefined}
+    />
+  );
+
+  assert.match(emptyHtml, /No saved transcript turns yet/);
+  assert.doesNotMatch(emptyHtml, /Retry transcript/);
+  assert.match(degradedHtml, /Saved transcript couldn’t be loaded/);
+  assert.match(degradedHtml, /New turns will still appear here/);
+  assert.match(degradedHtml, /role="status"/);
+  assert.match(degradedHtml, /aria-live="polite"/);
+  assert.match(degradedHtml, /Retry transcript/);
+  assert.match(degradedHtml, /type="button"/);
 });
 
 test("maps normalized LiveKit volume into a responsive visual range", () => {
