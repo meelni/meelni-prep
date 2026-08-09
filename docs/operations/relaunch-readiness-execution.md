@@ -1,6 +1,9 @@
 # Relaunch Readiness Execution
 
-Status: prelaunch execution runbook. This document sequences already-tracked
+Status: historical prelaunch execution record. Production was owner-launched on
+2026-07-26. Do not use this document to operate the current post-launch Preview
+rehearsal; follow `docs/operations/relaunch-activation-runbook.md`, which leaves
+the shared launched gate unchanged. This document sequences already-tracked
 launch-readiness evidence and provider actions. It does not authorize launch,
 provider mutation, spend, or a feature-flag flip.
 

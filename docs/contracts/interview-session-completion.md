@@ -15,7 +15,8 @@ deadline consumer; actor and requested reason are one discriminated command.
 
 For an unclaimed user end, the request path:
 
-1. locks the owner-scoped session row;
+1. locks the owner-scoped session row with a 1.5-second lock timeout and a
+   2.5-second transaction-local statement timeout;
 2. atomically advances it to `ending/user_end`, increments the lifecycle
    version, and records millisecond-precision `ending_at`;
 3. attempts bounded delivery of a versioned, idempotent background event;
@@ -24,11 +25,24 @@ For an unclaimed user end, the request path:
 
 The background finalizer asks the current LiveKit writer to settle exactly at
 `ending_at` within a 20-second provider budget. It then calculates feedback
-eligibility under the session-row lock; every registered generation must be
-settled, with none missing or degraded. It commits terminal truth and the
-unique feedback row, dispatches eligible feedback, schedules room cleanup, and
-converges credit. Cleanup and credit cannot delay feedback dispatch or reopen
-terminal truth.
+eligibility under the session-row lock from each writer's contiguous committed
+database watermark. Every registered generation must be healthy and gap-free.
+Complete evidence also requires settlement no later than the terminal cutoff;
+when settlement is missing, an otherwise eligible database-proven prefix is
+explicitly downgraded to partial feedback. Degraded settlement, markers, gaps,
+and malformed boundaries fail closed. Runtime settlement, terminalization,
+feedback dispatch, room-cleanup scheduling, and credit convergence use stable,
+versioned durable checkpoints. After terminal truth commits, dispatch, cleanup,
+and credit run as sibling checkpoints; a failed operation retries without
+replaying successful siblings. Cleanup and credit cannot delay feedback
+dispatch or reopen terminal truth.
+
+The synchronous End route has a 5.5-second server breaker below the browser's
+6.5-second transport deadline. Lock, statement, auth, or route exhaustion is a
+private retryable `503`; it is not an authorization failure. The three-second
+End acceptance SLO remains the operating upper bound, while the larger route
+breaker is a fail-safe that guarantees control returns to the reconciliation
+loop.
 
 Settlement and dispatch are separate typed workflow boundaries. Background
 user-end and system workflows call both boundaries in sequence. A hard-deadline
@@ -83,8 +97,12 @@ truth commits, new distinct events are closed while equivalent event-ID replays
 stay idempotent. Hard deadlines use semantic cutoff `D`: audio stops at `D`,
 only evidence measured at or before `D` is eligible, and settlement records `D`
 even if its database acknowledgement arrives during cleanup grace. The
-finalizer then calculates one locked transcript snapshot for statistics,
-feedback eligibility, and outcome. An invalid snapshot may versionedly refine
+finalizer then freezes `transcript_evidence_version=1`, the semantic cutoff,
+the evidence classification, and one immutable committed boundary per writer
+in the same transaction as terminal truth and the feedback outbox. Statistics,
+feedback eligibility, and outcome use only turns inside those boundaries. The
+feedback worker later reads that frozen prefix, never the mutable session tail.
+An invalid snapshot may versionedly refine
 the matching provisional user-end, deadline, or reconnect reason to
 `insufficient_signal`; provider and terminal reasons are not rewritten.
 
@@ -137,9 +155,12 @@ after dispatch is `sent` or feedback is `not_required`, and only when the
 independent room-cleanup claim is acknowledged. A replay reuses terminal truth and the outbox
 fence, so it cannot emit a second accepted feedback event.
 
-A crash between provider acknowledgement and the `sent` write can cause a
-later attempt. Attempt fencing and the idempotent feedback worker make
-concurrent or delayed events converge on the same feedback row.
+A feedback event send has a three-second provider deadline. A send timeout
+marks only the matching fenced claim `failed`, allowing an immediate safe retry
+without waiting for the two-minute stale-sender lease. A crash between provider
+acknowledgement and the `sent` write can cause a later attempt. Attempt fencing
+and the idempotent feedback worker make concurrent or delayed events converge
+on the same feedback row.
 
 ## API And Client Behavior
 
@@ -149,10 +170,13 @@ replay returns HTTP 200. A deferred immediate event send still returns 202
 because the `ending` row is recovered every minute. Storage and authorization
 failures return non-2xx.
 
-The browser bounds acceptance to five seconds. On any 2xx response it closes
+The browser bounds acceptance transport to 6.5 seconds, while the operating
+acceptance upper bound remains three seconds. On any 2xx response it closes
 the interview surface and navigates immediately. On an ambiguous transport
-failure it polls lifecycle truth; `ending` is sufficient for navigation and
-never requires the candidate to keep the room page open.
+failure it polls lifecycle truth through bounded, abortable reads; `ending` is
+sufficient for navigation and never requires the candidate to keep the room
+page open. The same client deadline applies to an idempotent End retry, so a
+stalled transport cannot permanently own the reconciliation loop.
 
 `POST /api/interview/runtime-settlement` accepts only an authenticated,
 owner-scoped `sessionId`. It derives the cutoff from database time bounded by
@@ -173,9 +197,11 @@ deadline recovery. Other terminal reasons preserve the existing retry behavior
 and claim a new attempt identity only when the stored state is retryable. No
 path creates a second feedback row.
 
-`GET /api/session/:sessionId` exposes `feedbackReady`. The deadline UI waits
-for both terminal lifecycle truth and `feedbackReady=true` before navigating
-away from the interview saving state.
+`GET /api/session/:sessionId` exposes `feedbackReady` for compatibility and
+diagnostics. The focused room hands presentation to the feedback lifecycle as
+soon as owned truth is `ending` or terminal; it does not wait for
+`feedbackReady=true`. The feedback API continues to report `settling` and to
+withhold dispatch/content while deadline room cleanup is unacknowledged.
 
 A reconnect-timeout owner must keep the room and agent alive long enough to
 send a reliable trusted metadata-only settlement request targeted to the
@@ -189,6 +215,12 @@ deadline room-cleanup claim is still `pending`, including refined
 `insufficient_signal` outcomes, plus acknowledged deadline-owned sessions with
 a retryable eligible feedback outbox. Exhausting one event's retry budget
 therefore cannot strand a live room or an acknowledged feedback dispatch.
+
+The minute user-end recovery scan includes both accepted `ending/user_end`
+sessions and terminal sessions whose eligible feedback generation/outbox state
+is retryable. Terminal outbox recovery resumes at feedback dispatch and does
+not repeat the LiveKit settlement request. Deadline-owned sessions with pending
+room-cleanup acknowledgement remain owned by the deadline recovery scan.
 
 ## Acceptance Evidence
 
@@ -210,5 +242,8 @@ therefore cannot strand a live room or an acknowledged feedback dispatch.
   terminalization.
 - A credit-settlement exception after terminal commit leaves already-dispatched
   feedback unchanged and remains idempotently recoverable.
+- A failure at finalization, feedback dispatch, cleanup scheduling, or credit
+  convergence retries only that durable checkpoint; successful sibling steps
+  remain memoized.
 - Reconnect settlement request and durable acknowledgement occur before room
   deletion; missing acknowledgement fails closed.

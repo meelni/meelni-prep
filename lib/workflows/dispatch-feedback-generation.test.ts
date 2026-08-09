@@ -8,6 +8,7 @@ import type {
 import { feedbackGenerationEventId } from "@/lib/db/feedback-event-id";
 import {
   dispatchFeedbackGenerationWorkflow,
+  FEEDBACK_DISPATCH_SEND_TIMEOUT_MS,
   type DispatchFeedbackGenerationDeps,
 } from "./dispatch-feedback-generation";
 
@@ -77,6 +78,25 @@ test("failed send remains retryable with a unique event identity per attempt", a
   assert.deepEqual(sentIds, [EVENT_ID, RETRY_EVENT_ID]);
   assert.deepEqual(failures, [SESSION_ID]);
   assert.equal((await store.get(SESSION_ID))?.attempts, 2);
+});
+
+test("a stalled provider send fails its fenced claim inside the dispatch budget", async () => {
+  const store = createMemoryStore();
+  const failures: Array<string | null> = [];
+  const resultPromise = dispatchFeedbackGenerationWorkflow(
+    { sessionId: SESSION_ID, userId: USER_ID, tier: "full" },
+    createDeps(store, () => new Promise(() => undefined), {
+      sendTimeoutMs: 5,
+      reportFailure: (correlationId) => failures.push(correlationId),
+    })
+  );
+
+  const result = await resultPromise;
+
+  assert.equal(FEEDBACK_DISPATCH_SEND_TIMEOUT_MS, 3_000);
+  assert.equal(result.disposition, "failed");
+  assert.equal((await store.get(SESSION_ID))?.status, "failed");
+  assert.deepEqual(failures, [SESSION_ID]);
 });
 
 test("an already sent dispatch is idempotent", async () => {

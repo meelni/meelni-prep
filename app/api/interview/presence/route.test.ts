@@ -81,6 +81,21 @@ describe("POST /api/interview/presence", () => {
     });
   });
 
+  it("reports terminal lifecycle truth as no longer joinable", async () => {
+    mockAuth({ id: "user-a" });
+    vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "terminal",
+    });
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "session_not_joinable",
+    });
+  });
+
   it("does not expose cross-user session existence", async () => {
     mockAuth({ id: "user-a" });
     vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockResolvedValue({
@@ -90,6 +105,27 @@ describe("POST /api/interview/presence", () => {
 
     const response = await POST(request({ sessionId: SESSION_ID }));
     expect(response.status).toBe(404);
+  });
+
+  it("returns retryable unavailability before a stalled reconciliation can hold the route", async () => {
+    vi.useFakeTimers();
+    mockAuth({ id: "user-a" });
+    vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockReturnValue(
+      new Promise(() => undefined)
+    );
+
+    try {
+      const responsePromise = POST(request({ sessionId: SESSION_ID }));
+      await vi.advanceTimersByTimeAsync(3_000);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        error: "interview_presence_unavailable",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

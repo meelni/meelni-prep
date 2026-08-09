@@ -67,35 +67,81 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
+import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
+import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
 import { isFeedbackDispatchReadyForVisibility } from "@/lib/db/feedback-dispatch";
 import { isInterviewDeadlineRoomCleanupAcknowledged } from "@/lib/db/session-deadlines";
 import {
   attachCanonicalInterviewDeadline,
   InterviewSessionDeadlineUnavailableError,
 } from "@/lib/workflows/interview-session-details";
+import {
+  CUSTOMER_READ_ROUTE_DEADLINE_MS,
+  DEPENDENCY_RETRY_AFTER_SECONDS,
+  isDeadlineExceededError,
+  withDeadline,
+} from "@/lib/http/deadline";
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    // Verify authentication
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return await withDeadline(
+      "interview_session_read",
+      handleSessionRead(params),
+      CUSTOMER_READ_ROUTE_DEADLINE_MS
+    );
+  } catch (error) {
+    if (
+      isDeadlineExceededError(error) ||
+      isRetryableDatabaseContentionError(error) ||
+      isRetryableSupabaseAuthError(error)
+    ) {
+      return NextResponse.json(
+        { error: "session_read_unavailable", retryable: true },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Retry-After": String(DEPENDENCY_RETRY_AFTER_SECONDS),
+          },
+        }
+      );
     }
+    console.error("session_read_failed");
+    return NextResponse.json(
+      { error: "Failed to fetch session" },
+      { status: 500 }
+    );
+  }
+}
 
-    const { sessionId } = await params;
+async function handleSessionRead(params: Promise<{ sessionId: string }>) {
+  // Verify authentication
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
+  if (authError && isRetryableSupabaseAuthError(authError)) {
+    throw authError;
+  }
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { sessionId } = await params;
+
+  return withInteractiveReadTransaction(async (database) => {
+    // Ownership, lifecycle, and feedback visibility come from one bounded
+    // database snapshot. A timed-out read must release the single serverless
+    // connection before the browser retries.
+    const isOwner = await isSessionOwnedByUser(sessionId, user.id, database);
     if (!isOwner) {
       return NextResponse.json(
         { error: "Session not found or access denied" },
@@ -103,14 +149,13 @@ export async function GET(
       );
     }
 
-    // Get session
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, database);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
     try {
-      const feedback = await getFeedbackBySessionId(sessionId);
+      const feedback = await getFeedbackBySessionId(sessionId, database);
       return NextResponse.json({
         session: {
           ...attachCanonicalInterviewDeadline(session),
@@ -135,11 +180,5 @@ export async function GET(
       }
       throw error;
     }
-  } catch {
-    console.error("session_read_failed");
-    return NextResponse.json(
-      { error: "Failed to fetch session" },
-      { status: 500 }
-    );
-  }
+  });
 }

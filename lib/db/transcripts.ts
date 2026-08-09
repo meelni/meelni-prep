@@ -1,6 +1,7 @@
 import { db } from "./index";
 import {
   interviewSession,
+  transcriptEvidenceWriterCutoff,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
   transcriptRuntimeWriter,
@@ -10,7 +11,12 @@ import {
   hasImpossibleWriterTurnOrder,
   transcriptChronologicalOrder,
 } from "./transcript-ordering";
-import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, lte, sql } from "drizzle-orm";
+import {
+  deriveTranscriptWriterProgress,
+  hasTranscriptWriterGap,
+  type TranscriptWriterEvidenceFact,
+} from "./transcript-writer-progress";
 import type {
   TranscriptEvent,
   TranscriptInterruptionMarker,
@@ -55,6 +61,8 @@ export interface TranscriptRuntimeSettlementReadiness {
   missingCount: number;
   currentWriterGeneration: number | null;
   currentWriterState: "settled" | "degraded" | null;
+  unhealthyWriterCount?: number;
+  gapWriterCount?: number;
   ready: boolean;
 }
 
@@ -66,6 +74,9 @@ export async function getTranscriptRuntimeSettlementReadiness(
     const rows = await tx
       .select({
         generation: transcriptRuntimeWriter.generation,
+        integrityState: transcriptRuntimeWriter.integrityState,
+        lastObservedSequence: transcriptRuntimeWriter.lastObservedSequence,
+        committedSequence: transcriptRuntimeWriter.committedSequence,
         settlementState: transcriptRuntimeSettlement.state,
       })
       .from(transcriptRuntimeWriter)
@@ -98,6 +109,12 @@ export async function getTranscriptRuntimeSettlementReadiness(
     const missingCount = rows.filter(
       (row) => row.settlementState === null
     ).length;
+    const unhealthyWriterCount = rows.filter(
+      (row) => row.integrityState !== "healthy"
+    ).length;
+    const gapWriterCount = rows.filter((row) =>
+      hasTranscriptWriterGap(row)
+    ).length;
     return {
       writerCount: rows.length,
       settledCount,
@@ -106,11 +123,15 @@ export async function getTranscriptRuntimeSettlementReadiness(
       currentWriterGeneration: rows.at(-1)?.generation ?? null,
       currentWriterState:
         (rows.at(-1)?.settlementState as "settled" | "degraded" | null) ?? null,
+      unhealthyWriterCount,
+      gapWriterCount,
       ready:
         rows.length > 0 &&
         settledCount === rows.length &&
         degradedCount === 0 &&
-        missingCount === 0,
+        missingCount === 0 &&
+        unhealthyWriterCount === 0 &&
+        gapWriterCount === 0,
     };
   });
 }
@@ -282,6 +303,13 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
         if (!registered) {
           return { ok: false, reason: "writer_not_registered" } as const;
         }
+        if (
+          settlement.state === "settled" &&
+          (registered.integrityState !== "healthy" ||
+            hasTranscriptWriterGap(registered))
+        ) {
+          return { ok: false, reason: "settlement_conflict" } as const;
+        }
         const sessionWindow = transcriptSessionWindow(session);
         if (
           !sessionWindow ||
@@ -376,6 +404,21 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
           return { ok: false, reason: "writer_fenced" } as const;
         }
 
+        const conflictingTurn = await tx
+          .select({ id: transcriptTurn.id })
+          .from(transcriptTurn)
+          .where(
+            and(
+              eq(transcriptTurn.sessionId, marker.session_id),
+              eq(transcriptTurn.writerGeneration, marker.writer_generation),
+              eq(transcriptTurn.sequence, marker.sequence)
+            )
+          )
+          .limit(1);
+        if (conflictingTurn[0]) {
+          return { ok: false, reason: "writer_sequence_conflict" } as const;
+        }
+
         const settlementRows = await tx
           .select({ sessionId: transcriptRuntimeSettlement.sessionId })
           .from(transcriptRuntimeSettlement)
@@ -436,6 +479,16 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
           .onConflictDoNothing()
           .returning();
         if (inserted[0]) {
+          await advanceStoredTranscriptWriterProgress(tx, {
+            sessionId: marker.session_id,
+            writerGeneration: marker.writer_generation,
+            evidence: {
+              sequence: marker.sequence,
+              eventId: marker.event_id,
+              evidenceAt: new Date(marker.occurred_at),
+              kind: "marker",
+            },
+          });
           return {
             ok: true,
             disposition: "created",
@@ -549,6 +602,24 @@ export function createDrizzleTranscriptIngestStore(
           return { ok: false, reason: "writer_fenced" } as const;
         }
 
+        const conflictingMarker = await tx
+          .select({ id: transcriptInterruptionMarker.id })
+          .from(transcriptInterruptionMarker)
+          .where(
+            and(
+              eq(transcriptInterruptionMarker.sessionId, event.session_id),
+              eq(
+                transcriptInterruptionMarker.writerGeneration,
+                event.writer_generation
+              ),
+              eq(transcriptInterruptionMarker.sequence, event.sequence)
+            )
+          )
+          .limit(1);
+        if (conflictingMarker[0]) {
+          return { ok: false, reason: "writer_sequence_conflict" } as const;
+        }
+
         const settlementRows = await tx
           .select({ sessionId: transcriptRuntimeSettlement.sessionId })
           .from(transcriptRuntimeSettlement)
@@ -643,6 +714,16 @@ export function createDrizzleTranscriptIngestStore(
           .onConflictDoNothing()
           .returning();
         if (inserted[0]) {
+          await advanceStoredTranscriptWriterProgress(tx, {
+            sessionId: event.session_id,
+            writerGeneration: event.writer_generation,
+            evidence: {
+              sequence: event.sequence,
+              eventId: event.event_id,
+              evidenceAt: new Date(event.ended_at),
+              kind: "turn",
+            },
+          });
           return {
             ok: true,
             disposition: "created",
@@ -687,6 +768,111 @@ export function createDrizzleTranscriptIngestStore(
       });
     },
   };
+}
+
+type TranscriptPersistenceTransaction = Parameters<
+  Parameters<TranscriptPersistenceDatabase["transaction"]>[0]
+>[0];
+
+async function advanceStoredTranscriptWriterProgress(
+  tx: TranscriptPersistenceTransaction,
+  input: {
+    sessionId: string;
+    writerGeneration: number;
+    evidence: TranscriptWriterEvidenceFact;
+  }
+): Promise<void> {
+  const writerRows = await tx
+    .select()
+    .from(transcriptRuntimeWriter)
+    .where(
+      and(
+        eq(transcriptRuntimeWriter.sessionId, input.sessionId),
+        eq(transcriptRuntimeWriter.generation, input.writerGeneration)
+      )
+    )
+    .limit(1)
+    .for("update");
+  const writer = writerRows[0];
+  if (!writer) throw new Error("Transcript writer disappeared during ingest");
+
+  let evidence = [input.evidence];
+  if (
+    input.evidence.sequence === writer.committedSequence + 1 &&
+    writer.lastObservedSequence > input.evidence.sequence
+  ) {
+    const upperSequence = Math.max(
+      writer.lastObservedSequence,
+      input.evidence.sequence
+    );
+    const [turns, markers] = await Promise.all([
+      tx
+        .select({
+          sequence: transcriptTurn.sequence,
+          eventId: transcriptTurn.eventId,
+          evidenceAt: transcriptTurn.endedAt,
+        })
+        .from(transcriptTurn)
+        .where(
+          and(
+            eq(transcriptTurn.sessionId, input.sessionId),
+            eq(transcriptTurn.writerGeneration, input.writerGeneration),
+            gt(transcriptTurn.sequence, writer.committedSequence),
+            lte(transcriptTurn.sequence, upperSequence)
+          )
+        ),
+      tx
+        .select({
+          sequence: transcriptInterruptionMarker.sequence,
+          eventId: transcriptInterruptionMarker.eventId,
+          evidenceAt: transcriptInterruptionMarker.occurredAt,
+        })
+        .from(transcriptInterruptionMarker)
+        .where(
+          and(
+            eq(transcriptInterruptionMarker.sessionId, input.sessionId),
+            eq(
+              transcriptInterruptionMarker.writerGeneration,
+              input.writerGeneration
+            ),
+            gt(transcriptInterruptionMarker.sequence, writer.committedSequence),
+            lte(transcriptInterruptionMarker.sequence, upperSequence)
+          )
+        ),
+    ]);
+    evidence = [
+      ...turns.flatMap((turn) =>
+        turn.eventId && turn.evidenceAt && turn.sequence !== null
+          ? [
+              {
+                sequence: turn.sequence,
+                eventId: turn.eventId,
+                evidenceAt: turn.evidenceAt,
+                kind: "turn" as const,
+              },
+            ]
+          : []
+      ),
+      ...markers.map((marker) => ({
+        ...marker,
+        kind: "marker" as const,
+      })),
+    ];
+  }
+
+  const progress = deriveTranscriptWriterProgress({
+    current: writer,
+    evidence,
+  });
+  await tx
+    .update(transcriptRuntimeWriter)
+    .set({ ...progress, progressUpdatedAt: sql`CURRENT_TIMESTAMP` })
+    .where(
+      and(
+        eq(transcriptRuntimeWriter.sessionId, input.sessionId),
+        eq(transcriptRuntimeWriter.generation, input.writerGeneration)
+      )
+    );
 }
 
 async function configureTranscriptPersistenceTimeouts(tx: {
@@ -925,8 +1111,11 @@ function storedSettlementMatches(
 /**
  * Get all transcript turns for a session, ordered chronologically
  */
-export async function getSessionTranscript(sessionId: string) {
-  const turns = await db
+export async function getSessionTranscript(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  const turns = await database
     .select()
     .from(transcriptTurn)
     .where(eq(transcriptTurn.sessionId, sessionId))
@@ -939,8 +1128,100 @@ export async function getSessionTranscript(sessionId: string) {
  * Return only the canonical user-turn fields required to verify persisted
  * feedback evidence at the authenticated read boundary.
  */
-export async function getFeedbackEvidenceTurns(sessionId: string) {
-  return buildFeedbackEvidenceTurnsQuery(db, sessionId);
+export async function getFeedbackEvidenceTurns(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+) {
+  return buildFeedbackEvidenceTurnsQuery(database, sessionId);
+}
+
+/**
+ * Read only the immutable, terminally frozen transcript prefix authorized for
+ * evaluation. Legacy sessions retain the bounded pre-watermark behavior.
+ */
+export async function getFrozenFeedbackTranscriptTurns(
+  sessionId: string,
+  database: TranscriptPersistenceDatabase = db
+) {
+  return database.transaction(async (tx) => {
+    const sessions = await tx
+      .select({
+        evidenceVersion: interviewSession.transcriptEvidenceVersion,
+        evidenceState: interviewSession.transcriptEvidenceState,
+        cutoffAt: interviewSession.transcriptCutoffAt,
+      })
+      .from(interviewSession)
+      .where(eq(interviewSession.id, sessionId))
+      .limit(1);
+    const session = sessions[0];
+    if (!session) return [];
+    if (session.evidenceVersion !== 1 || !session.cutoffAt) {
+      return buildBoundedFeedbackTranscriptQuery(tx, sessionId);
+    }
+    if (
+      session.evidenceState !== "complete" &&
+      session.evidenceState !== "partial"
+    ) {
+      return [];
+    }
+
+    const cutoffs = await tx
+      .select({
+        writerGeneration: transcriptEvidenceWriterCutoff.writerGeneration,
+        committedSequence: transcriptEvidenceWriterCutoff.committedSequence,
+      })
+      .from(transcriptEvidenceWriterCutoff)
+      .where(eq(transcriptEvidenceWriterCutoff.sessionId, sessionId));
+    const committedByGeneration = new Map(
+      cutoffs.map((cutoff) => [
+        cutoff.writerGeneration,
+        cutoff.committedSequence,
+      ])
+    );
+    if (committedByGeneration.size === 0) return [];
+
+    const rows = await buildBoundedFeedbackTranscriptQuery(
+      tx,
+      sessionId,
+      session.cutoffAt
+    );
+    return rows.flatMap((row) => {
+      if (row.writerGeneration === null || row.sequence === null) return [];
+      const committedSequence = committedByGeneration.get(row.writerGeneration);
+      return committedSequence !== undefined &&
+        row.sequence <= committedSequence
+        ? [row]
+        : [];
+    });
+  });
+}
+
+function buildBoundedFeedbackTranscriptQuery(
+  database: Pick<typeof db, "select">,
+  sessionId: string,
+  cutoffAt?: Date
+) {
+  return database
+    .select({
+      eventId: transcriptTurn.eventId,
+      speaker: transcriptTurn.speaker,
+      text: transcriptTurn.text,
+      contractVersion: transcriptTurn.contractVersion,
+      deliveryState: transcriptTurn.deliveryState,
+      writerGeneration: transcriptTurn.writerGeneration,
+      sequence: transcriptTurn.sequence,
+    })
+    .from(transcriptTurn)
+    .where(
+      cutoffAt
+        ? and(
+            eq(transcriptTurn.sessionId, sessionId),
+            lte(transcriptTurn.endedAt, cutoffAt)
+          )
+        : eq(transcriptTurn.sessionId, sessionId)
+    )
+    .orderBy(...transcriptChronologicalOrder())
+    .limit(MAX_CANONICAL_TURNS_PER_SESSION + 1);
 }
 
 export function buildFeedbackEvidenceTurnsQuery(

@@ -7,6 +7,7 @@ import {
 import {
   createDrizzleFeedbackGenerationStore,
   isFeedbackGenerationLeaseExpired,
+  isFeedbackQueueLeaseExpired,
   type FeedbackGenerationRecord,
   type FeedbackGenerationStore,
 } from "@/lib/db/feedback-generation-state";
@@ -31,11 +32,7 @@ interface RecoverySession {
   userId: string;
   lifecycleState: InterviewLifecycleState;
   terminalReason: InterviewTerminalReason | null;
-  deadlineRoomCleanupStatus:
-    | "pending"
-    | "deleted"
-    | "already_absent"
-    | null;
+  deadlineRoomCleanupStatus: "pending" | "deleted" | "already_absent" | null;
 }
 
 export interface RecoverFeedbackGenerationDeps {
@@ -54,10 +51,7 @@ export interface RecoverFeedbackGenerationDeps {
 export type RecoverFeedbackGenerationResult =
   | {
       ok: false;
-      reason:
-        | "not_found"
-        | "session_not_ended"
-        | "deadline_settlement_pending";
+      reason: "not_found" | "session_not_ended" | "deadline_settlement_pending";
     }
   | {
       ok: true;
@@ -133,7 +127,8 @@ export async function recoverFeedbackGenerationWorkflow(
 
   if (
     generation.status === "failed" ||
-    isFeedbackGenerationLeaseExpired(generation, deps.now())
+    isFeedbackGenerationLeaseExpired(generation, deps.now()) ||
+    isFeedbackQueueLeaseExpired(generation, deps.now())
   ) {
     const prepared = await deps.store.prepareRetry({
       sessionId: input.sessionId,

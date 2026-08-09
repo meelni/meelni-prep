@@ -1,3 +1,8 @@
+import {
+  CUSTOMER_CLIENT_FETCH_DEADLINE_MS,
+  fetchWithDeadlineUsing,
+} from "@/lib/http/deadline";
+
 const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 const JOINABLE_SESSION_STATES = new Set([
   "created",
@@ -26,14 +31,24 @@ export async function reconcileAmbiguousInterviewEnd(input: {
   sessionId: string;
   retryEnd: boolean;
   request?: typeof fetch;
+  signal?: AbortSignal;
+  requestDeadlineMs?: number;
 }): Promise<InterviewEndReconciliationResult> {
   const request = input.request ?? fetch;
+  const requestDeadlineMs =
+    input.requestDeadlineMs ?? CUSTOMER_CLIENT_FETCH_DEADLINE_MS;
   let lifecycle: unknown;
 
   try {
-    const response = await request(`/api/session/${input.sessionId}`, {
-      cache: "no-store",
-    });
+    const response = await fetchWithDeadlineUsing(
+      request,
+      `/api/session/${input.sessionId}`,
+      {
+        cache: "no-store",
+        signal: input.signal,
+      },
+      requestDeadlineMs
+    );
     if (!response.ok) {
       return {
         status: "waiting",
@@ -94,11 +109,17 @@ export async function reconcileAmbiguousInterviewEnd(input: {
   }
 
   try {
-    const response = await request("/api/interview/end", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: input.sessionId }),
-    });
+    const response = await fetchWithDeadlineUsing(
+      request,
+      "/api/interview/end",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: input.sessionId }),
+        signal: input.signal,
+      },
+      requestDeadlineMs
+    );
     const payload = (await response.json().catch(() => null)) as unknown;
     if (response.ok) {
       return {

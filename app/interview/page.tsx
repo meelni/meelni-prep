@@ -45,8 +45,9 @@ import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { fetchWithDeadline } from "@/lib/http/deadline";
+import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
 
-const TERMINAL_SESSION_STATES = new Set(["completed", "abandoned", "failed"]);
 const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
 
 interface InterviewSession {
@@ -145,6 +146,8 @@ export function InterviewPageContent() {
   const [connectionOwnerId, setConnectionOwnerId] = useState<string | null>(
     null
   );
+  const [transcriptHydrationGeneration, setTranscriptHydrationGeneration] =
+    useState(0);
   const [endReconciliation, setEndReconciliation] =
     useState<EndReconciliationState | null>(null);
   const initializedRef = useRef(false);
@@ -203,6 +206,7 @@ export function InterviewPageContent() {
     setRecoveringConnection(false);
     setDisconnectTimedOut(false);
     setCredentialGeneration(0);
+    setTranscriptHydrationGeneration(0);
     setShowEndModal(false);
     setIsEndingSession(false);
     setEndSessionError(null);
@@ -237,9 +241,11 @@ export function InterviewPageContent() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`/api/session/${sessionId}`, {
-        cache: "no-store",
-      });
+      const response = await fetchWithDeadline(
+        `/api/session/${sessionId}`,
+        { cache: "no-store" },
+        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch session details");
@@ -250,29 +256,22 @@ export function InterviewPageContent() {
       };
       if (ownerIdRef.current !== requestOwnerId) return;
       const normalizedSession = normalizePersistedSession(sessionData);
-      setSession(normalizedSession);
-      setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       if (
         canNavigateToInterviewFeedback({
           lifecycleState: normalizedSession.lifecycle_state,
-          feedbackReady: sessionData.feedbackReady,
         })
       ) {
         router.replace(`/feedback/${sessionId}/loading`);
         return;
       }
 
-      if (
-        normalizedSession.lifecycle_state === "ending" ||
-        (normalizedSession.lifecycle_state !== undefined &&
-          normalizedSession.lifecycle_state !== null &&
-          TERMINAL_SESSION_STATES.has(normalizedSession.lifecycle_state))
-      ) {
-        setDisconnectTimedOut(true);
-        setLoading(false);
-        return;
-      }
+      setSession(normalizedSession);
+      // The authenticated session read establishes ownership before LiveKit
+      // credentials exist. Keep the server-owned End command reachable while
+      // the provider handoff is still pending.
+      setConnectionOwnerId(requestOwnerId);
+      setSessionStartTime(new Date(normalizedSession.started_at).getTime());
 
       const initialCredentials = consumeInitialInterviewRoomCredentials({
         sessionId,
@@ -282,7 +281,6 @@ export function InterviewPageContent() {
       if (initialCredentials) {
         setToken(initialCredentials.token);
         setUrl(initialCredentials.url);
-        setConnectionOwnerId(requestOwnerId);
         setLoading(false);
         return;
       }
@@ -292,6 +290,7 @@ export function InterviewPageContent() {
         normalizedSession.livekit_room_name
       );
       if (ownerIdRef.current !== requestOwnerId) return;
+      if (endIntentRef.current) return;
       if (!credentialResult.ok) {
         if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
           setToken("");
@@ -322,7 +321,6 @@ export function InterviewPageContent() {
 
       setToken(credentialResult.credentials.token);
       setUrl(credentialResult.credentials.url);
-      setConnectionOwnerId(requestOwnerId);
       setLoading(false);
     } catch (err) {
       if (ownerIdRef.current !== requestOwnerId) return;
@@ -416,12 +414,13 @@ export function InterviewPageContent() {
     const requestOwnerId = connectionOwnerId;
     const requestSessionId = activeSessionId;
     let cancelled = false;
+    const controller = new AbortController();
 
     const hydrateDurableTranscript = async () => {
       try {
-        const response = await fetch(
+        const response = await fetchWithDeadline(
           `/api/session/${requestSessionId}/transcript`,
-          { cache: "no-store" }
+          { cache: "no-store", signal: controller.signal }
         );
         if (!response.ok) return;
         const payload = (await response.json()) as {
@@ -491,13 +490,15 @@ export function InterviewPageContent() {
       }
     };
 
-    // Agent-state transitions provide a bounded per-turn recovery trigger when
-    // a post-persistence LiveKit display notification is delayed or dropped.
+    // Runtime packets are the normal post-persistence display path. Hydrate
+    // once after authorization and resync only after a real connection
+    // recovery; turn-state churn must never fan out full transcript reads.
     void hydrateDurableTranscript();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [activeSessionId, agentState, connectionOwnerId, connectionStatus]);
+  }, [activeSessionId, connectionOwnerId, transcriptHydrationGeneration]);
 
   const handleAgentStateChange = useCallback(
     (state: string) => {
@@ -523,6 +524,7 @@ export function InterviewPageContent() {
       !connectionOwnerId ||
       connectionOwnerId !== ownerIdRef.current ||
       deadlineReachedRef.current ||
+      endIntentRef.current ||
       disconnectTimedOut ||
       credentialRequestInFlightRef.current ||
       Date.now() - lastCredentialRequestAtRef.current < 750
@@ -541,6 +543,7 @@ export function InterviewPageContent() {
 
     if (
       deadlineReachedRef.current ||
+      endIntentRef.current ||
       ownerIdRef.current !== requestOwnerId ||
       connectionOwnerId !== requestOwnerId
     ) {
@@ -605,6 +608,10 @@ export function InterviewPageContent() {
         setRecoveringConnection(true);
       }
 
+      if (state === "delayed") {
+        setRecoveringConnection(false);
+      }
+
       if (state === "disconnected") {
         void refreshRoomCredentials();
       }
@@ -623,6 +630,7 @@ export function InterviewPageContent() {
           credentialRetryTimerRef.current = undefined;
         }
         setRecoveringConnection(false);
+        setTranscriptHydrationGeneration((generation) => generation + 1);
         recoveredStatusTimerRef.current = window.setTimeout(() => {
           setConnectionStatus("connected");
           recoveredStatusTimerRef.current = undefined;
@@ -656,19 +664,23 @@ export function InterviewPageContent() {
     let cancelled = false;
     let pollInFlight = false;
     let pollTimer: number | undefined;
+    const controller = new AbortController();
 
     const pollTerminalTruth = async () => {
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        const response = await fetch(`/api/session/${activeSessionId}`, {
-          cache: "no-store",
-        });
+        const response = await fetchWithDeadline(
+          `/api/session/${activeSessionId}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        );
         if (response.ok) {
           const payload = (await response.json()) as {
             session?: {
               lifecycleState?: string | null;
-              feedbackReady?: boolean;
             };
           };
           if (cancelled) return;
@@ -703,6 +715,7 @@ export function InterviewPageContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      controller.abort();
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -718,6 +731,7 @@ export function InterviewPageContent() {
     let cancelled = false;
     let pollInFlight = false;
     let pollTimer: number | undefined;
+    const controller = new AbortController();
 
     const pollEndReconciliation = async () => {
       if (pollInFlight || cancelled) return;
@@ -727,6 +741,7 @@ export function InterviewPageContent() {
       const result = await reconcileAmbiguousInterviewEnd({
         sessionId: endReconciliation.sessionId,
         retryEnd,
+        signal: controller.signal,
       });
       pollInFlight = false;
       if (cancelled || ownerIdRef.current !== endReconciliation.ownerId) return;
@@ -760,6 +775,7 @@ export function InterviewPageContent() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      controller.abort();
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -793,18 +809,16 @@ export function InterviewPageContent() {
         : 0;
 
       let response: Response;
-      const controller = new AbortController();
-      const timeout = window.setTimeout(
-        () => controller.abort(),
-        END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
-      );
       try {
-        response = await fetch("/api/interview/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: requestSessionId }),
-          signal: controller.signal,
-        });
+        response = await fetchWithDeadline(
+          "/api/interview/end",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: requestSessionId }),
+          },
+          END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
+        );
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
         console.warn("[Interview] end_transport_ambiguous", {
@@ -821,8 +835,6 @@ export function InterviewPageContent() {
           durationSeconds: duration,
         });
         return;
-      } finally {
-        window.clearTimeout(timeout);
       }
       if (ownerIdRef.current !== requestOwnerId) return;
       const data = (await response.json().catch(() => null)) as {
@@ -870,7 +882,36 @@ export function InterviewPageContent() {
     }
   };
 
-  if (authLoading || loading) {
+  const openEndSessionConfirmation = () => {
+    if (deadlineReached || endIntentRef.current || endReconciliation) return;
+    endSessionReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setShowEndModal(true);
+  };
+
+  const endSessionModal = session ? (
+    <EndSessionModal
+      isOpen={showEndModal && !deadlineReached}
+      isLoading={isEndingSession}
+      error={endSessionError}
+      capturedAnswerCount={
+        groupTranscriptTurns(transcript).filter(
+          (turn) => turn.speaker === "user" && turn.text.trim().length > 0
+        ).length
+      }
+      terminalIntent={endSessionError !== null}
+      onClose={() => {
+        setShowEndModal(false);
+        setEndSessionError(null);
+      }}
+      onConfirm={handleEndSession}
+      returnFocusRef={endSessionReturnFocusRef}
+    />
+  ) : null;
+
+  if (authLoading || (loading && (!session || !hasCurrentConnectionOwner))) {
     return (
       <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
@@ -918,10 +959,30 @@ export function InterviewPageContent() {
     recoveringConnection &&
     (!token || !url)
   ) {
-    return <ConnectionRecoveryOverlay status="disconnected" />;
+    return (
+      <>
+        <ConnectionRecoveryOverlay
+          status="disconnected"
+          onEndSession={openEndSessionConfirmation}
+        />
+        {endSessionModal}
+      </>
+    );
   }
 
-  if (!session || !token || !url || !hasCurrentConnectionOwner) {
+  if (session && hasCurrentConnectionOwner && (loading || !token || !url)) {
+    return (
+      <>
+        <ConnectionRecoveryOverlay
+          status="connecting"
+          onEndSession={openEndSessionConfirmation}
+        />
+        {endSessionModal}
+      </>
+    );
+  }
+
+  if (!session || !hasCurrentConnectionOwner) {
     return (
       <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
         <div className="flex flex-col items-center gap-4">
@@ -965,38 +1026,19 @@ export function InterviewPageContent() {
           });
         }}
         onEndSession={() => {
-          if (!deadlineReached) {
-            endSessionReturnFocusRef.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-            setShowEndModal(true);
-          }
+          openEndSessionConfirmation();
         }}
       />
-      <EndSessionModal
-        isOpen={showEndModal && !deadlineReached}
-        isLoading={isEndingSession}
-        error={endSessionError}
-        capturedAnswerCount={
-          groupTranscriptTurns(transcript).filter(
-            (turn) => turn.speaker === "user" && turn.text.trim().length > 0
-          ).length
-        }
-        terminalIntent={endSessionError !== null}
-        onClose={() => {
-          setShowEndModal(false);
-          setEndSessionError(null);
-        }}
-        onConfirm={handleEndSession}
-        returnFocusRef={endSessionReturnFocusRef}
-      />
+      {endSessionModal}
       {deadlineReached && <DeadlineReachedOverlay />}
       {!deadlineReached && disconnectTimedOut && (
         <ConnectionRecoveryOverlay status="timed_out" />
       )}
       {!deadlineReached && !disconnectTimedOut && recoveringConnection && (
-        <ConnectionRecoveryOverlay status={connectionStatus} />
+        <ConnectionRecoveryOverlay
+          status={connectionStatus}
+          onEndSession={openEndSessionConfirmation}
+        />
       )}
     </LiveKitRoomWrapper>
   );
@@ -1044,11 +1086,12 @@ function InterviewRoomContent({
   return (
     <InterviewRoomSurface
       company={session.question?.company}
-      connectionIndicator={<ConnectionIndicator />}
+      connectionIndicator={<ConnectionIndicator status={connectionStatus} />}
       connectionStatus={connectionStatus}
       controls={
         <InterviewControls
           isMuted={isMuted}
+          muteDisabled={!connectionReady || recoveringConnection}
           onToggleMute={onToggleMute}
           onEndSession={onEndSession}
         />
@@ -1056,7 +1099,6 @@ function InterviewRoomContent({
       deadlineReached={deadlineReached}
       mediaVisualizer={<AudioVisualizer agentState={agentState} />}
       question={session.question?.text}
-      recoveringConnection={recoveringConnection}
       roundType={session.config?.roundType}
       timer={
         <TimerDisplay
@@ -1130,10 +1172,13 @@ export function EndReconciliationOverlay() {
 
 function ConnectionRecoveryOverlay({
   status,
+  onEndSession,
 }: {
   status: InterviewConnectionStatus | "timed_out";
+  onEndSession?: () => void;
 }) {
   const timedOut = status === "timed_out";
+  const connecting = status === "connecting";
   return (
     <div
       className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
@@ -1151,16 +1196,36 @@ function ConnectionRecoveryOverlay({
           <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
         )}
         <StatusPill tone={timedOut ? "warning" : "primary"} className="mb-3">
-          {timedOut ? "Connection ended" : "Reconnecting"}
+          {timedOut
+            ? "Connection ended"
+            : connecting
+              ? "Connecting"
+              : "Reconnecting"}
         </StatusPill>
         <AppSurfaceTitle className="mb-2">
-          {timedOut ? "Closing your interview" : "Restoring your interview"}
+          {timedOut
+            ? "Closing your interview"
+            : connecting
+              ? "Connecting to your interviewer"
+              : "Restoring your interview"}
         </AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
           {timedOut
             ? "The reconnect window ended. We’re closing this interview once and preparing the available feedback. Keep this page open."
-            : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection."}
+            : connecting
+              ? "Your interview is saved while we prepare the room. You can end safely without waiting for the connection."
+              : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection. You can still end safely."}
         </AppSurfaceDescription>
+        {!timedOut && onEndSession && (
+          <div className="mt-6 flex justify-center">
+            <InterviewControls
+              isMuted
+              muteDisabled
+              onToggleMute={() => undefined}
+              onEndSession={onEndSession}
+            />
+          </div>
+        )}
       </AppSurface>
     </div>
   );
@@ -1181,11 +1246,15 @@ async function requestInterviewRoomCredentialsWithRetry(
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      const response = await fetch("/api/livekit/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
+      const response = await fetchWithDeadline(
+        "/api/livekit/token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        },
+        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      );
       const payload = await response.json().catch(() => null);
 
       if (response.ok) {
@@ -1194,9 +1263,11 @@ async function requestInterviewRoomCredentialsWithRetry(
           expectedRoomName
         );
         if (credentials) {
-          const lifecycleResponse = await fetch(`/api/session/${sessionId}`, {
-            cache: "no-store",
-          });
+          const lifecycleResponse = await fetchWithDeadline(
+            `/api/session/${sessionId}`,
+            { cache: "no-store" },
+            INTERVIEW_START_SLOS.customer_read.upperBoundMs
+          );
           const lifecyclePayload = await lifecycleResponse
             .json()
             .catch(() => null);

@@ -2,6 +2,10 @@ import {
   getLiveKitAgentName,
   getLiveKitEnvironment,
 } from "@/lib/internal/integrations";
+import {
+  FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
+} from "@/lib/operations/interview-lifecycle-slo";
 
 export const SERVICE_HEALTH_CHECKS = [
   "web",
@@ -60,6 +64,8 @@ export interface ServiceHealthEvidence {
 export interface ServiceHealthStore {
   readEvidence(input: {
     staleBefore: Date;
+    feedbackQueueStaleBefore: Date;
+    feedbackGenerationStaleBefore: Date;
     queryTimeoutMs: number;
   }): Promise<ServiceHealthEvidence>;
 }
@@ -116,6 +122,12 @@ export async function assessServiceHealth(
     evidence = await withTimeout(
       dependencies.store.readEvidence({
         staleBefore: new Date(checkedAt.getTime() - STALE_AFTER_MS),
+        feedbackQueueStaleBefore: new Date(
+          checkedAt.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
+        ),
+        feedbackGenerationStaleBefore: new Date(
+          checkedAt.getTime() - FEEDBACK_GENERATION_LEASE_MS
+        ),
         queryTimeoutMs: Math.max(1, timeoutMs - QUERY_TIMEOUT_HEADROOM_MS),
       }),
       timeoutMs

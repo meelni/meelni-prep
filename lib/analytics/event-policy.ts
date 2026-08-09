@@ -121,6 +121,15 @@ const ALLOWED_PROPERTIES: Record<string, readonly string[]> = {
     "region",
     "connection_quality",
   ],
+  interview_start_stage: [
+    "version",
+    "stage",
+    "outcome",
+    "duration_ms",
+    "slo_target_ms",
+    "slo_upper_bound_ms",
+    "latency_class",
+  ],
   error_boundary_triggered: ["error_code", "page"],
   public_demo_authorization: ["outcome", "reason"],
 };

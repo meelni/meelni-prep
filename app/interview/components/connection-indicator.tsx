@@ -6,8 +6,13 @@ import {
   useConnectionQualityIndicator,
   useLocalParticipant,
 } from "@livekit/components-react";
+import type { InterviewConnectionStatus } from "@/components/interview/session-recovery";
 
-export function ConnectionIndicator() {
+export function ConnectionIndicator({
+  status,
+}: {
+  status: InterviewConnectionStatus;
+}) {
   const { localParticipant } = useLocalParticipant();
   const { quality } = useConnectionQualityIndicator({
     participant: localParticipant,
@@ -15,6 +20,30 @@ export function ConnectionIndicator() {
 
   // Map LiveKit connection quality (0-3) to our UI states
   const getQualityState = () => {
+    if (status === "connecting")
+      return {
+        color: "text-info",
+        label: "Interviewer joining",
+        Icon: Wifi,
+      };
+    if (status === "delayed")
+      return {
+        color: "text-warning",
+        label: "Interviewer delayed",
+        Icon: Wifi,
+      };
+    if (status === "reconnecting")
+      return {
+        color: "text-warning",
+        label: "Reconnecting",
+        Icon: Wifi,
+      };
+    if (status === "disconnected")
+      return {
+        color: "text-destructive",
+        label: "Disconnected",
+        Icon: WifiOff,
+      };
     if (quality === "unknown")
       return {
         color: "text-muted-foreground",

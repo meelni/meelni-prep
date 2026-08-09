@@ -69,11 +69,24 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
 import { getSessionTranscript } from "@/lib/db/transcripts";
 import { isSessionOwnedByUser } from "@/lib/db/sessions";
+import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
+import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
+import {
+  CUSTOMER_READ_ROUTE_DEADLINE_MS,
+  DEPENDENCY_RETRY_AFTER_SECONDS,
+  isDeadlineExceededError,
+  withDeadline,
+} from "@/lib/http/deadline";
 
 const PRIVATE_NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store",
+};
+const RETRYABLE_READ_HEADERS = {
+  ...PRIVATE_NO_STORE_HEADERS,
+  "Retry-After": String(DEPENDENCY_RETRY_AFTER_SECONDS),
 };
 
 function transcriptResponse(body: unknown, status = 200) {
@@ -88,33 +101,59 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    // Verify authentication
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    return await withDeadline(
+      "transcript_read",
+      (async () => {
+        // Verify authentication
+        const supabase = await createClient();
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return transcriptResponse({ error: "Unauthorized" }, 401);
-    }
+        if (authError && isRetryableSupabaseAuthError(authError)) {
+          throw authError;
+        }
+        if (authError || !user) {
+          return transcriptResponse({ error: "Unauthorized" }, 401);
+        }
 
-    const { sessionId } = await params;
+        const { sessionId } = await params;
 
-    // Verify user owns the session
-    const isOwner = await isSessionOwnedByUser(sessionId, user.id);
-    if (!isOwner) {
-      return transcriptResponse(
-        { error: "Session not found or access denied" },
-        403
+        const transcript = await withInteractiveReadTransaction(
+          async (database) => {
+            const isOwner = await isSessionOwnedByUser(
+              sessionId,
+              user.id,
+              database
+            );
+            if (!isOwner) return null;
+            return getSessionTranscript(sessionId, database);
+          }
+        );
+        if (transcript === null) {
+          return transcriptResponse(
+            { error: "Session not found or access denied" },
+            403
+          );
+        }
+
+        return transcriptResponse({ turns: transcript });
+      })(),
+      CUSTOMER_READ_ROUTE_DEADLINE_MS
+    );
+  } catch (error) {
+    if (
+      isDeadlineExceededError(error) ||
+      isRetryableDatabaseContentionError(error) ||
+      isRetryableSupabaseAuthError(error)
+    ) {
+      console.warn("Transcript read temporarily unavailable");
+      return NextResponse.json(
+        { error: "transcript_read_unavailable" },
+        { status: 503, headers: RETRYABLE_READ_HEADERS }
       );
     }
-
-    // Get transcript
-    const turns = await getSessionTranscript(sessionId);
-
-    return transcriptResponse({ turns });
-  } catch {
     console.error("Transcript read failed");
     return transcriptResponse({ error: "Failed to fetch transcript" }, 500);
   }

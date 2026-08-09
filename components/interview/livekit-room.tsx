@@ -22,6 +22,9 @@ import {
 } from "@meelni/agent";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { confirmInterviewRuntimeReady } from "@/lib/interview/runtime-connection-confirmation";
+import { buildInterviewStartStageEvent } from "@/lib/operations/interview-start-slo";
+
+const DELAYED_READINESS_RETRY_MS = 5_000;
 
 export interface TranscriptTurn {
   persistable?: boolean;
@@ -72,6 +75,7 @@ export function LiveKitRoomWrapper({
   children,
 }: LiveKitRoomWrapperProps) {
   const connectionStartTime = useRef<number>(Date.now());
+  const transportStageGeneration = useRef<number | null>(null);
   const acceptedTranscriptEvents = useRef(new Set<string>());
   const connectionTracker = useRef<InterviewConnectionTracker>({
     attemptObserved: false,
@@ -85,6 +89,11 @@ export function LiveKitRoomWrapper({
       recoveryObserved: false,
     };
   }, [roomName, sessionId]);
+
+  useEffect(() => {
+    connectionStartTime.current = Date.now();
+    transportStageGeneration.current = null;
+  }, [credentialGeneration]);
 
   return (
     <LiveKitRoom
@@ -112,6 +121,14 @@ export function LiveKitRoomWrapper({
           region: url.includes("livekit.cloud") ? "cloud" : "self-hosted",
           connection_quality: connectionQuality,
         });
+        if (transportStageGeneration.current !== credentialGeneration) {
+          transportStageGeneration.current = credentialGeneration;
+          trackInterviewStartStage(
+            "transport_connection",
+            "succeeded",
+            connectionTime
+          );
+        }
       }}
       onDisconnected={() => {
         console.log("Disconnected from LiveKit room");
@@ -195,19 +212,62 @@ function RoomContent({
 
     const controller = new AbortController();
     const readyStatus = transition.status;
-    connectionStateChangeRef.current(
-      readyStatus === "recovered" ? "reconnecting" : "connecting"
-    );
-    void confirmInterviewRuntimeReady({
-      sessionId,
-      signal: controller.signal,
-    }).then((confirmation) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let delayed = false;
+
+    const confirmReady = async () => {
       if (controller.signal.aborted) return;
       connectionStateChangeRef.current(
-        confirmation === "ready" ? readyStatus : "disconnected"
+        delayed
+          ? "delayed"
+          : readyStatus === "recovered"
+            ? "reconnecting"
+            : "connecting"
       );
-    });
-    return () => controller.abort();
+      const confirmation = await confirmInterviewRuntimeReady({
+        sessionId,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || confirmation.status === "aborted") {
+        return;
+      }
+      if (confirmation.status === "ready") {
+        delayed = false;
+        trackInterviewStartStage(
+          "canonical_readiness",
+          "succeeded",
+          confirmation.durationMs
+        );
+        connectionStateChangeRef.current(readyStatus);
+        return;
+      }
+      if (confirmation.status === "terminal") {
+        trackInterviewStartStage(
+          "canonical_readiness",
+          "terminal",
+          confirmation.durationMs
+        );
+        connectionStateChangeRef.current("disconnected");
+        return;
+      }
+
+      delayed = true;
+      trackInterviewStartStage(
+        "canonical_readiness",
+        "delayed",
+        confirmation.durationMs
+      );
+      connectionStateChangeRef.current("delayed");
+      retryTimer = setTimeout(() => {
+        void confirmReady();
+      }, DELAYED_READINESS_RETRY_MS);
+    };
+
+    void confirmReady();
+    return () => {
+      controller.abort();
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, [connectionState, connectionTracker, sessionId]);
 
   const handleTranscriptMessage = useCallback(
@@ -313,4 +373,22 @@ function RoomContent({
   useDataChannel("transcript_status", handleTranscriptStatus);
 
   return <>{children}</>;
+}
+
+function trackInterviewStartStage(
+  stage: "transport_connection" | "canonical_readiness",
+  outcome: "succeeded" | "delayed" | "terminal",
+  durationMs: number
+) {
+  const event = buildInterviewStartStageEvent({ stage, outcome, durationMs });
+  if (!event) return;
+  analytics.track("interview_start_stage", {
+    version: event.version,
+    stage: event.stage,
+    outcome: event.outcome,
+    duration_ms: event.durationMs,
+    slo_target_ms: event.sloTargetMs,
+    slo_upper_bound_ms: event.sloUpperBoundMs,
+    latency_class: event.latencyClass,
+  });
 }

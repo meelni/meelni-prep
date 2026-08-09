@@ -156,8 +156,9 @@ test("authorization runs before atomic transcript settlement", async () => {
 });
 
 test("workflow passes only the authorized end command to finalization", async () => {
-  let finalizedInput: Parameters<EndInterviewSessionDeps["finalize"]>[0] | null =
-    null;
+  let finalizedInput:
+    | Parameters<EndInterviewSessionDeps["finalize"]>[0]
+    | null = null;
   const input = userEndInput();
   const result = await endInterviewSessionWorkflow(
     input,
@@ -237,6 +238,7 @@ test("hard deadline sends a system time-limit command and dispatches for the sto
             state: "completed",
             version: 3,
             terminalReason: "time_limit",
+            endingAt: new Date("2026-07-09T21:59:55.000Z"),
             endedAt: new Date("2026-07-09T22:00:00.000Z"),
           },
         });
@@ -297,6 +299,7 @@ function completion(
       state: "completed",
       version: 3,
       terminalReason: "user_end",
+      endingAt: new Date("2026-07-09T21:59:55.000Z"),
       endedAt: new Date("2026-07-09T22:00:00.000Z"),
     },
     feedback: feedbackRecord(),
@@ -305,6 +308,7 @@ function completion(
     tier: SessionTier.FULL,
     recommendations: [],
     ...overrides,
+    transcriptEvidence: overrides.transcriptEvidence ?? "available",
   };
 }
 

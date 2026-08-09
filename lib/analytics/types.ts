@@ -92,6 +92,7 @@ export type AnalyticsEvent =
   // Performance Events
   | "page_performance"
   | "livekit_connection_established"
+  | "interview_start_stage"
   | "error_boundary_triggered";
 
 // =============================================================================
@@ -428,6 +429,20 @@ interface PerformanceProperties {
     connection_time_ms: number;
     region?: string;
     connection_quality: "excellent" | "good" | "poor";
+  };
+  interview_start_stage: {
+    version: 1;
+    stage:
+      | "launch_request"
+      | "transport_connection"
+      | "canonical_readiness"
+      | "presence_reconciliation"
+      | "customer_read";
+    outcome: "succeeded" | "delayed" | "terminal" | "aborted" | "failed";
+    duration_ms: number;
+    slo_target_ms: number;
+    slo_upper_bound_ms: number;
+    latency_class: "within_target" | "above_target" | "above_upper_bound";
   };
   error_boundary_triggered: {
     error_message: string;

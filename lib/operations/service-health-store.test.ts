@@ -42,6 +42,8 @@ test("database reader applies a local statement timeout and disjoint evidence qu
     database
   ).read({
     staleBefore: new Date("2026-07-10T19:50:00.000Z"),
+    feedbackQueueStaleBefore: new Date("2026-07-10T19:58:30.000Z"),
+    feedbackGenerationStaleBefore: new Date("2026-07-10T19:55:00.000Z"),
     queryTimeoutMs: 1_900,
   });
   const dialect = new PgDialect();
@@ -55,6 +57,24 @@ test("database reader applies a local statement timeout and disjoint evidence qu
   );
   assert.match(evidenceQuery.sql, /"stripe_event_log"\."status" = 'pending'/);
   assert.match(evidenceQuery.sql, /"interview_question"\."is_active" = true/);
+  assert.match(
+    evidenceQuery.sql,
+    /"feedback"\."status" = 'pending'[\s\S]+"feedback"\."dispatch_status" = 'sent'/
+  );
+  assert.match(
+    evidenceQuery.sql,
+    /"feedback"\."status" = 'processing'[\s\S]+"feedback"\."processing_started_at" is null/
+  );
+  assert.equal(
+    evidenceQuery.params.includes("2026-07-10T19:58:30.000Z"),
+    true,
+    "sent but unclaimed feedback should use the queue lease cutoff"
+  );
+  assert.equal(
+    evidenceQuery.params.includes("2026-07-10T19:55:00.000Z"),
+    true,
+    "processing feedback should use the generation lease cutoff"
+  );
   assert.equal(
     evidenceQuery.params.includes("Product Sense"),
     true,
@@ -71,7 +91,8 @@ test("timed-out assessments never duplicate unresolved database work", async () 
   const pendingEvidence = new Promise<ServiceHealthEvidence>((resolve) => {
     resolveEvidence = resolve;
   });
-  const captured: Array<{ staleBefore: Date; queryTimeoutMs: number }> = [];
+  const captured: Array<Parameters<ServiceHealthEvidenceReader["read"]>[0]> =
+    [];
   const reader: ServiceHealthEvidenceReader = {
     read: async (input) => {
       calls += 1;
