@@ -850,6 +850,70 @@ describe("active interview page lifecycle", () => {
     expect(transcriptReads).toBe(2);
   });
 
+  it("renders the persisted question and company on normal room entry", async () => {
+    const question =
+      "Design a collaboration product for distributed product teams.";
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}`) {
+          return activeInterviewResponseWithQuestion(question);
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: question })).toBeInTheDocument();
+    expect(screen.getByText("Fixture Company")).toBeInTheDocument();
+  });
+
+  it("restores the persisted question and company after a room reload", async () => {
+    const question = "Improve the activation flow for a PM collaboration tool.";
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}`) {
+          return activeInterviewResponseWithQuestion(question);
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const firstEntry = render(<InterviewPageContent />);
+    expect(
+      await screen.findByRole("heading", { name: question })
+    ).toBeInTheDocument();
+    const sessionReadCount = () =>
+      request.mock.calls.filter(
+        ([input]) => String(input) === `/api/session/${SESSION_ID}`
+      ).length;
+    const readsBeforeReload = sessionReadCount();
+    firstEntry.unmount();
+
+    render(<InterviewPageContent />);
+
+    expect(
+      await screen.findByRole("heading", { name: question })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Fixture Company")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(sessionReadCount()).toBeGreaterThan(readsBeforeReload)
+    );
+  });
+
+  it("keeps the room usable when the persisted question relation is absent", async () => {
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Live PM interview" })
+    ).toHaveClass("sr-only");
+    expect(screen.queryByText("Fixture Company")).not.toBeInTheDocument();
+  });
+
   it("keeps full mock hints off for legacy gentle session metadata", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -1393,6 +1457,30 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 });
+
+function activeInterviewResponseWithQuestion(question: string) {
+  return Response.json({
+    session: {
+      id: SESSION_ID,
+      livekitRoomName: "interview-room",
+      startedAt: "2099-07-15T21:00:00.000Z",
+      deadlineAt: "2099-07-15T22:00:00.000Z",
+      lifecycleState: "active",
+      lifecycleVersion: 3,
+      endedAt: null,
+      reconnectDeadlineAt: null,
+      feedbackReady: false,
+      roundType: "product_sense",
+      mode: "voice_video",
+      config: { difficulty: "intermediate" },
+      question: {
+        id: "660e8400-e29b-41d4-a716-446655440000",
+        text: question,
+        company: "Fixture Company",
+      },
+    },
+  });
+}
 
 function activeInterviewResponse(
   input: RequestInfo | URL,

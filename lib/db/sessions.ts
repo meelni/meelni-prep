@@ -2,8 +2,10 @@ import { db } from "./index";
 import {
   accountDeletionRequest,
   interviewSession,
+  interviewQuestion,
   appUser,
   feedback,
+  sessionQuestion,
 } from "./schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
@@ -22,6 +24,15 @@ export interface CreateSessionInput {
 export interface UpdateSessionInput {
   endedAt?: Date;
   config?: Record<string, unknown>;
+}
+
+export interface SessionWithSelectedQuestion {
+  session: typeof interviewSession.$inferSelect;
+  question: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
 }
 
 /**
@@ -71,6 +82,40 @@ export async function getSessionById(
     .limit(1);
 
   return session;
+}
+
+/**
+ * Get a session with the historical question selected for that session.
+ *
+ * This intentionally does not apply the public question-bank publication
+ * filter: a retired question remains valid evidence for an existing session.
+ */
+export async function getSessionWithSelectedQuestionById(
+  sessionId: string,
+  database: Pick<typeof db, "select"> = db
+): Promise<SessionWithSelectedQuestion | null> {
+  const [result] = await database
+    .select({
+      session: interviewSession,
+      question: {
+        id: interviewQuestion.id,
+        text: interviewQuestion.questionText,
+        company: interviewQuestion.company,
+      },
+    })
+    .from(interviewSession)
+    .leftJoin(
+      sessionQuestion,
+      eq(sessionQuestion.sessionId, interviewSession.id)
+    )
+    .leftJoin(
+      interviewQuestion,
+      eq(interviewQuestion.id, sessionQuestion.questionId)
+    )
+    .where(eq(interviewSession.id, sessionId))
+    .limit(1);
+
+  return result ?? null;
 }
 
 /**
