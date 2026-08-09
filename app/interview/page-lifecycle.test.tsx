@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
           | "connecting"
           | "connected"
           | "delayed"
+          | "syncing"
           | "reconnecting"
           | "recovered"
           | "disconnected"
@@ -70,6 +71,7 @@ vi.mock("@/components/interview/livekit-room", async () => {
           | "connecting"
           | "connected"
           | "delayed"
+          | "syncing"
           | "reconnecting"
           | "recovered"
           | "disconnected"
@@ -520,6 +522,43 @@ describe("active interview page lifecycle", () => {
     expect(
       screen.getByRole("button", { name: "Microphone controls" })
     ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Open end confirmation" })
+    ).toBeEnabled();
+    expect(
+      request.mock.calls.filter(
+        ([input]) => String(input) === "/api/livekit/token"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("enables conversation controls when a live interviewer is active while canonical readiness syncs", async () => {
+    const request = vi.fn(activeInterviewResponse);
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onConnectionStateChange).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        request.mock.calls.filter(
+          ([input]) => String(input) === "/api/livekit/token"
+        )
+      ).toHaveLength(1)
+    );
+
+    act(() => mocks.onConnectionStateChange?.("syncing"));
+
+    expect(
+      await screen.findByText(/interview active\. syncing status/i)
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/the interviewer is still joining/i)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Microphone controls" })
+    ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Open end confirmation" })
     ).toBeEnabled();

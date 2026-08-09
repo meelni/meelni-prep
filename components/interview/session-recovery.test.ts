@@ -4,12 +4,56 @@ import test from "node:test";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
+  hasVerifiedInterviewerLiveness,
+  isInterviewConversationReady,
   isInterviewRoomCredentialAuthorizationCurrent,
   parseInterviewRoomCredentials,
+  reconcileInterviewCustomerConnectionStatus,
   reduceInterviewConnectionState,
   shouldDiscardInterviewRoomCredentials,
   type InterviewConnectionTracker,
 } from "./session-recovery";
+
+test("verified conversational agent activity makes canonical lag non-blocking", () => {
+  for (const agentState of ["listening", "thinking", "speaking"]) {
+    assert.equal(
+      hasVerifiedInterviewerLiveness({ agentActive: true, agentState }),
+      true
+    );
+  }
+  for (const agentState of ["connecting", "initializing", "disconnected"]) {
+    assert.equal(
+      hasVerifiedInterviewerLiveness({ agentActive: true, agentState }),
+      false
+    );
+  }
+  assert.equal(
+    hasVerifiedInterviewerLiveness({
+      agentActive: false,
+      agentState: "speaking",
+    }),
+    false
+  );
+
+  assert.equal(
+    reconcileInterviewCustomerConnectionStatus("delayed", true),
+    "syncing"
+  );
+  assert.equal(
+    reconcileInterviewCustomerConnectionStatus("connecting", true),
+    "syncing"
+  );
+  assert.equal(
+    reconcileInterviewCustomerConnectionStatus("reconnecting", true),
+    "reconnecting"
+  );
+  assert.equal(
+    reconcileInterviewCustomerConnectionStatus("delayed", false),
+    "delayed"
+  );
+  assert.equal(isInterviewConversationReady("syncing"), true);
+  assert.equal(isInterviewConversationReady("delayed"), false);
+});
 
 test("canonical interview links persist only the encoded session ID", () => {
   assert.equal(

@@ -19994,6 +19994,13 @@ var ALLOWED_PROPERTIES = {
     "slo_upper_bound_ms",
     "latency_class"
   ],
+  interview_liveness_contradiction: [
+    "version",
+    "phase",
+    "duration_ms",
+    "duration_class",
+    "resolution"
+  ],
   error_boundary_triggered: ["error_code", "page"],
   public_demo_authorization: ["outcome", "reason"]
 };
