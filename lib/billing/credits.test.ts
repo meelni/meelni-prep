@@ -775,7 +775,10 @@ test("public refund settlement uses one clock for expired-credit recovery", asyn
 
   const grants = await store.listUserGrants("user-expired-refund");
   assert.equal(grants.filter((grant) => grant.source === "refund").length, 1);
-  assert.equal((await expired.getCreditBalance("user-expired-refund")).availableCredits, 1);
+  assert.equal(
+    (await expired.getCreditBalance("user-expired-refund")).availableCredits,
+    1
+  );
 });
 
 test("exact terminal replays do not emit duplicate settlement analytics", async () => {

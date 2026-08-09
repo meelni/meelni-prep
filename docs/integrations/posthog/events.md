@@ -6,16 +6,16 @@ This document describes analytics events relevant to the credit-based billing ca
 
 ## Credit Lifecycle Events
 
-| Event | Trigger |
-| --- | --- |
-| `billing_credit_granted` | A trial, Checkout, subscription renewal, admin, migration, or refund grant is created or replayed idempotently. |
-| `billing_credit_reserved` | A session start reserves credit from one or more grants. |
-| `billing_credit_consumed` | A successful session start consumes a reservation. |
-| `billing_credit_released` | A failed system start releases a reservation back to the grant. |
-| `billing_credit_refunded` | A consumed reservation is refunded. |
-| `billing_credit_expired` | Expired remaining credits are zeroed. |
-| `billing_credit_rollover_created` | Eligible subscription credits roll into a rollover grant. |
-| `billing_no_credits` | A user attempts to start an interview without enough credits. |
+| Event                             | Trigger                                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `billing_credit_granted`          | A trial, Checkout, subscription renewal, admin, migration, or refund grant is created or replayed idempotently. |
+| `billing_credit_reserved`         | A session start reserves credit from one or more grants.                                                        |
+| `billing_credit_consumed`         | A successful session start consumes a reservation.                                                              |
+| `billing_credit_released`         | A failed system start releases a reservation back to the grant.                                                 |
+| `billing_credit_refunded`         | A consumed reservation is refunded.                                                                             |
+| `billing_credit_expired`          | Expired remaining credits are zeroed.                                                                           |
+| `billing_credit_rollover_created` | Eligible subscription credits roll into a rollover grant.                                                       |
+| `billing_no_credits`              | A user attempts to start an interview without enough credits.                                                   |
 
 ## Common Properties
 

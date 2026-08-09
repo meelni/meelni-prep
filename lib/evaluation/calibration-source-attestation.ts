@@ -1,11 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-} from "node:fs";
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +25,8 @@ export function assertCalibrationReviewedSourceState(
   if (
     !reviewedSourceCommit ||
     !COMMIT_SHA.test(reviewedSourceCommit) ||
-    realpathSync(state.repositoryRoot) !== realpathSync(expectedRepositoryRoot) ||
+    realpathSync(state.repositoryRoot) !==
+      realpathSync(expectedRepositoryRoot) ||
     state.headCommit !== reviewedSourceCommit ||
     state.porcelainStatus !== "" ||
     !state.trackedTreeMatchesHead
@@ -109,7 +105,8 @@ function parseGitTreeEntries(output: Buffer): GitTreeEntry[] {
     .split("\0")
     .map((record) => {
       const match = /^(\d{6}) (\S+) ([a-f0-9]{40})\t([\s\S]+)$/.exec(record);
-      if (!match) throw new Error("calibration_reviewed_source_checkout_mismatch");
+      if (!match)
+        throw new Error("calibration_reviewed_source_checkout_mismatch");
       return {
         mode: match[1],
         type: match[2],

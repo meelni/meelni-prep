@@ -13,7 +13,8 @@ const DRILL_TEMPLATES = {
   structure: [
     {
       title: "Framework Flash Cards",
-      description: "Practice applying structured frameworks to random interview questions",
+      description:
+        "Practice applying structured frameworks to random interview questions",
       tips: [
         "Create flash cards with STAR, 5-step Product Sense, and Goal-Metric-Feature frameworks",
         "Time yourself: 60 seconds to outline structure before answering",
@@ -33,7 +34,8 @@ const DRILL_TEMPLATES = {
   clarity: [
     {
       title: "Jargon Elimination Challenge",
-      description: "Record and review your answers, removing all industry jargon",
+      description:
+        "Record and review your answers, removing all industry jargon",
       tips: [
         "Record 5-minute mock answer and transcribe it",
         "Highlight every acronym, buzzword, and technical term",
@@ -42,7 +44,8 @@ const DRILL_TEMPLATES = {
     },
     {
       title: "One-Sentence Summaries",
-      description: "Practice condensing complex ideas into single clear sentences",
+      description:
+        "Practice condensing complex ideas into single clear sentences",
       tips: [
         "After each practice question, summarize answer in one sentence",
         "Use the 'So what?' test: if someone asks 'so what?', you weren't clear enough",
@@ -73,7 +76,8 @@ const DRILL_TEMPLATES = {
   communication: [
     {
       title: "Pause and Pace Practice",
-      description: "Record yourself and analyze pacing, filler words, and pauses",
+      description:
+        "Record yourself and analyze pacing, filler words, and pauses",
       tips: [
         "Count filler words ('um', 'like', 'you know') in 5-minute recording",
         "Practice strategic pauses: breathe instead of saying 'um'",
@@ -82,7 +86,8 @@ const DRILL_TEMPLATES = {
     },
     {
       title: "Active Interviewer Engagement",
-      description: "Practice asking clarifying questions and checking for understanding",
+      description:
+        "Practice asking clarifying questions and checking for understanding",
       tips: [
         "Ask at least 2 clarifying questions before diving into answers",
         "Check in mid-answer: 'Does that make sense?', 'Should I go deeper here?'",
@@ -93,7 +98,8 @@ const DRILL_TEMPLATES = {
   leadership: [
     {
       title: "Impact Storytelling",
-      description: "Practice telling stories that showcase ownership and results",
+      description:
+        "Practice telling stories that showcase ownership and results",
       tips: [
         "Structure every story with: Challenge → Your Action → Measurable Impact",
         "Quantify results: users gained, revenue increased, time saved",
@@ -102,7 +108,8 @@ const DRILL_TEMPLATES = {
     },
     {
       title: "Trade-off Decision Practice",
-      description: "Practice making and defending tough calls with incomplete information",
+      description:
+        "Practice making and defending tough calls with incomplete information",
       tips: [
         "For every product idea, explicitly state what you're NOT doing and why",
         "Practice using frameworks: 'Impact vs Effort', 'Must-have vs Nice-to-have'",
@@ -118,7 +125,9 @@ const DRILL_TEMPLATES = {
  * @param scores - Rubric scores for all 5 dimensions
  * @returns Array of 2-3 drill suggestions targeting weakest areas
  */
-export function generateDrills(scores: Omit<RubricScores, "overall">): DrillSuggestion[] {
+export function generateDrills(
+  scores: Omit<RubricScores, "overall">
+): DrillSuggestion[] {
   // Convert scores to array for sorting
   const scoreEntries = [
     { dimension: "structure" as const, score: scores.structure },
@@ -132,7 +141,9 @@ export function generateDrills(scores: Omit<RubricScores, "overall">): DrillSugg
   scoreEntries.sort((a, b) => a.score - b.score);
 
   // Take the 2 lowest scoring dimensions
-  const weakestDimensions = scoreEntries.slice(0, 2).map((entry) => entry.dimension);
+  const weakestDimensions = scoreEntries
+    .slice(0, 2)
+    .map((entry) => entry.dimension);
 
   // Generate drills for those dimensions
   const drills: DrillSuggestion[] = [];
@@ -147,7 +158,11 @@ export function generateDrills(scores: Omit<RubricScores, "overall">): DrillSugg
   }
 
   // If we still have room and there's a third weak area (score < 6), add one more drill
-  if (drills.length < 3 && scoreEntries.length > 2 && scoreEntries[2].score < 6) {
+  if (
+    drills.length < 3 &&
+    scoreEntries.length > 2 &&
+    scoreEntries[2].score < 6
+  ) {
     const thirdDimension = scoreEntries[2].dimension;
     const templates = DRILL_TEMPLATES[thirdDimension];
     if (templates && templates.length > 0) {
@@ -167,7 +182,12 @@ export function generateDrills(scores: Omit<RubricScores, "overall">): DrillSugg
  * @returns Array of all drill templates for that dimension
  */
 export function getDrillsForDimension(
-  dimension: "structure" | "clarity" | "insight" | "communication" | "leadership"
+  dimension:
+    | "structure"
+    | "clarity"
+    | "insight"
+    | "communication"
+    | "leadership"
 ): DrillSuggestion[] {
   return DRILL_TEMPLATES[dimension] || [];
 }

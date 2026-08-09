@@ -45,9 +45,10 @@ async function testSpecificCase() {
     console.log(`   Text: ${question.questionText.substring(0, 150)}...`);
 
     // Check if it's truly behavioral
-    const isBehavioral = question.questionText.toLowerCase().includes("tell me about") ||
-                        question.questionText.toLowerCase().includes("describe a time") ||
-                        question.questionText.toLowerCase().includes("give me an example");
+    const isBehavioral =
+      question.questionText.toLowerCase().includes("tell me about") ||
+      question.questionText.toLowerCase().includes("describe a time") ||
+      question.questionText.toLowerCase().includes("give me an example");
 
     if (question.questionType !== dbQuestionType) {
       console.log(`\n   ⚠️  TYPE MISMATCH!`);

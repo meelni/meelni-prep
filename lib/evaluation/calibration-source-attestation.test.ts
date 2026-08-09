@@ -120,7 +120,9 @@ test("reviewed source attestation ignores index flags and hashes tracked bytes",
 });
 
 test("reviewed source attestation ignores local Git replacement objects", () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "meelni-source-replace-")));
+  const root = realpathSync(
+    mkdtempSync(join(tmpdir(), "meelni-source-replace-"))
+  );
   const git = (...args: string[]) =>
     execFileSync("/usr/bin/git", ["-C", root, ...args], {
       encoding: "utf8",

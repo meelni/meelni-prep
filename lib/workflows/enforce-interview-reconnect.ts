@@ -291,12 +291,7 @@ export function createEnforceInterviewReconnectDeps(): EnforceInterviewReconnect
     terminateRoom: terminateInterviewRoom,
     inspectPresence: inspectInterviewParticipantPresence,
     getSettlementReadiness: getTranscriptRuntimeSettlementReadiness,
-    requestRuntimeSettlement: ({
-      roomName,
-      agentIdentity,
-      request,
-      env,
-    }) =>
+    requestRuntimeSettlement: ({ roomName, agentIdentity, request, env }) =>
       sendReliableInterviewRoomData({
         roomName,
         destinationIdentity: agentIdentity,
@@ -317,8 +312,7 @@ export function buildRuntimeSettlementRequest(input: {
 }): TranscriptRuntimeSettlementRequest {
   const cutoffAt = serializeInterviewDeadlineAt(input.cutoffAt);
   return {
-    contract_version:
-      TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION,
+    contract_version: TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION,
     event_type: "runtime_settlement_request",
     request_id: `reconnect-settlement:${input.sessionId}:${input.claimedVersion}:${cutoffAt}`,
     session_id: input.sessionId,

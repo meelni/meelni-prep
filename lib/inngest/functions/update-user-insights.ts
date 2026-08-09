@@ -10,7 +10,10 @@ import { inngest } from "../client";
 import { db } from "@/lib/db";
 import { userInsights } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { aggregateUserInsights, type UserInsights } from "@/lib/evaluation/insights-aggregator";
+import {
+  aggregateUserInsights,
+  type UserInsights,
+} from "@/lib/evaluation/insights-aggregator";
 
 /**
  * Insights update event payload

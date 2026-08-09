@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { motion } from 'framer-motion';
-import { useEffect, useState, useMemo } from 'react';
+import { motion } from "framer-motion";
+import { useEffect, useState, useMemo } from "react";
 
 interface ProgressRingProps {
-  progress: number;          // 0-100 percentage
-  size?: number;             // Diameter in pixels (default: 80)
-  strokeWidth?: number;      // Ring thickness (default: 4)
-  color?: string;            // Ring color (default: 'primary')
-  backgroundColor?: string;   // Track color (default: 'border')
-  duration?: number;          // Animation duration ms (default: 1200)
-  delay?: number;            // Animation delay ms (default: 0)
+  progress: number; // 0-100 percentage
+  size?: number; // Diameter in pixels (default: 80)
+  strokeWidth?: number; // Ring thickness (default: 4)
+  color?: string; // Ring color (default: 'primary')
+  backgroundColor?: string; // Track color (default: 'border')
+  duration?: number; // Animation duration ms (default: 1200)
+  delay?: number; // Animation delay ms (default: 0)
   children?: React.ReactNode; // Content inside ring (icon)
-  showPercentage?: boolean;  // Show "X%" label (default: false)
+  showPercentage?: boolean; // Show "X%" label (default: false)
   className?: string;
 }
 
@@ -20,13 +20,13 @@ export function ProgressRing({
   progress,
   size = 80,
   strokeWidth = 4,
-  color = 'var(--primary)',
-  backgroundColor = 'var(--border)',
+  color = "var(--primary)",
+  backgroundColor = "var(--border)",
   duration = 1200,
   delay = 0,
   children,
   showPercentage = false,
-  className = '',
+  className = "",
 }: ProgressRingProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -62,8 +62,8 @@ export function ProgressRing({
       <svg
         width={size}
         height={size}
-        className="transform -rotate-90"
-        style={{ willChange: 'transform' }}
+        className="-rotate-90 transform"
+        style={{ willChange: "transform" }}
       >
         {/* Background circle (track) */}
         <circle

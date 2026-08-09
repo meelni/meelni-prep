@@ -108,10 +108,7 @@ test("an active owned session links to its canonical interview URL", () => {
       onRecover() {},
     })
   );
-  assert.match(
-    html,
-    new RegExp(`href="/interview\\?sessionId=${sessionId}"`)
-  );
+  assert.match(html, new RegExp(`href="/interview\\?sessionId=${sessionId}"`));
   assert.doesNotMatch(html, /history\.back/);
 });
 

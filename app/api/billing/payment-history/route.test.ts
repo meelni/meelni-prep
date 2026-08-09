@@ -41,9 +41,7 @@ describe("GET /api/billing/payment-history pagination", () => {
     "offset=9007199254740992",
   ])("rejects invalid query %s before storage", async (query) => {
     const response = await GET(
-      new Request(
-        `https://meelni.test/api/billing/payment-history?${query}`
-      )
+      new Request(`https://meelni.test/api/billing/payment-history?${query}`)
     );
 
     expect(response.status).toBe(400);

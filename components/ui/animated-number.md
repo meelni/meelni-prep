@@ -11,6 +11,7 @@ A performant React component that animates numbers from 0 to their target value 
 **Selected Approach**: Framer Motion (Option B)
 
 **Rationale**:
+
 - ✅ Already a project dependency (no additional packages needed)
 - ✅ Integrates seamlessly with existing animation system (`/lib/animations.ts`)
 - ✅ Excellent performance with GPU-accelerated animations
@@ -19,12 +20,14 @@ A performant React component that animates numbers from 0 to their target value 
 - ✅ Battle-tested in production applications
 
 **Alternatives Considered**:
+
 - React Spring: Would require additional dependency
 - Custom RAF: More code to maintain, less optimized
 
 ## Features
 
 ### Core Features
+
 - ✅ Smooth spring-based easing (not linear)
 - ✅ Configurable duration (default 1000ms)
 - ✅ Delay support for staggered animations
@@ -36,6 +39,7 @@ A performant React component that animates numbers from 0 to their target value 
 - ✅ Memory leak prevention (cleanup on unmount)
 
 ### Performance Optimizations
+
 - Uses `will-change` CSS property when animating
 - `tabular-nums` font feature for consistent spacing
 - Skips animation for zero values
@@ -49,19 +53,20 @@ A performant React component that animates numbers from 0 to their target value 
 
 ```typescript
 interface AnimatedNumberProps {
-  value: number;                   // Target value to animate to
-  decimals?: number;               // Number of decimal places (default: 0)
-  duration?: number;               // Animation duration in ms (default: 1000)
-  delay?: number;                  // Delay before starting (default: 0)
-  suffix?: string;                 // Text to append (e.g., '%', ' min')
-  prefix?: string;                 // Text to prepend (e.g., '$')
-  className?: string;              // Additional CSS classes
+  value: number; // Target value to animate to
+  decimals?: number; // Number of decimal places (default: 0)
+  duration?: number; // Animation duration in ms (default: 1000)
+  delay?: number; // Delay before starting (default: 0)
+  suffix?: string; // Text to append (e.g., '%', ' min')
+  prefix?: string; // Text to prepend (e.g., '$')
+  className?: string; // Additional CSS classes
   useThousandsSeparator?: boolean; // Format with commas (default: true)
-  onComplete?: () => void;         // Callback when animation finishes
+  onComplete?: () => void; // Callback when animation finishes
 }
 ```
 
 ### Default Values
+
 - `decimals`: 0
 - `duration`: 1000ms
 - `delay`: 0ms
@@ -73,24 +78,28 @@ interface AnimatedNumberProps {
 ## Usage Examples
 
 ### Basic Integer
+
 ```typescript
 <AnimatedNumber value={42} />
 // Output: "42"
 ```
 
 ### With Decimals and Suffix
+
 ```typescript
 <AnimatedNumber value={87.3} decimals={1} suffix="%" />
 // Output: "87.3%"
 ```
 
 ### With Prefix (Currency)
+
 ```typescript
 <AnimatedNumber value={1234.56} decimals={2} prefix="$" />
 // Output: "$1,234.56"
 ```
 
 ### Staggered Animations
+
 ```typescript
 <div>
   <AnimatedNumber value={15} suffix=" sessions" delay={0} />
@@ -101,12 +110,14 @@ interface AnimatedNumberProps {
 ```
 
 ### Custom Duration
+
 ```typescript
 <AnimatedNumber value={1500} duration={2000} />
 // Animates over 2 seconds instead of 1
 ```
 
 ### With Completion Callback
+
 ```typescript
 <AnimatedNumber
   value={100}
@@ -115,6 +126,7 @@ interface AnimatedNumberProps {
 ```
 
 ### Without Thousands Separator
+
 ```typescript
 <AnimatedNumber value={1234} useThousandsSeparator={false} />
 // Output: "1234" (no comma)
@@ -123,6 +135,7 @@ interface AnimatedNumberProps {
 ## Integration Examples
 
 ### Stats Cards
+
 ```typescript
 // In /components/dashboard/stats-cards.tsx
 import { AnimatedNumber } from "@/components/ui/animated-number";
@@ -147,6 +160,7 @@ export function StatsCards({ totalSessions, averageScore }: StatsCardsProps) {
 ```
 
 ### Dashboard Overview
+
 ```typescript
 // In /components/dashboard/sections/overview.tsx
 <div className="text-4xl font-mono font-bold">
@@ -162,28 +176,34 @@ export function StatsCards({ totalSessions, averageScore }: StatsCardsProps) {
 ## Edge Cases Handled
 
 ### Zero Values
+
 - **Behavior**: No animation, displays "0" immediately
 - **Rationale**: Animating 0 → 0 is unnecessary
 
 ### Negative Numbers
+
 - **Behavior**: Fully supported, animates from 0 to negative value
 - **Example**: `<AnimatedNumber value={-42} />` → "-42"
 
 ### Large Numbers
+
 - **Behavior**: Automatically formats with thousands separator
 - **Example**: `<AnimatedNumber value={1234567} />` → "1,234,567"
 
 ### Value Changes
+
 - **Behavior**: Re-animates from current position to new value
 - **Use Case**: Live data updates
 
 ### Component Unmount
+
 - **Behavior**: Cleans up timeouts to prevent memory leaks
 - **Implementation**: `useEffect` cleanup function
 
 ## Performance Testing
 
 ### Test Suite
+
 - ✅ Single number animation
 - ✅ 12 numbers animating simultaneously
 - ✅ Staggered delays (0-500ms)
@@ -192,12 +212,14 @@ export function StatsCards({ totalSessions, averageScore }: StatsCardsProps) {
 - ✅ Re-trigger animation test
 
 ### Performance Metrics
+
 - **Frame Rate**: 60fps (GPU-accelerated)
 - **Memory**: No leaks (cleanup verified)
 - **Bundle Size**: ~2KB (gzipped, excluding Framer Motion)
 - **Dependencies**: Framer Motion (already in project)
 
 ### Test Results
+
 - ✅ 12+ numbers animate smoothly without jank
 - ✅ No performance degradation with staggered delays
 - ✅ Spring easing feels natural and polished
@@ -207,7 +229,9 @@ export function StatsCards({ totalSessions, averageScore }: StatsCardsProps) {
 ## Testing
 
 ### Manual Testing
+
 Render the `AnimatedNumberTest` component in a temporary local-only harness to verify:
+
 - Basic examples (integer, decimal, suffix, prefix)
 - Staggered animations
 - Performance test (12 numbers)
@@ -215,26 +239,30 @@ Render the `AnimatedNumberTest` component in a temporary local-only harness to v
 - Completion callback demo
 
 ### Test Harness Component
+
 The `AnimatedNumberTest` component in the same file provides comprehensive visual testing.
 
 ## Technical Implementation
 
 ### Spring Physics
+
 ```typescript
 const spring = useSpring(0, {
-  duration,          // Animation duration in ms
-  bounce: 0.25,      // Bounce effect (0.25 = subtle)
-  stiffness: 100,    // Spring stiffness
-  damping: 20,       // Spring damping (higher = less oscillation)
+  duration, // Animation duration in ms
+  bounce: 0.25, // Bounce effect (0.25 = subtle)
+  stiffness: 100, // Spring stiffness
+  damping: 20, // Spring damping (higher = less oscillation)
 });
 ```
 
 ### Number Formatting
+
 - Uses `toLocaleString('en-US')` for thousands separator
 - Uses `toFixed(decimals)` for decimal precision
 - Applies `tabular-nums` CSS for monospace number rendering
 
 ### Animation Lifecycle
+
 1. **Mount**: Component renders with value 0
 2. **Delay**: Wait for specified delay (if any)
 3. **Animate**: Spring animates from 0 to target value
@@ -245,11 +273,14 @@ const spring = useSpring(0, {
 ## Styling
 
 ### Default Styles
+
 - `tabular-nums`: Ensures consistent number width (monospace digits)
 - `will-change: transform`: Optimizes GPU rendering during animation
 
 ### Custom Styling
+
 Use the `className` prop to add additional styles:
+
 ```typescript
 <AnimatedNumber
   value={42}
@@ -279,6 +310,7 @@ Use the `className` prop to add additional styles:
 ## Migration from Static Numbers
 
 ### Before
+
 ```typescript
 <div className="text-2xl font-bold">
   {totalSessions}
@@ -286,6 +318,7 @@ Use the `className` prop to add additional styles:
 ```
 
 ### After
+
 ```typescript
 <div className="text-2xl font-bold">
   <AnimatedNumber value={totalSessions} />
@@ -304,6 +337,7 @@ Use the `className` prop to add additional styles:
 ## Conclusion
 
 The `AnimatedNumber` component is production-ready and provides:
+
 - ✅ Smooth 60fps animations
 - ✅ Comprehensive feature set
 - ✅ Type-safe API

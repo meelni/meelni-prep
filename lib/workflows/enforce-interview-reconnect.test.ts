@@ -183,7 +183,9 @@ test("timeout requests writer-scoped settlement before room deletion", async () 
     });
   fixture.deps.getSettlementReadiness = async () => readiness(null, 1);
   fixture.deps.requestRuntimeSettlement = async ({ request }) => {
-    fixture.calls.push(`request:${request.writer_generation}:${request.cutoff_at}`);
+    fixture.calls.push(
+      `request:${request.writer_generation}:${request.cutoff_at}`
+    );
     assert.match(request.request_id, /:5:2026-07-10T08:00:30.000Z$/);
     return providerSuccess("livekit", {});
   };

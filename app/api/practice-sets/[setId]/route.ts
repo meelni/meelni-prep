@@ -27,7 +27,10 @@ export async function DELETE(
       .returning();
 
     if (result.length === 0) {
-      return NextResponse.json({ error: "Practice set not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Practice set not found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ success: true });
@@ -62,7 +65,10 @@ export async function PATCH(
 
     if (name !== undefined) {
       if (typeof name !== "string" || name.trim().length === 0) {
-        return NextResponse.json({ error: "Practice set name cannot be empty" }, { status: 400 });
+        return NextResponse.json(
+          { error: "Practice set name cannot be empty" },
+          { status: 400 }
+        );
       }
       updates.name = name.trim();
     }
@@ -78,7 +84,10 @@ export async function PATCH(
       .returning();
 
     if (result.length === 0) {
-      return NextResponse.json({ error: "Practice set not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Practice set not found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ set: result[0] });

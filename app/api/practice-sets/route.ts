@@ -27,7 +27,10 @@ export async function GET() {
         questionCount: sql<number>`count(${practiceSetQuestion.id})::int`,
       })
       .from(practiceSet)
-      .leftJoin(practiceSetQuestion, eq(practiceSet.id, practiceSetQuestion.practiceSetId))
+      .leftJoin(
+        practiceSetQuestion,
+        eq(practiceSet.id, practiceSetQuestion.practiceSetId)
+      )
       .where(eq(practiceSet.userId, user.id))
       .groupBy(practiceSet.id)
       .orderBy(desc(practiceSet.updatedAt));
@@ -55,7 +58,10 @@ export async function POST(request: NextRequest) {
     const { name, description } = body;
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return NextResponse.json({ error: "Practice set name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Practice set name is required" },
+        { status: 400 }
+      );
     }
 
     const [newSet] = await db

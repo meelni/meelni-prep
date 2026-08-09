@@ -7,7 +7,9 @@ import { eq, and } from "drizzle-orm";
 // GET /api/questions/bookmark - Get all bookmarked question IDs for user
 export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,7 +24,7 @@ export async function GET() {
     });
 
     // Return array of question IDs for easy lookup
-    const questionIds = bookmarks.map(b => b.questionId);
+    const questionIds = bookmarks.map((b) => b.questionId);
     return NextResponse.json({ questionIds });
   } catch {
     console.error("question_bookmark_read_failed");
@@ -33,7 +35,9 @@ export async function GET() {
 // POST /api/questions/bookmark - Add a bookmark
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,14 +48,20 @@ export async function POST(request: NextRequest) {
     const { questionId } = body;
 
     if (!questionId) {
-      return NextResponse.json({ error: "Question ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Question ID required" },
+        { status: 400 }
+      );
     }
 
     // Insert bookmark (onConflictDoNothing handles duplicates)
-    await db.insert(bookmarkedQuestion).values({
-      userId: user.id,
-      questionId,
-    }).onConflictDoNothing();
+    await db
+      .insert(bookmarkedQuestion)
+      .values({
+        userId: user.id,
+        questionId,
+      })
+      .onConflictDoNothing();
 
     return NextResponse.json({ success: true });
   } catch {
@@ -63,7 +73,9 @@ export async function POST(request: NextRequest) {
 // DELETE /api/questions/bookmark - Remove a bookmark
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -74,16 +86,21 @@ export async function DELETE(request: NextRequest) {
     const questionId = searchParams.get("questionId");
 
     if (!questionId) {
-      return NextResponse.json({ error: "Question ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Question ID required" },
+        { status: 400 }
+      );
     }
 
     // Delete bookmark
-    await db.delete(bookmarkedQuestion).where(
-      and(
-        eq(bookmarkedQuestion.userId, user.id),
-        eq(bookmarkedQuestion.questionId, questionId)
-      )
-    );
+    await db
+      .delete(bookmarkedQuestion)
+      .where(
+        and(
+          eq(bookmarkedQuestion.userId, user.id),
+          eq(bookmarkedQuestion.questionId, questionId)
+        )
+      );
 
     return NextResponse.json({ success: true });
   } catch {

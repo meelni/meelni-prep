@@ -40,6 +40,7 @@ Use:
 
 ```markdown
 ## Engineering Memory
+
 - Decision records:
 - Architecture docs:
 - Contracts:
@@ -48,5 +49,6 @@ Use:
 - Indexes updated:
 
 ## Open Questions
+
 - ...
 ```

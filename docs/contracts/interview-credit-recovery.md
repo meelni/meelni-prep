@@ -37,11 +37,11 @@ hard-stop boundary.
 
 Policy version `interview-credit-recovery.v1` resolves one terminal action:
 
-| Durable state | Fault | Action | Candidate result |
-| --- | --- | --- | --- |
-| Reservation active | any | `release` | Reserved credit becomes available |
-| Reservation consumed | provider or integrity | `refund` | Credit is restored |
-| Reservation consumed | user | `retain` | Charge remains consumed |
+| Durable state        | Fault                 | Action    | Candidate result                  |
+| -------------------- | --------------------- | --------- | --------------------------------- |
+| Reservation active   | any                   | `release` | Reserved credit becomes available |
+| Reservation consumed | provider or integrity | `refund`  | Credit is restored                |
+| Reservation consumed | user                  | `retain`  | Charge remains consumed           |
 
 Feedback dispatch, generation, scoring, and insight failures are not billing
 faults and cannot change this table.

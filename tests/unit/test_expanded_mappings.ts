@@ -25,18 +25,23 @@ async function testExpandedMappings() {
   const allTypes = await db
     .select({
       questionType: interviewQuestion.questionType,
-      count: sql<number>`count(*)::int`
+      count: sql<number>`count(*)::int`,
     })
     .from(interviewQuestion)
     .groupBy(interviewQuestion.questionType);
 
-  const typeMap = Object.fromEntries(allTypes.map(t => [t.questionType, t.count]));
+  const typeMap = Object.fromEntries(
+    allTypes.map((t) => [t.questionType, t.count])
+  );
 
   for (const [interviewType, dbTypes] of Object.entries(QUESTION_TYPE_MAP)) {
-    const totalQuestions = dbTypes.reduce((sum, type) => sum + (typeMap[type] || 0), 0);
+    const totalQuestions = dbTypes.reduce(
+      (sum, type) => sum + (typeMap[type] || 0),
+      0
+    );
     console.log(`${interviewType.toUpperCase()}:`);
     console.log(`  Total Pool: ${totalQuestions} questions`);
-    dbTypes.forEach(type => {
+    dbTypes.forEach((type) => {
       const count = typeMap[type] || 0;
       console.log(`    - ${type}: ${count} questions`);
     });
@@ -60,7 +65,9 @@ async function testExpandedMappings() {
       const question = await getRandomQuestion(dbTypes);
 
       if (!question) {
-        console.log(`   ${i.toString().padStart(2, " ")}. ❌ No question found`);
+        console.log(
+          `   ${i.toString().padStart(2, " ")}. ❌ No question found`
+        );
         failCount++;
         continue;
       }
@@ -70,7 +77,8 @@ async function testExpandedMappings() {
 
       if (isExpectedType) {
         successCount++;
-        typeCounts[question.questionType] = (typeCounts[question.questionType] || 0) + 1;
+        typeCounts[question.questionType] =
+          (typeCounts[question.questionType] || 0) + 1;
       } else {
         failCount++;
       }
@@ -81,11 +89,15 @@ async function testExpandedMappings() {
     }
 
     console.log();
-    console.log(`   Results: ${successCount}/10 selections from expected types`);
+    console.log(
+      `   Results: ${successCount}/10 selections from expected types`
+    );
     if (Object.keys(typeCounts).length > 0) {
       console.log(`   Distribution:`);
       Object.entries(typeCounts).forEach(([type, count]) => {
-        console.log(`     - ${type}: ${count}/10 (${Math.round(count / 10 * 100)}%)`);
+        console.log(
+          `     - ${type}: ${count}/10 (${Math.round((count / 10) * 100)}%)`
+        );
       });
     }
 
@@ -114,22 +126,39 @@ async function testExpandedMappings() {
   for (const [type, dbTypes] of Object.entries(oldMapping)) {
     const count = dbTypes.reduce((sum, t) => sum + (typeMap[t] || 0), 0);
     totalBefore += count;
-    console.log(`  ${type.padEnd(20, " ")} ${count.toString().padStart(5, " ")} questions`);
+    console.log(
+      `  ${type.padEnd(20, " ")} ${count.toString().padStart(5, " ")} questions`
+    );
   }
-  console.log(`  ${"TOTAL".padEnd(20, " ")} ${totalBefore.toString().padStart(5, " ")} questions`);
+  console.log(
+    `  ${"TOTAL".padEnd(20, " ")} ${totalBefore.toString().padStart(5, " ")} questions`
+  );
 
   console.log("\nAFTER (New Mapping):");
   for (const [type, dbTypes] of Object.entries(QUESTION_TYPE_MAP)) {
     const count = dbTypes.reduce((sum, t) => sum + (typeMap[t] || 0), 0);
     totalAfter += count;
-    const increase = count - (oldMapping[type as keyof typeof oldMapping]?.reduce((s, t) => s + (typeMap[t] || 0), 0) || 0);
+    const increase =
+      count -
+      (oldMapping[type as keyof typeof oldMapping]?.reduce(
+        (s, t) => s + (typeMap[t] || 0),
+        0
+      ) || 0);
     const increaseStr = increase > 0 ? ` (+${increase})` : "";
-    console.log(`  ${type.padEnd(20, " ")} ${count.toString().padStart(5, " ")} questions${increaseStr}`);
+    console.log(
+      `  ${type.padEnd(20, " ")} ${count.toString().padStart(5, " ")} questions${increaseStr}`
+    );
   }
-  console.log(`  ${"TOTAL".padEnd(20, " ")} ${totalAfter.toString().padStart(5, " ")} questions (+${totalAfter - totalBefore})`);
+  console.log(
+    `  ${"TOTAL".padEnd(20, " ")} ${totalAfter.toString().padStart(5, " ")} questions (+${totalAfter - totalBefore})`
+  );
 
-  const percentIncrease = Math.round(((totalAfter - totalBefore) / totalBefore) * 100);
-  console.log(`\n✨ Question pool increased by ${totalAfter - totalBefore} questions (${percentIncrease}% increase)!`);
+  const percentIncrease = Math.round(
+    ((totalAfter - totalBefore) / totalBefore) * 100
+  );
+  console.log(
+    `\n✨ Question pool increased by ${totalAfter - totalBefore} questions (${percentIncrease}% increase)!`
+  );
 
   console.log("\n" + "=".repeat(80));
   console.log("Test complete!\n");

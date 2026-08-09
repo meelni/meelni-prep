@@ -9,9 +9,7 @@ export const INTERVIEW_TYPE_ROUTE_SEGMENTS = [
   ...ALL_INTERVIEW_TYPES,
 ] as readonly RoundType[];
 
-export function assertInterviewTypeRoute(
-  value: string
-): value is RoundType {
+export function assertInterviewTypeRoute(value: string): value is RoundType {
   return (INTERVIEW_TYPE_ROUTE_SEGMENTS as readonly string[]).includes(value);
 }
 

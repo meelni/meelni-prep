@@ -59,8 +59,7 @@ const roundCases: Array<{
     weakestDimension: "structure",
     weakText:
       "My metric list lacks a primary outcome and a decision hierarchy, so I have not chosen which signal should drive the decision.",
-    weakQuote:
-      "metric list lacks a primary outcome and a decision hierarchy",
+    weakQuote: "metric list lacks a primary outcome and a decision hierarchy",
     observation:
       "The metric list lacks a primary outcome and decision hierarchy.",
     nextStep:

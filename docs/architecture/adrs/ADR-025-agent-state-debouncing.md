@@ -1,4 +1,5 @@
 ### ADR-025: Agent State Debouncing for Smooth Transitions
+
 - **Date**: 2025-11-08
 - **Decision**: Implement debounced state transitions with grace periods to prevent UI flickering during natural speech pauses
 - **Problem**: Agent state indicator was flickering between "speaking" and "listening" during brief pauses in agent speech (breath pauses, sentence breaks), creating confusing turn-taking signals
@@ -36,4 +37,3 @@
   - Natural conversation flow maintained
   - Applies to both demo and main interview agents
 - **Related Issues**: Fixes #105
-

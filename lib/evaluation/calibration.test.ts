@@ -289,8 +289,14 @@ test("score calibration tolerates bounded conservative scoring but rejects infla
     adjudicationApproval: approvalFixture(),
   });
 
-  assert.equal(conservative.gate.liveProviderAcceptance, "pending_semantic_review");
-  assert.equal(conservative.gate.calibrationEvidenceAcceptance, "pending_semantic_review");
+  assert.equal(
+    conservative.gate.liveProviderAcceptance,
+    "pending_semantic_review"
+  );
+  assert.equal(
+    conservative.gate.calibrationEvidenceAcceptance,
+    "pending_semantic_review"
+  );
   assert.equal(conservative.metrics.scoreBandAgreementRate, 1);
 
   const optimistic = await runEvaluationCalibration({

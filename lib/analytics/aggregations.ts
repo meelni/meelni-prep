@@ -3,7 +3,12 @@
  * Transforms raw session/feedback data into chart-ready formats
  */
 
-import { format, differenceInMinutes, startOfWeek, startOfMonth } from "date-fns";
+import {
+  format,
+  differenceInMinutes,
+  startOfWeek,
+  startOfMonth,
+} from "date-fns";
 
 export interface SessionWithFeedback {
   id: string;
@@ -39,7 +44,7 @@ export function aggregatePerformanceTrend(
     .map((session) => ({
       date: format(session.startedAt, "MMM d"),
       fullDate: session.startedAt,
-      score: (session.feedback!.overallScore * 20), // 1-5 → 0-100 scale
+      score: session.feedback!.overallScore * 20, // 1-5 → 0-100 scale
       sessionId: session.id,
       roundType: session.roundType,
     }));
@@ -90,11 +95,14 @@ export function aggregateCompetencyScores(sessions: SessionWithFeedback[]) {
  * Interview Type Distribution: Count sessions by type for pie chart
  */
 export function aggregateTypeDistribution(sessions: SessionWithFeedback[]) {
-  const typeCounts = sessions.reduce((acc, session) => {
-    const type = session.roundType;
-    acc[type] = (acc[type] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const typeCounts = sessions.reduce(
+    (acc, session) => {
+      const type = session.roundType;
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   const typeLabels: Record<string, string> = {
     product_sense: "Product Sense",
@@ -124,26 +132,27 @@ export function aggregateTimeInvestment(
   sessions: SessionWithFeedback[],
   groupBy: "week" | "month" = "week"
 ) {
-  const completedSessions = sessions.filter(
-    (s) => s.endedAt && s.startedAt
+  const completedSessions = sessions.filter((s) => s.endedAt && s.startedAt);
+
+  const grouped = completedSessions.reduce(
+    (acc, session) => {
+      const key =
+        groupBy === "week"
+          ? format(startOfWeek(session.startedAt), "MMM d")
+          : format(startOfMonth(session.startedAt), "MMM yyyy");
+
+      if (!acc[key]) {
+        acc[key] = { sessions: [], minutes: 0 };
+      }
+
+      const minutes = differenceInMinutes(session.endedAt!, session.startedAt);
+      acc[key].sessions.push(session);
+      acc[key].minutes += minutes;
+
+      return acc;
+    },
+    {} as Record<string, { sessions: SessionWithFeedback[]; minutes: number }>
   );
-
-  const grouped = completedSessions.reduce((acc, session) => {
-    const key =
-      groupBy === "week"
-        ? format(startOfWeek(session.startedAt), "MMM d")
-        : format(startOfMonth(session.startedAt), "MMM yyyy");
-
-    if (!acc[key]) {
-      acc[key] = { sessions: [], minutes: 0 };
-    }
-
-    const minutes = differenceInMinutes(session.endedAt!, session.startedAt);
-    acc[key].sessions.push(session);
-    acc[key].minutes += minutes;
-
-    return acc;
-  }, {} as Record<string, { sessions: SessionWithFeedback[]; minutes: number }>);
 
   return Object.entries(grouped)
     .map(([period, data]) => ({
@@ -161,20 +170,27 @@ export function aggregateTimeInvestment(
  * Score by Interview Type: Calculate average scores per type
  */
 export function aggregateScoreByType(sessions: SessionWithFeedback[]) {
-  const typeScores = sessions.reduce((acc, session) => {
-    // Explicit null/undefined check to handle 0 scores correctly
-    if (session.feedback?.overallScore === null || session.feedback?.overallScore === undefined) return acc;
+  const typeScores = sessions.reduce(
+    (acc, session) => {
+      // Explicit null/undefined check to handle 0 scores correctly
+      if (
+        session.feedback?.overallScore === null ||
+        session.feedback?.overallScore === undefined
+      )
+        return acc;
 
-    const type = session.roundType;
-    if (!acc[type]) {
-      acc[type] = { total: 0, count: 0 };
-    }
+      const type = session.roundType;
+      if (!acc[type]) {
+        acc[type] = { total: 0, count: 0 };
+      }
 
-    acc[type].total += session.feedback.overallScore;
-    acc[type].count += 1;
+      acc[type].total += session.feedback.overallScore;
+      acc[type].count += 1;
 
-    return acc;
-  }, {} as Record<string, { total: number; count: number }>);
+      return acc;
+    },
+    {} as Record<string, { total: number; count: number }>
+  );
 
   const typeLabels: Record<string, string> = {
     product_sense: "Product Sense",
@@ -245,19 +261,22 @@ export function aggregateScoreByDifficulty(sessions: SessionWithFeedback[]) {
   );
 
   // Group by difficulty and calculate averages
-  const difficultyScores = sessionsWithDifficulty.reduce((acc, session) => {
-    const difficulty = session.config.difficulty;
-    const score = session.feedback!.overallScore;
+  const difficultyScores = sessionsWithDifficulty.reduce(
+    (acc, session) => {
+      const difficulty = session.config.difficulty;
+      const score = session.feedback!.overallScore;
 
-    if (!acc[difficulty]) {
-      acc[difficulty] = { total: 0, count: 0 };
-    }
+      if (!acc[difficulty]) {
+        acc[difficulty] = { total: 0, count: 0 };
+      }
 
-    acc[difficulty].total += score;
-    acc[difficulty].count += 1;
+      acc[difficulty].total += score;
+      acc[difficulty].count += 1;
 
-    return acc;
-  }, {} as Record<string, { total: number; count: number }>);
+      return acc;
+    },
+    {} as Record<string, { total: number; count: number }>
+  );
 
   // Map difficulty keys to display labels
   const difficultyLabels: Record<string, string> = {
@@ -285,7 +304,9 @@ export function aggregateScoreByDifficulty(sessions: SessionWithFeedback[]) {
  * - If average score <= 2.5 (50%) → recommend level down
  * - Otherwise → stay at current level
  */
-export function calculateRecommendedDifficulty(sessions: SessionWithFeedback[]): {
+export function calculateRecommendedDifficulty(
+  sessions: SessionWithFeedback[]
+): {
   recommended: string;
   currentDifficulty: string | null;
   avgScore: number | null;

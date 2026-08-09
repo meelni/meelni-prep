@@ -323,7 +323,9 @@ test("provider parser authenticates only content-free invariant classifications"
   } catch (error) {
     unsupportedMaterialCaught = error;
   }
-  assert.ok(unsupportedMaterialCaught instanceof FeedbackProviderInvocationError);
+  assert.ok(
+    unsupportedMaterialCaught instanceof FeedbackProviderInvocationError
+  );
   assert.equal(
     getAuthenticatedFeedbackRejectionCode(unsupportedMaterialCaught),
     "finding_material_claim_unsupported"
@@ -355,7 +357,9 @@ test("provider parser authenticates only content-free invariant classifications"
   } catch (error) {
     unsupportedQuantityCaught = error;
   }
-  assert.ok(unsupportedQuantityCaught instanceof FeedbackProviderInvocationError);
+  assert.ok(
+    unsupportedQuantityCaught instanceof FeedbackProviderInvocationError
+  );
   assert.equal(
     getAuthenticatedFeedbackRejectionCode(unsupportedQuantityCaught),
     "finding_quantitative_claim_unsupported"
@@ -409,8 +413,7 @@ test("provider parser authenticates only content-free invariant classifications"
     ...providerValue,
     summary: "The answer has no meaningful gaps.",
   };
-  const repairedSummaryAbsolute =
-    parse(unsupportedSummaryAbsolute).evaluation;
+  const repairedSummaryAbsolute = parse(unsupportedSummaryAbsolute).evaluation;
   assert.equal(
     repairedSummaryAbsolute.summary,
     "Feedback is limited to the grounded findings above."

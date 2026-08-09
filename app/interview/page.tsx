@@ -424,9 +424,7 @@ export function InterviewPageContent() {
     // Runtime packets are post-persistence display notifications. The LiveKit
     // adapter rejects replayed identities before this callback, so the browser
     // renders each accepted turn once without owning a second write path.
-    transcriptRef.current = mergeTranscriptTurns(transcriptRef.current, [
-      turn,
-    ]);
+    transcriptRef.current = mergeTranscriptTurns(transcriptRef.current, [turn]);
     setTranscript((current) => mergeTranscriptTurns(current, [turn]));
     setTranscriptHydrationState((current) =>
       current === "empty" ? "ready" : current
@@ -534,9 +532,7 @@ export function InterviewPageContent() {
               hydrated
             );
             transcriptRef.current = mergedAtResponse;
-            setTranscript((current) =>
-              mergeTranscriptTurns(current, hydrated)
-            );
+            setTranscript((current) => mergeTranscriptTurns(current, hydrated));
             setTranscriptHydrationState(
               mergedAtResponse.length === 0 ? "empty" : "ready"
             );
@@ -596,11 +592,7 @@ export function InterviewPageContent() {
         transcriptHydrationInFlightRef.current = null;
       }
     };
-  }, [
-    activeSessionId,
-    connectionOwnerId,
-    transcriptHydrationGeneration,
-  ]);
+  }, [activeSessionId, connectionOwnerId, transcriptHydrationGeneration]);
 
   const retryTranscriptHydration = useCallback(() => {
     if (
@@ -1559,8 +1551,7 @@ function normalizeHydratedTranscriptPayload(
 
     hydrated.push({
       persistable: typeof value.eventId === "string",
-      eventId:
-        typeof value.eventId === "string" ? value.eventId : value.id,
+      eventId: typeof value.eventId === "string" ? value.eventId : value.id,
       rowId: value.id,
       writerId: optionalStringValue(value.writerId),
       writerGeneration: optionalNumber(value.writerGeneration),

@@ -80,7 +80,7 @@ export function TimeInvestment({
     >
       <ChartContainer
         config={chartConfig}
-        className="h-chart-md w-full lg:h-chart-md-plus"
+        className="h-chart-md lg:h-chart-md-plus w-full"
       >
         <BarChart accessibilityLayer data={data}>
           <CartesianGrid
