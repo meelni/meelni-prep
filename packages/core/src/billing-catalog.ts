@@ -87,7 +87,8 @@ export const BILLING_CATALOG = {
     id: "admin_grant",
     kind: "admin",
     displayName: "Admin Grant",
-    description: "Manual credits for support, QA, pilots, and make-good grants.",
+    description:
+      "Manual credits for support, QA, pilots, and make-good grants.",
     priceInCents: 0,
     currency: "usd",
     includedCredits: 0,
@@ -107,7 +108,9 @@ export const BILLING_CATALOG_ORDER = [
   "admin_grant",
 ] as const satisfies readonly BillingCatalogId[];
 
-export function getBillingCatalogItem(id: BillingCatalogId): BillingCatalogItem {
+export function getBillingCatalogItem(
+  id: BillingCatalogId
+): BillingCatalogItem {
   return BILLING_CATALOG[id];
 }
 

@@ -1,4 +1,5 @@
 ### ADR-023: Enhanced Prompt System with Difficulty-Aware Coaching
+
 - **Date**: 2025-11-07
 - **Decision**: Implement difficulty-aware prompt system with three levels (junior, intermediate, senior) to personalize interview coaching
 - **Rationale**:
@@ -26,19 +27,23 @@
   - Conversation naturalness improved (target 4.0+/5.0 vs current ~3.2/5.0)
 
 ### `/agent/prompts.py`
+
 **Purpose**: Enhanced modular prompt system with difficulty-aware coaching
 **Key Exports**:
+
 - `get_prompt(config: SessionConfig) -> str` - Main prompt composition function
 - `CompanyConfig` - Dataclass for company-specific configurations (API multi-tenancy)
 - `SessionConfig` - Dataclass for runtime session parameters
 - `InterviewType`, `InterviewMode`, `Difficulty` - Enums for type safety
 
 **Three-Layer Architecture**:
+
 1. **Layer 1 (Base)**: Universal coach identity, operating principles, natural conversation patterns
 2. **Layer 2 (Domain)**: Framework-specific instructions (Product Sense, Analytical, Leadership, Strategy)
 3. **Layer 3 (Runtime)**: Difficulty modulation + Mode-specific instructions
 
 **Critical Design Patterns**:
+
 ```python
 # Usage example
 from prompts import SessionConfig, InterviewType, Difficulty, get_prompt
@@ -51,6 +56,7 @@ prompt = get_prompt(config)
 ```
 
 **Key Features**:
+
 - **Difficulty-aware**: Adapts coaching style (junior/intermediate/senior)
 - **Framework-as-instructions**: Actionable directives, not evaluation checklists
 - **Concrete examples**: Every abstract directive has 2-3 real examples
@@ -61,18 +67,22 @@ prompt = get_prompt(config)
 **Backward Compatibility**: Defaults to "intermediate" if difficulty not specified
 
 ### `/agent/prompt_builder.py`
+
 **Purpose**: Translation layer between LiveKit room metadata and prompt system
 **Key Exports**:
+
 - `build_interview_prompt(metadata: Dict) -> str` - Main entrypoint from agent.py
 - `parse_room_metadata(metadata: Dict) -> SessionConfig` - Metadata parser
 
 **Responsibilities**:
+
 - Extract difficulty from room metadata (default: "intermediate")
 - Map `round_type` → `InterviewType` enum
 - Handle backward compatibility with existing metadata format
 - Validate and sanitize inputs
 
 **Integration Pattern**:
+
 ```python
 # In agent.py
 from prompt_builder import build_interview_prompt
@@ -85,4 +95,3 @@ session = AgentSession(..., instructions=instructions)
 
 - **Status**: Implemented in Phase 1A (2025-11-07)
 - **Testing**: 10 verification tests, 100% pass rate
-

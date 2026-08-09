@@ -98,11 +98,13 @@ User can set password: `password123` (even though it's been breached millions of
 Leaked password protection works **in addition to** existing password strength rules:
 
 Current Supabase defaults:
+
 - Minimum 8 characters (can be configured)
 - No maximum length limit
 - No special character requirements (can be added)
 
 You can combine both:
+
 ```javascript
 // Example: Strong password that's also NOT leaked
 const password = "MyUniqueP@ssw0rd2024!";
@@ -117,8 +119,8 @@ const password = "MyUniqueP@ssw0rd2024!";
 ```javascript
 // This should FAIL after enabling protection
 const { data, error } = await supabase.auth.signUp({
-  email: 'test@example.com',
-  password: 'password123', // Known leaked password
+  email: "test@example.com",
+  password: "password123", // Known leaked password
 });
 
 console.log(error); // Should show: "Password has been found in a data breach"
@@ -129,8 +131,8 @@ console.log(error); // Should show: "Password has been found in a data breach"
 ```javascript
 // This should SUCCEED
 const { data, error } = await supabase.auth.signUp({
-  email: 'test@example.com',
-  password: 'Xk9$mP2vL#qR8nW@2024', // Strong unique password
+  email: "test@example.com",
+  password: "Xk9$mP2vL#qR8nW@2024", // Strong unique password
 });
 
 console.log(error); // Should be null
@@ -189,6 +191,7 @@ In Supabase Dashboard → Authentication → Providers → Email:
 ### 4. Rate Limiting
 
 Supabase already includes rate limiting for auth endpoints:
+
 - Sign up: 30 requests per hour per IP
 - Sign in: 30 requests per hour per email
 - Password reset: 30 requests per hour per email

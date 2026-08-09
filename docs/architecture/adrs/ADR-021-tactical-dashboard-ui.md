@@ -1,4 +1,5 @@
 ### ADR-021: Tactical Dashboard UI Migration
+
 - **Date**: 2025-11-06
 - **Decision**: Migrated dashboard to tactical command-interface style layout with sidebar navigation
 - **Rationale**:
@@ -53,5 +54,3 @@
   - Sidebar state can be persisted to localStorage (future enhancement)
   - Keyboard shortcuts can be added for power users (future enhancement)
   - Activity log provides real-time feedback on user actions
-
-

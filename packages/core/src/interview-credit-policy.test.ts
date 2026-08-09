@@ -78,9 +78,15 @@ test("replays validate already terminal reservation evidence", () => {
 });
 
 test("billing fault codes are allowlisted machine identifiers", () => {
-  assert.equal(isSafeInterviewBillingFaultCode("provider.session_failed"), true);
+  assert.equal(
+    isSafeInterviewBillingFaultCode("provider.session_failed"),
+    true
+  );
   assert.equal(isSafeInterviewBillingFaultCode("runtime-start_1"), true);
-  assert.equal(isSafeInterviewBillingFaultCode("Provider failed: secret"), false);
+  assert.equal(
+    isSafeInterviewBillingFaultCode("Provider failed: secret"),
+    false
+  );
   assert.equal(isSafeInterviewBillingFaultCode("stack\ntrace"), false);
   assert.equal(isSafeInterviewBillingFaultCode("a".repeat(65)), false);
 });

@@ -4,10 +4,7 @@ import { pathToFileURL } from "node:url";
 
 export function shouldIgnoreVercelBuild(env = process.env) {
   if (env.VERCEL_ENV === "preview") return false;
-  if (
-    env.VERCEL_ENV === "production" &&
-    env.VERCEL_GIT_COMMIT_REF === "main"
-  ) {
+  if (env.VERCEL_ENV === "production" && env.VERCEL_GIT_COMMIT_REF === "main") {
     return false;
   }
   return true;

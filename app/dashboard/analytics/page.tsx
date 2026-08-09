@@ -6,16 +6,20 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 
 // Lazy load analytics section
-const AnalyticsSection = lazy(() => import("@/components/dashboard/sections/analytics").then(m => ({ default: m.AnalyticsSection })));
+const AnalyticsSection = lazy(() =>
+  import("@/components/dashboard/sections/analytics").then((m) => ({
+    default: m.AnalyticsSection,
+  }))
+);
 
 export default function AnalyticsPage() {
   // Track Web Vitals performance
-  useWebVitals('dashboard_analytics');
+  useWebVitals("dashboard_analytics");
 
   // Track dashboard section views
   useEffect(() => {
-    analytics.track('dashboard_viewed', {
-      section: 'analytics',
+    analytics.track("dashboard_viewed", {
+      section: "analytics",
     });
   }, []);
 

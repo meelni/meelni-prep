@@ -787,7 +787,9 @@ function assertCanonicalMismatchAlternatives(
     return match.output.sanitizedOutputId;
   });
   if (new Set(expected).size !== expected.length) {
-    throw new Error("Semantic adjudication canonical mismatches are duplicated");
+    throw new Error(
+      "Semantic adjudication canonical mismatches are duplicated"
+    );
   }
   const actual = [...reviewedLegitimateAlternativeOutputIds].sort();
   expected.sort();
@@ -1096,7 +1098,10 @@ function assertPublishedSemanticReport(
   }
 }
 
-function assertTerminalCalibrationReport(pathInput: string, sha256: string): void {
+function assertTerminalCalibrationReport(
+  pathInput: string,
+  sha256: string
+): void {
   const path = requireAbsolutePath(pathInput, "terminal report path");
   if (!SHA256.test(sha256)) {
     throw new Error("Terminal calibration report hash is invalid");

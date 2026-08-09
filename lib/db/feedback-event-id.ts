@@ -1,5 +1,4 @@
-export const FEEDBACK_GENERATION_EVENT_PREFIX =
-  "feedback/generate.requested";
+export const FEEDBACK_GENERATION_EVENT_PREFIX = "feedback/generate.requested";
 
 export function feedbackGenerationEventId(
   sessionId: string,

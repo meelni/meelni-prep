@@ -16,7 +16,7 @@ test("buildLocalDevEnv loads .env.local for child processes", async () => {
 
     const env = buildLocalDevEnv({
       baseEnv: {},
-      repoRoot: dir
+      repoRoot: dir,
     });
 
     assert.equal(env.LIVEKIT_API_KEY, "key-from-file");
@@ -29,11 +29,14 @@ test("buildLocalDevEnv loads .env.local for child processes", async () => {
 test("buildLocalDevEnv maps public LiveKit URL to LIVEKIT_URL when needed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "meelni-dev-env-"));
   try {
-    await writeFile(join(dir, ".env.local"), "NEXT_PUBLIC_LIVEKIT_URL=wss://example.livekit.cloud\n");
+    await writeFile(
+      join(dir, ".env.local"),
+      "NEXT_PUBLIC_LIVEKIT_URL=wss://example.livekit.cloud\n"
+    );
 
     const env = buildLocalDevEnv({
       baseEnv: {},
-      repoRoot: dir
+      repoRoot: dir,
     });
 
     assert.equal(env.LIVEKIT_URL, "wss://example.livekit.cloud");
@@ -45,11 +48,14 @@ test("buildLocalDevEnv maps public LiveKit URL to LIVEKIT_URL when needed", asyn
 test("buildLocalDevEnv parses .env.local inline comments like Next.js", async () => {
   const dir = await mkdtemp(join(tmpdir(), "meelni-dev-env-"));
   try {
-    await writeFile(join(dir, ".env.local"), "NEXT_PUBLIC_APP_URL=http://localhost:3000  # local app\n");
+    await writeFile(
+      join(dir, ".env.local"),
+      "NEXT_PUBLIC_APP_URL=http://localhost:3000  # local app\n"
+    );
 
     const env = buildLocalDevEnv({
       baseEnv: {},
-      repoRoot: dir
+      repoRoot: dir,
     });
 
     assert.equal(env.NEXT_PUBLIC_APP_URL, "http://localhost:3000");
@@ -61,13 +67,16 @@ test("buildLocalDevEnv parses .env.local inline comments like Next.js", async ()
 test("buildLocalDevEnv preserves explicit shell values over .env.local", async () => {
   const dir = await mkdtemp(join(tmpdir(), "meelni-dev-env-"));
   try {
-    await writeFile(join(dir, ".env.local"), "LIVEKIT_URL=wss://file.livekit.cloud\n");
+    await writeFile(
+      join(dir, ".env.local"),
+      "LIVEKIT_URL=wss://file.livekit.cloud\n"
+    );
 
     const env = buildLocalDevEnv({
       baseEnv: {
-        LIVEKIT_URL: "wss://shell.livekit.cloud"
+        LIVEKIT_URL: "wss://shell.livekit.cloud",
       },
-      repoRoot: dir
+      repoRoot: dir,
     });
 
     assert.equal(env.LIVEKIT_URL, "wss://shell.livekit.cloud");

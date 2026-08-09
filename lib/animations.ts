@@ -1,4 +1,4 @@
-import { Variants } from 'framer-motion';
+import { Variants } from "framer-motion";
 
 // Page transition variants
 export const pageVariants: Variants = {
@@ -83,7 +83,7 @@ export const cardHover = {
 
 // Selection animation with spring
 export const selectionSpring = {
-  type: 'spring' as const,
+  type: "spring" as const,
   stiffness: 300,
   damping: 25,
 };
@@ -99,7 +99,7 @@ export const checkmarkVariants: Variants = {
     opacity: 1,
     transition: {
       duration: 0.4,
-      ease: 'easeInOut',
+      ease: "easeInOut",
     },
   },
 };
@@ -116,7 +116,7 @@ export const pulse: Variants = {
     transition: {
       duration: 2,
       repeat: Infinity,
-      ease: 'easeInOut',
+      ease: "easeInOut",
     },
   },
 };
@@ -147,7 +147,7 @@ export const progressBar: Variants = {
     scaleX: 1,
     transition: {
       duration: 0.5,
-      ease: 'easeOut',
+      ease: "easeOut",
     },
   },
 };
@@ -183,14 +183,14 @@ export const stepTransition = (direction: number): Variants => ({
 export const breathingPulse = {
   animate: {
     boxShadow: [
-      '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
-      '0 6px 30px color-mix(in oklab, var(--primary) 35%, transparent)',
-      '0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)',
+      "0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)",
+      "0 6px 30px color-mix(in oklab, var(--primary) 35%, transparent)",
+      "0 4px 20px color-mix(in oklab, var(--primary) 20%, transparent)",
     ],
     transition: {
       duration: 2.5,
       repeat: Infinity,
-      ease: 'easeInOut',
+      ease: "easeInOut",
     },
   },
 };
@@ -201,7 +201,7 @@ export const cardLift = {
     y: -2,
     scale: 1.01,
     transition: {
-      type: 'spring',
+      type: "spring",
       stiffness: 400,
       damping: 30,
     },
@@ -217,7 +217,7 @@ export const iconScale = {
   hover: {
     scale: 1.05,
     transition: {
-      type: 'spring',
+      type: "spring",
       stiffness: 400,
       damping: 25,
     },
@@ -231,7 +231,7 @@ export const spinnerRotation = {
     transition: {
       duration: 1,
       repeat: Infinity,
-      ease: 'linear',
+      ease: "linear",
     },
   },
 };
@@ -239,9 +239,9 @@ export const spinnerRotation = {
 // Focus ring animation
 export const focusRing = {
   focus: {
-    boxShadow: '0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent)',
+    boxShadow: "0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent)",
     transition: {
-      type: 'spring',
+      type: "spring",
       stiffness: 300,
       damping: 20,
     },

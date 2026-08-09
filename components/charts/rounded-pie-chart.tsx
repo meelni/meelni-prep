@@ -60,10 +60,7 @@ export function RoundedPieChart() {
       <CardHeader className="items-center pb-0">
         <CardTitle>
           Pie Chart
-          <Badge
-            variant="success"
-            className="ml-2"
-          >
+          <Badge variant="success" className="ml-2">
             <TrendingUp className="h-4 w-4" />
             <span>5.2%</span>
           </Badge>
@@ -73,7 +70,7 @@ export function RoundedPieChart() {
       <CardContent className="flex-1 pb-0">
         <ChartContainer
           config={chartConfig}
-          className="[&_.recharts-text]:fill-background mx-auto aspect-square max-h-chart-sm"
+          className="[&_.recharts-text]:fill-background max-h-chart-sm mx-auto aspect-square"
         >
           <PieChart>
             <ChartTooltip

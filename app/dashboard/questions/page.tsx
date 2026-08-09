@@ -6,16 +6,20 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import { DashboardLoadingState } from "@/components/dashboard/dashboard-surface";
 
 // Lazy load questions section
-const QuestionsSection = lazy(() => import("@/components/dashboard/sections/questions").then(m => ({ default: m.QuestionsSection })));
+const QuestionsSection = lazy(() =>
+  import("@/components/dashboard/sections/questions").then((m) => ({
+    default: m.QuestionsSection,
+  }))
+);
 
 export default function QuestionsPage() {
   // Track Web Vitals performance
-  useWebVitals('dashboard_questions');
+  useWebVitals("dashboard_questions");
 
   // Track dashboard section views
   useEffect(() => {
-    analytics.track('dashboard_viewed', {
-      section: 'questions',
+    analytics.track("dashboard_viewed", {
+      section: "questions",
     });
   }, []);
 

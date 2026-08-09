@@ -2282,8 +2282,9 @@ function getNegativeClaimTargetSignals(text: string): Set<string> {
   for (const match of negativeProjection.matchAll(NEGATIVE_CLAIM_PATTERN)) {
     const start = (match.index ?? 0) + match[0].length;
     const localTargetClause =
-      negativeProjection.slice(start, start + 120).split(TARGET_CLAUSE_BOUNDARY)[0] ??
-      "";
+      negativeProjection
+        .slice(start, start + 120)
+        .split(TARGET_CLAUSE_BOUNDARY)[0] ?? "";
     for (const signal of getSupportSignals(localTargetClause)) {
       targets.add(signal);
     }

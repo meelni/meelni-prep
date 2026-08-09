@@ -142,10 +142,7 @@ test("v32 plan remains a non-executable proposal until fresh exact owner approva
       "utf8"
     )
   );
-  assert.deepEqual(
-    authorizationProposal.authorization,
-    proposal.authorization
-  );
+  assert.deepEqual(authorizationProposal.authorization, proposal.authorization);
   assert.deepEqual(authorizationProposal.proposedPlan, proposal.proposedPlan);
   assert.deepEqual(
     JSON.parse(

@@ -33,5 +33,7 @@ export function buildInternalRequestDestination(
   search: string
 ): string {
   const query = search && !search.startsWith("?") ? `?${search}` : search;
-  return getSafeInternalRedirect(`${pathname}${query}`) ?? DEFAULT_AUTH_REDIRECT;
+  return (
+    getSafeInternalRedirect(`${pathname}${query}`) ?? DEFAULT_AUTH_REDIRECT
+  );
 }

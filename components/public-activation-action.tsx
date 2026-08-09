@@ -10,10 +10,11 @@ import {
 } from "@/lib/feature-flags/public-activation";
 import { usePublicActivationDecision } from "@/lib/feature-flags/public-activation-client";
 
-interface PublicActivationButtonProps extends Omit<
-  ButtonProps,
-  "asChild" | "children" | "disabled" | "onClick" | "type"
-> {
+interface PublicActivationButtonProps
+  extends Omit<
+    ButtonProps,
+    "asChild" | "children" | "disabled" | "onClick" | "type"
+  > {
   children: ReactNode;
   href: string;
   onClick?: MouseEventHandler<HTMLAnchorElement>;

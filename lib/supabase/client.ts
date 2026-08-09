@@ -6,7 +6,10 @@ export function createClient() {
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (typeof window === "undefined") {
-      return createBrowserClient("https://example.supabase.co", "build-placeholder-key");
+      return createBrowserClient(
+        "https://example.supabase.co",
+        "build-placeholder-key"
+      );
     }
 
     throw new Error(

@@ -732,9 +732,7 @@ function completeReview(
     publicReportPath: input.publicReportPath,
     report,
     terminalReportPath,
-    terminalReportSha256: createHash("sha256")
-      .update(terminal)
-      .digest("hex"),
+    terminalReportSha256: createHash("sha256").update(terminal).digest("hex"),
   });
   return completed.report;
 }

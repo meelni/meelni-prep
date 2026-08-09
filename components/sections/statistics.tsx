@@ -38,9 +38,9 @@ export function Statistics() {
             <Link
               href="#"
               key={idx}
-              className="flex flex-col items-center justify-center py-8 px-4 border-b sm:border-b-0 last:border-b-0 sm:border-r sm:last:border-r-0 [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0 relative group overflow-hidden"
+              className="group relative flex flex-col items-center justify-center overflow-hidden border-b px-4 py-8 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0 [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+3)]:border-t-0"
             >
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-full -translate-y-full group-hover:translate-x-0 group-hover:translate-y-0 duration-300 ease-in-out">
+              <div className="absolute top-2 right-2 translate-x-full -translate-y-full transform opacity-0 transition-all duration-300 ease-in-out group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="24"
@@ -56,11 +56,11 @@ export function Statistics() {
                   <polyline points="7 7 17 7 17 17"></polyline>
                 </svg>
               </div>
-              <div className="text-center relative">
+              <div className="relative text-center">
                 <BorderText text={stat.title} />
-                <div className="flex items-center justify-center gap-2 mt-2">
+                <div className="mt-2 flex items-center justify-center gap-2">
                   {stat.icon}
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     {stat.subtitle}
                   </p>
                 </div>

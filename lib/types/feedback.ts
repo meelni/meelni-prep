@@ -13,14 +13,18 @@ import type {
 export type { RubricScores, FeedbackItem, DrillSuggestion, EvaluationResponse };
 
 // Extended transcript type for UI display with additional properties
-export interface TranscriptTurn extends Omit<EvalTranscriptTurn, "startedAt" | "endedAt"> {
+export interface TranscriptTurn
+  extends Omit<EvalTranscriptTurn, "startedAt" | "endedAt"> {
   id: string;
   timestamp: string; // ISO 8601 format for display
   highlighted?: boolean; // For highlighting key moments referenced in feedback
 }
 
 // Rubric dimension descriptions for UI display
-export const RUBRIC_DESCRIPTIONS: Record<keyof Omit<RubricScores, "overall">, string> = {
+export const RUBRIC_DESCRIPTIONS: Record<
+  keyof Omit<RubricScores, "overall">,
+  string
+> = {
   structure: "Organized thinking with clear frameworks",
   clarity: "Clear communication and articulation",
   insight: "Deep analysis and creative solutions",

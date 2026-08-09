@@ -1,7 +1,4 @@
-import {
-  ALL_INTERVIEW_TYPES,
-  type RoundType,
-} from "./interview";
+import { ALL_INTERVIEW_TYPES, type RoundType } from "./interview";
 import type { BillingCatalogId } from "./billing-catalog";
 
 export type BillingStatus =
@@ -78,14 +75,12 @@ export function computeCreditEntitlements(
  */
 export type SubscriptionTier = "free" | "pro" | "premium";
 
-const TIER_PERMISSIONS: Record<
-  SubscriptionTier,
-  readonly RoundType[] | "all"
-> = {
-  free: ["product_sense"],
-  pro: "all",
-  premium: "all",
-};
+const TIER_PERMISSIONS: Record<SubscriptionTier, readonly RoundType[] | "all"> =
+  {
+    free: ["product_sense"],
+    pro: "all",
+    premium: "all",
+  };
 
 export function canAccessInterviewType(
   tier: SubscriptionTier,

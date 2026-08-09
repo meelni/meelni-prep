@@ -39,10 +39,7 @@ export function GlowingStrokeRadarChart() {
       <CardHeader className="items-center pb-4">
         <CardTitle>
           Radar Chart
-          <Badge
-            variant="success"
-            className="ml-2"
-          >
+          <Badge variant="success" className="ml-2">
             <TrendingUp className="h-4 w-4" />
             <span>5.2%</span>
           </Badge>
@@ -54,7 +51,7 @@ export function GlowingStrokeRadarChart() {
       <CardContent className="pb-0">
         <ChartContainer
           config={chartConfig}
-          className="mx-auto aspect-square max-h-chart-sm"
+          className="max-h-chart-sm mx-auto aspect-square"
         >
           <RadarChart data={chartData}>
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />

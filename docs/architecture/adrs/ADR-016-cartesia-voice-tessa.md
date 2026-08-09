@@ -1,4 +1,5 @@
 ### ADR-016: Cartesia Voice Library and Tessa Voice Selection
+
 - **Date**: 2025-11-05
 - **Decision**: Use Tessa voice from Cartesia's 150+ voice library
 - **Voice Details**:
@@ -19,4 +20,3 @@
   - More natural, emotive interview conversations
   - Can easily swap voices by changing voice ID in configuration
   - Default voice ID updated in both frontend (`/app/setup/page.tsx`) and backend (`/agent/agent.py`)
-

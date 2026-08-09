@@ -62,14 +62,8 @@ export async function GET(req: Request) {
 
     // Parse query parameters
     const { searchParams } = new URL(req.url);
-    const limit = parseNonNegativeIntegerParam(
-      searchParams.get("limit"),
-      10
-    );
-    const offset = parseNonNegativeIntegerParam(
-      searchParams.get("offset"),
-      0
-    );
+    const limit = parseNonNegativeIntegerParam(searchParams.get("limit"), 10);
+    const offset = parseNonNegativeIntegerParam(searchParams.get("offset"), 0);
 
     if (limit === null || offset === null || limit < 1 || limit > 100) {
       return NextResponse.json(

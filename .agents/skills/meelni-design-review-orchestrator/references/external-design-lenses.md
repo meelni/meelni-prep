@@ -77,12 +77,12 @@ Important conflict notes:
 
 ## Surface Routing
 
-| Surface | Primary lens | Secondary lens | Notes |
-| --- | --- | --- | --- |
-| Dashboard | Meelni + Impeccable product | ui-skills accessibility/motion | Keep dense, calm, repeated-task UI. |
-| New Mock Interview | Meelni + Impeccable product | ui-skills accessibility | Optimize activation and decision clarity. |
-| Interview room | Meelni only, with ui-skills motion/a11y | Impeccable audit | Focused runtime; avoid external visual novelty. |
-| Feedback review | Meelni + Impeccable product | ui-skills accessibility | Prioritize trust, hierarchy, and comparison clarity. |
-| Auth | Meelni + Impeccable product | ui-skills accessibility | Calm account flow, no marketing detours. |
-| Public marketing/pricing | Meelni + Taste Skill | Impeccable brand/product audit | Taste can stretch direction; Meelni primitives ship it. |
-| Blog/company/docs/SEO | Meelni + Taste Skill | ui-skills metadata/a11y | Public content polish and discoverability. |
+| Surface                  | Primary lens                            | Secondary lens                 | Notes                                                   |
+| ------------------------ | --------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| Dashboard                | Meelni + Impeccable product             | ui-skills accessibility/motion | Keep dense, calm, repeated-task UI.                     |
+| New Mock Interview       | Meelni + Impeccable product             | ui-skills accessibility        | Optimize activation and decision clarity.               |
+| Interview room           | Meelni only, with ui-skills motion/a11y | Impeccable audit               | Focused runtime; avoid external visual novelty.         |
+| Feedback review          | Meelni + Impeccable product             | ui-skills accessibility        | Prioritize trust, hierarchy, and comparison clarity.    |
+| Auth                     | Meelni + Impeccable product             | ui-skills accessibility        | Calm account flow, no marketing detours.                |
+| Public marketing/pricing | Meelni + Taste Skill                    | Impeccable brand/product audit | Taste can stretch direction; Meelni primitives ship it. |
+| Blog/company/docs/SEO    | Meelni + Taste Skill                    | ui-skills metadata/a11y        | Public content polish and discoverability.              |

@@ -38,7 +38,7 @@ export default function Author({
           className="rounded-full"
         />
         <div className="flex flex-col">
-          <p className="text-sm text-muted-foreground">Written by {name}</p>
+          <p className="text-muted-foreground text-sm">Written by {name}</p>
           <time dateTime={updatedAt} className="text-sm font-light">
             Last updated {formatDate(updatedAt)}
           </time>
@@ -62,8 +62,8 @@ export default function Author({
         className="rounded-full transition-all group-hover:brightness-90"
       />
       <div className="flex flex-col">
-        <p className="font-medium text-foreground">{name}</p>
-        <p className="text-sm text-muted-foreground">@{twitterUsername}</p>
+        <p className="text-foreground font-medium">{name}</p>
+        <p className="text-muted-foreground text-sm">@{twitterUsername}</p>
       </div>
     </Link>
   );

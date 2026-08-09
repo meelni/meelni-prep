@@ -1,4 +1,7 @@
-import { getRandomQuestion, getRandomRecentQuestion } from "../../lib/db/questions";
+import {
+  getRandomQuestion,
+  getRandomRecentQuestion,
+} from "../../lib/db/questions";
 
 async function testQuestionSelection() {
   const QUESTION_TYPE_MAP: Record<string, string> = {
@@ -11,7 +14,9 @@ async function testQuestionSelection() {
   console.log("=== Testing Question Selection by Type ===\n");
 
   for (const [roundType, dbQuestionType] of Object.entries(QUESTION_TYPE_MAP)) {
-    console.log(`\nTesting roundType="${roundType}" → dbQuestionType="${dbQuestionType}"`);
+    console.log(
+      `\nTesting roundType="${roundType}" → dbQuestionType="${dbQuestionType}"`
+    );
     console.log("─".repeat(80));
 
     // Test with recent days (365)
@@ -20,10 +25,14 @@ async function testQuestionSelection() {
       console.log(`✅ Recent question found (365 days):`);
       console.log(`   Company: ${recentQuestion.company}`);
       console.log(`   Type: ${recentQuestion.questionType}`);
-      console.log(`   Text: ${recentQuestion.questionText.substring(0, 100)}...`);
+      console.log(
+        `   Text: ${recentQuestion.questionText.substring(0, 100)}...`
+      );
 
       if (recentQuestion.questionType !== dbQuestionType) {
-        console.log(`   ⚠️  WARNING: Expected "${dbQuestionType}" but got "${recentQuestion.questionType}"`);
+        console.log(
+          `   ⚠️  WARNING: Expected "${dbQuestionType}" but got "${recentQuestion.questionType}"`
+        );
       }
     } else {
       console.log(`❌ No recent question found for type "${dbQuestionType}"`);
@@ -38,7 +47,9 @@ async function testQuestionSelection() {
       console.log(`   Text: ${anyQuestion.questionText.substring(0, 100)}...`);
 
       if (anyQuestion.questionType !== dbQuestionType) {
-        console.log(`   ⚠️  WARNING: Expected "${dbQuestionType}" but got "${anyQuestion.questionType}"`);
+        console.log(
+          `   ⚠️  WARNING: Expected "${dbQuestionType}" but got "${anyQuestion.questionType}"`
+        );
       }
     } else {
       console.log(`❌ No question found for type "${dbQuestionType}"`);

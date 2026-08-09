@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 // Storage key
-const STORAGE_KEY = 'meelni:setup-modal:last-config';
+const STORAGE_KEY = "meelni:setup-modal:last-config";
 
 // Interface definitions
 export interface InterviewConfig {
-  roundType: 'product_sense' | 'analytical' | 'leadership' | 'strategy' | null;
-  mode: 'mock_interview' | 'practice' | 'learning' | null;
+  roundType: "product_sense" | "analytical" | "leadership" | "strategy" | null;
+  mode: "mock_interview" | "practice" | "learning" | null;
   voiceSettings: {
     voice: string;
     speed: number;
@@ -42,12 +42,12 @@ export interface UseSetupModalReturn {
 
 // Smart defaults configuration
 const SMART_DEFAULTS: InterviewConfig = {
-  roundType: 'product_sense',
-  mode: 'mock_interview',
+  roundType: "product_sense",
+  mode: "mock_interview",
   voiceSettings: {
-    voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b', // Tessa
+    voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa
     speed: 1.0,
-    emotion: 'confident',
+    emotion: "confident",
   },
 };
 
@@ -56,9 +56,9 @@ const EMPTY_CONFIG: InterviewConfig = {
   roundType: null,
   mode: null,
   voiceSettings: {
-    voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b', // Tessa
+    voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b", // Tessa
     speed: 1.0,
-    emotion: 'confident',
+    emotion: "confident",
   },
 };
 
@@ -77,19 +77,21 @@ export function useSetupModal(): UseSetupModalReturn {
       try {
         const parsed = JSON.parse(saved);
         // Validate that parsed data has expected structure
-        if (parsed && typeof parsed === 'object') {
+        if (parsed && typeof parsed === "object") {
           setConfig({
             roundType: parsed.roundType || null,
             mode: parsed.mode || null,
             voiceSettings: {
-              voice: parsed.voiceSettings?.voice || '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',
+              voice:
+                parsed.voiceSettings?.voice ||
+                "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
               speed: parsed.voiceSettings?.speed || 1.0,
-              emotion: parsed.voiceSettings?.emotion || 'confident',
+              emotion: parsed.voiceSettings?.emotion || "confident",
             },
           });
         }
       } catch (e) {
-        console.error('Failed to parse saved config:', e);
+        console.error("Failed to parse saved config:", e);
         // Clear invalid data
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -133,18 +135,21 @@ export function useSetupModal(): UseSetupModalReturn {
   }, []);
 
   // Validation: can proceed to next step
-  const canProceedToNextStep = useCallback((step: number): boolean => {
-    switch (step) {
-      case 1:
-        return config.roundType !== null;
-      case 2:
-        return config.mode !== null;
-      case 3:
-        return true; // Voice settings are optional
-      default:
-        return false;
-    }
-  }, [config]);
+  const canProceedToNextStep = useCallback(
+    (step: number): boolean => {
+      switch (step) {
+        case 1:
+          return config.roundType !== null;
+        case 2:
+          return config.mode !== null;
+        case 3:
+          return true; // Voice settings are optional
+        default:
+          return false;
+      }
+    },
+    [config]
+  );
 
   // Check if config is complete
   const isConfigComplete = config.roundType !== null && config.mode !== null;
@@ -152,7 +157,7 @@ export function useSetupModal(): UseSetupModalReturn {
   // Submit configuration
   const submitConfig = useCallback(() => {
     if (!isConfigComplete) {
-      console.error('Config incomplete');
+      console.error("Config incomplete");
       return;
     }
 
@@ -167,7 +172,7 @@ export function useSetupModal(): UseSetupModalReturn {
 
     // Add questionId if present
     if (config.questionId) {
-      params.append('questionId', config.questionId);
+      params.append("questionId", config.questionId);
     }
 
     router.push(`/interview?${params.toString()}`);

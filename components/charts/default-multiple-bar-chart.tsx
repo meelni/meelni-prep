@@ -44,10 +44,7 @@ export function DefaultMultipleBarChart() {
       <CardHeader>
         <CardTitle>
           Bar Chart - Multiple{" "}
-          <Badge
-            variant="destructive"
-            className="ml-2"
-          >
+          <Badge variant="destructive" className="ml-2">
             <TrendingDown className="h-4 w-4" />
             <span>-5.2%</span>
           </Badge>

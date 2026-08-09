@@ -160,8 +160,7 @@ test("deadline retries credit convergence before feedback dispatch", async () =>
           settlements += 1;
           return {
             ...settlement(),
-            creditSettlementStatus:
-              settlements === 1 ? "deferred" : "settled",
+            creditSettlementStatus: settlements === 1 ? "deferred" : "settled",
           };
         },
         dispatchSettlement: async (completion) => {

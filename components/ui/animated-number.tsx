@@ -141,9 +141,7 @@ export function AnimatedNumber({
 
   // If value is 0, just render static 0
   if (!shouldAnimate) {
-    const formatted = useThousandsSeparator
-      ? (0).toLocaleString("en-US")
-      : "0";
+    const formatted = useThousandsSeparator ? (0).toLocaleString("en-US") : "0";
     return (
       <span className={cn("tabular-nums", className)}>
         {prefix}
@@ -177,25 +175,22 @@ export function AnimatedNumberTest() {
   const [trigger, setTrigger] = useState(0);
 
   return (
-    <div className="p-8 space-y-8 bg-background min-h-screen">
+    <div className="bg-background min-h-screen space-y-8 p-8">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">AnimatedNumber Test Suite</h2>
-        <Button
-          type="button"
-          onClick={() => setTrigger((t) => t + 1)}
-        >
+        <Button type="button" onClick={() => setTrigger((t) => t + 1)}>
           Re-trigger All Animations
         </Button>
       </div>
 
       {/* Basic Integer */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Basic Integer
         </h3>
         <div
           key={`int-${trigger}`}
-          className="text-4xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-4xl font-bold"
         >
           <AnimatedNumber value={42} />
         </div>
@@ -203,12 +198,12 @@ export function AnimatedNumberTest() {
 
       {/* With Decimals and Suffix */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           With Decimals and Suffix (%)
         </h3>
         <div
           key={`decimal-${trigger}`}
-          className="text-4xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-4xl font-bold"
         >
           <AnimatedNumber value={87.3} decimals={1} suffix="%" />
         </div>
@@ -216,12 +211,12 @@ export function AnimatedNumberTest() {
 
       {/* With Delay */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           With Delay (200ms) and Suffix
         </h3>
         <div
           key={`delay-${trigger}`}
-          className="text-2xl font-mono text-foreground"
+          className="text-foreground font-mono text-2xl"
         >
           <AnimatedNumber value={240} suffix=" min" delay={200} />
         </div>
@@ -229,31 +224,31 @@ export function AnimatedNumberTest() {
 
       {/* Multiple with Stagger */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Multiple Numbers (Staggered)
         </h3>
         <div className="grid grid-cols-2 gap-4">
           <div
             key={`stagger1-${trigger}`}
-            className="text-xl font-mono text-foreground"
+            className="text-foreground font-mono text-xl"
           >
             Sessions: <AnimatedNumber value={15} delay={0} />
           </div>
           <div
             key={`stagger2-${trigger}`}
-            className="text-xl font-mono text-foreground"
+            className="text-foreground font-mono text-xl"
           >
             Score: <AnimatedNumber value={86} decimals={1} delay={100} />
           </div>
           <div
             key={`stagger3-${trigger}`}
-            className="text-xl font-mono text-foreground"
+            className="text-foreground font-mono text-xl"
           >
             Minutes: <AnimatedNumber value={240} delay={200} />
           </div>
           <div
             key={`stagger4-${trigger}`}
-            className="text-xl font-mono text-foreground"
+            className="text-foreground font-mono text-xl"
           >
             Rate: <AnimatedNumber value={92} suffix="%" delay={300} />
           </div>
@@ -262,12 +257,12 @@ export function AnimatedNumberTest() {
 
       {/* Thousands Separator */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Thousands Separator
         </h3>
         <div
           key={`thousands-${trigger}`}
-          className="text-3xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-3xl font-bold"
         >
           <AnimatedNumber value={1234} useThousandsSeparator />
         </div>
@@ -275,12 +270,12 @@ export function AnimatedNumberTest() {
 
       {/* Large Number */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Large Number with Thousands Separator
         </h3>
         <div
           key={`large-${trigger}`}
-          className="text-3xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-3xl font-bold"
         >
           <AnimatedNumber value={1234567} useThousandsSeparator />
         </div>
@@ -288,12 +283,12 @@ export function AnimatedNumberTest() {
 
       {/* Zero Value */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Zero Value (No Animation)
         </h3>
         <div
           key={`zero-${trigger}`}
-          className="text-3xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-3xl font-bold"
         >
           <AnimatedNumber value={0} />
         </div>
@@ -301,12 +296,12 @@ export function AnimatedNumberTest() {
 
       {/* Negative Number */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Negative Number
         </h3>
         <div
           key={`negative-${trigger}`}
-          className="text-3xl font-mono font-bold text-destructive"
+          className="text-destructive font-mono text-3xl font-bold"
         >
           <AnimatedNumber value={-42} />
         </div>
@@ -314,12 +309,12 @@ export function AnimatedNumberTest() {
 
       {/* Prefix Example */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           With Prefix ($)
         </h3>
         <div
           key={`prefix-${trigger}`}
-          className="text-3xl font-mono font-bold text-success"
+          className="text-success font-mono text-3xl font-bold"
         >
           <AnimatedNumber
             value={1234.56}
@@ -332,12 +327,12 @@ export function AnimatedNumberTest() {
 
       {/* Custom Duration */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Custom Duration (2s)
         </h3>
         <div
           key={`duration-${trigger}`}
-          className="text-3xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-3xl font-bold"
         >
           <AnimatedNumber value={1500} duration={2000} />
         </div>
@@ -345,7 +340,7 @@ export function AnimatedNumberTest() {
 
       {/* Stats Card Simulation (10+ numbers) */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           Performance Test: 12 Numbers Simultaneously
         </h3>
         <div className="grid grid-cols-4 gap-4">
@@ -353,9 +348,9 @@ export function AnimatedNumberTest() {
             (val, idx) => (
               <div
                 key={`perf-${idx}-${trigger}`}
-                className="p-4 bg-surface border border-border rounded-lg"
+                className="bg-surface border-border rounded-lg border p-4"
               >
-                <div className="text-2xl font-mono font-bold text-foreground">
+                <div className="text-foreground font-mono text-2xl font-bold">
                   <AnimatedNumber
                     value={val}
                     decimals={idx % 3 === 0 ? 1 : 0}
@@ -363,7 +358,7 @@ export function AnimatedNumberTest() {
                     delay={idx * 50}
                   />
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
+                <div className="text-muted-foreground mt-1 text-xs">
                   Stat {idx + 1}
                 </div>
               </div>
@@ -374,12 +369,12 @@ export function AnimatedNumberTest() {
 
       {/* Completion Callback */}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-muted-foreground">
+        <h3 className="text-muted-foreground text-lg font-semibold">
           With Completion Callback
         </h3>
         <div
           key={`callback-${trigger}`}
-          className="text-3xl font-mono font-bold text-foreground"
+          className="text-foreground font-mono text-3xl font-bold"
         >
           <AnimatedNumber
             value={100}
@@ -387,7 +382,7 @@ export function AnimatedNumberTest() {
             onComplete={() => console.log("Animation completed!")}
           />
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           Check console for completion callback
         </p>
       </div>

@@ -6,7 +6,9 @@ export type FeatureFlagOverrides = Record<string, FeatureFlagStoredOverride>;
 
 type FeatureFlagStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
-export function parseFeatureFlagOverrides(value: string | null): FeatureFlagOverrides {
+export function parseFeatureFlagOverrides(
+  value: string | null
+): FeatureFlagOverrides {
   if (!value) {
     return {};
   }
@@ -29,8 +31,12 @@ export function parseFeatureFlagOverrides(value: string | null): FeatureFlagOver
   }
 }
 
-export function readFeatureFlagOverrides(storage: FeatureFlagStorage): FeatureFlagOverrides {
-  return parseFeatureFlagOverrides(storage.getItem(LOCAL_FEATURE_FLAG_OVERRIDES_KEY));
+export function readFeatureFlagOverrides(
+  storage: FeatureFlagStorage
+): FeatureFlagOverrides {
+  return parseFeatureFlagOverrides(
+    storage.getItem(LOCAL_FEATURE_FLAG_OVERRIDES_KEY)
+  );
 }
 
 export function setFeatureFlagOverride(
@@ -49,7 +55,10 @@ export function setFeatureFlagOverride(
   if (Object.keys(overrides).length === 0) {
     storage.removeItem(LOCAL_FEATURE_FLAG_OVERRIDES_KEY);
   } else {
-    storage.setItem(LOCAL_FEATURE_FLAG_OVERRIDES_KEY, JSON.stringify(overrides));
+    storage.setItem(
+      LOCAL_FEATURE_FLAG_OVERRIDES_KEY,
+      JSON.stringify(overrides)
+    );
   }
 
   return overrides;

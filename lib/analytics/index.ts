@@ -13,7 +13,11 @@ export type { AnalyticsEvent, EventProperties, UserTraits } from "./types";
 // - analytics from "@/lib/analytics/analytics-service"
 
 // Server-side utilities (safe to export from index)
-export { getServerPostHog, trackServerEvent, identifyServerUser } from "./posthog-server";
+export {
+  getServerPostHog,
+  trackServerEvent,
+  identifyServerUser,
+} from "./posthog-server";
 
 // Config (server-safe)
 export { clientConfig } from "./config";

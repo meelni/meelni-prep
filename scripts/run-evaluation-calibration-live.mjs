@@ -6,8 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDirectory = realpathSync(dirname(fileURLToPath(import.meta.url)));
 const sourceRepositoryRoot = realpathSync(
-  process.env.MEELNI_CALIBRATION_REPOSITORY_ROOT ||
-    join(scriptDirectory, "..")
+  process.env.MEELNI_CALIBRATION_REPOSITORY_ROOT || join(scriptDirectory, "..")
 );
 const startupPath = attestFile(
   realpathSync(

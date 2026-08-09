@@ -54,10 +54,7 @@ export function PartialLineChart() {
       <CardHeader>
         <CardTitle>
           Partial Line Chart
-          <Badge
-            variant="success"
-            className="ml-2"
-          >
+          <Badge variant="success" className="ml-2">
             <TrendingUp className="h-4 w-4" />
             <span>5.2%</span>
           </Badge>
@@ -158,7 +155,7 @@ export function useDynamicDasharray({
   curveAdjustment = 1,
 }: UseDynamicDasharrayProps): [
   (props: CustomizedChartProps) => null,
-  LineDasharray
+  LineDasharray,
 ] {
   const [lineDasharrays, setLineDasharrays] = useState<LineDasharray>([]);
 

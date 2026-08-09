@@ -1,0 +1,21 @@
+# Generated artifacts are updated by their owning tools.
+lib/db/migrations/meta/
+scripts/generated/
+docs/design/screenshots/
+
+# Immutable historical execution records are retained byte-for-byte.
+archive/
+.claude/archive/
+.claude/sprints/
+docs/superpowers/plans/
+docs/superpowers/specs/
+docs/templates/SPRINT_TEMPLATE/
+
+# Legacy Claude tooling is preserved because Markdown formatting can change its instructions.
+.claude/agents/
+.claude/commands/
+.claude/CONTRIBUTING.md
+.claude/RALPH.md
+
+# Preserve the checked-in public provider identity without reintroducing it in a formatter diff.
+tests/integration/test-backend.ts
