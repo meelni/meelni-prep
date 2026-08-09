@@ -2,6 +2,12 @@
 
 Use this reference when an agent needs to connect to, inspect, or safely mutate Meelni external systems.
 
+Before opening a provider section, run `npm run agent:service -- <service>`.
+The machine-readable `config/agent-integrations.json` owns the MCP/CLI/runtime
+decision layer; this runbook owns detailed authentication, account anchors,
+verification, and recovery. `npm run agent:doctor -- <service>` compares the
+current workstation's CLI/MCP setup with the catalog without reading secrets.
+
 ## Self-Improving Capture Loop
 
 Use this loop whenever a user asks to connect a new MCP/provider, authenticate a service, set operational env vars, debug connector permissions, or perform provider setup that is not already documented here.
@@ -458,6 +464,20 @@ brew install supabase/tap/supabase
 supabase login
 supabase link --project-ref rarrrwkjuhfyfatcmrkw
 ```
+
+Agent MCP investigation must use the isolated Preview project in read-only,
+project-scoped mode:
+
+```bash
+codex mcp add supabase-preview --url \
+  'https://mcp.supabase.com/mcp?project_ref=kxpvidtxznllfosfemdl&read_only=true&features=docs%2Cdatabase%2Cdebugging%2Cdevelopment'
+codex mcp login supabase-preview
+```
+
+Do not use the unscoped `https://mcp.supabase.com/mcp` connection for Meelni.
+It exposes every project authorized by the operator and does not enforce
+read-only queries. Authenticate the scoped connection before removing or
+disabling an older broad connection.
 
 When the CLI detects a Codex agent terminal and refuses interactive login in JSON output mode, use the manual browser flow:
 

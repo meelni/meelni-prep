@@ -1,199 +1,99 @@
-# Third-Party Integrations
+# Meelni Integrations
 
-This directory contains documentation for all third-party services and integrations used in the Meelni project.
+This is the human-readable index for Meelni's active runtime and operational
+services. The machine-readable agent decision layer is
+[`config/agent-integrations.json`](../../config/agent-integrations.json).
 
-## Active Integrations
+Use it through the repository commands rather than reading JSON manually:
 
-### ✅ LiveKit
-
-**Purpose**: Real-time voice communication and AI agent orchestration
-
-- **[LiveKit Integration Guide](./livekit.md)** - Complete LiveKit setup and usage
-- **Services Used**:
-  - LiveKit Cloud (WebRTC infrastructure)
-  - LiveKit Agents (Python SDK for voice agents)
-  - LiveKit Inference (Deepgram, OpenAI, Cartesia integration)
-- **Related ADRs**:
-  - [ADR-007](../architecture/adrs/ADR-007-livekit-voice-interview.md) - Voice interview integration
-  - [ADR-009](../architecture/adrs/ADR-009-livekit-agent-session-api.md) - AgentSession API
-  - [ADR-019](../architecture/adrs/ADR-019-explicit-agent-dispatch.md) - Agent dispatch pattern
-- **Key Documentation**:
-  - `docs/LIVEKIT_DEBUGGING.md` - Debugging workflows
-  - `agent/docs/DEPLOYMENT.md` - Agent deployment guide
-
-### ✅ Supabase
-
-**Purpose**: PostgreSQL database and authentication
-
-- **[Supabase Integration Guide](./supabase.md)** - Database and auth setup
-- **Services Used**:
-  - Supabase Auth (OAuth + Email/Password)
-  - PostgreSQL with Row Level Security (RLS)
-  - Realtime subscriptions (planned)
-- **Related ADRs**:
-  - [ADR-003](../architecture/adrs/ADR-003-tech-stack-finalization.md) - Tech stack selection
-  - [ADR-006](../architecture/adrs/ADR-006-database-schema-deployed.md) - Schema deployment
-  - [ADR-020](../architecture/adrs/ADR-020-google-oauth-authentication.md) - OAuth implementation
-- **Key Documentation**:
-  - `.claude/DATABASE.md` - Database schema reference
-  - `docs/api/authentication.md` - Auth flows
-
-### ✅ Google Sheets
-
-**Purpose**: Question bank synchronization
-
-- **[Google Sheets Integration](./google-sheets.md)** - Cron job setup and sync
-- **Services Used**:
-  - Google Sheets API
-  - Vercel Cron (for scheduled sync)
-- **Related Documentation**:
-  - `docs/cron-jobs-quick-reference.md`
-  - `docs/google-sheets-cron-setup.md`
-
-### ⚠️ Inngest (Planned)
-
-**Purpose**: Background job processing for async evaluation
-
-- **[Inngest Integration](./inngest.md)** - Background job setup (planned)
-- **Status**: Architecture defined (ADR-004), not yet implemented
-- **Related ADR**: [ADR-004](../architecture/adrs/ADR-004-background-jobs-inngest.md)
-
-### ✅ OpenAI
-
-**Purpose**: Large language models for dialogue and evaluation
-
-- **Models Used**:
-  - GPT-4.1-mini (dialogue during interviews)
-  - GPT-4 Turbo (post-session evaluation)
-- **Access Method**: Via LiveKit Inference (no direct API calls)
-- **Related ADRs**:
-  - [ADR-008](../architecture/adrs/ADR-008-gpt4o-mini-dialogue.md) - Dialogue model selection
-  - [ADR-015](../architecture/adrs/ADR-015-model-upgrade.md) - Model upgrades
-
-### ✅ Deepgram
-
-**Purpose**: Speech-to-text (ASR) for interview transcription
-
-- **Model**: Nova-3
-- **Access Method**: Via LiveKit Inference
-- **Cost**: ~$0.0043/min
-- **Related ADR**: [ADR-015](../architecture/adrs/ADR-015-model-upgrade.md)
-
-### ✅ Cartesia
-
-**Purpose**: Text-to-speech (TTS) for AI voice
-
-- **Model**: Sonic 3.0
-- **Voice**: Tessa (emotive voice)
-- **Access Method**: Via LiveKit Inference (no separate API key needed)
-- **Related ADRs**:
-  - [ADR-015](../architecture/adrs/ADR-015-model-upgrade.md) - Model upgrade
-  - [ADR-016](../architecture/adrs/ADR-016-cartesia-voice-tessa.md) - Voice selection
-
-## Integration Architecture
-
-```
-┌─────────────────────────────────────────┐
-│         Next.js Frontend                │
-│    (Vercel + Vercel Cron)              │
-└──┬─────────────┬───────────────┬────────┘
-   │             │               │
-   ▼             ▼               ▼
-┌──────────┐  ┌─────────────┐  ┌──────────────┐
-│ Supabase │  │ LiveKit     │  │ Google       │
-│ (Auth +  │  │ (Agents +   │  │ Sheets API   │
-│  DB)     │  │  Inference) │  └──────────────┘
-└──────────┘  └─────┬───────┘
-                    │
-              ┌─────┴──────────────┐
-              │                    │
-         ┌────▼─────┐        ┌────▼────┐
-         │ Deepgram │        │ OpenAI  │
-         │ (STT)    │        │ (LLM)   │
-         └──────────┘        └─────────┘
-              │
-         ┌────▼─────┐
-         │Cartesia  │
-         │ (TTS)    │
-         └──────────┘
+```bash
+npm run agent:services
+npm run agent:service -- <service>
+npm run agent:doctor
 ```
 
-## Environment Variables
+## Interface policy
 
-All integrations require environment variables. See `docs/deployment/environment-variables.md` for complete reference.
+- Application runtime uses SDKs, provider APIs, webhooks, or OTLP.
+- Agents use MCP/apps for structured investigation when the connection is
+  correctly scoped.
+- Agents use provider CLIs or repository commands for deterministic,
+  repeatable work.
+- Provider writes should prefer the existing repository workflow. Production,
+  billing, destructive, launch, and live-mode actions retain their explicit
+  authorization boundaries.
+- Setup and diagnostics never print credential values.
 
-Key variables by integration:
+## Active service map
 
-**LiveKit**
+| Service             | Runtime role                                         | Preferred agent surface                                                                 |
+| ------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Supabase / Postgres | Auth, database, RLS, migrations                      | Repository commands and Supabase CLI; Preview-scoped read-only MCP for investigation    |
+| LiveKit             | Rooms, tokens, dispatch, Python voice workers        | Docs MCP for current knowledge, `lk` for inspection, guarded repository deploy wrappers |
+| OpenAI              | Feedback evaluation and interview dialogue           | Repository tests/calibration; SDK or LiveKit inference at runtime                       |
+| Stripe              | Checkout, subscriptions, credits, webhooks           | MCP for scoped reads/docs, CLI for local webhooks, repository workflows for writes      |
+| Inngest             | Feedback, recovery, cleanup, insights, deletion jobs | Local MCP for dev runs; environment-scoped CLI/API for cloud investigation              |
+| Statsig             | Relaunch access and evaluation                       | MCP for read-only evidence; owner-governed provider writes                              |
+| PostHog             | Consent-gated analytics                              | PostHog app for analysis; repository tests for event behavior                           |
+| Comet Opik          | Optional LLM/voice observability                     | Hosted OAuth MCP for investigation; HTTP/OTLP for runtime ingestion                     |
+| Google Sheets       | PM question source                                   | Sheets app for inspection; authenticated repository sync workflow for writes            |
+| Vercel              | Web deployments and environment configuration        | Repository-pinned Vercel CLI                                                            |
+| GitHub              | Source, PRs, checks, Actions                         | `git`/`gh` for branch-aware work; GitHub app/MCP for structured reads                   |
+| Linear              | Workstream tracking and evidence                     | Linear app/MCP plus the Meelni Linear skill                                             |
+| GitGuardian         | Repository secret scanning                           | GitHub App checks verified through `gh`                                                 |
 
-```
-LIVEKIT_API_KEY
-LIVEKIT_API_SECRET
-NEXT_PUBLIC_LIVEKIT_URL
-```
+Deepgram, Cartesia, and ElevenLabs are voice-model providers reached through
+the reviewed LiveKit runtime configuration. They are not independent agent
+operation surfaces in this repository. Resend and Sentry environment names are
+reserved in setup tooling but no active product adapter should be inferred
+from those placeholders.
 
-**Supabase**
+## Safety-sensitive boundaries
 
-```
-DATABASE_URL
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-```
+### Supabase
 
-**OpenAI**
+The agent MCP target is the isolated Preview project
+`kxpvidtxznllfosfemdl`, with both `project_ref` and `read_only=true`. An
+unscoped `https://mcp.supabase.com/mcp` connection can reach every project the
+operator can access and is not the Meelni default. Database writes use the
+scoped aliases and [database migration runbook](../operations/database-migrations.md).
 
-```
-OPENAI_API_KEY
-```
+### LiveKit
 
-**Deepgram**
+The Docs MCP is documentation-only. Cloud inspection uses `lk`; Production
+worker deploys use the signed repository wrappers described by the
+[Production action authorization runbook](../operations/production-action-authorization.md).
 
-```
-DEEPGRAM_API_KEY
-```
+### Stripe
 
-**Google Sheets**
+MCP can write as well as read. Keep write calls confirmation-gated and verify
+test/live mode plus account identity before every operation. Live catalog
+changes and exceptional billing actions remain behind their dedicated
+runbooks.
 
-```
-GOOGLE_SHEET_CSV_URL
-GOOGLE_SHEET_ID
-GOOGLE_SHEET_NAME
-GOOGLE_SHEETS_API_KEY                  # optional API fallback
-GOOGLE_SHEETS_CREDENTIALS_BASE64       # optional service-account fallback
-```
+### Statsig
 
-## Cost Breakdown
+Read-only technical evidence never constitutes launch approval. The human
+product owner controls Production/default-on action under the accepted launch
+decision and [Statsig governance runbook](../operations/statsig-relaunch-governance.md).
 
-Estimated costs per 20-minute interview session:
+### Opik and PostHog
 
-| Service   | Usage         | Cost       |
-| --------- | ------------- | ---------- |
-| Deepgram  | 20 min STT    | ~$0.09     |
-| OpenAI    | ~10K tokens   | ~$0.05     |
-| Cartesia  | ~5 min TTS    | ~$0.10     |
-| LiveKit   | Agent runtime | ~$0.15     |
-| **Total** |               | **~$0.39** |
+Both surfaces can contain sensitive product telemetry. Preserve the explicit
+content-capture, redaction, analytics-consent, retention, and access contracts.
 
-Note: Supabase and Vercel are free tier for MVP.
+## Detailed runbooks
 
-## Adding New Integrations
+- [LiveKit integration](./livekit.md)
+- [Google Sheets source](./google-sheets-setup.md)
+- [Local Inngest](./inngest/setup.md)
+- [Stripe quick reference](./stripe/quick-reference.md)
+- [PostHog event catalog](./posthog/events.md)
+- [Opik observability](../operations/opik-observability.md)
+- [Deployment preflight](../operations/deployment-preflight.md)
+- [Agent and local tooling](../operations/tooling.md)
 
-When adding a new integration:
-
-1. Create integration guide in this directory
-2. Add environment variables to `.env.example`
-3. Document in `deployment/environment-variables.md`
-4. Add to architecture diagram above
-5. Create ADR if it's a significant architectural decision
-
-## Troubleshooting
-
-See integration-specific troubleshooting in each guide:
-
-- LiveKit: `docs/LIVEKIT_DEBUGGING.md`
-- Supabase: `docs/integrations/supabase.md#troubleshooting`
-- Google Sheets: `docs/google-sheets-cron-setup.md#troubleshooting`
-
----
-
-**Last Updated**: 2025-11-12
+Stable account/project anchors, authentication commands, and verification
+details live in the canonical Meelni ops-connections runbook. If an agent learns
+a reusable provider fact that is missing or wrong, it updates that runbook and
+the catalog in the same change.

@@ -1,0 +1,494 @@
+{
+  "version": 1,
+  "policy": {
+    "defaultReadSurface": "Use MCP or an installed app for structured investigation when it is scoped to the intended account and environment.",
+    "defaultWriteSurface": "Use a reviewed repository command or provider CLI for repeatable writes. Production actions remain subject to their existing authorization contract.",
+    "runtimeSurface": "Application traffic uses SDKs, HTTP APIs, webhooks, or OTLP. MCP is never an application runtime dependency.",
+    "secretHandling": "Never print or copy provider secrets into chat, tracked files, command arguments, or diagnostic output."
+  },
+  "services": [
+    {
+      "id": "supabase",
+      "name": "Supabase / Postgres",
+      "lifecycle": "active",
+      "purpose": "Authentication, PostgreSQL persistence, RLS, and database migrations.",
+      "runtimeSurface": "Supabase SSR/JS clients plus Drizzle over PostgreSQL.",
+      "agent": {
+        "primary": "repository-cli",
+        "guidance": "Use repository database commands and the Supabase CLI for deterministic work. Use only the isolated Preview project in a project-scoped, read-only MCP for investigation."
+      },
+      "targets": {
+        "preview": "meelni-preview (kxpvidtxznllfosfemdl)",
+        "production": "Meelni (rarrrwkjuhfyfatcmrkw)"
+      },
+      "repoCommands": [
+        "auth:doctor",
+        "db:preflight:preview",
+        "db:migrate:preview",
+        "test:database-migrations"
+      ],
+      "cli": [
+        {
+          "command": "supabase",
+          "recommended": true,
+          "minimumVersion": "2.109.1",
+          "versionArgs": ["--version"],
+          "verify": "supabase projects list --agent no --output-format text",
+          "install": "brew install supabase/tap/supabase"
+        }
+      ],
+      "mcp": {
+        "name": "supabase-preview",
+        "url": "https://mcp.supabase.com/mcp?project_ref=kxpvidtxznllfosfemdl&read_only=true&features=docs%2Cdatabase%2Cdebugging%2Cdevelopment",
+        "recommended": true,
+        "requiredQuery": {
+          "project_ref": "kxpvidtxznllfosfemdl",
+          "read_only": "true"
+        },
+        "setup": "codex mcp add supabase-preview --url 'https://mcp.supabase.com/mcp?project_ref=kxpvidtxznllfosfemdl&read_only=true&features=docs%2Cdatabase%2Cdebugging%2Cdevelopment'",
+        "verify": "codex mcp get supabase-preview"
+      },
+      "env": [
+        "DATABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "MEELNI_PRODUCTION_SUPABASE_PROJECT_REF",
+        "SUPABASE_SERVICE_ROLE_KEY"
+      ],
+      "writePolicy": "Preview migrations use the guarded repository alias and explicit confirmation. Production data or schema changes require the existing backup, preflight, and owner-authorization procedure.",
+      "docs": [
+        "docs/operations/database-migrations.md",
+        "docs/operations/deployment-preflight.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "livekit",
+      "name": "LiveKit + voice inference",
+      "lifecycle": "active",
+      "purpose": "Realtime interview rooms, explicit agent dispatch, voice workers, and Deepgram/OpenAI/Cartesia/ElevenLabs inference.",
+      "runtimeSurface": "LiveKit server/client SDKs and Python LiveKit Agents; model providers are reached through the reviewed voice runtime configuration.",
+      "agent": {
+        "primary": "hybrid",
+        "guidance": "Use the LiveKit Docs MCP for current API and deployment knowledge, the lk CLI for project inspection, and guarded repository deploy wrappers for Production workers."
+      },
+      "targets": {
+        "preview": "meelni-preview (p_16unz4e48is)",
+        "production": "meelni"
+      },
+      "repoCommands": [
+        "dev:agent",
+        "test:agent",
+        "test:integrations",
+        "test:python-agent",
+        "deploy:preflight:preview"
+      ],
+      "cli": [
+        {
+          "command": "lk",
+          "recommended": true,
+          "minimumVersion": "2.18.2",
+          "versionArgs": ["--version"],
+          "verify": "lk project list",
+          "install": "brew install livekit-cli"
+        }
+      ],
+      "mcp": {
+        "name": "livekit-docs",
+        "url": "https://docs.livekit.io/mcp",
+        "recommended": true,
+        "setup": "codex mcp add --url https://docs.livekit.io/mcp livekit-docs",
+        "verify": "codex mcp get livekit-docs"
+      },
+      "env": [
+        "LIVEKIT_URL",
+        "NEXT_PUBLIC_LIVEKIT_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "LIVEKIT_INTERVIEW_AGENT_NAME",
+        "LIVEKIT_DEMO_AGENT_NAME",
+        "DEEPGRAM_API_KEY"
+      ],
+      "writePolicy": "Preview uses its isolated project. Production worker deploys must use the signed repository authorization wrappers and must build from the exact reviewed source snapshot.",
+      "docs": [
+        "docs/integrations/livekit.md",
+        "docs/operations/interview-runtime-configuration.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "lifecycle": "active",
+      "purpose": "Post-interview feedback evaluation, calibration, and the LiveKit interview dialogue model.",
+      "runtimeSurface": "The OpenAI Node SDK handles feedback; LiveKit inference handles interview dialogue.",
+      "agent": {
+        "primary": "repository-cli",
+        "guidance": "Use repository tests and calibration entrypoints. Use official OpenAI documentation for current API behavior; do not treat an MCP as the runtime or credential path."
+      },
+      "targets": {
+        "feedback": "OPENAI_FEEDBACK_MODEL=gpt-5.1",
+        "interview": "MEELNI_INTERVIEW_LLM_MODEL=openai/gpt-4.1-mini"
+      },
+      "repoCommands": [
+        "test:feedback",
+        "calibration:preflight",
+        "calibration:self-test",
+        "deploy:preflight:preview"
+      ],
+      "cli": [],
+      "env": ["OPENAI_API_KEY", "OPENAI_FEEDBACK_MODEL"],
+      "writePolicy": "Normal evaluation writes flow through application workflows. Paid calibration and Production changes retain their separate spend and owner-authorization boundaries.",
+      "docs": [
+        "docs/contracts/feedback-generation.md",
+        "docs/operations/evaluation-calibration.md",
+        "docs/operations/deployment-preflight.md"
+      ]
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "lifecycle": "active",
+      "purpose": "Checkout, subscriptions, credits, billing portal, refunds, disputes, and webhook convergence.",
+      "runtimeSurface": "Stripe Node SDK and signed webhooks behind billing workflows.",
+      "agent": {
+        "primary": "hybrid",
+        "guidance": "Use MCP for scoped documentation and read-heavy investigation, the Stripe CLI for local webhook work, and guarded repository commands for catalog or Production mutations."
+      },
+      "targets": {
+        "account": "acct_1SSreECdoT5hfbsF",
+        "preview": "test mode",
+        "production": "live mode"
+      },
+      "repoCommands": [
+        "test:billing",
+        "stripe:webhook-events",
+        "deploy:preflight:preview"
+      ],
+      "cli": [
+        {
+          "command": "stripe",
+          "recommended": true,
+          "minimumVersion": "1.43.3",
+          "versionArgs": ["--version"],
+          "verify": "stripe config --list",
+          "install": "npm install -g @stripe/cli"
+        }
+      ],
+      "mcp": {
+        "name": "stripe",
+        "url": "https://mcp.stripe.com",
+        "recommended": false,
+        "setup": "codex mcp add stripe --url https://mcp.stripe.com && codex mcp login stripe",
+        "verify": "codex mcp get stripe"
+      },
+      "env": [
+        "STRIPE_SECRET_KEY",
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_INTERVIEW_PASS_PRICE_ID",
+        "STRIPE_STARTER_MONTHLY_PRICE_ID",
+        "STRIPE_PRO_MONTHLY_PRICE_ID"
+      ],
+      "writePolicy": "MCP and CLI writes require the exact intended test/live account and human confirmation. Live catalog changes use the guarded repository workflow; refunds and billing exceptions remain owner-controlled.",
+      "docs": [
+        "docs/integrations/stripe/quick-reference.md",
+        "docs/operations/credit-billing-launch.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "inngest",
+      "name": "Inngest",
+      "lifecycle": "active",
+      "purpose": "Durable feedback, interview recovery, cleanup, insights, and account-deletion jobs.",
+      "runtimeSurface": "Inngest SDK events and functions served from the Next.js application.",
+      "agent": {
+        "primary": "hybrid",
+        "guidance": "Use npm run dev:local and the local MCP for development runs. Use the environment-scoped cloud CLI/API only for hosted run investigation."
+      },
+      "targets": {
+        "local": "http://127.0.0.1:8288",
+        "cloud": "app meelni with environment-specific keys"
+      },
+      "repoCommands": ["dev:local", "dev:inngest", "test:workflows"],
+      "cli": [],
+      "mcp": {
+        "name": "inngest-dev",
+        "url": "http://127.0.0.1:8288/mcp",
+        "recommended": true,
+        "setup": "codex mcp add inngest-dev --url http://127.0.0.1:8288/mcp",
+        "verify": "codex mcp get inngest-dev"
+      },
+      "env": ["INNGEST_EVENT_KEY", "INNGEST_SIGNING_KEY"],
+      "writePolicy": "The local MCP may invoke only local functions and events. Cloud inspection requires an environment-scoped API key; Production event sends require explicit operational scope.",
+      "docs": [
+        "docs/integrations/inngest/setup.md",
+        "docs/operations/interview-session-completion.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "statsig",
+      "name": "Statsig",
+      "lifecycle": "active",
+      "purpose": "Server-owned relaunch access and consent-gated browser evaluation.",
+      "runtimeSurface": "Statsig JS SDK through the same-origin proxy and server resolver.",
+      "agent": {
+        "primary": "mcp",
+        "guidance": "Use MCP for read-only gate/config evidence. Provider writes are owner-governed and never implied by technical readiness."
+      },
+      "targets": {
+        "project": "01k0KuJePjFDEf80vuH61R",
+        "gate": "meelni_reactivation_access"
+      },
+      "repoCommands": ["test:feature-flags", "deploy:preflight:preview"],
+      "cli": [],
+      "mcp": {
+        "name": "statsig",
+        "url": "https://api.statsig.com/v1/mcp",
+        "recommended": true,
+        "setup": "codex mcp add statsig --url https://api.statsig.com/v1/mcp && codex mcp login statsig",
+        "verify": "codex mcp get statsig"
+      },
+      "env": [
+        "NEXT_PUBLIC_STATSIG_CLIENT_KEY",
+        "NEXT_PUBLIC_STATSIG_ENVIRONMENT",
+        "NEXT_PUBLIC_STATSIG_API_URL",
+        "MEELNI_REACTIVATION_DEFAULT",
+        "MEELNI_RELAUNCH_PHASE"
+      ],
+      "writePolicy": "Keep Production/default-on human-owned. Ordinary agents may collect read-only evidence but may not enable the gate, widen targeting, or claim launch GO.",
+      "docs": [
+        "docs/operations/statsig-relaunch-governance.md",
+        "docs/contracts/analytics-consent.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "posthog",
+      "name": "PostHog",
+      "lifecycle": "active",
+      "purpose": "Explicit-consent product analytics and redacted operational evidence.",
+      "runtimeSurface": "PostHog browser and Node SDK adapters behind the analytics-consent contract.",
+      "agent": {
+        "primary": "app",
+        "guidance": "Use the installed PostHog app for analysis and repository tests for event behavior. Do not bypass the consent and event allowlists."
+      },
+      "targets": {
+        "host": "https://us.i.posthog.com"
+      },
+      "repoCommands": ["test:feature-flags", "test:operations"],
+      "cli": [],
+      "env": [
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_SERVER_KEY",
+        "NEXT_PUBLIC_POSTHOG_HOST",
+        "ANALYTICS_PSEUDONYM_KEY"
+      ],
+      "writePolicy": "Analytics changes must preserve explicit consent, pseudonymous identities, disabled replay/autocapture, and the closed event allowlist.",
+      "docs": [
+        "docs/contracts/analytics-consent.md",
+        "docs/integrations/posthog/events.md",
+        "docs/operations/redacted-observability.md"
+      ]
+    },
+    {
+      "id": "opik",
+      "name": "Comet Opik",
+      "lifecycle": "optional",
+      "purpose": "LLM and voice-agent observability, trace investigation, scoring, prompts, and experiments.",
+      "runtimeSurface": "Sanitized HTTP/OTLP trace export from TypeScript and Python, disabled by default.",
+      "agent": {
+        "primary": "mcp",
+        "guidance": "Use the hosted OAuth MCP for trace investigation. Runtime ingestion still uses environment-owned API keys; write, Ollie, and experiment tools remain approval-gated."
+      },
+      "targets": {
+        "workspace": "savi-singh",
+        "project": "meelni (019fd58a-ac4d-70be-967f-fa30459c6c29)"
+      },
+      "repoCommands": ["test:integrations", "test:python-agent"],
+      "cli": [],
+      "mcp": {
+        "name": "opik",
+        "url": "https://www.comet.com/opik/api/v1/mcp",
+        "recommended": true,
+        "setup": "codex mcp add opik --url https://www.comet.com/opik/api/v1/mcp && codex mcp login opik",
+        "verify": "codex mcp get opik"
+      },
+      "env": [
+        "OPIK_TRACING_ENABLED",
+        "OPIK_API_KEY",
+        "OPIK_WORKSPACE",
+        "OPIK_PROJECT_NAME",
+        "OPIK_CAPTURE_CONTENT"
+      ],
+      "writePolicy": "Tracing and content capture remain off by default. MCP write, Ollie, and experiment calls require confirmation; Production enablement requires the existing disclosure, retention, and deploy guardrails.",
+      "docs": [
+        "docs/contracts/llm-observability.md",
+        "docs/operations/opik-observability.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "google-sheets",
+      "name": "Google Sheets question source",
+      "lifecycle": "active",
+      "purpose": "Source of curated PM interview questions synchronized into the database.",
+      "runtimeSurface": "Published CSV or authenticated Google Sheets API normalized by the question-sync workflow.",
+      "agent": {
+        "primary": "repository-cli",
+        "guidance": "Use the Google Sheets app for source inspection and the single repository question-sync workflow for dry runs or writes."
+      },
+      "targets": {
+        "sheet": "1rz10oEeLx-eGnilahKczYPhGfCUzIEKL-xRnjoQ-SX4",
+        "tab": "Form Responses 1"
+      },
+      "repoCommands": ["test:sheets", "sync:questions"],
+      "cli": [],
+      "env": [
+        "GOOGLE_SHEET_CSV_URL",
+        "GOOGLE_SHEET_ID",
+        "GOOGLE_SHEET_NAME",
+        "GOOGLE_SHEET_TIME_ZONE"
+      ],
+      "writePolicy": "The sheet is a source; application database writes go only through the authenticated, transactional question-sync workflow. Production sync remains owner-authorized.",
+      "docs": [
+        "docs/integrations/google-sheets-setup.md",
+        "docs/operations/question-sync.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "lifecycle": "active",
+      "purpose": "Web deployments, environment variables, preview/staging targets, and build preflight.",
+      "runtimeSurface": "Vercel-hosted Next.js deployment and environment configuration.",
+      "agent": {
+        "primary": "repository-cli",
+        "guidance": "Use the repository-pinned Vercel CLI commands. Link the exact meelni team/project before inspecting or changing environments."
+      },
+      "targets": {
+        "team": "meelni",
+        "project": "meelni (prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4)",
+        "staging": "custom environment staging on codex/staging"
+      },
+      "repoCommands": [
+        "env:pull:preview",
+        "env:pull:production",
+        "deploy:preflight:preview",
+        "deploy:preflight:production"
+      ],
+      "cli": [],
+      "env": [],
+      "writePolicy": "Use npx vercel@55.0.0 with --scope meelni. Production promotion and sensitive environment changes retain their existing owner authorization and deployment boundaries.",
+      "docs": [
+        "docs/operations/tooling.md",
+        "docs/operations/deployment-preflight.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "lifecycle": "active",
+      "purpose": "Source control, pull requests, checks, Actions, and repository governance.",
+      "runtimeSurface": "Git and GitHub Actions; not an application runtime dependency.",
+      "agent": {
+        "primary": "hybrid",
+        "guidance": "Use git/gh for branch-aware work and checks, and the GitHub MCP/app for structured PR and issue inspection."
+      },
+      "targets": {
+        "repository": "meelni/meelni-prep",
+        "operator": "saviii"
+      },
+      "repoCommands": ["handoff", "check:stack", "test:stack"],
+      "cli": [
+        {
+          "command": "gh",
+          "recommended": true,
+          "versionArgs": ["--version"],
+          "verify": "gh repo view --json nameWithOwner,url,viewerPermission",
+          "install": "brew install gh"
+        }
+      ],
+      "mcp": {
+        "name": "github",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "recommended": true,
+        "setup": "Configure the installed GitHub app/MCP with the repository-scoped operator credential.",
+        "verify": "codex mcp get github"
+      },
+      "env": [],
+      "writePolicy": "Confirm branch, diff, remote, and intended repository before writes. Repository settings, protections, secrets, and Actions variables require explicit scope.",
+      "docs": [
+        "docs/operations/stacked-pull-requests.md",
+        "docs/operations/ci-cost-control.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "linear",
+      "name": "Linear",
+      "lifecycle": "active",
+      "purpose": "Meelni workstream planning, issue state, evidence, and handoff.",
+      "runtimeSurface": "Operational planning only; not an application runtime dependency.",
+      "agent": {
+        "primary": "mcp",
+        "guidance": "Use the Linear app/MCP and the Meelni Linear skill. Preserve owner-gated parent issues and use PR-sized child issues for repo increments."
+      },
+      "targets": {
+        "workspace": "saviiii",
+        "issuePrefix": "SAV-"
+      },
+      "repoCommands": [],
+      "cli": [],
+      "mcp": {
+        "name": "linear",
+        "url": "https://mcp.linear.app/mcp",
+        "recommended": true,
+        "setup": "codex mcp add linear --url https://mcp.linear.app/mcp && codex mcp login linear",
+        "verify": "codex mcp get linear"
+      },
+      "env": [],
+      "writePolicy": "Issue mutations follow the meelni-linear-workstream skill. Do not let a child PR or terminal keyword close an owner-gated parent prematurely.",
+      "docs": [
+        ".agents/skills/meelni-linear-workstream/SKILL.md",
+        "docs/operations/tooling.md",
+        ".agents/skills/meelni-ops-connections/references/connections.md"
+      ]
+    },
+    {
+      "id": "gitguardian",
+      "name": "GitGuardian",
+      "lifecycle": "active",
+      "purpose": "Repository secret scanning through a repository-scoped GitHub App.",
+      "runtimeSurface": "GitHub App checks only; not an application runtime dependency.",
+      "agent": {
+        "primary": "cli",
+        "guidance": "Use gh to verify the GitHub App installation and use PR checks as the end-to-end proof."
+      },
+      "targets": {
+        "workspace": "839712",
+        "repository": "meelni/meelni-prep"
+      },
+      "repoCommands": ["quality:security"],
+      "cli": [
+        {
+          "command": "gh",
+          "recommended": true,
+          "versionArgs": ["--version"],
+          "verify": "gh api orgs/meelni/installations",
+          "install": "brew install gh"
+        }
+      ],
+      "env": [],
+      "writePolicy": "Keep the GitHub App repository-scoped. Do not expose findings that contain real secrets; rotate any validated credential through its provider.",
+      "docs": [
+        ".agents/skills/meelni-ops-connections/references/connections.md",
+        "docs/operations/code-quality-checks.md"
+      ]
+    }
+  ]
+}

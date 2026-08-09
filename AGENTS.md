@@ -11,6 +11,7 @@ Canonical instructions for Codex, Claude, and other coding agents working in thi
 - Preserve the current root Next.js app until the staged `apps/web` migration is ready.
 - Local secrets live in gitignored `.env.local` files. Do not ask the user to paste API keys into chat. If env vars are missing, run `npm run env:pull` to refresh Preview envs into `.env.local`, or `npm run env:pull:production` for `.env.production.local`; Vercel sensitive values may pull as empty quoted strings, so server-only secrets may still need to be restored from the original provider dashboard or rotated.
 - For fresh local worktrees, run `npm run bootstrap:worktree` before runtime work. Use `npm run dev:local` as the single local runtime command; it starts Next.js, local Inngest, and the Python LiveKit agent when configured. Agent platforms that honor `conductor.json` should use its `setup` and `run` scripts automatically.
+- Before provider work, run `npm run agent:service -- <service>` to resolve the canonical target, MCP/CLI/repository boundary, safe commands, and runbooks. Use `npm run agent:doctor` to inspect workstation CLI/MCP readiness without reading provider secrets.
 
 ## Product
 
