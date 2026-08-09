@@ -21,7 +21,7 @@ Do not rubber-stamp. A good PR prep answer says exactly what changed, why it is 
 
 Do not broaden the product beyond PM interview prep. Preserve the root Next.js app until the staged `apps/web` migration is ready.
 
-PR prep should end with a GitHub PR created or updated unless the user explicitly asked for review only, there are no publishable changes, or a hard blocker exists such as missing GitHub auth, no accessible remote, or unclear mixed worktree scope. Default to a draft PR when validation fails, risk remains, or the user did not explicitly ask for ready-for-review.
+PR prep should end with a GitHub PR created or updated unless the user explicitly asked for review only, there are no publishable changes, or a hard blocker exists such as missing GitHub auth, no accessible remote, or unclear mixed worktree scope. The default handoff is a ready-for-review PR after scoped implementation and relevant local validation. Draft is permitted during active iteration, but the agent owns converting it to ready and running hosted checks before handoff. Leave it Draft only when the user explicitly requests that state or a concrete external blocker requires owner input; ordinary residual risk or the absence of an explicit ready request is not enough.
 
 ## Phase 1: Diff Orientation
 
@@ -209,7 +209,9 @@ Run this phase after validation and PR body prep unless the user explicitly aske
 - Check for an existing open PR from the current branch with `gh pr view` or `gh pr list --head <branch>`.
 - If an open PR exists, update its body when the prepared PR body materially changed; do not create a duplicate PR.
 - If no open PR exists, create one against the repo default branch unless the user specified a base branch.
-- Use a draft PR by default. Create a ready PR only when the user explicitly requested it and validation is clean enough to support that.
+- Create a ready-for-review PR by default after scoped implementation and relevant local validation. If an agent opened it as Draft while iterating, run `gh pr ready` before handoff.
+- Do not use Draft to suppress hosted validation, defer ordinary self-review, or transfer routine CI work to the user. Ready status is the repository's trigger for required hosted `Validate` evidence.
+- A PR may remain Draft only when the user explicitly requests it or a concrete blocker outside the agent's authority prevents a reviewable candidate, such as unavailable credentials/infrastructure, an unresolved owner decision, or irreducibly mixed worktree scope. Record the blocker and smallest owner action in the PR and Linear.
 - Include validation failures honestly in the PR body. Known unrelated failures must include exact command names and failing files/tests.
 - After merging a PR linked to a child of a long-running owner-gated parent,
   verify both Linear states: the child may move to Done, but the parent must
@@ -219,6 +221,13 @@ Run this phase after validation and PR body prep unless the user explicitly aske
   child issue before any follow-up PR.
 - After PR creation or update, report the PR URL, branch, commit, base branch, draft/readiness state, and validation status.
 
+### Hosted Validation And Handoff
+
+- Once the PR is ready, monitor all required checks to a terminal result. Use the GitHub CI-fix workflow to inspect and remediate failures owned by the branch.
+- Push fixes and require fresh exact-head checks after every material head change. Keep the PR ready while repairing ordinary failures so CI continues to exercise the candidate.
+- If a required check is blocked by an external outage, missing owner-only credential, or owner decision, document the exact evidence and smallest unblock. Leave the PR Draft only when ready status would falsely present a reviewable candidate or waste checks that cannot run meaningfully.
+- Do not merge, enable auto-merge, weaken protection, or infer Production/launch authorization from green checks. Ready-for-review means the candidate and evidence are prepared for the protected human-owned merge boundary.
+
 ### Publish Blockers
 
 Stop before publishing and explain the smallest unblock when:
@@ -227,6 +236,8 @@ Stop before publishing and explain the smallest unblock when:
 - The worktree has mixed or unrelated changes that cannot be staged safely.
 - Validation uncovered a high-risk bug in the PR's own changes that should be fixed before reviewers see it.
 - The user requested no commit, no push, or no PR.
+
+An owned test failure is work to fix, not a reason to hand off a permanent Draft. Continue within scope until the candidate is reviewable or a genuine external blocker remains.
 
 ## Final Output
 
