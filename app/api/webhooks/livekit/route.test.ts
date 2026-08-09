@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getLiveKitEnvironment: vi.fn(),
@@ -19,12 +19,34 @@ vi.mock("@/lib/workflows/handle-livekit-interview-event", () => ({
 import { POST } from "./route";
 
 describe("POST /api/webhooks/livekit", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getLiveKitEnvironment.mockReturnValue({
       ok: true,
       data: { apiKey: "key", apiSecret: "secret", url: "wss://test" },
     });
+  });
+
+  it("refuses generic Preview before configuration, body reads, or provider verification", async () => {
+    stubGenericPreview();
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/webhooks/livekit", {
+        method: "POST",
+        body: "private provider body",
+      })
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "voice_unavailable_in_preview",
+      retryable: false,
+    });
+    expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(mocks.receiveLiveKitParticipantWebhook).not.toHaveBeenCalled();
+    expect(mocks.handleLiveKitInterviewEventWorkflow).not.toHaveBeenCalled();
   });
 
   it("rejects a declared oversized body before signature verification", async () => {
@@ -104,3 +126,9 @@ describe("POST /api/webhooks/livekit", () => {
     expect(mocks.receiveLiveKitParticipantWebhook).not.toHaveBeenCalled();
   });
 });
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}

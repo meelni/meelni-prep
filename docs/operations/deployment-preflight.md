@@ -1,10 +1,18 @@
 # Deployment Preflight Runbook
 
-Updated: 2026-08-08
-Status: Production is owner-launched; isolated post-launch Preview verification remains
-Owner: SAV-184
+Updated: 2026-08-09
+Status: generic PR Preview is web-only; provider-backed staging remains the rehearsal lane
+Owner: SAV-184, SAV-391
 
 The deployment preflight validates launch-critical configuration without printing or changing provider values. Vercel runs it before every Preview or Production Next.js build. Provider checks are read-only; smoke events and billing mutations are separate, explicitly authorized rehearsals.
+
+## Deployment lanes
+
+- Generic PR Preview has `VERCEL_ENV=preview` and `VERCEL_TARGET_ENV=preview`. LiveKit is intentionally disabled, its configuration/reachability check prints an explicit `SKIP`, and voice entrypoints return `voice_unavailable_in_preview` without touching auth, credits, durable session state, LiveKit configuration, or providers. Non-voice surfaces remain deployable and reviewable.
+- Trusted staging has `VERCEL_ENV=preview` and `VERCEL_TARGET_ENV=staging`. It remains the only provider-backed Preview rehearsal lane and must pass the exact isolated LiveKit identity and read-only project-access check.
+- Production remains enabled and strict. Never put Production LiveKit credentials into generic Preview or staging.
+
+Do not interpret an unreadable LiveKit project as intentional disablement. Only the exact Vercel-owned generic Preview identity skips; local explicit Preview, missing `VERCEL_TARGET_ENV`, and unknown targets remain strict.
 
 ## Current launched posture
 
@@ -40,13 +48,13 @@ npm run deploy:preflight:production
 
 The commands load only their matching private env file. Never source both files, pass secrets in command arguments, or paste provider output into chat, GitHub, or Linear.
 
-## Post-launch isolated Preview rehearsal
+## Post-launch isolated staging rehearsal
 
 1. Preserve Production at its owner-launched pair and leave the shared Statsig
    gate unchanged. Preview uses `MEELNI_RELAUNCH_PHASE=rehearsal`,
    `NEXT_PUBLIC_STATSIG_ENVIRONMENT=preview`, and
    `MEELNI_REACTIVATION_DEFAULT=false`.
-2. Confirm the canonical Vercel target is team `meelni`, project `meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), linked to `meelni/meelni-prep`. The build preflight verifies the project ID and Git owner/slug from Vercel system variables.
+2. Confirm the canonical Vercel target is team `meelni`, project `meelni` (`prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4`), linked to `meelni/meelni-prep`, and custom target `staging`. The build preflight verifies the project ID and Git owner/slug from Vercel system variables and requires `VERCEL_TARGET_ENV=staging` for provider rehearsal.
 3. For an authorized rehearsal only, add `MEELNI_REHEARSAL_COMMIT_SHA` to the Vercel Preview environment scoped to the reviewed PR branch, enter the exact 40-character head SHA, and redeploy that exact commit. Do not define this variable for all Preview branches. Every new commit requires a new value and redeployment. Vercel preflight rejects an anchor that differs from `VERCEL_GIT_COMMIT_SHA` or lacks `VERCEL_GIT_COMMIT_REF`.
 4. Pull Preview and run the target preflight. Preview Supabase must resolve exactly to `kxpvidtxznllfosfemdl`; Production must resolve exactly to `rarrrwkjuhfyfatcmrkw`.
 5. Use only LiveKit project `meelni-preview` (`p_16unz4e48is`) at `meelni-preview-dk7443ua.livekit.cloud`. Its interview deployment `CA_ZbGxFjfEYwsD` dispatches as `meelni-preview-interview`; its demo deployment `CA_M5XTD4CMyXk3` dispatches as `meelni-preview-demo`. Set those matching Preview-only Vercel values without borrowing a Production identity.
@@ -134,7 +142,7 @@ No Production smoke event, live Stripe transaction, live provider mutation, rela
 | Stripe catalog     | Correct the target price at source; price amount, cadence, interval count, usage type, and metadata must all match.                                                                                                                                                                                                                            |
 | Inngest            | Restore target-specific Event and Signing Keys; then record an authorized target smoke separately.                                                                                                                                                                                                                                             |
 | OpenAI/model       | Restore the credential and explicit accepted model. Do not depend on an application default.                                                                                                                                                                                                                                                   |
-| LiveKit            | Correct URLs, credentials, and dispatch names. Keep the exact isolated Preview interview and demo identities committed together.                                                                                                                                                                                                               |
+| LiveKit            | For generic Preview, require the explicit intentional `SKIP`; do not add credentials. For staging/Production, correct URLs, credentials, dispatch names, and reachability. An unreadable provider remains a failure.                                                                                                                           |
 | Statsig/relaunch   | Restore target tier and `/api/statsig`; preserve the owner-launched Production pair and use Preview `rehearsal` with fallback `false`. Preview also requires exact Vercel commit/ref plus current, matching Statsig authority whose total authorized lifetime is at most two hours. Never repair Preview by changing the shared launched gate. |
 | Provider outage    | Retry only after status/access is understood. Do not bypass or downgrade checks.                                                                                                                                                                                                                                                               |
 
@@ -155,7 +163,7 @@ authority updates.
   `67b0247d62d23f4a61e1bacd4d94aebe97f78455` and returns HTTP 503: database,
   feedback dispatch, and Stripe webhook are unavailable. SAV-387 owns
   restoration before interview rehearsal authority may be activated.
-- The isolated Preview project now contains the verified interview and demo deployments. The matching source identity and Preview-only Vercel values must be deployed together before hosted preflight can pass.
+- The isolated project is staging-only rehearsal infrastructure. Its matching source identity and staging-scoped Vercel values must be deployed together before staging preflight can pass; generic Preview neither needs nor receives them.
 - The one-time demo bootstrap completed with a private `complete` receipt. Do not rerun it or create another demo deployment while the recorded agent remains present.
 - The target-specific Inngest Event Key and provider smoke evidence must still be verified in the isolated Preview environment.
 - Production catalog/provider checks and any live-mode rehearsal remain gated by explicit owner authorization.

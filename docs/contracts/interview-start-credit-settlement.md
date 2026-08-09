@@ -49,6 +49,16 @@ The room metadata includes the authenticated candidate identity. The Python
 runtime waits for that participant before greeting while the hard deadline
 continues to run.
 
+## Deployment Capability Gate
+
+Generic Vercel PR Preview is web-only. The shared LiveKit capability boundary
+returns HTTP `503` with `error=voice_unavailable_in_preview` and
+`retryable=false` before authentication, request parsing, credit reads or
+reservation, session/room mutation, LiveKit configuration, or provider I/O.
+The launcher disables its start action and explains that staging is the voice
+rehearsal lane. Trusted staging and Production retain the complete provisioning
+and credit contract above.
+
 ## Usable Evidence
 
 The start transaction reserves one credit but never consumes it. A version-1
@@ -74,5 +84,5 @@ reservations, and unsettled usable evidence. Launch automation must use
 
 The migration is additive and old writers remain version 0. The relaunch flag
 stays default-off and the authenticated start API enforces the same server-side
-gate before any mutation. Preview/Production migration and rehearsal remain
-blocked until SAV-226 provides an isolated Preview data target.
+gate before any mutation. Provider-backed rehearsal belongs only to trusted
+staging; ordinary PR Preview cannot create version-1 voice sessions.

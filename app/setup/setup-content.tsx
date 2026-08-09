@@ -58,7 +58,11 @@ import {
   INTERVIEW_START_SLOS,
 } from "@/lib/operations/interview-start-slo";
 
-export function SetupContent() {
+export function SetupContent({
+  voiceUnavailableInPreview,
+}: {
+  voiceUnavailableInPreview: boolean;
+}) {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -294,6 +298,13 @@ export function SetupContent() {
   }, [user]);
 
   const handleStartInterview = async () => {
+    if (voiceUnavailableInPreview) {
+      setError(
+        "Voice practice is unavailable in this web Preview. Use the trusted staging environment for voice rehearsal."
+      );
+      return;
+    }
+
     if (questionIdParam && questionIntentState.status !== "ready") {
       setError("Choose an available question before starting.");
       return;
@@ -539,6 +550,7 @@ export function SetupContent() {
   );
   const startDisabled =
     isCreatingSession ||
+    voiceUnavailableInPreview ||
     !effectiveRoundType ||
     !difficulty ||
     (questionIdParam !== null && questionIntentState.status !== "ready");
@@ -597,6 +609,28 @@ export function SetupContent() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {voiceUnavailableInPreview && (
+            <motion.div
+              variants={fadeInUp}
+              role="status"
+              className="border-warning/25 bg-warning/10 text-dashboard-foreground flex items-start gap-3 rounded-lg border p-4 text-sm"
+            >
+              <AlertCircle
+                className="text-warning mt-0.5 h-4 w-4 shrink-0"
+                aria-hidden="true"
+              />
+              <div className="space-y-1">
+                <p className="font-semibold">
+                  Voice is off in this web Preview
+                </p>
+                <p className="text-dashboard-muted">
+                  Non-voice surfaces remain available. Use the trusted staging
+                  environment for LiveKit rehearsal.
+                </p>
+              </div>
+            </motion.div>
+          )}
 
           {questionIntentState.status !== "none" && (
             <motion.div variants={fadeInUp}>
@@ -664,7 +698,9 @@ export function SetupContent() {
                 disabled={startDisabled}
                 className="text-primary-foreground min-h-11 w-full gap-2 sm:w-auto"
               >
-                {isCreatingSession ? (
+                {voiceUnavailableInPreview ? (
+                  "Voice unavailable in Preview"
+                ) : isCreatingSession ? (
                   <>
                     <Loader2
                       className="h-4 w-4 animate-spin"

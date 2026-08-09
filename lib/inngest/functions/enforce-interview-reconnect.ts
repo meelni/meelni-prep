@@ -7,6 +7,7 @@ import {
   INTERVIEW_RECONNECT_EVENT_NAME,
 } from "@/lib/workflows/schedule-interview-reconnect";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { isLiveKitIntentionallyDisabled } from "@meelni/integrations";
 
 export const enforceInterviewReconnect = inngest.createFunction(
   {
@@ -25,6 +26,10 @@ export const enforceInterviewReconnect = inngest.createFunction(
   },
   { event: INTERVIEW_RECONNECT_EVENT_NAME },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { skipped: "livekit_intentionally_disabled" };
+    }
+
     const deadlineAt = String(event.data.deadlineAt ?? "");
     await step.sleepUntil("wait-for-reconnect-deadline", deadlineAt);
 
@@ -58,6 +63,10 @@ export const recoverInterviewReconnects = inngest.createFunction(
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { scheduled: 0, skipped: "livekit_intentionally_disabled" };
+    }
+
     const schedules = await step.run("find-open-reconnect-deadlines", () =>
       listInterviewReconnectSchedules()
     );

@@ -16,12 +16,16 @@ import {
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 import { reportInterviewEndStage } from "@/lib/operations/interview-end-stage";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   let correlationId: InterviewSessionCorrelationId | null = null;
   try {
     return await withDeadline(

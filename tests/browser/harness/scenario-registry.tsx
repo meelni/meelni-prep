@@ -170,7 +170,7 @@ function ExploreScenario() {
 function NewInterviewScenario() {
   return (
     <Shell activeSection="new-interview">
-      <SetupContent />
+      <SetupContent voiceUnavailableInPreview={false} />
     </Shell>
   );
 }
