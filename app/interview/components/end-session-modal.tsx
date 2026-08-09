@@ -84,7 +84,7 @@ export function EndSessionModal({
               </DialogPrimitive.Title>
               <DialogPrimitive.Description className="text-muted-foreground mb-6 text-center">
                 Ending closes this room and asks the server to finalize the
-                durable interview evidence received so far. {" "}
+                durable interview evidence received so far.{" "}
                 {capturedAnswerCount === 0
                   ? "This tab does not currently display a candidate answer."
                   : `This tab currently displays ${capturedAnswerCount} candidate ${
