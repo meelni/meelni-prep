@@ -89,6 +89,14 @@ packages/
 - For voice-agent work, test prompt/metadata/runtime helpers directly and manually verify LiveKit where necessary.
 - For user-facing workflows, run `npm run typecheck` and targeted lint/build checks before claiming completion.
 
+## Pull Requests
+
+- Finish routine implementation work through a ready-for-review pull request unless the user explicitly asks for review only, there is no publishable diff, or a concrete external blocker requires owner input.
+- Draft is a temporary collaboration state, not the default handoff state. An agent may open a draft while actively iterating, but after scoped implementation and relevant local validation it must convert the PR with `gh pr ready` before handoff.
+- A ready PR must run the repository's required hosted checks. Monitor those checks to a terminal result and fix failures owned by the branch instead of leaving the PR in Draft to avoid CI.
+- Leave a PR in Draft only when the user explicitly requests it or when unavailable credentials/infrastructure, an unresolved owner decision, or another hard external dependency prevents a reviewable candidate. Record the exact blocker and smallest owner action in the PR and Linear.
+- Ready-for-review does not authorize merge, Production action, provider mutation, launch, or bypassing branch protection. Those boundaries remain human-owned where otherwise required.
+
 ## Style
 
 - Keep code explicit and boring.
