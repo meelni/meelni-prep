@@ -9,6 +9,7 @@ import {
   LiveKitRoomWrapper,
   TranscriptTurn,
 } from "@/components/interview/livekit-room";
+import { useAcknowledgedMicrophone } from "@/components/interview/use-acknowledged-microphone";
 import { TranscriptPanel } from "./components/transcript-panel";
 import { groupTranscriptTurns } from "./components/transcript-display";
 import { AudioVisualizer } from "./components/audio-visualizer";
@@ -148,7 +149,9 @@ export function InterviewPageContent() {
   const [token, setToken] = useState("");
   const [url, setUrl] = useState("");
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
-  const [isMuted, setIsMuted] = useState(false);
+  const [microphoneSessionActive, setMicrophoneSessionActive] = useState(true);
+  const [microphoneActivatedSessionId, setMicrophoneActivatedSessionId] =
+    useState<string | null>(null);
   const [showEndModal, setShowEndModal] = useState(false);
   const endSessionReturnFocusRef = useRef<HTMLElement | null>(null);
   const [isEndingSession, setIsEndingSession] = useState(false);
@@ -247,7 +250,8 @@ export function InterviewPageContent() {
     setUrl("");
     setTranscript([]);
     transcriptRef.current = [];
-    setIsMuted(false);
+    setMicrophoneSessionActive(true);
+    setMicrophoneActivatedSessionId(null);
     setTranscriptIntegrity("healthy");
     setTranscriptHydrationState("loading");
     setAgentState("idle");
@@ -871,9 +875,9 @@ export function InterviewPageContent() {
     abortBootstrapWork("interview_deadline_reached");
     abortCredentialWork("interview_deadline_reached");
     setDeadlineReached(true);
+    setMicrophoneSessionActive(false);
     setShowEndModal(false);
     setEndSessionError(null);
-    setIsMuted(true);
     analytics.track("interview_deadline_reached", {
       session_id: activeSessionId,
       interview_type: session?.config?.roundType,
@@ -1031,7 +1035,7 @@ export function InterviewPageContent() {
     endIntentRef.current = true;
     abortBootstrapWork("interview_end_requested");
     abortCredentialWork("interview_end_requested");
-    setIsMuted(true);
+    setMicrophoneSessionActive(false);
     setIsEndingSession(true);
     setEndSessionError(null);
     setTranscriptIntegrity("retrying");
@@ -1256,20 +1260,17 @@ export function InterviewPageContent() {
         transcript={transcript}
         transcriptHydrationState={transcriptHydrationState}
         agentState={agentState}
-        isMuted={isMuted}
+        microphoneSessionActive={microphoneSessionActive}
+        autoActivateMicrophone={
+          microphoneActivatedSessionId !== activeSessionId
+        }
         transcriptIntegrity={transcriptIntegrity}
         deadlineReached={deadlineReached}
         connectionStatus={connectionStatus}
         recoveringConnection={recoveringConnection}
         onDeadlineReached={handleDeadlineReached}
-        onToggleMute={() => {
-          const newMutedState = !isMuted;
-          setIsMuted(newMutedState);
-          // Track mic toggle
-          analytics.track("mic_toggled", {
-            session_id: sessionId ?? session.id,
-            new_state: newMutedState ? "muted" : "unmuted",
-          });
+        onMicrophoneAutoActivated={() => {
+          setMicrophoneActivatedSessionId(activeSessionId);
         }}
         onEndSession={() => {
           openEndSessionConfirmation();
@@ -1299,13 +1300,14 @@ interface InterviewRoomContentProps {
   transcript: TranscriptTurn[];
   transcriptHydrationState: DurableTranscriptHydrationState;
   agentState: "idle" | "listening" | "thinking" | "speaking";
-  isMuted: boolean;
+  microphoneSessionActive: boolean;
+  autoActivateMicrophone: boolean;
   transcriptIntegrity: "healthy" | "retrying" | "degraded";
   deadlineReached: boolean;
   connectionStatus: InterviewConnectionStatus;
   recoveringConnection: boolean;
   onDeadlineReached: () => void;
-  onToggleMute: () => void;
+  onMicrophoneAutoActivated: () => void;
   onEndSession: () => void;
   onRetryTranscriptHydration: () => void;
 }
@@ -1315,26 +1317,39 @@ function InterviewRoomContent({
   transcript,
   transcriptHydrationState,
   agentState,
-  isMuted,
+  microphoneSessionActive,
+  autoActivateMicrophone,
   transcriptIntegrity,
   deadlineReached,
   connectionStatus,
   recoveringConnection,
   onDeadlineReached,
-  onToggleMute,
+  onMicrophoneAutoActivated,
   onEndSession,
   onRetryTranscriptHydration,
 }: InterviewRoomContentProps) {
-  const { localParticipant } = useLocalParticipant();
+  const { localParticipant, isMicrophoneEnabled, lastMicrophoneError } =
+    useLocalParticipant();
   const connectionReady = isInterviewConversationReady(connectionStatus);
-
-  useEffect(() => {
-    if (localParticipant) {
-      localParticipant.setMicrophoneEnabled(
-        !isMuted && !deadlineReached && connectionReady
-      );
-    }
-  }, [connectionReady, deadlineReached, isMuted, localParticipant]);
+  const canUseMicrophone =
+    microphoneSessionActive &&
+    !deadlineReached &&
+    connectionReady &&
+    !recoveringConnection;
+  const microphone = useAcknowledgedMicrophone({
+    participant: localParticipant,
+    actualEnabled: isMicrophoneEnabled,
+    canUseMicrophone,
+    autoActivate: autoActivateMicrophone,
+    providerError: lastMicrophoneError,
+    onAutoActivationAcknowledged: onMicrophoneAutoActivated,
+    onUserToggleAcknowledged: (enabled) => {
+      analytics.track("mic_toggled", {
+        session_id: session.id,
+        new_state: enabled ? "unmuted" : "muted",
+      });
+    },
+  });
 
   return (
     <InterviewRoomSurface
@@ -1343,9 +1358,11 @@ function InterviewRoomContent({
       connectionStatus={connectionStatus}
       controls={
         <InterviewControls
-          isMuted={isMuted}
-          muteDisabled={!connectionReady || recoveringConnection}
-          onToggleMute={onToggleMute}
+          isMuted={!microphone.enabled}
+          muteDisabled={!canUseMicrophone || microphone.pending}
+          mutePending={microphone.pending}
+          microphoneError={microphone.errorMessage}
+          onToggleMute={microphone.toggle}
           onEndSession={onEndSession}
         />
       }
