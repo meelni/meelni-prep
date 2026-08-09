@@ -80,6 +80,8 @@ const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   strategy: [...questionTypeStorageAliasesForRound("strategy")],
 };
 
+const INTERVIEW_START_BUSY_RETRY_MS = 1_000;
+
 export interface StartInterviewSessionUser {
   id: string;
   email?: string | null;
@@ -394,7 +396,10 @@ export async function startInterviewSessionWorkflow(
         error: "interview_start_in_progress",
         message: "The interview is still starting. Please try again.",
         retryable: true,
-        retryAfterMs: claim.retryAfterMs,
+        retryAfterMs: Math.min(
+          INTERVIEW_START_BUSY_RETRY_MS,
+          Math.max(1, claim.retryAfterMs)
+        ),
       },
     };
   }

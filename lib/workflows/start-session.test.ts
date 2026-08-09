@@ -262,6 +262,27 @@ test("retryable provider failure keeps the reservation and reuses the attempt", 
   assert.equal(fixture.store.current?.provisioningState, "ready");
 });
 
+test("a long provisioning lease returns short busy guidance without invoking the provider", async () => {
+  const fixture = createFixture();
+  fixture.deps.startStore.claimProvisioning = async () => ({
+    disposition: "busy",
+    retryAfterMs: 120_000,
+  });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, false);
+  if (result.ok) assert.fail("busy starts must not return credentials");
+  assert.equal(result.status, 503);
+  assert.deepEqual(result.body, {
+    error: "interview_start_in_progress",
+    message: "The interview is still starting. Please try again.",
+    retryable: true,
+    retryAfterMs: 1_000,
+  });
+  assert.equal(fixture.calls.filter((call) => call === "provider").length, 0);
+});
+
 test("lost acknowledgement after a committed ready write preserves the room", async () => {
   const fixture = createFixture({ acknowledgementCommitThenThrow: 1 });
 
