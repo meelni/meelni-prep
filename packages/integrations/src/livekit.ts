@@ -36,7 +36,21 @@ export interface StartInterviewRoomInput {
   roomName: string;
   metadata: unknown;
   env: LiveKitEnvironment;
+  onStage?: (
+    stage: LiveKitInterviewProvisioningStage,
+    outcome: LiveKitInterviewProvisioningStageOutcome,
+    durationMs: number
+  ) => void;
 }
+
+export type LiveKitInterviewProvisioningStage =
+  | "room_create"
+  | "room_verification"
+  | "dispatch_verification";
+export type LiveKitInterviewProvisioningStageOutcome =
+  | "succeeded"
+  | "failed"
+  | "terminal";
 
 export interface StartedInterviewRoom {
   roomName: string;
@@ -142,6 +156,7 @@ export interface LiveKitProviderDependencies {
   agentDispatchClientFactory?: AgentDispatchClientFactory;
   roomServiceClientFactory?: RoomServiceClientFactory;
   now?: () => Date;
+  monotonicNow?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
 }
 
@@ -292,6 +307,7 @@ export function createLiveKitInterviewProvider({
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
   now = () => new Date(),
+  monotonicNow = () => performance.now(),
 }: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
@@ -336,6 +352,7 @@ export function createLiveKitInterviewProvider({
         input.env.apiSecret
       );
 
+      const roomCreateStartedAt = monotonicNow();
       try {
         await roomClient.createRoom({
           name: input.roomName,
@@ -352,6 +369,12 @@ export function createLiveKitInterviewProvider({
       } catch (error) {
         const message = getErrorMessage(error);
         if (!message.includes("already exists")) {
+          reportProvisioningStage(
+            input,
+            "room_create",
+            "failed",
+            monotonicNow() - roomCreateStartedAt
+          );
           return providerFailure("livekit", {
             code: "livekit_room_create_failed",
             message,
@@ -360,8 +383,21 @@ export function createLiveKitInterviewProvider({
           });
         }
       }
+      reportProvisioningStage(
+        input,
+        "room_create",
+        "succeeded",
+        monotonicNow() - roomCreateStartedAt
+      );
 
+      const roomVerificationStartedAt = monotonicNow();
       if (!roomClient.listRooms) {
+        reportProvisioningStage(
+          input,
+          "room_verification",
+          "terminal",
+          monotonicNow() - roomVerificationStartedAt
+        );
         return providerFailure("livekit", {
           code: "livekit_room_reconcile_unsupported",
           message: "The LiveKit room adapter cannot reconcile room metadata.",
@@ -376,6 +412,12 @@ export function createLiveKitInterviewProvider({
           rooms[0].name !== input.roomName ||
           rooms[0].metadata !== expectedMetadata
         ) {
+          reportProvisioningStage(
+            input,
+            "room_verification",
+            "terminal",
+            monotonicNow() - roomVerificationStartedAt
+          );
           return providerFailure("livekit", {
             code: "livekit_room_metadata_conflict",
             message:
@@ -383,7 +425,19 @@ export function createLiveKitInterviewProvider({
             retryable: false,
           });
         }
+        reportProvisioningStage(
+          input,
+          "room_verification",
+          "succeeded",
+          monotonicNow() - roomVerificationStartedAt
+        );
       } catch (error) {
+        reportProvisioningStage(
+          input,
+          "room_verification",
+          "failed",
+          monotonicNow() - roomVerificationStartedAt
+        );
         return providerFailure("livekit", {
           code: "livekit_room_reconcile_failed",
           message: getErrorMessage(error),
@@ -392,6 +446,7 @@ export function createLiveKitInterviewProvider({
         });
       }
 
+      const dispatchVerificationStartedAt = monotonicNow();
       try {
         const existingDispatches = await dispatchClient.listDispatch(
           input.roomName
@@ -404,6 +459,12 @@ export function createLiveKitInterviewProvider({
           existingDispatches[0].agentName !== input.agentName ||
           existingDispatches[0].room !== input.roomName
         ) {
+          reportProvisioningStage(
+            input,
+            "dispatch_verification",
+            "terminal",
+            monotonicNow() - dispatchVerificationStartedAt
+          );
           return providerFailure("livekit", {
             code: "livekit_agent_dispatch_conflict",
             message:
@@ -411,7 +472,19 @@ export function createLiveKitInterviewProvider({
             retryable: false,
           });
         }
+        reportProvisioningStage(
+          input,
+          "dispatch_verification",
+          "succeeded",
+          monotonicNow() - dispatchVerificationStartedAt
+        );
       } catch (error) {
+        reportProvisioningStage(
+          input,
+          "dispatch_verification",
+          "failed",
+          monotonicNow() - dispatchVerificationStartedAt
+        );
         return providerFailure("livekit", {
           code: "livekit_agent_dispatch_reconcile_failed",
           message: getErrorMessage(error),
@@ -433,6 +506,20 @@ export function createLiveKitInterviewProvider({
       });
     },
   };
+}
+
+function reportProvisioningStage(
+  input: StartInterviewRoomInput,
+  stage: LiveKitInterviewProvisioningStage,
+  outcome: LiveKitInterviewProvisioningStageOutcome,
+  durationMs: number
+): void {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return;
+  try {
+    input.onStage?.(stage, outcome, durationMs);
+  } catch {
+    // Observability must never change room provisioning behavior.
+  }
 }
 
 export function createLiveKitPublicDemoProvider({
