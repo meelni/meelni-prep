@@ -1,5 +1,6 @@
 export type InterviewConnectionStatus =
   | "connecting"
+  | "transport_delayed"
   | "connected"
   | "delayed"
   | "syncing"
@@ -59,6 +60,12 @@ export interface InterviewRoomCredentials {
   authorizationVersion?: number;
   expiresAt?: string;
 }
+
+export type InterviewSessionBootstrapDisposition =
+  | "ready"
+  | "retryable"
+  | "authorization_lost"
+  | "terminal";
 
 export type RealtimeConnectionState =
   | "disconnected"
@@ -162,61 +169,82 @@ export function parseInterviewRoomCredentials(
   return { token, url, roomName };
 }
 
-export function isInterviewRoomCredentialAuthorizationCurrent(
-  credentials: InterviewRoomCredentials,
-  lifecycle: unknown,
-  now = new Date()
-): boolean {
-  if (
-    credentials.authorizationVersion === undefined ||
-    credentials.expiresAt === undefined ||
-    !isRecord(lifecycle)
-  ) {
-    return false;
-  }
-  const expiresAt = Date.parse(credentials.expiresAt);
-  if (
-    lifecycle.lifecycleVersion !== credentials.authorizationVersion ||
-    !["connecting", "active", "reconnecting"].includes(
-      String(lifecycle.lifecycleState)
-    ) ||
-    lifecycle.endedAt !== null ||
-    !Number.isFinite(expiresAt) ||
-    expiresAt <= now.getTime()
-  ) {
-    return false;
-  }
-  if (lifecycle.lifecycleState === "reconnecting") {
-    const reconnectDeadlineAt =
-      typeof lifecycle.reconnectDeadlineAt === "string"
-        ? Date.parse(lifecycle.reconnectDeadlineAt)
-        : Number.NaN;
-    if (
-      !Number.isFinite(reconnectDeadlineAt) ||
-      expiresAt > reconnectDeadlineAt
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export function getCredentialRetryDelayMs(
   status: number,
-  retryAfterHeader: string | null
+  retryAfterHeader: string | null,
+  nowMs = Date.now()
 ): number | null {
   if (status !== 429 && status !== 503) return null;
 
-  const retryAfterSeconds = Number(retryAfterHeader);
-  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
-    return Math.min(retryAfterSeconds * 1_000, MAX_RETRY_DELAY_MS);
+  return getInterviewRetryDelayMs(retryAfterHeader, nowMs);
+}
+
+export function getInterviewRetryDelayMs(
+  retryAfterHeader: string | null,
+  nowMs = Date.now()
+): number {
+  if (retryAfterHeader) {
+    const retryAfterSeconds = Number(retryAfterHeader);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+      return Math.min(retryAfterSeconds * 1_000, MAX_RETRY_DELAY_MS);
+    }
+
+    const retryAt = Date.parse(retryAfterHeader);
+    if (Number.isFinite(retryAt)) {
+      return Math.min(Math.max(0, retryAt - nowMs), MAX_RETRY_DELAY_MS);
+    }
   }
 
   return DEFAULT_RETRY_DELAY_MS;
 }
 
+export function classifyInterviewSessionBootstrapResponse(
+  status: number,
+  body: unknown
+): InterviewSessionBootstrapDisposition {
+  if (status >= 200 && status < 300) return "ready";
+  if (status === 401 || status === 403 || status === 404) {
+    return "authorization_lost";
+  }
+  if (
+    (isRecord(body) && body.retryable === true) ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 503
+  ) {
+    return "retryable";
+  }
+  return "terminal";
+}
+
+export function waitForInterviewRecoveryDelay(
+  delayMs: number,
+  signal: AbortSignal
+): Promise<void> {
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
 export function shouldDiscardInterviewRoomCredentials(status: number): boolean {
-  return status === 409;
+  return status === 401 || status === 403 || status === 404 || status === 409;
+}
+
+function createAbortError(): Error {
+  const error = new Error("Interview recovery aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

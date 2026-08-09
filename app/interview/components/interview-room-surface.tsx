@@ -70,6 +70,12 @@ export function InterviewRoomSurface({
                 available.
               </StatusPill>
             )}
+            {connectionStatus === "transport_delayed" && (
+              <StatusPill tone="warning" role="status" aria-live="polite">
+                Room connection is taking longer than expected. End remains
+                available.
+              </StatusPill>
+            )}
             {connectionStatus === "syncing" && (
               <StatusPill tone="muted" role="status" aria-live="polite">
                 Interview active. Syncing status in the background.
