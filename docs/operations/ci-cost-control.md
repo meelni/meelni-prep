@@ -228,14 +228,30 @@ policy changes, restore the `push: main` trigger before relying on this policy.
 
 ## Agent workflow
 
-1. Keep implementation and audit-remediation pull requests in Draft.
+1. Agents may use Draft while actively iterating, but Draft is not the default
+   handoff state. Complete the scoped implementation and relevant self-review,
+   then publish or convert the pull request to Ready for review without waiting
+   for routine owner intervention.
 2. Run `npm run check:ci`, relevant provider/database harnesses, and
-   `npm run build` locally before requesting final hosted evidence.
-3. After independent review is clean, mark the pull request Ready for review.
-4. For an exact registry-only PR, confirm the trusted publisher created the
+   `npm run build` locally when applicable before requesting final hosted
+   evidence. Record narrower risk-matched validation when a full local gate is
+   not feasible.
+3. Ready status starts the hosted merge-ready gate. Monitor every required
+   check to a terminal result, fix branch-owned failures, push the repair, and
+   require fresh exact-head evidence. Do not move a PR to Draft merely to avoid
+   or hide failing CI.
+4. Leave a PR in Draft at handoff only when the user explicitly requests it or
+   a concrete blocker outside the agent's authority requires owner input, such
+   as unavailable credentials/infrastructure or an unresolved owner decision.
+   Record the exact blocker and smallest unblock in the PR and Linear.
+5. For an exact registry-only PR, confirm the trusted publisher created the
    exact-head result and follow the native protected merge handoff above. For
    every other PR, confirm ordinary Validate ran.
-5. If the head changes, require a new exact-head green run before merge.
+6. If the head changes, require a new exact-head green run before merge.
+
+Ready-for-review is not merge or launch authorization. Agents must not enable
+auto-merge, bypass protection, or perform Production/provider actions without
+the separate authority those actions require.
 
 Repository rules must require the exact `Validate` context on `main`. A skipped
 lifecycle check is not a substitute. Verify branch protection or a ruleset is
