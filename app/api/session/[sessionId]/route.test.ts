@@ -121,7 +121,7 @@ describe("GET /api/session/:sessionId", () => {
   });
 
   it("returns not found without question data when an owned session disappears", async () => {
-    vi.mocked(getSessionWithSelectedQuestionById).mockResolvedValue(undefined);
+    vi.mocked(getSessionWithSelectedQuestionById).mockResolvedValue(null);
 
     const response = await GET(request(), context());
 
