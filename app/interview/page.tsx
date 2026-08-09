@@ -48,6 +48,13 @@ import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-cre
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { fetchWithDeadline } from "@/lib/http/deadline";
 import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
+import {
+  classifyTranscriptHydrationResponse,
+  getTranscriptHydrationRetryDelayMs,
+  TRANSCRIPT_HYDRATION_MAX_ATTEMPTS,
+  waitForTranscriptHydrationRetry,
+  type DurableTranscriptHydrationState,
+} from "@/lib/interview/transcript-hydration";
 
 const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
 
@@ -134,6 +141,8 @@ export function InterviewPageContent() {
   const [transcriptIntegrity, setTranscriptIntegrity] = useState<
     "healthy" | "retrying" | "degraded"
   >("healthy");
+  const [transcriptHydrationState, setTranscriptHydrationState] =
+    useState<DurableTranscriptHydrationState>("loading");
   const [agentState, setAgentState] = useState<
     "idle" | "listening" | "thinking" | "speaking"
   >("idle");
@@ -158,11 +167,20 @@ export function InterviewPageContent() {
   const recoveredStatusTimerRef = useRef<number | undefined>(undefined);
   const credentialRetryTimerRef = useRef<number | undefined>(undefined);
   const refreshRoomCredentialsRef = useRef<() => void>(() => undefined);
+  const transcriptRef = useRef<TranscriptTurn[]>([]);
+  const transcriptHydrationKeyRef = useRef<string | null>(null);
+  const transcriptHydrationInFlightRef = useRef<{
+    key: string;
+    token: symbol;
+    controller: AbortController;
+  } | null>(null);
   const observedOwnerIdRef = useRef<string | null | undefined>(undefined);
   const ownerTransitionInProgressRef = useRef(false);
   const ownerIdRef = useRef<string | null>(user?.id ?? null);
+  const routerRef = useRef(router);
   const nextEndRetryAtRef = useRef(0);
   ownerIdRef.current = user?.id ?? null;
+  routerRef.current = router;
   const activeSessionId = session?.id ?? sessionId ?? "";
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -198,8 +216,10 @@ export function InterviewPageContent() {
     setToken("");
     setUrl("");
     setTranscript([]);
+    transcriptRef.current = [];
     setIsMuted(false);
     setTranscriptIntegrity("healthy");
+    setTranscriptHydrationState("loading");
     setAgentState("idle");
     setSessionStartTime(null);
     setDeadlineReached(false);
@@ -208,6 +228,9 @@ export function InterviewPageContent() {
     setDisconnectTimedOut(false);
     setCredentialGeneration(0);
     setTranscriptHydrationGeneration(0);
+    transcriptHydrationKeyRef.current = null;
+    transcriptHydrationInFlightRef.current?.controller.abort();
+    transcriptHydrationInFlightRef.current = null;
     setShowEndModal(false);
     setIsEndingSession(false);
     setEndSessionError(null);
@@ -401,7 +424,13 @@ export function InterviewPageContent() {
     // Runtime packets are post-persistence display notifications. The LiveKit
     // adapter rejects replayed identities before this callback, so the browser
     // renders each accepted turn once without owning a second write path.
-    setTranscript((prev) => mergeTranscriptTurns(prev, [turn]));
+    transcriptRef.current = mergeTranscriptTurns(transcriptRef.current, [
+      turn,
+    ]);
+    setTranscript((current) => mergeTranscriptTurns(current, [turn]));
+    setTranscriptHydrationState((current) =>
+      current === "empty" ? "ready" : current
+    );
   };
 
   useEffect(() => {
@@ -414,92 +443,189 @@ export function InterviewPageContent() {
     }
     const requestOwnerId = connectionOwnerId;
     const requestSessionId = activeSessionId;
-    let cancelled = false;
+    const hydrationKey = `${requestOwnerId}:${requestSessionId}`;
+    const existingRequest = transcriptHydrationInFlightRef.current;
+    if (existingRequest?.key === hydrationKey) return;
+    existingRequest?.controller.abort();
+
+    const previousHydrationKey = transcriptHydrationKeyRef.current;
+    const isNewOwnerSession = previousHydrationKey !== hydrationKey;
+    transcriptHydrationKeyRef.current = hydrationKey;
+    if (previousHydrationKey !== null && isNewOwnerSession) {
+      transcriptRef.current = [];
+      setTranscript([]);
+    }
+    setTranscriptHydrationState(isNewOwnerSession ? "loading" : "retrying");
+
     const controller = new AbortController();
+    const requestToken = Symbol(hydrationKey);
+    transcriptHydrationInFlightRef.current = {
+      key: hydrationKey,
+      token: requestToken,
+      controller,
+    };
+
+    const requestIsCurrent = () =>
+      transcriptHydrationInFlightRef.current?.token === requestToken &&
+      !controller.signal.aborted &&
+      ownerIdRef.current === requestOwnerId &&
+      activeSessionIdRef.current === requestSessionId;
 
     const hydrateDurableTranscript = async () => {
-      try {
-        const response = await fetchWithDeadline(
-          `/api/session/${requestSessionId}/transcript`,
-          { cache: "no-store", signal: controller.signal }
-        );
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          turns?: Array<{
-            id: string;
-            eventId?: string | null;
-            writerId?: string | null;
-            writerGeneration?: number | null;
-            sequence?: number | null;
-            sessionId: string;
-            roomName?: string | null;
-            speaker: "user" | "interviewer";
-            text?: string | null;
-            startedAt?: string | null;
-            endedAt?: string | null;
-            audioMs?: number | null;
-            section?: string | null;
-            deliveryState?: "delivered" | "partially_delivered" | null;
-          }>;
-        };
-        if (
-          cancelled ||
-          ownerIdRef.current !== requestOwnerId ||
-          activeSessionIdRef.current !== requestSessionId
-        ) {
+      let lastFailureReason: string | null = null;
+
+      for (
+        let attempt = 0;
+        attempt < TRANSCRIPT_HYDRATION_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        let response: Response | null = null;
+        let failureReason: string | null = null;
+
+        try {
+          response = await fetchWithDeadline(
+            `/api/session/${requestSessionId}/transcript`,
+            { cache: "no-store", signal: controller.signal }
+          );
+        } catch (hydrateError) {
+          if (!requestIsCurrent()) return;
+          failureReason =
+            hydrateError instanceof Error && hydrateError.name === "AbortError"
+              ? "timeout"
+              : "transport";
+        }
+
+        if (!requestIsCurrent()) return;
+
+        let disposition = response
+          ? classifyTranscriptHydrationResponse(response.status)
+          : "retryable";
+        if (disposition === "authorization_lost") {
+          console.warn("[Interview] transcript_hydration_authority_lost", {
+            code: "transcript_hydration_authority_lost",
+            status: response?.status ?? 0,
+          });
+          setToken("");
+          setUrl("");
+          setSession(null);
+          setConnectionOwnerId(null);
+          setTranscript([]);
+          transcriptRef.current = [];
+          setTranscriptHydrationState("loading");
+          routerRef.current.replace(
+            response?.status === 401
+              ? "/auth/signin?redirectTo=/interview"
+              : "/dashboard"
+          );
           return;
         }
-        const hydrated = (payload.turns ?? []).flatMap((turn) => {
-          if (!turn.text || !turn.startedAt) return [];
-          return [
-            {
-              persistable: Boolean(turn.eventId),
-              eventId: turn.eventId ?? turn.id,
-              rowId: turn.id,
-              writerId: turn.writerId ?? undefined,
-              writerGeneration: turn.writerGeneration ?? undefined,
-              sequence: turn.sequence ?? undefined,
-              sessionId: turn.sessionId,
-              roomName: turn.roomName ?? undefined,
-              speaker: turn.speaker,
-              text: turn.text,
-              timestamp: new Date(turn.startedAt),
-              startedAt: new Date(turn.startedAt),
-              endedAt: turn.endedAt ? new Date(turn.endedAt) : undefined,
-              audioMs: turn.audioMs ?? undefined,
-              section: turn.section ?? undefined,
-              deliveryState: turn.deliveryState ?? undefined,
-            } satisfies TranscriptTurn,
-          ];
+
+        if (response?.ok) {
+          const payload: unknown = await response.json().catch(() => null);
+          if (!requestIsCurrent()) return;
+
+          const hydrated = normalizeHydratedTranscriptPayload(
+            payload,
+            requestSessionId
+          );
+          if (hydrated !== null) {
+            const mergedAtResponse = mergeTranscriptTurns(
+              transcriptRef.current,
+              hydrated
+            );
+            transcriptRef.current = mergedAtResponse;
+            setTranscript((current) =>
+              mergeTranscriptTurns(current, hydrated)
+            );
+            setTranscriptHydrationState(
+              mergedAtResponse.length === 0 ? "empty" : "ready"
+            );
+            if (lastFailureReason !== null) {
+              console.info("[Interview] transcript_hydration_recovered", {
+                code: "transcript_hydration_recovered",
+                reason: lastFailureReason,
+                attempts: attempt + 1,
+              });
+            }
+            return;
+          }
+          disposition = "retryable";
+          failureReason = "invalid_payload";
+        }
+
+        failureReason =
+          failureReason ?? `http_${String(response?.status ?? 0)}`;
+        lastFailureReason = failureReason;
+        console.warn("[Interview] transcript_hydration_retry", {
+          code: "transcript_hydration_retry",
+          reason: failureReason,
+          attempt: attempt + 1,
         });
-        setTranscript((current) => mergeTranscriptTurns(current, hydrated));
-      } catch (hydrateError) {
-        if (
-          cancelled ||
-          ownerIdRef.current !== requestOwnerId ||
-          activeSessionIdRef.current !== requestSessionId
-        ) {
+
+        const canRetry =
+          disposition === "retryable" &&
+          attempt < TRANSCRIPT_HYDRATION_MAX_ATTEMPTS - 1;
+        if (!canRetry) {
+          setTranscriptHydrationState("degraded");
           return;
         }
-        console.warn("[Interview] Durable transcript hydration failed", {
-          sessionId: requestSessionId,
-          error:
-            hydrateError instanceof Error
-              ? hydrateError.name
-              : "unknown_hydration_error",
-        });
+
+        setTranscriptHydrationState("retrying");
+        try {
+          await waitForTranscriptHydrationRetry(
+            getTranscriptHydrationRetryDelayMs(response, attempt),
+            controller.signal
+          );
+        } catch {
+          return;
+        }
       }
     };
 
     // Runtime packets are the normal post-persistence display path. Hydrate
     // once after authorization and resync only after a real connection
     // recovery; turn-state churn must never fan out full transcript reads.
-    void hydrateDurableTranscript();
+    void hydrateDurableTranscript().finally(() => {
+      if (transcriptHydrationInFlightRef.current?.token === requestToken) {
+        transcriptHydrationInFlightRef.current = null;
+      }
+    });
     return () => {
-      cancelled = true;
       controller.abort();
+      if (transcriptHydrationInFlightRef.current?.token === requestToken) {
+        transcriptHydrationInFlightRef.current = null;
+      }
     };
-  }, [activeSessionId, connectionOwnerId, transcriptHydrationGeneration]);
+  }, [
+    activeSessionId,
+    connectionOwnerId,
+    transcriptHydrationGeneration,
+  ]);
+
+  const retryTranscriptHydration = useCallback(() => {
+    if (
+      !activeSessionIdRef.current ||
+      !connectionOwnerId ||
+      connectionOwnerId !== ownerIdRef.current ||
+      transcriptHydrationInFlightRef.current !== null
+    ) {
+      return;
+    }
+    setTranscriptHydrationState("retrying");
+    setTranscriptHydrationGeneration((generation) => generation + 1);
+  }, [connectionOwnerId]);
+
+  useEffect(() => {
+    if (transcriptHydrationState !== "degraded") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        retryTranscriptHydration();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [retryTranscriptHydration, transcriptHydrationState]);
 
   const handleAgentStateChange = useCallback(
     (state: string) => {
@@ -1010,6 +1136,7 @@ export function InterviewPageContent() {
       <InterviewRoomContent
         session={session}
         transcript={transcript}
+        transcriptHydrationState={transcriptHydrationState}
         agentState={agentState}
         isMuted={isMuted}
         transcriptIntegrity={transcriptIntegrity}
@@ -1029,6 +1156,7 @@ export function InterviewPageContent() {
         onEndSession={() => {
           openEndSessionConfirmation();
         }}
+        onRetryTranscriptHydration={retryTranscriptHydration}
       />
       {endSessionModal}
       {deadlineReached && <DeadlineReachedOverlay />}
@@ -1048,6 +1176,7 @@ export function InterviewPageContent() {
 interface InterviewRoomContentProps {
   session: InterviewSession;
   transcript: TranscriptTurn[];
+  transcriptHydrationState: DurableTranscriptHydrationState;
   agentState: "idle" | "listening" | "thinking" | "speaking";
   isMuted: boolean;
   transcriptIntegrity: "healthy" | "retrying" | "degraded";
@@ -1057,11 +1186,13 @@ interface InterviewRoomContentProps {
   onDeadlineReached: () => void;
   onToggleMute: () => void;
   onEndSession: () => void;
+  onRetryTranscriptHydration: () => void;
 }
 
 function InterviewRoomContent({
   session,
   transcript,
+  transcriptHydrationState,
   agentState,
   isMuted,
   transcriptIntegrity,
@@ -1071,6 +1202,7 @@ function InterviewRoomContent({
   onDeadlineReached,
   onToggleMute,
   onEndSession,
+  onRetryTranscriptHydration,
 }: InterviewRoomContentProps) {
   const { localParticipant } = useLocalParticipant();
   const connectionReady = isInterviewConversationReady(connectionStatus);
@@ -1107,6 +1239,8 @@ function InterviewRoomContent({
         />
       }
       transcriptIntegrity={transcriptIntegrity}
+      transcriptHydrationState={transcriptHydrationState}
+      onRetryTranscriptHydration={onRetryTranscriptHydration}
       transcriptPanel={<TranscriptPanel turns={transcript} />}
     />
   );
@@ -1376,16 +1510,124 @@ function mergeTranscriptTurns(
   current: TranscriptTurn[],
   incoming: TranscriptTurn[]
 ): TranscriptTurn[] {
-  const turns = new Map<string, TranscriptTurn>();
+  const turns: TranscriptTurn[] = [];
+  const identityToIndex = new Map<string, number>();
+
   for (const turn of [...current, ...incoming]) {
-    const key = turn.eventId
-      ? `event:${turn.eventId}`
-      : turn.rowId
-        ? `row:${turn.rowId}`
-        : `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${turn.text}`;
-    turns.set(key, turn);
+    const identities = getTranscriptTurnIdentities(turn);
+    const existingIndex = identities.flatMap((identity) => {
+      const index = identityToIndex.get(identity);
+      return index === undefined ? [] : [index];
+    })[0];
+
+    const index = existingIndex ?? turns.length;
+    turns[index] =
+      existingIndex === undefined
+        ? turn
+        : mergeDefinedTranscriptTurn(turns[index], turn);
+
+    for (const identity of getTranscriptTurnIdentities(turns[index])) {
+      identityToIndex.set(identity, index);
+    }
   }
-  return [...turns.values()].sort(compareTranscriptOrdering);
+
+  return turns.sort(compareTranscriptOrdering);
+}
+
+function normalizeHydratedTranscriptPayload(
+  payload: unknown,
+  requestSessionId: string
+): TranscriptTurn[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.turns)) return null;
+
+  const hydrated: TranscriptTurn[] = [];
+  for (const value of payload.turns) {
+    if (!isRecord(value)) return null;
+    if (
+      typeof value.id !== "string" ||
+      value.sessionId !== requestSessionId ||
+      (value.speaker !== "user" && value.speaker !== "interviewer")
+    ) {
+      return null;
+    }
+
+    const text = optionalString(value.text);
+    const startedAt = optionalDate(value.startedAt);
+    const endedAt = optionalDate(value.endedAt);
+    if (text === null || startedAt === null || endedAt === null) return null;
+    if (text === undefined || startedAt === undefined) continue;
+
+    hydrated.push({
+      persistable: typeof value.eventId === "string",
+      eventId:
+        typeof value.eventId === "string" ? value.eventId : value.id,
+      rowId: value.id,
+      writerId: optionalStringValue(value.writerId),
+      writerGeneration: optionalNumber(value.writerGeneration),
+      sequence: optionalNumber(value.sequence),
+      sessionId: value.sessionId,
+      roomName: optionalStringValue(value.roomName),
+      speaker: value.speaker,
+      text,
+      timestamp: startedAt,
+      startedAt,
+      endedAt,
+      audioMs: optionalNumber(value.audioMs),
+      section: optionalStringValue(value.section),
+      deliveryState:
+        value.deliveryState === "delivered" ||
+        value.deliveryState === "partially_delivered"
+          ? value.deliveryState
+          : undefined,
+    });
+  }
+  return hydrated;
+}
+
+function optionalString(value: unknown): string | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === "string" ? value : null;
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function optionalDate(value: unknown): Date | undefined | null {
+  const raw = optionalString(value);
+  if (raw === null) return null;
+  if (raw === undefined) return undefined;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getTranscriptTurnIdentities(turn: TranscriptTurn): string[] {
+  const identities: string[] = [];
+  if (turn.eventId) identities.push(`event:${turn.eventId}`);
+  if (turn.rowId) identities.push(`row:${turn.rowId}`);
+  if (identities.length === 0) {
+    identities.push(
+      `legacy:${turn.speaker}:${turn.timestamp.toISOString()}:${turn.text}`
+    );
+  }
+  return identities;
+}
+
+function mergeDefinedTranscriptTurn(
+  current: TranscriptTurn,
+  incoming: TranscriptTurn
+): TranscriptTurn {
+  const merged = { ...current } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged as unknown as TranscriptTurn;
 }
 
 export default function InterviewPage() {
