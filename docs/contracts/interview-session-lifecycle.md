@@ -153,13 +153,25 @@ initial connection or recovery, the authenticated browser asks the server to
 inspect candidate and agent presence. The server feeds those provider-verified
 facts through the same idempotent presence-reconciliation workflow used for
 missed webhooks. The UI reports `connected` only after the lifecycle is active
-or recovered. A presence request has a three-second bound, while initial
-canonical readiness has a 25-second customer bound so normal provider cold
-starts can converge. Exhaustion is `delayed`, not `disconnected`: the existing
-room and credential stay mounted, microphone input remains disabled, End
-Interview remains available, and one later bounded confirmation is scheduled.
-Only terminal authorization loss or a real transport disconnect may enter the
-credential-recovery path.
+or recovered. Browser transport, provider-observed interviewer liveness, and
+canonical lifecycle readiness remain separate facts. A selected LiveKit agent
+participant that is active and conversationally listening, thinking, or
+speaking establishes monotonic browser liveness for the current session and
+room. A correlated interviewer transcript packet sent by a LiveKit agent may
+establish the same liveness before the voice-assistant hook observes it.
+
+Browser liveness never writes or authorizes canonical `active` state. It may
+remove false joining copy, enable conversation controls, and immediately ask
+the authenticated presence route to repair durable truth. While repair is in
+flight, the customer state is `syncing`; a real transport reconnect or
+disconnect still takes precedence. A presence request has a three-second bound,
+while initial canonical readiness has a 25-second customer bound so normal
+provider cold starts can converge. Exhaustion without verified interviewer
+liveness is `delayed`: the existing room and credential stay mounted,
+microphone input remains disabled, End Interview remains available, and one
+later bounded confirmation is scheduled. Canonical lag never rotates
+credentials. Only terminal authorization loss or a real transport disconnect
+may enter the credential-recovery path.
 
 The browser bounds the idempotent session-start request at ten seconds. Because
 an aborted request may already have committed, it retains the stable

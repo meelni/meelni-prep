@@ -100,3 +100,25 @@ test("interview start SLO events retain only closed content-free fields", () => 
     }
   );
 });
+
+test("interview readiness contradictions retain no room or customer correlation", () => {
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("interview_liveness_contradiction", {
+      version: 1,
+      phase: "resolved",
+      duration_ms: 31_000,
+      duration_class: "under_2m",
+      resolution: "canonical_ready",
+      session_id: "private-session",
+      room_name: "private-room",
+      transcript: "private transcript content",
+    }),
+    {
+      version: 1,
+      phase: "resolved",
+      duration_ms: 31_000,
+      duration_class: "under_2m",
+      resolution: "canonical_ready",
+    }
+  );
+});

@@ -32,6 +32,12 @@ export function ConnectionIndicator({
         label: "Interviewer delayed",
         Icon: Wifi,
       };
+    if (status === "syncing")
+      return {
+        color: "text-info",
+        label: "Syncing interview status",
+        Icon: Wifi,
+      };
     if (status === "reconnecting")
       return {
         color: "text-warning",
