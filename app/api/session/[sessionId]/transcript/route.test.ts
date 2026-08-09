@@ -56,7 +56,7 @@ describe("GET /api/session/:sessionId/transcript", () => {
 
     const response = await GET(request(), context());
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     expect(response.headers.get("cache-control")).toBe(PRIVATE_NO_STORE);
     expect(isSessionOwnedByUser).toHaveBeenCalledWith(
       SESSION_ID,
