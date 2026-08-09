@@ -24,7 +24,10 @@ import {
 } from "@meelni/agent";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { confirmInterviewRuntimeReady } from "@/lib/interview/runtime-connection-confirmation";
-import { buildInterviewStartStageEvent } from "@/lib/operations/interview-start-slo";
+import {
+  buildInterviewStartStageEvent,
+  INTERVIEW_START_SLOS,
+} from "@/lib/operations/interview-start-slo";
 import {
   buildInterviewLivenessContradictionEvent,
   type InterviewLivenessContradictionResolution,
@@ -82,6 +85,10 @@ export function LiveKitRoomWrapper({
 }: LiveKitRoomWrapperProps) {
   const connectionStartTime = useRef<number>(Date.now());
   const transportStageGeneration = useRef<number | null>(null);
+  const transportWatchdogTimer = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  const connectionStateChangeRef = useRef(onConnectionStateChange);
   const acceptedTranscriptEvents = useRef(new Set<string>());
   const connectionTracker = useRef<InterviewConnectionTracker>({
     attemptObserved: false,
@@ -92,6 +99,7 @@ export function LiveKitRoomWrapper({
     established: false,
   });
   const roomKey = `${sessionId}:${roomName}`;
+  connectionStateChangeRef.current = onConnectionStateChange;
   if (interviewerLiveness.current.roomKey !== roomKey) {
     interviewerLiveness.current = { roomKey, established: false };
   }
@@ -107,6 +115,23 @@ export function LiveKitRoomWrapper({
   useEffect(() => {
     connectionStartTime.current = Date.now();
     transportStageGeneration.current = null;
+    transportWatchdogTimer.current = setTimeout(() => {
+      if (transportStageGeneration.current === credentialGeneration) return;
+      transportStageGeneration.current = credentialGeneration;
+      trackInterviewStartStage(
+        "transport_connection",
+        "delayed",
+        INTERVIEW_START_SLOS.transport_connection.upperBoundMs
+      );
+      connectionStateChangeRef.current("transport_delayed");
+    }, INTERVIEW_START_SLOS.transport_connection.upperBoundMs);
+
+    return () => {
+      if (transportWatchdogTimer.current !== undefined) {
+        clearTimeout(transportWatchdogTimer.current);
+        transportWatchdogTimer.current = undefined;
+      }
+    };
   }, [credentialGeneration]);
 
   return (
@@ -119,6 +144,10 @@ export function LiveKitRoomWrapper({
       video={false}
       onConnected={() => {
         console.log("Connected to LiveKit room:", roomName);
+        if (transportWatchdogTimer.current !== undefined) {
+          clearTimeout(transportWatchdogTimer.current);
+          transportWatchdogTimer.current = undefined;
+        }
 
         // Track connection latency
         const connectionTime = Date.now() - connectionStartTime.current;
