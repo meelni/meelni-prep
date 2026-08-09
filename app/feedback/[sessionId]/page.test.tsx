@@ -83,6 +83,267 @@ describe("feedback transcript read states", () => {
     expect(feedbackPostAttempts).toBe(0);
   });
 
+  it("pauses honestly after exhausting the full automatic poll budget", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          throw new Error(
+            "A non-retryable lifecycle must never trigger recovery"
+          );
+        }
+        feedbackGetAttempts += 1;
+        return Response.json({
+          status: "processing",
+          retryable: false,
+          delayed: true,
+        });
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await act(async () => undefined);
+
+    expect(feedbackGetAttempts).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30 * 3000);
+    });
+
+    expect(feedbackGetAttempts).toBe(31);
+    expect(feedbackPostAttempts).toBe(0);
+    expect(
+      screen.getByRole("heading", { name: "Automatic checking paused" })
+    ).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-busy", "false");
+    expect(status.querySelector(".animate-spin")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Check again" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "View interview history" })
+    ).toHaveAttribute("href", "/dashboard/history");
+  });
+
+  it("checks once and renders late completion without a document reload", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    let resolveLateCompletion: ((response: Response) => void) | undefined;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          throw new Error("Check again must remain read-only");
+        }
+        feedbackGetAttempts += 1;
+        if (feedbackGetAttempts <= 31) return processingFeedbackResponse();
+        return new Promise<Response>((resolve) => {
+          resolveLateCompletion = resolve;
+        });
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await exhaustAutomaticPollBudget();
+
+    const checkAgain = screen.getByRole("button", { name: "Check again" });
+    fireEvent.click(checkAgain);
+    fireEvent.click(checkAgain);
+
+    expect(feedbackGetAttempts).toBe(32);
+    expect(feedbackPostAttempts).toBe(0);
+    expect(resolveLateCompletion).toBeDefined();
+
+    await act(async () => {
+      resolveLateCompletion?.(completedFeedbackResponse());
+    });
+
+    expect(screen.getByText("Synthetic fixture summary")).toBeInTheDocument();
+    expect(feedbackGetAttempts).toBe(32);
+    expect(feedbackPostAttempts).toBe(0);
+  });
+
+  it("uses GET-only checking before exposing server-authorized POST recovery", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          return Response.json({ status: "completed" });
+        }
+        feedbackGetAttempts += 1;
+        if (feedbackGetAttempts <= 31) return processingFeedbackResponse();
+        if (feedbackGetAttempts === 32) {
+          return Response.json({
+            status: "pending",
+            retryable: true,
+            delayed: true,
+          });
+        }
+        return completedFeedbackResponse();
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await exhaustAutomaticPollBudget();
+
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await act(async () => undefined);
+
+    expect(feedbackGetAttempts).toBe(32);
+    expect(feedbackPostAttempts).toBe(0);
+    expect(
+      screen.getByRole("button", { name: "Queue feedback" })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Queue feedback" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByText("Synthetic fixture summary")).toBeVisible();
+    expect(feedbackGetAttempts).toBe(33);
+    expect(feedbackPostAttempts).toBe(1);
+  });
+
+  it("bounds a resumed automatic window after a failed check", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let feedbackPostAttempts = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${url}`);
+        }
+        if (init?.method === "POST") {
+          feedbackPostAttempts += 1;
+          throw new Error("Transport refresh must never trigger recovery");
+        }
+        feedbackGetAttempts += 1;
+        return feedbackGetAttempts <= 31
+          ? processingFeedbackResponse()
+          : Response.json(
+              { error: "synthetic temporary outage" },
+              { status: 503 }
+            );
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+    await exhaustAutomaticPollBudget();
+
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await act(async () => undefined);
+
+    expect(feedbackGetAttempts).toBe(32);
+    expect(feedbackPostAttempts).toBe(0);
+    expect(
+      screen.getByText(/reconnecting to your saved interview/i)
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30 * 3000);
+    });
+
+    expect(feedbackGetAttempts).toBe(62);
+    expect(feedbackPostAttempts).toBe(0);
+    expect(
+      screen.getByRole("heading", { name: "Automatic checking paused" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "automatic checking is paused"
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent(
+      /update automatically/i
+    );
+    expect(
+      screen.getByRole("button", { name: "Check again" })
+    ).toBeInTheDocument();
+  });
+
+  it("aborts an in-flight customer check when the feedback view unmounts", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    let customerCheckSignal: AbortSignal | undefined;
+    const request = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        feedbackGetAttempts += 1;
+        if (feedbackGetAttempts <= 31) return processingFeedbackResponse();
+        customerCheckSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("customer check aborted");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true }
+          );
+        });
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<FeedbackPage />);
+    await exhaustAutomaticPollBudget();
+
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await act(async () => undefined);
+    expect(customerCheckSignal).toBeDefined();
+
+    view.unmount();
+
+    expect(customerCheckSignal?.aborted).toBe(true);
+    expect(feedbackGetAttempts).toBe(32);
+  });
+
+  it("links an active owned session to its canonical interview URL", async () => {
+    const request = vi.fn(async () =>
+      Response.json(
+        {
+          status: "session_not_ended",
+          retryable: false,
+          message: "This interview has not ended yet.",
+        },
+        { status: 409 }
+      )
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<FeedbackPage />);
+
+    expect(
+      await screen.findByRole("link", { name: "Return to interview" })
+    ).toHaveAttribute("href", `/interview?sessionId=${SESSION_ID}`);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("ends a stalled feedback GET before continuing the bounded poll loop", async () => {
     vi.useFakeTimers();
     let feedbackGetAttempts = 0;
@@ -424,6 +685,24 @@ function completedFeedbackResponse(
       nextPracticeRecommendation: null,
     },
   });
+}
+
+function processingFeedbackResponse() {
+  return Response.json({
+    status: "processing",
+    retryable: false,
+    delayed: true,
+  });
+}
+
+async function exhaustAutomaticPollBudget() {
+  await act(async () => undefined);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30 * 3000);
+  });
+  expect(
+    screen.getByRole("heading", { name: "Automatic checking paused" })
+  ).toBeInTheDocument();
 }
 
 function feedbackFinding(dimension: "insight" | "structure", turnRef: string) {
