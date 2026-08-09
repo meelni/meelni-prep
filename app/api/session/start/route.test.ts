@@ -131,6 +131,46 @@ describe("POST /api/session/start logging", () => {
       consoleError.mockRestore();
     }
   });
+
+  it("reports authorization and gate latency without customer content", async () => {
+    const consoleInfo = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
+    vi.mocked(startInterviewSessionWorkflow).mockResolvedValue({
+      ok: false,
+      status: 503,
+      body: { error: "interview_start_in_progress", retryable: true },
+    } as never);
+
+    try {
+      await POST(request());
+
+      expect(consoleInfo).toHaveBeenCalledTimes(1);
+      const event = JSON.parse(
+        String(consoleInfo.mock.calls[0]?.[0])
+      ) as Record<string, unknown>;
+      expect(event).toMatchObject({
+        event: "meelni_interview_start_stage",
+        version: 1,
+        stage: "authorization_gate",
+        outcome: "succeeded",
+      });
+      expect(Object.keys(event).sort()).toEqual([
+        "durationMs",
+        "event",
+        "latencyClass",
+        "outcome",
+        "sloTargetMs",
+        "sloUpperBoundMs",
+        "stage",
+        "version",
+      ]);
+      expect(JSON.stringify(event)).not.toContain("candidate@example.com");
+      expect(JSON.stringify(event)).not.toContain("user-1");
+    } finally {
+      consoleInfo.mockRestore();
+    }
+  });
 });
 
 function readOperationalEvent(

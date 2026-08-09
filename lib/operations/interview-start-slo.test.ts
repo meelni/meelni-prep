@@ -5,6 +5,7 @@ import {
   buildInterviewStartStageEvent,
   classifyInterviewStartLatency,
   INTERVIEW_START_SLOS,
+  reportInterviewStartStage,
 } from "./interview-start-slo";
 
 test("interview start SLO boundaries classify equality as breached", () => {
@@ -21,6 +22,36 @@ test("interview start SLO boundaries classify equality as breached", () => {
     "above_upper_bound"
   );
   assert.equal(classifyInterviewStartLatency("launch_request", -1), null);
+});
+
+test("server stage reporting emits only the closed content-free event", () => {
+  const captured: unknown[][] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => captured.push(args);
+
+  try {
+    reportInterviewStartStage({
+      stage: "livekit_dispatch_verification",
+      outcome: "succeeded",
+      durationMs: 321.4,
+    });
+  } finally {
+    console.info = original;
+  }
+
+  assert.equal(captured.length, 1);
+  const event = JSON.parse(String(captured[0]?.[0])) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(event).sort(), [
+    "durationMs",
+    "event",
+    "latencyClass",
+    "outcome",
+    "sloTargetMs",
+    "sloUpperBoundMs",
+    "stage",
+    "version",
+  ]);
+  assert.equal(event.stage, "livekit_dispatch_verification");
 });
 
 test("start stage events contain only closed operational fields", () => {

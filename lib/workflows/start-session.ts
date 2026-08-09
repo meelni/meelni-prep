@@ -67,6 +67,11 @@ import {
   readOwnedInterviewSessionCorrelationId,
   reportOperationalFailure,
 } from "@/lib/operations/operational-events";
+import {
+  reportInterviewStartStage,
+  type InterviewStartSlo,
+  type InterviewStartStageOutcome,
+} from "@/lib/operations/interview-start-slo";
 
 const QUESTION_TYPE_MAP: Record<RoundType, string[]> = {
   behavioral: [...questionTypeStorageAliasesForRound("behavioral")],
@@ -171,6 +176,12 @@ export interface StartInterviewSessionDeps {
   ): InterviewRuntimeConfig;
   now(): Date;
   createLeaseId(): string;
+  monotonicNow?(): number;
+  reportStartStage?(input: {
+    stage: InterviewStartSlo;
+    outcome: InterviewStartStageOutcome;
+    durationMs: number;
+  }): void;
 }
 
 export type StartInterviewSessionResult =
@@ -227,13 +238,25 @@ export async function startInterviewSessionWorkflow(
     startAttemptId
   );
 
-  await deps.upsertUser({
-    id: input.user.id,
-    email: input.user.email!,
-    name: input.user.metadata?.name || input.user.metadata?.full_name || null,
-  });
-
-  const trialGrant = await ensureTrialGrantForStart(input.user.id, deps);
+  const accountTrialStartedAt = startStageNow(deps);
+  let trialGrant: Awaited<ReturnType<typeof ensureTrialGrantForStart>>;
+  try {
+    await deps.upsertUser({
+      id: input.user.id,
+      email: input.user.email!,
+      name: input.user.metadata?.name || input.user.metadata?.full_name || null,
+    });
+    trialGrant = await ensureTrialGrantForStart(input.user.id, deps);
+  } catch (error) {
+    finishStartStage(deps, "account_trial", "failed", accountTrialStartedAt);
+    throw error;
+  }
+  finishStartStage(
+    deps,
+    "account_trial",
+    trialGrant.ok ? "succeeded" : "failed",
+    accountTrialStartedAt
+  );
   if (!trialGrant.ok) {
     return trialGrant;
   }
@@ -249,39 +272,46 @@ export async function startInterviewSessionWorkflow(
     let question = existing?.question;
     let resolvedRoundType = existing?.roundType ?? roundType;
     if (!question) {
-      const selection = await selectQuestion({
-        roundType,
-        questionId,
-        recentDays: getRecentDays(preferences),
+      const selection = await measureStartStage(
         deps,
-      });
+        "question_selection",
+        () =>
+          selectQuestion({
+            roundType,
+            questionId,
+            recentDays: getRecentDays(preferences),
+            deps,
+          })
+      );
       if (!selection.ok) return selection;
       if (!selection.value) throw new Error("interview_start_question_missing");
       question = selection.value;
       resolvedRoundType = selection.roundType;
     }
     const startedAt = existing?.startedAt ?? deps.now();
-    start = await deps.prepareStart({
-      start: {
-        startAttemptId,
-        userId: input.user.id,
-        requestFingerprint,
-        role,
-        roundType: resolvedRoundType,
-        mode,
-        roomName,
-        config: { ...runtimeConfig },
-        startedAt,
-        question,
-      },
-      reservation: {
-        userId: input.user.id,
-        reservationKey,
-        sessionId: startAttemptId,
-        startContractVersion: 1,
-        startAttemptId,
-      },
-    });
+    start = await measureStartStage(deps, "credit_reservation", () =>
+      deps.prepareStart({
+        start: {
+          startAttemptId,
+          userId: input.user.id,
+          requestFingerprint,
+          role,
+          roundType: resolvedRoundType,
+          mode,
+          roomName,
+          config: { ...runtimeConfig },
+          startedAt,
+          question,
+        },
+        reservation: {
+          userId: input.user.id,
+          reservationKey,
+          sessionId: startAttemptId,
+          startContractVersion: 1,
+          startAttemptId,
+        },
+      })
+    );
     deadlineAt = deriveInterviewDeadlineAt({
       startedAt: start.startedAt,
       durationMinutes: runtimeConfig.duration,
@@ -306,14 +336,16 @@ export async function startInterviewSessionWorkflow(
   const leaseId = deps.createLeaseId();
   let claim;
   try {
-    claim = await deps.startStore.claimProvisioning({
-      startAttemptId,
-      userId: input.user.id,
-      requestFingerprint,
-      leaseId,
-      now: deps.now(),
-      deadlineAt,
-    });
+    claim = await measureStartStage(deps, "durable_session_claim", () =>
+      deps.startStore.claimProvisioning({
+        startAttemptId,
+        userId: input.user.id,
+        requestFingerprint,
+        leaseId,
+        now: deps.now(),
+        deadlineAt,
+      })
+    );
   } catch (error) {
     if (error instanceof InterviewStartFailedError) {
       try {
@@ -363,7 +395,7 @@ export async function startInterviewSessionWorkflow(
         error: "interview_start_in_progress",
         message: "The interview is still starting. Please try again.",
         retryable: true,
-        retryAfterMs: claim.retryAfterMs,
+        retryAfterMs: Math.min(claim.retryAfterMs, 1_000),
       },
     };
   }
@@ -395,11 +427,13 @@ export async function startInterviewSessionWorkflow(
   if (claim.disposition === "claimed") {
     start = claim.start;
     try {
-      await requireLifecycleTransition(
-        { sessionId: start.sessionId, to: "connecting" },
-        deps
-      );
-      await deps.scheduleDeadline({ sessionId: start.sessionId, deadlineAt });
+      await measureStartStage(deps, "deadline_scheduling", async () => {
+        await requireLifecycleTransition(
+          { sessionId: start.sessionId, to: "connecting" },
+          deps
+        );
+        await deps.scheduleDeadline({ sessionId: start.sessionId, deadlineAt });
+      });
     } catch {
       await deps.startStore.releaseProvisioningClaim({
         startAttemptId,
@@ -434,6 +468,18 @@ export async function startInterviewSessionWorkflow(
         roomName: start.roomName,
         metadata: roomMetadata,
         env: input.env,
+        onStage: (event) => {
+          const stage = {
+            room_create: "livekit_room_create",
+            room_verification: "livekit_room_verification",
+            dispatch_verification: "livekit_dispatch_verification",
+          } as const;
+          deps.reportStartStage?.({
+            stage: stage[event.stage],
+            outcome: event.outcome,
+            durationMs: event.durationMs,
+          });
+        },
       });
     } catch {
       reportStartFailure();
@@ -517,12 +563,18 @@ export async function startInterviewSessionWorkflow(
         },
       };
     }
-
+    const readinessStartedAt = startStageNow(deps);
     const deletionFence = await deps.fenceCreatedRoomAgainstDeletion(
       input.user.id,
       start.roomName
     );
     if (deletionFence.deletionPending) {
+      finishStartStage(
+        deps,
+        "readiness_persistence",
+        "terminal",
+        readinessStartedAt
+      );
       await rejectCreatedRoomForAccountDeletion({
         start,
         leaseId: claim.leaseId,
@@ -552,7 +604,19 @@ export async function startInterviewSessionWorkflow(
       if (!completed) {
         throw new InterviewProvisioningLeaseLostError();
       }
+      finishStartStage(
+        deps,
+        "readiness_persistence",
+        "succeeded",
+        readinessStartedAt
+      );
     } catch (error) {
+      finishStartStage(
+        deps,
+        "readiness_persistence",
+        "failed",
+        readinessStartedAt
+      );
       reportStartFailure();
 
       let durableStart: PersistedStableInterviewStart | null;
@@ -650,15 +714,17 @@ export async function startInterviewSessionWorkflow(
     return terminalStartResult("interview_start_not_joinable");
   }
 
-  const tokenResult = await deps.issueParticipantToken({
-    identity: input.user.id,
-    participantName: "Candidate",
-    roomName: start.roomName,
-    ttlSeconds: Math.min(5 * 60, remainingSeconds),
-    observedAt: tokenNow,
-    expiresAt: deadlineAt,
-    env: input.env,
-  });
+  const tokenResult = await measureStartStage(deps, "token_issuance", () =>
+    deps.issueParticipantToken({
+      identity: input.user.id,
+      participantName: "Candidate",
+      roomName: start.roomName,
+      ttlSeconds: Math.min(5 * 60, remainingSeconds),
+      observedAt: tokenNow,
+      expiresAt: deadlineAt,
+      env: input.env,
+    })
+  );
   if (!tokenResult.ok) {
     return {
       ok: false,
@@ -798,6 +864,8 @@ export function createStartInterviewSessionDeps(): StartInterviewSessionDeps {
       ),
     now: () => new Date(),
     createLeaseId: randomUUID,
+    monotonicNow: () => performance.now(),
+    reportStartStage: reportInterviewStartStage,
   };
 }
 
@@ -1299,5 +1367,38 @@ function correlationForStart(start: PersistedStableInterviewStart) {
     session: { id: start.sessionId, userId: start.userId },
     authenticatedUserId: start.userId,
   });
+}
+
+async function measureStartStage<T>(
+  deps: StartInterviewSessionDeps,
+  stage: InterviewStartSlo,
+  work: () => Promise<T>
+): Promise<T> {
+  const startedAt = startStageNow(deps);
+  try {
+    const result = await work();
+    finishStartStage(deps, stage, "succeeded", startedAt);
+    return result;
+  } catch (error) {
+    finishStartStage(deps, stage, "failed", startedAt);
+    throw error;
+  }
+}
+
+function finishStartStage(
+  deps: StartInterviewSessionDeps,
+  stage: InterviewStartSlo,
+  outcome: InterviewStartStageOutcome,
+  startedAt: number
+): void {
+  deps.reportStartStage?.({
+    stage,
+    outcome,
+    durationMs: startStageNow(deps) - startedAt,
+  });
+}
+
+function startStageNow(deps: StartInterviewSessionDeps): number {
+  return deps.monotonicNow?.() ?? performance.now();
 }
 import { createHash, randomUUID } from "node:crypto";

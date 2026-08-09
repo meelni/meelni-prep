@@ -10,7 +10,8 @@ work, not completion truth.
 
 | Boundary                               | Target | Upper bound | Customer/recovery behavior                                                                                      |
 | -------------------------------------- | -----: | ----------: | --------------------------------------------------------------------------------------------------------------- |
-| Start request                          |    3 s |        10 s | Abort the browser wait, retain the stable start-attempt UUID, and offer a safe replay of the same intent.       |
+| Start request                          |    3 s |        10 s | Abort that browser request, retain the stable start-attempt UUID, and automatically replay the same intent.     |
+| Start automatic recovery               |      — |        45 s | Retry one request at a time using server guidance; stop on ready, definitive failure, cancellation, or unmount. |
 | LiveKit transport connection           |    5 s |        10 s | Continue showing interviewer-joining truth; transport connection alone does not enable the microphone.          |
 | Transport connected to canonical ready |   10 s |        25 s | Mark readiness delayed, keep the room mounted and End available, then retry one bounded confirmation at a time. |
 | One presence reconciliation            |    1 s |         3 s | Abort the probe and treat dependency exhaustion as retryable; do not rotate credentials.                        |
@@ -77,8 +78,15 @@ runtime uses a transaction pooler.
 `interview_start_stage` version 1 records stage, outcome, duration, SLO
 thresholds, and latency class. It excludes session, room, user, token,
 transcript, question, provider payload, and raw error fields. Aggregate it by
-stage and latency class across `launch_request`, `transport_connection`, and
-`canonical_readiness`.
+stage and latency class across `launch_request`, `authorization_gate`,
+`account_trial`, `question_selection`, `credit_reservation`,
+`durable_session_claim`, `deadline_scheduling`, `livekit_room_create`,
+`livekit_room_verification`, `livekit_dispatch_verification`,
+`readiness_persistence`, `token_issuance`, `transport_connection`, and
+`canonical_readiness`. `credit_reservation` measures the atomic durable
+create/load-and-reserve transaction; `durable_session_claim` measures the
+subsequent provisioning claim. Provider adapter timings describe only the
+closed create and canonical verification calls, never their payloads.
 
 `meelni_interview_end_stage` version 3 records only bounded operational fields:
 stage, outcome, duration, reason code, correlation ID, SLO thresholds, and
@@ -103,8 +111,9 @@ sanitized event counts match database truth.
 1. If start appears stuck, separate launch latency, transport latency, and
    canonical readiness. Do not treat a connected transport as an active
    interview or rotate credentials only because canonical readiness is delayed.
-2. If a start request reaches ten seconds, confirm replay uses the same attempt
-   UUID and inspect whether the original workflow committed.
+2. If a start request reaches ten seconds, confirm automatic replay uses the
+   same attempt UUID, respects retry guidance, and inspect whether the original
+   workflow committed. A second customer click should not be required.
 3. If readiness reaches 25 seconds, inspect provider participant presence and
    reconciliation latency. The customer must retain an enabled End action.
 4. Identify the owner-scoped session and inspect lifecycle timestamps without
@@ -128,7 +137,9 @@ sanitized event counts match database truth.
 
 - A warm start records launch, transport, and canonical readiness inside their
   targets and enables microphone input only after canonical readiness.
-- A simulated 20-second cold start remains mounted and becomes ready without
+- A simulated start that commits after the first 10-second browser abort stays
+  in the still-starting state and automatically returns ready credentials for
+  the same attempt without a second click, duplicate request overlap, or
   credential rotation.
 - A stalled presence read aborts inside three seconds, becomes delayed after
   the readiness bound, keeps End available, and later converges.

@@ -35,6 +35,18 @@ export interface StartInterviewRoomInput {
   roomName: string;
   metadata: unknown;
   env: LiveKitEnvironment;
+  onStage?(event: LiveKitInterviewStartStageEvent): void;
+}
+
+export type LiveKitInterviewStartStage =
+  | "room_create"
+  | "room_verification"
+  | "dispatch_verification";
+
+export interface LiveKitInterviewStartStageEvent {
+  stage: LiveKitInterviewStartStage;
+  outcome: "succeeded" | "terminal" | "failed";
+  durationMs: number;
 }
 
 export interface StartedInterviewRoom {
@@ -142,6 +154,7 @@ export interface LiveKitProviderDependencies {
   roomServiceClientFactory?: RoomServiceClientFactory;
   now?: () => Date;
   sleep?: (milliseconds: number) => Promise<void>;
+  monotonicNow?: () => number;
 }
 
 interface AccessTokenLike {
@@ -283,6 +296,7 @@ export function createLiveKitInterviewProvider({
   roomServiceClientFactory = (url, apiKey, apiSecret) =>
     new RoomServiceClient(url, apiKey, apiSecret),
   now = () => new Date(),
+  monotonicNow = () => performance.now(),
 }: LiveKitProviderDependencies = {}): LiveKitProvider {
   return {
     async startInterviewRoom(input) {
@@ -327,6 +341,7 @@ export function createLiveKitInterviewProvider({
         input.env.apiSecret
       );
 
+      const roomCreateStartedAt = monotonicNow();
       try {
         await roomClient.createRoom({
           name: input.roomName,
@@ -343,6 +358,11 @@ export function createLiveKitInterviewProvider({
       } catch (error) {
         const message = getErrorMessage(error);
         if (!message.includes("already exists")) {
+          input.onStage?.({
+            stage: "room_create",
+            outcome: "failed",
+            durationMs: monotonicNow() - roomCreateStartedAt,
+          });
           return providerFailure("livekit", {
             code: "livekit_room_create_failed",
             message,
@@ -351,8 +371,19 @@ export function createLiveKitInterviewProvider({
           });
         }
       }
+      input.onStage?.({
+        stage: "room_create",
+        outcome: "succeeded",
+        durationMs: monotonicNow() - roomCreateStartedAt,
+      });
 
+      const roomVerificationStartedAt = monotonicNow();
       if (!roomClient.listRooms) {
+        input.onStage?.({
+          stage: "room_verification",
+          outcome: "terminal",
+          durationMs: monotonicNow() - roomVerificationStartedAt,
+        });
         return providerFailure("livekit", {
           code: "livekit_room_reconcile_unsupported",
           message: "The LiveKit room adapter cannot reconcile room metadata.",
@@ -367,6 +398,11 @@ export function createLiveKitInterviewProvider({
           rooms[0].name !== input.roomName ||
           rooms[0].metadata !== expectedMetadata
         ) {
+          input.onStage?.({
+            stage: "room_verification",
+            outcome: "terminal",
+            durationMs: monotonicNow() - roomVerificationStartedAt,
+          });
           return providerFailure("livekit", {
             code: "livekit_room_metadata_conflict",
             message:
@@ -375,6 +411,11 @@ export function createLiveKitInterviewProvider({
           });
         }
       } catch (error) {
+        input.onStage?.({
+          stage: "room_verification",
+          outcome: "failed",
+          durationMs: monotonicNow() - roomVerificationStartedAt,
+        });
         return providerFailure("livekit", {
           code: "livekit_room_reconcile_failed",
           message: getErrorMessage(error),
@@ -382,7 +423,13 @@ export function createLiveKitInterviewProvider({
           cause: error,
         });
       }
+      input.onStage?.({
+        stage: "room_verification",
+        outcome: "succeeded",
+        durationMs: monotonicNow() - roomVerificationStartedAt,
+      });
 
+      const dispatchVerificationStartedAt = monotonicNow();
       try {
         const existingDispatches = await dispatchClient.listDispatch(
           input.roomName
@@ -395,6 +442,11 @@ export function createLiveKitInterviewProvider({
           existingDispatches[0].agentName !== input.agentName ||
           existingDispatches[0].room !== input.roomName
         ) {
+          input.onStage?.({
+            stage: "dispatch_verification",
+            outcome: "terminal",
+            durationMs: monotonicNow() - dispatchVerificationStartedAt,
+          });
           return providerFailure("livekit", {
             code: "livekit_agent_dispatch_conflict",
             message:
@@ -403,6 +455,11 @@ export function createLiveKitInterviewProvider({
           });
         }
       } catch (error) {
+        input.onStage?.({
+          stage: "dispatch_verification",
+          outcome: "failed",
+          durationMs: monotonicNow() - dispatchVerificationStartedAt,
+        });
         return providerFailure("livekit", {
           code: "livekit_agent_dispatch_reconcile_failed",
           message: getErrorMessage(error),
@@ -410,6 +467,11 @@ export function createLiveKitInterviewProvider({
           cause: error,
         });
       }
+      input.onStage?.({
+        stage: "dispatch_verification",
+        outcome: "succeeded",
+        durationMs: monotonicNow() - dispatchVerificationStartedAt,
+      });
 
       return providerSuccess("livekit", {
         roomName: input.roomName,

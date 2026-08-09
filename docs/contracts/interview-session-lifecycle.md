@@ -163,8 +163,13 @@ credential-recovery path.
 
 The browser bounds the idempotent session-start request at ten seconds. Because
 an aborted request may already have committed, it retains the stable
-start-attempt UUID; customer retry replays the same start intent instead of
-creating a second interview. Owned session and credential reads have an
+start-attempt UUID and automatically replays the exact same start intent one
+request at a time. Retryable responses follow the server's `Retry-After` or
+`retryAfterMs` guidance. Recovery remains in an honest still-starting state for
+at most 45 additional seconds, stops on a definitive response, cancellation,
+or unmount, and never navigates without fresh credentials from canonical ready
+state. A customer cancellation retains the durable attempt so a later Start
+click safely resumes it instead of creating a second interview. Owned session and credential reads have an
 eight-second customer bound and return retryable unavailability rather than
 holding the UI until a platform timeout.
 
