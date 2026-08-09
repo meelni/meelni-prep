@@ -210,6 +210,10 @@ vi.mock("./components/end-session-modal", () => ({
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { FeedbackReview } from "@/components/feedback/feedback-review";
 import { CUSTOMER_CLIENT_FETCH_DEADLINE_MS } from "@/lib/http/deadline";
+import {
+  TERMINAL_POLL_MAX_ATTEMPTS,
+  TERMINAL_POLL_WINDOW_MS,
+} from "@/lib/interview/terminal-poll-window";
 import { InterviewPageContent } from "./page";
 
 describe("active interview page lifecycle", () => {
@@ -1448,8 +1452,11 @@ describe("active interview page lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
 
     await waitFor(() =>
-      expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`)
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
     );
+    expect(mocks.push).not.toHaveBeenCalled();
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(tokenRequests).toBe(1);
   });
@@ -1523,7 +1530,10 @@ describe("active interview page lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
 
     await waitFor(() => expect(endRequests).toBe(1));
-    expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`);
+    expect(mocks.replace).toHaveBeenCalledWith(
+      `/feedback/${SESSION_ID}/loading`
+    );
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("aborts a stalled automatic-deadline read and continues polling terminal truth", async () => {
@@ -1590,6 +1600,150 @@ describe("active interview page lifecycle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("caps sequential terminal polling and starts only one manual or visibility retry window", async () => {
+    let terminalPolling = false;
+    let terminalReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}` && terminalPolling) {
+        terminalReads += 1;
+        return Response.json(
+          { error: "session_read_unavailable" },
+          { status: 503 }
+        );
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onDeadlineReached).not.toBeNull());
+
+    vi.useFakeTimers();
+    try {
+      terminalPolling = true;
+      await act(async () => {
+        mocks.onDeadlineReached?.();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TERMINAL_POLL_WINDOW_MS);
+      });
+
+      expect(terminalReads).toBe(TERMINAL_POLL_MAX_ATTEMPTS);
+      const pausedHeading = screen.getByRole("heading", {
+        name: "Automatic checking paused",
+      });
+      expect(pausedHeading.closest('[role="status"]')).toHaveAttribute(
+        "aria-busy",
+        "false"
+      );
+      expect(screen.getByText(/safe to leave this page/i)).toBeVisible();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+        fireEvent(document, new Event("visibilitychange"));
+        await Promise.resolve();
+      });
+      expect(terminalReads).toBe(TERMINAL_POLL_MAX_ATTEMPTS + 1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TERMINAL_POLL_WINDOW_MS);
+      });
+      expect(terminalReads).toBe(TERMINAL_POLL_MAX_ATTEMPTS * 2);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Interview history" })
+      );
+      expect(mocks.replace).toHaveBeenCalledWith("/dashboard/history");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels terminal polling on unmount without scheduling later work", async () => {
+    let terminalPolling = false;
+    let terminalReads = 0;
+    let terminalReadAborted = false;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}` && terminalPolling) {
+          terminalReads += 1;
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                terminalReadAborted = true;
+                const error = new Error("terminal poll aborted");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onDeadlineReached).not.toBeNull());
+
+    vi.useFakeTimers();
+    try {
+      terminalPolling = true;
+      await act(async () => {
+        mocks.onDeadlineReached?.();
+        await Promise.resolve();
+      });
+      expect(terminalReads).toBe(1);
+
+      view.unmount();
+      expect(terminalReadAborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(TERMINAL_POLL_WINDOW_MS * 2);
+      expect(terminalReads).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("navigates once when terminal truth wins a poll window", async () => {
+    let terminalPolling = false;
+    let terminalReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/session/${SESSION_ID}` && terminalPolling) {
+        terminalReads += 1;
+        return Response.json({
+          session: { lifecycleState: "completed", feedbackReady: false },
+        });
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onDeadlineReached).not.toBeNull());
+
+    terminalPolling = true;
+    act(() => mocks.onDeadlineReached?.());
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
+    );
+    fireEvent(document, new Event("visibilitychange"));
+
+    expect(terminalReads).toBe(1);
+    expect(mocks.replace).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("shows an actionable failure instead of spinning forever when initial authorization is rejected", async () => {
@@ -1697,6 +1851,63 @@ describe("active interview page lifecycle", () => {
     await waitFor(() =>
       expect(mocks.livekitUnmounted).toHaveBeenCalledTimes(1)
     );
+  });
+
+  it("pauses ambiguous-End reconciliation at the same terminal poll cap", async () => {
+    let endRequested = false;
+    let terminalReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/interview/end") {
+        endRequested = true;
+        throw new TypeError("connection reset after request write");
+      }
+      if (url === `/api/session/${SESSION_ID}` && endRequested) {
+        terminalReads += 1;
+        return Response.json(
+          { error: "session_read_unavailable" },
+          { status: 503 }
+        );
+      }
+      return activeInterviewResponse(input);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open end confirmation" })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(terminalReads).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TERMINAL_POLL_WINDOW_MS);
+      });
+
+      expect(terminalReads).toBe(TERMINAL_POLL_MAX_ATTEMPTS);
+      const pausedHeading = screen.getByRole("heading", {
+        name: "Automatic checking paused",
+      });
+      expect(pausedHeading.closest('[role="status"]')).toHaveAttribute(
+        "aria-busy",
+        "false"
+      );
+      expect(screen.getByRole("button", { name: "Check again" })).toBeEnabled();
+      expect(mocks.replace).not.toHaveBeenCalled();
+      expect(mocks.push).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("leaves reconciliation for feedback once terminal truth commits even while feedback is pending", async () => {
@@ -1858,13 +2069,85 @@ describe("active interview page lifecycle", () => {
       )
     );
     await waitFor(() =>
-      expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`)
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      )
     );
+    expect(mocks.push).not.toHaveBeenCalled();
     expect(
       request.mock.calls.some(
         ([input]) => String(input) === "/api/interview/runtime-settlement"
       )
     ).toBe(false);
+  });
+
+  it("accepts an End response between 5.0 seconds and the server breaker", async () => {
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/interview/end") {
+          return new Promise<Response>((resolve, reject) => {
+            const timer = window.setTimeout(
+              () =>
+                resolve(
+                  Response.json(
+                    {
+                      status: "settling",
+                      nextHref: `/feedback/${SESSION_ID}/loading`,
+                    },
+                    { status: 202 }
+                  )
+                ),
+              5_250
+            );
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                window.clearTimeout(timer);
+                const error = new Error("end acceptance aborted");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open end confirmation" })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_001);
+      });
+      expect(mocks.replace).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("heading", {
+          name: "Confirming interview completion",
+        })
+      ).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(249);
+      });
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/feedback/${SESSION_ID}/loading`
+      );
+      expect(mocks.replace).toHaveBeenCalledTimes(1);
+      expect(mocks.push).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
