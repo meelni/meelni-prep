@@ -23,6 +23,10 @@
  * @response.session.endedAt {string|null} - ISO 8601 timestamp when session ended (null if active)
  * @response.session.livekitRoomName {string|null} - LiveKit room name
  * @response.session.config {Object} - Persisted session configuration snapshot
+ * @response.session.question {Object|null} - Historical selected-question snapshot
+ * @response.session.question.id {string} - Selected question UUID
+ * @response.session.question.text {string} - Selected question text
+ * @response.session.question.company {string|null} - Selected question company
  *
  * @throws {401} Unauthorized - Missing or invalid authentication token
  * @throws {403} Forbidden - User does not own this session
@@ -68,7 +72,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import {
+  getSessionWithSelectedQuestionById,
+  isSessionOwnedByUser,
+} from "@/lib/db/sessions";
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
 import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
@@ -149,16 +156,21 @@ async function handleSessionRead(params: Promise<{ sessionId: string }>) {
       );
     }
 
-    const session = await getSessionById(sessionId, database);
-    if (!session) {
+    const sessionDetails = await getSessionWithSelectedQuestionById(
+      sessionId,
+      database
+    );
+    if (!sessionDetails) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
+    const { session, question } = sessionDetails;
 
     try {
       const feedback = await getFeedbackBySessionId(sessionId, database);
       return NextResponse.json({
         session: {
           ...attachCanonicalInterviewDeadline(session),
+          question,
           feedbackReady: Boolean(
             feedback &&
               isInterviewDeadlineRoomCleanupAcknowledged(session) &&
