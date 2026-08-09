@@ -48,7 +48,7 @@ The clean `origin/main` baseline at `42357cdb` reports 337 paths with Prettier 3
 | Archived and legacy sprint execution records                                       |    96 | Ignore by their existing archive/sprint roots to preserve them byte-for-byte       |
 | Completed Superpowers plans and specs                                              |     9 | Ignore by their historical planning roots                                          |
 | Generated Drizzle migration metadata                                               |    21 | Ignore `lib/db/migrations/meta/`; the migration generator owns these snapshots     |
-| Generated calibration bundle                                                       |     1 | Ignore `scripts/generated/`; its build script owns the bundle                      |
+| Generated calibration bundle                                                       |     1 | Exclude from Prettier; regenerate with its owning build script when inputs change  |
 | Browser screenshot result artifact                                                 |     1 | Ignore `docs/design/screenshots/`; the browser evidence workflow owns the artifact |
 | Legacy Claude agent and command tooling                                            |    14 | Ignore its exact tool-owned roots because Markdown formatting changes instructions |
 | Retired sprint templates                                                           |     7 | Ignore `docs/templates/SPRINT_TEMPLATE/` with the legacy sprint tooling            |
