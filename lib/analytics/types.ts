@@ -93,6 +93,7 @@ export type AnalyticsEvent =
   | "page_performance"
   | "livekit_connection_established"
   | "interview_start_stage"
+  | "interview_liveness_contradiction"
   | "error_boundary_triggered";
 
 // =============================================================================
@@ -443,6 +444,23 @@ interface PerformanceProperties {
     slo_target_ms: number;
     slo_upper_bound_ms: number;
     latency_class: "within_target" | "above_target" | "above_upper_bound";
+  };
+  interview_liveness_contradiction: {
+    version: 1;
+    phase: "observed" | "resolved";
+    duration_ms: number;
+    duration_class:
+      | "pending"
+      | "under_5s"
+      | "under_30s"
+      | "under_2m"
+      | "at_least_2m";
+    resolution:
+      | "pending"
+      | "canonical_ready"
+      | "transport_interrupted"
+      | "terminal"
+      | "unmounted";
   };
   error_boundary_triggered: {
     error_message: string;

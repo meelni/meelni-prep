@@ -120,6 +120,14 @@ test("renders delayed canonical readiness without removing the end escape hatch"
   assert.match(html, /aria-label="End interview"/);
 });
 
+test("renders active conversation while durable readiness syncs without joining copy", () => {
+  const html = renderSurface({ connectionStatus: "syncing" });
+
+  assert.match(html, /Interview active\. Syncing status in the background/);
+  assert.doesNotMatch(html, /interviewer is still joining/);
+  assert.match(html, /aria-label="End interview"/);
+});
+
 test("disables only mute during reconnect and preserves the end escape hatch", () => {
   const html = renderToStaticMarkup(
     <InterviewControls

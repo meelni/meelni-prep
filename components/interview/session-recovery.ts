@@ -2,9 +2,55 @@ export type InterviewConnectionStatus =
   | "connecting"
   | "connected"
   | "delayed"
+  | "syncing"
   | "reconnecting"
   | "recovered"
   | "disconnected";
+
+export type InterviewerConversationState =
+  | "disconnected"
+  | "connecting"
+  | "initializing"
+  | "listening"
+  | "thinking"
+  | "speaking";
+
+const CONVERSATIONAL_INTERVIEWER_STATES = new Set<InterviewerConversationState>(
+  ["listening", "thinking", "speaking"]
+);
+
+export function hasVerifiedInterviewerLiveness(input: {
+  agentActive: boolean;
+  agentState: string;
+}): boolean {
+  return (
+    input.agentActive &&
+    CONVERSATIONAL_INTERVIEWER_STATES.has(
+      input.agentState as InterviewerConversationState
+    )
+  );
+}
+
+export function reconcileInterviewCustomerConnectionStatus(
+  status: InterviewConnectionStatus,
+  interviewerLivenessEstablished: boolean
+): InterviewConnectionStatus {
+  if (
+    interviewerLivenessEstablished &&
+    (status === "connecting" || status === "delayed")
+  ) {
+    return "syncing";
+  }
+  return status;
+}
+
+export function isInterviewConversationReady(
+  status: InterviewConnectionStatus
+): boolean {
+  return (
+    status === "connected" || status === "recovered" || status === "syncing"
+  );
+}
 
 export interface InterviewRoomCredentials {
   token: string;

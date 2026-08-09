@@ -35,6 +35,7 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
+  isInterviewConversationReady,
   isInterviewRoomCredentialAuthorizationCurrent,
   parseInterviewRoomCredentials,
   shouldDiscardInterviewRoomCredentials,
@@ -608,7 +609,7 @@ export function InterviewPageContent() {
         setRecoveringConnection(true);
       }
 
-      if (state === "delayed") {
+      if (state === "delayed" || state === "syncing") {
         setRecoveringConnection(false);
       }
 
@@ -616,7 +617,7 @@ export function InterviewPageContent() {
         void refreshRoomCredentials();
       }
 
-      if (state === "connected") {
+      if (state === "connected" || state === "syncing") {
         if (credentialRetryTimerRef.current !== undefined) {
           window.clearTimeout(credentialRetryTimerRef.current);
           credentialRetryTimerRef.current = undefined;
@@ -1072,8 +1073,7 @@ function InterviewRoomContent({
   onEndSession,
 }: InterviewRoomContentProps) {
   const { localParticipant } = useLocalParticipant();
-  const connectionReady =
-    connectionStatus === "connected" || connectionStatus === "recovered";
+  const connectionReady = isInterviewConversationReady(connectionStatus);
 
   useEffect(() => {
     if (localParticipant) {

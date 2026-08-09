@@ -64,6 +64,11 @@ export function InterviewRoomSurface({
                 available.
               </StatusPill>
             )}
+            {connectionStatus === "syncing" && (
+              <StatusPill tone="muted" role="status" aria-live="polite">
+                Interview active. Syncing status in the background.
+              </StatusPill>
+            )}
           </div>
           <div className="self-end sm:self-auto">{timer}</div>
         </div>
