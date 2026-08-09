@@ -151,6 +151,14 @@ test("renders delayed canonical readiness without removing the end escape hatch"
   assert.match(html, /aria-label="End interview"/);
 });
 
+test("renders a delayed room transport without removing the end escape hatch", () => {
+  const html = renderSurface({ connectionStatus: "transport_delayed" });
+
+  assert.match(html, /Room connection is taking longer than expected/);
+  assert.match(html, /End remains available/);
+  assert.match(html, /aria-label="End interview"/);
+});
+
 test("renders active conversation while durable readiness syncs without joining copy", () => {
   const html = renderSurface({ connectionStatus: "syncing" });
 

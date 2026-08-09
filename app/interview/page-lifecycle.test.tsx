@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     | ((
         state:
           | "connecting"
+          | "transport_delayed"
           | "connected"
           | "delayed"
           | "syncing"
@@ -51,9 +52,10 @@ vi.mock("@/app/providers/auth-provider", () => ({
   useAuth: () => ({ user: mocks.authUser, isLoading: false }),
 }));
 
-vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
-}));
+vi.mock("@tanstack/react-query", () => {
+  const queryClient = { invalidateQueries: mocks.invalidateQueries };
+  return { useQueryClient: () => queryClient };
+});
 
 vi.mock("@/components/interview/livekit-room", async () => {
   const ReactModule = await import("react");
@@ -69,6 +71,7 @@ vi.mock("@/components/interview/livekit-room", async () => {
       onConnectionStateChange(
         status:
           | "connecting"
+          | "transport_delayed"
           | "connected"
           | "delayed"
           | "syncing"
@@ -78,6 +81,7 @@ vi.mock("@/components/interview/livekit-room", async () => {
       ): void;
       onTranscriptUpdate(turn: Record<string, unknown>): Promise<void> | void;
     }) => {
+      const connectedReported = ReactModule.useRef(false);
       ReactModule.useEffect(() => {
         mocks.livekitMounted();
         return () => mocks.livekitUnmounted();
@@ -91,9 +95,12 @@ vi.mock("@/components/interview/livekit-room", async () => {
           mocks.onAgentStateChange = null;
           mocks.onConnectionStateChange = null;
         };
-      }, [onAgentStateChange, onTranscriptUpdate]);
+      }, [onAgentStateChange, onConnectionStateChange, onTranscriptUpdate]);
       ReactModule.useEffect(() => {
-        onConnectionStateChange("connected");
+        if (!connectedReported.current) {
+          connectedReported.current = true;
+          onConnectionStateChange("connected");
+        }
       }, [onConnectionStateChange]);
       return <div data-testid="livekit-room">{children}</div>;
     },
@@ -983,6 +990,159 @@ describe("active interview page lifecycle", () => {
     ).toBe(false);
   });
 
+  it("recovers a retryable session bootstrap on the same session before requesting one token", async () => {
+    let sessionReads = 0;
+    let tokenRequests = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}`) {
+          sessionReads += 1;
+          if (sessionReads === 1) {
+            return Response.json(
+              { error: "session_read_unavailable", retryable: true },
+              { status: 503, headers: { "Retry-After": "0" } }
+            );
+          }
+        }
+        if (url === "/api/livekit/token") tokenRequests += 1;
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(sessionReads).toBe(2);
+    expect(tokenRequests).toBe(1);
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/session/start"
+      )
+    ).toBe(false);
+  });
+
+  it("offers an explicit same-session retry after bounded bootstrap recovery", async () => {
+    let sessionReads = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}`) {
+          sessionReads += 1;
+          if (sessionReads <= 3) {
+            return Response.json(
+              { error: "session_read_unavailable", retryable: true },
+              { status: 503, headers: { "Retry-After": "0" } }
+            );
+          }
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    const retry = await screen.findByRole("button", {
+      name: "Retry interview room",
+    });
+    expect(sessionReads).toBe(3);
+    expect(screen.getByText(/only session we’ll use/i)).toBeVisible();
+
+    fireEvent.click(retry);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(sessionReads).toBe(4);
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/session/start"
+      )
+    ).toBe(false);
+  });
+
+  it.each([
+    [401, "/auth/signin?redirectTo=/interview"],
+    [403, "/dashboard"],
+    [404, "/dashboard"],
+  ])(
+    "does not retry a definitive session bootstrap %s",
+    async (status, destination) => {
+      let sessionReads = 0;
+      const request = vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === `/api/session/${SESSION_ID}`) {
+          sessionReads += 1;
+          return Response.json({ error: "definitive" }, { status });
+        }
+        throw new Error(`Unexpected request: ${String(input)}`);
+      });
+      vi.stubGlobal("fetch", request);
+
+      render(<InterviewPageContent />);
+
+      await waitFor(() =>
+        expect(mocks.replace).toHaveBeenCalledWith(destination)
+      );
+      expect(sessionReads).toBe(1);
+      expect(
+        request.mock.calls.some(
+          ([input]) => String(input) === "/api/livekit/token"
+        )
+      ).toBe(false);
+    }
+  );
+
+  it("surfaces a definitive unsafe-session bootstrap without retrying", async () => {
+    let sessionReads = 0;
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === `/api/session/${SESSION_ID}`) {
+        sessionReads += 1;
+        return Response.json(
+          { message: "This interview session cannot be resumed safely." },
+          { status: 409 }
+        );
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(
+      await screen.findByText(
+        "This interview session cannot be resumed safely."
+      )
+    ).toBeVisible();
+    expect(sessionReads).toBe(1);
+  });
+
+  it("accepts the server-fenced credential handoff without a third browser session read", async () => {
+    let sessionReads = 0;
+    let tokenRequests = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}`) sessionReads += 1;
+        if (url === "/api/livekit/token") tokenRequests += 1;
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(sessionReads).toBe(1);
+    expect(tokenRequests).toBe(1);
+    expect(request).toHaveBeenCalledWith(
+      "/api/livekit/token",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sessionId: SESSION_ID }),
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
   it("hands an ending session reload to feedback before requesting room credentials", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -1042,6 +1202,33 @@ describe("active interview page lifecycle", () => {
 
     expect(
       await screen.findByText(/the interviewer is still joining/i)
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Microphone controls" })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Open end confirmation" })
+    ).toBeEnabled();
+    expect(
+      request.mock.calls.filter(
+        ([input]) => String(input) === "/api/livekit/token"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps End available without rotating credentials when transport connection is delayed", async () => {
+    const request = vi.fn(activeInterviewResponse);
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.onConnectionStateChange).not.toBeNull());
+
+    act(() => mocks.onConnectionStateChange?.("transport_delayed"));
+
+    expect(
+      await screen.findByText(/room connection is taking longer than expected/i)
     ).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Microphone controls" })
@@ -1122,6 +1309,120 @@ describe("active interview page lifecycle", () => {
       })
     );
     expect(screen.getByRole("button", { name: "Confirm end" })).toBeEnabled();
+  });
+
+  it("aborts a stalled credential request when the interview page unmounts", async () => {
+    const credentialRequest = { signal: null as AbortSignal | null };
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/livekit/token") {
+          credentialRequest.signal = init?.signal ?? null;
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("credential request unmounted");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<InterviewPageContent />);
+    await screen.findByRole("heading", {
+      name: "Connecting to your interviewer",
+    });
+    expect(credentialRequest.signal?.aborted).toBe(false);
+
+    view.unmount();
+
+    expect(credentialRequest.signal?.aborted).toBe(true);
+  });
+
+  it("aborts credential retry sleep when End takes ownership", async () => {
+    let tokenRequests = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/livekit/token") {
+          tokenRequests += 1;
+          return Response.json(
+            { error: "interview_token_unavailable" },
+            { status: 503, headers: { "Retry-After": "0.05" } }
+          );
+        }
+        if (url === "/api/interview/end") {
+          return Response.json({
+            nextHref: `/feedback/${SESSION_ID}/loading`,
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+    const heading = await screen.findByRole("heading", {
+      name: "Connecting to your interviewer",
+    });
+    const overlay = heading.closest('[role="status"]');
+    expect(overlay).not.toBeNull();
+    await waitFor(() => expect(tokenRequests).toBe(1));
+
+    fireEvent.click(
+      within(overlay as HTMLElement).getByRole("button", {
+        name: "Open end confirmation",
+      })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm end" }));
+
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith(`/feedback/${SESSION_ID}/loading`)
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(tokenRequests).toBe(1);
+  });
+
+  it("aborts stale credential work when the authenticated owner changes", async () => {
+    let credentialSignal: AbortSignal | null = null;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/livekit/token") {
+          credentialSignal = init?.signal ?? null;
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("credential owner changed");
+                error.name = "AbortError";
+                reject(error);
+              },
+              { once: true }
+            );
+          });
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    const view = render(<InterviewPageContent />);
+    await screen.findByRole("heading", {
+      name: "Connecting to your interviewer",
+    });
+
+    mocks.authUser = { id: "owner-b" };
+    view.rerender(<InterviewPageContent />);
+
+    await waitFor(() => expect(credentialSignal?.aborted).toBe(true));
+    expect(mocks.replace).toHaveBeenCalledWith("/dashboard");
+    expect(screen.queryByTestId("livekit-room")).toBeNull();
   });
 
   it("uses the same single end command while the room reconnects", async () => {
@@ -1252,6 +1553,50 @@ describe("active interview page lifecycle", () => {
       screen.getByRole("button", { name: "Back to Dashboard" })
     ).toBeVisible();
     expect(screen.queryByTestId("livekit-room")).not.toBeInTheDocument();
+  });
+
+  it("makes exhausted retryable credentials actionable without creating another session", async () => {
+    let tokenRequests = 0;
+    let sessionReads = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}`) sessionReads += 1;
+        if (url === "/api/livekit/token") {
+          tokenRequests += 1;
+          if (tokenRequests <= 3) {
+            return Response.json(
+              { error: "interview_token_unavailable" },
+              { status: 503, headers: { "Retry-After": "0" } }
+            );
+          }
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    const retry = await screen.findByRole("button", {
+      name: "Retry room connection",
+    });
+    expect(tokenRequests).toBe(3);
+    expect(sessionReads).toBe(1);
+    expect(
+      screen.getByRole("button", { name: "Open end confirmation" })
+    ).toBeEnabled();
+
+    fireEvent.click(retry);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(tokenRequests).toBe(4);
+    expect(sessionReads).toBe(1);
+    expect(
+      request.mock.calls.some(
+        ([input]) => String(input) === "/api/session/start"
+      )
+    ).toBe(false);
   });
 
   it("disconnects and freezes the room after an ambiguous end transport failure", async () => {
