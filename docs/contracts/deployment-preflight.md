@@ -1,18 +1,19 @@
 # Deployment Preflight Contract
 
-Updated: 2026-07-17
-Owner: SAV-184
+Updated: 2026-08-09
+Owner: SAV-184, SAV-391
 
 Meelni Preview and Production builds must fail before deployment when launch-critical billing, feedback, database, or runtime configuration is incomplete, blank, mixed-mode, or points at the wrong provider identity. The preflight is read-only. It emits only check names, target names, and stable failure codes; it never prints configured values, provider payloads, price IDs, exception messages, or customer data.
 
 ## Targets
 
-| Target       | Stripe mode | Statsig tier | Supabase project       |
-| ------------ | ----------- | ------------ | ---------------------- |
-| `preview`    | test        | `preview`    | `kxpvidtxznllfosfemdl` |
-| `production` | live        | `production` | `rarrrwkjuhfyfatcmrkw` |
+| Vercel lane        | System identity                                   | LiveKit capability                                           | Other provider contract    |
+| ------------------ | ------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| Generic PR Preview | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=preview` | Intentionally disabled                                       | Preview/test, unchanged    |
+| Trusted staging    | `VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=staging` | Enabled and strict against the isolated staging identity     | Preview/test, unchanged    |
+| Production         | `VERCEL_ENV=production`                           | Enabled and strict against the canonical Production identity | Production/live, unchanged |
 
-The `build` command invokes preflight immediately before Next.js and derives the target only from `VERCEL=1` plus `VERCEL_ENV`. Vercel builds must also expose exact project ID `prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4` and Git repository `meelni/meelni-prep`; missing or copied-project identity fails. An explicit CLI target cannot override a conflicting Vercel target. Local builds without the Vercel marker skip deploy-only checks. Operator commands must select a target explicitly.
+The `build` command invokes preflight immediately before Next.js and derives the Preview/Production provider tier only from `VERCEL=1` plus `VERCEL_ENV`. Vercel builds must also expose exact project ID `prj_NvpsSMhIhmUoaVAG5nPnbd2fRmT4` and Git repository `meelni/meelni-prep`; missing or copied-project identity fails. `VERCEL_TARGET_ENV` then distinguishes generic Preview from trusted staging for LiveKit only. An explicit CLI target cannot override a conflicting Vercel target. Local builds without the Vercel marker skip deploy-only checks; explicit local Preview preflight remains strict because partial/local identity never implies intentional disablement.
 
 ## Required Checks
 
@@ -47,6 +48,9 @@ Inngest does not expose a safe read-only Event Key validation endpoint. An autho
 
 ### LiveKit and interview runtime
 
+- Generic Vercel Preview is intentionally LiveKit-disabled only for the exact Vercel-owned tuple `VERCEL=1`, `VERCEL_ENV=preview`, and `VERCEL_TARGET_ENV=preview`. Preflight emits `SKIP livekit.configuration_and_project_access intentionally_disabled_for_generic_preview`, does not require LiveKit variables, does not construct the LiveKit reader, and makes no LiveKit request.
+- Missing, partial, contradictory, or application-owned identity cannot disable LiveKit. In particular, Production-shaped credentials cannot enable generic Preview, while a spoofed `MEELNI_*` switch cannot disable staging or Production.
+- Trusted staging (`VERCEL_TARGET_ENV=staging`) continues to apply the complete Preview identity/configuration and read-only reachability checks below. Production is unchanged.
 - API credentials, public/server websocket URLs, exact dispatch names, and all seven server-owned `MEELNI_INTERVIEW_*` settings are explicit.
 - Demo and interview dispatch names must be distinct. A shared name cannot satisfy demo readiness and fails before any room is created.
 - Public and server URLs match.
@@ -87,6 +91,8 @@ A prior draft required an exact-SHA Ed25519 receipt whose private key did not ex
 ## Failure Semantics
 
 Missing, blank, quoted-empty, placeholder, malformed, mixed-mode, wrong-target, unreadable, or mismatched configuration fails the target preflight. Provider errors are redacted.
+
+Intentional generic-Preview LiveKit disablement is a typed skip, not a warning and not a provider failure. Every generic Preview voice entrypoint returns HTTP `503` with `error=voice_unavailable_in_preview`, an actionable message, and `retryable=false` before authentication, credit checks, durable mutation, LiveKit configuration loading, or provider I/O. LiveKit-backed background functions skip before database/provider work.
 
 Stable codes:
 

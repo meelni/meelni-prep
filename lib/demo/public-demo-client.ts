@@ -101,6 +101,15 @@ export function interpretPublicDemoStartFailure({
   retryAfterHeader: string | null;
   now?: number;
 }): DemoStartError {
+  if (status === 503 && body.error === "voice_unavailable_in_preview") {
+    return {
+      title: "Voice is off in this web Preview",
+      message:
+        "Use the trusted staging environment for LiveKit rehearsal. Non-voice Preview pages remain available.",
+      paused: true,
+    };
+  }
+
   if (status === 404 && body.error === "demo_unavailable") {
     return {
       title: "The voice preview is paused",

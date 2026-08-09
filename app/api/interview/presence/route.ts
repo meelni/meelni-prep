@@ -6,11 +6,15 @@ import { createClient } from "@/lib/supabase/server";
 import { reconcileOwnedInterviewPresenceWorkflow } from "@/lib/workflows/reconcile-owned-interview-presence";
 import { withDeadline } from "@/lib/http/deadline";
 import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
+import { genericPreviewVoiceUnavailableResponse } from "@/lib/livekit/generic-preview-guard";
 
 const PRESENCE_ROUTE_DEADLINE_MS =
   INTERVIEW_START_SLOS.presence_reconciliation.upperBoundMs - 250;
 
 export async function POST(req: NextRequest) {
+  const unavailable = genericPreviewVoiceUnavailableResponse();
+  if (unavailable) return unavailable;
+
   try {
     return await withDeadline(
       "interview_presence_reconciliation",

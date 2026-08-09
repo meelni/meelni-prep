@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/internal/integrations", () => ({
@@ -23,6 +23,8 @@ const ENV = {
 };
 
 describe("POST /api/interview/runtime-settlement", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getLiveKitEnvironment).mockReturnValue({
@@ -30,6 +32,21 @@ describe("POST /api/interview/runtime-settlement", () => {
       provider: "livekit",
       data: ENV,
     });
+  });
+
+  it("refuses generic Preview before auth, configuration, or settlement", async () => {
+    stubGenericPreview();
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "voice_unavailable_in_preview",
+      retryable: false,
+    });
+    expect(createClient).not.toHaveBeenCalled();
+    expect(getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(requestUserEndRuntimeSettlementWorkflow).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -122,4 +139,10 @@ function mockAuth(user: { id: string } | null, error: Error | null = null) {
       getUser: vi.fn().mockResolvedValue({ data: { user }, error }),
     },
   } as never);
+}
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
 }

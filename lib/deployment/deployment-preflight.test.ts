@@ -68,6 +68,83 @@ test("accepts a complete Preview contract with read-only test catalog evidence",
   ]);
 });
 
+test("generic Vercel Preview intentionally skips LiveKit without constructing a provider requirement", async () => {
+  const env: Record<string, string | undefined> = {
+    ...validEnvironment("preview"),
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+    VERCEL_TARGET_ENV: "preview",
+  };
+  for (const name of [
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
+    "LIVEKIT_DEMO_AGENT_NAME",
+    "LIVEKIT_INTERVIEW_AGENT_NAME",
+    "LIVEKIT_URL",
+    "NEXT_PUBLIC_LIVEKIT_URL",
+  ]) {
+    delete env[name];
+  }
+  let liveKitProviderCalls = 0;
+
+  const result = await runDeploymentPreflight({
+    env,
+    liveKitProjectReader: {
+      async verifyProjectAccess() {
+        liveKitProviderCalls += 1;
+      },
+    },
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(false),
+    target: "preview",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(liveKitProviderCalls, 0);
+  assert.deepEqual(result.liveKitCapability, {
+    mode: "disabled",
+    lane: "generic_preview",
+    reason: "intentional_generic_preview_disablement",
+  });
+  assert.deepEqual(result.skippedChecks, [
+    {
+      area: "livekit",
+      check: "livekit.configuration_and_project_access",
+      reason: "intentionally_disabled_for_generic_preview",
+    },
+  ]);
+  assert.equal(
+    result.failures.some((failure) => failure.area === "livekit"),
+    false
+  );
+});
+
+test("trusted staging still fails closed when LiveKit is missing", async () => {
+  const env: Record<string, string | undefined> = {
+    ...validEnvironment("preview"),
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+    VERCEL_TARGET_ENV: "staging",
+  };
+  delete env.LIVEKIT_API_KEY;
+  delete env.LIVEKIT_API_SECRET;
+
+  const result = await runDeploymentPreflight({
+    env,
+    openAiModelReader: validOpenAiReader(),
+    stripeCatalogReader: validStripeReader(false),
+    target: "preview",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.liveKitCapability.mode, "enabled");
+  assert.equal(
+    result.failures.some((failure) => failure.area === "livekit"),
+    true
+  );
+  assert.deepEqual(result.skippedChecks, []);
+});
+
 test("accepts live restricted keys and a live Production catalog", async () => {
   const result = await runDeploymentPreflight({
     env: validEnvironment("production"),

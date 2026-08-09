@@ -109,6 +109,11 @@ pull; a database match by itself preserves only database/Supabase credentials.
 
 Guidelines:
 
+- Generic PR Preview is identified by Vercel system values
+  `VERCEL_ENV=preview` and `VERCEL_TARGET_ENV=preview`. It is intentionally
+  LiveKit-disabled; do not add staging or Production LiveKit credentials to
+  make a PR build pass. `VERCEL_TARGET_ENV=staging` is the provider-backed
+  rehearsal lane and remains strict.
 - List env names and target environments only; never print env values.
 - Enter secret values through the Vercel prompt or provider dashboard; never
   pass them with `--value` because process arguments can be inspected locally.
@@ -354,11 +359,13 @@ Canonical target:
 - Region observed for Cloud agents: `us-east`
 - Interview Cloud agent: `CA_yawKG67rCMG4`
 - Demo Cloud agent: `CA_t3sKQEihMQ7x`
-- Isolated Preview project: `meelni-preview` (`p_16unz4e48is`)
-- Preview WebSocket host: `meelni-preview-dk7443ua.livekit.cloud`
-- Preview interview deployment: `CA_ZbGxFjfEYwsD`, dispatch name
+- Generic Vercel PR Preview: no LiveKit project or credentials; voice is
+  intentionally disabled from Vercel system identity.
+- Isolated staging project: `meelni-preview` (`p_16unz4e48is`)
+- Staging WebSocket host: `meelni-preview-dk7443ua.livekit.cloud`
+- Staging interview deployment: `CA_ZbGxFjfEYwsD`, dispatch name
   `meelni-preview-interview`
-- Preview demo deployment: `CA_M5XTD4CMyXk3`, dispatch name
+- Staging demo deployment: `CA_M5XTD4CMyXk3`, dispatch name
   `meelni-preview-demo`
 
 Auth:
@@ -395,8 +402,11 @@ Env and secrets:
 - Web app envs: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`, `LIVEKIT_URL`, `LIVEKIT_INTERVIEW_AGENT_NAME`, `LIVEKIT_DEMO_AGENT_NAME`
 - Cloud agent secrets: `LIVEKIT_INTERVIEW_AGENT_NAME` for the interview agent and `LIVEKIT_DEMO_AGENT_NAME` for the demo agent, plus model/provider secrets such as `OPENAI_API_KEY`
 - Values live in Vercel envs and local gitignored `.env.local` files. Do not document raw API keys or secrets.
-- Preview/Production deploy checks use `npm run deploy:preflight:preview` and
-  `npm run deploy:preflight:production`. They are read-only; LiveKit smoke
+- Local explicit Preview and Production deploy checks use
+  `npm run deploy:preflight:preview` and
+  `npm run deploy:preflight:production`. They remain strict and read-only;
+  generic Vercel Preview emits an intentional LiveKit skip, while staging and
+  Production keep LiveKit reachability blocking. LiveKit smoke
   sessions remain separately authorized rehearsal work.
 
 Operational notes:

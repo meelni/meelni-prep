@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/workflows/accept-user-interview-end", () => ({
@@ -17,6 +17,21 @@ const ENDING_AT = new Date("2026-08-05T20:00:00.000Z");
 
 describe("POST /api/interview/end", () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("refuses generic Preview before auth or durable end mutation", async () => {
+    stubGenericPreview();
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "voice_unavailable_in_preview",
+      retryable: false,
+    });
+    expect(createClient).not.toHaveBeenCalled();
+    expect(acceptUserInterviewEndWorkflow).not.toHaveBeenCalled();
+  });
 
   it("rejects unauthenticated requests", async () => {
     mockAuth(null, new Error("expired"));
@@ -162,6 +177,12 @@ function request(body: unknown): NextRequest {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
 }
 
 function mockAuth(user: { id: string } | null, error: Error | null = null) {

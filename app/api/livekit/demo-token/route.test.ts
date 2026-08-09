@@ -1,5 +1,13 @@
 import { NextRequest } from "next/server";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getFeatureFlagBootstrap: vi.fn(),
@@ -70,6 +78,21 @@ describe("POST /api/livekit/demo-token", () => {
       sessionCookie: "signed-session",
       identifiers: { ipHash: "a".repeat(64), deviceHash: "b".repeat(64) },
     });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("refuses generic Preview before gate, identity, configuration, or provider work", async () => {
+    stubGenericPreview();
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual(previewUnavailableBody());
+    expect(mocks.getFeatureFlagBootstrap).not.toHaveBeenCalled();
+    expect(mocks.getLiveKitEnvironment).not.toHaveBeenCalled();
+    expect(mocks.getLiveKitAgentName).not.toHaveBeenCalled();
+    expect(mocks.resolvePublicDemoIdentity).not.toHaveBeenCalled();
+    expect(mocks.startPublicDemoWorkflow).not.toHaveBeenCalled();
   });
 
   it("fails closed on the server launch gate before configuration or workflow work", async () => {
@@ -257,4 +280,19 @@ function request(
     },
     body: JSON.stringify(body),
   });
+}
+
+function stubGenericPreview() {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv("VERCEL_TARGET_ENV", "preview");
+}
+
+function previewUnavailableBody() {
+  return {
+    error: "voice_unavailable_in_preview",
+    message:
+      "Voice practice is unavailable in this web Preview. Use the trusted staging environment for voice rehearsal.",
+    retryable: false,
+  };
 }

@@ -1,10 +1,11 @@
-"use client";
-
 import { Suspense } from "react";
 
 import { SetupContent } from "@/app/setup/setup-content";
+import { resolveLiveKitDeploymentCapability } from "@meelni/integrations";
 
 export default function NewInterviewPage() {
+  const liveKitCapability = resolveLiveKitDeploymentCapability();
+
   return (
     <Suspense
       fallback={
@@ -15,7 +16,9 @@ export default function NewInterviewPage() {
         </div>
       }
     >
-      <SetupContent />
+      <SetupContent
+        voiceUnavailableInPreview={liveKitCapability.mode === "disabled"}
+      />
     </Suspense>
   );
 }

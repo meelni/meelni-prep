@@ -11,6 +11,7 @@ import {
   INTERVIEW_DEADLINE_EVENT_NAME,
 } from "@/lib/workflows/schedule-interview-deadline";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { isLiveKitIntentionallyDisabled } from "@meelni/integrations";
 
 export const enforceInterviewDeadline = inngest.createFunction(
   {
@@ -29,6 +30,10 @@ export const enforceInterviewDeadline = inngest.createFunction(
   },
   { event: INTERVIEW_DEADLINE_EVENT_NAME },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { skipped: "livekit_intentionally_disabled" };
+    }
+
     // The runtime stops speech at the exact deadline. This durable grace lets
     // it persist the heard prefix and a trusted settlement watermark before
     // server terminalization freezes feedback evidence.
@@ -72,6 +77,10 @@ export const recoverInterviewDeadlines = inngest.createFunction(
   },
   { cron: "*/5 * * * *" },
   async ({ event, step }) => {
+    if (isLiveKitIntentionallyDisabled()) {
+      return { scheduled: 0, skipped: "livekit_intentionally_disabled" };
+    }
+
     const schedules = await step.run("find-open-interview-deadlines", () =>
       listInterviewDeadlineSchedules()
     );
