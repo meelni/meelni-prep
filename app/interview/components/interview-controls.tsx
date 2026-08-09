@@ -1,12 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, PhoneOff } from "lucide-react";
+import { AlertCircle, Mic, MicOff, PhoneOff } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface InterviewControlsProps {
   isMuted: boolean;
   muteDisabled?: boolean;
+  mutePending?: boolean;
+  microphoneError?: string | null;
   onToggleMute: () => void;
   onEndSession: () => void;
 }
@@ -14,6 +16,8 @@ interface InterviewControlsProps {
 export function InterviewControls({
   isMuted,
   muteDisabled = false,
+  mutePending = false,
+  microphoneError = null,
   onToggleMute,
   onEndSession,
 }: InterviewControlsProps) {
@@ -32,18 +36,26 @@ export function InterviewControls({
             disabled={muteDisabled}
             className="min-h-12 gap-2 rounded-lg px-4"
             title={
-              muteDisabled
-                ? "Microphone controls are unavailable while the interviewer joins or the connection recovers"
-                : isMuted
-                  ? "Unmute microphone"
-                  : "Mute microphone"
+              mutePending
+                ? "Waiting for microphone confirmation"
+                : muteDisabled
+                  ? "Microphone controls are unavailable while the interviewer joins or the connection recovers"
+                  : microphoneError && isMuted
+                    ? "Try microphone again"
+                    : isMuted
+                      ? "Unmute microphone"
+                      : "Mute microphone"
             }
             aria-label={
-              muteDisabled
-                ? "Microphone controls unavailable while the interviewer joins or the connection recovers"
-                : isMuted
-                  ? "Unmute microphone"
-                  : "Mute microphone"
+              mutePending
+                ? "Waiting for microphone confirmation"
+                : muteDisabled
+                  ? "Microphone controls unavailable while the interviewer joins or the connection recovers"
+                  : microphoneError && isMuted
+                    ? "Try microphone again"
+                    : isMuted
+                      ? "Unmute microphone"
+                      : "Mute microphone"
             }
             aria-pressed={isMuted}
           >
@@ -67,12 +79,29 @@ export function InterviewControls({
           </Button>
         </div>
       </motion.div>
+      {microphoneError && (
+        <div
+          className="border-border bg-card text-foreground mx-auto mt-2 flex max-w-md items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm"
+          role="alert"
+          aria-live="assertive"
+        >
+          <AlertCircle
+            className="text-destructive h-4 w-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span>{microphoneError}</span>
+        </div>
+      )}
       <span className="sr-only" role="status" aria-live="polite">
-        {muteDisabled
-          ? "Microphone controls are unavailable while the interviewer joins or the connection recovers. End interview remains available."
-          : isMuted
-            ? "Microphone is off"
-            : "Microphone is on"}
+        {mutePending
+          ? isMuted
+            ? "Starting microphone"
+            : "Turning microphone off"
+          : muteDisabled
+            ? "Microphone controls are unavailable while the interviewer joins or the connection recovers. End interview remains available."
+            : isMuted
+              ? "Microphone is off"
+              : "Microphone is on"}
       </span>
     </div>
   );

@@ -173,6 +173,18 @@ later bounded confirmation is scheduled. Canonical lag never rotates
 credentials. Only terminal authorization loss or a real transport disconnect
 may enter the credential-recovery path.
 
+The LiveKit room mounts with browser microphone publication disabled. The
+browser may request one automatic enable only after the customer state reaches
+`connected`, `syncing`, or `recovered`, and it treats both the resolved LiveKit
+operation and the local participant publication state as the acknowledgement.
+Mute and unmute requests are serialized; controls and `mic_toggled` analytics
+reflect only acknowledged state, never click intent. A reconnect disables input
+and consumes no second automatic enable after recovery. The candidate can
+explicitly reactivate it once readiness is restored. Deadline, explicit End,
+owner replacement, and unmount fence queued enables and leave input off. An
+enable failure keeps the control at `Mic off`, shows a content-safe retry path,
+and leaves End Interview available.
+
 The browser bounds each idempotent session-start request at ten seconds. Because
 an aborted request may already have committed, one click retains the stable
 start-attempt UUID and automatically replays the exact validated POST intent in

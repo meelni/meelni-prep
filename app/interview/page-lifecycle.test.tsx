@@ -15,11 +15,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 const mocks = vi.hoisted(() => ({
   authUser: { id: "owner-a" } as { id: string } | null,
   invalidateQueries: vi.fn(),
   livekitMounted: vi.fn(),
   livekitUnmounted: vi.fn(),
+  microphoneEnabled: false,
+  setMicrophoneEnabled: vi.fn(),
+  analyticsTrack: vi.fn(),
   onAgentStateChange: null as null | ((state: string) => void),
   onConnectionStateChange: null as
     | null
@@ -109,7 +120,20 @@ vi.mock("@/components/interview/livekit-room", async () => {
 
 vi.mock("@livekit/components-react", () => ({
   RoomAudioRenderer: () => null,
-  useLocalParticipant: () => ({ localParticipant: null }),
+  useLocalParticipant: (() => {
+    const localParticipant = {
+      get isMicrophoneEnabled() {
+        return mocks.microphoneEnabled;
+      },
+      setMicrophoneEnabled: (enabled: boolean) =>
+        mocks.setMicrophoneEnabled(enabled),
+    };
+    return () => ({
+      localParticipant,
+      isMicrophoneEnabled: mocks.microphoneEnabled,
+      lastMicrophoneError: undefined,
+    });
+  })(),
 }));
 
 vi.mock("@/lib/analytics/use-web-vitals", () => ({
@@ -117,7 +141,7 @@ vi.mock("@/lib/analytics/use-web-vitals", () => ({
 }));
 
 vi.mock("@/lib/analytics/analytics-service", () => ({
-  analytics: { track: vi.fn() },
+  analytics: { track: mocks.analyticsTrack },
 }));
 
 vi.mock("./components/audio-visualizer", () => ({
@@ -145,13 +169,15 @@ vi.mock("./components/transcript-panel", () => ({
 vi.mock("./components/interview-controls", () => ({
   InterviewControls: ({
     muteDisabled,
+    onToggleMute,
     onEndSession,
   }: {
     muteDisabled?: boolean;
+    onToggleMute(): void;
     onEndSession(): void;
   }) => (
     <>
-      <button type="button" disabled={muteDisabled}>
+      <button type="button" disabled={muteDisabled} onClick={onToggleMute}>
         Microphone controls
       </button>
       <button type="button" onClick={onEndSession}>
@@ -194,6 +220,12 @@ describe("active interview page lifecycle", () => {
     mocks.onDeadlineReached = null;
     mocks.onTranscriptUpdate = null;
     mocks.transcriptTurns = [];
+    mocks.microphoneEnabled = false;
+    mocks.analyticsTrack.mockReset();
+    mocks.setMicrophoneEnabled.mockImplementation(async (enabled: boolean) => {
+      mocks.microphoneEnabled = enabled;
+      return enabled ? {} : undefined;
+    });
     vi.stubGlobal("fetch", vi.fn(activeInterviewResponse));
   });
 
@@ -1278,6 +1310,39 @@ describe("active interview page lifecycle", () => {
         ([input]) => String(input) === "/api/livekit/token"
       )
     ).toHaveLength(1);
+  });
+
+  it("emits mic toggle analytics only after LiveKit acknowledges the state", async () => {
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.microphoneEnabled).toBe(true));
+
+    const acknowledgement = deferred<unknown>();
+    mocks.setMicrophoneEnabled.mockImplementationOnce(
+      async (enabled: boolean) => {
+        await acknowledgement.promise;
+        mocks.microphoneEnabled = enabled;
+        return undefined;
+      }
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Microphone controls" })
+    );
+    expect(
+      mocks.analyticsTrack.mock.calls.filter(
+        ([eventName]) => eventName === "mic_toggled"
+      )
+    ).toHaveLength(0);
+
+    acknowledgement.resolve(undefined);
+    await waitFor(() =>
+      expect(mocks.analyticsTrack).toHaveBeenCalledWith("mic_toggled", {
+        session_id: SESSION_ID,
+        new_state: "muted",
+      })
+    );
   });
 
   it("keeps End available while initial room credentials are still loading", async () => {
