@@ -185,6 +185,23 @@ test("disables only mute during reconnect and preserves the end escape hatch", (
   assert.doesNotMatch(html, /aria-label="End interview"[^>]*disabled=""/);
 });
 
+test("shows a recoverable microphone failure without hiding End", () => {
+  const html = renderToStaticMarkup(
+    <InterviewControls
+      isMuted={true}
+      microphoneError="Microphone unavailable. Check your browser permission or device, then try again."
+      onToggleMute={() => undefined}
+      onEndSession={() => undefined}
+    />
+  );
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /Microphone unavailable/);
+  assert.match(html, /aria-label="Try microphone again"/);
+  assert.match(html, /Mic off/);
+  assert.match(html, /aria-label="End interview"/);
+});
+
 test("full mock interview controls do not expose the unsupported hints toggle", () => {
   const html = renderToStaticMarkup(
     <InterviewControls

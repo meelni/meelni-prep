@@ -140,7 +140,7 @@ export function LiveKitRoomWrapper({
       token={token}
       serverUrl={url}
       connect={true}
-      audio={true}
+      audio={false}
       video={false}
       onConnected={() => {
         console.log("Connected to LiveKit room:", roomName);

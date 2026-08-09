@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   },
   dataCallbacks: new Map<string, (message: DataMessage) => void>(),
   onConnected: null as null | (() => void),
+  liveKitRoomProps: [] as Array<Record<string, unknown>>,
   confirmReady: vi.fn(),
   track: vi.fn(),
 }));
@@ -34,11 +35,14 @@ vi.mock("@livekit/components-react", async () => {
     LiveKitRoom: ({
       children,
       onConnected,
+      ...props
     }: {
       children: React.ReactNode;
       onConnected?: () => void;
+      [key: string]: unknown;
     }) => {
       mocks.onConnected = onConnected ?? null;
+      mocks.liveKitRoomProps.push(props);
       return children;
     },
     useConnectionState: () => mocks.connectionState,
@@ -134,6 +138,7 @@ describe("LiveKit interviewer liveness reconciliation", () => {
     mocks.voiceAssistant = { agent: null, state: "connecting" };
     mocks.dataCallbacks.clear();
     mocks.onConnected = null;
+    mocks.liveKitRoomProps = [];
     mocks.confirmReady.mockReset();
     mocks.track.mockReset();
   });
@@ -173,6 +178,15 @@ describe("LiveKit interviewer liveness reconciliation", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("connects without publishing microphone audio before readiness", () => {
+    mocks.confirmReady.mockResolvedValueOnce(canonicalReady());
+    render(roomElement());
+
+    expect(mocks.liveKitRoomProps.at(-1)).toEqual(
+      expect.objectContaining({ connect: true, audio: false, video: false })
+    );
   });
 
   for (const conversationalState of ["speaking", "listening"] as const) {
