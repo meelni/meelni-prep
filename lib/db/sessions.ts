@@ -26,6 +26,15 @@ export interface UpdateSessionInput {
   config?: Record<string, unknown>;
 }
 
+export interface SessionWithSelectedQuestion {
+  session: typeof interviewSession.$inferSelect;
+  question: {
+    id: string;
+    text: string;
+    company: string | null;
+  } | null;
+}
+
 /**
  * Create a new interview session
  */
@@ -84,7 +93,7 @@ export async function getSessionById(
 export async function getSessionWithSelectedQuestionById(
   sessionId: string,
   database: Pick<typeof db, "select"> = db
-) {
+): Promise<SessionWithSelectedQuestion | null> {
   const [result] = await database
     .select({
       session: interviewSession,
@@ -106,7 +115,7 @@ export async function getSessionWithSelectedQuestionById(
     .where(eq(interviewSession.id, sessionId))
     .limit(1);
 
-  return result;
+  return result ?? null;
 }
 
 /**
