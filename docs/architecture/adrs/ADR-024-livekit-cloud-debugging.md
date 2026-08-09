@@ -1,4 +1,5 @@
 ### ADR-024: LiveKit Cloud Debugging Best Practices
+
 - **Date**: 2025-11-08
 - **Decision**: Established standard debugging workflow for LiveKit Cloud agents
 - **Key Tools**:
@@ -31,4 +32,3 @@
   - Faster debugging (systematic approach)
   - Fewer deployment issues (checklist prevents common mistakes)
   - Better documentation (centralized troubleshooting guide)
-

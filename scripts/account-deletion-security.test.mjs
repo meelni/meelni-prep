@@ -8,6 +8,9 @@ test("Inngest step history never persists raw account-deletion subjects", async 
     "utf8"
   );
   assert.doesNotMatch(source, /step\.run\(["']load-deletion-request/);
-  assert.match(source, /Keep raw provider IDs out of persisted Inngest step output/);
+  assert.match(
+    source,
+    /Keep raw provider IDs out of persisted Inngest step output/
+  );
   assert.match(source, /safeProviderError/);
 });

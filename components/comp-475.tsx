@@ -6,7 +6,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 
 const items = [
   {
@@ -129,14 +129,14 @@ const items = [
     status: "Active",
     balance: "$1,800.00",
   },
-]
+];
 
 export default function Component() {
   return (
     <div>
       <div className="[&>div]:max-h-96">
-        <Table className="border-separate border-spacing-0 [&_td]:border-border [&_tfoot_td]:border-t [&_th]:border-b [&_th]:border-border [&_tr]:border-none [&_tr:not(:last-child)_td]:border-b">
-          <TableHeader className="sticky top-0 z-10 bg-background/90 backdrop-blur-xs">
+        <Table className="[&_td]:border-border [&_th]:border-border border-separate border-spacing-0 [&_tfoot_td]:border-t [&_th]:border-b [&_tr]:border-none [&_tr:not(:last-child)_td]:border-b">
+          <TableHeader className="bg-background/90 sticky top-0 z-10 backdrop-blur-xs">
             <TableRow className="hover:bg-transparent">
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
@@ -164,9 +164,9 @@ export default function Component() {
           </TableFooter>
         </Table>
       </div>
-      <p className="mt-8 text-center text-sm text-muted-foreground">
+      <p className="text-muted-foreground mt-8 text-center text-sm">
         Table with sticky header
       </p>
     </div>
-  )
+  );
 }

@@ -60,7 +60,10 @@ const FOCUS_PRACTICE_REPLACEMENTS = [
     /\b(\d+|one|two|three|four|five|several|some|more)\s+reps\b/gi,
     "$1 practice attempts",
   ],
-  [/\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi, "practice repeatedly"],
+  [
+    /\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi,
+    "practice repeatedly",
+  ],
   [/\b(practice|answer|response)\s+reps\b/gi, "$1 attempts"],
   [/\b(practice|answer|response)\s+rep\b/gi, "$1 attempt"],
   [

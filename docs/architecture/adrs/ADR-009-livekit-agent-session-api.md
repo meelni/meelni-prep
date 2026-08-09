@@ -1,4 +1,5 @@
 ### ADR-009: LiveKit AgentSession API Pattern
+
 - **Date**: 2025-11-05
 - **Decision**: Use `AgentSession` with string-based model configuration instead of older `VoiceAssistant` API
 - **Rationale**:
@@ -10,4 +11,3 @@
   - Prewarm function needed for VAD model optimization
   - Clear separation: agent definition vs session orchestration
   - Learning: Always check official examples when docs don't match SDK
-

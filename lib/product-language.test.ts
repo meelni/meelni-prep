@@ -49,7 +49,12 @@ test("recommendation normalization drops unrecognized fitness framing", () => {
 
 test("recommendation normalization rejects malformed model output", () => {
   assert.deepEqual(
-    normalizePracticeRecommendations(["  Focus on trade-offs.  ", null, 42, ""]),
+    normalizePracticeRecommendations([
+      "  Focus on trade-offs.  ",
+      null,
+      42,
+      "",
+    ]),
     ["Focus on trade-offs."]
   );
   assert.deepEqual(normalizePracticeRecommendations(null), []);

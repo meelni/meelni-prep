@@ -45,10 +45,7 @@ export function GradientBarChart() {
       <CardHeader>
         <CardTitle>
           Bar Chart
-          <Badge
-            variant="success"
-            className="ml-2"
-          >
+          <Badge variant="success" className="ml-2">
             <TrendingUp className="h-4 w-4" />
             <span>5.2%</span>
           </Badge>

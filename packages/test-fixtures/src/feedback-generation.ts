@@ -2,8 +2,7 @@ export const FEEDBACK_GENERATION_FIXTURE = {
   sessionId: "fixture-feedback-session-1",
   userId: "fixture-feedback-user-1",
   events: {
-    initial:
-      "feedback/generate.requested:fixture-feedback-session-1:1",
+    initial: "feedback/generate.requested:fixture-feedback-session-1:1",
     retry: "feedback/generate.requested:fixture-feedback-session-1:2",
   },
   clock: {

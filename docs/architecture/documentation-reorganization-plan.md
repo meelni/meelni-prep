@@ -21,6 +21,7 @@ The Meelni project has accumulated **50+ markdown files at the root level**, sca
 ### Documentation Inventory
 
 #### Active Documentation (Keep & Organize)
+
 - **Core Documentation** (`.claude/` directory - 15 files):
   - `CLAUDE.md` (2,538 lines) - Main living document ✅
   - `PRD.md` - Product requirements
@@ -52,6 +53,7 @@ The Meelni project has accumulated **50+ markdown files at the root level**, sca
 #### Duplicate/Redundant Files (Remove/Archive)
 
 **Root-level duplicates** (50 files total):
+
 1. **Deployment Guides** (multiple versions):
    - `DEPLOYMENT.md` (root) - Duplicate of `.claude/DEPLOYMENT.md`
    - `DEPLOY-NOW.md` - Quick deploy guide
@@ -114,9 +116,11 @@ The Meelni project has accumulated **50+ markdown files at the root level**, sca
    - `APPLY_RLS_POLICIES.md`
 
 #### Archive Directory (`archive/2025-11/`)
+
 Contains historical implementation logs and checkpoints - **keep but don't modify**
 
 #### Agent Documentation (`agent/`)
+
 - `README.md` - Agent setup
 - `DEPLOY_DEMO.md` - Demo agent deployment
 - `DEPLOYMENT.md` - Main agent deployment
@@ -216,30 +220,38 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 ## Critical Issues Addressed
 
 ### Issue 1: No CLAUDE.md at Root
+
 **Status**: ✅ CORRECT - CLAUDE.md should stay in `.claude/`
+
 - According to ADR-005, CLAUDE.md was intentionally moved from root to `.claude/`
 - The context shows both CLAUDE.md files, but only one exists (in `.claude/`)
 - **Action**: No changes needed - `.claude/CLAUDE.md` is the single source of truth
 
 ### Issue 2: 26 ADRs Buried in CLAUDE.md
+
 **Problem**: Architecture decisions (ADR-001 through ADR-026) are embedded in CLAUDE.md
 **Solution**:
+
 - Extract all ADRs into individual files in `docs/architecture/adrs/`
 - Keep ADR summary/index in CLAUDE.md with links
 - Benefits: easier to reference, link to, and track changes
 
 ### Issue 3: 50+ Root-Level Files
+
 **Problem**: No clear structure for temporary/implementation docs
 **Solution**:
+
 - Move completed feature docs to `archive/2025-11/implementation-logs/`
 - Consolidate setup guides into `docs/development/` and `docs/deployment/`
 - Remove duplicate deployment guides (keep one consolidated version)
 
 ### Issue 4: Scattered Integration Docs
+
 **Problem**: LiveKit, Supabase, Google Sheets docs in different locations
 **Solution**: Create `docs/integrations/` with standardized structure
 
 ### Issue 5: No Documentation Templates
+
 **Problem**: No guidance on where/how to document new features
 **Solution**: Create `docs/templates/` with clear templates and usage guide
 
@@ -248,12 +260,14 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 ## Implementation Plan
 
 ### Phase 1: Create New Structure (Low Risk)
+
 1. Create new folder structure in `docs/`
 2. Create README.md files for each new folder
 3. Create documentation templates
 4. **No deletions yet** - just setup
 
 ### Phase 2: Move Active Documentation (Medium Risk)
+
 1. Move API docs into organized structure
 2. Move development docs
 3. Consolidate deployment guides
@@ -261,18 +275,21 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 5. Update all cross-references
 
 ### Phase 3: Archive Obsolete Files (Reversible)
+
 1. Move completed implementation summaries to archive
 2. Move investigation reports to archive
 3. Archive quick fixes and debug reports
 4. Update archive INDEX.md
 
 ### Phase 4: Update Core Files (Critical)
+
 1. Update CLAUDE.md with new documentation map
 2. Enhance CONTRIBUTING.md with documentation standards
 3. Update README.md with new structure
 4. Create docs/README.md as documentation hub
 
 ### Phase 5: Validation (Quality Check)
+
 1. Verify all links work
 2. Check no broken references
 3. Ensure CLAUDE.md accurately reflects new structure
@@ -285,11 +302,12 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 **After archiving, these files can be deleted** (post-archive validation):
 
 1. Duplicate deployment guides (keep consolidated version)
-2. "QUICK_FIX_*.md" files (solved issues)
+2. "QUICK*FIX*\*.md" files (solved issues)
 3. Old backup files (`.backup` suffix)
 4. Empty or placeholder files
 
 **DO NOT DELETE**:
+
 - Archive directory contents
 - Active agent documentation
 - Any file referenced in CLAUDE.md
@@ -301,26 +319,28 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 
 ### Where to Put Documentation
 
-| Documentation Type | Location | Example |
-|-------------------|----------|---------|
+| Documentation Type     | Location                                  | Example                       |
+| ---------------------- | ----------------------------------------- | ----------------------------- |
 | Architecture decisions | `docs/architecture/adrs/ADR-XXX-title.md` | ADR-027-websocket-strategy.md |
-| API endpoints | `docs/api/` | feedback-polling-examples.md |
-| Feature deep dives | `docs/features/` | authentication.md |
-| Setup/dev guides | `docs/development/` | setup.md, testing.md |
-| Deployment guides | `docs/deployment/` | vercel.md, quickstart.md |
-| Integration guides | `docs/integrations/` | livekit.md, supabase.md |
-| Troubleshooting | `.claude/TROUBLESHOOTING.md` | (append to existing) |
-| Temporary/WIP docs | `docs/wip/` (create if needed) | feature-xyz-notes.md |
+| API endpoints          | `docs/api/`                               | feedback-polling-examples.md  |
+| Feature deep dives     | `docs/features/`                          | authentication.md             |
+| Setup/dev guides       | `docs/development/`                       | setup.md, testing.md          |
+| Deployment guides      | `docs/deployment/`                        | vercel.md, quickstart.md      |
+| Integration guides     | `docs/integrations/`                      | livekit.md, supabase.md       |
+| Troubleshooting        | `.claude/TROUBLESHOOTING.md`              | (append to existing)          |
+| Temporary/WIP docs     | `docs/wip/` (create if needed)            | feature-xyz-notes.md          |
 
 ### When to Update Documentation
 
 **Always update when**:
+
 - Adding new architecture decisions → Create ADR
 - Adding new API endpoints → Update `docs/api/README.md` + endpoint doc
 - Changing system architecture → Update `docs/architecture/system-design.md`
 - Completing a phase → Update CLAUDE.md iteration log
 
 **Consider updating when**:
+
 - Fixing bugs → Add to TROUBLESHOOTING.md if issue is non-obvious
 - Refactoring → Update relevant feature doc if behavior changes
 - Optimizing → Update ADR if architectural implications
@@ -338,12 +358,14 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 ## Migration Checklist
 
 ### Pre-Migration
+
 - [ ] Review this plan with team
 - [ ] Backup current state (git commit)
 - [ ] Create new folder structure
 - [ ] Create all README.md files
 
 ### Migration
+
 - [ ] Phase 1: Create structure
 - [ ] Phase 2: Move active docs
 - [ ] Phase 3: Archive obsolete files
@@ -351,6 +373,7 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 - [ ] Phase 5: Validation
 
 ### Post-Migration
+
 - [ ] Update CLAUDE.md with new doc map
 - [ ] Update CONTRIBUTING.md with standards
 - [ ] Create templates in `docs/templates/`
@@ -362,18 +385,21 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 ## Success Criteria
 
 ✅ **Organizational Success**:
+
 - All docs have clear, logical locations
 - No duplicate documentation
 - Clear templates for future documentation
 - Less than 10 files at project root (excluding config files)
 
 ✅ **Usability Success**:
+
 - New developer can find setup guide in <30 seconds
 - API documentation is centralized and comprehensive
 - ADRs are easily browsable and linkable
 - CLAUDE.md remains under 3,000 lines (extract content to separate docs)
 
 ✅ **Maintainability Success**:
+
 - Clear standards in CONTRIBUTING.md
 - Templates guide consistent documentation
 - Archive prevents clutter without losing history
@@ -383,12 +409,12 @@ Contains historical implementation logs and checkpoints - **keep but don't modif
 
 ## Risks & Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Breaking links in CLAUDE.md | High | Update all references before moving files |
-| Losing important context | Medium | Archive, don't delete; review before archiving |
-| Confusion during transition | Medium | Create docs/README.md first as navigation hub |
-| References from code | Low | Search codebase for doc references before moving |
+| Risk                        | Impact | Mitigation                                       |
+| --------------------------- | ------ | ------------------------------------------------ |
+| Breaking links in CLAUDE.md | High   | Update all references before moving files        |
+| Losing important context    | Medium | Archive, don't delete; review before archiving   |
+| Confusion during transition | Medium | Create docs/README.md first as navigation hub    |
+| References from code        | Low    | Search codebase for doc references before moving |
 
 ---
 

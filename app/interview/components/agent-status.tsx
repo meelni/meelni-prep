@@ -50,7 +50,7 @@ export function AgentStatus({ state }: AgentStatusProps) {
       className="flex items-center gap-3"
     >
       <motion.div
-        className={`relative p-3 rounded-lg ${config.bgColor}`}
+        className={`relative rounded-lg p-3 ${config.bgColor}`}
         animate={state !== "idle" ? { scale: [1, 1.05, 1] } : {}}
         transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
       >
@@ -64,7 +64,7 @@ export function AgentStatus({ state }: AgentStatusProps) {
             transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
           />
         )}
-        <Icon className={`w-5 h-5 ${config.color} relative z-10`} />
+        <Icon className={`h-5 w-5 ${config.color} relative z-10`} />
       </motion.div>
       <div className="flex flex-col">
         <span className="text-sm font-medium">Meelni</span>

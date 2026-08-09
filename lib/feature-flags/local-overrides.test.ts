@@ -27,7 +27,9 @@ describe("local feature flag overrides", () => {
   it("ignores malformed stored override data", () => {
     expect(parseFeatureFlagOverrides("not json")).toEqual({});
     expect(parseFeatureFlagOverrides(JSON.stringify(["bad"]))).toEqual({});
-    expect(parseFeatureFlagOverrides(JSON.stringify({ gate: "maybe" }))).toEqual({});
+    expect(
+      parseFeatureFlagOverrides(JSON.stringify({ gate: "maybe" }))
+    ).toEqual({});
   });
 
   it("persists on and off overrides", () => {

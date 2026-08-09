@@ -1,4 +1,5 @@
 ### ADR-008: GPT-4o-mini for Dialogue LLM
+
 - **Date**: 2025-11-05
 - **Decision**: Use GPT-4o-mini instead of GPT-4 or Claude 3.5 Sonnet for dialogue
 - **Rationale**:
@@ -11,4 +12,3 @@
   - Lower cost per interview session (~20 min = ~$0.05 in LLM costs)
   - May need to tune prompts for interview quality
   - Easy to swap models later via string config in `AgentSession`
-

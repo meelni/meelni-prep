@@ -1,4 +1,5 @@
 ### ADR-020: Google OAuth Authentication Implementation
+
 - **Date**: 2025-11-06
 - **Decision**: Implemented full Google OAuth authentication with Supabase Auth
 - **Rationale**:
@@ -40,4 +41,3 @@
   - Need to add RLS policies later for data security
   - Easy to add email/password auth later if needed
   - Google Cloud Console OAuth credentials required (already configured)
-

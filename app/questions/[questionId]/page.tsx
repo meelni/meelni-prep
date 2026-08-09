@@ -226,7 +226,11 @@ export default async function QuestionPage({ params }: QuestionPageParams) {
           title="Practice this question"
           description="Start a mock interview with this exact selected question preserved through sign-in and setup."
           action={
-            <PublicActivationButton href={practiceHref} size="lg" variant="glow">
+            <PublicActivationButton
+              href={practiceHref}
+              size="lg"
+              variant="glow"
+            >
               Start mock interview
               <ArrowRight className="ml-2 h-4 w-4" />
             </PublicActivationButton>

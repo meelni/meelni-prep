@@ -23,6 +23,7 @@ A high-performance SVG-based circular progress indicator with smooth spring anim
 The component is already created at `/components/ui/progress-ring.tsx`.
 
 Dependencies:
+
 - `framer-motion` (already installed)
 - React 18+ (already installed)
 
@@ -43,18 +44,18 @@ import { TrendingUp } from 'lucide-react';
 
 ## Props API
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `progress` | `number` | **required** | Progress percentage (0-100, clamped) |
-| `size` | `number` | `80` | Ring diameter in pixels |
-| `strokeWidth` | `number` | `4` | Ring thickness in pixels |
-| `color` | `string` | `'rgb(var(--primary))'` | Ring color (CSS color) |
-| `backgroundColor` | `string` | `'rgb(var(--border))'` | Track color (CSS color) |
-| `duration` | `number` | `1200` | Animation duration in ms |
-| `delay` | `number` | `0` | Animation delay in ms |
-| `children` | `ReactNode` | `undefined` | Content inside ring (icon) |
-| `showPercentage` | `boolean` | `false` | Show percentage instead of children |
-| `className` | `string` | `''` | Additional CSS classes |
+| Prop              | Type        | Default                 | Description                          |
+| ----------------- | ----------- | ----------------------- | ------------------------------------ |
+| `progress`        | `number`    | **required**            | Progress percentage (0-100, clamped) |
+| `size`            | `number`    | `80`                    | Ring diameter in pixels              |
+| `strokeWidth`     | `number`    | `4`                     | Ring thickness in pixels             |
+| `color`           | `string`    | `'rgb(var(--primary))'` | Ring color (CSS color)               |
+| `backgroundColor` | `string`    | `'rgb(var(--border))'`  | Track color (CSS color)              |
+| `duration`        | `number`    | `1200`                  | Animation duration in ms             |
+| `delay`           | `number`    | `0`                     | Animation delay in ms                |
+| `children`        | `ReactNode` | `undefined`             | Content inside ring (icon)           |
+| `showPercentage`  | `boolean`   | `false`                 | Show percentage instead of children  |
+| `className`       | `string`    | `''`                    | Additional CSS classes               |
 
 ## Examples
 
@@ -105,26 +106,28 @@ import { TrendingUp } from 'lucide-react';
 ### Staggered Animation
 
 ```tsx
-{stats.map((stat, index) => (
-  <ProgressRing
-    key={stat.id}
-    progress={stat.value}
-    delay={index * 150} // 150ms between each
-  >
-    <stat.icon className="w-6 h-6 text-primary" />
-  </ProgressRing>
-))}
+{
+  stats.map((stat, index) => (
+    <ProgressRing
+      key={stat.id}
+      progress={stat.value}
+      delay={index * 150} // 150ms between each
+    >
+      <stat.icon className="text-primary h-6 w-6" />
+    </ProgressRing>
+  ));
+}
 ```
 
 ### Stats Card Integration
 
 ```tsx
-<div className="p-6 rounded-xl border border-border bg-card flex flex-col items-center gap-3">
+<div className="border-border bg-card flex flex-col items-center gap-3 rounded-xl border p-6">
   <ProgressRing progress={75}>
-    <TrendingUp className="w-6 h-6 text-primary" />
+    <TrendingUp className="text-primary h-6 w-6" />
   </ProgressRing>
   <div className="text-2xl font-bold">75%</div>
-  <div className="text-sm text-muted-foreground">Completion Rate</div>
+  <div className="text-muted-foreground text-sm">Completion Rate</div>
 </div>
 ```
 
@@ -149,27 +152,30 @@ The component has been tested with 20 simultaneous animations and maintains 60fp
 
 ## Edge Cases
 
-| Case | Behavior |
-|------|----------|
-| `progress={0}` | Empty ring (no progress) |
-| `progress={100}` | Complete ring (full circle) |
-| `progress={-20}` | Clamped to 0 |
-| `progress={120}` | Clamped to 100 |
+| Case                | Behavior                         |
+| ------------------- | -------------------------------- |
+| `progress={0}`      | Empty ring (no progress)         |
+| `progress={100}`    | Complete ring (full circle)      |
+| `progress={-20}`    | Clamped to 0                     |
+| `progress={120}`    | Clamped to 100                   |
 | Rapid value changes | Smooth transition between values |
 
 ## Sizing Presets
 
 ### Small (60px)
+
 ```tsx
 <ProgressRing progress={75} size={60} strokeWidth={3} />
 ```
 
 ### Medium (80px) - Default
+
 ```tsx
 <ProgressRing progress={75} size={80} strokeWidth={4} />
 ```
 
 ### Large (120px)
+
 ```tsx
 <ProgressRing progress={75} size={120} strokeWidth={6} />
 ```
@@ -180,29 +186,29 @@ The component has been tested with 20 simultaneous animations and maintains 60fp
 
 ```tsx
 // Primary
-color="rgb(var(--primary))"
+color = "rgb(var(--primary))";
 
 // Muted
-color="rgb(var(--muted-foreground))"
+color = "rgb(var(--muted-foreground))";
 
 // Foreground
-color="rgb(var(--foreground))"
+color = "rgb(var(--foreground))";
 ```
 
 ### Using OKLCH Colors
 
 ```tsx
 // Purple-Blue (Primary)
-color="oklch(0.70 0.22 285)"
+color = "oklch(0.70 0.22 285)";
 
 // Green (Success)
-color="oklch(0.72 0.18 145)"
+color = "oklch(0.72 0.18 145)";
 
 // Orange (Warning)
-color="oklch(0.75 0.20 75)"
+color = "oklch(0.75 0.20 75)";
 
 // Blue (Info)
-color="oklch(0.68 0.20 240)"
+color = "oklch(0.68 0.20 240)";
 ```
 
 ## Accessibility
@@ -217,6 +223,7 @@ color="oklch(0.68 0.20 240)"
 Render the component in a temporary local-only harness for interactive testing.
 
 Test sections:
+
 1. Basic Examples
 2. With Percentage Display
 3. Different Sizes
@@ -244,7 +251,7 @@ const strokeDashoffset = circumference - (progress / 100) * circumference;
 The SVG is rotated -90 degrees to start progress from the top (12 o'clock):
 
 ```tsx
-className="transform -rotate-90"
+className = "transform -rotate-90";
 ```
 
 ### Mounted State

@@ -1,4 +1,5 @@
 ### ADR-015: Model Upgrade to Deepgram Nova-3, GPT-4.1-mini, and ElevenLabs
+
 - **Date**: 2025-11-05 (Updated: 2025-11-19)
 - **Decision**: Upgrade all voice pipeline models to latest versions
 - **Models Selected**:
@@ -23,4 +24,3 @@
   - TTS format: `elevenlabs/eleven_turbo_v2_5:cgSgspJ2msm6clMCkdW9`
   - Cost remains similar due to LiveKit Inference pricing
   - Must verify voice IDs are valid for chosen TTS provider
-

@@ -509,19 +509,21 @@ describe("active interview page lifecycle", () => {
 
   it("surfaces bounded hydration failure and supports a single manual read retry", async () => {
     let transcriptReads = 0;
-    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
-        transcriptReads += 1;
-        return transcriptReads <= 3
-          ? Response.json(
-              { error: "transcript_read_unavailable" },
-              { status: 503 }
-            )
-          : Response.json({ turns: [] });
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          return transcriptReads <= 3
+            ? Response.json(
+                { error: "transcript_read_unavailable" },
+                { status: 503 }
+              )
+            : Response.json({ turns: [] });
+        }
+        return activeInterviewResponse(input, init);
       }
-      return activeInterviewResponse(input, init);
-    });
+    );
     vi.stubGlobal("fetch", request);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "info").mockImplementation(() => {});
@@ -554,15 +556,17 @@ describe("active interview page lifecycle", () => {
     let transcriptReads = 0;
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
-    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
-        transcriptReads += 1;
-        return transcriptReads === 1
-          ? Response.json({ turns: { invalid: true } })
-          : Response.json({ turns: [] });
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          return transcriptReads === 1
+            ? Response.json({ turns: { invalid: true } })
+            : Response.json({ turns: [] });
+        }
+        return activeInterviewResponse(input, init);
       }
-      return activeInterviewResponse(input, init);
-    });
+    );
     vi.stubGlobal("fetch", request);
 
     render(<InterviewPageContent />);
@@ -612,9 +616,7 @@ describe("active interview page lifecycle", () => {
     });
 
     await waitFor(() =>
-      expect(
-        screen.queryByText("No saved transcript turns yet.")
-      ).toBeNull()
+      expect(screen.queryByText("No saved transcript turns yet.")).toBeNull()
     );
     expect(mocks.transcriptTurns).toEqual([
       expect.objectContaining({ text: "Persisted runtime answer" }),
@@ -623,19 +625,21 @@ describe("active interview page lifecycle", () => {
 
   it("retries a degraded hydration once when the tab becomes visible", async () => {
     let transcriptReads = 0;
-    const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
-        transcriptReads += 1;
-        return transcriptReads <= 3
-          ? Response.json(
-              { error: "transcript_read_unavailable" },
-              { status: 503 }
-            )
-          : Response.json({ turns: [] });
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/session/${SESSION_ID}/transcript`) {
+          transcriptReads += 1;
+          return transcriptReads <= 3
+            ? Response.json(
+                { error: "transcript_read_unavailable" },
+                { status: 503 }
+              )
+            : Response.json({ turns: [] });
+        }
+        return activeInterviewResponse(input, init);
       }
-      return activeInterviewResponse(input, init);
-    });
+    );
     vi.stubGlobal("fetch", request);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "info").mockImplementation(() => {});

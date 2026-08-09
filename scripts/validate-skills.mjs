@@ -45,7 +45,9 @@ for (const skillDir of skillDirs) {
   } else if (fields.name !== skillName) {
     errors.push(`${skillName}: name must match folder, found ${fields.name}`);
   } else if (!namePattern.test(fields.name)) {
-    errors.push(`${skillName}: name must use lowercase letters, numbers, and hyphens`);
+    errors.push(
+      `${skillName}: name must use lowercase letters, numbers, and hyphens`
+    );
   }
 
   if (!fields.description) {

@@ -62,7 +62,7 @@ export function MobileFilterDrawer({
               stiffness: 300,
               damping: 30,
             }}
-            className="bg-card border-border fixed inset-x-0 bottom-0 z-50 flex h-question-filter-drawer flex-col rounded-t-2xl border-t"
+            className="bg-card border-border h-question-filter-drawer fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-2xl border-t"
             role="dialog"
             aria-modal="true"
             aria-labelledby="filter-drawer-title"

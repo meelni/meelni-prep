@@ -16,7 +16,10 @@ test("delegated agent authorization accepts only bounded non-launch scope", () =
     now: NOW,
   });
 
-  assert.equal(verified.authorizationId, "sav302_delegated_agent_1234567890abcdef1234567890abcdef");
+  assert.equal(
+    verified.authorizationId,
+    "sav302_delegated_agent_1234567890abcdef1234567890abcdef"
+  );
   assert.equal(verified.delegatedTo, "codex");
   assert.equal(verified.actionClass, "synthetic_calibration_retry");
   assert.equal(verified.maximumProviderCalls, 64);

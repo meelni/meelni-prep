@@ -28113,7 +28113,10 @@ var FOCUS_PRACTICE_REPLACEMENTS = [
     /\b(\d+|one|two|three|four|five|several|some|more)\s+reps\b/gi,
     "$1 practice attempts"
   ],
-  [/\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi, "practice repeatedly"],
+  [
+    /\b(?:do|complete|repeat|run)\s+(?:some\s+)?reps\b/gi,
+    "practice repeatedly"
+  ],
   [/\b(practice|answer|response)\s+reps\b/gi, "$1 attempts"],
   [/\b(practice|answer|response)\s+rep\b/gi, "$1 attempt"],
   [
@@ -32487,12 +32490,7 @@ function isRecord2(value) {
 // lib/evaluation/calibration-source-attestation.ts
 import { execFileSync } from "node:child_process";
 import { createHash as createHash5 } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync
-} from "node:fs";
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname as dirname2, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 var COMMIT_SHA2 = /^[a-f0-9]{40}$/;
@@ -32555,7 +32553,8 @@ function parseGitTreeEntries(output) {
   if (output.length === 0) return [];
   return output.subarray(0, output.at(-1) === 0 ? -1 : void 0).toString("utf8").split("\0").map((record) => {
     const match = /^(\d{6}) (\S+) ([a-f0-9]{40})\t([\s\S]+)$/.exec(record);
-    if (!match) throw new Error("calibration_reviewed_source_checkout_mismatch");
+    if (!match)
+      throw new Error("calibration_reviewed_source_checkout_mismatch");
     return {
       mode: match[1],
       type: match[2],
@@ -33853,7 +33852,9 @@ function assertCanonicalMismatchAlternatives(manifest, canonicalMismatchCaseRuns
     return match.output.sanitizedOutputId;
   });
   if (new Set(expected).size !== expected.length) {
-    throw new Error("Semantic adjudication canonical mismatches are duplicated");
+    throw new Error(
+      "Semantic adjudication canonical mismatches are duplicated"
+    );
   }
   const actual = [...reviewedLegitimateAlternativeOutputIds].sort();
   expected.sort();

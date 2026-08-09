@@ -24,15 +24,15 @@ export function EmptyStateCard({
   return (
     <motion.div
       variants={fadeInUp}
-      className="flex flex-col items-center justify-center p-12 rounded-lg border-2 border-dashed border-border bg-card/30 hover:bg-card/50 hover:border-primary/30 transition-all duration-300"
+      className="border-border bg-card/30 hover:bg-card/50 hover:border-primary/30 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-all duration-300"
     >
-      <div className="w-16 h-16 mb-6 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+      <div className="bg-primary/10 text-primary mb-6 flex h-16 w-16 items-center justify-center rounded-full">
         {icon}
       </div>
 
-      <h3 className="text-xl font-semibold text-foreground mb-2">{title}</h3>
+      <h3 className="text-foreground mb-2 text-xl font-semibold">{title}</h3>
 
-      <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
+      <p className="text-muted-foreground mb-6 max-w-md text-center text-sm">
         {description}
       </p>
 

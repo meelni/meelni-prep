@@ -9,26 +9,25 @@ import { useEffect } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
 
 // Lazy load overview section
-const OverviewSection = lazy(() => import("@/components/dashboard/sections/overview").then(m => ({ default: m.OverviewSection })));
+const OverviewSection = lazy(() =>
+  import("@/components/dashboard/sections/overview").then((m) => ({
+    default: m.OverviewSection,
+  }))
+);
 
 export default function DashboardPage() {
   // Track Web Vitals performance
-  useWebVitals('dashboard_overview');
+  useWebVitals("dashboard_overview");
 
   // Track dashboard section views
   useEffect(() => {
-    analytics.track('dashboard_viewed', {
-      section: 'overview',
+    analytics.track("dashboard_viewed", {
+      section: "overview",
     });
   }, []);
 
   // Fetch sessions using React Query
-  const {
-    data,
-    isLoading: sessionsLoading,
-    error,
-    refetch,
-  } = useSessions(20);
+  const { data, isLoading: sessionsLoading, error, refetch } = useSessions(20);
 
   // Error state
   if (error) {

@@ -12,7 +12,7 @@ export {
   getRequiredTier,
   getRequiredTierBadge,
   type RoundType,
-  type SubscriptionTier
+  type SubscriptionTier,
 } from "@meelni/core";
 
 /**

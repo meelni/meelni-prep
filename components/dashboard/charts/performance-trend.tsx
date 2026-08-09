@@ -133,7 +133,7 @@ export function PerformanceTrend({
     >
       <ChartContainer
         ref={chartRef}
-        className="h-chart-md w-full lg:h-chart-lg"
+        className="h-chart-md lg:h-chart-lg w-full"
         config={chartConfig}
       >
         <AreaChart

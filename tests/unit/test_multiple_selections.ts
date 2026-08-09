@@ -52,11 +52,15 @@ async function testMultipleSelections() {
   console.log(`  Product Sense questions: ${productSenseCount}`);
 
   if (productSenseCount > 0) {
-    console.log("\n❌ BUG CONFIRMED: Product Sense questions are being returned for Behavioral interviews!");
+    console.log(
+      "\n❌ BUG CONFIRMED: Product Sense questions are being returned for Behavioral interviews!"
+    );
   } else if (wrongTypeCount > 0) {
     console.log("\n⚠️  Some questions have wrong type, but not Product Sense.");
   } else {
-    console.log("\n✅ All 20 selections returned correct Behavioral questions.");
+    console.log(
+      "\n✅ All 20 selections returned correct Behavioral questions."
+    );
   }
 
   process.exit(0);

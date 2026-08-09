@@ -28,7 +28,9 @@ export function readEnvFile(path) {
 }
 
 export function requiredEnvStatus(values, requiredKeys) {
-  const missing = requiredKeys.filter((key) => isBlankEnvValue(values.get(key)));
+  const missing = requiredKeys.filter((key) =>
+    isBlankEnvValue(values.get(key))
+  );
   const placeholder = requiredKeys.filter((key) => {
     const value = values.get(key);
     return !isBlankEnvValue(value) && isPlaceholderEnvValue(value);
@@ -37,7 +39,7 @@ export function requiredEnvStatus(values, requiredKeys) {
   return {
     missing,
     placeholder,
-    ok: missing.length === 0 && placeholder.length === 0
+    ok: missing.length === 0 && placeholder.length === 0,
   };
 }
 
@@ -63,12 +65,14 @@ export function requiredEnvAlternativesStatus(values, groups) {
   return {
     missing,
     placeholder,
-    ok: missing.length === 0 && placeholder.length === 0
+    ok: missing.length === 0 && placeholder.length === 0,
   };
 }
 
 export function normalizeEnvValue(value) {
-  return String(value ?? "").trim().replace(/^(['"])(.*)\1$/, "$2");
+  return String(value ?? "")
+    .trim()
+    .replace(/^(['"])(.*)\1$/, "$2");
 }
 
 export function isBlankEnvValue(value) {
@@ -113,7 +117,10 @@ export async function ensureEnvFile({ targetPath, examplePath }) {
     return { path: targetPath, status: "created-from-example" };
   }
 
-  await copyFile(resolve(dirname(new URL(import.meta.url).pathname), "../.env.example"), targetPath);
+  await copyFile(
+    resolve(dirname(new URL(import.meta.url).pathname), "../.env.example"),
+    targetPath
+  );
   return { path: targetPath, status: "created-from-root-example" };
 }
 

@@ -28,36 +28,43 @@ These files form the "living operational document" for the project:
 ### Technical Documentation (`docs/`)
 
 #### [Architecture](./architecture/)
+
 - **[ADRs](./architecture/adrs/README.md)** - Architecture Decision Records
 - System design diagrams (coming soon)
 - Data flow documentation (coming soon)
 
 #### [API Documentation](./api/)
+
 - REST API specifications
 - Authentication flows
 - Endpoint examples and curl scripts
 - OpenAPI specification
 
 #### [Development](./development/)
+
 - Setup guides
 - Testing documentation
 - Debugging workflows
 - Development standards
 
 #### [Deployment](./deployment/)
+
 - Vercel deployment guide
 - LiveKit agent deployment
 - Environment variables reference
 - Quickstart checklist
 
 #### [Security](./security/)
+
 - **[Quick Start Guide](./security/QUICK_START_SECURITY_FIX.md)** - Deploy RLS & password protection (5 min)
 - **[RLS Deployment](./security/RLS_DEPLOYMENT_GUIDE.md)** - Row Level Security setup
 - **[Password Protection](./security/PASSWORD_PROTECTION_GUIDE.md)** - Leaked password prevention
 - **[Security Audit 2025-11-18](./security/SECURITY_AUDIT_2025-11-18.md)** - Complete audit report
 
 #### [Features](./features/)
+
 Feature-specific deep dives:
+
 - Authentication system
 - Interview session flow
 - Feedback engine
@@ -65,7 +72,9 @@ Feature-specific deep dives:
 - Dashboard components
 
 #### [Integrations](./integrations/)
+
 Third-party integration guides:
+
 - LiveKit (real-time voice)
 - Supabase (database & auth)
 - Google Sheets (question sync)
@@ -73,7 +82,9 @@ Third-party integration guides:
 - Cron jobs setup
 
 #### [Templates](./templates/)
+
 Documentation templates for consistency:
+
 - Feature documentation template
 - ADR template
 - API endpoint template
@@ -105,6 +116,7 @@ Documentation templates for consistency:
 ## Documentation Standards
 
 See **[CONTRIBUTING.md](../.claude/CONTRIBUTING.md)** for:
+
 - Where to put different types of documentation
 - When to update documentation
 - Documentation templates to use

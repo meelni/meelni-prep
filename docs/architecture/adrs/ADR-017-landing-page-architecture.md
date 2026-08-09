@@ -1,4 +1,5 @@
 ### ADR-017: Marketing Landing Page Architecture
+
 - **Date**: 2025-11-05
 - **Decision**: Implemented modular, component-based landing page architecture adapted from reference UI design
 - **Implementation**:
@@ -29,4 +30,3 @@
   - Easy to A/B test different hero messages or feature sets
   - Component library can be reused for future marketing pages
   - External UI template no longer needed (all necessary code extracted)
-

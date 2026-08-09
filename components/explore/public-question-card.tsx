@@ -45,24 +45,24 @@ export function PublicQuestionCard({
       transition={{ delay: index * 0.05, duration: 0.3 }}
       whileTap={{ scale: 0.98 }}
       className={cn(
-        "relative p-4 border rounded-lg bg-card transition-all duration-150 min-h-36 flex flex-col",
+        "bg-card relative flex min-h-36 flex-col rounded-lg border p-4 transition-all duration-150",
         "border-border hover:border-primary/50 hover:shadow-sm"
       )}
     >
       {/* Header: Company and Date badges */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Building2 className="w-3.5 h-3.5 opacity-60" />
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <Building2 className="h-3.5 w-3.5 opacity-60" />
           <span>{question.company || "N/A"}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Calendar className="w-3.5 h-3.5 opacity-60" />
+        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <Calendar className="h-3.5 w-3.5 opacity-60" />
           <span>{formatDate(question.askedAt)}</span>
         </div>
       </div>
 
       {/* Question Text - 2 line clamp */}
-      <p className="text-sm text-foreground line-clamp-2 mb-3 flex-1 leading-relaxed">
+      <p className="text-foreground mb-3 line-clamp-2 flex-1 text-sm leading-relaxed">
         {question.questionText}
       </p>
 

@@ -113,21 +113,25 @@ Use:
 
 ```markdown
 ## UI Surface
+
 - Route/component:
 - User outcome:
 - Shared primitives used:
 
 ## Design Gates
+
 - States:
 - Responsive:
 - Accessibility:
 - Motion/polish:
 
 ## Validation
+
 - Commands:
 - Manual/browser:
 
 ## Risks
+
 - ...
 ```
 

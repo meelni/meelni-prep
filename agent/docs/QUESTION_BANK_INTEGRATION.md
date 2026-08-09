@@ -1,6 +1,7 @@
 # Question Bank Integration - Changes Summary
 
 ## Overview
+
 Modified LiveKit agents to accept and use interview questions from the question bank database. Questions are passed via room metadata when starting a session.
 
 ---
@@ -8,13 +9,16 @@ Modified LiveKit agents to accept and use interview questions from the question 
 ## Modified Files
 
 ### 1. `/agent/config.py` ✅
+
 **Changes:**
+
 - Updated `parse_room_metadata()` to extract `question` field from metadata
 - Added question data to returned dictionary
 - Updated fallback error handlers to include `question: None`
 - Enhanced logging to show question info when provided
 
 **Metadata Structure:**
+
 ```json
 {
   "round_type": "product_sense",
@@ -31,7 +35,9 @@ Modified LiveKit agents to accept and use interview questions from the question 
 ---
 
 ### 2. `/agent/utils/prompt_builder.py` ✅
+
 **Changes:**
+
 - Added `question` parameter to `build_agent_prompt()` function
 - Question is now optional (defaults to `None`)
 - If question provided, appends it to prompt with company context
@@ -39,6 +45,7 @@ Modified LiveKit agents to accept and use interview questions from the question 
 - Maintains backward compatibility - works without question
 
 **Example Prompt Addition:**
+
 ```
 ## INTERVIEW QUESTION FROM QUESTION BANK:
 
@@ -56,13 +63,16 @@ response using the framework appropriate to this interview type.
 ---
 
 ### 3. `/agent/agent.py` ✅
+
 **Changes:**
+
 - Extract `question` from parsed metadata: `question = metadata.get("question")`
 - Added logging for question info (first 60 chars + company)
 - Pass `question` to `build_agent_prompt()` function
 - Also pass question to fallback prompt if error occurs
 
 **Key Code:**
+
 ```python
 # Extract question from metadata
 question = metadata.get("question")  # NEW
@@ -82,7 +92,9 @@ instructions = build_agent_prompt(round_type, config, question)  # NEW
 ---
 
 ### 4. `/agent/demo_agent.py` ✅
+
 **Changes:**
+
 - Created `build_demo_instructions(question)` function to build dynamic instructions
 - If question provided, uses it instead of default demo questions
 - Updated `DemoAgent` class to accept instructions parameter
@@ -91,6 +103,7 @@ instructions = build_agent_prompt(round_type, config, question)  # NEW
 - Pass built instructions with question to DemoAgent
 
 **Key Code:**
+
 ```python
 # Extract question from metadata
 try:
@@ -145,18 +158,18 @@ const metadata = {
     question_id: "uuid-from-db",
     question_text: "How would you improve Google Maps?",
     company: "Google",
-    question_type: "Product design/strategy"
+    question_type: "Product design/strategy",
   },
   config: {
     difficulty: "intermediate",
     // ... other config
-  }
+  },
 };
 
 // Create room with metadata
 await roomClient.createRoom({
   name: roomName,
-  metadata: JSON.stringify(metadata)
+  metadata: JSON.stringify(metadata),
 });
 ```
 
@@ -165,6 +178,7 @@ await roomClient.createRoom({
 ## Backward Compatibility
 
 ✅ **Fully backward compatible** - all changes are optional:
+
 - If `question` not in metadata → agent generates own questions
 - If metadata parsing fails → falls back to defaults
 - Existing sessions without questions continue to work normally

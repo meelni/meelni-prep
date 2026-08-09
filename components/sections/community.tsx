@@ -37,17 +37,17 @@ const contributors = [
 export function Community() {
   return (
     <Section id="community" title="Community">
-      <div className="border-x border-t overflow-hidden relative">
+      <div className="relative overflow-hidden border-x border-t">
         <Ripple />
-        <div className="p-6 text-center py-12">
-          <p className="text-muted-foreground mb-6 text-balance max-w-prose mx-auto font-medium">
+        <div className="p-6 py-12 text-center">
+          <p className="text-muted-foreground mx-auto mb-6 max-w-prose font-medium text-balance">
             We&apos;re grateful for the amazing open-source community that helps
             make our project better every day.
           </p>
-          <div className="flex justify-center -space-x-6 mb-8">
+          <div className="mb-8 flex justify-center -space-x-6">
             {contributors.map((contributor, index) => (
               <div key={index}>
-                <Avatar className="size-12 relative border-2 border-background bg-muted">
+                <Avatar className="border-background bg-muted relative size-12 border-2">
                   <AvatarImage
                     src={contributor.avatar}
                     alt={contributor.name}

@@ -5,9 +5,11 @@
 ## What We Just Implemented
 
 ### 1. ✅ Enhanced Homepage Metadata
+
 **Location**: `app/layout.tsx`
 
 **Changes**:
+
 - Optimized title tag: "Meelni - AI Mock Interview Coach for Product Managers | Practice PM Interviews"
 - Extended meta description with key features and USPs (2,879+ questions, free tier mention)
 - Added 15+ high-intent keywords targeting PM interview preparation
@@ -16,55 +18,67 @@
 - Set up OpenGraph tags for social sharing
 
 **SEO Impact**:
+
 - Better click-through rates from search results (compelling title + description)
 - Targets multiple keyword variations (AI interview coach, mock interview AI, PM interview practice)
 - Improved social media preview when shared
 
 ### 2. ✅ Added Structured Data (JSON-LD Schema)
+
 **Location**: `components/structured-data.tsx`
 
 **Schemas Implemented**:
 
 #### FAQ Schema
+
 - 8 common questions about Meelni
 - Helps appear in Google's "People Also Ask" sections
 - Direct answers to user queries in search results
 
 #### Organization Schema
+
 - Brand information (name, logo, contact)
 - Social media links for brand verification
 - Helps Google understand Meelni as an entity
 
 #### SoftwareApplication Schema
+
 - Pricing information (Free, Pro Monthly, Pro Yearly)
 - Application category and operating system
 - Aggregate rating data (placeholder - update with real data)
 - Enables rich snippets in search results
 
 **SEO Impact**:
+
 - Appear in Google's Featured Snippets
 - Show up in AI-generated answers (ChatGPT, Perplexity, Google AI Overview)
 - Rich search results with ratings, pricing, and direct answers
 
 ### 3. ✅ Optimized Site Configuration
+
 **Location**: `lib/config.tsx`
 
 **Changes**:
+
 - Updated keywords to target high-intent searches
 - Improved site description for better relevance
 
 ### 4. ✅ Created robots.txt
+
 **Location**: `public/robots.txt`
 
 **Configuration**:
+
 - Allow all search engines to crawl public pages
 - Disallow crawling of private pages (/dashboard, /auth, /api)
 - Sitemap reference for easier discovery
 
 ### 5. ✅ Created Dynamic Sitemap
+
 **Location**: `app/sitemap.ts`
 
 **Pages Included**:
+
 - Homepage (priority 1.0)
 - Pricing page (priority 0.8)
 - Questions page (priority 0.9)
@@ -77,6 +91,7 @@
 ## Next Steps (Week 1)
 
 ### A. Verify Implementation
+
 1. **Test Structured Data**
    - Use [Google's Rich Results Test](https://search.google.com/test/rich-results)
    - Paste your homepage URL
@@ -91,6 +106,7 @@
    - Should show all pages in XML format
 
 ### B. Google Search Console Setup
+
 1. Go to [Google Search Console](https://search.google.com/search-console)
 2. Add property: `https://www.meelni.com`
 3. Verify ownership (add verification code to `app/layout.tsx` metadata)
@@ -100,6 +116,7 @@
 ### C. Content Quick Wins
 
 #### Create These Pages (High Priority)
+
 1. **Question Bank Page** (`/questions`)
    - Make 500-1000 questions publicly searchable
    - Add filters by category (Product Sense, Behavioral, etc.)
@@ -119,6 +136,7 @@
    - Link to free trial
 
 #### Blog Post Ideas (Target Long-Tail Keywords)
+
 1. "How to Answer 'Design a Product for X'" (Product Sense)
 2. "Top 50 PM Interview Questions at Google in 2025"
 3. "CIRCLES Framework vs AARM Framework: Which to Use?"
@@ -130,37 +148,45 @@
 ## Medium-Term Optimizations (Weeks 2-4)
 
 ### 1. Add OpenGraph Images
+
 - Create custom OG images for homepage, pricing, questions
 - Dimensions: 1200x630px
 - Include Meelni branding and key messaging
 - Better social media sharing CTR
 
 ### 2. Optimize Page Speed
+
 - Already on Vercel (good!)
 - Add Next.js Image optimization for all images
 - Lazy load below-the-fold content
 - Target: Lighthouse score >90
 
 ### 3. Create Free Tools
+
 These get massive backlinks and social shares:
 
 **"Interview Question of the Day" API**
+
 - Embed widget for career blogs
 - Daily question with answer tips
 - Backlink to Meelni
 
 **"Practice Focus Check"**
+
 - 10-question self-reflection grounded in the candidate's current interview goals
 - Name a concrete next practice focus instead of scoring or predicting interview outcomes
 - CTA to practice the recommended question type with Meelni
 
 **"Framework Cheat Sheet" (PDF)**
+
 - CIRCLES, AARM, STAR, etc.
 - Gated download (email capture)
 - Shareable on LinkedIn/Twitter
 
 ### 4. Build Backlinks
+
 **Target Sites for Guest Posts**:
+
 - Exponent.com
 - IGotAnOffer.com
 - Levels.fyi
@@ -170,6 +196,7 @@ These get massive backlinks and social shares:
 "I analyzed 2,879 PM interview questions and found these 3 patterns..."
 
 **Resource Lists to Get Listed On**:
+
 - AlternativeTo.net
 - Product Hunt
 - Capterra
@@ -181,19 +208,23 @@ These get massive backlinks and social shares:
 ## Long-Term Strategy (Months 2-3)
 
 ### 1. Original Research Report
+
 **"State of PM Interviews 2025"**
+
 - Survey 500+ PMs about their interview experiences
 - Data on: most common questions, success rates, company differences
 - Publishable insights → massive backlinks
 - Every publication wants to cite original data
 
 ### 2. Video Content (YouTube)
+
 - "Mock PM Interview: Real-time AI Coaching Demo"
 - "How to Answer the Hardest PM Interview Questions"
 - YouTube is the 2nd largest search engine
 - Videos rank in Google search too
 
 ### 3. Build "PM Interview Hub"
+
 - Become the #1 resource for PM interview prep
 - Comprehensive guides for every interview type
 - Question bank with crowdsourced answers
@@ -204,6 +235,7 @@ These get massive backlinks and social shares:
 ## Tracking & Measurement
 
 ### Metrics to Monitor Weekly
+
 1. **Google Search Console**
    - Total impressions
    - Average position
@@ -268,12 +300,14 @@ Perplexity and Google AI Overview use real-time search:
 ## Custom GPT Strategy
 
 **Create "PM Interview Coach" GPT** (Free marketing!)
+
 - Custom GPT in ChatGPT Store
 - Provides interview tips and framework guidance
 - Final output: "Want to practice with AI voice? Try Meelni →"
 - Every user interaction is brand exposure
 
 **Instructions for GPT**:
+
 ```
 You are a PM interview coach. Help users prepare for product management
 interviews by:
@@ -290,18 +324,21 @@ practice with feedback after completed interviews on 2,879+ curated PM questions
 ## Quick Reference: Target Keywords
 
 ### Primary Keywords (High Competition)
+
 - AI interview coach
 - Mock interview AI
 - PM interview practice
 - Product manager interview prep
 
 ### Secondary Keywords (Medium Competition)
+
 - Product sense interview
 - Behavioral interview practice
 - AI mock interview
 - Voice interview practice
 
 ### Long-Tail Keywords (Low Competition, High Intent)
+
 - How to prepare for Google PM interview
 - Product sense interview frameworks
 - AI interview coach for product managers
@@ -313,11 +350,13 @@ practice with feedback after completed interviews on 2,879+ curated PM questions
 ## Need Help?
 
 **Testing Tools**:
+
 - [Google Rich Results Test](https://search.google.com/test/rich-results)
 - [Google PageSpeed Insights](https://pagespeed.web.dev/)
 - [Ahrefs Free SEO Tools](https://ahrefs.com/free-seo-tools)
 
 **SEO Resources**:
+
 - [Ahrefs Blog](https://ahrefs.com/blog/)
 - [Backlinko](https://backlinko.com/)
 - [Search Engine Journal](https://www.searchenginejournal.com/)

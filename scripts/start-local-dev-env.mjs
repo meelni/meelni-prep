@@ -8,7 +8,7 @@ export function buildLocalDevEnv({ baseEnv = process.env, repoRoot }) {
   const fileEnv = existsSync(envPath) ? parse(readFileSync(envPath)) : {};
   const env = {
     ...fileEnv,
-    ...baseEnv
+    ...baseEnv,
   };
 
   if (!env.LIVEKIT_URL && env.NEXT_PUBLIC_LIVEKIT_URL) {

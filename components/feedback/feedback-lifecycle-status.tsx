@@ -85,9 +85,7 @@ export function FeedbackLifecycleStatus({
             >
               <RefreshCw
                 className={`mr-2 h-4 w-4 ${
-                  checking
-                    ? "animate-spin motion-reduce:animate-none"
-                    : ""
+                  checking ? "animate-spin motion-reduce:animate-none" : ""
                 }`}
                 aria-hidden="true"
               />
@@ -185,7 +183,9 @@ export function FeedbackLifecycleStatus({
         }
         actions={
           <Button asChild>
-            <Link href={`/interview?sessionId=${encodeURIComponent(sessionId)}`}>
+            <Link
+              href={`/interview?sessionId=${encodeURIComponent(sessionId)}`}
+            >
               Return to interview
             </Link>
           </Button>
