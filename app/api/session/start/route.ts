@@ -110,8 +110,23 @@ import { resolveReactivationAccess } from "@/lib/feature-flags/reactivation-acce
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
 import { resolveInterviewAppBaseUrl } from "@/lib/interview/app-base-url";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
+import { reportInterviewStartStage } from "@/lib/operations/interview-start-slo";
 
 export async function POST(req: NextRequest) {
+  const authorizationStartedAt = performance.now();
+  let authorizationReported = false;
+  const reportAuthorization = (
+    outcome: "succeeded" | "terminal" | "failed"
+  ) => {
+    if (authorizationReported) return;
+    authorizationReported = true;
+    reportInterviewStartStage({
+      stage: "authorization_gate",
+      outcome,
+      durationMs: performance.now() - authorizationStartedAt,
+    });
+  };
+
   try {
     // Verify authentication
     const supabase = await createClient();
@@ -121,6 +136,7 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      reportAuthorization("terminal");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -131,6 +147,7 @@ export async function POST(req: NextRequest) {
       )?.value,
     });
     if (!access.value) {
+      reportAuthorization("terminal");
       return NextResponse.json(
         {
           error: "interview_practice_unavailable",
@@ -140,6 +157,7 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
+    reportAuthorization("succeeded");
 
     // Parse request body first to access roundType
     const body: unknown = await req.json().catch(() => null);
@@ -208,6 +226,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result.body);
   } catch {
+    reportAuthorization("failed");
     reportOperationalFailure({
       operation: "interview_start",
       errorCode: "interview_start_failed",

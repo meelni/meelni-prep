@@ -1156,7 +1156,17 @@ test("LiveKit provider creates and reconciles one atomically named interview dis
   const calls: string[] = [];
   const roomInputs: unknown[] = [];
   const dispatches: Array<{ id: string; room: string; agentName: string }> = [];
+  const stages: Array<{
+    stage: string;
+    outcome: string;
+    durationMs: number;
+  }> = [];
+  let monotonicTime = 0;
   const provider: LiveKitInterviewProvider = createLiveKitInterviewProvider({
+    monotonicNow: () => {
+      monotonicTime += 100;
+      return monotonicTime;
+    },
     agentDispatchClientFactory: () => ({
       listDispatch: async () => {
         calls.push("list-dispatch");
@@ -1189,7 +1199,10 @@ test("LiveKit provider creates and reconciles one atomically named interview dis
     }),
   });
 
-  const result = await provider.startInterviewRoom(fixture.input);
+  const result = await provider.startInterviewRoom({
+    ...fixture.input,
+    onStage: (event) => stages.push(event),
+  });
 
   assert.equal(result.ok, true);
   if (result.ok) {
@@ -1215,6 +1228,15 @@ test("LiveKit provider creates and reconciles one atomically named interview dis
   assert.equal(roomInput.departureTimeout, 60);
   assert.equal(roomInput.agents.length, 1);
   assert.equal(roomInput.agents[0].agentName, fixture.input.agentName);
+  assert.deepEqual(stages, [
+    { stage: "room_create", outcome: "succeeded", durationMs: 100 },
+    { stage: "room_verification", outcome: "succeeded", durationMs: 100 },
+    {
+      stage: "dispatch_verification",
+      outcome: "succeeded",
+      durationMs: 100,
+    },
+  ]);
 });
 
 test("LiveKit provider reuses the one matching room dispatch", async () => {

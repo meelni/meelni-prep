@@ -53,6 +53,7 @@ import {
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { fetchWithDeadline } from "@/lib/http/deadline";
+import { startInterviewWithRecovery } from "@/lib/interview/start-recovery";
 import {
   buildInterviewStartStageEvent,
   INTERVIEW_START_SLOS,
@@ -95,8 +96,12 @@ export function SetupContent() {
     fallbackRecommendation.difficulty
   );
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isRecoveringStart, setIsRecoveringStart] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const startInFlightRef = useRef(false);
+  const startAbortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
   const pageLoadTime = useRef(Date.now());
   const defaultRoundType = useRef<RoundType | null>(
     fallbackRecommendation.roundType
@@ -182,6 +187,14 @@ export function SetupContent() {
     currentTier: string;
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      startAbortControllerRef.current?.abort(createStartAbortError());
+    };
+  }, []);
 
   useEffect(() => {
     if (launchContext.roundType) {
@@ -294,6 +307,8 @@ export function SetupContent() {
   }, [user]);
 
   const handleStartInterview = async () => {
+    if (startInFlightRef.current) return;
+
     if (questionIdParam && questionIntentState.status !== "ready") {
       setError("Choose an available question before starting.");
       return;
@@ -305,7 +320,11 @@ export function SetupContent() {
     }
 
     setIsCreatingSession(true);
+    setIsRecoveringStart(false);
     setError(null);
+    startInFlightRef.current = true;
+    const operationController = new AbortController();
+    startAbortControllerRef.current = operationController;
 
     // Track setup completion
     const timeToComplete = (Date.now() - pageLoadTime.current) / 1000;
@@ -342,6 +361,9 @@ export function SetupContent() {
         await navigator.mediaDevices.getUserMedia({ audio: true });
         console.log("[Setup] Microphone permission granted");
       } catch (permError) {
+        if (operationController.signal.aborted || !isMountedRef.current) {
+          return;
+        }
         console.error("[Interview Setup] microphone_permission_denied", {
           code: "microphone_permission_denied",
           ...toSafeErrorLog(permError),
@@ -349,9 +371,9 @@ export function SetupContent() {
         setError(
           "Microphone access is required for voice interviews. Please grant permission and try again."
         );
-        setIsCreatingSession(false);
         return;
       }
+      throwIfStartAborted(operationController.signal);
 
       // Build minimal user config
       const minimalConfig: MinimalInterviewConfig = {
@@ -374,43 +396,61 @@ export function SetupContent() {
       const validation = validateSessionStart(sessionData);
       if (!validation.success) {
         setError(validation.error);
-        setIsCreatingSession(false);
         return;
       }
 
       const startAttemptId = getOrCreateInterviewStartAttempt(validation.data);
       const startBody = { ...validation.data, startAttemptId };
 
-      // Call session start API
-      const launchStartedAt = Date.now();
-      let response: Response;
-      try {
-        response = await fetchWithDeadline(
-          "/api/session/start",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(startBody),
-          },
-          INTERVIEW_START_SLOS.launch_request.upperBoundMs
-        );
-      } catch (launchError) {
-        trackStartStage(
-          launchError instanceof Error && launchError.name === "AbortError"
-            ? "delayed"
-            : "failed",
-          Date.now() - launchStartedAt
-        );
-        throw launchError;
-      }
-      trackStartStage(
-        response.ok ? "succeeded" : "failed",
-        Date.now() - launchStartedAt
-      );
-      const responseData: unknown = await response.json().catch(() => null);
+      const startResult = await startInterviewWithRecovery({
+        signal: operationController.signal,
+        request: async (signal) => {
+          const launchStartedAt = Date.now();
+          let response: Response;
+          try {
+            response = await fetchWithDeadline(
+              "/api/session/start",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(startBody),
+                signal,
+              },
+              INTERVIEW_START_SLOS.launch_request.upperBoundMs
+            );
+          } catch (launchError) {
+            trackStartStage(
+              launchError instanceof Error && launchError.name === "AbortError"
+                ? "delayed"
+                : "failed",
+              Date.now() - launchStartedAt
+            );
+            throw launchError;
+          }
+          trackStartStage(
+            response.ok ? "succeeded" : "failed",
+            Date.now() - launchStartedAt
+          );
+          return {
+            ok: response.ok,
+            status: response.status,
+            body: await response.json().catch(() => null),
+            retryAfter: response.headers.get("Retry-After"),
+          };
+        },
+        onRecoveryStarted: () => {
+          if (!isMountedRef.current) return;
+          setIsRecoveringStart(true);
+          setError(null);
+        },
+      });
+      throwIfStartAborted(operationController.signal);
+      const responseData = startResult.body;
 
-      if (!response.ok) {
-        if (isDefinitiveInterviewStartFailure(response.status, responseData)) {
+      if (!startResult.ok) {
+        if (
+          isDefinitiveInterviewStartFailure(startResult.status, responseData)
+        ) {
           clearInterviewStartAttempt(startAttemptId);
         }
         const errorData = isRecord(responseData) ? responseData : {};
@@ -420,7 +460,10 @@ export function SetupContent() {
           typeof errorData.message === "string" ? errorData.message : null;
 
         // Handle interview type locked error
-        if (response.status === 403 && errorCode === "interview_type_locked") {
+        if (
+          startResult.status === 403 &&
+          errorCode === "interview_type_locked"
+        ) {
           setTierUpgradeInfo({
             requestedType: effectiveRoundType,
             currentTier:
@@ -432,14 +475,14 @@ export function SetupContent() {
               "This interview type requires an interview credit.",
           });
           setShowTierUpgradeModal(true);
-          setIsCreatingSession(false);
           return;
         }
 
         // Handle no-credit errors from the credit ledger.
         if (
-          (response.status === 402 && errorCode === "no_credits_remaining") ||
-          (response.status === 403 && errorCode === "quota_exceeded")
+          (startResult.status === 402 &&
+            errorCode === "no_credits_remaining") ||
+          (startResult.status === 403 && errorCode === "quota_exceeded")
         ) {
           setQuotaInfo({
             currentUsage: creditBalance?.availableCredits ?? 0,
@@ -447,7 +490,6 @@ export function SetupContent() {
             resetDate: creditBalance?.nextCreditExpiresAt ?? null,
           });
           setShowQuotaModal(true);
-          setIsCreatingSession(false);
           return;
         }
 
@@ -482,11 +524,16 @@ export function SetupContent() {
       // start already authorized; reloads still use the reconnect endpoint.
       router.push(getCanonicalInterviewHref(sessionId));
     } catch (err) {
+      if (operationController.signal.aborted) {
+        if (isMountedRef.current) {
+          setError("Interview start cancelled. You can safely resume it here.");
+        }
+        return;
+      }
       if (err instanceof Error && err.name === "AbortError") {
         setError(
-          "Starting the interview is taking longer than expected. Try again to safely resume the same start attempt."
+          "The interview is still starting. Your start attempt is safe; try again in a moment."
         );
-        setIsCreatingSession(false);
         return;
       }
       console.error("[Interview Setup] start_failed", {
@@ -506,8 +553,20 @@ export function SetupContent() {
       setError(
         err instanceof Error ? err.message : "Failed to start interview"
       );
-      setIsCreatingSession(false);
+    } finally {
+      if (startAbortControllerRef.current === operationController) {
+        startAbortControllerRef.current = null;
+        startInFlightRef.current = false;
+        if (isMountedRef.current) {
+          setIsCreatingSession(false);
+          setIsRecoveringStart(false);
+        }
+      }
     }
+  };
+
+  const handleCancelStart = () => {
+    startAbortControllerRef.current?.abort(createStartAbortError());
   };
 
   if (authLoading) {
@@ -670,7 +729,9 @@ export function SetupContent() {
                       className="h-4 w-4 animate-spin"
                       aria-hidden="true"
                     />
-                    Starting mock interview...
+                    {isRecoveringStart
+                      ? "Still starting mock interview..."
+                      : "Starting mock interview..."}
                   </>
                 ) : (
                   <>
@@ -679,18 +740,39 @@ export function SetupContent() {
                   </>
                 )}
               </Button>
+              {isCreatingSession && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelStart}
+                  className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground min-h-11 w-full bg-transparent sm:w-auto"
+                >
+                  Cancel start
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 aria-expanded={showCustomization}
                 aria-controls="interview-customization"
                 onClick={() => setShowCustomization((current) => !current)}
+                disabled={isCreatingSession}
                 className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground min-h-11 w-full gap-2 bg-transparent sm:w-auto"
               >
                 <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                 {showCustomization ? "Hide setup options" : "Change setup"}
               </Button>
             </div>
+            {isRecoveringStart && (
+              <p
+                className="text-dashboard-muted mt-4 text-sm leading-6"
+                role="status"
+                aria-live="polite"
+              >
+                This is taking longer than usual. We’re safely checking the same
+                start attempt; no second click is needed.
+              </p>
+            )}
             {creditBalance?.trialAvailable && (
               <p className="text-dashboard-muted mt-4 text-xs leading-5">
                 Your {BILLING_CATALOG.trial.includedCredits}-credit trial starts
@@ -825,6 +907,18 @@ export function SetupContent() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function createStartAbortError(): Error {
+  const error = new Error("Interview start was cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfStartAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason ?? createStartAbortError();
+  }
 }
 
 function trackStartStage(

@@ -49,6 +49,21 @@ test("stable start persists one attempt, reserves once, and waits to consume", a
   assert.equal(fixture.calls.filter((call) => call === "schedule").length, 1);
   assert.equal(fixture.releases.length, 0);
   assert.equal(fixture.metadata?.candidate_identity, USER_ID);
+  assert.deepEqual(
+    fixture.stageEvents.map(({ stage, outcome }) => ({ stage, outcome })),
+    [
+      { stage: "account_trial", outcome: "succeeded" },
+      { stage: "question_selection", outcome: "succeeded" },
+      { stage: "credit_reservation", outcome: "succeeded" },
+      { stage: "durable_session_claim", outcome: "succeeded" },
+      { stage: "deadline_scheduling", outcome: "succeeded" },
+      { stage: "livekit_room_create", outcome: "succeeded" },
+      { stage: "livekit_room_verification", outcome: "succeeded" },
+      { stage: "livekit_dispatch_verification", outcome: "succeeded" },
+      { stage: "readiness_persistence", outcome: "succeeded" },
+      { stage: "token_issuance", outcome: "succeeded" },
+    ]
+  );
 });
 
 test("post-provider deletion fence withholds credentials and schedules room cleanup", async () => {
@@ -224,6 +239,23 @@ test("retryable provider failure keeps the reservation and reuses the attempt", 
   assert.equal(fixture.releases.length, 0);
   assert.equal(fixture.calls.filter((call) => call === "provider").length, 2);
   assert.equal(fixture.store.current?.provisioningState, "ready");
+});
+
+test("busy replay guidance polls readiness before the provisioning lease expires", async () => {
+  const fixture = createFixture();
+  fixture.deps.startStore.claimProvisioning = async () => ({
+    disposition: "busy",
+    retryAfterMs: 120_000,
+  });
+
+  const result = await startInterviewSessionWorkflow(input(), fixture.deps);
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, "interview_start_in_progress");
+  assert.equal(result.body.retryAfterMs, 1_000);
+  assert.equal(fixture.calls.includes("provider"), false);
 });
 
 test("lost acknowledgement after a committed ready write preserves the room", async () => {
@@ -446,6 +478,11 @@ function createFixture({
   const reservations: ReserveCreditInput[] = [];
   const releases: string[] = [];
   const tokenTtls: number[] = [];
+  const stageEvents: Array<{
+    stage: string;
+    outcome: string;
+    durationMs: number;
+  }> = [];
   let tokenSequence = 0;
   let remainingProviderFailures = providerFailures;
   let remainingNonretryableProviderFailures = providerNonretryableFailures;
@@ -556,6 +593,21 @@ function createFixture({
             },
           };
         }
+        providerInput.onStage?.({
+          stage: "room_create",
+          outcome: "succeeded",
+          durationMs: 10,
+        });
+        providerInput.onStage?.({
+          stage: "room_verification",
+          outcome: "succeeded",
+          durationMs: 20,
+        });
+        providerInput.onStage?.({
+          stage: "dispatch_verification",
+          outcome: "succeeded",
+          durationMs: 30,
+        });
         return {
           ok: true as const,
           provider: "livekit" as const,
@@ -635,6 +687,7 @@ function createFixture({
       }),
     now: () => currentTime,
     createLeaseId: () => "40000000-0000-4000-8000-000000000001",
+    reportStartStage: (event) => stageEvents.push(event),
   };
 
   return {
@@ -642,6 +695,7 @@ function createFixture({
     reservations,
     releases,
     tokenTtls,
+    stageEvents,
     store,
     deps,
     setNow(value: Date) {
