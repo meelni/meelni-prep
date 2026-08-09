@@ -33,14 +33,21 @@ import { fetchWithDeadline } from "@/lib/http/deadline";
 const FEEDBACK_POLL_INTERVAL_MS = 3000;
 const MAX_FEEDBACK_POLLS = 30;
 
+type FeedbackPollingPhase = "automatic" | "paused";
+
 export function FeedbackReview({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [viewState, setViewState] = useState<FeedbackViewState | null>(null);
   const [transportError, setTransportError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [pollingPhase, setPollingPhase] =
+    useState<FeedbackPollingPhase>("automatic");
   const recoveryCoordinator = useRef(createFeedbackRecoveryCoordinator());
   const pollBudget = useRef(createFeedbackPollBudget(MAX_FEEDBACK_POLLS));
+  const checkAgainRef = useRef<() => Promise<void>>(async () => undefined);
+  const recoverRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     recoveryCoordinator.current = createFeedbackRecoveryCoordinator();
@@ -48,6 +55,9 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     setViewState(null);
     setTransportError(null);
     setRecoveryError(null);
+    setChecking(false);
+    setRecovering(false);
+    setPollingPhase("automatic");
   }, [sessionId]);
 
   useEffect(() => {
@@ -55,31 +65,59 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
+    let latestResponse: FeedbackLifecycleResponse | null = null;
+    let readInFlight: Promise<void> | null = null;
+    let recoveryInFlight: Promise<FeedbackLifecycleResponse> | null = null;
+
+    const clearPollTimer = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+    };
 
     const schedulePoll = () => {
       if (!pollBudget.current.consume()) {
-        setTransportError(
-          "Feedback is taking longer than expected. Your interview is saved; check again shortly."
-        );
+        setPollingPhase("paused");
         return;
       }
       timer = setTimeout(fetchFeedback, FEEDBACK_POLL_INTERVAL_MS);
     };
 
-    const applyResponse = async (response: FeedbackLifecycleResponse) => {
+    const requestRecovery = () => {
+      if (recoveryInFlight) return recoveryInFlight;
+      const request = requestFeedbackRecovery(sessionId, controller.signal);
+      recoveryInFlight = request;
+      void request.then(
+        () => {
+          if (recoveryInFlight === request) recoveryInFlight = null;
+        },
+        () => {
+          if (recoveryInFlight === request) recoveryInFlight = null;
+        }
+      );
+      return request;
+    };
+
+    const applyResponse = async (
+      response: FeedbackLifecycleResponse,
+      { allowAutomaticRecovery = true } = {}
+    ) => {
       if (!active) return;
+      latestResponse = response;
       setViewState(toFeedbackViewState(response));
       setTransportError(null);
+      setPollingPhase("automatic");
 
-      if (response.retryable === true) {
+      if (allowAutomaticRecovery && response.retryable === true) {
         setRecovering(true);
         try {
           const recovery = await recoveryCoordinator.current.attempt(
             response,
-            () => requestFeedbackRecovery(sessionId, controller.signal)
+            requestRecovery
           );
           if (!active) return;
           if (recovery.disposition === "recovered") {
+            latestResponse = recovery.value;
             setViewState(toFeedbackViewState(recovery.value));
             setRecoveryError(null);
             pollBudget.current.reset();
@@ -111,63 +149,110 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
       }
     };
 
-    async function fetchFeedback() {
-      try {
-        const response = await fetchWithDeadline(`/api/feedback/${sessionId}`, {
-          signal: controller.signal,
-        });
-        const payload: unknown = await response.json().catch(() => null);
-        if (response.status === 401) {
-          router.replace("/auth/signin");
-          return;
+    function fetchFeedback({
+      allowAutomaticRecovery = true,
+      resumeAutomaticPolling = false,
+      customerInitiated = false,
+    } = {}): Promise<void> {
+      if (readInFlight) return readInFlight;
+      if (resumeAutomaticPolling) {
+        clearPollTimer();
+        pollBudget.current.reset();
+        setRecoveryError(null);
+        setTransportError(null);
+        setPollingPhase("automatic");
+      }
+      if (customerInitiated) setChecking(true);
+
+      const request = (async () => {
+        try {
+          const response = await fetchWithDeadline(
+            `/api/feedback/${sessionId}`,
+            { signal: controller.signal }
+          );
+          const payload: unknown = await response.json().catch(() => null);
+          if (response.status === 401) {
+            router.replace("/auth/signin");
+            return;
+          }
+          const body = decodeFeedbackHttpResponseOrThrow(response, payload);
+          await applyResponse(body, { allowAutomaticRecovery });
+        } catch (error) {
+          if (!active) return;
+          const transportFailure = toFeedbackTransportFailure(error);
+          if (transportFailure?.retryable) {
+            setViewState(
+              (current) =>
+                current ?? {
+                  kind: "settling",
+                  retryable: false,
+                  delayed: false,
+                  message: transportFailure.message,
+                }
+            );
+            setTransportError(transportFailure.message);
+            schedulePoll();
+            return;
+          }
+
+          const message = transportFailure?.message || getErrorMessage(error);
+          setViewState({ kind: "unavailable", message });
+          setTransportError(message);
+        } finally {
+          if (active && customerInitiated) setChecking(false);
         }
-        const body = decodeFeedbackHttpResponseOrThrow(response, payload);
-        await applyResponse(body);
+      })();
+      readInFlight = request;
+      void request.then(
+        () => {
+          if (readInFlight === request) readInFlight = null;
+        },
+        () => {
+          if (readInFlight === request) readInFlight = null;
+        }
+      );
+      return request;
+    }
+
+    checkAgainRef.current = () =>
+      fetchFeedback({
+        allowAutomaticRecovery: false,
+        resumeAutomaticPolling: true,
+        customerInitiated: true,
+      });
+
+    recoverRef.current = async () => {
+      if (readInFlight) await readInFlight;
+      if (!active || latestResponse?.retryable !== true) return;
+      clearPollTimer();
+      setRecovering(true);
+      setRecoveryError(null);
+      try {
+        const response = await requestRecovery();
+        if (!active) return;
+        pollBudget.current.reset();
+        await applyResponse(response, { allowAutomaticRecovery: false });
       } catch (error) {
         if (!active) return;
-        const transportFailure = toFeedbackTransportFailure(error);
-        if (transportFailure?.retryable) {
-          setViewState(
-            (current) =>
-              current ?? {
-                kind: "settling",
-                retryable: false,
-                delayed: false,
-                message: transportFailure.message,
-              }
-          );
-          setTransportError(transportFailure.message);
-          schedulePoll();
-          return;
-        }
-
-        const message = transportFailure?.message || getErrorMessage(error);
-        setViewState({ kind: "unavailable", message });
-        setTransportError(message);
+        setRecoveryError(getErrorMessage(error));
+        setPollingPhase("paused");
+      } finally {
+        if (active) setRecovering(false);
       }
-    }
+    };
 
     void fetchFeedback();
     return () => {
       active = false;
       controller.abort();
-      if (timer) clearTimeout(timer);
+      clearPollTimer();
+      checkAgainRef.current = async () => undefined;
+      recoverRef.current = async () => undefined;
     };
   }, [router, sessionId]);
 
-  const recover = async () => {
-    setRecovering(true);
-    setRecoveryError(null);
-    try {
-      const response = await requestFeedbackRecovery(sessionId);
-      setViewState(toFeedbackViewState(response));
-      window.location.reload();
-    } catch (error) {
-      setRecoveryError(getErrorMessage(error));
-    } finally {
-      setRecovering(false);
-    }
-  };
+  const checkAgain = () => checkAgainRef.current();
+  const recover = () => recoverRef.current();
 
   if (!viewState) {
     if (transportError) {
@@ -204,6 +289,15 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
       state={viewState}
       recovering={recovering}
       recoveryError={recoveryError || transportError}
+      checking={checking}
+      pollingPaused={pollingPhase === "paused"}
+      pausedMessage={
+        pollingPhase === "paused" && (recoveryError || transportError)
+          ? "We couldn’t check your feedback just now. Your interview is saved, and automatic checking is paused."
+          : null
+      }
+      sessionId={sessionId}
+      onCheckAgain={checkAgain}
       onRecover={recover}
     />
   );

@@ -30,12 +30,22 @@ export function FeedbackLifecycleStatus({
   state,
   recovering,
   recoveryError,
+  checking = false,
+  pollingPaused = false,
+  pausedMessage = null,
+  sessionId = "",
+  onCheckAgain = () => undefined,
   onRecover,
 }: {
   state: FeedbackNonCompletedState;
   recovering: boolean;
   recoveryError: string | null;
-  onRecover: () => void;
+  checking?: boolean;
+  pollingPaused?: boolean;
+  pausedMessage?: string | null;
+  sessionId?: string;
+  onCheckAgain?: () => void | Promise<void>;
+  onRecover: () => void | Promise<void>;
 }) {
   const retryAction = (label: string) => (
     <Button className="min-h-11" onClick={onRecover} disabled={recovering}>
@@ -47,6 +57,50 @@ export function FeedbackLifecycleStatus({
       {recovering ? "Trying again" : label}
     </Button>
   );
+
+  if (
+    pollingPaused &&
+    (state.kind === "settling" ||
+      state.kind === "pending" ||
+      state.kind === "processing")
+  ) {
+    return (
+      <FeedbackStatusPage
+        role="status"
+        aria-live="polite"
+        aria-busy="false"
+        tone="warning"
+        icon={<Clock3 className="h-8 w-8" aria-hidden="true" />}
+        title="Automatic checking paused"
+        description={
+          pausedMessage ||
+          "Your interview is saved. Automatic checking paused after several attempts; check again when you’re ready."
+        }
+        actions={
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            <Button
+              className="min-h-11"
+              onClick={onCheckAgain}
+              disabled={checking}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${
+                  checking
+                    ? "animate-spin motion-reduce:animate-none"
+                    : ""
+                }`}
+                aria-hidden="true"
+              />
+              {checking ? "Checking now" : "Check again"}
+            </Button>
+            <Button asChild className="min-h-11" variant="outline">
+              <Link href="/dashboard/history">View interview history</Link>
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
 
   if (state.kind === "pending" || state.kind === "processing") {
     const processing = state.kind === "processing";
@@ -130,8 +184,10 @@ export function FeedbackLifecycleStatus({
           state.message || "End the interview before opening its feedback."
         }
         actions={
-          <Button onClick={() => window.history.back()}>
-            Return to interview
+          <Button asChild>
+            <Link href={`/interview?sessionId=${encodeURIComponent(sessionId)}`}>
+              Return to interview
+            </Link>
           </Button>
         }
       />
