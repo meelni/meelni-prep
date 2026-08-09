@@ -174,7 +174,9 @@ export default async function InterviewTypePage({
       <main className="mx-auto max-w-5xl px-6 py-12">
         <MarketingArticleHeader
           className="border-border/30 mb-10 border-b pb-10"
-          eyebrow={<MarketingEyebrow icon={MessageSquare}>{label}</MarketingEyebrow>}
+          eyebrow={
+            <MarketingEyebrow icon={MessageSquare}>{label}</MarketingEyebrow>
+          }
           title={`${label} PM Interview Questions`}
           meta={
             <div className="space-y-5">
@@ -244,7 +246,11 @@ export default async function InterviewTypePage({
           title={`Practice a ${label} interview`}
           description="Start a mock interview with this round type preserved through sign-in and setup."
           action={
-            <PublicActivationButton href={practiceHref} size="lg" variant="glow">
+            <PublicActivationButton
+              href={practiceHref}
+              size="lg"
+              variant="glow"
+            >
               Start mock interview
               <ArrowRight className="ml-2 h-4 w-4" />
             </PublicActivationButton>

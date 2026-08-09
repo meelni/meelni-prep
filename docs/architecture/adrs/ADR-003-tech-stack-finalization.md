@@ -1,4 +1,5 @@
 ### ADR-003: Tech Stack Finalization
+
 - **Date**: 2025-11-05
 - **Updated**: 2025-11-05 (GPT-4o-mini decision)
 - **Decision**: Use Next.js 14+, Supabase (Postgres + Auth), Drizzle ORM, LiveKit Agents (with Deepgram ASR + Cartesia TTS + **GPT-4o-mini**), Hedra for avatars (post-MVP)
@@ -15,4 +16,3 @@
   - More control over AI stack, easier to optimize costs
   - Learning curve for LiveKit Agents framework (completed in Phase 0)
   - Model format: `"provider/model-name"` (e.g., `"openai/gpt-4o-mini"`)
-

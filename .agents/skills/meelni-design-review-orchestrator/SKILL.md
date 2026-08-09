@@ -39,16 +39,19 @@ Use:
 
 ```markdown
 ## Lens
+
 - Meelni surface:
 - External lens used:
 - Conflict resolution:
 
 ## Findings
+
 - P0/P1:
 - P2/P3:
 - Positive patterns:
 
 ## Actions
+
 - Repo changes:
 - Follow-up issues:
 - Validation:

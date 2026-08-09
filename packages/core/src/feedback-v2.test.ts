@@ -1957,7 +1957,9 @@ test("scopes negative targets to the local clause when evidence mixes positive a
   response.improvements[0].observation =
     "Mentions watch general usage after launch and not selected an outcome metric, which keeps the thinking broad.";
   response.improvements[0].transcriptRefs = ["writer-a:2"];
-  response.improvements[0].evidence = [{ turnRef: "writer-a:2", quote: source }];
+  response.improvements[0].evidence = [
+    { turnRef: "writer-a:2", quote: source },
+  ];
 
   const parsed = parseFeedbackV2(response, {
     transcript: [transcript[0], { ...transcript[1], text: source }],
@@ -1978,7 +1980,9 @@ test("scopes absence targets to the local clause when evidence mixes positive an
   response.improvements[0].observation =
     "Says they would brainstorm features for everyone instead of choosing a user segment, which leaves the decision about a focused user segment unresolved.";
   response.improvements[0].transcriptRefs = ["writer-a:2"];
-  response.improvements[0].evidence = [{ turnRef: "writer-a:2", quote: source }];
+  response.improvements[0].evidence = [
+    { turnRef: "writer-a:2", quote: source },
+  ];
 
   const parsed = parseFeedbackV2(response, {
     transcript: [transcript[0], { ...transcript[1], text: source }],

@@ -31,7 +31,8 @@ export interface InterviewRuntimeSettings {
 }
 
 export interface InterviewRuntimeConfig
-  extends InterviewClientPreferences, InterviewRuntimeSettings {}
+  extends InterviewClientPreferences,
+    InterviewRuntimeSettings {}
 
 export interface InterviewRoomQuestion {
   id: string;

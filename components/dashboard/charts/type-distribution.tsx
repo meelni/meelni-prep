@@ -93,7 +93,7 @@ export function TypeDistribution({ data, onTypeClick }: TypeDistributionProps) {
 
       <ChartContainer
         config={chartConfig}
-        className="mx-auto aspect-square max-h-chart-lg"
+        className="max-h-chart-lg mx-auto aspect-square"
       >
         <PieChart>
           <ChartTooltip

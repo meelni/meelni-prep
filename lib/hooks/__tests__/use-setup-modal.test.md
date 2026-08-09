@@ -5,6 +5,7 @@
 ### Test Case 1: localStorage Persistence ✓
 
 **Steps:**
+
 1. Render `SetupModal` in a temporary local-only harness
 2. Click "Open Setup Modal"
 3. Select "Product Sense" → Next
@@ -14,13 +15,15 @@
 7. Click "Open Setup Modal" again
 
 **Expected Result:**
+
 - Modal should remember "Product Sense" and "Mock Interview" selections
 - Speed should be 1.2x
 - Config should persist across page refreshes
 
 **Browser Console Test:**
+
 ```javascript
-localStorage.getItem('meelni:setup-modal:last-config')
+localStorage.getItem("meelni:setup-modal:last-config");
 // Should show: {"roundType":"product_sense","mode":"mock_interview","voiceSettings":{"voice":"...","speed":1.2,"emotion":"confident"}}
 ```
 
@@ -29,11 +32,13 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 2: Smart Defaults ✓
 
 **Steps:**
+
 1. Open the temporary local-only `SetupModal` harness
 2. Click "Open Setup Modal"
 3. Click "Use Smart Defaults" button (lightning bolt card)
 
 **Expected Result:**
+
 - Should immediately navigate to `/interview` with query params:
   - `roundType=product_sense`
   - `mode=mock_interview`
@@ -48,26 +53,32 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 3: Validation ✓
 
 **Steps:**
+
 1. Open the temporary local-only `SetupModal` harness
 2. Click "Open Setup Modal"
 3. Try clicking "Next" without selecting interview type
 
 **Expected Result:**
+
 - "Next" button should be disabled (not clickable)
 - Button should not have glow effect when disabled
 
 **Step 2 Test:**
+
 1. Select "Analytical Thinking" → Next
 2. Try clicking "Next" without selecting mode
 
 **Expected Result:**
+
 - "Next" button should be disabled again
 
 **Step 3 Test:**
+
 1. Select "Quick Practice" → Next
 2. Click "Next" without changing voice settings
 
 **Expected Result:**
+
 - "Next" button should be enabled (voice settings are optional)
 - Should navigate to interview page
 
@@ -76,15 +87,17 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 4: Config Reset ✓
 
 **Steps:**
+
 1. Open the temporary local-only `SetupModal` harness
 2. Configure a complete interview setup
 3. Click "Reset Config" button
 4. Open localStorage in browser console:
    ```javascript
-   localStorage.getItem('meelni:setup-modal:last-config')
+   localStorage.getItem("meelni:setup-modal:last-config");
    ```
 
 **Expected Result:**
+
 - Should return `null` (config cleared from localStorage)
 - Opening modal again should show empty selections
 
@@ -93,6 +106,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 5: Dashboard Integration ✓
 
 **Steps:**
+
 1. Navigate to http://localhost:3001/dashboard
 2. If first-time user (0 sessions):
    - Click "Start Your First Mock Interview" button
@@ -100,6 +114,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
    - Check sidebar for "Start Interview" button
 
 **Expected Result:**
+
 - Setup modal should open
 - Previous config should be loaded from localStorage
 - Completing setup should navigate to interview
@@ -109,6 +124,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ### Test Case 6: Voice Settings Update ✓
 
 **Steps:**
+
 1. Open the temporary local-only `SetupModal` harness
 2. Open setup modal
 3. Navigate to Step 3 (voice settings)
@@ -118,6 +134,7 @@ localStorage.getItem('meelni:setup-modal:last-config')
 7. Complete setup
 
 **Expected Result:**
+
 - Config in localStorage should reflect:
   ```json
   {
@@ -133,26 +150,32 @@ localStorage.getItem('meelni:setup-modal:last-config')
 ## Browser Console Testing Commands
 
 ### View Current Config
+
 ```javascript
-JSON.parse(localStorage.getItem('meelni:setup-modal:last-config'))
+JSON.parse(localStorage.getItem("meelni:setup-modal:last-config"));
 ```
 
 ### Clear Config
+
 ```javascript
-localStorage.removeItem('meelni:setup-modal:last-config')
+localStorage.removeItem("meelni:setup-modal:last-config");
 ```
 
 ### Set Test Config
+
 ```javascript
-localStorage.setItem('meelni:setup-modal:last-config', JSON.stringify({
-  roundType: 'strategy',
-  mode: 'learning',
-  voiceSettings: {
-    voice: '6ccbfb76-1fc6-48f7-b71d-91ac6298247b',
-    speed: 1.1,
-    emotion: 'friendly'
-  }
-}))
+localStorage.setItem(
+  "meelni:setup-modal:last-config",
+  JSON.stringify({
+    roundType: "strategy",
+    mode: "learning",
+    voiceSettings: {
+      voice: "6ccbfb76-1fc6-48f7-b71d-91ac6298247b",
+      speed: 1.1,
+      emotion: "friendly",
+    },
+  })
+);
 ```
 
 ---
@@ -174,15 +197,18 @@ localStorage.setItem('meelni:setup-modal:last-config', JSON.stringify({
 ## Implementation Notes
 
 **Files Created:**
+
 - `/lib/hooks/use-setup-modal.ts` (218 lines)
 
 **Files Modified:**
+
 - `/components/dashboard/setup-modal.tsx` (removed local state, using hook props)
 - `/app/dashboard/page.tsx` (integrated hook, added modal)
 - `/components/dashboard/first-time-user-experience.tsx` (added onStartInterview prop)
 - Temporary local-only `SetupModal` harness (updated to use the hook API)
 
 **Key Features:**
+
 1. **localStorage Key**: `'meelni:setup-modal:last-config'`
 2. **Smart Defaults**: Immediate navigation with optimal config
 3. **Validation**: Step-by-step validation with disabled buttons

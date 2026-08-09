@@ -3,7 +3,10 @@
  * Tests all 4 interview types with multiple selections to ensure proper mapping
  */
 
-import { getRandomRecentQuestion, getRandomQuestion } from "../../lib/db/questions";
+import {
+  getRandomRecentQuestion,
+  getRandomQuestion,
+} from "../../lib/db/questions";
 import { db } from "../../lib/db";
 import { interviewQuestion } from "../../lib/db/schema";
 import { sql } from "drizzle-orm";
@@ -25,15 +28,17 @@ async function testAllInterviewTypes() {
   const allTypes = await db
     .select({
       questionType: interviewQuestion.questionType,
-      count: sql<number>`count(*)::int`
+      count: sql<number>`count(*)::int`,
     })
     .from(interviewQuestion)
     .groupBy(interviewQuestion.questionType)
     .orderBy(interviewQuestion.questionType);
 
   console.log("Database Question Types:");
-  allTypes.forEach(t => {
-    console.log(`  ${t.questionType.padEnd(30, " ")} | ${t.count.toString().padStart(5, " ")} questions`);
+  allTypes.forEach((t) => {
+    console.log(
+      `  ${t.questionType.padEnd(30, " ")} | ${t.count.toString().padStart(5, " ")} questions`
+    );
   });
 
   console.log("\n" + "=".repeat(80));
@@ -41,23 +46,27 @@ async function testAllInterviewTypes() {
   console.log("─".repeat(80));
 
   const mappedTypes = Object.values(QUESTION_TYPE_MAP);
-  const dbTypes = allTypes.map(t => t.questionType);
+  const dbTypes = allTypes.map((t) => t.questionType);
 
   console.log("API Maps These Types:");
   Object.entries(QUESTION_TYPE_MAP).forEach(([key, value]) => {
-    const count = allTypes.find(t => t.questionType === value)?.count || 0;
+    const count = allTypes.find((t) => t.questionType === value)?.count || 0;
     const status = count > 0 ? "✅" : "❌";
-    console.log(`  ${status} ${key.padEnd(20, " ")} → ${value.padEnd(30, " ")} (${count} questions)`);
+    console.log(
+      `  ${status} ${key.padEnd(20, " ")} → ${value.padEnd(30, " ")} (${count} questions)`
+    );
   });
 
   console.log("\n⚠️  Types in Database NOT Mapped by API:");
-  const unmappedTypes = dbTypes.filter(t => !mappedTypes.includes(t));
+  const unmappedTypes = dbTypes.filter((t) => !mappedTypes.includes(t));
   if (unmappedTypes.length === 0) {
     console.log("  ✅ None - all database types are mapped!");
   } else {
-    unmappedTypes.forEach(type => {
-      const count = allTypes.find(t => t.questionType === type)?.count || 0;
-      console.log(`  ❌ ${type.padEnd(30, " ")} (${count} questions) - NOT ACCESSIBLE`);
+    unmappedTypes.forEach((type) => {
+      const count = allTypes.find((t) => t.questionType === type)?.count || 0;
+      console.log(
+        `  ❌ ${type.padEnd(30, " ")} (${count} questions) - NOT ACCESSIBLE`
+      );
     });
   }
 
@@ -101,10 +110,14 @@ async function testAllInterviewTypes() {
 
     console.log();
     if (wrongTypeCount > 0) {
-      console.log(`   ⚠️  WARNING: ${wrongTypeCount}/5 selections returned wrong type!`);
+      console.log(
+        `   ⚠️  WARNING: ${wrongTypeCount}/5 selections returned wrong type!`
+      );
       console.log(`   Wrong types returned: ${wrongTypes.join(", ")}`);
     } else {
-      console.log(`   ✅ SUCCESS: 5/5 selections returned correct type "${dbQuestionType}"`);
+      console.log(
+        `   ✅ SUCCESS: 5/5 selections returned correct type "${dbQuestionType}"`
+      );
     }
   }
 
@@ -114,28 +127,36 @@ async function testAllInterviewTypes() {
 
   // Suggest additional mappings for unmapped types
   if (unmappedTypes.length > 0) {
-    console.log("\n⚠️  UNMAPPED QUESTION TYPES - Consider adding these mappings:\n");
+    console.log(
+      "\n⚠️  UNMAPPED QUESTION TYPES - Consider adding these mappings:\n"
+    );
 
     const suggestions: Record<string, string> = {
       "Product design/strategy": "product_sense (alias)",
       "A/B Testing": "execution (alias for analytical)",
-      "Estimation": "execution (alias for analytical)",
+      Estimation: "execution (alias for analytical)",
       "Technical Strategy": "strategy (alias)",
       "Market Research": "execution (alias for analytical)",
-      "Pricing": "execution (alias for analytical)",
-      "Leadership": "behavioral (alias)",
-      "Prioritization": "execution (alias for analytical)",
+      Pricing: "execution (alias for analytical)",
+      Leadership: "behavioral (alias)",
+      Prioritization: "execution (alias for analytical)",
     };
 
-    unmappedTypes.forEach(type => {
-      const count = allTypes.find(t => t.questionType === type)?.count || 0;
+    unmappedTypes.forEach((type) => {
+      const count = allTypes.find((t) => t.questionType === type)?.count || 0;
       const suggestion = suggestions[type] || "??? (needs manual review)";
-      console.log(`   ${type.padEnd(30, " ")} (${count.toString().padStart(4, " ")} questions) → ${suggestion}`);
+      console.log(
+        `   ${type.padEnd(30, " ")} (${count.toString().padStart(4, " ")} questions) → ${suggestion}`
+      );
     });
 
     console.log("\n💡 RECOMMENDATION:");
-    console.log("   1. Update QUESTION_TYPE_MAP to support multiple database types per interview type");
-    console.log("   2. OR normalize database question types to match the 4 main categories");
+    console.log(
+      "   1. Update QUESTION_TYPE_MAP to support multiple database types per interview type"
+    );
+    console.log(
+      "   2. OR normalize database question types to match the 4 main categories"
+    );
     console.log("   3. OR add type aliases in the query function");
   } else {
     console.log("\n✅ All database question types are properly mapped!");

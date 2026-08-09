@@ -35,9 +35,11 @@ Use behavior-first requirements:
 
 ```markdown
 ### Requirement: Selected Question Practice
+
 The system SHALL start an interview using the selected question when the user begins from a question-bank page.
 
 #### Scenario: User starts from a question
+
 - GIVEN the user selected a Product Sense question
 - WHEN the session starts
 - THEN the room metadata includes that question

@@ -31,9 +31,11 @@ Meelni uses **Supabase Auth** for authentication, providing a secure, scalable a
 ### Authentication Methods
 
 Currently supported:
+
 - ✅ **Google OAuth** (primary method)
 
 Planned for future releases:
+
 - Email/password authentication
 - Magic link authentication
 - Additional OAuth providers (GitHub, LinkedIn)
@@ -180,7 +182,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key # server-side only
 
 ```typescript
 // lib/supabase/client.ts
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -234,13 +236,13 @@ export default function SignInPage() {
 
 ```typescript
 // app/auth/callback/route.ts
-import { createClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get('code');
-  const redirectTo = requestUrl.searchParams.get('redirectTo') || '/dashboard';
+  const code = requestUrl.searchParams.get("code");
+  const redirectTo = requestUrl.searchParams.get("redirectTo") || "/dashboard";
 
   if (code) {
     const supabase = await createClient();
@@ -249,8 +251,10 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      console.error('Auth callback error:', error);
-      return NextResponse.redirect(new URL('/auth/signin?error=auth_failed', request.url));
+      console.error("Auth callback error:", error);
+      return NextResponse.redirect(
+        new URL("/auth/signin?error=auth_failed", request.url)
+      );
     }
 
     // Successful authentication
@@ -258,7 +262,7 @@ export async function GET(request: NextRequest) {
   }
 
   // No code present, redirect to sign-in
-  return NextResponse.redirect(new URL('/auth/signin', request.url));
+  return NextResponse.redirect(new URL("/auth/signin", request.url));
 }
 ```
 
@@ -331,16 +335,16 @@ export function useAuth() {
 
 ```typescript
 // middleware.ts
-import { createClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes
-  const protectedRoutes = ['/dashboard', '/setup', '/interview'];
+  const protectedRoutes = ["/dashboard", "/setup", "/interview"];
 
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+  if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     const supabase = await createClient();
     const {
       data: { session },
@@ -348,8 +352,8 @@ export async function middleware(request: NextRequest) {
 
     if (!session) {
       // Not authenticated, redirect to sign-in
-      const redirectUrl = new URL('/auth/signin', request.url);
-      redirectUrl.searchParams.set('redirectTo', pathname);
+      const redirectUrl = new URL("/auth/signin", request.url);
+      redirectUrl.searchParams.set("redirectTo", pathname);
       return NextResponse.redirect(redirectUrl);
     }
   }
@@ -358,7 +362,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/setup/:path*', '/interview/:path*'],
+  matcher: ["/dashboard/:path*", "/setup/:path*", "/interview/:path*"],
 };
 ```
 
@@ -372,14 +376,14 @@ async function startInterview(roundType: string) {
   } = await supabase.auth.getSession();
 
   if (!session) {
-    throw new Error('Not authenticated');
+    throw new Error("Not authenticated");
   }
 
-  const response = await fetch('/api/session/start', {
-    method: 'POST',
+  const response = await fetch("/api/session/start", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ roundType }),
   });
@@ -399,8 +403,8 @@ async function startInterview(roundType: string) {
 
 ```typescript
 // Any API route that requires authentication
-import { createClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   // Verify authentication
@@ -411,15 +415,12 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // User is authenticated, proceed with request
   // user.id is available for database queries
-  console.log('Authenticated user:', user.id, user.email);
+  console.log("Authenticated user:", user.id, user.email);
 
   // ... rest of API logic
 }
@@ -445,12 +446,12 @@ Supabase JWT tokens contain:
 
 ### Token Lifecycle
 
-| Stage | Duration | Handled By |
-|-------|----------|------------|
-| **Access Token** | 1 hour | Supabase Client |
-| **Refresh Token** | 7 days | Supabase Client |
-| **Auto-refresh** | Before expiry | Supabase Client (automatic) |
-| **Manual refresh** | On demand | `supabase.auth.refreshSession()` |
+| Stage              | Duration      | Handled By                       |
+| ------------------ | ------------- | -------------------------------- |
+| **Access Token**   | 1 hour        | Supabase Client                  |
+| **Refresh Token**  | 7 days        | Supabase Client                  |
+| **Auto-refresh**   | Before expiry | Supabase Client (automatic)      |
+| **Manual refresh** | On demand     | `supabase.auth.refreshSession()` |
 
 ### Manual Token Refresh
 
@@ -459,7 +460,7 @@ Supabase JWT tokens contain:
 const { data, error } = await supabase.auth.refreshSession();
 
 if (error) {
-  console.error('Token refresh failed:', error);
+  console.error("Token refresh failed:", error);
   // Redirect to sign-in
 }
 
@@ -480,11 +481,13 @@ const newAccessToken = data.session?.access_token;
 ### 1. Environment Variables
 
 ✅ **DO**:
+
 - Store API keys in `.env.local` (not committed to git)
 - Use `NEXT_PUBLIC_` prefix only for public keys (e.g., `NEXT_PUBLIC_SUPABASE_URL`)
 - Keep `SUPABASE_SERVICE_ROLE_KEY` server-side only
 
 ❌ **DON'T**:
+
 - Commit `.env.local` to git
 - Expose service role key in client-side code
 - Hardcode API keys in source code
@@ -492,11 +495,13 @@ const newAccessToken = data.session?.access_token;
 ### 2. Token Handling
 
 ✅ **DO**:
+
 - Let Supabase client manage token lifecycle
 - Use HTTPS in production
 - Implement proper logout (clear all client state)
 
 ❌ **DON'T**:
+
 - Store tokens in sessionStorage or cookies manually
 - Send tokens in URL query parameters
 - Log tokens to console in production
@@ -504,22 +509,26 @@ const newAccessToken = data.session?.access_token;
 ### 3. API Route Protection
 
 ✅ **DO**:
+
 ```typescript
 // Always verify user on server-side
-const { data: { user } } = await supabase.auth.getUser();
+const {
+  data: { user },
+} = await supabase.auth.getUser();
 
 if (!user) {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 // Verify resource ownership
 const session = await getSessionById(sessionId);
 if (session.userId !== user.id) {
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 ```
 
 ❌ **DON'T**:
+
 ```typescript
 // Don't trust client-provided user IDs
 const { userId } = await req.json(); // ❌ Can be spoofed
@@ -543,6 +552,7 @@ USING (auth.uid() = user_id);
 ### 5. OAuth Scopes
 
 Current Google OAuth scopes:
+
 - `openid`
 - `email`
 - `profile`
@@ -560,6 +570,7 @@ Current Google OAuth scopes:
 **Problem**: API requests return 401 Unauthorized
 
 **Solutions**:
+
 - Check if user is signed in: `const { data: { session } } = await supabase.auth.getSession()`
 - Verify token is included in request: `Authorization: Bearer ${session.access_token}`
 - Check token hasn't expired (automatic refresh should handle this)
@@ -570,6 +581,7 @@ Current Google OAuth scopes:
 **Problem**: Sign-in redirects back to sign-in page repeatedly
 
 **Solutions**:
+
 - Check middleware configuration (ensure `/auth/signin` is not protected)
 - Verify OAuth callback route is working: `/auth/callback`
 - Check browser console for errors during auth flow
@@ -580,6 +592,7 @@ Current Google OAuth scopes:
 **Problem**: User signed in but `supabase.auth.getSession()` returns null
 
 **Solutions**:
+
 - Wait for auth state change listener to fire
 - Check if cookies are enabled in browser
 - Verify `NEXT_PUBLIC_SUPABASE_URL` matches Supabase project URL
@@ -590,6 +603,7 @@ Current Google OAuth scopes:
 **Problem**: Token refresh returns error
 
 **Solutions**:
+
 - Check refresh token is still valid (7-day expiry)
 - Verify Supabase project is active
 - Sign out and sign in again to get fresh tokens
@@ -600,6 +614,7 @@ Current Google OAuth scopes:
 **Problem**: Google redirects with error parameter
 
 **Solutions**:
+
 - Verify redirect URI in Google Cloud Console matches Supabase callback URL
 - Check Google OAuth credentials are correct in Supabase Dashboard
 - Ensure Google+ API is enabled in Google Cloud Console
@@ -611,28 +626,34 @@ Current Google OAuth scopes:
 // Add this to debug auth issues
 async function debugAuth() {
   // 1. Check session
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  console.log('Session:', session);
-  console.log('Session error:', sessionError);
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  console.log("Session:", session);
+  console.log("Session error:", sessionError);
 
   // 2. Check user
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  console.log('User:', user);
-  console.log('User error:', userError);
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  console.log("User:", user);
+  console.log("User error:", userError);
 
   // 3. Check environment variables
-  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-  console.log('Anon key exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log("Anon key exists:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
   // 4. Test token in API request
   if (session) {
-    const response = await fetch('/api/sessions', {
+    const response = await fetch("/api/sessions", {
       headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
     });
-    console.log('API test status:', response.status);
-    console.log('API test body:', await response.json());
+    console.log("API test status:", response.status);
+    console.log("API test body:", await response.json());
   }
 }
 ```

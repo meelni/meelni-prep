@@ -67,7 +67,7 @@ export function CompetencyBreakdown({
     >
       <ChartContainer
         config={chartConfig}
-        className="mx-auto aspect-square max-h-chart-lg"
+        className="max-h-chart-lg mx-auto aspect-square"
       >
         <RadarChart
           data={data}

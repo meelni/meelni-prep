@@ -1,4 +1,5 @@
 ### ADR-026: Email/Password Authentication Implementation
+
 - **Date**: 2025-11-10
 - **Decision**: Implement email/password authentication alongside existing Google OAuth
 - **Rationale**:
@@ -37,4 +38,3 @@
   - Supabase handles email delivery (need to configure SMTP for production)
   - Easy to add more OAuth providers later (GitHub, LinkedIn, etc.)
   - Backward compatible with existing Google OAuth users
-

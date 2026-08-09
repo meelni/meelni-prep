@@ -30,8 +30,10 @@ to the right owner.
 ## Tool Ownership
 
 - Prettier remains the source of truth for formatting, including Tailwind class
-  ordering. `format:check:quality` covers the quality/tooling surface; the
-  existing repo-wide `format:check` remains the cleanup backlog.
+  ordering. `format:check` validates the active repository-owned baseline;
+  `.prettierignore` excludes only generated artifacts owned by other tools and
+  immutable historical execution records. `format:check:quality` remains the
+  faster focused gate for the quality/tooling surface.
 - ESLint remains the source of truth for Next.js, React, and React Hooks rules.
 - Biome adds fast formatter/linter/import-organization checks for the tooling
   surface. Use `npm run quality:biome:fix` for safe automated fixes, and

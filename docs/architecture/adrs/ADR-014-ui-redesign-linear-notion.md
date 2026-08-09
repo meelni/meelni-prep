@@ -1,4 +1,5 @@
 ### ADR-014: UI Redesign with Linear/Notion Aesthetic
+
 - **Date**: 2025-11-05
 - **Decision**: Complete UI redesign with modern design system inspired by Linear and Notion
 - **Rationale**:
@@ -19,4 +20,3 @@
   - Consistent design tokens enable easier theming
   - Animation system provides smooth, natural interactions
   - Component library enables rapid development
-

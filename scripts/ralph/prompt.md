@@ -24,11 +24,13 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
    - Follow existing code patterns (see Codebase Patterns below)
 
 5. **Run quality checks:**
+
    ```bash
    npm run typecheck    # TypeScript strict mode
    npm run lint         # ESLint
    npm run build        # Production build (catches runtime issues)
    ```
+
    - ALL checks must pass before committing
 
 6. **Update documentation:**
@@ -36,6 +38,7 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
    - Only add general patterns, not story-specific details
 
 7. **Commit your changes:**
+
    ```bash
    git add -A
    git commit -m "feat: [STORY-ID] - [Story Title]"
@@ -46,13 +49,16 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
    - Add any notes in the `notes` field
 
 9. **Append to progress.txt:**
+
    ```markdown
    ## [Date] - [Story ID]: [Title]
+
    - What was implemented
    - Files changed: [list files]
    - **Learnings:**
      - Patterns discovered
      - Gotchas encountered
+
    ---
    ```
 
@@ -63,6 +69,7 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
 ## Meelni Tech Stack
 
 ### Frontend
+
 - **Framework**: Next.js 16 (App Router)
 - **React**: 19.2.0
 - **Styling**: Tailwind CSS v4
@@ -72,6 +79,7 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
 - **State**: React Context (auth), URL params (setup flow)
 
 ### Backend
+
 - **API Routes**: `/app/api/[route]/route.ts`
 - **Database**: Supabase PostgreSQL
 - **ORM**: Drizzle ORM (`/lib/db/`)
@@ -79,6 +87,7 @@ You are an autonomous coding agent working on Meelni, a real-time AI mock interv
 - **Validation**: Manual (Zod planned)
 
 ### Real-time
+
 - **WebRTC**: LiveKit Cloud
 - **Agents**: Python in `/agent/` directory
 
@@ -105,6 +114,7 @@ npm run db:check     # Validate schema
 ## Codebase Patterns (CRITICAL - Follow These)
 
 ### API Routes
+
 - Location: `/app/api/[name]/route.ts`
 - Always export named handlers: `GET`, `POST`, `PUT`, `DELETE`
 - Use `NextRequest` and `NextResponse`
@@ -112,10 +122,13 @@ npm run db:check     # Validate schema
   ```typescript
   import { createClient } from "@/lib/supabase/server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   ```
 
 ### Database Queries (Drizzle ORM)
+
 - Schema: `/lib/db/schema.ts`
 - Client: `/lib/db/index.ts`
 - Pattern:
@@ -128,17 +141,20 @@ npm run db:check     # Validate schema
   ```
 
 ### Components
+
 - Server components by default
 - Add `"use client"` only when using hooks, events, or browser APIs
 - UI components in `/components/ui/`
 - Use existing button variants: `primary`, `secondary`, `ghost`, `outline`
 
 ### Styling
+
 - Use Tailwind classes, not custom CSS
 - RGB color variables: `rgb(var(--primary) / 0.5)`
 - Animation: Use Framer Motion presets from `/lib/animations.ts`
 
 ### Error Handling
+
 - API routes: Return proper HTTP status codes with JSON body
 - Client: Use try/catch with meaningful error messages
 - Never expose internal errors to users
@@ -205,6 +221,7 @@ git commit -m "feat: US-001 - Add user preferences table"
 ```
 
 Then update `scripts/ralph/prd.json`:
+
 ```json
 {
   "id": "US-001",

@@ -29,7 +29,9 @@ async function testFullBehavioralFlow() {
 
   const dbQuestionType = QUESTION_TYPE_MAP[roundType];
   console.log("Step 1: API Question Type Mapping");
-  console.log(`  roundType="${roundType}" → dbQuestionType="${dbQuestionType}"`);
+  console.log(
+    `  roundType="${roundType}" → dbQuestionType="${dbQuestionType}"`
+  );
   console.log();
 
   // Step 2: Fetch question from database
@@ -37,7 +39,9 @@ async function testFullBehavioralFlow() {
 
   if (!question) {
     console.log("❌ PROBLEM: No question found!");
-    console.log(`   This means there are no "${dbQuestionType}" questions in the database.`);
+    console.log(
+      `   This means there are no "${dbQuestionType}" questions in the database.`
+    );
     process.exit(1);
   }
 
@@ -77,7 +81,9 @@ async function testFullBehavioralFlow() {
   console.log("Step 3: LiveKit Room Metadata");
   console.log(`  round_type: "${roomMetadata.round_type}"`);
   console.log(`  question.type: "${roomMetadata.question.type}"`);
-  console.log(`  question.text: "${roomMetadata.question.text.substring(0, 100)}..."`);
+  console.log(
+    `  question.text: "${roomMetadata.question.text.substring(0, 100)}..."`
+  );
   console.log();
 
   // Step 4: Check agent's interview type mapping
@@ -90,7 +96,9 @@ async function testFullBehavioralFlow() {
 
   const agentInterviewType = INTERVIEW_TYPE_MAP[roundType];
   console.log("Step 4: Agent Interview Type Mapping");
-  console.log(`  roundType="${roundType}" → interviewType="${agentInterviewType}"`);
+  console.log(
+    `  roundType="${roundType}" → interviewType="${agentInterviewType}"`
+  );
   console.log(`  Framework: STAR method for behavioral questions`);
   console.log();
 
@@ -106,9 +114,15 @@ async function testFullBehavioralFlow() {
     question.questionText.toLowerCase().includes("give an example") ||
     question.questionText.toLowerCase().includes("time when");
 
-  console.log(`  Question type is "Behavioral": ${isBehavioralQuestion ? "✅" : "❌"}`);
-  console.log(`  Agent uses behavioral framework: ${isBehavioralFramework ? "✅" : "❌"}`);
-  console.log(`  Question text looks behavioral: ${questionSeemsBehavioral ? "✅" : "⚠️  (might be edge case)"}`);
+  console.log(
+    `  Question type is "Behavioral": ${isBehavioralQuestion ? "✅" : "❌"}`
+  );
+  console.log(
+    `  Agent uses behavioral framework: ${isBehavioralFramework ? "✅" : "❌"}`
+  );
+  console.log(
+    `  Question text looks behavioral: ${questionSeemsBehavioral ? "✅" : "⚠️  (might be edge case)"}`
+  );
   console.log();
 
   if (!isBehavioralQuestion || !isBehavioralFramework) {
@@ -121,11 +135,17 @@ async function testFullBehavioralFlow() {
     }
   } else if (!questionSeemsBehavioral) {
     console.log("⚠️  DATA QUALITY ISSUE:");
-    console.log("   Question is labeled 'Behavioral' but text doesn't match expected format.");
-    console.log("   This could confuse users even though the system is technically correct.");
+    console.log(
+      "   Question is labeled 'Behavioral' but text doesn't match expected format."
+    );
+    console.log(
+      "   This could confuse users even though the system is technically correct."
+    );
     console.log();
     console.log("   Example of good behavioral question:");
-    console.log('   "Tell me about a time when you had to make a difficult trade-off decision..."');
+    console.log(
+      '   "Tell me about a time when you had to make a difficult trade-off decision..."'
+    );
     console.log();
     console.log("   This question:");
     console.log(`   "${question.questionText}"`);

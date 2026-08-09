@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type IntegrationIconTone = "info" | "success" | "primary" | "warning" | "danger";
+type IntegrationIconTone =
+  | "info"
+  | "success"
+  | "primary"
+  | "warning"
+  | "danger";
 
 const integrationIconToneClasses: Record<IntegrationIconTone, string> = {
   info: "bg-info/10 text-info",
@@ -30,7 +35,8 @@ const integrationIconToneClasses: Record<IntegrationIconTone, string> = {
 };
 
 const mockLineClass = "h-2 rounded-full bg-muted";
-const mockLineStrongClass = "h-2 rounded-full bg-foreground/40 dark:bg-foreground/70";
+const mockLineStrongClass =
+  "h-2 rounded-full bg-foreground/40 dark:bg-foreground/70";
 
 function IntegrationIconBadge({
   icon: Icon,
@@ -138,45 +144,45 @@ export function Card1() {
   };
 
   return (
-    <div className="p-0 h-full overflow-hidden border-b lg:border-b-0 lg:border-r">
+    <div className="h-full overflow-hidden border-b p-0 lg:border-r lg:border-b-0">
       <motion.div
         variants={containerVariants}
         initial="initial"
         whileHover="whileHover"
-        className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
+        className="flex h-full w-full cursor-pointer flex-col items-center justify-between gap-y-5"
       >
         <div className="flex h-full w-full items-center justify-center rounded-t-xl border-b">
           <div className="relative flex flex-col items-center justify-center gap-y-2 p-10">
             <motion.div
               variants={variant1}
-              className="z-[1] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="bg-background z-[1] flex h-full w-full items-center justify-between gap-x-2 rounded-md border p-5 px-2.5"
             >
               <IntegrationIconBadge icon={SearchIcon} tone="info" />
               <div className="flex flex-col gap-y-2">
                 <div className={`${mockLineStrongClass} w-32`}></div>
                 <div className={`${mockLineClass} w-48`}></div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-muted-foreground text-xs">
                   Google Search API integration
                 </div>
               </div>
             </motion.div>
             <motion.div
               variants={variant2}
-              className="z-[2] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="bg-background z-[2] flex h-full w-full items-center justify-between gap-x-2 rounded-md border p-5 px-2.5"
             >
               <IntegrationIconBadge icon={DatabaseIcon} tone="success" />
               <div className="flex flex-col gap-y-2">
                 <div className={`${mockLineStrongClass} w-32`}></div>
                 <div className={`${mockLineClass} w-48`}></div>
                 <div className={`${mockLineClass} w-20`}></div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-muted-foreground text-xs">
                   PostgreSQL database connection
                 </div>
               </div>
             </motion.div>
             <motion.div
               variants={variant3}
-              className="absolute bottom-0 z-[3] m-auto flex h-fit w-fit items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="bg-background absolute bottom-0 z-[3] m-auto flex h-fit w-fit items-center justify-between gap-x-2 rounded-md border p-5 px-2.5"
             >
               <IntegrationIconBadge icon={MessageSquareIcon} tone="primary" />
               <div className="flex flex-col gap-y-2">
@@ -184,18 +190,18 @@ export function Card1() {
                 <div className={`${mockLineClass} w-48`}></div>
                 <div className={`${mockLineClass} w-20`}></div>
                 <div className={`${mockLineClass} w-48`}></div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-muted-foreground text-xs">
                   OpenAI GPT-3.5 API integration
                 </div>
               </div>
             </motion.div>
           </div>
         </div>
-        <div className="flex flex-col gap-y-1 px-5 pb-4 items-start w-full">
-          <h2 className="font-semibold tracking-tight text-lg">
+        <div className="flex w-full flex-col items-start gap-y-1 px-5 pb-4">
+          <h2 className="text-lg font-semibold tracking-tight">
             Tool Integration
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Seamlessly integrate external APIs and tools into agent workflows.
           </p>
         </div>
@@ -248,19 +254,19 @@ const Card2 = () => {
     },
   ];
   return (
-    <div className="p-0 h-full overflow-hidden border-b lg:border-b-0 lg:border-r">
+    <div className="h-full overflow-hidden border-b p-0 lg:border-r lg:border-b-0">
       <motion.div
         variants={containerVariants}
         initial="initial"
         whileHover="whileHover"
-        className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
+        className="flex h-full w-full cursor-pointer flex-col items-center justify-between gap-y-5"
       >
-        <div className="border-b items-center justify-center overflow-hidden bg-transparent rounded-t-xl h-4/5 w-full flex ">
-          <motion.div className="p-5 rounded-t-md cursor-pointer overflow-hidden h-[270px] flex flex-col gap-y-3.5 w-full">
+        <div className="flex h-4/5 w-full items-center justify-center overflow-hidden rounded-t-xl border-b bg-transparent">
+          <motion.div className="flex h-[270px] w-full cursor-pointer flex-col gap-y-3.5 overflow-hidden rounded-t-md p-5">
             {logs.map((log, index) => (
               <motion.div
                 key={log.id}
-                className="p-4 bg-transparent backdrop-blur-md shadow-sm shadow-border/50 border border-border origin-right w-full rounded-md flex items-center"
+                className="shadow-border/50 border-border flex w-full origin-right items-center rounded-md border bg-transparent p-4 shadow-sm backdrop-blur-md"
                 custom={index}
                 variants={{
                   initial: (index: number) => ({
@@ -303,11 +309,11 @@ const Card2 = () => {
             ))}
           </motion.div>
         </div>
-        <div className="flex flex-col gap-y-1 px-5 pb-4 items-start w-full">
-          <h2 className="font-semibold tracking-tight text-lg">
+        <div className="flex w-full flex-col items-start gap-y-1 px-5 pb-4">
+          <h2 className="text-lg font-semibold tracking-tight">
             Monitor agent activity
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Track and analyze your AI agent performance with detailed activity
             logs.
           </p>
@@ -319,11 +325,11 @@ const Card2 = () => {
 
 const Card3 = () => {
   return (
-    <div className="p-0 min-h-[500px] lg:min-h-fit overflow-hidden border-b lg:border-b-0 -z-0">
-      <div className="relative flex flex-col gap-y-5 items-center justify-between h-full w-full">
-        <div className="border-b items-center justify-center overflow-hidden rounded-t-xl h-4/5 w-full flex">
-          <div className="relative flex items-center justify-center h-full w-full">
-            <div className="absolute top-0 right-0 bottom-0 left-0 bg-[radial-gradient(circle,color-mix(in oklab, var(--accent) 30%, transparent)_0%,transparent_100%)]"></div>
+    <div className="-z-0 min-h-[500px] overflow-hidden border-b p-0 lg:min-h-fit lg:border-b-0">
+      <div className="relative flex h-full w-full flex-col items-center justify-between gap-y-5">
+        <div className="flex h-4/5 w-full items-center justify-center overflow-hidden rounded-t-xl border-b">
+          <div className="relative flex h-full w-full items-center justify-center">
+            <div className="bg-[radial-gradient(circle,color-mix(in oklab, var(--accent) 30%, transparent)_0%,transparent_100%)] absolute top-0 right-0 bottom-0 left-0"></div>
             <OrbitingCircles duration={15} delay={0} radius={40} reverse>
               <IntegrationIconBadge icon={HeadsetIcon} tone="info" />
             </OrbitingCircles>
@@ -341,11 +347,11 @@ const Card3 = () => {
             </OrbitingCircles>
           </div>
         </div>
-        <div className="flex flex-col gap-y-1 px-5 pb-4 items-start w-full">
-          <h2 className="font-semibold tracking-tight text-lg">
+        <div className="flex w-full flex-col items-start gap-y-1 px-5 pb-4">
+          <h2 className="text-lg font-semibold tracking-tight">
             Build once, run anywhere
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Create AI agents that work seamlessly across different platforms.
           </p>
         </div>
@@ -357,7 +363,7 @@ const Card3 = () => {
 export function UseCases() {
   return (
     <Section id="use-cases" title="Use Cases">
-      <div className="grid lg:grid-cols-3 h-full border border-b-0">
+      <div className="grid h-full border border-b-0 lg:grid-cols-3">
         <Card1 />
         <Card2 />
         <Card3 />

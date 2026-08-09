@@ -100,9 +100,11 @@ Use:
 
 ```markdown
 ## Findings
+
 - [severity] file:line - issue, impact, suggested direction.
 
 ## Candidates
+
 - Candidate:
 - Files:
 - Current friction:
@@ -113,6 +115,7 @@ Use:
 - Confidence:
 
 ## Recommendation
+
 - First move:
 - Validation:
 ```

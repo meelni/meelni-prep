@@ -68,10 +68,7 @@ export function GlowingBarVerticalChart() {
         <div className="flex flex-row justify-between">
           <CardTitle>
             Vertical Bar Chart
-            <Badge
-              variant="destructive"
-              className="ml-2"
-            >
+            <Badge variant="destructive" className="ml-2">
               <TrendingDown className="h-4 w-4" />
               <span>-5.2%</span>
             </Badge>
@@ -82,7 +79,7 @@ export function GlowingBarVerticalChart() {
               setActiveProperty(value);
             }}
           >
-            <SelectTrigger className="text-xs !h-6 !px-1.5">
+            <SelectTrigger className="!h-6 !px-1.5 text-xs">
               <SelectValue placeholder="Select a property" />
             </SelectTrigger>
             <SelectContent align="end">

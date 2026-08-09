@@ -13,7 +13,7 @@ export {
   type FeedbackDimension,
   type FeedbackItem,
   type RubricScores,
-  type RoundType
+  type RoundType,
 } from "@meelni/core";
 
 /**

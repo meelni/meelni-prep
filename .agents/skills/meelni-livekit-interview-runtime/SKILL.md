@@ -101,21 +101,25 @@ Use:
 
 ```markdown
 ## Runtime Impact
+
 - Web/session:
 - LiveKit room/agent:
 - Transcript/feedback:
 
 ## Failure Modes
+
 - Dispatch/config:
 - Turn-taking:
 - Persistence:
 - Operations:
 
 ## Validation
+
 - Automated:
 - Manual:
 - Skipped:
 
 ## Risks
+
 - ...
 ```

@@ -17,5 +17,5 @@ export {
   type InterviewConfig,
   type MinimalInterviewConfig,
   type QuestionPreference,
-  type RoundType
+  type RoundType,
 } from "@meelni/core";

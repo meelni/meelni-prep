@@ -1,4 +1,5 @@
 ### ADR-019: Explicit Agent Dispatch Pattern
+
 - **Date**: 2025-11-05
 - **Decision**: Use LiveKit's explicit agent dispatch instead of automatic dispatch
 - **Rationale**:
@@ -7,6 +8,7 @@
   - **Room Filtering**: Agents can filter by room name patterns
   - **Dispatch Metadata**: Pass context to agents via metadata
 - **Implementation**:
+
   ```python
   # Agent Configuration (CRITICAL)
   cli.run_app(
@@ -17,13 +19,19 @@
       ),
   )
   ```
+
   ```typescript
   // Backend Dispatch (Next.js API)
   import { AgentDispatchClient } from "livekit-server-sdk";
 
-  const dispatchClient = new AgentDispatchClient(livekit_url, apiKey, apiSecret);
+  const dispatchClient = new AgentDispatchClient(
+    livekit_url,
+    apiKey,
+    apiSecret
+  );
   const dispatch = await dispatchClient.createDispatch(roomName, agentId);
   ```
+
 - **Key Discovery**:
   - Setting `agent_name` in WorkerOptions **disables automatic dispatch**
   - Agent will ONLY join rooms when explicitly dispatched via AgentDispatchClient
@@ -34,4 +42,3 @@
   - Better isolation: demo agent never joins interview rooms
   - Easier debugging: dispatch logs show which agent was assigned
   - Supports multi-tenant scenarios (assign agents by customer/use-case)
-

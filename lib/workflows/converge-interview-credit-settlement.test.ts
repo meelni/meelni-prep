@@ -117,7 +117,10 @@ test("provider failure after usable evidence refunds exactly once", async () => 
     Array.from({ length: 10 }, () => fixture.converge())
   );
 
-  assert.equal(results.every((result) => result.disposition === "refunded"), true);
+  assert.equal(
+    results.every((result) => result.disposition === "refunded"),
+    true
+  );
   assert.equal(fixture.reservationStatus, "refunded");
   assert.equal(fixture.terminalWrites, 2);
 });
@@ -322,7 +325,9 @@ function createFixture(
           },
           async recordPolicySettlement(input) {
             if (session.creditSettledAt) {
-              throw new Error("interview_credit_settlement_evidence_write_failed");
+              throw new Error(
+                "interview_credit_settlement_evidence_write_failed"
+              );
             }
             session.creditPolicyVersion = input.policyVersion;
             session.creditSettlementAction = input.action;
