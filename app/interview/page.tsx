@@ -20,7 +20,7 @@ import { InterviewRoomSurface } from "./components/interview-room-surface";
 import { useLocalParticipant } from "@livekit/components-react";
 import { RoomAudioRenderer } from "@livekit/components-react";
 import { useWebVitals } from "@/lib/analytics/use-web-vitals";
-import { Loader2, WifiOff } from "lucide-react";
+import { Loader2, RefreshCw, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AppSurface,
@@ -35,10 +35,12 @@ import { analytics } from "@/lib/analytics/analytics-service";
 import {
   getCanonicalInterviewHref,
   getCredentialRetryDelayMs,
+  getInterviewRetryDelayMs,
   isInterviewConversationReady,
-  isInterviewRoomCredentialAuthorizationCurrent,
+  classifyInterviewSessionBootstrapResponse,
   parseInterviewRoomCredentials,
   shouldDiscardInterviewRoomCredentials,
+  waitForInterviewRecoveryDelay,
   type InterviewConnectionStatus,
   type InterviewRoomCredentials,
 } from "@/components/interview/session-recovery";
@@ -111,7 +113,18 @@ type RoomCredentialFailure = {
 
 type RoomCredentialResult =
   | { ok: true; credentials: InterviewRoomCredentials }
-  | RoomCredentialFailure;
+  | RoomCredentialFailure
+  | { ok: false; aborted: true };
+
+type SessionBootstrapResult =
+  | { disposition: "ready"; payload: unknown }
+  | {
+      disposition: "terminal";
+      status: number;
+      message?: string;
+    }
+  | { disposition: "retryable_exhausted" }
+  | { disposition: "aborted" };
 
 interface EndReconciliationState {
   ownerId: string;
@@ -157,6 +170,9 @@ export function InterviewPageContent() {
     useState<InterviewConnectionStatus>("connecting");
   const [recoveringConnection, setRecoveringConnection] = useState(false);
   const [disconnectTimedOut, setDisconnectTimedOut] = useState(false);
+  const [bootstrapRetryAvailable, setBootstrapRetryAvailable] = useState(false);
+  const [credentialRetryAvailable, setCredentialRetryAvailable] =
+    useState(false);
   const [credentialGeneration, setCredentialGeneration] = useState(0);
   const [connectionOwnerId, setConnectionOwnerId] = useState<string | null>(
     null
@@ -170,8 +186,9 @@ export function InterviewPageContent() {
   const credentialRequestInFlightRef = useRef(false);
   const lastCredentialRequestAtRef = useRef(0);
   const recoveredStatusTimerRef = useRef<number | undefined>(undefined);
-  const credentialRetryTimerRef = useRef<number | undefined>(undefined);
   const refreshRoomCredentialsRef = useRef<() => void>(() => undefined);
+  const bootstrapControllerRef = useRef<AbortController | null>(null);
+  const credentialControllerRef = useRef<AbortController | null>(null);
   const transcriptRef = useRef<TranscriptTurn[]>([]);
   const transcriptHydrationKeyRef = useRef<string | null>(null);
   const transcriptHydrationInFlightRef = useRef<{
@@ -192,6 +209,17 @@ export function InterviewPageContent() {
   const hasCurrentConnectionOwner =
     connectionOwnerId !== null && connectionOwnerId === ownerIdRef.current;
 
+  const abortBootstrapWork = useCallback((reason: string) => {
+    bootstrapControllerRef.current?.abort(reason);
+    bootstrapControllerRef.current = null;
+  }, []);
+
+  const abortCredentialWork = useCallback((reason: string) => {
+    credentialControllerRef.current?.abort(reason);
+    credentialControllerRef.current = null;
+    credentialRequestInFlightRef.current = false;
+  }, []);
+
   useEffect(() => {
     const nextOwnerId = user?.id ?? null;
     const previousOwnerId = observedOwnerIdRef.current;
@@ -204,11 +232,8 @@ export function InterviewPageContent() {
       window.clearTimeout(recoveredStatusTimerRef.current);
       recoveredStatusTimerRef.current = undefined;
     }
-    if (credentialRetryTimerRef.current !== undefined) {
-      window.clearTimeout(credentialRetryTimerRef.current);
-      credentialRetryTimerRef.current = undefined;
-    }
-    credentialRequestInFlightRef.current = false;
+    abortBootstrapWork("interview_owner_changed");
+    abortCredentialWork("interview_owner_changed");
     lastCredentialRequestAtRef.current = 0;
     initializedRef.current = false;
     ownerTransitionInProgressRef.current = true;
@@ -231,6 +256,8 @@ export function InterviewPageContent() {
     setConnectionStatus("connecting");
     setRecoveringConnection(false);
     setDisconnectTimedOut(false);
+    setBootstrapRetryAvailable(false);
+    setCredentialRetryAvailable(false);
     setCredentialGeneration(0);
     setTranscriptHydrationGeneration(0);
     transcriptHydrationKeyRef.current = null;
@@ -246,7 +273,7 @@ export function InterviewPageContent() {
     router.replace(
       nextOwnerId ? "/dashboard" : "/auth/signin?redirectTo=/interview"
     );
-  }, [router, user?.id]);
+  }, [abortBootstrapWork, abortCredentialWork, router, user?.id]);
 
   // Invalidate queries when component unmounts (user leaves interview)
   useEffect(() => {
@@ -254,36 +281,62 @@ export function InterviewPageContent() {
       if (recoveredStatusTimerRef.current !== undefined) {
         window.clearTimeout(recoveredStatusTimerRef.current);
       }
-      if (credentialRetryTimerRef.current !== undefined) {
-        window.clearTimeout(credentialRetryTimerRef.current);
-      }
+      abortBootstrapWork("interview_page_unmounted");
+      abortCredentialWork("interview_page_unmounted");
       console.log("Interview page unmounting, invalidating sessions queries");
       queryClient.invalidateQueries({ queryKey: sessionKeys.lists() });
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
     };
-  }, [queryClient]);
+  }, [abortBootstrapWork, abortCredentialWork, queryClient]);
 
   const fetchSessionDetails = useCallback(async () => {
     if (!sessionId || !user) return;
     const requestOwnerId = user.id;
+    abortBootstrapWork("interview_bootstrap_superseded");
+    const bootstrapController = new AbortController();
+    bootstrapControllerRef.current = bootstrapController;
 
     try {
       setLoading(true);
       setError(null);
-      const response = await fetchWithDeadline(
-        `/api/session/${sessionId}`,
-        { cache: "no-store" },
-        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      setBootstrapRetryAvailable(false);
+      const bootstrap = await requestInterviewSessionWithRetry(
+        sessionId,
+        bootstrapController.signal
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch session details");
+      if (
+        bootstrap.disposition === "aborted" ||
+        bootstrapController.signal.aborted ||
+        ownerIdRef.current !== requestOwnerId
+      ) {
+        return;
       }
-
-      const { session: sessionData } = (await response.json()) as {
-        session: PersistedInterviewSession;
-      };
-      if (ownerIdRef.current !== requestOwnerId) return;
+      if (bootstrap.disposition === "retryable_exhausted") {
+        setBootstrapRetryAvailable(true);
+        setLoading(false);
+        return;
+      }
+      if (bootstrap.disposition === "terminal") {
+        if (bootstrap.status === 401) {
+          router.replace("/auth/signin?redirectTo=/interview");
+          return;
+        }
+        if (bootstrap.status === 403 || bootstrap.status === 404) {
+          router.replace("/dashboard");
+          return;
+        }
+        setError(
+          bootstrap.message ||
+            "This interview could not be opened safely. Please return to the dashboard."
+        );
+        setLoading(false);
+        return;
+      }
+      if (!isRecord(bootstrap.payload) || !bootstrap.payload.session) {
+        throw new Error("The interview session response was invalid.");
+      }
+      const sessionData = bootstrap.payload
+        .session as unknown as PersistedInterviewSession;
       const normalizedSession = normalizePersistedSession(sessionData);
 
       if (
@@ -310,20 +363,42 @@ export function InterviewPageContent() {
       if (initialCredentials) {
         setToken(initialCredentials.token);
         setUrl(initialCredentials.url);
+        setCredentialRetryAvailable(false);
         setLoading(false);
         return;
       }
 
+      abortCredentialWork("interview_credentials_superseded");
+      const credentialController = new AbortController();
+      credentialControllerRef.current = credentialController;
+      credentialRequestInFlightRef.current = true;
       const credentialResult = await requestInterviewRoomCredentialsWithRetry(
         sessionId,
-        normalizedSession.livekit_room_name
+        normalizedSession.livekit_room_name,
+        credentialController.signal
       );
+      if (credentialControllerRef.current === credentialController) {
+        credentialControllerRef.current = null;
+        credentialRequestInFlightRef.current = false;
+      }
       if (ownerIdRef.current !== requestOwnerId) return;
       if (endIntentRef.current) return;
+      if ("aborted" in credentialResult) return;
       if (!credentialResult.ok) {
         if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
           setToken("");
           setUrl("");
+          if (credentialResult.status === 401) {
+            router.replace("/auth/signin?redirectTo=/interview");
+            return;
+          }
+          if (
+            credentialResult.status === 403 ||
+            credentialResult.status === 404
+          ) {
+            router.replace("/dashboard");
+            return;
+          }
           setError(
             credentialResult.message ||
               "This interview could not be opened safely. Please return to the dashboard and try again."
@@ -334,12 +409,8 @@ export function InterviewPageContent() {
         if (credentialResult.retryAfterMs !== null) {
           setConnectionStatus("disconnected");
           setRecoveringConnection(true);
+          setCredentialRetryAvailable(true);
           setLoading(false);
-          credentialRetryTimerRef.current = window.setTimeout(() => {
-            credentialRetryTimerRef.current = undefined;
-            lastCredentialRequestAtRef.current = 0;
-            refreshRoomCredentialsRef.current();
-          }, credentialResult.retryAfterMs);
           return;
         }
         throw new Error(
@@ -350,17 +421,27 @@ export function InterviewPageContent() {
 
       setToken(credentialResult.credentials.token);
       setUrl(credentialResult.credentials.url);
+      setCredentialRetryAvailable(false);
       setLoading(false);
     } catch (err) {
-      if (ownerIdRef.current !== requestOwnerId) return;
+      if (
+        bootstrapController.signal.aborted ||
+        ownerIdRef.current !== requestOwnerId
+      ) {
+        return;
+      }
       console.error("[Interview] session_fetch_failed", {
         code: "interview_session_fetch_failed",
         ...toSafeErrorLog(err),
       });
       setError(err instanceof Error ? err.message : "Failed to load interview");
       setLoading(false);
+    } finally {
+      if (bootstrapControllerRef.current === bootstrapController) {
+        bootstrapControllerRef.current = null;
+      }
     }
-  }, [router, sessionId, user]);
+  }, [abortBootstrapWork, abortCredentialWork, router, sessionId, user]);
 
   useEffect(() => {
     // Skip if already initialized
@@ -659,13 +740,21 @@ export function InterviewPageContent() {
 
     credentialRequestInFlightRef.current = true;
     lastCredentialRequestAtRef.current = Date.now();
+    setCredentialRetryAvailable(false);
+    const credentialController = new AbortController();
+    credentialControllerRef.current = credentialController;
     const result = await requestInterviewRoomCredentialsWithRetry(
       session.id,
-      session.livekit_room_name
+      session.livekit_room_name,
+      credentialController.signal
     );
-    credentialRequestInFlightRef.current = false;
+    if (credentialControllerRef.current === credentialController) {
+      credentialControllerRef.current = null;
+      credentialRequestInFlightRef.current = false;
+    }
 
     if (
+      "aborted" in result ||
       deadlineReachedRef.current ||
       endIntentRef.current ||
       ownerIdRef.current !== requestOwnerId ||
@@ -675,9 +764,9 @@ export function InterviewPageContent() {
     }
 
     if (result.ok) {
-      credentialRetryTimerRef.current = undefined;
       setToken(result.credentials.token);
       setUrl(result.credentials.url);
+      setCredentialRetryAvailable(false);
       setCredentialGeneration((generation) => generation + 1);
       return;
     }
@@ -689,6 +778,14 @@ export function InterviewPageContent() {
     if (shouldDiscardInterviewRoomCredentials(result.status)) {
       setToken("");
       setUrl("");
+      if (result.status === 401) {
+        router.replace("/auth/signin?redirectTo=/interview");
+        return;
+      }
+      if (result.status === 403 || result.status === 404) {
+        router.replace("/dashboard");
+        return;
+      }
       setDisconnectTimedOut(true);
       setRecoveringConnection(false);
       setShowEndModal(false);
@@ -697,11 +794,7 @@ export function InterviewPageContent() {
     }
 
     if (result.retryAfterMs !== null) {
-      credentialRetryTimerRef.current = window.setTimeout(() => {
-        credentialRetryTimerRef.current = undefined;
-        lastCredentialRequestAtRef.current = 0;
-        refreshRoomCredentialsRef.current();
-      }, result.retryAfterMs);
+      setCredentialRetryAvailable(true);
       return;
     }
 
@@ -709,7 +802,14 @@ export function InterviewPageContent() {
       result.message ||
         "We couldn't restore this interview. Please return to the dashboard."
     );
-  }, [connectionOwnerId, disconnectTimedOut, session]);
+  }, [connectionOwnerId, disconnectTimedOut, router, session]);
+
+  const retryRoomCredentials = useCallback(() => {
+    abortCredentialWork("interview_credentials_manual_retry");
+    lastCredentialRequestAtRef.current = 0;
+    setCredentialRetryAvailable(false);
+    void refreshRoomCredentials();
+  }, [abortCredentialWork, refreshRoomCredentials]);
 
   useEffect(() => {
     refreshRoomCredentialsRef.current = () => {
@@ -732,7 +832,11 @@ export function InterviewPageContent() {
         setRecoveringConnection(true);
       }
 
-      if (state === "delayed" || state === "syncing") {
+      if (
+        state === "transport_delayed" ||
+        state === "delayed" ||
+        state === "syncing"
+      ) {
         setRecoveringConnection(false);
       }
 
@@ -741,18 +845,12 @@ export function InterviewPageContent() {
       }
 
       if (state === "connected" || state === "syncing") {
-        if (credentialRetryTimerRef.current !== undefined) {
-          window.clearTimeout(credentialRetryTimerRef.current);
-          credentialRetryTimerRef.current = undefined;
-        }
+        setCredentialRetryAvailable(false);
         setRecoveringConnection(false);
       }
 
       if (state === "recovered") {
-        if (credentialRetryTimerRef.current !== undefined) {
-          window.clearTimeout(credentialRetryTimerRef.current);
-          credentialRetryTimerRef.current = undefined;
-        }
+        setCredentialRetryAvailable(false);
         setRecoveringConnection(false);
         setTranscriptHydrationGeneration((generation) => generation + 1);
         recoveredStatusTimerRef.current = window.setTimeout(() => {
@@ -770,6 +868,8 @@ export function InterviewPageContent() {
     }
     if (deadlineReachedRef.current) return;
     deadlineReachedRef.current = true;
+    abortBootstrapWork("interview_deadline_reached");
+    abortCredentialWork("interview_deadline_reached");
     setDeadlineReached(true);
     setShowEndModal(false);
     setEndSessionError(null);
@@ -778,7 +878,13 @@ export function InterviewPageContent() {
       session_id: activeSessionId,
       interview_type: session?.config?.roundType,
     });
-  }, [activeSessionId, connectionOwnerId, session?.config?.roundType]);
+  }, [
+    abortBootstrapWork,
+    abortCredentialWork,
+    activeSessionId,
+    connectionOwnerId,
+    session?.config?.roundType,
+  ]);
 
   // The client only reflects the deadline. The server workflow owns completion
   // and room termination, including when this tab is hidden or killed.
@@ -923,6 +1029,8 @@ export function InterviewPageContent() {
     // immediately; the server owns bounded runtime settlement and durable
     // finalization from this point forward.
     endIntentRef.current = true;
+    abortBootstrapWork("interview_end_requested");
+    abortCredentialWork("interview_end_requested");
     setIsMuted(true);
     setIsEndingSession(true);
     setEndSessionError(null);
@@ -1050,6 +1158,16 @@ export function InterviewPageContent() {
     return <EndReconciliationOverlay />;
   }
 
+  if (bootstrapRetryAvailable) {
+    return (
+      <ConnectionRecoveryOverlay
+        status="bootstrap_failed"
+        onRetryConnection={() => void fetchSessionDetails()}
+        onBackToDashboard={() => router.push("/dashboard")}
+      />
+    );
+  }
+
   if (error) {
     return (
       <div className="from-background via-background to-muted/20 flex min-h-screen items-center justify-center bg-gradient-to-b">
@@ -1088,6 +1206,9 @@ export function InterviewPageContent() {
         <ConnectionRecoveryOverlay
           status="disconnected"
           onEndSession={openEndSessionConfirmation}
+          onRetryConnection={
+            credentialRetryAvailable ? retryRoomCredentials : undefined
+          }
         />
         {endSessionModal}
       </>
@@ -1164,6 +1285,9 @@ export function InterviewPageContent() {
         <ConnectionRecoveryOverlay
           status={connectionStatus}
           onEndSession={openEndSessionConfirmation}
+          onRetryConnection={
+            credentialRetryAvailable ? retryRoomCredentials : undefined
+          }
         />
       )}
     </LiveKitRoomWrapper>
@@ -1304,17 +1428,22 @@ export function EndReconciliationOverlay() {
 function ConnectionRecoveryOverlay({
   status,
   onEndSession,
+  onRetryConnection,
+  onBackToDashboard,
 }: {
-  status: InterviewConnectionStatus | "timed_out";
+  status: InterviewConnectionStatus | "timed_out" | "bootstrap_failed";
   onEndSession?: () => void;
+  onRetryConnection?: () => void;
+  onBackToDashboard?: () => void;
 }) {
   const timedOut = status === "timed_out";
+  const bootstrapFailed = status === "bootstrap_failed";
   const connecting = status === "connecting";
   return (
     <div
       className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-      role="status"
-      aria-live={timedOut ? "assertive" : "polite"}
+      role={bootstrapFailed ? "alert" : "status"}
+      aria-live={timedOut || bootstrapFailed ? "assertive" : "polite"}
     >
       <AppSurface
         variant="panel"
@@ -1323,32 +1452,77 @@ function ConnectionRecoveryOverlay({
       >
         {timedOut ? (
           <WifiOff className="text-muted-foreground mx-auto mb-4 h-8 w-8" />
+        ) : bootstrapFailed ? (
+          <RefreshCw className="text-warning mx-auto mb-4 h-8 w-8" />
         ) : (
           <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
         )}
-        <StatusPill tone={timedOut ? "warning" : "primary"} className="mb-3">
+        <StatusPill
+          tone={timedOut || bootstrapFailed ? "warning" : "primary"}
+          className="mb-3"
+        >
           {timedOut
             ? "Connection ended"
-            : connecting
-              ? "Connecting"
-              : "Reconnecting"}
+            : bootstrapFailed
+              ? "Room delayed"
+              : connecting
+                ? "Connecting"
+                : "Reconnecting"}
         </StatusPill>
         <AppSurfaceTitle className="mb-2">
           {timedOut
             ? "Closing your interview"
-            : connecting
-              ? "Connecting to your interviewer"
-              : "Restoring your interview"}
+            : bootstrapFailed
+              ? "Your interview room is taking longer to load"
+              : connecting
+                ? "Connecting to your interviewer"
+                : "Restoring your interview"}
         </AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
           {timedOut
             ? "The reconnect window ended. We’re closing this interview once and preparing the available feedback. Keep this page open."
-            : connecting
-              ? "Your interview is saved while we prepare the room. You can end safely without waiting for the connection."
-              : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection. You can still end safely."}
+            : bootstrapFailed
+              ? "Your existing interview is still the only session we’ll use. Retry this room when you’re ready, or return to the dashboard."
+              : connecting
+                ? "Your interview is saved while we prepare the room. You can end safely without waiting for the connection."
+                : "Keep this page open. Your interview and saved transcript stay in place while we restore the connection. You can still end safely."}
         </AppSurfaceDescription>
-        {!timedOut && onEndSession && (
+        {bootstrapFailed && onRetryConnection && (
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button
+              type="button"
+              className="min-h-11"
+              onClick={onRetryConnection}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Retry interview room
+            </Button>
+            {onBackToDashboard && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={onBackToDashboard}
+              >
+                Back to dashboard
+              </Button>
+            )}
+          </div>
+        )}
+        {!bootstrapFailed && !timedOut && onRetryConnection && (
           <div className="mt-6 flex justify-center">
+            <Button
+              type="button"
+              className="min-h-11"
+              onClick={onRetryConnection}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Retry room connection
+            </Button>
+          </div>
+        )}
+        {!timedOut && onEndSession && (
+          <div className="mt-4 flex justify-center">
             <InterviewControls
               isMuted
               muteDisabled
@@ -1362,9 +1536,69 @@ function ConnectionRecoveryOverlay({
   );
 }
 
+async function requestInterviewSessionWithRetry(
+  sessionId: string,
+  signal: AbortSignal
+): Promise<SessionBootstrapResult> {
+  const maxAttempts = 3;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (signal.aborted) return { disposition: "aborted" };
+
+    let response: Response | null = null;
+    let payload: unknown = null;
+    try {
+      response = await fetchWithDeadline(
+        `/api/session/${sessionId}`,
+        { cache: "no-store", signal },
+        INTERVIEW_START_SLOS.customer_read.upperBoundMs
+      );
+      payload = await response.json().catch(() => null);
+    } catch {
+      if (signal.aborted) return { disposition: "aborted" };
+    }
+
+    if (response) {
+      const disposition = classifyInterviewSessionBootstrapResponse(
+        response.status,
+        payload
+      );
+      if (disposition === "ready") {
+        return { disposition: "ready", payload };
+      }
+      if (disposition === "authorization_lost" || disposition === "terminal") {
+        return {
+          disposition: "terminal",
+          status: response.status,
+          message:
+            isRecord(payload) && typeof payload.message === "string"
+              ? payload.message
+              : undefined,
+        };
+      }
+    }
+
+    if (attempt >= maxAttempts - 1) {
+      return { disposition: "retryable_exhausted" };
+    }
+
+    try {
+      await waitForInterviewRecoveryDelay(
+        getInterviewRetryDelayMs(response?.headers.get("Retry-After") ?? null),
+        signal
+      );
+    } catch {
+      return { disposition: "aborted" };
+    }
+  }
+
+  return { disposition: "retryable_exhausted" };
+}
+
 async function requestInterviewRoomCredentialsWithRetry(
   sessionId: string,
-  expectedRoomName: string
+  expectedRoomName: string,
+  signal: AbortSignal
 ): Promise<RoomCredentialResult> {
   const maxAttempts = 3;
   let lastFailure: RoomCredentialFailure = {
@@ -1376,6 +1610,7 @@ async function requestInterviewRoomCredentialsWithRetry(
   };
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (signal.aborted) return { ok: false, aborted: true };
     try {
       const response = await fetchWithDeadline(
         "/api/livekit/token",
@@ -1383,6 +1618,7 @@ async function requestInterviewRoomCredentialsWithRetry(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId }),
+          signal,
         },
         INTERVIEW_START_SLOS.customer_read.upperBoundMs
       );
@@ -1394,31 +1630,10 @@ async function requestInterviewRoomCredentialsWithRetry(
           expectedRoomName
         );
         if (credentials) {
-          const lifecycleResponse = await fetchWithDeadline(
-            `/api/session/${sessionId}`,
-            { cache: "no-store" },
-            INTERVIEW_START_SLOS.customer_read.upperBoundMs
-          );
-          const lifecyclePayload = await lifecycleResponse
-            .json()
-            .catch(() => null);
-          if (
-            lifecycleResponse.ok &&
-            isRecord(lifecyclePayload) &&
-            isInterviewRoomCredentialAuthorizationCurrent(
-              credentials,
-              lifecyclePayload.session
-            )
-          ) {
-            return { ok: true, credentials };
-          }
-          return {
-            ok: false,
-            status: 409,
-            error: "session_not_joinable",
-            message: "This interview session is no longer active.",
-            retryAfterMs: null,
-          };
+          // The token workflow performs a post-sign authorization fence. The
+          // browser validates the fenced response shape and hands it directly
+          // to LiveKit without racing a third lifecycle read.
+          return { ok: true, credentials };
         }
 
         return {
@@ -1448,6 +1663,7 @@ async function requestInterviewRoomCredentialsWithRetry(
         retryAfterMs,
       };
     } catch (credentialError) {
+      if (signal.aborted) return { ok: false, aborted: true };
       console.warn("[Interview] reconnect_credentials_failed", {
         code: "reconnect_credentials_failed",
         ...toSafeErrorLog(credentialError),
@@ -1466,9 +1682,11 @@ async function requestInterviewRoomCredentialsWithRetry(
       lastFailure.retryAfterMs !== null &&
       attempt < maxAttempts - 1
     ) {
-      await new Promise((resolve) =>
-        window.setTimeout(resolve, lastFailure.retryAfterMs!)
-      );
+      try {
+        await waitForInterviewRecoveryDelay(lastFailure.retryAfterMs, signal);
+      } catch {
+        return { ok: false, aborted: true };
+      }
       continue;
     }
 

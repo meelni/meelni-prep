@@ -26,6 +26,12 @@ export function ConnectionIndicator({
         label: "Interviewer joining",
         Icon: Wifi,
       };
+    if (status === "transport_delayed")
+      return {
+        color: "text-warning",
+        label: "Room connection delayed",
+        Icon: Wifi,
+      };
     if (status === "delayed")
       return {
         color: "text-warning",

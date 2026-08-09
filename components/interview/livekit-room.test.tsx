@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
     state: "connecting",
   },
   dataCallbacks: new Map<string, (message: DataMessage) => void>(),
+  onConnected: null as null | (() => void),
   confirmReady: vi.fn(),
   track: vi.fn(),
 }));
@@ -30,7 +31,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@livekit/components-react", async () => {
   const ReactModule = await import("react");
   return {
-    LiveKitRoom: ({ children }: { children: React.ReactNode }) => children,
+    LiveKitRoom: ({
+      children,
+      onConnected,
+    }: {
+      children: React.ReactNode;
+      onConnected?: () => void;
+    }) => {
+      mocks.onConnected = onConnected ?? null;
+      return children;
+    },
     useConnectionState: () => mocks.connectionState,
     useVoiceAssistant: () => mocks.voiceAssistant,
     useDataChannel: (
@@ -123,11 +133,47 @@ describe("LiveKit interviewer liveness reconciliation", () => {
     mocks.connectionState = "connected";
     mocks.voiceAssistant = { agent: null, state: "connecting" };
     mocks.dataCallbacks.clear();
+    mocks.onConnected = null;
     mocks.confirmReady.mockReset();
     mocks.track.mockReset();
   });
 
   afterEach(() => cleanup());
+
+  it("reports a hung transport once at the connection SLO without rotating credentials", () => {
+    vi.useFakeTimers();
+    try {
+      const statuses: InterviewConnectionStatus[] = [];
+      mocks.connectionState = "connecting";
+      render(
+        roomElement({
+          credentialGeneration: 7,
+          onConnectionStateChange: (status) => statuses.push(status),
+        })
+      );
+
+      act(() => vi.advanceTimersByTime(10_000));
+
+      expect(
+        statuses.filter((status) => status === "transport_delayed")
+      ).toHaveLength(1);
+      expect(
+        mocks.track.mock.calls.filter(
+          ([event, properties]) =>
+            event === "interview_start_stage" &&
+            properties?.stage === "transport_connection" &&
+            properties?.outcome === "delayed"
+        )
+      ).toHaveLength(1);
+
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(
+        statuses.filter((status) => status === "transport_delayed")
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   for (const conversationalState of ["speaking", "listening"] as const) {
     it(`keeps ${conversationalState} conversation available through late canonical success`, async () => {
