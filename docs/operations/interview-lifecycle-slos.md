@@ -8,18 +8,19 @@ work, not completion truth.
 
 ## Service levels
 
-| Boundary                               | Target | Upper bound | Customer/recovery behavior                                                                                     |
-| -------------------------------------- | -----: | ----------: | -------------------------------------------------------------------------------------------------------------- |
-| Start request                          |    3 s |        10 s | Abort the browser wait, retain the stable start-attempt UUID, and offer a safe replay of the same intent.      |
-| LiveKit transport connection           |    5 s |        10 s | Continue showing interviewer-joining truth until agent liveness or canonical readiness is observed.            |
-| Transport connected to canonical ready |   10 s |        25 s | Keep the room mounted and End available; show delayed only while verified interviewer liveness is also absent. |
-| One presence reconciliation            |    1 s |         3 s | Abort the probe and treat dependency exhaustion as retryable; do not rotate credentials.                       |
-| Session or credential customer read    |    5 s |         8 s | Abort dependency work and return a private, retryable `503`.                                                   |
-| End request acceptance                 |    1 s |         3 s | The request commits `ending` before provider settlement.                                                       |
-| `ending` to terminal session           |   10 s |        30 s | At 30 s, a `user_end` handoff is delayed and owner-retryable.                                                  |
-| Terminal session to feedback dispatch  |    5 s |        30 s | Durable recovery scans repair missing or failed dispatch.                                                      |
-| End request to completed feedback      |   45 s |        90 s | At 45 s, show delayed copy. At 90 s, a sent-but-unclaimed queue delivery expires and may be redispatched.      |
-| Feedback lifecycle read                |    5 s |         8 s | The server aborts dependency work at 8 s and returns a private, retryable `503`.                               |
+| Boundary                               | Target | Upper bound | Customer/recovery behavior                                                                                      |
+| -------------------------------------- | -----: | ----------: | --------------------------------------------------------------------------------------------------------------- |
+| Start request                          |    3 s |        10 s | Abort that browser request, retain the stable start-attempt UUID, and automatically replay the same intent.     |
+| Start automatic recovery               |   10 s |        60 s | Retry one request at a time using server guidance; stop on ready, definitive failure, cancellation, or unmount. |
+| LiveKit transport connection           |    5 s |        10 s | Continue showing interviewer-joining truth until agent liveness or canonical readiness is observed.             |
+| Transport connected to canonical ready |   10 s |        25 s | Keep the room mounted and End available; show delayed only while verified interviewer liveness is also absent.  |
+| One presence reconciliation            |    1 s |         3 s | Abort the probe and treat dependency exhaustion as retryable; do not rotate credentials.                        |
+| Session or credential customer read    |    5 s |         8 s | Abort dependency work and return a private, retryable `503`.                                                    |
+| End request acceptance                 |    1 s |         3 s | The request commits `ending` before provider settlement.                                                        |
+| `ending` to terminal session           |   10 s |        30 s | At 30 s, a `user_end` handoff is delayed and owner-retryable.                                                   |
+| Terminal session to feedback dispatch  |    5 s |        30 s | Durable recovery scans repair missing or failed dispatch.                                                       |
+| End request to completed feedback      |   45 s |        90 s | At 45 s, show delayed copy. At 90 s, a sent-but-unclaimed queue delivery expires and may be redispatched.       |
+| Feedback lifecycle read                |    5 s |         8 s | The server aborts dependency work at 8 s and returns a private, retryable `503`.                                |
 
 The generation execution lease remains five minutes. A model call that is
 known to be processing is not duplicated at the 90-second customer upper
@@ -80,8 +81,13 @@ runtime uses a transaction pooler.
 `interview_start_stage` version 1 records stage, outcome, duration, SLO
 thresholds, and latency class. It excludes session, room, user, token,
 transcript, question, provider payload, and raw error fields. Aggregate it by
-stage and latency class across `launch_request`, `transport_connection`, and
-`canonical_readiness`.
+stage and latency class across `launch_request`, `launch_recovery`,
+`authorization_gate`, `account_trial`, `question_selection`,
+`durable_session_credit_reservation`, `provisioning_claim`,
+`deadline_scheduling`, `livekit_room_create`, `livekit_room_verification`,
+`livekit_dispatch_verification`, `readiness_persistence`, `token_issuance`,
+`transport_connection`, and `canonical_readiness`. The durable-session and
+credit stage is intentionally one timing because that mutation is atomic.
 
 `interview_liveness_contradiction` version 1 records only observed/resolved
 phase, bounded duration and duration class, and a resolution code. It identifies
@@ -112,8 +118,10 @@ sanitized event counts match database truth.
 1. If start appears stuck, separate launch latency, transport latency, and
    canonical readiness. Do not treat a connected transport as an active
    interview or rotate credentials only because canonical readiness is delayed.
-2. If a start request reaches ten seconds, confirm replay uses the same attempt
-   UUID and inspect whether the original workflow committed.
+2. If a start request reaches ten seconds, confirm automatic replay uses the
+   same attempt UUID, respects short readiness retry guidance, and inspect
+   whether the original workflow committed. A second customer click should not
+   be required.
 3. If readiness reaches 25 seconds, inspect provider participant presence and
    reconciliation latency. The customer must retain an enabled End action. If
    the agent is already conversationally active, the room must show `syncing`,
@@ -139,8 +147,11 @@ sanitized event counts match database truth.
 
 - A warm start records launch, transport, and canonical readiness inside their
   targets and enables microphone input only after canonical readiness.
-- A simulated 20-second cold start remains mounted and becomes ready without
-  credential rotation.
+- A simulated start whose first request commits after the 10-second browser
+  abort remains in the still-starting state, receives a short busy retry, and
+  returns ready credentials for the same attempt within the 60-second recovery
+  bound. Requests never overlap, and no second customer click or credential
+  rotation is required.
 - A stalled presence read aborts inside three seconds, becomes delayed after
   the readiness bound, keeps End available, and later converges.
 - A speaking/listening agent or first correlated interviewer transcript changes
