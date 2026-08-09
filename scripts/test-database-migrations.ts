@@ -6271,7 +6271,7 @@ async function verifyProviderCreditRecovery(
       source: "admin",
       idempotencyKey: "postgres:credit-recovery:provider-grant",
       includedCredits: 1,
-      expiresAt: new Date(now.getTime() + 30 * 86_400_000),
+      expiresAt: null,
     });
     await insertSession(providerAttempt, userId);
     await reserve(providerAttempt, userId);
