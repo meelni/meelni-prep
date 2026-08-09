@@ -49,6 +49,20 @@ sessions return `settling` and `retryable: false`; active sessions remain
 
 Each mounted feedback client may automatically invoke authenticated `POST` recovery once when top-level `retryable` is true. Concurrent polls share that attempt, then continue within a 30-poll, three-second interval budget. A failed automatic attempt becomes an explicit user recovery action rather than an unbounded POST loop.
 
+When that bounded GET budget is exhausted, the client enters an explicit local
+paused presentation. It removes the spinner and busy claim, states that
+automatic checking has paused, and keeps both `Check again` and Interview
+History available. `Check again` is read-only: it performs one decoded GET and
+starts at most one new bounded GET window. It never treats the refresh itself
+as recovery authorization or issues a POST. If the refreshed top-level
+response is retryable, the UI may expose a separate recovery action. A late
+terminal response renders in the mounted client without reloading the browser
+document.
+
+An owned active session links back to its canonical
+`/interview?sessionId=<session-id>` route. Feedback recovery never depends on
+browser history state.
+
 Every GET, recovery POST, and terminal refresh payload crosses the same runtime lifecycle decoder. Unknown statuses or malformed variants render an explicit unavailable state; they never fall through to an indefinite loading state.
 
 Transient GET transport failures (network errors, timeouts, rate limits, and

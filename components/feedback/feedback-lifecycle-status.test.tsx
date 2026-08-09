@@ -73,6 +73,48 @@ test("settling explains that feedback will begin after safe session closure", ()
   assert.doesNotMatch(html, /Queue feedback/);
 });
 
+test("poll exhaustion is explicitly paused and no longer busy", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "processing", retryable: false, delayed: true },
+      recovering: false,
+      recoveryError: null,
+      pollingPaused: true,
+      pausedMessage:
+        "We couldn’t check your feedback just now. Your interview is saved, and automatic checking is paused.",
+      onRecover() {},
+    })
+  );
+  assert.match(html, /Automatic checking paused/);
+  assert.match(html, /aria-busy="false"/);
+  assert.match(html, /Check again/);
+  assert.match(html, /View interview history/);
+  assert.match(html, /href="\/dashboard\/history"/);
+  assert.doesNotMatch(html, /animate-spin/);
+  assert.doesNotMatch(html, /updates automatically/i);
+});
+
+test("an active owned session links to its canonical interview URL", () => {
+  const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "session-active",
+        message: "This interview has not ended yet.",
+      },
+      recovering: false,
+      recoveryError: null,
+      sessionId,
+      onRecover() {},
+    })
+  );
+  assert.match(
+    html,
+    new RegExp(`href="/interview\\?sessionId=${sessionId}"`)
+  );
+  assert.doesNotMatch(html, /history\.back/);
+});
+
 test("retryable failure exposes recovery instead of an indefinite loading state", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {
