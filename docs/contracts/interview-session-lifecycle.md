@@ -393,6 +393,15 @@ Browser history contains only `sessionId`. Reload requests a fresh short-lived
 participant token from the owned session; it never creates a room, redispatches
 the agent, or consumes another credit. Transcript ingest remains independently
 governed by SAV-194 and must be complete before reconnect readiness is closed.
+After a deadline, reconnect timeout, or ambiguous End response, the browser
+observes terminal truth through one sequential polling window capped at the
+30-second terminalization upper-bound and 30 lifecycle reads. It never overlaps
+lifecycle reads. If the window expires or reaches its read cap, the browser
+removes its busy state, says automatic checking has paused and that the page is
+safe to leave, and offers `Check again` plus Interview history. A visible-tab
+return or explicit retry may start at most one new bounded window. Unmounting
+cancels the active read, and the first accepted or observed terminal handoff
+replaces browser history exactly once so Back cannot reopen the terminal room.
 The token adapter converts the database-observed authorization window to an
 absolute whole-second target, adjusts the provider SDK's relative TTL for the
 signer clock, decodes the signed JWT, and returns its actual `exp` to the join

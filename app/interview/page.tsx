@@ -49,8 +49,12 @@ import { buildNewInterviewHref } from "@/lib/navigation/interview-launch";
 import { reconcileAmbiguousInterviewEnd } from "@/lib/interview/end-reconciliation";
 import { consumeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
-import { fetchWithDeadline } from "@/lib/http/deadline";
+import {
+  CUSTOMER_CLIENT_FETCH_DEADLINE_MS,
+  fetchWithDeadline,
+} from "@/lib/http/deadline";
 import { INTERVIEW_START_SLOS } from "@/lib/operations/interview-start-slo";
+import { runBoundedSequentialTerminalPoll } from "@/lib/interview/terminal-poll-window";
 import {
   classifyTranscriptHydrationResponse,
   getTranscriptHydrationRetryDelayMs,
@@ -58,8 +62,6 @@ import {
   waitForTranscriptHydrationRetry,
   type DurableTranscriptHydrationState,
 } from "@/lib/interview/transcript-hydration";
-
-const END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS = 5_000;
 
 interface InterviewSession {
   id: string;
@@ -133,6 +135,8 @@ interface EndReconciliationState {
   durationSeconds: number;
 }
 
+type TerminalPollPresentationState = "checking" | "paused";
+
 export function InterviewPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -184,6 +188,12 @@ export function InterviewPageContent() {
     useState(0);
   const [endReconciliation, setEndReconciliation] =
     useState<EndReconciliationState | null>(null);
+  const [terminalPollGeneration, setTerminalPollGeneration] = useState(0);
+  const [terminalPollStatus, setTerminalPollStatus] =
+    useState<TerminalPollPresentationState>("checking");
+  const [endPollGeneration, setEndPollGeneration] = useState(0);
+  const [endPollStatus, setEndPollStatus] =
+    useState<TerminalPollPresentationState>("checking");
   const initializedRef = useRef(false);
   const deadlineReachedRef = useRef(false);
   const credentialRequestInFlightRef = useRef(false);
@@ -204,6 +214,11 @@ export function InterviewPageContent() {
   const ownerIdRef = useRef<string | null>(user?.id ?? null);
   const routerRef = useRef(router);
   const nextEndRetryAtRef = useRef(0);
+  const terminalNavigationStartedRef = useRef(false);
+  const terminalPollActiveRef = useRef(false);
+  const terminalPollWindowIdRef = useRef(0);
+  const endPollActiveRef = useRef(false);
+  const endPollWindowIdRef = useRef(0);
   ownerIdRef.current = user?.id ?? null;
   routerRef.current = router;
   const activeSessionId = session?.id ?? sessionId ?? "";
@@ -221,6 +236,19 @@ export function InterviewPageContent() {
     credentialControllerRef.current?.abort(reason);
     credentialControllerRef.current = null;
     credentialRequestInFlightRef.current = false;
+  }, []);
+
+  const replaceTerminalDestination = useCallback((href: string) => {
+    if (terminalNavigationStartedRef.current) return false;
+    terminalNavigationStartedRef.current = true;
+    routerRef.current.replace(href);
+    return true;
+  }, []);
+
+  const leaveForInterviewHistory = useCallback(() => {
+    if (terminalNavigationStartedRef.current) return;
+    terminalNavigationStartedRef.current = true;
+    routerRef.current.replace("/dashboard/history");
   }, []);
 
   useEffect(() => {
@@ -243,6 +271,11 @@ export function InterviewPageContent() {
     deadlineReachedRef.current = false;
     endIntentRef.current = false;
     nextEndRetryAtRef.current = 0;
+    terminalNavigationStartedRef.current = false;
+    terminalPollActiveRef.current = false;
+    terminalPollWindowIdRef.current += 1;
+    endPollActiveRef.current = false;
+    endPollWindowIdRef.current += 1;
 
     setConnectionOwnerId(null);
     setSession(null);
@@ -271,6 +304,10 @@ export function InterviewPageContent() {
     setIsEndingSession(false);
     setEndSessionError(null);
     setEndReconciliation(null);
+    setTerminalPollGeneration(0);
+    setTerminalPollStatus("checking");
+    setEndPollGeneration(0);
+    setEndPollStatus("checking");
     setError(null);
     setLoading(false);
 
@@ -348,7 +385,7 @@ export function InterviewPageContent() {
           lifecycleState: normalizedSession.lifecycle_state,
         })
       ) {
-        router.replace(`/feedback/${sessionId}/loading`);
+        replaceTerminalDestination(`/feedback/${sessionId}/loading`);
         return;
       }
 
@@ -445,7 +482,14 @@ export function InterviewPageContent() {
         bootstrapControllerRef.current = null;
       }
     }
-  }, [abortBootstrapWork, abortCredentialWork, router, sessionId, user]);
+  }, [
+    abortBootstrapWork,
+    abortCredentialWork,
+    replaceTerminalDestination,
+    router,
+    sessionId,
+    user,
+  ]);
 
   useEffect(() => {
     // Skip if already initialized
@@ -890,130 +934,181 @@ export function InterviewPageContent() {
     session?.config?.roundType,
   ]);
 
+  const terminalClosureRequired = deadlineReached || disconnectTimedOut;
+
+  const startTerminalPollWindow = useCallback(() => {
+    if (
+      !terminalClosureRequired ||
+      !activeSessionId ||
+      terminalPollActiveRef.current ||
+      terminalNavigationStartedRef.current
+    ) {
+      return;
+    }
+
+    terminalPollActiveRef.current = true;
+    setTerminalPollStatus("checking");
+    const nextWindowId = terminalPollWindowIdRef.current + 1;
+    terminalPollWindowIdRef.current = nextWindowId;
+    setTerminalPollGeneration(nextWindowId);
+  }, [activeSessionId, terminalClosureRequired]);
+
+  useEffect(() => {
+    if (terminalClosureRequired) startTerminalPollWindow();
+  }, [startTerminalPollWindow, terminalClosureRequired]);
+
   // The client only reflects the deadline. The server workflow owns completion
   // and room termination, including when this tab is hidden or killed.
   useEffect(() => {
-    if ((!deadlineReached && !disconnectTimedOut) || !activeSessionId) return;
+    if (
+      !terminalClosureRequired ||
+      !activeSessionId ||
+      terminalPollGeneration === 0
+    ) {
+      return;
+    }
 
-    let cancelled = false;
-    let pollInFlight = false;
-    let pollTimer: number | undefined;
+    const pollWindowId = terminalPollGeneration;
     const controller = new AbortController();
-
-    const pollTerminalTruth = async () => {
-      if (pollInFlight) return;
-      pollInFlight = true;
-      try {
-        const response = await fetchWithDeadline(
-          `/api/session/${activeSessionId}`,
-          {
-            cache: "no-store",
-            signal: controller.signal,
-          }
-        );
-        if (response.ok) {
+    void runBoundedSequentialTerminalPoll({
+      signal: controller.signal,
+      poll: async ({ signal }) => {
+        try {
+          const response = await fetchWithDeadline(
+            `/api/session/${activeSessionId}`,
+            {
+              cache: "no-store",
+              signal,
+            }
+          );
+          if (!response.ok) return false;
           const payload = (await response.json()) as {
             session?: {
               lifecycleState?: string | null;
             };
           };
-          if (cancelled) return;
-          if (canNavigateToInterviewFeedback(payload.session ?? {})) {
-            router.replace(`/feedback/${activeSessionId}/loading`);
-            return;
+          if (!canNavigateToInterviewFeedback(payload.session ?? {})) {
+            return false;
           }
+          replaceTerminalDestination(`/feedback/${activeSessionId}/loading`);
+          return true;
+        } catch (pollError) {
+          if (!signal.aborted) {
+            console.warn("[Interview] terminal_poll_failed", {
+              code: "terminal_poll_failed",
+              ...toSafeErrorLog(pollError),
+            });
+          }
+          return false;
         }
-      } catch (pollError) {
-        console.warn("[Interview] deadline_poll_failed", {
-          code: "deadline_poll_failed",
-          ...toSafeErrorLog(pollError),
-        });
-      } finally {
-        pollInFlight = false;
-      }
+      },
+    }).then((result) => {
+      if (terminalPollWindowIdRef.current !== pollWindowId) return;
+      terminalPollActiveRef.current = false;
+      if (result.status === "paused") setTerminalPollStatus("paused");
+    });
 
-      if (!cancelled) {
-        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-        pollTimer = window.setTimeout(pollTerminalTruth, 1000);
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-        void pollTerminalTruth();
-      }
-    };
-
-    void pollTerminalTruth();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      cancelled = true;
       controller.abort();
-      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeSessionId, deadlineReached, disconnectTimedOut, router]);
+  }, [
+    activeSessionId,
+    replaceTerminalDestination,
+    terminalClosureRequired,
+    terminalPollGeneration,
+  ]);
+
+  useEffect(() => {
+    if (!terminalClosureRequired || terminalPollStatus !== "paused") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") startTerminalPollWindow();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [startTerminalPollWindow, terminalClosureRequired, terminalPollStatus]);
+
+  const startEndPollWindow = useCallback(() => {
+    if (
+      !endReconciliation ||
+      endReconciliation.ownerId !== ownerIdRef.current ||
+      endPollActiveRef.current ||
+      terminalNavigationStartedRef.current
+    ) {
+      return;
+    }
+
+    endPollActiveRef.current = true;
+    setEndPollStatus("checking");
+    const nextWindowId = endPollWindowIdRef.current + 1;
+    endPollWindowIdRef.current = nextWindowId;
+    setEndPollGeneration(nextWindowId);
+  }, [endReconciliation]);
+
+  useEffect(() => {
+    if (endReconciliation) startEndPollWindow();
+  }, [endReconciliation, startEndPollWindow]);
 
   // A transport failure after transcript cutoff cannot prove whether the
   // idempotent end command committed. Freeze and disconnect the browser room,
   // then poll durable truth and occasionally retry the same command. There is
   // intentionally no resume or dismiss path while that ambiguity remains.
   useEffect(() => {
-    if (!endReconciliation) return;
+    if (!endReconciliation || endPollGeneration === 0) return;
 
-    let cancelled = false;
-    let pollInFlight = false;
-    let pollTimer: number | undefined;
+    const pollWindowId = endPollGeneration;
     const controller = new AbortController();
+    void runBoundedSequentialTerminalPoll({
+      signal: controller.signal,
+      poll: async ({ signal }) => {
+        if (ownerIdRef.current !== endReconciliation.ownerId) return false;
+        const retryEnd = Date.now() >= nextEndRetryAtRef.current;
+        const result = await reconcileAmbiguousInterviewEnd({
+          sessionId: endReconciliation.sessionId,
+          retryEnd,
+          signal,
+        });
+        if (ownerIdRef.current !== endReconciliation.ownerId) return false;
 
-    const pollEndReconciliation = async () => {
-      if (pollInFlight || cancelled) return;
-      if (ownerIdRef.current !== endReconciliation.ownerId) return;
-      pollInFlight = true;
-      const retryEnd = Date.now() >= nextEndRetryAtRef.current;
-      const result = await reconcileAmbiguousInterviewEnd({
-        sessionId: endReconciliation.sessionId,
-        retryEnd,
-        signal: controller.signal,
-      });
-      pollInFlight = false;
-      if (cancelled || ownerIdRef.current !== endReconciliation.ownerId) return;
+        if (result.retryAttempted) {
+          nextEndRetryAtRef.current = Date.now() + 10_000;
+        }
+        if (result.status !== "resolved") return false;
 
-      if (result.retryAttempted) {
-        nextEndRetryAtRef.current = Date.now() + 10_000;
-      }
-      if (result.status === "resolved") {
         analytics.track("interview_ended", {
           session_id: endReconciliation.sessionId,
           duration_seconds: endReconciliation.durationSeconds,
           ended_naturally: true,
           interview_type: session?.config?.roundType,
         });
-        setEndReconciliation(null);
-        router.replace(result.nextHref);
-        return;
-      }
+        replaceTerminalDestination(result.nextHref);
+        return true;
+      },
+    }).then((result) => {
+      if (endPollWindowIdRef.current !== pollWindowId) return;
+      endPollActiveRef.current = false;
+      if (result.status === "paused") setEndPollStatus("paused");
+    });
 
-      pollTimer = window.setTimeout(pollEndReconciliation, 1_000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-        void pollEndReconciliation();
-      }
-    };
-
-    void pollEndReconciliation();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      cancelled = true;
       controller.abort();
-      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [endReconciliation, router, session?.config?.roundType]);
+  }, [
+    endPollGeneration,
+    endReconciliation,
+    replaceTerminalDestination,
+    session?.config?.roundType,
+  ]);
+
+  useEffect(() => {
+    if (!endReconciliation || endPollStatus !== "paused") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") startEndPollWindow();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [endPollStatus, endReconciliation, startEndPollWindow]);
 
   const handleEndSession = async () => {
     if (
@@ -1053,7 +1148,7 @@ export function InterviewPageContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId: requestSessionId }),
           },
-          END_INTERVIEW_ACCEPTANCE_TIMEOUT_MS
+          CUSTOMER_CLIENT_FETCH_DEADLINE_MS
         );
       } catch (transportError) {
         if (ownerIdRef.current !== requestOwnerId) return;
@@ -1065,6 +1160,8 @@ export function InterviewPageContent() {
         setShowEndModal(false);
         setIsEndingSession(false);
         setEndSessionError(null);
+        endPollActiveRef.current = false;
+        setEndPollStatus("checking");
         setEndReconciliation({
           ownerId: requestOwnerId,
           sessionId: requestSessionId,
@@ -1102,7 +1199,7 @@ export function InterviewPageContent() {
       )
         ? data.nextHref
         : `/feedback/${requestSessionId}/loading`;
-      router.push(nextHref);
+      replaceTerminalDestination(nextHref);
     } catch (error) {
       if (ownerIdRef.current !== requestOwnerId) return;
       console.error("[Interview] session_end_failed", {
@@ -1159,7 +1256,14 @@ export function InterviewPageContent() {
   }
 
   if (endReconciliation && endReconciliation.ownerId === ownerIdRef.current) {
-    return <EndReconciliationOverlay />;
+    return (
+      <TerminalCompletionOverlay
+        kind="ambiguous_end"
+        status={endPollStatus}
+        onCheckAgain={startEndPollWindow}
+        onInterviewHistory={leaveForInterviewHistory}
+      />
+    );
   }
 
   if (bootstrapRetryAvailable) {
@@ -1196,7 +1300,14 @@ export function InterviewPageContent() {
     disconnectTimedOut &&
     (!token || !url)
   ) {
-    return <ConnectionRecoveryOverlay status="timed_out" />;
+    return (
+      <TerminalCompletionOverlay
+        kind="disconnect"
+        status={terminalPollStatus}
+        onCheckAgain={startTerminalPollWindow}
+        onInterviewHistory={leaveForInterviewHistory}
+      />
+    );
   }
 
   if (
@@ -1278,9 +1389,21 @@ export function InterviewPageContent() {
         onRetryTranscriptHydration={retryTranscriptHydration}
       />
       {endSessionModal}
-      {deadlineReached && <DeadlineReachedOverlay />}
+      {deadlineReached && (
+        <TerminalCompletionOverlay
+          kind="deadline"
+          status={terminalPollStatus}
+          onCheckAgain={startTerminalPollWindow}
+          onInterviewHistory={leaveForInterviewHistory}
+        />
+      )}
       {!deadlineReached && disconnectTimedOut && (
-        <ConnectionRecoveryOverlay status="timed_out" />
+        <TerminalCompletionOverlay
+          kind="disconnect"
+          status={terminalPollStatus}
+          onCheckAgain={startTerminalPollWindow}
+          onInterviewHistory={leaveForInterviewHistory}
+        />
       )}
       {!deadlineReached && !disconnectTimedOut && recoveringConnection && (
         <ConnectionRecoveryOverlay
@@ -1384,59 +1507,75 @@ function InterviewRoomContent({
   );
 }
 
-function DeadlineReachedOverlay() {
-  return (
-    <div
-      className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-      role="status"
-      aria-live="assertive"
-    >
-      <AppSurface
-        variant="panel"
-        size="lg"
-        className="w-full max-w-md text-center shadow-xl"
-      >
-        <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
-        <StatusPill tone="warning" className="mb-3">
-          Time is up
-        </StatusPill>
-        <AppSurfaceTitle className="mb-2">
-          Saving your interview
-        </AppSurfaceTitle>
-        <AppSurfaceDescription className="text-sm">
-          We’re closing the room and finalizing the interview activity received
-          so far before preparing feedback.
-        </AppSurfaceDescription>
-      </AppSurface>
-    </div>
-  );
-}
+function TerminalCompletionOverlay({
+  kind,
+  status,
+  onCheckAgain,
+  onInterviewHistory,
+}: {
+  kind: "deadline" | "disconnect" | "ambiguous_end";
+  status: TerminalPollPresentationState;
+  onCheckAgain: () => void;
+  onInterviewHistory: () => void;
+}) {
+  const checking = status === "checking";
+  const heading = checking
+    ? kind === "deadline"
+      ? "Saving your interview"
+      : kind === "disconnect"
+        ? "Closing your interview"
+        : "Confirming interview completion"
+    : "Automatic checking paused";
+  const description = checking
+    ? kind === "ambiguous_end"
+      ? "Your room is disconnected while we confirm the saved interview state and safely retry the same end request. You may leave this page; the interview cannot resume while the check is running."
+      : "We’re checking the saved interview state before handing you to feedback. This check stops automatically if completion takes longer than expected."
+    : "Completion is taking longer than expected. It is safe to leave this page. Check again now or return later from Interview history.";
 
-export function EndReconciliationOverlay() {
   return (
     <div
       className="bg-overlay/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
       role="status"
       aria-live="assertive"
-      aria-busy="true"
+      aria-busy={checking}
     >
       <AppSurface
         variant="panel"
         size="lg"
         className="w-full max-w-md text-center shadow-xl"
       >
-        <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
+        {checking ? (
+          <Loader2 className="text-primary mx-auto mb-4 h-8 w-8 animate-spin" />
+        ) : (
+          <WifiOff className="text-muted-foreground mx-auto mb-4 h-8 w-8" />
+        )}
         <StatusPill tone="warning" className="mb-3">
-          Interview frozen
+          {checking
+            ? kind === "deadline"
+              ? "Time is up"
+              : kind === "disconnect"
+                ? "Connection ended"
+                : "Interview frozen"
+            : "Check paused"}
         </StatusPill>
-        <AppSurfaceTitle className="mb-2">
-          Confirming interview completion
-        </AppSurfaceTitle>
+        <AppSurfaceTitle className="mb-2">{heading}</AppSurfaceTitle>
         <AppSurfaceDescription className="text-sm">
-          Your room is disconnected while we confirm the saved interview state
-          and safely retry the same end request. You may leave this page; the
-          interview cannot resume while the check is running.
+          {description}
         </AppSurfaceDescription>
+        {!checking && (
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button type="button" onClick={onCheckAgain}>
+              Check again
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onInterviewHistory}
+            >
+              Interview history
+            </Button>
+          </div>
+        )}
       </AppSurface>
     </div>
   );
