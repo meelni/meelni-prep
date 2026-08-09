@@ -1,8 +1,21 @@
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "./index";
 import { FEEDBACK_DISPATCH_LEASE_MS } from "./feedback-dispatch";
-import { FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS } from "./feedback-generation-state";
+import {
+  FEEDBACK_GENERATION_LEASE_MS,
+  FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
+} from "./feedback-generation-state";
 import { feedback, interviewSession } from "./schema";
 
 export interface UserEndRecoveryItem {
@@ -26,6 +39,9 @@ export async function listUserInterviewEndsToRecover(
   );
   const staleQueueBefore = new Date(
     now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
+  );
+  const staleGenerationBefore = new Date(
+    now.getTime() - FEEDBACK_GENERATION_LEASE_MS
   );
   const rows = await database
     .select({
@@ -57,26 +73,39 @@ export async function listUserInterviewEndsToRecover(
               "already_absent",
             ])
           ),
-          inArray(feedback.status, ["pending", "failed"]),
           or(
-            inArray(feedback.dispatchStatus, ["pending", "failed"]),
             and(
-              eq(feedback.status, "failed"),
-              eq(feedback.dispatchStatus, "sent")
-            ),
-            and(
-              eq(feedback.status, "pending"),
-              eq(feedback.dispatchStatus, "sent"),
+              inArray(feedback.status, ["pending", "failed"]),
               or(
-                isNull(feedback.dispatchedAt),
-                lte(feedback.dispatchedAt, staleQueueBefore)
+                inArray(feedback.dispatchStatus, ["pending", "failed"]),
+                and(
+                  eq(feedback.status, "failed"),
+                  eq(feedback.dispatchStatus, "sent")
+                ),
+                and(
+                  eq(feedback.status, "pending"),
+                  eq(feedback.dispatchStatus, "sent"),
+                  or(
+                    isNull(feedback.dispatchedAt),
+                    lte(feedback.dispatchedAt, staleQueueBefore)
+                  )
+                ),
+                and(
+                  eq(feedback.dispatchStatus, "sending"),
+                  or(
+                    isNull(feedback.dispatchClaimedAt),
+                    lte(feedback.dispatchClaimedAt, staleDispatchBefore)
+                  )
+                )
               )
             ),
             and(
-              eq(feedback.dispatchStatus, "sending"),
+              eq(feedback.status, "processing"),
+              isNotNull(feedback.dispatchEventId),
+              sql`${feedback.dispatchStatus} <> 'not_required'`,
               or(
-                isNull(feedback.dispatchClaimedAt),
-                lte(feedback.dispatchClaimedAt, staleDispatchBefore)
+                isNull(feedback.processingStartedAt),
+                lte(feedback.processingStartedAt, staleGenerationBefore)
               )
             )
           )

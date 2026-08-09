@@ -32,21 +32,25 @@ test("failed work is prepared once and dispatched with a fresh event", async () 
   assert.ok(results.every((result) => result.ok));
 });
 
-test("stale processing is recoverable but an active lease is not reopened", async () => {
-  const stale = new RecoveryStore(
-    record({
-      status: "processing",
-      processingStartedAt: new Date("2026-07-10T14:50:00.000Z"),
-    })
-  );
-  const staleDispatches: string[] = [];
-  const recovered = await recoverFeedbackGenerationWorkflow(
-    input(),
-    dependencies(stale, staleDispatches)
-  );
-  assert.equal(recovered.ok && recovered.status, "pending");
-  assert.equal(stale.prepareCount, 1);
-  assert.equal(staleDispatches.length, 1);
+test("expired and null processing leases reset once and dispatch once while a fresh lease stays active", async () => {
+  for (const processingStartedAt of [
+    new Date("2026-07-10T14:50:00.000Z"),
+    null,
+  ]) {
+    const stale = new RecoveryStore(
+      record({ status: "processing", processingStartedAt })
+    );
+    const staleDispatches: string[] = [];
+    const staleDeps = dependencies(stale, staleDispatches);
+    const recovered = await Promise.all([
+      recoverFeedbackGenerationWorkflow(input(), staleDeps),
+      recoverFeedbackGenerationWorkflow(input(), staleDeps),
+    ]);
+
+    assert.ok(recovered.every((result) => result.ok));
+    assert.equal(stale.prepareCount, 1);
+    assert.equal(staleDispatches.length, 1);
+  }
 
   const active = new RecoveryStore(
     record({ status: "processing", processingStartedAt: NOW })
