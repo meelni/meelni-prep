@@ -48,14 +48,18 @@ import {
   clearInterviewStartAttempt,
   getOrCreateInterviewStartAttempt,
   isDefinitiveInterviewStartFailure,
-  parseInterviewStartSessionId,
 } from "@/lib/interview/start-attempt";
+import {
+  createInterviewStartSingleFlight,
+  recoverInterviewStart,
+} from "@/lib/interview/start-recovery";
 import { storeInitialInterviewRoomCredentials } from "@/lib/interview/room-credential-handoff";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { fetchWithDeadline } from "@/lib/http/deadline";
 import {
   buildInterviewStartStageEvent,
   INTERVIEW_START_SLOS,
+  type InterviewStartStageOutcome,
 } from "@/lib/operations/interview-start-slo";
 
 export function SetupContent({
@@ -99,16 +103,21 @@ export function SetupContent({
     fallbackRecommendation.difficulty
   );
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isRecoveringStart, setIsRecoveringStart] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(false);
-  const startInFlightRef = useRef(false);
   const pageLoadTime = useRef(Date.now());
   const defaultRoundType = useRef<RoundType | null>(
     fallbackRecommendation.roundType
   );
   const defaultDifficulty = useRef<DifficultyLevel | null>(
     fallbackRecommendation.difficulty
+  );
+  const startSingleFlight = useMemo(createInterviewStartSingleFlight, []);
+
+  useEffect(
+    () => () => startSingleFlight.cancel("component_unmounted"),
+    [startSingleFlight]
   );
 
   const { state: questionIntentState, retry: retryQuestionVerification } =
@@ -188,13 +197,6 @@ export function SetupContent({
     currentTier: string;
     message: string;
   } | null>(null);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (launchContext.roundType) {
@@ -306,7 +308,7 @@ export function SetupContent({
     fetchCredits();
   }, [user]);
 
-  const handleStartInterview = async () => {
+  const handleStartInterview = () => {
     if (voiceUnavailableInPreview) {
       setError(
         "Voice practice is unavailable in this web Preview. Use the trusted staging environment for voice rehearsal."
@@ -314,233 +316,300 @@ export function SetupContent({
       return;
     }
 
-    if (startInFlightRef.current) {
-      return;
-    }
-
-    if (questionIdParam && questionIntentState.status !== "ready") {
-      setError("Choose an available question before starting.");
-      return;
-    }
-
-    if (!effectiveRoundType || !difficulty) {
-      setError("Please complete all required fields");
-      return;
-    }
-
-    startInFlightRef.current = true;
-    setIsCreatingSession(true);
-    setError(null);
-
-    // Track setup completion
-    const timeToComplete = (Date.now() - pageLoadTime.current) / 1000;
-    const selectionsChanged =
-      (effectiveRoundType !== defaultRoundType.current ? 1 : 0) +
-      (difficulty !== defaultDifficulty.current ? 1 : 0);
-
-    analytics.track("setup_completed", {
-      user_id: user!.id,
-      interview_type: effectiveRoundType,
-      skill_level: difficulty,
-      mode: "voice_video",
-      time_to_complete_seconds: Math.floor(timeToComplete),
-      selections_changed: selectionsChanged,
-    });
-    const startAttemptedProperties = {
-      interview_type: effectiveRoundType,
-      skill_level: difficulty,
-      recommendation_source: recommendation.source,
-      accepted_recommendation:
-        effectiveRoundType === recommendation.roundType &&
-        difficulty === recommendation.difficulty,
-      question_id: questionId || undefined,
-      ...analyticsLaunchContext,
-    };
-    trackInterviewLaunchEvent(
-      "new_interview_start_attempted",
-      startAttemptedProperties
-    );
-
-    try {
-      // Request microphone permission before starting interview
-      try {
-        await checkMicrophonePermission();
-        console.log("[Setup] Microphone permission granted");
-      } catch (permError) {
-        console.error("[Interview Setup] microphone_permission_denied", {
-          code: "microphone_permission_denied",
-          ...toSafeErrorLog(permError),
-        });
-        if (isMountedRef.current) {
-          setError(
-            "Microphone access is required for voice interviews. Please grant permission and try again."
-          );
-          setIsCreatingSession(false);
-        }
+    return startSingleFlight.run(async (signal) => {
+      if (questionIdParam && questionIntentState.status !== "ready") {
+        setError("Choose an available question before starting.");
         return;
       }
 
-      if (!isMountedRef.current) {
+      if (!effectiveRoundType || !difficulty) {
+        setError("Please complete all required fields");
         return;
       }
 
-      // Build minimal user config
-      const minimalConfig: MinimalInterviewConfig = {
-        roundType: effectiveRoundType,
-        difficulty,
-      };
+      setIsCreatingSession(true);
+      setIsRecoveringStart(false);
+      setShowCustomization(false);
+      setError(null);
 
-      // Expand to full config with system defaults
-      const fullConfig = buildFullConfig(minimalConfig);
+      // Track setup completion
+      const timeToComplete = (Date.now() - pageLoadTime.current) / 1000;
+      const selectionsChanged =
+        (effectiveRoundType !== defaultRoundType.current ? 1 : 0) +
+        (difficulty !== defaultDifficulty.current ? 1 : 0);
 
-      // Prepare session data
-      const sessionData = {
-        roundType: effectiveRoundType,
-        mode: "voice_video" as const,
-        config: fullConfig,
-        questionId: questionId || undefined, // Include pre-selected question if available
-      };
-
-      // Validate data
-      const validation = validateSessionStart(sessionData);
-      if (!validation.success) {
-        setError(validation.error);
-        setIsCreatingSession(false);
-        return;
-      }
-
-      const startAttemptId = getOrCreateInterviewStartAttempt(validation.data);
-      const startBody = { ...validation.data, startAttemptId };
-
-      // Call session start API
-      const launchStartedAt = Date.now();
-      let response: Response;
-      try {
-        response = await fetchWithDeadline(
-          "/api/session/start",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(startBody),
-          },
-          INTERVIEW_START_SLOS.launch_request.upperBoundMs
-        );
-      } catch (launchError) {
-        trackStartStage(
-          launchError instanceof Error && launchError.name === "AbortError"
-            ? "delayed"
-            : "failed",
-          Date.now() - launchStartedAt
-        );
-        throw launchError;
-      }
-      trackStartStage(
-        response.ok ? "succeeded" : "failed",
-        Date.now() - launchStartedAt
-      );
-      const responseData: unknown = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        if (isDefinitiveInterviewStartFailure(response.status, responseData)) {
-          clearInterviewStartAttempt(startAttemptId);
-        }
-        const errorData = isRecord(responseData) ? responseData : {};
-        const errorCode =
-          typeof errorData.error === "string" ? errorData.error : null;
-        const errorMessage =
-          typeof errorData.message === "string" ? errorData.message : null;
-
-        // Handle interview type locked error
-        if (response.status === 403 && errorCode === "interview_type_locked") {
-          setTierUpgradeInfo({
-            requestedType: effectiveRoundType,
-            currentTier:
-              typeof errorData.currentTier === "string"
-                ? errorData.currentTier
-                : "free",
-            message:
-              errorMessage ||
-              "This interview type requires an interview credit.",
-          });
-          setShowTierUpgradeModal(true);
-          setIsCreatingSession(false);
-          return;
-        }
-
-        // Handle no-credit errors from the credit ledger.
-        if (
-          (response.status === 402 && errorCode === "no_credits_remaining") ||
-          (response.status === 403 && errorCode === "quota_exceeded")
-        ) {
-          setQuotaInfo({
-            currentUsage: creditBalance?.availableCredits ?? 0,
-            limit: 1,
-            resetDate: creditBalance?.nextCreditExpiresAt ?? null,
-          });
-          setShowQuotaModal(true);
-          setIsCreatingSession(false);
-          return;
-        }
-
-        throw new Error(errorMessage || errorCode || "Failed to start session");
-      }
-
-      const sessionId = parseInterviewStartSessionId(responseData);
-      if (!sessionId) {
-        throw new Error("Interview start returned an invalid session ID");
-      }
-      storeInitialInterviewRoomCredentials({
-        response: responseData,
-        sessionId,
-        ownerId: user!.id,
-      });
-      clearInterviewStartAttempt(startAttemptId);
-
-      const startSucceededProperties = {
-        session_id: sessionId,
+      analytics.track("setup_completed", {
+        user_id: user!.id,
         interview_type: effectiveRoundType,
         skill_level: difficulty,
+        mode: "voice_video",
+        time_to_complete_seconds: Math.floor(timeToComplete),
+        selections_changed: selectionsChanged,
+      });
+      const startAttemptedProperties = {
+        interview_type: effectiveRoundType,
+        skill_level: difficulty,
+        recommendation_source: recommendation.source,
+        accepted_recommendation:
+          effectiveRoundType === recommendation.roundType &&
+          difficulty === recommendation.difficulty,
         question_id: questionId || undefined,
         ...analyticsLaunchContext,
       };
       trackInterviewLaunchEvent(
-        "new_interview_start_succeeded",
-        startSucceededProperties
+        "new_interview_start_attempted",
+        startAttemptedProperties
       );
 
-      // Keep room credentials out of browser history. A one-time, owner-bound
-      // handoff lets the interview route use the token that this successful
-      // start already authorized; reloads still use the reconnect endpoint.
-      router.push(getCanonicalInterviewHref(sessionId));
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
+      try {
+        // Request microphone permission before starting interview
+        try {
+          await checkMicrophonePermission();
+          if (signal.aborted) return;
+          console.log("[Setup] Microphone permission granted");
+        } catch (permError) {
+          if (signal.aborted) return;
+          console.error("[Interview Setup] microphone_permission_denied", {
+            code: "microphone_permission_denied",
+            ...toSafeErrorLog(permError),
+          });
+          setError(
+            "Microphone access is required for voice interviews. Please grant permission and try again."
+          );
+          setIsCreatingSession(false);
+          return;
+        }
+
+        // Build minimal user config
+        const minimalConfig: MinimalInterviewConfig = {
+          roundType: effectiveRoundType,
+          difficulty,
+        };
+
+        // Expand to full config with system defaults
+        const fullConfig = buildFullConfig(minimalConfig);
+
+        // Prepare session data
+        const sessionData = {
+          roundType: effectiveRoundType,
+          mode: "voice_video" as const,
+          config: fullConfig,
+          questionId: questionId || undefined, // Include pre-selected question if available
+        };
+
+        // Validate data
+        const validation = validateSessionStart(sessionData);
+        if (!validation.success) {
+          setError(validation.error);
+          setIsCreatingSession(false);
+          return;
+        }
+
+        const startAttemptId = getOrCreateInterviewStartAttempt(
+          validation.data
+        );
+        const startBody = { ...validation.data, startAttemptId };
+
+        // Bounded idempotent POST replay is the recovery transport. Every request
+        // carries the exact same durable attempt UUID and validated intent.
+        let requestCount = 0;
+        let recoveryStartedAt: number | null = null;
+        const recovery = await recoverInterviewStart({
+          signal,
+          request: async (requestSignal) => {
+            requestCount += 1;
+            const requestStartedAt = Date.now();
+            try {
+              const response = await fetchWithDeadline(
+                "/api/session/start",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(startBody),
+                  signal: requestSignal,
+                },
+                INTERVIEW_START_SLOS.launch_request.upperBoundMs
+              );
+              if (requestCount === 1) {
+                trackStartStage(
+                  "launch_request",
+                  response.ok ? "succeeded" : "failed",
+                  Date.now() - requestStartedAt
+                );
+              }
+              return response;
+            } catch (launchError) {
+              if (requestCount === 1) {
+                trackStartStage(
+                  "launch_request",
+                  launchError instanceof Error &&
+                    launchError.name === "AbortError"
+                    ? "delayed"
+                    : "failed",
+                  Date.now() - requestStartedAt
+                );
+              }
+              throw launchError;
+            }
+          },
+          onRecoveryStarted: () => {
+            recoveryStartedAt = Date.now();
+            if (!signal.aborted) setIsRecoveringStart(true);
+          },
+        });
+
+        if (recoveryStartedAt !== null) {
+          trackStartStage(
+            "launch_recovery",
+            recovery.disposition === "ready"
+              ? "succeeded"
+              : recovery.disposition === "timed_out"
+                ? "delayed"
+                : recovery.disposition === "aborted"
+                  ? "aborted"
+                  : "terminal",
+            Date.now() - recoveryStartedAt
+          );
+        }
+
+        if (recovery.disposition === "aborted") {
+          if (signal.reason === "candidate_cancelled") {
+            setError(
+              "Interview start canceled. Start again to safely resume the same attempt."
+            );
+            setIsCreatingSession(false);
+            setIsRecoveringStart(false);
+          }
+          return;
+        }
+        if (recovery.disposition === "timed_out") {
+          throw new Error(
+            "We couldn't confirm the interview start within one minute. Try again to safely resume the same start attempt."
+          );
+        }
+
+        const response = recovery.response;
+        const responseData = recovery.body;
+        if (recovery.disposition === "terminal") {
+          if (
+            isDefinitiveInterviewStartFailure(response.status, responseData)
+          ) {
+            clearInterviewStartAttempt(startAttemptId);
+          }
+          const errorData = isRecord(responseData) ? responseData : {};
+          const errorCode =
+            typeof errorData.error === "string" ? errorData.error : null;
+          const errorMessage =
+            typeof errorData.message === "string" ? errorData.message : null;
+
+          // Handle interview type locked error
+          if (
+            response.status === 403 &&
+            errorCode === "interview_type_locked"
+          ) {
+            setTierUpgradeInfo({
+              requestedType: effectiveRoundType,
+              currentTier:
+                typeof errorData.currentTier === "string"
+                  ? errorData.currentTier
+                  : "free",
+              message:
+                errorMessage ||
+                "This interview type requires an interview credit.",
+            });
+            setShowTierUpgradeModal(true);
+            setIsCreatingSession(false);
+            setIsRecoveringStart(false);
+            return;
+          }
+
+          // Handle no-credit errors from the credit ledger.
+          if (
+            (response.status === 402 && errorCode === "no_credits_remaining") ||
+            (response.status === 403 && errorCode === "quota_exceeded")
+          ) {
+            setQuotaInfo({
+              currentUsage: creditBalance?.availableCredits ?? 0,
+              limit: 1,
+              resetDate: creditBalance?.nextCreditExpiresAt ?? null,
+            });
+            setShowQuotaModal(true);
+            setIsCreatingSession(false);
+            setIsRecoveringStart(false);
+            return;
+          }
+
+          throw new Error(
+            errorMessage || errorCode || "Failed to start session"
+          );
+        }
+
+        const sessionId = recovery.sessionId;
+        if (signal.aborted) return;
+        storeInitialInterviewRoomCredentials({
+          response: responseData,
+          sessionId,
+          ownerId: user!.id,
+        });
+        clearInterviewStartAttempt(startAttemptId);
+
+        const startSucceededProperties = {
+          session_id: sessionId,
+          interview_type: effectiveRoundType,
+          skill_level: difficulty,
+          question_id: questionId || undefined,
+          ...analyticsLaunchContext,
+        };
+        trackInterviewLaunchEvent(
+          "new_interview_start_succeeded",
+          startSucceededProperties
+        );
+
+        // Keep room credentials out of browser history. A one-time, owner-bound
+        // handoff lets the interview route use the token that this successful
+        // start already authorized; reloads still use the reconnect endpoint.
+        router.push(getCanonicalInterviewHref(sessionId));
+      } catch (err) {
+        if (signal.aborted) {
+          if (signal.reason === "candidate_cancelled") {
+            setError(
+              "Interview start canceled. Start again to safely resume the same attempt."
+            );
+            setIsCreatingSession(false);
+            setIsRecoveringStart(false);
+          }
+          return;
+        }
+        if (err instanceof Error && err.name === "AbortError") {
+          setIsCreatingSession(false);
+          setIsRecoveringStart(false);
+          return;
+        }
+        console.error("[Interview Setup] start_failed", {
+          code: "interview_start_failed",
+          ...toSafeErrorLog(err),
+        });
+        const startFailedProperties = {
+          interview_type: effectiveRoundType,
+          skill_level: difficulty,
+          error: "interview_start_failed",
+          ...analyticsLaunchContext,
+        };
+        trackInterviewLaunchEvent(
+          "new_interview_start_failed",
+          startFailedProperties
+        );
         setError(
-          "Starting the interview is taking longer than expected. Try again to safely resume the same start attempt."
+          err instanceof Error ? err.message : "Failed to start interview"
         );
         setIsCreatingSession(false);
-        return;
+        setIsRecoveringStart(false);
       }
-      console.error("[Interview Setup] start_failed", {
-        code: "interview_start_failed",
-        ...toSafeErrorLog(err),
-      });
-      const startFailedProperties = {
-        interview_type: effectiveRoundType,
-        skill_level: difficulty,
-        error: "interview_start_failed",
-        ...analyticsLaunchContext,
-      };
-      trackInterviewLaunchEvent(
-        "new_interview_start_failed",
-        startFailedProperties
-      );
-      setError(
-        err instanceof Error ? err.message : "Failed to start interview"
-      );
-      setIsCreatingSession(false);
-    } finally {
-      startInFlightRef.current = false;
-    }
+    });
+  };
+
+  const cancelInterviewStart = () => {
+    startSingleFlight.cancel("candidate_cancelled");
   };
 
   if (authLoading) {
@@ -728,7 +797,9 @@ export function SetupContent({
                       className="h-4 w-4 animate-spin"
                       aria-hidden="true"
                     />
-                    Starting mock interview...
+                    {isRecoveringStart
+                      ? "Still starting interview..."
+                      : "Starting mock interview..."}
                   </>
                 ) : (
                   <>
@@ -737,9 +808,20 @@ export function SetupContent({
                   </>
                 )}
               </Button>
+              {isCreatingSession && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelInterviewStart}
+                  className="border-dashboard-panel-border text-dashboard-foreground hover:bg-dashboard-muted/15 hover:text-dashboard-foreground min-h-11 w-full bg-transparent sm:w-auto"
+                >
+                  Cancel start
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
+                disabled={isCreatingSession}
                 aria-expanded={showCustomization}
                 aria-controls="interview-customization"
                 onClick={() => setShowCustomization((current) => !current)}
@@ -749,6 +831,16 @@ export function SetupContent({
                 {showCustomization ? "Hide setup options" : "Change setup"}
               </Button>
             </div>
+            {isRecoveringStart && (
+              <p
+                className="text-dashboard-muted mt-4 max-w-2xl text-sm leading-6"
+                role="status"
+                aria-live="polite"
+              >
+                This is taking longer than usual. We’re safely checking the same
+                start attempt; no second click or extra credit is needed.
+              </p>
+            )}
             {creditBalance?.trialAvailable && (
               <p className="text-dashboard-muted mt-4 text-xs leading-5">
                 Your {BILLING_CATALOG.trial.includedCredits}-credit trial starts
@@ -786,7 +878,9 @@ export function SetupContent({
                 </div>
                 <RoundSelector
                   selected={effectiveRoundType}
-                  disabled={Boolean(selectedQuestionRoundType)}
+                  disabled={
+                    isCreatingSession || Boolean(selectedQuestionRoundType)
+                  }
                   onSelect={(type) => {
                     if (defaultRoundType.current === null) {
                       defaultRoundType.current = type;
@@ -809,6 +903,7 @@ export function SetupContent({
                 <DifficultySelector
                   selected={difficulty}
                   onSelect={(level) => {
+                    if (isCreatingSession) return;
                     if (defaultDifficulty.current === null) {
                       defaultDifficulty.current = level;
                     }
@@ -897,11 +992,12 @@ async function checkMicrophonePermission(): Promise<void> {
 }
 
 function trackStartStage(
-  outcome: "succeeded" | "delayed" | "failed",
+  stage: "launch_request" | "launch_recovery",
+  outcome: InterviewStartStageOutcome,
   durationMs: number
 ) {
   const event = buildInterviewStartStageEvent({
-    stage: "launch_request",
+    stage,
     outcome,
     durationMs,
   });

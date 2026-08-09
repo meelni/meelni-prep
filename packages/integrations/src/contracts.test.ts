@@ -1217,6 +1217,50 @@ test("LiveKit provider creates and reconciles one atomically named interview dis
   assert.equal(roomInput.agents[0].agentName, fixture.input.agentName);
 });
 
+test("LiveKit provider reports separate room and dispatch stage timings", async () => {
+  const fixture = createLiveKitStartFixture();
+  const stages: Array<[string, string, number]> = [];
+  let clock = 0;
+  const provider = createLiveKitInterviewProvider({
+    monotonicNow: () => (clock += 25),
+    agentDispatchClientFactory: () => ({
+      createDispatch: async () => {
+        throw new Error("atomic dispatch must not create a second dispatch");
+      },
+      listDispatch: async () => [
+        {
+          id: "dispatch-1",
+          room: fixture.input.roomName,
+          agentName: fixture.input.agentName,
+        },
+      ],
+    }),
+    roomServiceClientFactory: () => ({
+      createRoom: async () => undefined,
+      listRooms: async () => [
+        {
+          name: fixture.input.roomName,
+          metadata: JSON.stringify(fixture.input.metadata),
+        },
+      ],
+    }),
+  });
+
+  const result = await provider.startInterviewRoom({
+    ...fixture.input,
+    onStage: (stage, outcome, durationMs) => {
+      stages.push([stage, outcome, durationMs]);
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(stages, [
+    ["room_create", "succeeded", 25],
+    ["room_verification", "succeeded", 25],
+    ["dispatch_verification", "succeeded", 25],
+  ]);
+});
+
 test("LiveKit provider reuses the one matching room dispatch", async () => {
   const fixture = createLiveKitStartFixture();
   let createDispatchCalls = 0;

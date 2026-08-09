@@ -173,12 +173,28 @@ later bounded confirmation is scheduled. Canonical lag never rotates
 credentials. Only terminal authorization loss or a real transport disconnect
 may enter the credential-recovery path.
 
-The browser bounds the idempotent session-start request at ten seconds. Because
-an aborted request may already have committed, it retains the stable
-start-attempt UUID; customer retry replays the same start intent instead of
-creating a second interview. Owned session and credential reads have an
-eight-second customer bound and return retryable unavailability rather than
-holding the UI until a platform timeout.
+The browser bounds each idempotent session-start request at ten seconds. Because
+an aborted request may already have committed, one click retains the stable
+start-attempt UUID and automatically replays the exact validated POST intent in
+one single-flight recovery loop. The loop respects `Retry-After` and
+`retryAfterMs`, never overlaps requests, stays in an honest starting state, and
+stops on valid credentials, a definitive failure, candidate cancel/unmount, or
+one 60-second total recovery deadline. Canceling stops browser requests but
+preserves the durable attempt so a later click can safely resume it. A status
+endpoint is intentionally not a second source of launch truth: idempotent POST
+replay reuses the workflow's existing authorization, entitlement, account
+deletion, credit, room, dispatch, readiness, and token checks.
+
+Cold starts emit only the closed `meelni_interview_start_stage` timing contract.
+Aggregate latency can be split across authorization/gate, account/trial,
+question selection, atomic durable-session and credit reservation,
+provisioning claim, deadline scheduling, LiveKit room creation, room metadata
+verification, named-dispatch verification, readiness persistence, and token
+issuance. These events contain stage, outcome, duration, and SLO classification;
+they must not contain a user, session, room, question, transcript, credential,
+or provider error. Owned session and credential reads have an eight-second
+customer bound and return retryable unavailability rather than holding the UI
+until a platform timeout.
 
 Authenticated session lifecycle reads use one database transaction for
 ownership, session state, and feedback visibility. The transaction-local
