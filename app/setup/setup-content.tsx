@@ -101,6 +101,8 @@ export function SetupContent({
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(false);
+  const startInFlightRef = useRef(false);
   const pageLoadTime = useRef(Date.now());
   const defaultRoundType = useRef<RoundType | null>(
     fallbackRecommendation.roundType
@@ -186,6 +188,13 @@ export function SetupContent({
     currentTier: string;
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (launchContext.roundType) {
@@ -305,6 +314,10 @@ export function SetupContent({
       return;
     }
 
+    if (startInFlightRef.current) {
+      return;
+    }
+
     if (questionIdParam && questionIntentState.status !== "ready") {
       setError("Choose an available question before starting.");
       return;
@@ -315,6 +328,7 @@ export function SetupContent({
       return;
     }
 
+    startInFlightRef.current = true;
     setIsCreatingSession(true);
     setError(null);
 
@@ -350,17 +364,23 @@ export function SetupContent({
     try {
       // Request microphone permission before starting interview
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        await checkMicrophonePermission();
         console.log("[Setup] Microphone permission granted");
       } catch (permError) {
         console.error("[Interview Setup] microphone_permission_denied", {
           code: "microphone_permission_denied",
           ...toSafeErrorLog(permError),
         });
-        setError(
-          "Microphone access is required for voice interviews. Please grant permission and try again."
-        );
-        setIsCreatingSession(false);
+        if (isMountedRef.current) {
+          setError(
+            "Microphone access is required for voice interviews. Please grant permission and try again."
+          );
+          setIsCreatingSession(false);
+        }
+        return;
+      }
+
+      if (!isMountedRef.current) {
         return;
       }
 
@@ -518,6 +538,8 @@ export function SetupContent({
         err instanceof Error ? err.message : "Failed to start interview"
       );
       setIsCreatingSession(false);
+    } finally {
+      startInFlightRef.current = false;
     }
   };
 
@@ -861,6 +883,17 @@ export function SetupContent({
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function checkMicrophonePermission(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  for (const track of new Set(stream.getTracks())) {
+    try {
+      track.stop();
+    } catch {
+      // Continue releasing the remaining permission-check tracks.
+    }
+  }
 }
 
 function trackStartStage(
