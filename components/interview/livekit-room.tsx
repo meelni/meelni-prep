@@ -6,9 +6,11 @@ import {
   useVoiceAssistant,
   useDataChannel,
 } from "@livekit/components-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { analytics } from "@/lib/analytics/analytics-service";
 import {
+  hasVerifiedInterviewerLiveness,
+  reconcileInterviewCustomerConnectionStatus,
   reduceInterviewConnectionState,
   type InterviewConnectionStatus,
   type InterviewConnectionTracker,
@@ -23,6 +25,10 @@ import {
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { confirmInterviewRuntimeReady } from "@/lib/interview/runtime-connection-confirmation";
 import { buildInterviewStartStageEvent } from "@/lib/operations/interview-start-slo";
+import {
+  buildInterviewLivenessContradictionEvent,
+  type InterviewLivenessContradictionResolution,
+} from "@/lib/operations/interview-liveness-contradiction";
 
 const DELAYED_READINESS_RETRY_MS = 5_000;
 
@@ -81,6 +87,14 @@ export function LiveKitRoomWrapper({
     attemptObserved: false,
     recoveryObserved: false,
   });
+  const interviewerLiveness = useRef({
+    roomKey: "",
+    established: false,
+  });
+  const roomKey = `${sessionId}:${roomName}`;
+  if (interviewerLiveness.current.roomKey !== roomKey) {
+    interviewerLiveness.current = { roomKey, established: false };
+  }
 
   useEffect(() => {
     acceptedTranscriptEvents.current.clear();
@@ -145,6 +159,7 @@ export function LiveKitRoomWrapper({
         sessionId={sessionId}
         acceptedTranscriptEvents={acceptedTranscriptEvents}
         connectionTracker={connectionTracker}
+        interviewerLiveness={interviewerLiveness}
         onTranscriptUpdate={onTranscriptUpdate}
         onAgentStateChange={onAgentStateChange}
         onConnectionStateChange={onConnectionStateChange}
@@ -161,6 +176,10 @@ interface RoomContentProps {
   sessionId: string;
   acceptedTranscriptEvents: React.RefObject<Set<string>>;
   connectionTracker: React.RefObject<InterviewConnectionTracker>;
+  interviewerLiveness: React.RefObject<{
+    roomKey: string;
+    established: boolean;
+  }>;
   onTranscriptUpdate: (turn: TranscriptTurn) => void;
   onAgentStateChange: (state: string) => void;
   onConnectionStateChange: (state: InterviewConnectionStatus) => void;
@@ -175,25 +194,121 @@ function RoomContent({
   sessionId,
   acceptedTranscriptEvents,
   connectionTracker,
+  interviewerLiveness,
   onTranscriptUpdate,
   onAgentStateChange,
   onConnectionStateChange,
   onTranscriptIntegrityChange,
   children,
 }: RoomContentProps) {
-  const { state } = useVoiceAssistant();
+  const { agent, state } = useVoiceAssistant();
   const connectionState = useConnectionState();
+  const [livenessRepairGeneration, setLivenessRepairGeneration] = useState(0);
   const transcriptUpdateRef = useRef(onTranscriptUpdate);
   const connectionStateChangeRef = useRef(onConnectionStateChange);
+  const baseConnectionStatusRef =
+    useRef<InterviewConnectionStatus>("connecting");
+  const confirmationGenerationRef = useRef(0);
+  const agentIdentityRef = useRef<string | null>(null);
+  const contradictionRef = useRef<{ startedAt: number } | null>(null);
   transcriptUpdateRef.current = onTranscriptUpdate;
   connectionStateChangeRef.current = onConnectionStateChange;
+  agentIdentityRef.current = agent?.identity ?? null;
+
+  const beginReadinessContradiction = useCallback(() => {
+    if (contradictionRef.current) return;
+    contradictionRef.current = { startedAt: Date.now() };
+    trackReadinessContradiction(
+      buildInterviewLivenessContradictionEvent({
+        phase: "observed",
+        durationMs: 0,
+        resolution: "pending",
+      })
+    );
+  }, []);
+
+  const resolveReadinessContradiction = useCallback(
+    (
+      resolution: Exclude<InterviewLivenessContradictionResolution, "pending">
+    ) => {
+      const contradiction = contradictionRef.current;
+      if (!contradiction) return;
+      contradictionRef.current = null;
+      trackReadinessContradiction(
+        buildInterviewLivenessContradictionEvent({
+          phase: "resolved",
+          durationMs: Date.now() - contradiction.startedAt,
+          resolution,
+        })
+      );
+    },
+    []
+  );
+
+  const emitConnectionStatus = useCallback(
+    (status: InterviewConnectionStatus) => {
+      baseConnectionStatusRef.current = status;
+      if (status === "delayed" && interviewerLiveness.current.established) {
+        beginReadinessContradiction();
+      } else if (status === "connected" || status === "recovered") {
+        resolveReadinessContradiction("canonical_ready");
+      } else if (status === "reconnecting" || status === "disconnected") {
+        resolveReadinessContradiction("transport_interrupted");
+      }
+      connectionStateChangeRef.current(
+        reconcileInterviewCustomerConnectionStatus(
+          status,
+          interviewerLiveness.current.established
+        )
+      );
+    },
+    [
+      beginReadinessContradiction,
+      interviewerLiveness,
+      resolveReadinessContradiction,
+    ]
+  );
+
+  const establishInterviewerLiveness = useCallback(() => {
+    if (interviewerLiveness.current.established) return;
+    interviewerLiveness.current.established = true;
+    const promptImmediateRepair = baseConnectionStatusRef.current === "delayed";
+    if (promptImmediateRepair) {
+      beginReadinessContradiction();
+    }
+    connectionStateChangeRef.current(
+      reconcileInterviewCustomerConnectionStatus(
+        baseConnectionStatusRef.current,
+        true
+      )
+    );
+    // Browser evidence does not activate the lifecycle. It only starts a fresh
+    // authenticated provider reconciliation while correcting the room UX.
+    if (promptImmediateRepair) {
+      setLivenessRepairGeneration((generation) => generation + 1);
+    }
+  }, [beginReadinessContradiction, interviewerLiveness]);
 
   // Subscribe to agent state changes
   useEffect(() => {
     if (state) {
       onAgentStateChange(state);
     }
-  }, [state, onAgentStateChange]);
+    if (
+      agent &&
+      hasVerifiedInterviewerLiveness({
+        agentActive: agent.isActive,
+        agentState: state,
+      })
+    ) {
+      establishInterviewerLiveness();
+    }
+  }, [agent, establishInterviewerLiveness, onAgentStateChange, state]);
+
+  useEffect(
+    () => () => resolveReadinessContradiction("unmounted"),
+    [resolveReadinessContradiction]
+  );
 
   useEffect(() => {
     const transition = reduceInterviewConnectionState(
@@ -206,18 +321,19 @@ function RoomContent({
       transition.status !== "connected" &&
       transition.status !== "recovered"
     ) {
-      connectionStateChangeRef.current(transition.status);
+      emitConnectionStatus(transition.status);
       return;
     }
 
     const controller = new AbortController();
+    const confirmationGeneration = ++confirmationGenerationRef.current;
     const readyStatus = transition.status;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let delayed = false;
 
     const confirmReady = async () => {
       if (controller.signal.aborted) return;
-      connectionStateChangeRef.current(
+      emitConnectionStatus(
         delayed
           ? "delayed"
           : readyStatus === "recovered"
@@ -228,7 +344,11 @@ function RoomContent({
         sessionId,
         signal: controller.signal,
       });
-      if (controller.signal.aborted || confirmation.status === "aborted") {
+      if (
+        controller.signal.aborted ||
+        confirmationGeneration !== confirmationGenerationRef.current ||
+        confirmation.status === "aborted"
+      ) {
         return;
       }
       if (confirmation.status === "ready") {
@@ -238,7 +358,7 @@ function RoomContent({
           "succeeded",
           confirmation.durationMs
         );
-        connectionStateChangeRef.current(readyStatus);
+        emitConnectionStatus(readyStatus);
         return;
       }
       if (confirmation.status === "terminal") {
@@ -247,7 +367,8 @@ function RoomContent({
           "terminal",
           confirmation.durationMs
         );
-        connectionStateChangeRef.current("disconnected");
+        resolveReadinessContradiction("terminal");
+        emitConnectionStatus("disconnected");
         return;
       }
 
@@ -257,7 +378,7 @@ function RoomContent({
         "delayed",
         confirmation.durationMs
       );
-      connectionStateChangeRef.current("delayed");
+      emitConnectionStatus("delayed");
       retryTimer = setTimeout(() => {
         void confirmReady();
       }, DELAYED_READINESS_RETRY_MS);
@@ -266,12 +387,25 @@ function RoomContent({
     void confirmReady();
     return () => {
       controller.abort();
+      if (confirmationGenerationRef.current === confirmationGeneration) {
+        confirmationGenerationRef.current += 1;
+      }
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
-  }, [connectionState, connectionTracker, sessionId]);
+  }, [
+    connectionState,
+    connectionTracker,
+    emitConnectionStatus,
+    livenessRepairGeneration,
+    resolveReadinessContradiction,
+    sessionId,
+  ]);
 
   const handleTranscriptMessage = useCallback(
-    (message: { payload: Uint8Array }) => {
+    (message: {
+      payload: Uint8Array;
+      from?: { identity: string; isAgent: boolean };
+    }) => {
       try {
         const jsonString = new TextDecoder().decode(message.payload);
         const transcriptData = parseTranscriptEvent(jsonString);
@@ -290,6 +424,15 @@ function RoomContent({
             "[Transcript] Ignoring event with mismatched correlation"
           );
           return;
+        }
+
+        if (
+          transcriptData.speaker === "interviewer" &&
+          message.from?.isAgent === true &&
+          (!agentIdentityRef.current ||
+            message.from.identity === agentIdentityRef.current)
+        ) {
+          establishInterviewerLiveness();
         }
 
         if (
@@ -341,7 +484,12 @@ function RoomContent({
         });
       }
     },
-    [acceptedTranscriptEvents, roomName, sessionId]
+    [
+      acceptedTranscriptEvents,
+      establishInterviewerLiveness,
+      roomName,
+      sessionId,
+    ]
   );
 
   useDataChannel("transcript", handleTranscriptMessage);
@@ -391,4 +539,10 @@ function trackInterviewStartStage(
     slo_upper_bound_ms: event.sloUpperBoundMs,
     latency_class: event.latencyClass,
   });
+}
+
+function trackReadinessContradiction(
+  event: ReturnType<typeof buildInterviewLivenessContradictionEvent>
+) {
+  analytics.track("interview_liveness_contradiction", event);
 }
