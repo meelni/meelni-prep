@@ -101,6 +101,24 @@ npm run env:pull:production
 npm run db:preflight:production
 ```
 
+Database-only Production recovery, when Vercel encrypted runtime values pull
+blank and the owner already has a private Production database connection:
+
+```bash
+npm run env:recover:database:production -- \
+  --source-file /absolute/path/to/private/owner-production.env
+npm run db:preflight:production
+```
+
+This path still performs a fresh team-`meelni` Vercel Production pull and
+requires the linked project plus database/public/canonical Supabase identities
+to match. It writes only `DATABASE_URL`, the Production environment markers,
+and the canonical Production project ref to a mode-`0600`
+`.env.production.local`. It does not restore a Supabase service-role token or
+any application/provider runtime value, does not make the file deployment
+ready, and does not authorize or execute a migration. The normal
+`env:pull:production` command remains the strict full-runtime path.
+
 For a fresh unmarked file with several intentionally restored same-environment
 values, use `npm run env:adopt:preview` or `npm run env:adopt:production` only
 after verifying every provider account/mode. Adoption still requires the local
