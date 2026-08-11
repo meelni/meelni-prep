@@ -5931,14 +5931,7 @@ function isEvidenceLimitedFeedbackResult(value) {
 var RATING_NUMBER = String.raw`(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
 var IMPLICIT_RATING_NUMBER = String.raw`(?:10(?:\.0+)?|[0-9](?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)(?:[\s-]+point[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?)`;
 var RATING_SCALE = String.raw`(?:5|10|100|five|ten|hundred)`;
-var QUANTITATIVE_UNIT = String.raw`(?:%|percent(?:age)?|basis[\s-]+points?|bps|milliseconds?|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?|users?|customers?|people|participants?|respondents?|interviews?|questions?|features?|ideas?|metrics?|markets?|segments?|experiments?|responses?|stages?|steps?|options?|examples?|findings?|teams?|companies|products?|dollars?|million|billion|revenue|market[\s-]+share)`;
-var QUANTITATIVE_COMPOUND_HEAD = String.raw`(?:stage|point|part|step|phase|factor|dimension|week|month|year|day|hour|minute|second|user|customer|participant|respondent|interview|question|feature|idea|metric|market|segment|experiment|response|option|example|finding|team|company|product|cohort|country|region|channel|dollar)`;
-var NON_RATING_QUANTITY_FOLLOWER = String.raw`(?:[\s-]+${QUANTITATIVE_UNIT}\b|\s*%|-${QUANTITATIVE_COMPOUND_HEAD}\b)`;
-var NUMERICAL_RATING_PATTERNS = [
-  new RegExp(
-    String.raw`\b(?:score(?:d)?|rating|rate(?:d)?|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
+var DIRECT_NUMERICAL_RATING_PATTERNS = [
   new RegExp(
     String.raw`\b${RATING_NUMBER}\s*(?:\/|out[\s-]+of)\s*${RATING_SCALE}\b`,
     "iu"
@@ -5946,39 +5939,18 @@ var NUMERICAL_RATING_PATTERNS = [
   new RegExp(
     String.raw`\b(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}[\s-]+overall\b`,
     "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:(?:a|an)[\s-]+)?overall[\s-]+${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earns?|earned)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:rate|score|grade|assess|evaluate|mark)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
   )
+];
+var CONTEXTUAL_NUMERICAL_RATING_PATTERN_SOURCES = [
+  String.raw`\b(?:score(?:d)?|rating|rate(?:d)?|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:a|an)[\s-]+)?overall[\s-]+${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earns?|earned)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:rate|score|grade|assess|evaluate|mark)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`
 ];
 
 // packages/core/src/feedback-outcome.ts

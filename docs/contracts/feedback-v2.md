@@ -113,10 +113,15 @@ grounding, material/quantitative polarity checks, confidence rules, and
 summary safety checks. Numerical ratings embedded in narrative customer copy
 are rejected, including article-less, label-free, or spelled-out evaluation
 paraphrases such as `aim for eight`, `this answer is eight`, or `an eight
-overall`. Quantitative transcript evidence and non-evaluative recommendations
-remain valid when they describe dates, percentages, counts, metrics, market
-share, revenue, time estimates, or compound constructions such as an
-`eight-stage funnel analysis` rather than candidate or answer ratings.
+overall`. The parser evaluates the complete customer-copy field: an immediate
+numeric
+modifier or hyphenated compound cannot hide an explicit downstream score,
+rating, grade, assessment, or evaluation predicate. Quantitative transcript
+evidence and non-evaluative recommendations remain valid when they describe
+dates, percentages, counts, metrics, market share, revenue, time estimates, or
+open-ended compound constructions such as an `eight-stage funnel analysis`,
+`eight-pillar framework`, or `eight-workstream plan`. Valid compound heads are
+recognized structurally rather than maintained in a noun allowlist.
 
 This companion result is useful evidence-limited coaching, not a synthetic
 score and not a readiness prediction. A session with no reviewable candidate

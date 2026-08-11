@@ -84,14 +84,7 @@ export function parseEvidenceLimitedFeedback(
 const RATING_NUMBER = String.raw`(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
 const IMPLICIT_RATING_NUMBER = String.raw`(?:10(?:\.0+)?|[0-9](?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)(?:[\s-]+point[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?)`;
 const RATING_SCALE = String.raw`(?:5|10|100|five|ten|hundred)`;
-const QUANTITATIVE_UNIT = String.raw`(?:%|percent(?:age)?|basis[\s-]+points?|bps|milliseconds?|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?|users?|customers?|people|participants?|respondents?|interviews?|questions?|features?|ideas?|metrics?|markets?|segments?|experiments?|responses?|stages?|steps?|options?|examples?|findings?|teams?|companies|products?|dollars?|million|billion|revenue|market[\s-]+share)`;
-const QUANTITATIVE_COMPOUND_HEAD = String.raw`(?:stage|point|part|step|phase|factor|dimension|week|month|year|day|hour|minute|second|user|customer|participant|respondent|interview|question|feature|idea|metric|market|segment|experiment|response|option|example|finding|team|company|product|cohort|country|region|channel|dollar)`;
-const NON_RATING_QUANTITY_FOLLOWER = String.raw`(?:[\s-]+${QUANTITATIVE_UNIT}\b|\s*%|-${QUANTITATIVE_COMPOUND_HEAD}\b)`;
-const NUMERICAL_RATING_PATTERNS = [
-  new RegExp(
-    String.raw`\b(?:score(?:d)?|rating|rate(?:d)?|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
+const DIRECT_NUMERICAL_RATING_PATTERNS = [
   new RegExp(
     String.raw`\b${RATING_NUMBER}\s*(?:\/|out[\s-]+of)\s*${RATING_SCALE}\b`,
     "iu"
@@ -100,39 +93,88 @@ const NUMERICAL_RATING_PATTERNS = [
     String.raw`\b(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}[\s-]+overall\b`,
     "iu"
   ),
-  new RegExp(
-    String.raw`\b(?:(?:a|an)[\s-]+)?overall[\s-]+${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earns?|earned)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:rate|score|grade|assess|evaluate|mark)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b(?!${NON_RATING_QUANTITY_FOLLOWER})`,
-    "iu"
-  ),
 ] as const;
+
+const CONTEXTUAL_NUMERICAL_RATING_PATTERN_SOURCES = [
+  String.raw`\b(?:score(?:d)?|rating|rate(?:d)?|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:a|an)[\s-]+)?overall[\s-]+${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earns?|earned)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+  String.raw`\b(?:rate|score|grade|assess|evaluate|mark)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
+] as const;
+
+const DOWNSTREAM_RATING_PREDICATE =
+  /\b(?:overall|scores?|scored|scoring|ratings?|rated|grades?|graded|evaluations?|evaluated|assessments?|assessed|marks?|marked)\b/iu;
+const BARE_RATING_CONTINUATIONS = new Set([
+  "and",
+  "as",
+  "at",
+  "but",
+  "by",
+  "for",
+  "from",
+  "in",
+  "ish",
+  "next",
+  "of",
+  "on",
+  "or",
+  "out",
+  "overall",
+  "than",
+  "that",
+  "this",
+  "to",
+  "toward",
+  "towards",
+  "with",
+]);
+
+function containsNumericalRating(value: string): boolean {
+  if (DIRECT_NUMERICAL_RATING_PATTERNS.some((pattern) => pattern.test(value))) {
+    return true;
+  }
+
+  return CONTEXTUAL_NUMERICAL_RATING_PATTERN_SOURCES.some((source) => {
+    const pattern = new RegExp(source, "giu");
+    for (const match of value.matchAll(pattern)) {
+      if (isContextualNumericalRating(value, match.index + match[0].length)) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
+function isContextualNumericalRating(
+  value: string,
+  numberEnd: number
+): boolean {
+  const downstreamCopy = value.slice(numberEnd);
+
+  if (DOWNSTREAM_RATING_PREDICATE.test(downstreamCopy)) {
+    return true;
+  }
+
+  if (/^\s*%/u.test(downstreamCopy)) {
+    return false;
+  }
+
+  // A lexical follower makes the number an open-ended quantity or compound.
+  // Rating vocabulary later in the customer-copy field takes precedence above.
+  const modifier = downstreamCopy.match(
+    /^(?:\s+|-\s*)([\p{L}][\p{L}\p{M}'’]*)/u
+  );
+  if (!modifier) {
+    return true;
+  }
+
+  return BARE_RATING_CONTINUATIONS.has(modifier[1]!.toLocaleLowerCase("en-US"));
+}
 
 function requireNoNumericalRating(
   narrative: Pick<
@@ -151,11 +193,7 @@ function requireNoNumericalRating(
       finding.nextStep,
     ]),
   ];
-  if (
-    customerCopy.some((value) =>
-      NUMERICAL_RATING_PATTERNS.some((pattern) => pattern.test(value))
-    )
-  ) {
+  if (customerCopy.some((value) => containsNumericalRating(value))) {
     throw new FeedbackV2ParseError(
       "score_invalid",
       "evidence-limited feedback must withhold numerical ratings"
