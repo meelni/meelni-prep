@@ -25,10 +25,14 @@ explicit or implicit numerical-rating copy, including article-less and
 label-free spelled-out ratings, while preserving dates, percentages, counts,
 metrics, market share, revenue, time estimates, and compound quantity phrases.
 Quantity and compound recognition is structural and open-ended rather than a
-noun allowlist. The detector evaluates the remainder of the customer-copy
-field, so
-an immediate compound or count modifier never masks an explicit downstream
-score, rating, grade, assessment, or evaluation predicate.
+noun allowlist. A deterministic lexer classifies numeric spans inside local
+clauses, including predicate-to-number adjacency across colon, em dash, and
+newline separators. Rating scales, units, and noun-phrase heads bind only to
+their numeric span. Later clauses are barriers and may independently describe
+how to score, grade, rate, or mark PM artifacts without reclassifying the
+earlier quantity. A bounded adjacent-clause pronoun or demonstrative crosses
+that barrier only when it explicitly refers the quantity back to a score or
+rating.
 
 ## Durable outcomes and presentation
 

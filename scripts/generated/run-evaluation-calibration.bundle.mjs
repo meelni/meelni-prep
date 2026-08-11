@@ -5928,30 +5928,6 @@ var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited
 function isEvidenceLimitedFeedbackResult(value) {
   return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
 }
-var RATING_NUMBER = String.raw`(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
-var IMPLICIT_RATING_NUMBER = String.raw`(?:10(?:\.0+)?|[0-9](?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)(?:[\s-]+point[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?)`;
-var RATING_SCALE = String.raw`(?:5|10|100|five|ten|hundred)`;
-var DIRECT_NUMERICAL_RATING_PATTERNS = [
-  new RegExp(
-    String.raw`\b${RATING_NUMBER}\s*(?:\/|out[\s-]+of)\s*${RATING_SCALE}\b`,
-    "iu"
-  ),
-  new RegExp(
-    String.raw`\b(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}[\s-]+overall\b`,
-    "iu"
-  )
-];
-var CONTEXTUAL_NUMERICAL_RATING_PATTERN_SOURCES = [
-  String.raw`\b(?:score(?:d)?|rating|rate(?:d)?|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b`,
-  String.raw`\b(?:(?:a|an)[\s-]+)?overall[\s-]+${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earns?|earned)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`,
-  String.raw`\b(?:rate|score|grade|assess|evaluate|mark)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s*(?:at|as)?\s*(?:(?:a|an)\s+)?${IMPLICIT_RATING_NUMBER}\b`
-];
 
 // packages/core/src/feedback-outcome.ts
 var FEEDBACK_OUTCOME_REASONS = [
