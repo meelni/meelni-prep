@@ -93,19 +93,7 @@ test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
     })
   );
 
-  for (const summary of [
-    "The recorded answer receives a score of 8.",
-    "The recorded answer is rated eight out of ten.",
-    "The recorded answer receives 8/10.",
-    "Aim for an eight overall.",
-    "The answer lands at 8.5 overall.",
-    "Overall, this response is a nine.",
-    "Target an overall seven next time.",
-    "Work toward an eight next time.",
-    "I would call this answer an eight.",
-    "This answer is an eight.",
-    "Give this response an eight.",
-  ]) {
+  for (const summary of RATING_COPY_REJECTIONS) {
     assert.throws(() =>
       parseEvidenceLimitedFeedback(
         { ...response(), summary },
@@ -115,17 +103,85 @@ test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
   }
 });
 
-test("preserves non-evaluative quantities in evidence and recommendations", () => {
-  const quantitative = response();
-  quantitative.strengths[0]!.nextStep =
-    "By August 8, plan an eight-week pilot, interview eight users, target 8% market share and $8 million revenue, and track three activation metrics plus a 200 ms latency guardrail.";
-
-  const parsed = parseEvidenceLimitedFeedback(quantitative, {
-    transcript,
-    modelVersion: "fixture-model-v1",
-  });
-
-  assert.match(parsed.strengths[0]!.nextStep, /8% market share/);
-  assert.match(parsed.strengths[0]!.nextStep, /\$8 million revenue/);
-  assert.match(parsed.strengths[0]!.nextStep, /eight-week pilot/);
+test("rejects article-less and article-bearing rating contexts", () => {
+  for (const copy of RATING_COPY_REJECTIONS) {
+    const candidate = response();
+    candidate.strengths[0]!.nextStep = copy;
+    assert.throws(
+      () =>
+        parseEvidenceLimitedFeedback(candidate, {
+          transcript,
+          modelVersion: "fixture-model-v1",
+        }),
+      /evidence-limited feedback must withhold numerical ratings/,
+      copy
+    );
+  }
 });
+
+test("preserves legitimate compound, count, metric, date, and time copy", () => {
+  for (const copy of LEGITIMATE_QUANTITATIVE_COPY) {
+    const candidate = response();
+    candidate.strengths[0]!.nextStep = copy;
+    const parsed = parseEvidenceLimitedFeedback(candidate, {
+      transcript,
+      modelVersion: "fixture-model-v1",
+    });
+    assert.equal(parsed.strengths[0]!.nextStep, copy);
+  }
+});
+
+const RATING_COPY_REJECTIONS = [
+  "The recorded answer receives a score of 8.",
+  "The recorded answer is rated eight out of ten.",
+  "The recorded answer receives 8/10.",
+  "Aim for eight.",
+  "Aim for 8.",
+  "Aim for an eight.",
+  "Aim for eight-ish.",
+  "Aim for eight overall.",
+  "Aim for an eight overall.",
+  "The answer lands at 8.5 overall.",
+  "Overall, this response is nine.",
+  "Overall, this response is a nine.",
+  "Overall: eight.",
+  "Target overall seven next time.",
+  "Target an overall seven next time.",
+  "Target eight next time.",
+  "Work toward eight next time.",
+  "Work toward an eight next time.",
+  "I would call this answer eight.",
+  "I would call this answer an eight.",
+  "Consider this response eight.",
+  "This answer is eight.",
+  "This answer is an eight.",
+  "This answer is eight-ish.",
+  "Give this response eight.",
+  "Give this response an eight.",
+  "Award the answer eight.",
+  "Rate this answer eight.",
+  "Score the response eight.",
+  "Grade this attempt eight.",
+  "Assess this performance at eight.",
+  "Evaluate this answer as eight.",
+  "This response earns eight.",
+  "This response merits eight.",
+] as const;
+
+const LEGITIMATE_QUANTITATIVE_COPY = [
+  "Use an eight-stage funnel analysis to compare activation drop-off.",
+  "Target an eight-stage funnel analysis with explicit decision points.",
+  "The answer is an eight-point framework with explicit decision criteria.",
+  "This response is an eight-stage funnel analysis.",
+  "Aim for eight customer interviews before August 8.",
+  "Interview eight users and compare three customer segments.",
+  "This answer is eight minutes long and cites 8% market share.",
+  "Reach eight million dollars in revenue by August 8.",
+  "Target 8% market share and $8 million revenue.",
+  "Track three activation metrics and a 200 ms latency guardrail.",
+  "Plan an eight-week pilot with 30-day and two-hour estimates.",
+  "Compare the 2026 baseline with the 2027 target.",
+  "Score eight customer interviews against three research criteria.",
+  "This response earns eight customer referrals and $8 million revenue.",
+  "By August 8, plan an eight-week pilot, interview eight users, target 8% market share and $8 million revenue, and track three activation metrics plus a 200 ms latency guardrail.",
+] as const;

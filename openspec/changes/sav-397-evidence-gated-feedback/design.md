@@ -21,9 +21,9 @@ The evidence-limited parser reuses Feedback v2's canonical transcript index,
 exact-quote restoration, uniqueness/non-overlap, observable-claim grounding,
 material and quantitative claim checks, confidence rules, and summary safety.
 It permits one to three total findings, no more than two per array, and rejects
-explicit or implicit numerical-rating copy, including label-free spelled-out
-overall ratings, while preserving dates, percentages, counts, metrics, market
-share, revenue, and time estimates.
+explicit or implicit numerical-rating copy, including article-less and
+label-free spelled-out ratings, while preserving dates, percentages, counts,
+metrics, market share, revenue, time estimates, and compound quantity phrases.
 
 ## Durable outcomes and presentation
 
