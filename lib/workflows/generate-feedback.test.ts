@@ -244,7 +244,7 @@ test("untrusted transcript is skipped without provider or insight work", async (
   assert.equal(insights.length, 0);
 });
 
-test("numeric-free narrative rejection remains generation failure, not insufficiency", async () => {
+test("unknown evidence-limited selection remains generation failure, not insufficiency", async () => {
   const store = new MemoryGenerationStore(
     record({
       completionTier: "partial",
@@ -258,8 +258,8 @@ test("numeric-free narrative rejection remains generation failure, not insuffici
     })
   );
   const rejection = new FeedbackV2ParseError(
-    "score_invalid",
-    "evidence-limited narrative must be numeric-value-free"
+    "finding_text_invalid",
+    "unknown evidence-limited strength signal code"
   );
   let observedMode: "scored" | "evidence_limited" | undefined;
   const deps = dependencies(store, {
@@ -271,7 +271,7 @@ test("numeric-free narrative rejection remains generation failure, not insuffici
 
   await assert.rejects(
     generateFeedbackWorkflow(input(EVENT_1), deps),
-    /numeric-value-free/
+    /unknown evidence-limited strength signal code/
   );
   assert.equal(observedMode, "evidence_limited");
   assert.equal(store.current.status, "processing");

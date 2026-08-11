@@ -6,7 +6,6 @@ import {
   type FeedbackTranscriptTurn,
 } from "@meelni/core";
 
-import { normalizePracticeRecommendations } from "@/lib/product-language";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { getFeedbackEvaluationModel } from "./model-config";
 import {
@@ -62,7 +61,11 @@ export async function generateEvidenceLimitedFeedback(
         { role: "system", content: EVIDENCE_LIMITED_SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
-      response_format: getEvidenceLimitedProviderResponseFormat(),
+      response_format: getEvidenceLimitedProviderResponseFormat(
+        projection.transcript
+          .filter((turn) => turn.speaker === "user")
+          .map((turn) => turn.eventId)
+      ),
       max_completion_tokens: FEEDBACK_MAX_COMPLETION_TOKENS,
     });
     const choice = completion.choices[0];
@@ -82,13 +85,12 @@ export async function generateEvidenceLimitedFeedback(
       parsed,
       projection.canonicalIdByAlias
     );
-    const normalized = normalizeFindingNextSteps(canonical);
     await trace?.end({
       status: "success",
       usage: parseUsage(completion.usage),
       response: rawResponse,
     });
-    return normalized;
+    return canonical;
   } catch (error) {
     await trace?.end({ status: "error", response: rawResponse });
     const code = getEvaluationFailureCode(error);
@@ -98,30 +100,6 @@ export async function generateEvidenceLimitedFeedback(
     });
     throw new Error(code);
   }
-}
-
-function normalizeFindingNextSteps(
-  result: EvidenceLimitedFeedbackResult
-): EvidenceLimitedFeedbackResult {
-  const findings = [...result.strengths, ...result.improvements];
-  const recommendations = normalizePracticeRecommendations(
-    findings.map((finding) => finding.nextStep)
-  );
-  if (recommendations.length !== findings.length) {
-    throw new Error("evidence_limited_recommendation_normalization_failed");
-  }
-  let index = 0;
-  return {
-    ...result,
-    strengths: result.strengths.map((finding) => ({
-      ...finding,
-      nextStep: recommendations[index++]!,
-    })),
-    improvements: result.improvements.map((finding) => ({
-      ...finding,
-      nextStep: recommendations[index++]!,
-    })),
-  };
 }
 
 function parseUsage(

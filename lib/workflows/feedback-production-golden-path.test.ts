@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   decodeFeedbackLifecycleResponse,
   isEvidenceLimitedFeedbackResult,
+  parseEvidenceLimitedFeedback,
   presentCompletedFeedback,
   toFeedbackViewState,
   type FeedbackEvaluationResult,
@@ -402,6 +403,17 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
       view.kind === "completed-evidence-limited",
     fixture.id
   );
+  if (view.kind === "completed-evidence-limited") {
+    const candidateTurn = turns.find((turn) => turn.speaker === "user");
+    assert.ok(candidateTurn, fixture.id);
+    assert.equal(
+      view.feedback.strengths[0]?.evidence[0]?.quote,
+      candidateTurn.text,
+      fixture.id
+    );
+    assert.match(view.feedback.strengths[0]?.signalCode ?? "", /_/);
+    assert.match(view.feedback.improvements[0]?.actionCode ?? "", /_/);
+  }
   stages.push("api_view_model");
   assert.deepEqual(stages, [
     "writer_registration",
@@ -530,27 +542,63 @@ function evidenceLimitedEvaluation(
   roundType: string,
   turn: PreparedFeedbackTranscript["transcript"][number]
 ): FeedbackEvaluationResult {
-  const observation =
-    {
-      product_sense:
-        "The answer selects working parents and identifies recurring coordination pain.",
-      behavioral:
-        "The answer aligns design and engineering on reduced scope and documents a tradeoff.",
-      strategy:
-        "The answer selects a mid-market segment and compares distribution and integration needs.",
-      execution:
-        "The answer identifies retained weekly creators and publishing latency.",
-    }[roundType] ?? "The answer identifies a specific user problem.";
-  return {
-    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-    modelVersion: "fake-evaluator-v1",
-    rubricVersion: FEEDBACK_RUBRIC_VERSION,
-    evaluationState: "partial",
-    strengths: [finding(turn, "insight", observation)],
-    improvements: [],
-    summary: observation,
+  const route = {
+    product_sense: {
+      strength: "customer_problem_connection" as const,
+      strengthAction: "connect_customer_to_decision" as const,
+      improvement: "tradeoff_decision" as const,
+      improvementAction: "compare_tradeoffs_and_choose" as const,
+    },
+    behavioral: {
+      strength: "tradeoff_ownership" as const,
+      strengthAction: "compare_tradeoffs_and_choose" as const,
+      improvement: "main_point_focus" as const,
+      improvementAction: "state_point_then_support" as const,
+    },
+    strategy: {
+      strength: "tradeoff_ownership" as const,
+      strengthAction: "compare_tradeoffs_and_choose" as const,
+      improvement: "customer_decision_connection" as const,
+      improvementAction: "connect_customer_to_decision" as const,
+    },
+    execution: {
+      strength: "customer_problem_connection" as const,
+      strengthAction: "connect_customer_to_decision" as const,
+      improvement: "structure_progression" as const,
+      improvementAction: "outline_reasoning" as const,
+    },
+  }[roundType] ?? {
+    strength: "structured_reasoning" as const,
+    strengthAction: "outline_reasoning" as const,
+    improvement: "recommendation_directness" as const,
+    improvementAction: "lead_with_recommendation" as const,
   };
+  return parseEvidenceLimitedFeedback(
+    {
+      schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_RUBRIC_VERSION,
+      evaluationState: "partial",
+      strengths: [
+        {
+          signalCode: route.strength,
+          actionCode: route.strengthAction,
+          transcriptRef: turn.eventId,
+        },
+      ],
+      improvements: [
+        {
+          signalCode: route.improvement,
+          actionCode: route.improvementAction,
+          transcriptRef: turn.eventId,
+        },
+      ],
+    },
+    {
+      transcript: [turn],
+      modelVersion: "fake-evaluator-v2",
+    }
+  );
 }
 
 function scoredEvaluation(

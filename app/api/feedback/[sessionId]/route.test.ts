@@ -53,6 +53,15 @@ vi.mock("@/lib/db/interactive-read", () => ({
 }));
 
 import { NextRequest } from "next/server";
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+} from "@meelni/core";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
@@ -801,6 +810,73 @@ describe("/api/feedback/[sessionId]", () => {
         promptVersion: "feedback.prompt.v2",
         modelVersion: "fixture-model-v1",
         rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      },
+    });
+  });
+
+  it("returns only server-owned evidence-limited templates and grounded citations", async () => {
+    const strength = {
+      signalCode: "customer_problem_connection",
+      actionCode: "connect_customer_to_decision",
+      dimension: "insight",
+      observation:
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation,
+      transcriptRefs: ["writer:1"],
+      evidence: [
+        {
+          turnRef: "writer:1",
+          quote: "I would focus on working parents first.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    const improvement = {
+      signalCode: "structure_progression",
+      actionCode: "outline_reasoning",
+      dimension: "structure",
+      observation:
+        EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression.observation,
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        strengths: [strength],
+        improvements: [improvement],
+        drills: [],
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+        modelVersion: "fixture-model-v2",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: {
+        kind: "evidence-limited",
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        strengths: [strength],
+        improvements: [improvement],
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
         evaluationState: "partial",
       },
     });

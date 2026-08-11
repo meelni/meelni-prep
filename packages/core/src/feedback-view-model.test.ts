@@ -10,6 +10,15 @@ import {
   type FeedbackLifecycleResponse,
   type PersistedCompletedFeedback,
 } from "./feedback-view-model";
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+} from "./feedback-evidence-limited";
 
 const finding = {
   dimension: "insight",
@@ -75,6 +84,67 @@ function present(
   return presentCompletedFeedback(input, { evidenceTurns: turns });
 }
 
+function evidenceLimitedCompleted(
+  overrides: Partial<PersistedCompletedFeedback> = {}
+): PersistedCompletedFeedback {
+  return completed({
+    structureScore: null,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: [
+      {
+        signalCode: "customer_problem_connection",
+        actionCode: "connect_customer_to_decision",
+        dimension: "insight",
+        observation:
+          EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+            .observation,
+        transcriptRefs: ["writer:1"],
+        evidence: [
+          {
+            turnRef: "writer:1",
+            quote: evidenceTurns[0]!.text,
+          },
+        ],
+        nextStep:
+          EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    improvements: [
+      {
+        signalCode: "structure_progression",
+        actionCode: "outline_reasoning",
+        dimension: "structure",
+        observation:
+          EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression
+            .observation,
+        transcriptRefs: ["writer:2"],
+        evidence: [
+          {
+            turnRef: "writer:2",
+            quote: evidenceTurns[1]!.text,
+          },
+        ],
+        nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    drills: [],
+    summary: EVIDENCE_LIMITED_SUMMARY,
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: "fixture-model-v2",
+    evaluationState: "partial",
+    ...overrides,
+  });
+}
+
 test("presents strict full and partial v2 feedback without score coercion", () => {
   const full = present(completed());
   assert.equal(full.kind, "v2");
@@ -103,6 +173,47 @@ test("presents strict full and partial v2 feedback without score coercion", () =
       feedback: partial,
     }).kind,
     "completed-partial"
+  );
+});
+
+test("presents and decodes only server-owned evidence-limited templates", () => {
+  const presented = present(evidenceLimitedCompleted());
+  assert.equal(presented.kind, "evidence-limited");
+  if (presented.kind !== "evidence-limited") return;
+  assert.equal(
+    presented.strengths[0]?.observation,
+    EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
+  );
+  assert.equal(
+    presented.strengths[0]?.evidence[0]?.quote,
+    evidenceTurns[0]!.text
+  );
+
+  const decoded = decodeFeedbackLifecycleResponse({
+    status: "completed",
+    retryable: false,
+    feedback: presented,
+  });
+  assert.equal(decoded?.status, "completed");
+  assert.equal(
+    toFeedbackViewState(decoded!).kind,
+    "completed-evidence-limited"
+  );
+
+  const providerCopy = structuredClone(presented);
+  providerCopy.strengths[0]!.observation = "VIII, grade A";
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: providerCopy,
+    }),
+    null
+  );
+  assert.equal(
+    present(evidenceLimitedCompleted({ strengths: providerCopy.strengths }))
+      .kind,
+    "invalid"
   );
 });
 

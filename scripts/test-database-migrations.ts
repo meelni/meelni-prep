@@ -8062,10 +8062,24 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
   });
 
   await sql.begin(async (tx) => {
+    await assert.rejects(
+      tx.savepoint("retired_evidence_limited_v1", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET schema_version = 'feedback.evidence-limited.v1',
+              prompt_version = 'feedback.prompt.evidence-limited.v1',
+              model_version = 'fixture-model-v1',
+              rubric_version = 'pm-feedback-rubric.v2',
+              evaluation_state = 'partial'
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_version_tuple_check/
+    );
     await tx`
       UPDATE feedback
-      SET schema_version = 'feedback.evidence-limited.v1',
-          prompt_version = 'feedback.prompt.evidence-limited.v1',
+      SET schema_version = 'feedback.evidence-limited.v2',
+          prompt_version = 'feedback.prompt.evidence-limited.v2',
           model_version = 'fixture-model-v1',
           rubric_version = 'pm-feedback-rubric.v2',
           evaluation_state = 'partial'
@@ -8097,7 +8111,7 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       tx.savepoint("invalid_feedback_v2_tuple", async (savepoint) => {
         await savepoint`
           UPDATE feedback
-          SET prompt_version = 'feedback.prompt.evidence-limited.v1'
+          SET prompt_version = 'feedback.prompt.evidence-limited.v2'
           WHERE id = ${legacy.id}::uuid
         `;
       }),
@@ -8464,29 +8478,39 @@ async function verifyFeedbackProductionDatabaseLifecycle(
           (candidate) => candidate.speaker === "user"
         );
         assert.ok(turn);
-        const observation =
-          "The answer selects working parents and identifies recurring coordination pain.";
-        return {
-          schemaVersion: core.FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-          promptVersion: core.FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-          modelVersion: "fake-evaluator-v1",
-          rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
-          evaluationState: "partial" as const,
-          strengths: [
-            {
-              dimension: "insight" as const,
-              observation,
-              transcriptRefs: [turn.eventId],
-              evidence: [{ turnRef: turn.eventId, quote: turn.text }],
-              nextStep:
-                "Compare explicit decision criteria in the next practice answer.",
-              rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
-              confidence: 0.7,
-            },
-          ],
-          improvements: [],
-          summary: observation,
-        };
+        return core.parseEvidenceLimitedFeedback(
+          {
+            schemaVersion:
+              core.FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
+            promptVersion: core.FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+            rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
+            evaluationState: "partial" as const,
+            strengths: [
+              {
+                signalCode: "customer_problem_connection" as const,
+                actionCode: "connect_customer_to_decision" as const,
+                transcriptRef: turn.eventId,
+              },
+            ],
+            improvements: [
+              {
+                signalCode: "tradeoff_decision" as const,
+                actionCode: "compare_tradeoffs_and_choose" as const,
+                transcriptRef: turn.eventId,
+              },
+            ],
+          },
+          {
+            transcript: [
+              {
+                eventId: turn.eventId,
+                speaker: "user" as const,
+                text: turn.text,
+              },
+            ],
+            modelVersion: "fake-evaluator-v2",
+          }
+        );
       },
     }),
     reportResult() {},
@@ -8565,6 +8589,25 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.ok(decoded);
   const view = core.toFeedbackViewState(decoded);
   assert.equal(view.kind, "completed-evidence-limited");
+  if (view.kind !== "completed-evidence-limited") {
+    throw new Error("database golden path lost evidence-limited view state");
+  }
+  const frozenCandidate = evidenceTurns.find(
+    (candidate) => candidate.speaker === "user"
+  );
+  assert.ok(frozenCandidate);
+  assert.equal(
+    view.feedback.strengths[0]?.signalCode,
+    "customer_problem_connection"
+  );
+  assert.equal(
+    view.feedback.strengths[0]?.actionCode,
+    "connect_customer_to_decision"
+  );
+  assert.equal(
+    view.feedback.strengths[0]?.evidence[0]?.quote,
+    frozenCandidate.text
+  );
 
   await seedSession(collision);
   await ingestFixture(collision);

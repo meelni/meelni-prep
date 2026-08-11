@@ -29,8 +29,8 @@ ALTER TABLE "feedback" ADD CONSTRAINT "feedback_version_tuple_check" CHECK ((
             "feedback"."evaluation_state" IN ('full', 'partial')
           ) OR
           (
-            "feedback"."schema_version" = 'feedback.evidence-limited.v1' AND
-            "feedback"."prompt_version" = 'feedback.prompt.evidence-limited.v1' AND
+            "feedback"."schema_version" = 'feedback.evidence-limited.v2' AND
+            "feedback"."prompt_version" = 'feedback.prompt.evidence-limited.v2' AND
             "feedback"."evaluation_state" = 'partial'
           )
         ) AND

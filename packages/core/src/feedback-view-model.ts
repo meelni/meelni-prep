@@ -12,7 +12,10 @@ import {
 import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-  parseEvidenceLimitedFeedback,
+  hasServerOwnedEvidenceLimitedContent,
+  parsePersistedEvidenceLimitedFeedback,
+  type EvidenceLimitedImprovementItem,
+  type EvidenceLimitedStrengthItem,
   type EvidenceLimitedFeedbackResult,
 } from "./feedback-evidence-limited";
 import type {
@@ -114,8 +117,8 @@ export interface FeedbackEvidenceLimitedView
   promptVersion: typeof FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION;
   modelVersion: string;
   rubricVersion: typeof FEEDBACK_RUBRIC_VERSION;
-  strengths: FeedbackV2Item[];
-  improvements: FeedbackV2Item[];
+  strengths: EvidenceLimitedStrengthItem[];
+  improvements: EvidenceLimitedImprovementItem[];
 }
 
 export interface FeedbackInvalidView {
@@ -540,10 +543,11 @@ function decodeCompletedFeedbackView(
       value.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
       value.evaluationState === "partial" &&
       isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) &&
-      isFeedbackFindingArray(value.strengths, 0) &&
-      isFeedbackFindingArray(value.improvements, 0) &&
-      value.strengths.length + value.improvements.length >= 1 &&
-      value.strengths.length + value.improvements.length <= 3
+      hasServerOwnedEvidenceLimitedContent({
+        strengths: value.strengths,
+        improvements: value.improvements,
+        summary: value.summary,
+      })
       ? (value as unknown as FeedbackEvidenceLimitedView)
       : null;
   }
@@ -786,24 +790,25 @@ function parseEvidenceLimitedFeedbackView(
   const transcript = [...parseCanonicalEvidenceTurns(evidenceTurns)].map(
     ([eventId, text]) => ({ eventId, speaker: "user" as const, text })
   );
-  const feedback: EvidenceLimitedFeedbackResult = parseEvidenceLimitedFeedback(
-    {
-      schemaVersion: input.schemaVersion,
-      promptVersion: input.promptVersion,
-      rubricVersion: input.rubricVersion,
-      evaluationState: input.evaluationState,
-      strengths: input.strengths,
-      improvements: input.improvements,
-      summary: input.summary,
-    },
-    {
-      transcript,
-      modelVersion: requireBoundedString(
-        input.modelVersion,
-        FEEDBACK_READ_LIMITS.modelVersion
-      ),
-    }
-  );
+  const feedback: EvidenceLimitedFeedbackResult =
+    parsePersistedEvidenceLimitedFeedback(
+      {
+        schemaVersion: input.schemaVersion,
+        promptVersion: input.promptVersion,
+        rubricVersion: input.rubricVersion,
+        evaluationState: input.evaluationState,
+        strengths: input.strengths,
+        improvements: input.improvements,
+        summary: input.summary,
+      },
+      {
+        transcript,
+        modelVersion: requireBoundedString(
+          input.modelVersion,
+          FEEDBACK_READ_LIMITS.modelVersion
+        ),
+      }
+    );
   return {
     kind: "evidence-limited",
     id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),

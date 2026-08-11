@@ -879,8 +879,8 @@ export const feedback = pgTable(
             ${table.evaluationState} IN ('full', 'partial')
           ) OR
           (
-            ${table.schemaVersion} = 'feedback.evidence-limited.v1' AND
-            ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1' AND
+            ${table.schemaVersion} = 'feedback.evidence-limited.v2' AND
+            ${table.promptVersion} = 'feedback.prompt.evidence-limited.v2' AND
             ${table.evaluationState} = 'partial'
           )
         ) AND
