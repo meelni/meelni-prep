@@ -30,16 +30,15 @@ healthy eligible prefix below that precision boundary uses the scoreless
 findings and a bounded narrative summary. It shares Feedback v2 transcript
 preparation, aliasing, semantic grounding, evidence uniqueness, claim-safety,
 and recommendation normalization. It never persists or presents inferred
-scores. Narrative score withholding tokenizes each customer-copy field into
-numeric spans and local clauses. Colon, em-dash, and hard-line separators may
-join an evaluation predicate to its immediate numeric complement; rating
-scales, local rating heads, and rating units bind to that span. Ordinary clause
-and sentence boundaries stop the binding, so later instructions to compare,
-score, grade, or mark quantitative PM artifacts do not reclassify an earlier
-count. An immediately adjacent clause crosses that boundary only when a
-pronoun or demonstrative explicitly refers the quantity back to a score or
-rating. Open-ended quantity and compound heads are structural rather than a
-noun allowlist.
+scores. Every model-generated `observation`, `nextStep`, and `summary` is
+canonicalized with NFKC, stripped of Unicode format/default-ignorable controls,
+and rejected if it contains any Unicode Number-category code point, English
+cardinal or ordinal number-value atom, or explicit letter-grade symbol. There
+are no contextual exceptions for metrics, ratios, dates, counts, ranges, or
+compounds. Quantitative candidate evidence may appear only in an exact
+`evidence.quote` grounded to the frozen canonical transcript; narrative must
+paraphrase it qualitatively. An invalid provider result remains
+`generation_failed`, not candidate insufficiency.
 
 A frozen session with no trustworthy substantive candidate answer becomes
 `no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed

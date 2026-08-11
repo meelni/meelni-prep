@@ -47,7 +47,7 @@ function response() {
   };
 }
 
-test("parses grounded narrative feedback while withholding scores", () => {
+test("parses grounded qualitative feedback with numeric-free narrative", () => {
   const parsed = parseEvidenceLimitedFeedback(response(), {
     transcript,
     modelVersion: "fixture-model-v1",
@@ -58,7 +58,7 @@ test("parses grounded narrative feedback while withholding scores", () => {
   assert.equal(parsed.improvements.length, 0);
 });
 
-test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
+test("rejects ungrounded, empty, and structurally score-bearing responses", () => {
   const ungrounded = response();
   ungrounded.strengths[0]!.evidence[0]!.quote = "invented evidence";
   assert.throws(() =>
@@ -83,28 +83,10 @@ test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
       { transcript, modelVersion: "fixture-model-v1" }
     )
   );
-
-  const covertRecommendation = response();
-  covertRecommendation.strengths[0]!.nextStep = "Aim for an eight overall.";
-  assert.throws(() =>
-    parseEvidenceLimitedFeedback(covertRecommendation, {
-      transcript,
-      modelVersion: "fixture-model-v1",
-    })
-  );
-
-  for (const summary of RATING_COPY_REJECTIONS) {
-    assert.throws(() =>
-      parseEvidenceLimitedFeedback(
-        { ...response(), summary },
-        { transcript, modelVersion: "fixture-model-v1" }
-      )
-    );
-  }
 });
 
-test("rejects article-less and article-bearing rating contexts", () => {
-  for (const copy of RATING_COPY_REJECTIONS) {
+test("rejects every reproduced numeric-value representation in model narrative", () => {
+  for (const copy of NUMERIC_VALUE_REJECTIONS) {
     const candidate = response();
     candidate.strengths[0]!.nextStep = copy;
     assert.throws(
@@ -113,14 +95,82 @@ test("rejects article-less and article-bearing rating contexts", () => {
           transcript,
           modelVersion: "fixture-model-v1",
         }),
-      /evidence-limited feedback must withhold numerical ratings/,
+      /evidence-limited narrative must be numeric-value-free/,
       copy
     );
   }
 });
 
-test("preserves legitimate compound, count, metric, date, and time copy", () => {
-  for (const copy of LEGITIMATE_QUANTITATIVE_COPY) {
+test("canonicalizes safe model narrative while preserving exact evidence bytes", () => {
+  const candidate = response();
+  candidate.strengths[0]!.observation =
+    "The answer prioritizes working parents and recurring coordination pain.\u2060";
+  candidate.strengths[0]!.nextStep =
+    "Use the same specificity in the next focused practice answer.\u200B";
+  candidate.summary =
+    "Ｔｈｅ recorded answer prioritizes working parents and recurring coordination pain.";
+
+  const parsed = parseEvidenceLimitedFeedback(candidate, {
+    transcript,
+    modelVersion: "fixture-model-v1",
+  });
+  assert.equal(
+    parsed.strengths[0]!.observation,
+    "The answer prioritizes working parents and recurring coordination pain."
+  );
+  assert.equal(
+    parsed.strengths[0]!.nextStep,
+    "Use the same specificity in the next focused practice answer."
+  );
+  assert.equal(
+    parsed.summary,
+    "The recorded answer prioritizes working parents and recurring coordination pain."
+  );
+  assert.equal(
+    parsed.strengths[0]!.evidence[0]!.quote,
+    candidate.strengths[0]!.evidence[0]!.quote
+  );
+});
+
+test("keeps exact quantitative transcript evidence outside numeric-free narrative", () => {
+  const quantitativeTranscript = [
+    {
+      eventId: "writer:quantitative:1",
+      speaker: "user" as const,
+      text: "I interviewed twelve customers, tracked activation at 40%, and compared an 8/10 conversion ratio on August 8.",
+    },
+  ];
+  const quantitative = response();
+  quantitative.strengths[0] = {
+    ...quantitative.strengths[0]!,
+    observation:
+      "The answer connects customer research with a concrete activation metric.",
+    transcriptRefs: ["writer:quantitative:1"],
+    evidence: [
+      {
+        turnRef: "writer:quantitative:1",
+        quote:
+          "interviewed twelve customers, tracked activation at 40%, and compared an 8/10 conversion ratio on August 8",
+      },
+    ],
+    nextStep:
+      "Connect the activation metric to a clear product decision in focused practice.",
+  };
+  quantitative.summary =
+    "The answer connects customer research with a concrete activation metric.";
+
+  const parsed = parseEvidenceLimitedFeedback(quantitative, {
+    transcript: quantitativeTranscript,
+    modelVersion: "fixture-model-v1",
+  });
+  assert.match(parsed.strengths[0]!.evidence[0]!.quote, /40%/);
+  assert.match(parsed.strengths[0]!.evidence[0]!.quote, /8\/10/);
+  assert.doesNotMatch(parsed.strengths[0]!.observation, /\p{N}/u);
+  assert.doesNotMatch(parsed.summary, /\p{N}/u);
+});
+
+test("accepts useful qualitative PM feedback without numeric values", () => {
+  for (const copy of QUALITATIVE_NARRATIVE_ACCEPTANCE) {
     const candidate = response();
     candidate.strengths[0]!.nextStep = copy;
     const parsed = parseEvidenceLimitedFeedback(candidate, {
@@ -131,102 +181,43 @@ test("preserves legitimate compound, count, metric, date, and time copy", () => 
   }
 });
 
-const RATING_COPY_REJECTIONS = [
-  "The recorded answer receives a score of 8.",
-  "The recorded answer is rated eight out of ten.",
-  "The recorded answer receives 8/10.",
-  "Aim for eight.",
-  "Aim for 8.",
-  "Aim for an eight.",
-  "Aim for eight-ish.",
-  "Aim for eight overall.",
-  "Aim for an eight overall.",
-  "The answer lands at 8.5 overall.",
-  "Overall, this response is nine.",
-  "Overall, this response is a nine.",
-  "Overall: eight.",
-  "Target overall seven next time.",
-  "Target an overall seven next time.",
-  "Target eight next time.",
-  "Work toward eight next time.",
-  "Work toward an eight next time.",
-  "I would call this answer eight.",
-  "I would call this answer an eight.",
-  "Consider this response eight.",
-  "This answer is eight.",
-  "This answer is an eight.",
-  "This answer is eight-ish.",
-  "This answer is an eight-point score.",
-  "This answer is an eight-stage rating.",
-  "This answer is an eight-pillar evaluation.",
-  "This answer is an eight-point overall.",
-  "This answer is: an eight-point score.",
-  "This answer is — an eight-stage rating.",
-  "This answer is—an eight-stage rating.",
-  "This answer is:\neight stars.",
-  "This answer is an eight-stage product quality rating.",
-  "This answer is eight stars.",
-  "This answer is an eight-star review.",
-  "Give this response eight.",
-  "Give this response an eight.",
-  "Give this response an eight-stage grade.",
-  "Give this response:\nan eight-stage grade.",
-  "Award the answer eight.",
-  "Rate this answer eight.",
-  "Rate this answer eight stars.",
-  "Rate this answer:\neight stars.",
-  "Score the response eight.",
-  "Grade this attempt eight.",
-  "Assess this performance at eight.",
-  "Evaluate this answer as eight.",
-  "This response earns eight.",
-  "This response earns eight points.",
-  "This response earns eight metrics as its score.",
-  "This response earns eight metrics; use them as its score.",
-  "This response earns eight metrics. Treat that count as its rating.",
-  "This response earns:\neight metrics as its score.",
-  "This response earns eight metrics, then use them as its score.",
-  "This response earns eight metrics — use them as its score.",
-  "This response merits eight.",
-  "Aim for an eight-point rating.",
-  "Aim for: an eight-point rating.",
-  "Aim for an eight-layer assessment.",
-  "Overall? Eight.",
-  "Overall?\nEight.",
-  "Overall — eight.",
-  "Overall:\nEight.",
+const NUMERIC_VALUE_REJECTIONS = [
+  "This answer is e\u200Bight.",
+  "Return a sc\u200Bore.",
+  "This answer earns eight st\u200Bars.",
+  "This answer is ８.",
+  "This answer is ⑧.",
+  "This answer is ①⓪.",
+  "This answer is Ⅷ.",
+  "This answer is ⁸.",
+  "Use a score estimate of eight.",
+  "The appraisal is twelve.",
+  "The verdict is fourteen.",
+  "The ranking is twenty.",
+  "Use an eight-part scorecard.",
+  "The rating summary places it at twelve.",
+  "The review summary places it at twelve.",
+  "This answer is 12.",
+  "The result is 12.5.",
+  "The range is 12-14.",
+  "The range is twelve to fourteen.",
+  "The result is one hundred.",
+  "Use an 8/10 conversion ratio as a benchmark.",
+  "Use eight customer interviews and treat them as its rating.",
+  "Choose eight segments, and that is the verdict.",
+  "This answer includes eight metrics; this is its ranking.",
+  "Use the eighth interview as the anchor.",
+  "Use the twenty-first interview as the anchor.",
+  "The answer earned A+.",
+  "The answer received a B.",
+  "The answer received grade A.",
+  "The answer earned Ａ＋.",
 ] as const;
 
-const LEGITIMATE_QUANTITATIVE_COPY = [
-  "Use an eight-stage funnel analysis to compare activation drop-off.",
-  "Target an eight-stage funnel analysis with explicit decision points.",
-  "The answer is an eight-point framework with explicit decision criteria.",
-  "This response is an eight-stage funnel analysis.",
-  "The answer is an eight-pillar framework for prioritization.",
-  "This response is an eight-layer analysis of the system constraints.",
-  "Aim for an eight-section roadmap with explicit decision points.",
-  "Target an eight-workstream plan for the partner rollout.",
-  "Give this response an eight-criterion matrix for comparing options.",
-  "I would call this answer an eight-touchpoint journey analysis.",
-  "Aim for eight customer interviews, then compare their product ratings.",
-  "Aim for eight customer interviews and compare their product ratings.",
-  "Target eight segments, then score each opportunity by reach.",
-  "Target eight segments then score each opportunity by reach.",
-  "This answer is eight minutes long. Score the options by impact.",
-  "Give this response an eight-criterion matrix, then grade the risks by severity.",
-  "Target eight workstreams and mark each dependency as blocked or clear.",
-  "Plot eight points on a prioritization chart.",
-  "Use an eight-star schema for catalog metadata.",
-  "Track eight evaluation criteria as research inputs.",
-  "Aim for eight customer interviews before August 8.",
-  "Interview eight users and compare three customer segments.",
-  "This answer is eight minutes long and cites 8% market share.",
-  "Reach eight million dollars in revenue by August 8.",
-  "Target 8% market share and $8 million revenue.",
-  "Track three activation metrics and a 200 ms latency guardrail.",
-  "Plan an eight-week pilot with 30-day and two-hour estimates.",
-  "Compare the 2026 baseline with the 2027 target.",
-  "Score eight customer interviews against three research criteria.",
-  "This response earns eight customer referrals and $8 million revenue.",
-  "By August 8, plan an eight-week pilot, interview eight users, target 8% market share and $8 million revenue, and track three activation metrics plus a 200 ms latency guardrail.",
+const QUALITATIVE_NARRATIVE_ACCEPTANCE = [
+  "Name a concrete activation metric and explain why it changes the decision.",
+  "Compare customer segments using reach, confidence, and strategic fit.",
+  "Use a qualitative appraisal and a decision scorecard to explain the tradeoff.",
+  "Describe the review summary without copying quantitative values into feedback.",
+  "Connect the market-share evidence to customer value in focused practice.",
 ] as const;

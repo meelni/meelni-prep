@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type {
-  FeedbackEvaluationResult,
-  FeedbackEvaluationState,
-  FeedbackV2Result,
-  PreparedFeedbackTranscript,
+import {
+  FeedbackV2ParseError,
+  type FeedbackEvaluationResult,
+  type FeedbackEvaluationState,
+  type FeedbackV2Result,
+  type PreparedFeedbackTranscript,
 } from "@meelni/core";
 
+import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import type {
   FeedbackGenerationRecord,
   FeedbackGenerationStore,
@@ -240,6 +242,59 @@ test("untrusted transcript is skipped without provider or insight work", async (
   assert.equal(store.current.status, "skipped");
   assert.equal(evaluations, 0);
   assert.equal(insights.length, 0);
+});
+
+test("numeric-free narrative rejection remains generation failure, not insufficiency", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 2,
+        userTurns: 1,
+        totalWords: 24,
+        durationSeconds: 20,
+        substantiveResponses: 1,
+      },
+    })
+  );
+  const rejection = new FeedbackV2ParseError(
+    "score_invalid",
+    "evidence-limited narrative must be numeric-value-free"
+  );
+  let observedMode: "scored" | "evidence_limited" | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observedMode = input.mode;
+      throw rejection;
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /numeric-value-free/
+  );
+  assert.equal(observedMode, "evidence_limited");
+  assert.equal(store.current.status, "processing");
+  assert.notEqual(store.current.status, "skipped");
+
+  const failureReason = getEvaluationFailureReason(rejection);
+  assert.equal(
+    failureReason,
+    "Feedback evaluation failed. Check worker logs and retry."
+  );
+  assert.equal(
+    await failFeedbackGenerationWorkflow(
+      { ...input(EVENT_1), reason: failureReason },
+      {
+        store,
+        isDeletionPending: async () => false,
+        getSession: async () => ({ userId: USER_ID, roundType: "strategy" }),
+      }
+    ),
+    true
+  );
+  assert.equal(store.current.status, "failed");
+  assert.equal(store.current.statusReason, failureReason);
 });
 
 test("durable replay closes the completion-to-insights crash window exactly once", async () => {

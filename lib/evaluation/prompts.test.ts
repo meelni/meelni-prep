@@ -6,7 +6,12 @@ import {
   appendCalibrationEvidenceHints,
   buildCalibrationEvidenceHints,
 } from "./calibration-evidence-hints";
-import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import {
+  EVALUATION_SYSTEM_PROMPT,
+  EVIDENCE_LIMITED_SYSTEM_PROMPT,
+  getEvaluationPrompt,
+  getEvidenceLimitedEvaluationPrompt,
+} from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
 type CalibrationCase = (typeof evaluationCalibrationCases)[number];
@@ -146,6 +151,36 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /candidate-advancement claims/);
   assert.match(EVALUATION_SYSTEM_PROMPT, /flawless or perfect/);
+});
+
+test("evidence-limited prompt keeps model narrative numeric-free and exact values in evidence", () => {
+  const prompt = getEvidenceLimitedEvaluationPrompt("execution", [
+    {
+      eventId: "turn_0001",
+      speaker: "user",
+      text: "I tracked activation at 40% and compared an 8/10 conversion ratio.",
+    },
+  ]);
+
+  assert.match(
+    EVIDENCE_LIMITED_SYSTEM_PROMPT,
+    /observation, nextStep, and summary strings must contain no numeric values/
+  );
+  assert.match(
+    EVIDENCE_LIMITED_SYSTEM_PROMPT,
+    /Exact quantitative text is allowed only inside evidence\.quote/
+  );
+  assert.match(prompt, /completely numeric-value-free/);
+  assert.match(
+    prompt,
+    /Paraphrase quantitative transcript evidence qualitatively/
+  );
+  assert.match(
+    prompt,
+    /Preserve the exact quantitative text only in evidence\.quote/
+  );
+  assert.match(prompt, /40%/);
+  assert.match(prompt, /8\/10/);
 });
 
 test("calibration evidence hints require approved anchors when present", () => {
