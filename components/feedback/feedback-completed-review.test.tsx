@@ -8,7 +8,9 @@ import {
   CompletedLegacyReview,
   CompletedV2Review,
 } from "./feedback-completed-review";
+import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
 import {
+  decodeFeedbackLifecycleResponse,
   EVIDENCE_LIMITED_ACTIONS,
   EVIDENCE_LIMITED_CONFIDENCE,
   EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
@@ -134,6 +136,45 @@ test("evidence-limited review renders server templates and exact quantitative ci
   assert.match(html, /8\/10 task-success ratio/);
   assert.match(html, /No score has been inferred/);
   assert.doesNotMatch(html, /customer_problem_connection/);
+
+  const duplicateIdentity = structuredClone(feedback);
+  duplicateIdentity.strengths.push({
+    ...structuredClone(duplicateIdentity.strengths[0]!),
+    transcriptRefs: ["writer:2"],
+    evidence: [
+      {
+        turnRef: "writer:2",
+        quote: "A second individually valid frozen candidate turn.",
+      },
+    ],
+  });
+  const decoded = decodeFeedbackLifecycleResponse({
+    status: "completed",
+    retryable: false,
+    feedback: duplicateIdentity,
+  });
+  assert.equal(decoded, null);
+  const rejectedHtml = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "unavailable" as const,
+        message: "Feedback returned an unsupported response.",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(rejectedHtml, /Feedback unavailable/);
+  assert.doesNotMatch(
+    rejectedHtml,
+    new RegExp(
+      escapeRegExp(
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation
+      )
+    )
+  );
 });
 
 test("legacy review stays explicitly historical", () => {

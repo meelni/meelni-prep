@@ -269,15 +269,18 @@ export function parseEvidenceLimitedFeedback(
   requireExact(root.evaluationState, "partial", "evaluation_state_mismatch");
 
   const transcriptById = prepareEvidenceTranscript(options.transcript);
+  const identities = createSelectionIdentityRegistry();
   const strengths = parseProviderSelections(
     root.strengths,
     "strength",
-    transcriptById
+    transcriptById,
+    identities
   );
   const improvements = parseProviderSelections(
     root.improvements,
     "improvement",
-    transcriptById
+    transcriptById,
+    identities
   );
   requireTotalFindingCount(strengths.length + improvements.length);
 
@@ -333,15 +336,18 @@ export function parsePersistedEvidenceLimitedFeedback(
   requireExact(root.summary, EVIDENCE_LIMITED_SUMMARY, "summary_invalid");
 
   const transcriptById = prepareEvidenceTranscript(options.transcript);
+  const identities = createSelectionIdentityRegistry();
   const strengths = parsePersistedFindings(
     root.strengths,
     "strength",
-    transcriptById
+    transcriptById,
+    identities
   );
   const improvements = parsePersistedFindings(
     root.improvements,
     "improvement",
-    transcriptById
+    transcriptById,
+    identities
   );
   requireTotalFindingCount(strengths.length + improvements.length);
 
@@ -368,15 +374,18 @@ export function hasServerOwnedEvidenceLimitedContent(value: {
 }): boolean {
   try {
     requireExact(value.summary, EVIDENCE_LIMITED_SUMMARY, "summary_invalid");
+    const identities = createSelectionIdentityRegistry();
     const strengths = parsePersistedFindings(
       value.strengths,
       "strength",
-      undefined
+      undefined,
+      identities
     );
     const improvements = parsePersistedFindings(
       value.improvements,
       "improvement",
-      undefined
+      undefined,
+      identities
     );
     requireTotalFindingCount(strengths.length + improvements.length);
     return true;
@@ -401,17 +410,20 @@ function prepareEvidenceTranscript(
 function parseProviderSelections(
   value: unknown,
   kind: "strength",
-  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>,
+  identities: SelectionIdentityRegistry
 ): EvidenceLimitedStrengthItem[];
 function parseProviderSelections(
   value: unknown,
   kind: "improvement",
-  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>,
+  identities: SelectionIdentityRegistry
 ): EvidenceLimitedImprovementItem[];
 function parseProviderSelections(
   value: unknown,
   kind: "strength" | "improvement",
-  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn>,
+  identities: SelectionIdentityRegistry
 ): Array<EvidenceLimitedStrengthItem | EvidenceLimitedImprovementItem> {
   const selections = requireFindingArray(value);
   const seenRefs = new Set<string>();
@@ -428,6 +440,7 @@ function parseProviderSelections(
         "evidence-limited signal and action dimensions must match"
       );
     }
+    requireUniqueSelectionIdentity(kind, signalCode, actionCode, identities);
     const transcriptRef = requireString(
       selection.transcriptRef,
       512,
@@ -452,17 +465,20 @@ function parseProviderSelections(
 function parsePersistedFindings(
   value: unknown,
   kind: "strength",
-  transcriptById?: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn> | undefined,
+  identities: SelectionIdentityRegistry
 ): EvidenceLimitedStrengthItem[];
 function parsePersistedFindings(
   value: unknown,
   kind: "improvement",
-  transcriptById?: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn> | undefined,
+  identities: SelectionIdentityRegistry
 ): EvidenceLimitedImprovementItem[];
 function parsePersistedFindings(
   value: unknown,
   kind: "strength" | "improvement",
-  transcriptById?: ReadonlyMap<string, FeedbackTranscriptTurn>
+  transcriptById: ReadonlyMap<string, FeedbackTranscriptTurn> | undefined,
+  identities: SelectionIdentityRegistry
 ): Array<EvidenceLimitedStrengthItem | EvidenceLimitedImprovementItem> {
   const findings = requireFindingArray(value);
   const seenRefs = new Set<string>();
@@ -494,6 +510,7 @@ function parsePersistedFindings(
         "evidence-limited signal and action dimensions must match"
       );
     }
+    requireUniqueSelectionIdentity(kind, signalCode, actionCode, identities);
     requireExact(
       finding.observation,
       signal.observation,
@@ -621,6 +638,37 @@ function requireActionCode(value: unknown): EvidenceLimitedActionCode {
     );
   }
   return value as EvidenceLimitedActionCode;
+}
+
+interface SelectionIdentityRegistry {
+  signalCodes: Set<string>;
+  actionCodes: Set<EvidenceLimitedActionCode>;
+}
+
+function createSelectionIdentityRegistry(): SelectionIdentityRegistry {
+  return { signalCodes: new Set(), actionCodes: new Set() };
+}
+
+function requireUniqueSelectionIdentity(
+  kind: "strength" | "improvement",
+  signalCode:
+    | EvidenceLimitedStrengthSignalCode
+    | EvidenceLimitedImprovementSignalCode,
+  actionCode: EvidenceLimitedActionCode,
+  identities: SelectionIdentityRegistry
+): void {
+  const signalIdentity = `${kind}:${signalCode}`;
+  if (
+    identities.signalCodes.has(signalIdentity) ||
+    identities.actionCodes.has(actionCode)
+  ) {
+    throw new FeedbackV2ParseError(
+      "finding_text_invalid",
+      "evidence-limited signal and action selections must be unique"
+    );
+  }
+  identities.signalCodes.add(signalIdentity);
+  identities.actionCodes.add(actionCode);
 }
 
 function requireUniqueReference(value: string, seen: Set<string>): void {

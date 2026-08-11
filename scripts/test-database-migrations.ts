@@ -8219,6 +8219,9 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   const shortRich = goldenFixtures.find(
     (fixture) => fixture.id === "short-rich"
   );
+  const normalProductSense = goldenFixtures.find(
+    (fixture) => fixture.id === "normal-product-sense"
+  );
   const collision = goldenFixtures.find(
     (fixture) => fixture.id === "turn-marker-6m14"
   );
@@ -8226,6 +8229,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     (fixture) => fixture.id === "rubric-behavioral"
   );
   assert.ok(shortRich);
+  assert.ok(normalProductSense);
   assert.ok(collision);
   assert.ok(dispatchFailureFixture);
 
@@ -8608,6 +8612,118 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     view.feedback.strengths[0]?.evidence[0]?.quote,
     frozenCandidate.text
   );
+
+  await seedSession(normalProductSense);
+  await ingestFixture(normalProductSense);
+  const duplicateIdentityFinalizedAt = new Date(
+    Date.parse(normalProductSense.settlement.settled_at) + 1_000
+  );
+  const duplicateIdentityCompletion = await finalizeInterviewSession(
+    {
+      sessionId: normalProductSense.sessionId,
+      actor: { type: "user", userId: normalProductSense.userId },
+      requestedTerminalReason: "user_end",
+      now: duplicateIdentityFinalizedAt,
+    },
+    database
+  );
+  assert.ok(duplicateIdentityCompletion.ok);
+  assert.equal(duplicateIdentityCompletion.feedback.status, "pending");
+  assert.ok(duplicateIdentityCompletion.feedback.dispatchEventId);
+  const duplicateIdentityEventId =
+    duplicateIdentityCompletion.feedback.dispatchEventId;
+  const duplicateIdentityClaim = await generationStore.claim({
+    sessionId: normalProductSense.sessionId,
+    eventId: duplicateIdentityEventId,
+    now: new Date(duplicateIdentityFinalizedAt.getTime() + 1_000),
+  });
+  assert.ok(duplicateIdentityClaim);
+  const duplicateIdentityTurns = (
+    await getFrozenFeedbackTranscriptTurns(
+      normalProductSense.sessionId,
+      database
+    )
+  ).filter((turn) => turn.speaker === "user");
+  assert.ok(duplicateIdentityTurns.length >= 2);
+  const firstDuplicateIdentityTurn = duplicateIdentityTurns[0]!;
+  const secondDuplicateIdentityTurn = duplicateIdentityTurns[1]!;
+  const firstStrength = {
+    ...structuredClone(view.feedback.strengths[0]!),
+    transcriptRefs: [firstDuplicateIdentityTurn.eventId],
+    evidence: [
+      {
+        turnRef: firstDuplicateIdentityTurn.eventId,
+        quote: firstDuplicateIdentityTurn.text,
+      },
+    ],
+  };
+  const duplicatePersistedSelection = {
+    schemaVersion: view.feedback.schemaVersion,
+    promptVersion: view.feedback.promptVersion,
+    modelVersion: view.feedback.modelVersion,
+    rubricVersion: view.feedback.rubricVersion,
+    evaluationState: view.feedback.evaluationState,
+    strengths: [
+      firstStrength,
+      {
+        ...structuredClone(firstStrength),
+        transcriptRefs: [secondDuplicateIdentityTurn.eventId],
+        evidence: [
+          {
+            turnRef: secondDuplicateIdentityTurn.eventId,
+            quote: secondDuplicateIdentityTurn.text,
+          },
+        ],
+      },
+    ],
+    improvements: [
+      {
+        ...structuredClone(view.feedback.improvements[0]!),
+        transcriptRefs: [firstDuplicateIdentityTurn.eventId],
+        evidence: [
+          {
+            turnRef: firstDuplicateIdentityTurn.eventId,
+            quote: firstDuplicateIdentityTurn.text,
+          },
+        ],
+      },
+    ],
+    summary: view.feedback.summary,
+  } as import("@meelni/core").FeedbackEvaluationResult;
+  await assert.rejects(
+    generationStore.complete({
+      sessionId: normalProductSense.sessionId,
+      eventId: duplicateIdentityEventId,
+      evaluation: duplicatePersistedSelection,
+      processingDurationMs: 1,
+    }),
+    /evidence_limited_persistence_contract_invalid/
+  );
+  const duplicateIdentityRejected = await getFeedbackBySessionId(
+    normalProductSense.sessionId,
+    database
+  );
+  assert.equal(duplicateIdentityRejected?.status, "processing");
+  assert.equal(duplicateIdentityRejected?.strengths, null);
+  assert.equal(duplicateIdentityRejected?.improvements, null);
+  assert.equal(duplicateIdentityRejected?.summary, null);
+  assert.equal(
+    await generationStore.fail({
+      sessionId: normalProductSense.sessionId,
+      eventId: duplicateIdentityEventId,
+      reason: "Feedback evaluation failed. Check worker logs and retry.",
+    }),
+    true
+  );
+  const duplicateIdentityFailed = await getFeedbackBySessionId(
+    normalProductSense.sessionId,
+    database
+  );
+  assert.equal(duplicateIdentityFailed?.status, "failed");
+  assert.equal(duplicateIdentityFailed?.outcomeReason, "generation_failed");
+  assert.equal(duplicateIdentityFailed?.strengths, null);
+  assert.equal(duplicateIdentityFailed?.improvements, null);
+  assert.equal(duplicateIdentityFailed?.summary, null);
 
   await seedSession(collision);
   await ingestFixture(collision);

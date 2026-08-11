@@ -34,6 +34,8 @@ and frozen watermarks treat them as one ordered stream.
 - Degraded/corrupt transcripts remain fail closed and visibly system-owned.
 - Scored Feedback v2 remains unchanged. The scoreless companion removes
   freeform provider narrative entirely and validates closed selections against
-  the same frozen transcript trust boundary.
+  the same frozen transcript trust boundary. Signal codes are unique within
+  their category and action codes are unique across the result, regardless of
+  which frozen turn is cited.
 - Provider and authenticated isolated-staging rehearsal remains a separate
   owner-authorized rollout action under the human-owned launch decision.

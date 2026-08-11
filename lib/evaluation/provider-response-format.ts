@@ -15,7 +15,7 @@ import {
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
   "feedback-provider-response-format.v9" as const;
 export const FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-evidence-limited-provider-response-format.v3" as const;
+  "feedback-evidence-limited-provider-response-format.v4" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -225,12 +225,16 @@ export function getEvidenceLimitedProviderResponseFormat(
           evaluationState: { type: "string" as const, enum: ["partial"] },
           strengths: {
             type: "array" as const,
+            description:
+              "Distinct strength selections only. Do not repeat a signalCode or actionCode, even with a different transcriptRef. Action codes must also remain unique across improvements.",
             items: selection(EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES),
             minItems: 1,
             maxItems: 2,
           },
           improvements: {
             type: "array" as const,
+            description:
+              "Distinct improvement selections only. Do not repeat a signalCode or actionCode, even with a different transcriptRef. Action codes must also remain unique across strengths.",
             items: selection(EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES),
             minItems: 1,
             maxItems: 2,

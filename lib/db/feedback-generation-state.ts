@@ -1,5 +1,6 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
+  hasServerOwnedEvidenceLimitedContent,
   isEvidenceLimitedFeedbackResult,
   type FeedbackEvaluationResult,
   type FeedbackOutcomeReason,
@@ -154,6 +155,16 @@ export function createDrizzleFeedbackGenerationStore(
 
     async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
       const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
+      if (
+        evidenceLimited &&
+        !hasServerOwnedEvidenceLimitedContent({
+          strengths: evaluation.strengths,
+          improvements: evaluation.improvements,
+          summary: evaluation.summary,
+        })
+      ) {
+        throw new Error("evidence_limited_persistence_contract_invalid");
+      }
       const rows = await database
         .update(feedback)
         .set({

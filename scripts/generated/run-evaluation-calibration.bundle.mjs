@@ -5926,8 +5926,387 @@ var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
 var FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION = "feedback.evidence-limited.v2";
 var FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION = "feedback.evidence-limited.selection.v1";
 var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited.v2";
+var EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES = [
+  "structured_reasoning",
+  "clear_recommendation",
+  "customer_problem_connection",
+  "focused_communication",
+  "tradeoff_ownership"
+];
+var EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES = [
+  "structure_progression",
+  "recommendation_directness",
+  "customer_decision_connection",
+  "main_point_focus",
+  "tradeoff_decision"
+];
+var EVIDENCE_LIMITED_ACTION_CODES = [
+  "outline_reasoning",
+  "lead_with_recommendation",
+  "connect_customer_to_decision",
+  "state_point_then_support",
+  "compare_tradeoffs_and_choose"
+];
+var EVIDENCE_LIMITED_STRENGTH_SIGNALS = {
+  structured_reasoning: {
+    dimension: "structure",
+    evaluatorGuidance: "The answer presents an organized reasoning path or coherent progression.",
+    observation: "The recorded answer uses an organized line of reasoning that makes the approach easier to follow."
+  },
+  clear_recommendation: {
+    dimension: "clarity",
+    evaluatorGuidance: "The answer communicates a clear recommendation or point of view.",
+    observation: "The recorded answer communicates a clear recommendation or point of view."
+  },
+  customer_problem_connection: {
+    dimension: "insight",
+    evaluatorGuidance: "The answer connects a product decision to a customer problem or need.",
+    observation: "The recorded answer connects the product decision to a customer problem or need."
+  },
+  focused_communication: {
+    dimension: "communication",
+    evaluatorGuidance: "The answer presents its main idea in a focused and understandable way.",
+    observation: "The recorded answer presents the main idea in a focused and understandable way."
+  },
+  tradeoff_ownership: {
+    dimension: "leadership",
+    evaluatorGuidance: "The answer takes ownership of a decision or product tradeoff.",
+    observation: "The recorded answer takes ownership of a decision or product tradeoff."
+  }
+};
+var EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS = {
+  structure_progression: {
+    dimension: "structure",
+    evaluatorGuidance: "The answer would benefit from a clearer progression from framing to recommendation.",
+    observation: "The recorded answer would be stronger with a more explicit progression from framing to recommendation."
+  },
+  recommendation_directness: {
+    dimension: "clarity",
+    evaluatorGuidance: "The recommendation or its rationale could be stated more directly.",
+    observation: "The recorded answer would be stronger if the recommendation and rationale were stated more directly."
+  },
+  customer_decision_connection: {
+    dimension: "insight",
+    evaluatorGuidance: "The customer evidence needs a clearer connection to the product decision.",
+    observation: "The recorded answer would be stronger with a deeper connection between customer evidence and the product decision."
+  },
+  main_point_focus: {
+    dimension: "communication",
+    evaluatorGuidance: "The main point and supporting detail need a clearer distinction.",
+    observation: "The recorded answer would be stronger with a tighter distinction between the main point and supporting detail."
+  },
+  tradeoff_decision: {
+    dimension: "leadership",
+    evaluatorGuidance: "The tradeoff needs a clearer decision and ownership of the choice.",
+    observation: "The recorded answer would be stronger with a clearer tradeoff decision and ownership of the choice."
+  }
+};
+var EVIDENCE_LIMITED_ACTIONS = {
+  outline_reasoning: {
+    dimension: "structure",
+    evaluatorGuidance: "Practice an explicit path from framing through analysis to recommendation.",
+    nextStep: "In focused practice, outline the framing, analysis, and recommendation before answering."
+  },
+  lead_with_recommendation: {
+    dimension: "clarity",
+    evaluatorGuidance: "Practice stating the recommendation before explaining its rationale.",
+    nextStep: "In focused practice, lead with the recommendation and connect each reason back to it."
+  },
+  connect_customer_to_decision: {
+    dimension: "insight",
+    evaluatorGuidance: "Practice connecting the target customer and need to the product decision.",
+    nextStep: "In focused practice, name the target customer, their need, and why it changes the product decision."
+  },
+  state_point_then_support: {
+    dimension: "communication",
+    evaluatorGuidance: "Practice stating the main point before adding supporting detail.",
+    nextStep: "In focused practice, state the main point first, then add only the support needed to explain it."
+  },
+  compare_tradeoffs_and_choose: {
+    dimension: "leadership",
+    evaluatorGuidance: "Practice comparing tradeoffs, choosing a direction, and owning the next move.",
+    nextStep: "In focused practice, compare the tradeoffs, choose a direction, and state what you would do next."
+  }
+};
+var EVIDENCE_LIMITED_SUMMARY = "This review highlights a grounded PM signal and a focused way to strengthen the next answer.";
+var EVIDENCE_LIMITED_CONFIDENCE = 0.65;
 function isEvidenceLimitedFeedbackResult(value) {
   return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
+}
+function parsePersistedEvidenceLimitedFeedback(value, options) {
+  const root = requireRecord2(value, "response_not_object");
+  requireExactKeys2(root, [
+    "schemaVersion",
+    "promptVersion",
+    "rubricVersion",
+    "evaluationState",
+    "strengths",
+    "improvements",
+    "summary"
+  ]);
+  requireExact2(
+    root.schemaVersion,
+    FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    "schema_version_mismatch"
+  );
+  requireExact2(
+    root.promptVersion,
+    FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    "prompt_version_mismatch"
+  );
+  requireExact2(
+    root.rubricVersion,
+    FEEDBACK_RUBRIC_VERSION,
+    "rubric_version_mismatch"
+  );
+  requireExact2(root.evaluationState, "partial", "evaluation_state_mismatch");
+  requireExact2(root.summary, EVIDENCE_LIMITED_SUMMARY, "summary_invalid");
+  const transcriptById = prepareEvidenceTranscript(options.transcript);
+  const identities = createSelectionIdentityRegistry();
+  const strengths = parsePersistedFindings(
+    root.strengths,
+    "strength",
+    transcriptById,
+    identities
+  );
+  const improvements = parsePersistedFindings(
+    root.improvements,
+    "improvement",
+    transcriptById,
+    identities
+  );
+  requireTotalFindingCount(strengths.length + improvements.length);
+  return {
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: requireString(
+      options.modelVersion,
+      256,
+      "model_version_invalid"
+    ),
+    rubricVersion: FEEDBACK_RUBRIC_VERSION,
+    evaluationState: "partial",
+    strengths,
+    improvements,
+    summary: EVIDENCE_LIMITED_SUMMARY
+  };
+}
+function prepareEvidenceTranscript(transcript) {
+  const prepared = prepareFeedbackTranscript(transcript);
+  if (!prepared.eligible || prepared.transcript.length === 0) {
+    throw new FeedbackV2ParseError(
+      "canonical_transcript_empty",
+      "evidence-limited transcript is not trustworthy"
+    );
+  }
+  return new Map(prepared.transcript.map((turn) => [turn.eventId, turn]));
+}
+function parsePersistedFindings(value, kind, transcriptById, identities) {
+  const findings = requireFindingArray(value);
+  const seenRefs = /* @__PURE__ */ new Set();
+  return findings.map((entry) => {
+    const finding2 = requireRecord2(entry, "finding_not_object");
+    requireExactKeys2(finding2, [
+      "signalCode",
+      "actionCode",
+      "dimension",
+      "observation",
+      "transcriptRefs",
+      "evidence",
+      "nextStep",
+      "rubricVersion",
+      "confidence"
+    ]);
+    const signalCode = requireSignalCode(finding2.signalCode, kind);
+    const signal = getSignalDefinition(kind, signalCode);
+    const actionCode = requireActionCode(finding2.actionCode);
+    const action = EVIDENCE_LIMITED_ACTIONS[actionCode];
+    requireExact2(
+      finding2.dimension,
+      signal.dimension,
+      "finding_dimension_invalid"
+    );
+    if (action.dimension !== signal.dimension) {
+      throw new FeedbackV2ParseError(
+        "finding_dimension_invalid",
+        "evidence-limited signal and action dimensions must match"
+      );
+    }
+    requireUniqueSelectionIdentity(kind, signalCode, actionCode, identities);
+    requireExact2(
+      finding2.observation,
+      signal.observation,
+      "finding_text_invalid"
+    );
+    requireExact2(finding2.nextStep, action.nextStep, "finding_text_invalid");
+    requireExact2(
+      finding2.rubricVersion,
+      FEEDBACK_RUBRIC_VERSION,
+      "finding_rubric_version_mismatch"
+    );
+    if (finding2.confidence !== EVIDENCE_LIMITED_CONFIDENCE) {
+      throw new FeedbackV2ParseError(
+        "confidence_invalid",
+        "evidence-limited confidence must be server owned"
+      );
+    }
+    const transcriptRef = requireSingleTranscriptRef(finding2.transcriptRefs);
+    requireUniqueReference(transcriptRef, seenRefs);
+    const evidence = requireSingleEvidence(finding2.evidence, transcriptRef);
+    if (transcriptById) {
+      const turn = requireCandidateTurn(transcriptRef, transcriptById);
+      requireExact2(evidence.quote, turn.text, "evidence_quote_not_grounded");
+    }
+    return {
+      signalCode,
+      actionCode,
+      dimension: signal.dimension,
+      observation: signal.observation,
+      transcriptRefs: [transcriptRef],
+      evidence: [{ turnRef: transcriptRef, quote: evidence.quote }],
+      nextStep: action.nextStep,
+      rubricVersion: FEEDBACK_RUBRIC_VERSION,
+      confidence: EVIDENCE_LIMITED_CONFIDENCE
+    };
+  });
+}
+function requireFindingArray(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
+    throw new FeedbackV2ParseError(
+      "findings_count_invalid",
+      "evidence-limited strengths and improvements require one or two selections"
+    );
+  }
+  return value;
+}
+function requireTotalFindingCount(count) {
+  if (count < 2 || count > 3) {
+    throw new FeedbackV2ParseError(
+      "findings_count_invalid",
+      "evidence-limited feedback requires two or three total selections"
+    );
+  }
+}
+function requireSignalCode(value, kind) {
+  const allowed = kind === "strength" ? EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES : EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES;
+  if (typeof value !== "string" || !allowed.includes(value)) {
+    throw new FeedbackV2ParseError(
+      "finding_text_invalid",
+      `unknown evidence-limited ${kind} signal code`
+    );
+  }
+  return value;
+}
+function getSignalDefinition(kind, code) {
+  return kind === "strength" ? EVIDENCE_LIMITED_STRENGTH_SIGNALS[code] : EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS[code];
+}
+function requireActionCode(value) {
+  if (typeof value !== "string" || !EVIDENCE_LIMITED_ACTION_CODES.includes(value)) {
+    throw new FeedbackV2ParseError(
+      "finding_text_invalid",
+      "unknown evidence-limited action code"
+    );
+  }
+  return value;
+}
+function createSelectionIdentityRegistry() {
+  return { signalCodes: /* @__PURE__ */ new Set(), actionCodes: /* @__PURE__ */ new Set() };
+}
+function requireUniqueSelectionIdentity(kind, signalCode, actionCode, identities) {
+  const signalIdentity = `${kind}:${signalCode}`;
+  if (identities.signalCodes.has(signalIdentity) || identities.actionCodes.has(actionCode)) {
+    throw new FeedbackV2ParseError(
+      "finding_text_invalid",
+      "evidence-limited signal and action selections must be unique"
+    );
+  }
+  identities.signalCodes.add(signalIdentity);
+  identities.actionCodes.add(actionCode);
+}
+function requireUniqueReference(value, seen) {
+  if (seen.has(value)) {
+    throw new FeedbackV2ParseError(
+      "transcript_refs_duplicate",
+      "evidence-limited references must be unique within each selection array"
+    );
+  }
+  seen.add(value);
+}
+function requireCandidateTurn(transcriptRef, transcriptById) {
+  const turn = transcriptById.get(transcriptRef);
+  if (!turn) {
+    throw new FeedbackV2ParseError(
+      "evidence_turn_ref_not_found",
+      "evidence-limited transcript reference was not found"
+    );
+  }
+  if (turn.speaker !== "user") {
+    throw new FeedbackV2ParseError(
+      "evidence_turn_ref_wrong_speaker",
+      "evidence-limited references must cite candidate turns"
+    );
+  }
+  return turn;
+}
+function requireSingleTranscriptRef(value) {
+  if (!Array.isArray(value) || value.length !== 1) {
+    throw new FeedbackV2ParseError(
+      "transcript_refs_invalid",
+      "evidence-limited persisted finding requires one transcript reference"
+    );
+  }
+  return requireString(value[0], 512, "evidence_turn_ref_invalid");
+}
+function requireSingleEvidence(value, transcriptRef) {
+  if (!Array.isArray(value) || value.length !== 1) {
+    throw new FeedbackV2ParseError(
+      "evidence_count_invalid",
+      "evidence-limited persisted finding requires one citation"
+    );
+  }
+  const evidence = requireRecord2(value[0], "evidence_not_object");
+  requireExactKeys2(evidence, ["turnRef", "quote"]);
+  requireExact2(
+    evidence.turnRef,
+    transcriptRef,
+    "evidence_reference_set_mismatch"
+  );
+  return {
+    turnRef: transcriptRef,
+    quote: requireString(evidence.quote, 2e4, "evidence_quote_invalid")
+  };
+}
+function requireRecord2(value, code) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new FeedbackV2ParseError(
+      code,
+      "evidence-limited value is not an object"
+    );
+  }
+  return value;
+}
+function requireExactKeys2(value, keys) {
+  const expected = new Set(keys);
+  if (Object.keys(value).length !== keys.length || Object.keys(value).some((key) => !expected.has(key))) {
+    throw new FeedbackV2ParseError(
+      "response_unknown_field",
+      "evidence-limited fields are invalid"
+    );
+  }
+}
+function requireExact2(value, expected, code) {
+  if (value !== expected) {
+    throw new FeedbackV2ParseError(
+      code,
+      "evidence-limited exact value mismatch"
+    );
+  }
+}
+function requireString(value, maximum, code) {
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > maximum) {
+    throw new FeedbackV2ParseError(code, "evidence-limited string is invalid");
+  }
+  return value;
 }
 
 // packages/core/src/feedback-outcome.ts
@@ -28310,7 +28689,7 @@ Return this exact JSON shape:
   ]
 }
 
-Return at least one strength and one improvement, no more than two in either array, and no more than three selections total. Use each transcriptRef at most once within strengths and at most once within improvements. A one-answer transcript may use the same candidate alias once as a strength and once as an improvement. Choose only signal and action codes listed in the supplied catalog, and choose an action whose PM dimension matches the signal. Include no fields other than the exact shape above. Never cite interviewer speech or invent an alias.`;
+Return at least one strength and one improvement, no more than two in either array, and no more than three selections total. Use each signalCode at most once within its selection category. Use each actionCode at most once across strengths and improvements. Different selections may cite the same candidate alias once in strengths and once in improvements, so a one-answer transcript can still receive useful feedback. Choose only signal and action codes listed in the supplied catalog, and choose an action whose PM dimension matches the signal. Include no fields other than the exact shape above. Never cite interviewer speech or invent an alias.`;
 var ROUND_TYPE_PROMPTS = {
   product_sense: `
 **Round Type:** Product Sense
@@ -29721,12 +30100,27 @@ async function generateFeedbackWorkflow(input, deps) {
     }
     const startedAt = deps.now();
     const mode = evaluationState === "partial" && (claimed.completionStats?.substantiveResponses ?? 1) < FEEDBACK_NUMERICAL_PRECISION_POLICY.minSubstantiveResponses ? "evidence_limited" : "scored";
-    const evaluation = await deps.evaluate({
+    const providerEvaluation = await deps.evaluate({
       roundType: authorization.session.roundType || "product_sense",
       transcript: transcript.transcript,
       evaluationState,
       mode
     });
+    const evaluation = isEvidenceLimitedFeedbackResult(providerEvaluation) ? parsePersistedEvidenceLimitedFeedback(
+      {
+        schemaVersion: providerEvaluation.schemaVersion,
+        promptVersion: providerEvaluation.promptVersion,
+        rubricVersion: providerEvaluation.rubricVersion,
+        evaluationState: providerEvaluation.evaluationState,
+        strengths: providerEvaluation.strengths,
+        improvements: providerEvaluation.improvements,
+        summary: providerEvaluation.summary
+      },
+      {
+        transcript: transcript.transcript,
+        modelVersion: providerEvaluation.modelVersion
+      }
+    ) : providerEvaluation;
     if (evaluation.evaluationState !== evaluationState) {
       throw new Error("feedback_generation_evaluation_state_mismatch");
     }
@@ -29881,7 +30275,7 @@ function getEvaluationAdjudicationHashes() {
   return { candidateArtifactHash, corpusHash };
 }
 function parseEvaluationAdjudicationApproval(input) {
-  const record = requireRecord2(input, "approval");
+  const record = requireRecord3(input, "approval");
   const hashes = getEvaluationAdjudicationHashes();
   if (record.contractVersion !== "evaluation-adjudication-approval.v2") {
     throw new Error("Invalid adjudication approval contractVersion");
@@ -29898,7 +30292,7 @@ function parseEvaluationAdjudicationApproval(input) {
   if (record.adjudicationVersion !== EVALUATION_ADJUDICATION_VERSION) {
     throw new Error("Adjudication approval adjudicationVersion mismatch");
   }
-  const reviewer = requireRecord2(record.reviewer, "reviewer");
+  const reviewer = requireRecord3(record.reviewer, "reviewer");
   const identity = requireText(reviewer.identity, "reviewer.identity");
   if (reviewer.role !== "product_owner" && reviewer.role !== "pm_reviewer") {
     throw new Error("Invalid adjudication approval reviewer.role");
@@ -29910,7 +30304,7 @@ function parseEvaluationAdjudicationApproval(input) {
   if (!Array.isArray(record.decisions)) {
     throw new Error("Invalid adjudication approval decisions");
   }
-  const reviewBasis = requireRecord2(record.reviewBasis, "reviewBasis");
+  const reviewBasis = requireRecord3(record.reviewBasis, "reviewBasis");
   if (reviewBasis.candidateManifestVersion !== "evaluation-adjudication-review.v2" || reviewBasis.independentExactHashReview !== true) {
     throw new Error("Invalid adjudication approval reviewBasis");
   }
@@ -29923,7 +30317,7 @@ function parseEvaluationAdjudicationApproval(input) {
     if (reviewBasis.semanticAdjudicationOnly !== true) {
       throw new Error("Invalid delegated approval semantic scope");
     }
-    const authority = requireRecord2(
+    const authority = requireRecord3(
       record.delegatedAuthority,
       "delegatedAuthority"
     );
@@ -29939,7 +30333,7 @@ function parseEvaluationAdjudicationApproval(input) {
     }
     const panelPaths = /* @__PURE__ */ new Set();
     const panels = authority.panels.map((unknownPanel) => {
-      const panel = requireRecord2(unknownPanel, "delegatedAuthority.panel");
+      const panel = requireRecord3(unknownPanel, "delegatedAuthority.panel");
       const taskPath = requireText(
         panel.taskPath,
         "delegatedAuthority.panel.taskPath"
@@ -29964,7 +30358,7 @@ function parseEvaluationAdjudicationApproval(input) {
       throw new Error("Invalid delegated approval round history");
     }
     const roundHistory = authority.roundHistory.map((unknownRound, index2) => {
-      const round = requireRecord2(
+      const round = requireRecord3(
         unknownRound,
         "delegatedAuthority.roundHistory"
       );
@@ -29998,7 +30392,7 @@ function parseEvaluationAdjudicationApproval(input) {
   }
   const requiredCaseIds = evaluationCalibrationCases.filter(({ expectedQuality }) => expectedQuality !== null).map(({ id }) => id).sort();
   const decisions = record.decisions.map((unknownDecision) => {
-    const decision = requireRecord2(unknownDecision, "decision");
+    const decision = requireRecord3(unknownDecision, "decision");
     const caseId = requireText(decision.caseId, "decision.caseId");
     const decisionValue = decision.decision;
     if (decisionValue !== "approved" && decisionValue !== "changes_required") {
@@ -30043,7 +30437,7 @@ function requireSha256(value, field) {
 function sha2562(value) {
   return createHash3("sha256").update(value).digest("hex");
 }
-function requireRecord2(value, field) {
+function requireRecord3(value, field) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid adjudication approval ${field}`);
   }
@@ -32135,23 +32529,23 @@ var DirectCalibrationGitHubCasClient = class {
       "GET",
       SAV_248_V32_GITHUB_REPOSITORY_API_PATH
     );
-    const record = requireRecord3(response, "repository");
-    const owner = requireRecord3(record.owner, "repository.owner");
+    const record = requireRecord4(response, "repository");
+    const owner = requireRecord4(record.owner, "repository.owner");
     return {
       id: requireNumber(record.id, "repository.id"),
-      fullName: requireString(record.full_name, "repository.full_name"),
+      fullName: requireString2(record.full_name, "repository.full_name"),
       owner: {
         id: requireNumber(owner.id, "repository.owner.id"),
-        login: requireString(owner.login, "repository.owner.login")
+        login: requireString2(owner.login, "repository.owner.login")
       },
       private: record.private === true
     };
   }
   async getViewer() {
-    const record = requireRecord3(await this.api("GET", "/user"), "viewer");
+    const record = requireRecord4(await this.api("GET", "/user"), "viewer");
     return {
       id: requireNumber(record.id, "viewer.id"),
-      login: requireString(record.login, "viewer.login")
+      login: requireString2(record.login, "viewer.login")
     };
   }
   async getRulesets() {
@@ -32164,7 +32558,7 @@ var DirectCalibrationGitHubCasClient = class {
     }
     const rulesets = [];
     for (const item of listed) {
-      const summary = requireRecord3(item, "ruleset.summary");
+      const summary = requireRecord4(item, "ruleset.summary");
       if (summary.name !== SAV_248_V32_IMMUTABLE_RULESET_NAME && summary.name !== SAV_248_V32_ACTOR_RULESET_NAME) {
         continue;
       }
@@ -32190,7 +32584,7 @@ var DirectCalibrationGitHubCasClient = class {
       throw new Error("calibration_github_effective_rules_invalid");
     }
     return response.map(
-      (rule) => requireString(requireRecord3(rule, "effective.rule").type, "rule.type")
+      (rule) => requireString2(requireRecord4(rule, "effective.rule").type, "rule.type")
     );
   }
   async getRefIfPresent() {
@@ -32234,7 +32628,7 @@ var DirectCalibrationGitHubCasClient = class {
     );
   }
   async createRef(input) {
-    const record = requireRecord3(
+    const record = requireRecord4(
       await this.api(
         "POST",
         `${SAV_248_V32_GITHUB_REPOSITORY_API_PATH}/git/refs`,
@@ -32245,7 +32639,7 @@ var DirectCalibrationGitHubCasClient = class {
     return parseGitHubRef(record, "createdRef");
   }
   async updateRef(input) {
-    const record = requireRecord3(
+    const record = requireRecord4(
       await this.api(
         "PATCH",
         `${SAV_248_V32_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V32_GIT_LEDGER_API_REF}`,
@@ -32253,9 +32647,9 @@ var DirectCalibrationGitHubCasClient = class {
       ),
       "updatedRef"
     );
-    const object = requireRecord3(record.object, "updatedRef.object");
+    const object = requireRecord4(record.object, "updatedRef.object");
     return {
-      ref: requireString(record.ref, "updatedRef.ref"),
+      ref: requireString2(record.ref, "updatedRef.ref"),
       sha: requireOid(object.sha, "updatedRef.object.sha")
     };
   }
@@ -32395,67 +32789,67 @@ function buildNodeGitHubRequestOptions(input) {
   };
 }
 function parseGitHubRuleset(value) {
-  const record = requireRecord3(value, "ruleset");
-  const conditions = requireRecord3(record.conditions, "ruleset.conditions");
-  const refName = requireRecord3(conditions.ref_name, "ruleset.ref_name");
+  const record = requireRecord4(value, "ruleset");
+  const conditions = requireRecord4(record.conditions, "ruleset.conditions");
+  const refName = requireRecord4(conditions.ref_name, "ruleset.ref_name");
   if (!Array.isArray(record.bypass_actors) || !Array.isArray(record.rules)) {
     throw new Error("calibration_github_ruleset_shape_invalid");
   }
   return {
-    name: requireString(record.name, "ruleset.name"),
-    source: requireString(record.source, "ruleset.source"),
-    sourceType: requireString(record.source_type, "ruleset.source_type"),
-    target: requireString(record.target, "ruleset.target"),
-    enforcement: requireString(record.enforcement, "ruleset.enforcement"),
+    name: requireString2(record.name, "ruleset.name"),
+    source: requireString2(record.source, "ruleset.source"),
+    sourceType: requireString2(record.source_type, "ruleset.source_type"),
+    target: requireString2(record.target, "ruleset.target"),
+    enforcement: requireString2(record.enforcement, "ruleset.enforcement"),
     bypassActors: record.bypass_actors.map((value2) => {
-      const actor = requireRecord3(value2, "ruleset.bypassActor");
+      const actor = requireRecord4(value2, "ruleset.bypassActor");
       return {
         actorId: actor.actor_id === null ? null : requireNumber(actor.actor_id, "ruleset.actor_id"),
-        actorType: requireString(actor.actor_type, "ruleset.actor_type"),
-        bypassMode: requireString(actor.bypass_mode, "ruleset.bypass_mode")
+        actorType: requireString2(actor.actor_type, "ruleset.actor_type"),
+        bypassMode: requireString2(actor.bypass_mode, "ruleset.bypass_mode")
       };
     }),
     includeRefs: requireStringArray(refName.include, "ruleset.include"),
     excludeRefs: requireStringArray(refName.exclude, "ruleset.exclude"),
     ruleTypes: record.rules.map(
-      (value2) => requireString(requireRecord3(value2, "ruleset.rule").type, "rule.type")
+      (value2) => requireString2(requireRecord4(value2, "ruleset.rule").type, "rule.type")
     )
   };
 }
 function parseGitHubRef(value, field) {
-  const record = requireRecord3(value, field);
-  const object = requireRecord3(record.object, `${field}.object`);
+  const record = requireRecord4(value, field);
+  const object = requireRecord4(record.object, `${field}.object`);
   if (object.type !== "commit") {
     throw new Error("calibration_github_ledger_ref_not_commit");
   }
   return {
-    ref: requireString(record.ref, `${field}.ref`),
+    ref: requireString2(record.ref, `${field}.ref`),
     sha: requireOid(object.sha, `${field}.object.sha`)
   };
 }
 function parseGitHubCommit(value) {
-  const record = requireRecord3(value, "commit");
-  const tree = requireRecord3(record.tree, "commit.tree");
+  const record = requireRecord4(value, "commit");
+  const tree = requireRecord4(record.tree, "commit.tree");
   if (!Array.isArray(record.parents)) {
     throw new Error("calibration_github_commit_parents_invalid");
   }
   return {
     sha: requireOid(record.sha, "commit.sha"),
-    message: requireString(record.message, "commit.message"),
+    message: requireString2(record.message, "commit.message"),
     treeSha: requireOid(tree.sha, "commit.tree.sha"),
     parents: record.parents.map(
-      (value2) => requireOid(requireRecord3(value2, "commit.parent").sha, "parent.sha")
+      (value2) => requireOid(requireRecord4(value2, "commit.parent").sha, "parent.sha")
     ),
     author: parseGitHubCommitIdentity(record.author, "commit.author"),
     committer: parseGitHubCommitIdentity(record.committer, "commit.committer")
   };
 }
 function parseGitHubCommitIdentity(value, field) {
-  const record = requireRecord3(value, field);
+  const record = requireRecord4(value, field);
   return {
-    name: requireString(record.name, `${field}.name`),
-    email: requireString(record.email, `${field}.email`),
-    date: requireString(record.date, `${field}.date`)
+    name: requireString2(record.name, `${field}.name`),
+    email: requireString2(record.email, `${field}.email`),
+    date: requireString2(record.date, `${field}.date`)
   };
 }
 function cloneSpendState(state) {
@@ -32482,13 +32876,13 @@ function assertExactKeys2(value, expected) {
     throw new Error("calibration_authorization_unknown_or_missing_field");
   }
 }
-function requireRecord3(value, field) {
+function requireRecord4(value, field) {
   if (!isRecord2(value)) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
   return value;
 }
-function requireString(value, field) {
+function requireString2(value, field) {
   if (typeof value !== "string" || !value) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
@@ -32507,7 +32901,7 @@ function requireNumber(value, field) {
   return value;
 }
 function requireOid(value, field) {
-  const oid = requireString(value, field);
+  const oid = requireString2(value, field);
   if (!/^[0-9a-f]{40}$/.test(oid)) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
@@ -32749,7 +33143,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   const authority = parseAuthorityEnvelope(unknownAuthorityEnvelope);
   const reviewInput = parseReviewInput(unknownReviewInput);
   assertAuthorityCoverage(authority, reviewInput);
-  const artifact = requireRecord4(unknownArtifact, "artifact");
+  const artifact = requireRecord5(unknownArtifact, "artifact");
   assertExactKeys3(
     artifact,
     [
@@ -32844,7 +33238,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   };
 }
 function parseReviewInput(input) {
-  const record = requireRecord4(input, "reviewInput");
+  const record = requireRecord5(input, "reviewInput");
   assertExactKeys3(
     record,
     [
@@ -32917,7 +33311,7 @@ function parseReviewInput(input) {
   };
 }
 function parseAuthorityEnvelope(input) {
-  const record = requireRecord4(input, "authorityEnvelope");
+  const record = requireRecord5(input, "authorityEnvelope");
   assertExactKeys3(
     record,
     [
@@ -32997,7 +33391,7 @@ function assertAuthorityCoverage(authority, reviewInput) {
   }
 }
 function parsePanel(input, reviewInput, authority, index2) {
-  const panel = requireRecord4(input, `panel:${index2}`);
+  const panel = requireRecord5(input, `panel:${index2}`);
   assertExactKeys3(
     panel,
     [
@@ -33057,7 +33451,7 @@ function parseDecisions(input) {
     throw new Error("Semantic adjudication decisions must be non-empty");
   }
   const decisions = input.map((unknownDecision, index2) => {
-    const decision = requireRecord4(unknownDecision, `decision:${index2}`);
+    const decision = requireRecord5(unknownDecision, `decision:${index2}`);
     assertExactKeys3(
       decision,
       [
@@ -33180,7 +33574,7 @@ function parseOutputManifest(input) {
   const seen = /* @__PURE__ */ new Set();
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
-    const output = requireRecord4(unknownOutput, `output:${index2}`);
+    const output = requireRecord5(unknownOutput, `output:${index2}`);
     assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex", "responseSha256"],
@@ -33238,7 +33632,7 @@ function parseExpectedOutputs(input) {
   const seenOutputs = /* @__PURE__ */ new Set();
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
-    const output = requireRecord4(unknownOutput, `authorityOutput:${index2}`);
+    const output = requireRecord5(unknownOutput, `authorityOutput:${index2}`);
     assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex"],
@@ -33292,7 +33686,7 @@ function parsePanelExecutions(input) {
     );
   }
   const executions = input.map((unknownExecution, index2) => {
-    const execution = requireRecord4(
+    const execution = requireRecord5(
       unknownExecution,
       `panelExecution:${index2}`
     );
@@ -33321,7 +33715,7 @@ function parsePanelExecutions(input) {
   return executions;
 }
 function parseVersionedHash(input, field) {
-  const record = requireRecord4(input, field);
+  const record = requireRecord5(input, field);
   assertExactKeys3(record, ["version", "sha256"], field);
   return {
     version: requireText2(record.version, `${field}.version`),
@@ -33372,7 +33766,7 @@ function requireText2(input, field) {
   }
   return input;
 }
-function requireRecord4(input, field) {
+function requireRecord5(input, field) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error(`Invalid semantic adjudication ${field}`);
   }
