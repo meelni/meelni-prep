@@ -21,18 +21,16 @@ The evidence-limited parser reuses Feedback v2's canonical transcript index,
 exact-quote restoration, uniqueness/non-overlap, observable-claim grounding,
 material and quantitative claim checks, confidence rules, and summary safety.
 It permits one to three total findings, no more than two per array, and rejects
-explicit or implicit numerical-rating copy, including article-less and
-label-free spelled-out ratings, while preserving dates, percentages, counts,
-metrics, market share, revenue, time estimates, and compound quantity phrases.
-Quantity and compound recognition is structural and open-ended rather than a
-noun allowlist. A deterministic lexer classifies numeric spans inside local
-clauses, including predicate-to-number adjacency across colon, em dash, and
-newline separators. Rating scales, units, and noun-phrase heads bind only to
-their numeric span. Later clauses are barriers and may independently describe
-how to score, grade, rate, or mark PM artifacts without reclassifying the
-earlier quantity. A bounded adjacent-clause pronoun or demonstrative crosses
-that barrier only when it explicitly refers the quantity back to a score or
-rating.
+numeric values from every model-generated observation, next step, and summary
+by representation rather than semantic classification. It NFKC-canonicalizes
+those fields, removes Unicode format/default-ignorable controls, and rejects
+Unicode Number-category code points, English cardinal or ordinal number-value
+atoms, and explicit letter-grade symbols. No contextual exception exists for
+metrics, ratios, dates, percentages, counts, ranges, decimals, or compounds.
+Exact values may remain only in a grounded `evidence.quote` copied from the
+frozen candidate transcript; the narrative paraphrases the quantitative
+evidence qualitatively. A numeric-content rejection is a provider generation
+failure and never becomes `no_reviewable_answer`.
 
 ## Durable outcomes and presentation
 

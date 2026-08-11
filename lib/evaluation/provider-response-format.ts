@@ -12,7 +12,7 @@ import {
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
   "feedback-provider-response-format.v9" as const;
 export const FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-evidence-limited-provider-response-format.v1" as const;
+  "feedback-evidence-limited-provider-response-format.v2" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -175,11 +175,16 @@ export function serializeFeedbackProviderResponseFormat(
 
 export function getEvidenceLimitedProviderResponseFormat() {
   const stringValue = { type: "string" as const };
+  const narrativeStringValue = {
+    ...stringValue,
+    description:
+      "Qualitative narrative only. Do not include digits, Unicode numeric symbols, English number words, ranges, ratios, percentages, dates, counts, copied metric values, or letter-grade symbols. Paraphrase quantitative evidence qualitatively; exact values belong only in the grounded evidence quote.",
+  };
   const finding = {
     type: "object" as const,
     properties: {
       dimension: { type: "string" as const, enum: FEEDBACK_DIMENSIONS },
-      observation: stringValue,
+      observation: narrativeStringValue,
       transcriptRefs: {
         type: "array" as const,
         items: stringValue,
@@ -188,16 +193,25 @@ export function getEvidenceLimitedProviderResponseFormat() {
       },
       evidence: {
         type: "array" as const,
+        description:
+          "Exact grounded candidate evidence. Quantitative values are allowed only in quote and must be copied exactly from the cited turn.",
         minItems: 1,
         maxItems: 1,
         items: {
           type: "object" as const,
-          properties: { turnRef: stringValue, quote: stringValue },
+          properties: {
+            turnRef: stringValue,
+            quote: {
+              ...stringValue,
+              description:
+                "Copy one exact case-sensitive substring from the cited candidate turn. This trusted citation may contain quantitative values; never copy those values into observation, nextStep, or summary.",
+            },
+          },
           required: ["turnRef", "quote"] as const,
           additionalProperties: false,
         },
       },
-      nextStep: stringValue,
+      nextStep: narrativeStringValue,
       rubricVersion: {
         type: "string" as const,
         enum: [FEEDBACK_RUBRIC_VERSION],
@@ -248,7 +262,7 @@ export function getEvidenceLimitedProviderResponseFormat() {
             minItems: 0,
             maxItems: 2,
           },
-          summary: stringValue,
+          summary: narrativeStringValue,
         },
         required: [
           "schemaVersion",

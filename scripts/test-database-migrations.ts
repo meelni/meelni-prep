@@ -8479,7 +8479,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
               transcriptRefs: [turn.eventId],
               evidence: [{ turnRef: turn.eventId, quote: turn.text }],
               nextStep:
-                "Compare two explicit decision criteria in the next practice answer.",
+                "Compare explicit decision criteria in the next practice answer.",
               rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
               confidence: 0.7,
             },

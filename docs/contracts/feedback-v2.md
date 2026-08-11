@@ -110,23 +110,22 @@ retains the complete Feedback v2 finding shape. The provider-neutral parser
 reuses the scored contract's canonical transcript validation, exact quote
 restoration, evidence uniqueness and non-overlap checks, observable-claim
 grounding, material/quantitative polarity checks, confidence rules, and
-summary safety checks. Numerical ratings embedded in narrative customer copy
-are rejected, including article-less, label-free, or spelled-out evaluation
-paraphrases such as `aim for eight`, `this answer is eight`, or `an eight
-overall`. A deterministic lexer identifies numeric spans, sentence and clause
-boundaries, evaluation frames, local noun-phrase heads, rating scales, and
-rating units. Colon, em dash, and newline separators between a predicate and
-its numeric complement preserve syntactic adjacency. A quantitative modifier
-or compound cannot hide a rating head bound to the same span, while unrelated
-rating vocabulary in a later clause or sentence cannot contaminate an earlier
-count. Only an explicit adjacent-clause pronoun or demonstrative that refers
-the quantity back to a score or rating crosses that barrier. Quantitative
-transcript evidence and non-evaluative recommendations remain valid when they
-describe dates, percentages, counts, metrics, market share, revenue, time
-estimates, or open-ended compound constructions such as an `eight-stage funnel
-analysis`, `eight-pillar framework`, or `eight-workstream plan`. Valid
-compound heads are recognized structurally rather than maintained in a noun
-allowlist.
+summary safety checks. Model-generated `observation`, `nextStep`, and `summary`
+fields are numeric-value-free by representation, not by semantic score
+classification. Each field is NFKC-canonicalized and stripped of Unicode
+format/default-ignorable controls before validation. The parser rejects every
+Unicode Number-category code point in the raw or canonical form, including
+ASCII, fullwidth, circled, superscript, fraction, and Roman numeral values; it
+also rejects English cardinal and ordinal number-value atoms after tokenization
+and explicit letter-grade symbols. Metrics, ratios, dates, percentages, counts,
+ranges, decimals, and compounds receive no contextual exemption.
+
+Exact quantitative candidate evidence remains available only in
+`evidence.quote`, which must be an exact grounded substring of its cited frozen
+candidate turn. Observations, recommendations, and summaries paraphrase that
+evidence qualitatively, for example as a concrete activation metric or a
+bounded customer sample. The parser never trusts a model-returned copied value
+outside the exact citation field.
 
 This companion result is useful evidence-limited coaching, not a synthetic
 score and not a readiness prediction. A session with no reviewable candidate

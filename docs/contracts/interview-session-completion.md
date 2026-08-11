@@ -128,6 +128,8 @@ under the owner/session/reservation/grant lock order. See
 - Five substantive answers permit full-depth evaluation. A smaller healthy
   prefix remains partial, and fewer than four substantive answers receive
   scoreless evidence-limited narrative feedback rather than inferred scores.
+  Model narrative is numeric-value-free; exact quantities may remain only in
+  grounded frozen-transcript evidence citations.
 - No trustworthy candidate answer creates terminal `feedback.status=skipped`
   with `outcome_reason=no_reviewable_answer`.
 - A corrupt or degraded frozen transcript creates terminal
