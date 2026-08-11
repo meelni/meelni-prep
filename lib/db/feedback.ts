@@ -8,6 +8,7 @@ export const FEEDBACK_DB_READ_LIMITS = {
   lifecycleStatus: 32,
   completionTier: 32,
   dispatchStatus: 32,
+  outcomeReason: 64,
   summary: 4_000,
   version: 256,
   dispatchEventId: 256,
@@ -72,6 +73,9 @@ export function buildFeedbackReadQuery(
       status: sql<
         FeedbackRow["status"]
       >`left(${feedback.status}, ${FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1})`,
+      outcomeReason: sql<
+        FeedbackRow["outcomeReason"]
+      >`left(${feedback.outcomeReason}, ${FEEDBACK_DB_READ_LIMITS.outcomeReason + 1})`,
       processingStartedAt: feedback.processingStartedAt,
       completionTier: sql<
         FeedbackRow["completionTier"]
@@ -135,6 +139,7 @@ export function hasValidFeedbackLifecycleFields(record: {
   status: unknown;
   completionTier: unknown;
   dispatchStatus: unknown;
+  outcomeReason?: unknown;
 }): boolean {
   return (
     typeof record.status === "string" &&
@@ -148,7 +153,16 @@ export function hasValidFeedbackLifecycleFields(record: {
     typeof record.dispatchStatus === "string" &&
     ["not_required", "pending", "sending", "sent", "failed"].includes(
       record.dispatchStatus
-    )
+    ) &&
+    (record.outcomeReason === undefined ||
+      record.outcomeReason === null ||
+      [
+        "feedback_generated",
+        "no_reviewable_answer",
+        "transcript_integrity_degraded",
+        "dispatch_failed",
+        "generation_failed",
+      ].includes(record.outcomeReason as string))
   );
 }
 

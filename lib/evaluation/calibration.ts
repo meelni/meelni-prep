@@ -5,6 +5,8 @@ import {
   isFeedbackV2RejectionCode,
   parseFeedbackV2,
   prepareFeedbackTranscript,
+  isEvidenceLimitedFeedbackResult,
+  type FeedbackEvaluationResult,
   type FeedbackDimension,
   type FeedbackEvaluationState,
   type FeedbackV2RejectionCode,
@@ -988,9 +990,19 @@ async function runCaseThroughGenerationWorkflow(input: {
     sessionId: input.fixture.id,
     status: "pending",
     statusReason: null,
+    outcomeReason: null,
     eventId,
     processingStartedAt: null,
     completionTier,
+    completionStats: {
+      totalTurns: input.fixture.transcript.length,
+      userTurns: input.fixture.transcript.filter(
+        (turn) => turn.speaker === "user"
+      ).length,
+      totalWords: 0,
+      durationSeconds: 0,
+      substantiveResponses: 4,
+    },
     dispatchStatus: "sent",
     dispatchClaimedAt: input.now,
     dispatchedAt: input.now,
@@ -1068,9 +1080,10 @@ class CalibrationGenerationStore implements FeedbackGenerationStore {
   async complete(input: {
     sessionId: string;
     eventId: string;
-    evaluation: FeedbackV2Result;
+    evaluation: FeedbackEvaluationResult;
   }): Promise<boolean> {
     if (!this.ownsActiveClaim(input)) return false;
+    if (isEvidenceLimitedFeedbackResult(input.evaluation)) return false;
     this.completedEvaluation = input.evaluation;
     this.current = { ...this.current, status: "completed" };
     return true;
@@ -1079,7 +1092,7 @@ class CalibrationGenerationStore implements FeedbackGenerationStore {
   async skip(input: {
     sessionId: string;
     eventId: string;
-    reason: string;
+    reason: "no_reviewable_answer" | "transcript_integrity_degraded";
     completionTier?: "insufficient";
   }): Promise<boolean> {
     if (!this.ownsActiveClaim(input)) return false;
@@ -1087,6 +1100,7 @@ class CalibrationGenerationStore implements FeedbackGenerationStore {
       ...this.current,
       status: "skipped",
       statusReason: input.reason,
+      outcomeReason: input.reason,
       completionTier: input.completionTier ?? this.current.completionTier,
     };
     return true;

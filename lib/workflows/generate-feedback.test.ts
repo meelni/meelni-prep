@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
+  FeedbackEvaluationResult,
   FeedbackEvaluationState,
   FeedbackV2Result,
   PreparedFeedbackTranscript,
@@ -368,9 +369,17 @@ function record(
     sessionId: SESSION_ID,
     status: "pending",
     statusReason: null,
+    outcomeReason: null,
     eventId: EVENT_1,
     processingStartedAt: null,
     completionTier: "full",
+    completionStats: {
+      totalTurns: 10,
+      userTurns: 5,
+      totalWords: 100,
+      durationSeconds: 60,
+      substantiveResponses: 5,
+    },
     dispatchStatus: "sent",
     dispatchClaimedAt: NOW,
     dispatchedAt: NOW,
@@ -436,15 +445,20 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
   async complete(input: {
     sessionId: string;
     eventId: string;
-    evaluation: FeedbackV2Result;
+    evaluation: FeedbackEvaluationResult;
   }) {
     if (!this.isActive(input.sessionId, input.eventId)) return false;
     this.current = { ...this.current, status: "completed" };
-    this.completedScore = input.evaluation.overallScore;
+    this.completedScore =
+      "overallScore" in input.evaluation ? input.evaluation.overallScore : null;
     return true;
   }
 
-  async skip(input: { sessionId: string; eventId: string; reason: string }) {
+  async skip(input: {
+    sessionId: string;
+    eventId: string;
+    reason: "no_reviewable_answer" | "transcript_integrity_degraded";
+  }) {
     if (!this.isActive(input.sessionId, input.eventId)) return false;
     this.current = {
       ...this.current,

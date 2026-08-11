@@ -80,6 +80,7 @@ export function createDrizzleFeedbackDispatchStore(
           dispatchAttempts: sql`${feedback.dispatchAttempts} + 1`,
           dispatchClaimedAt: now,
           dispatchLastError: null,
+          outcomeReason: null,
         })
         .where(
           and(
@@ -115,6 +116,7 @@ export function createDrizzleFeedbackDispatchStore(
           dispatchStatus: "sent",
           dispatchedAt: now,
           dispatchLastError: null,
+          outcomeReason: null,
         })
         .where(
           and(
@@ -138,6 +140,7 @@ export function createDrizzleFeedbackDispatchStore(
         .set({
           dispatchStatus: "failed",
           dispatchLastError: errorCode,
+          outcomeReason: "dispatch_failed",
         })
         .where(
           and(

@@ -46,12 +46,12 @@ for (const completionTier of [SessionTier.FULL, SessionTier.PARTIAL]) {
 
     Object.assign(
       record,
-      resolveFeedbackLateValidationSkip("Transcript cannot be evaluated safely")
+      resolveFeedbackLateValidationSkip("transcript_integrity_degraded")
     );
 
     assert.deepEqual(record, {
       status: "skipped",
-      statusReason: "Transcript cannot be evaluated safely",
+      statusReason: "transcript_integrity_degraded",
       completionTier,
     });
   });

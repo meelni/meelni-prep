@@ -22,6 +22,7 @@ import {
   type RequestUserEndRuntimeSettlementResult,
 } from "./request-user-end-runtime-settlement";
 import type { UserInterviewEndResumeFrom } from "./accept-user-interview-end";
+import { reportFeedbackOutcome } from "@/lib/operations/feedback-outcome";
 
 export const BACKGROUND_USER_END_SETTLEMENT_TIMEOUT_MS = 20_000;
 
@@ -89,6 +90,7 @@ export type UserInterviewEndFinalizationCheckpoint =
       roomName: string | null;
       feedbackStatus: InterviewSessionSettlement["feedback"]["status"];
       feedbackDispatchStatus: InterviewSessionSettlement["feedback"]["dispatchStatus"];
+      feedbackOutcomeReason: InterviewSessionSettlement["feedback"]["outcomeReason"];
       transcriptEvidence: "available" | "partial" | "degraded" | "missing";
     };
 
@@ -237,6 +239,15 @@ async function finalizeSession(
       finalizationReason(completion, transcriptEvidence),
       "terminalization"
     );
+    if (
+      completion.feedback.outcomeReason === "no_reviewable_answer" ||
+      completion.feedback.outcomeReason === "transcript_integrity_degraded"
+    ) {
+      reportFeedbackOutcome({
+        outcomeReason: completion.feedback.outcomeReason,
+        sessionId: input.sessionId,
+      });
+    }
     return {
       ok: true,
       disposition: completion.disposition,
@@ -248,6 +259,7 @@ async function finalizeSession(
       roomName: completion.roomName,
       feedbackStatus: completion.feedback.status,
       feedbackDispatchStatus: completion.feedback.dispatchStatus,
+      feedbackOutcomeReason: completion.feedback.outcomeReason,
       transcriptEvidence,
     };
   } catch (error) {

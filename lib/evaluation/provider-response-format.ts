@@ -4,11 +4,15 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   type FeedbackEvaluationState,
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
   "feedback-provider-response-format.v9" as const;
+export const FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION =
+  "feedback-evidence-limited-provider-response-format.v1" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -169,6 +173,98 @@ export function serializeFeedbackProviderResponseFormat(
   return JSON.stringify(getFeedbackProviderResponseFormat(evaluationState));
 }
 
+export function getEvidenceLimitedProviderResponseFormat() {
+  const stringValue = { type: "string" as const };
+  const finding = {
+    type: "object" as const,
+    properties: {
+      dimension: { type: "string" as const, enum: FEEDBACK_DIMENSIONS },
+      observation: stringValue,
+      transcriptRefs: {
+        type: "array" as const,
+        items: stringValue,
+        minItems: 1,
+        maxItems: 1,
+      },
+      evidence: {
+        type: "array" as const,
+        minItems: 1,
+        maxItems: 1,
+        items: {
+          type: "object" as const,
+          properties: { turnRef: stringValue, quote: stringValue },
+          required: ["turnRef", "quote"] as const,
+          additionalProperties: false,
+        },
+      },
+      nextStep: stringValue,
+      rubricVersion: {
+        type: "string" as const,
+        enum: [FEEDBACK_RUBRIC_VERSION],
+      },
+      confidence: { type: "number" as const },
+    },
+    required: [
+      "dimension",
+      "observation",
+      "transcriptRefs",
+      "evidence",
+      "nextStep",
+      "rubricVersion",
+      "confidence",
+    ] as const,
+    additionalProperties: false,
+  };
+  return {
+    type: "json_schema" as const,
+    json_schema: {
+      name: "meelni_feedback_evidence_limited_v1",
+      strict: true,
+      schema: {
+        type: "object" as const,
+        properties: {
+          schemaVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION],
+          },
+          promptVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION],
+          },
+          rubricVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_RUBRIC_VERSION],
+          },
+          evaluationState: { type: "string" as const, enum: ["partial"] },
+          strengths: {
+            type: "array" as const,
+            items: finding,
+            minItems: 0,
+            maxItems: 2,
+          },
+          improvements: {
+            type: "array" as const,
+            items: finding,
+            minItems: 0,
+            maxItems: 2,
+          },
+          summary: stringValue,
+        },
+        required: [
+          "schemaVersion",
+          "promptVersion",
+          "rubricVersion",
+          "evaluationState",
+          "strengths",
+          "improvements",
+          "summary",
+        ] as const,
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export function getFeedbackProviderResponseFormatContractHash(): string {
   return createHash("sha256")
     .update(
@@ -176,6 +272,17 @@ export function getFeedbackProviderResponseFormatContractHash(): string {
         version: FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION,
         full: getFeedbackProviderResponseFormat("full"),
         partial: getFeedbackProviderResponseFormat("partial"),
+      })
+    )
+    .digest("hex");
+}
+
+export function getEvidenceLimitedProviderResponseFormatContractHash(): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION,
+        format: getEvidenceLimitedProviderResponseFormat(),
       })
     )
     .digest("hex");

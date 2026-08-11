@@ -1,12 +1,12 @@
 export const FEEDBACK_ELIGIBILITY_POLICY = {
   partial: {
-    minTurns: 5,
-    minDurationMinutes: 5,
-    minSubstantiveResponses: 3,
+    minSubstantiveResponses: 1,
   },
   full: {
-    minTurns: 20,
-    minDurationMinutes: 20,
     minSubstantiveResponses: 5,
   },
+} as const;
+
+export const FEEDBACK_NUMERICAL_PRECISION_POLICY = {
+  minSubstantiveResponses: 4,
 } as const;

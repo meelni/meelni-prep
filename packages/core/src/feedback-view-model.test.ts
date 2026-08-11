@@ -421,16 +421,26 @@ test("keeps recovery attached to the authoritative lifecycle status", () => {
       status: "failed",
       retryable: true,
       message: "Feedback could not be completed.",
+      outcomeReason: "generation_failed",
     }),
-    { kind: "failed-retryable", message: "Feedback could not be completed." }
+    {
+      kind: "failed-retryable",
+      message: "Feedback could not be completed.",
+      outcomeReason: "generation_failed",
+    }
   );
   assert.equal(
     toFeedbackViewState({
       status: "skipped",
       retryable: false,
-      details: { tier: "abandoned", reasons: [], recommendations: [] },
+      details: {
+        outcomeReason: "no_reviewable_answer",
+        tier: "abandoned",
+        reasons: [],
+        recommendations: [],
+      },
     }).kind,
-    "skipped-abandoned"
+    "no-reviewable-answer"
   );
 });
 
@@ -442,28 +452,48 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
     [{ status: "pending", retryable: false }, "pending"],
     [{ status: "processing", retryable: false }, "processing"],
     [
-      { status: "failed", retryable: true, message: "Could not complete." },
+      {
+        status: "failed",
+        retryable: true,
+        message: "Could not complete.",
+        outcomeReason: "generation_failed",
+      },
       "failed-retryable",
     ],
     [
-      { status: "failed", retryable: false, message: "Could not complete." },
+      {
+        status: "failed",
+        retryable: false,
+        message: "Could not complete.",
+        outcomeReason: "generation_failed",
+      },
       "failed-terminal",
     ],
     [
       {
         status: "skipped",
         retryable: false,
-        details: { tier: "insufficient", reasons: [], recommendations: [] },
+        details: {
+          outcomeReason: "no_reviewable_answer",
+          tier: "insufficient",
+          reasons: [],
+          recommendations: [],
+        },
       },
-      "skipped-insufficient",
+      "no-reviewable-answer",
     ],
     [
       {
         status: "skipped",
         retryable: false,
-        details: { tier: "abandoned", reasons: [], recommendations: [] },
+        details: {
+          outcomeReason: "transcript_integrity_degraded",
+          tier: "abandoned",
+          reasons: [],
+          recommendations: [],
+        },
       },
-      "skipped-abandoned",
+      "transcript-integrity-degraded",
     ],
   ];
 
@@ -489,11 +519,21 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "settling", retryable: true, delayed: true },
     { status: "pending", retryable: true, estimatedTimeRemaining: 10 },
     { status: "processing", retryable: false },
-    { status: "failed", retryable: true, message: "Try again." },
+    {
+      status: "failed",
+      retryable: true,
+      message: "Try again.",
+      outcomeReason: "generation_failed",
+    },
     {
       status: "skipped",
       retryable: false,
-      details: { tier: "insufficient", reasons: [], recommendations: [] },
+      details: {
+        outcomeReason: "no_reviewable_answer",
+        tier: "insufficient",
+        reasons: [],
+        recommendations: [],
+      },
     },
     { status: "completed", retryable: false, feedback: validCompleted },
   ];

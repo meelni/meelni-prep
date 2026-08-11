@@ -353,10 +353,15 @@ export async function GET(
           // validator after terminalization because late transcript writes or a new
           // validator deployment cannot redefine the committed outcome.
           if (status === "skipped") {
+            const outcomeReason =
+              feedbackRecord.outcomeReason === "transcript_integrity_degraded"
+                ? "transcript_integrity_degraded"
+                : "no_reviewable_answer";
             const candidate = {
               status: "skipped",
               retryable: false,
               details: {
+                outcomeReason,
                 tier:
                   feedbackRecord.completionTier === "abandoned"
                     ? "abandoned"
@@ -365,7 +370,7 @@ export async function GET(
                   ? { stats: feedbackRecord.completionStats }
                   : {}),
                 reasons: [],
-                recommendations: feedbackRecord.completionRecommendations ?? [],
+                recommendations: [],
               },
             };
             const skippedResponse = decodeFeedbackLifecycleResponse(candidate);
@@ -407,6 +412,7 @@ export async function GET(
                 status: "failed",
                 message: "Feedback could not be completed.",
                 retryable,
+                outcomeReason: "generation_failed",
               },
               {
                 headers: {

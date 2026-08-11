@@ -31,6 +31,7 @@ test("feedback read query projects and bounds persisted presenter fields", async
     "model_version",
     "evaluation_state",
     "status",
+    "outcome_reason",
     "completion_tier",
     "completion_stats",
     "completion_recommendations",
@@ -52,6 +53,7 @@ test("feedback read query projects and bounds persisted presenter fields", async
     FEEDBACK_DB_READ_LIMITS.version + 1,
     FEEDBACK_DB_READ_LIMITS.version + 1,
     FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1,
+    FEEDBACK_DB_READ_LIMITS.outcomeReason + 1,
     FEEDBACK_DB_READ_LIMITS.completionTier + 1,
     FEEDBACK_DB_READ_LIMITS.completionStatsJson + 1,
     FEEDBACK_DB_READ_LIMITS.completionRecommendationsJson + 1,
@@ -86,6 +88,7 @@ test("bounded feedback rows decode valid JSON but preserve oversize sentinels", 
     evaluationState: null,
     createdAt: new Date("2026-07-10T00:00:00.000Z"),
     status: "completed",
+    outcomeReason: "feedback_generated",
     processingStartedAt: null,
     completionTier: "full",
     completionStatsJson: null,
@@ -126,6 +129,7 @@ test("oversized lifecycle field sentinels fail closed", () => {
 
   for (const [field, limit] of [
     ["status", FEEDBACK_DB_READ_LIMITS.lifecycleStatus],
+    ["outcomeReason", FEEDBACK_DB_READ_LIMITS.outcomeReason],
     ["completionTier", FEEDBACK_DB_READ_LIMITS.completionTier],
     ["dispatchStatus", FEEDBACK_DB_READ_LIMITS.dispatchStatus],
   ] as const) {

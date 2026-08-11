@@ -14,19 +14,20 @@ import {
   FEEDBACK_ELIGIBILITY_POLICY,
   hasSubstantiveCandidateResponseSignal,
   prepareFeedbackTranscript,
+  type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
 
 /**
  * Session validation tiers based on completeness
  */
 export enum SessionTier {
-  /** Full session: ≥20 turns, ≥20 min, ≥5 substantive responses */
+  /** Broad evidence: at least five substantive candidate responses. */
   FULL = "full",
-  /** Partial session: ≥5 turns, ≥5 min, ≥3 substantive responses */
+  /** Reviewable evidence: at least one substantive candidate response. */
   PARTIAL = "partial",
-  /** Insufficient data: < 5 turns or < 5 min */
+  /** No trustworthy substantive candidate answer. */
   INSUFFICIENT = "insufficient",
-  /** Abandoned: 0 turns (user never engaged) */
+  /** No transcript turns were committed. */
   ABANDONED = "abandoned",
 }
 
@@ -60,6 +61,8 @@ export interface SessionValidation {
   reasons: string[];
   /** Recommendations for user */
   recommendations: string[];
+  /** Closed, durable classification for non-reviewable evidence. */
+  evidenceFailureReason?: SkippedFeedbackOutcomeReason | null;
 }
 
 /**
@@ -68,7 +71,6 @@ export interface SessionValidation {
 const THRESHOLDS = {
   FULL: FEEDBACK_ELIGIBILITY_POLICY.full,
   PARTIAL: FEEDBACK_ELIGIBILITY_POLICY.partial,
-  MINIMUM: FEEDBACK_ELIGIBILITY_POLICY.partial,
 } as const;
 
 /**
@@ -198,8 +200,8 @@ function tokenizeWords(text: string): string[] {
 /**
  * Validate session completeness and determine feedback eligibility
  *
- * This function evaluates whether a session meets the minimum requirements
- * for feedback generation based on turns, duration, and response quality.
+ * This function evaluates whether the frozen trustworthy transcript contains
+ * substantive candidate evidence and whether that evidence is safe to score.
  *
  * @param sessionId - UUID of the interview session
  * @returns Validation result with tier, validity, stats, and recommendations
@@ -285,96 +287,54 @@ export function calculateValidatedSessionFromTurns(
   const thresholdValidation = validateSessionStats(stats);
   if (prepared.eligible && !hasInvalidTiming) return thresholdValidation;
 
+  const hasCorruptEvidence =
+    hasInvalidTiming ||
+    prepared.issues.some(
+      (issue) =>
+        issue.fatal &&
+        (issue.code === "malformed_event" || issue.code === "prompt_injection")
+    );
+
   return {
     tier: turns.length === 0 ? SessionTier.ABANDONED : SessionTier.INSUFFICIENT,
     isValid: false,
     stats,
     reasons: [
-      ...prepared.reasons,
-      ...(hasInvalidTiming ? ["Transcript timing data is corrupted"] : []),
-      ...thresholdValidation.reasons,
+      hasCorruptEvidence
+        ? "The saved transcript could not be verified"
+        : "No reviewable candidate answer was recorded",
     ],
-    recommendations: [
-      ...new Set([
-        "Start a new interview so we can record enough trustworthy evidence",
-        ...thresholdValidation.recommendations,
-      ]),
-    ],
+    recommendations: [],
+    evidenceFailureReason: hasCorruptEvidence
+      ? "transcript_integrity_degraded"
+      : "no_reviewable_answer",
   };
 }
 
 export function validateSessionStats(stats: SessionStats): SessionValidation {
-  // Check for abandoned session (0 turns)
   if (stats.totalTurns === 0) {
     return {
       tier: SessionTier.ABANDONED,
       isValid: false,
       stats,
-      reasons: ["Session abandoned: No conversation turns recorded"],
-      recommendations: [
-        "Start a new interview session",
-        "Ensure your microphone is working",
-        "Wait for the agent to join before speaking",
-      ],
+      reasons: ["No reviewable candidate answer was recorded"],
+      recommendations: [],
+      evidenceFailureReason: "no_reviewable_answer",
     };
   }
 
-  // Check for insufficient data
-  const durationMinutes = Math.floor(stats.durationSeconds / 60);
-  const reasons: string[] = [];
-  const recommendations: string[] = [];
-
-  if (stats.totalTurns < THRESHOLDS.MINIMUM.minTurns) {
-    reasons.push(
-      `Too few turns: ${stats.totalTurns} < ${THRESHOLDS.MINIMUM.minTurns} required`
-    );
-  }
-
-  if (durationMinutes < THRESHOLDS.MINIMUM.minDurationMinutes) {
-    reasons.push(
-      `Too short: ${durationMinutes} min < ${THRESHOLDS.MINIMUM.minDurationMinutes} min required`
-    );
-  }
-
-  // Check if user spoke at all
-  if (stats.userTurns === 0) {
-    reasons.push("User never spoke during session");
-    recommendations.push(
-      "Ensure your microphone is unmuted",
-      "Speak clearly when answering questions"
-    );
-  }
-
-  // Check for insufficient substantive responses
   if (stats.substantiveResponses < THRESHOLDS.PARTIAL.minSubstantiveResponses) {
-    reasons.push(
-      `Not enough substantive responses: ${stats.substantiveResponses} < ${THRESHOLDS.PARTIAL.minSubstantiveResponses} required`
-    );
-    recommendations.push(
-      "Provide detailed answers (aim for 50-100 words per response)",
-      "Explain your reasoning and thought process"
-    );
-  }
-
-  // If insufficient, return early
-  if (reasons.length > 0) {
-    recommendations.unshift(
-      `Aim for at least ${THRESHOLDS.PARTIAL.minDurationMinutes} minutes, ${THRESHOLDS.PARTIAL.minTurns} conversation turns, and ${THRESHOLDS.PARTIAL.minSubstantiveResponses} detailed answers for feedback`
-    );
-
     return {
       tier: SessionTier.INSUFFICIENT,
       isValid: false,
       stats,
-      reasons,
-      recommendations,
+      reasons: ["No reviewable candidate answer was recorded"],
+      recommendations: [],
+      evidenceFailureReason: "no_reviewable_answer",
     };
   }
 
-  // Determine tier (full vs partial)
   const isFull =
-    stats.totalTurns >= THRESHOLDS.FULL.minTurns &&
-    durationMinutes >= THRESHOLDS.FULL.minDurationMinutes &&
     stats.substantiveResponses >= THRESHOLDS.FULL.minSubstantiveResponses;
 
   const tier = isFull ? SessionTier.FULL : SessionTier.PARTIAL;
@@ -384,13 +344,8 @@ export function validateSessionStats(stats: SessionStats): SessionValidation {
     isValid: true,
     stats,
     reasons: [],
-    recommendations:
-      tier === SessionTier.PARTIAL
-        ? [
-            `For comprehensive feedback, aim for ${THRESHOLDS.FULL.minDurationMinutes}+ minutes, ${THRESHOLDS.FULL.minTurns}+ conversation turns, and ${THRESHOLDS.FULL.minSubstantiveResponses}+ detailed answers`,
-            "This session qualifies for basic feedback",
-          ]
-        : ["Excellent session length - you'll receive detailed feedback"],
+    recommendations: [],
+    evidenceFailureReason: null,
   };
 }
 

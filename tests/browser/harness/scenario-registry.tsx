@@ -250,6 +250,7 @@ type FeedbackLifecycleScenarioState = Exclude<
   FeedbackViewState,
   | { kind: "completed-full" }
   | { kind: "completed-partial" }
+  | { kind: "completed-evidence-limited" }
   | { kind: "completed-legacy" }
 >;
 
@@ -338,8 +339,9 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return (
         <FeedbackLifecycleScenario
           state={{
-            kind: "skipped-insufficient",
+            kind: "no-reviewable-answer",
             details: {
+              outcomeReason: "no_reviewable_answer",
               tier: "insufficient",
               reasons: [longLifecycleMessage],
               recommendations: [
@@ -366,7 +368,11 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
     case "feedback-failed":
       return (
         <FeedbackLifecycleScenario
-          state={{ kind: "failed-retryable", message: longLifecycleMessage }}
+          state={{
+            kind: "failed-retryable",
+            message: longLifecycleMessage,
+            outcomeReason: "generation_failed",
+          }}
         />
       );
     case "feedback-unavailable":

@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains thirty-one entries, from
-`0000_many_nocturne` through `0030_transcript_committed_watermarks`. The migration-history
+The current committed journal contains thirty-two entries, from
+`0000_many_nocturne` through `0031_sav_397_feedback_outcomes`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -91,7 +91,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirty-one
+six ledger entries. Expected post-migration status is `reconciled` with thirty-two
 ledger entries, 37 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
@@ -100,8 +100,8 @@ billing-truth, webhook-convergence, invoice-convergence,
 subscription-resource-convergence, durable LiveKit deletion, feedback-v2,
 server-owned billing privilege, explicit-analytics-consent,
 runtime-settlement-reconciliation, public-demo-limit, question-provenance, and
-focused-practice-attempt, durable-contact-submission, and transcript-watermark
-contract fingerprints.
+focused-practice-attempt, durable-contact-submission, transcript-watermark, and
+feedback-outcome contract fingerprints.
 The durable-contact contract includes the non-login contact-triage group role,
 denial of triage RPCs to Supabase shared roles, separate runtime limiter access,
 and zero direct group privileges on contact tables.
@@ -191,8 +191,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 31`, and transcript-watermark schema fingerprint
-   `a5823f2722a10f93e1a688b0d1be822fb6f656b71743e4c7e425f68e265313c1`.
+   `migrationCount: 32`, and feedback-outcome schema fingerprint
+   `eec09e1a3fc51c8f457adf90001e3b8adf5adc1bf57c5422b8c0486edc1a7f6c`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

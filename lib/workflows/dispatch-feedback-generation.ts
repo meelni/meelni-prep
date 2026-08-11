@@ -11,6 +11,7 @@ import {
   type InterviewSessionCorrelationId,
 } from "@/lib/operations/operational-events";
 import { withDeadline } from "@/lib/http/deadline";
+import { reportFeedbackOutcome } from "@/lib/operations/feedback-outcome";
 
 export const FEEDBACK_DISPATCH_SEND_TIMEOUT_MS = 3_000;
 
@@ -91,6 +92,10 @@ export async function dispatchFeedbackGenerationWorkflow(
     } finally {
       deps.reportFailure(correlationId);
     }
+    reportFeedbackOutcome({
+      outcomeReason: "dispatch_failed",
+      sessionId: input.sessionId,
+    });
     return { ok: false, disposition: "failed", dispatch: claimed };
   }
 
@@ -125,6 +130,10 @@ export async function dispatchFeedbackGenerationWorkflow(
       deps.reportFailure(correlationId);
     }
     const dispatch = await deps.store.get(input.sessionId);
+    reportFeedbackOutcome({
+      outcomeReason: "dispatch_failed",
+      sessionId: input.sessionId,
+    });
     return { ok: false, disposition: "failed", dispatch };
   }
 }

@@ -6,7 +6,7 @@ import {
   SessionTier,
 } from "@/lib/evaluation/session-validator";
 
-test("semantic transcript replays cannot inflate feedback eligibility", () => {
+test("semantic transcript replays cannot inflate feedback evidence breadth", () => {
   const turns = [
     turn(1, "interviewer", "Walk me through the user problem.", 0),
     turn(
@@ -32,13 +32,13 @@ test("semantic transcript replays cannot inflate feedback eligibility", () => {
   ];
 
   const validation = calculateValidatedSessionFromTurns(turns);
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.totalTurns, 5);
   assert.equal(validation.stats.substantiveResponses, 2);
 });
 
-test("punctuation and tiny lexical variants of one answer cannot satisfy the response threshold", () => {
+test("punctuation variants remain one evidence-limited response", () => {
   const answer =
     "I would start with working parents and measure weekly retained planning teams across the first cohort";
   const validation = calculateValidatedSessionFromTurns([
@@ -50,12 +50,12 @@ test("punctuation and tiny lexical variants of one answer cannot satisfy the res
     turn(6, "user", `${answer} first?`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.substantiveResponses, 1);
 });
 
-test("option-token substitutions cannot inflate end-to-end feedback eligibility", () => {
+test("option-token substitutions cannot inflate end-to-end evidence breadth", () => {
   const answer =
     "I would start with working parents and measure weekly retained planning teams across";
   const validation = calculateValidatedSessionFromTurns([
@@ -67,13 +67,13 @@ test("option-token substitutions cannot inflate end-to-end feedback eligibility"
     turn(6, "user", `${answer} option three.`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.totalTurns, 4);
   assert.equal(validation.stats.substantiveResponses, 1);
 });
 
-test("arbitrary leading-label rotations cannot reach partial feedback", () => {
+test("arbitrary leading-label rotations remain partial feedback", () => {
   const answer =
     "I would prioritize working parents because weekly scheduling creates recurring coordination pain before launch";
   const validation = calculateValidatedSessionFromTurns([
@@ -84,13 +84,13 @@ test("arbitrary leading-label rotations cannot reach partial feedback", () => {
     turn(5, "user", `Gamma, ${answer}`, 320),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.totalTurns, 4);
   assert.equal(validation.stats.substantiveResponses, 2);
 });
 
-test("numeric and semicolon label rotations cannot reach partial feedback", () => {
+test("numeric and semicolon label rotations remain partial feedback", () => {
   const answer =
     "I would prioritize working parents because weekly scheduling creates recurring coordination pain before launch";
   for (const prefixes of [
@@ -112,13 +112,13 @@ test("numeric and semicolon label rotations cannot reach partial feedback", () =
       turn(5, "user", `${prefixes[2]} ${answer}`, 360),
     ]);
 
-    assert.equal(validation.tier, SessionTier.INSUFFICIENT, prefixes.join(" "));
-    assert.equal(validation.isValid, false, prefixes.join(" "));
+    assert.equal(validation.tier, SessionTier.PARTIAL, prefixes.join(" "));
+    assert.equal(validation.isValid, true, prefixes.join(" "));
     assert.equal(validation.stats.substantiveResponses, 2, prefixes.join(" "));
   }
 });
 
-test("prefix-only context rotations cannot manufacture partial feedback", () => {
+test("prefix-only context rotations cannot manufacture full feedback", () => {
   const answer =
     "I would validate retention with working parents because scheduling pain repeats weekly before scaling";
   for (const prefixes of [
@@ -143,8 +143,8 @@ test("prefix-only context rotations cannot manufacture partial feedback", () => 
       turn(5, "user", `${prefixes[2]} ${answer}`, 360),
     ]);
 
-    assert.equal(validation.tier, SessionTier.INSUFFICIENT, prefixes.join(" "));
-    assert.equal(validation.isValid, false, prefixes.join(" "));
+    assert.equal(validation.tier, SessionTier.PARTIAL, prefixes.join(" "));
+    assert.equal(validation.isValid, true, prefixes.join(" "));
     assert.equal(validation.stats.substantiveResponses, 2, prefixes.join(" "));
   }
 });
@@ -226,7 +226,7 @@ test("coherent German verb-final answers remain eligible for partial feedback", 
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("option insertion and deletion variants cannot reach partial feedback", () => {
+test("option insertion and deletion variants remain one partial response", () => {
   const answer =
     "I would start with working parents and measure weekly retained planning teams across";
   const validation = calculateValidatedSessionFromTurns([
@@ -238,13 +238,13 @@ test("option insertion and deletion variants cannot reach partial feedback", () 
     turn(6, "user", `${answer} option very extra three.`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.totalTurns, 4);
   assert.equal(validation.stats.substantiveResponses, 1);
 });
 
-test("structured nonce rotations cannot reach partial feedback", () => {
+test("structured nonce rotations remain one partial response", () => {
   const answer =
     "I would start with working parents and measure weekly retained planning teams across trace:";
   const validation = calculateValidatedSessionFromTurns([
@@ -256,13 +256,13 @@ test("structured nonce rotations cannot reach partial feedback", () => {
     turn(6, "user", `${answer} qrsTUV-555555-7777.`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.totalTurns, 4);
   assert.equal(validation.stats.substantiveResponses, 1);
 });
 
-test("three arbitrary two-word suffix variants cannot reach partial feedback", () => {
+test("two-word suffix variants cannot inflate beyond partial feedback", () => {
   const answer =
     "I would prioritize enterprise users because security risk creates the clearest initial product opportunity";
   const validation = calculateValidatedSessionFromTurns([
@@ -274,12 +274,12 @@ test("three arbitrary two-word suffix variants cannot reach partial feedback", (
     turn(6, "user", `${answer} marmalade telescope`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.substantiveResponses, 2);
 });
 
-test("three arbitrary three-word suffix variants cannot reach partial feedback", () => {
+test("three-word suffix variants cannot inflate beyond partial feedback", () => {
   const answer =
     "I would prioritize enterprise users because security risk creates the clearest initial product opportunity";
   const validation = calculateValidatedSessionFromTurns([
@@ -291,12 +291,12 @@ test("three arbitrary three-word suffix variants cannot reach partial feedback",
     turn(6, "user", `${answer} violin waterfall xylophone`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.substantiveResponses, 2);
 });
 
-test("variable-length terminal replay variants cannot reach partial feedback", () => {
+test("variable-length terminal replay variants cannot inflate beyond partial feedback", () => {
   const answer =
     "I would prioritize enterprise users because security risk creates the clearest initial product opportunity";
   const validation = calculateValidatedSessionFromTurns([
@@ -313,8 +313,8 @@ test("variable-length terminal replay variants cannot reach partial feedback", (
     turn(6, "user", `${answer} quartz umbrella notebook lantern`, 380),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
   assert.equal(validation.stats.substantiveResponses, 2);
 });
 
@@ -1328,7 +1328,10 @@ test("score-manipulation paraphrases fail closed across complete sessions", () =
 
     assert.equal(validation.tier, SessionTier.INSUFFICIENT, manipulation);
     assert.equal(validation.isValid, false, manipulation);
-    assert.match(validation.reasons.join(" "), /cannot be evaluated safely/i);
+    assert.equal(
+      validation.evidenceFailureReason,
+      "transcript_integrity_degraded"
+    );
   }
 });
 
@@ -1382,9 +1385,9 @@ test("split feedback-result controls remain insufficient end to end", () => {
       fragments.join(" | ")
     );
     assert.equal(validation.isValid, false, fragments.join(" | "));
-    assert.match(
-      validation.reasons.join(" "),
-      /cannot be evaluated safely/i,
+    assert.equal(
+      validation.evidenceFailureReason,
+      "transcript_integrity_degraded",
       fragments.join(" | ")
     );
   }
@@ -1440,7 +1443,13 @@ test("legitimate adjacent candidate turns and hard barriers remain eligible end 
       ),
     ]);
 
-    assert.equal(validation.tier, SessionTier.PARTIAL, fragments.join(" | "));
+    assert.equal(
+      validation.tier,
+      validation.stats.substantiveResponses >= 5
+        ? SessionTier.FULL
+        : SessionTier.PARTIAL,
+      fragments.join(" | ")
+    );
     assert.equal(validation.isValid, true, fragments.join(" | "));
   }
 
@@ -1895,7 +1904,10 @@ test("a zero-duration canonical turn invalidates feedback eligibility", () => {
   const validation = calculateValidatedSessionFromTurns(turns);
   assert.equal(validation.tier, SessionTier.INSUFFICIENT);
   assert.equal(validation.isValid, false);
-  assert.ok(validation.reasons.includes("Transcript timing data is corrupted"));
+  assert.equal(
+    validation.evidenceFailureReason,
+    "transcript_integrity_degraded"
+  );
 });
 
 test("legacy rows without canonical event identity retain the compatibility statistics path", () => {

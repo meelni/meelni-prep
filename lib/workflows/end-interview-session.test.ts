@@ -343,6 +343,7 @@ function feedbackRecordBase(): typeof feedbackTable.$inferSelect {
     createdAt: new Date("2026-07-09T22:00:00.000Z"),
     status: "pending" as const,
     statusReason: null,
+    outcomeReason: null,
     rubricVersion: "1.0.0",
     schemaVersion: null,
     promptVersion: null,

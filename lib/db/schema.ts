@@ -22,6 +22,7 @@ import type {
   FocusedPracticeFeedbackVersionSnapshot,
   FocusedPracticeSourceFindingSnapshot,
   AvailableFocusedPracticePlan,
+  FeedbackOutcomeReason,
 } from "@meelni/core";
 import type {
   QuestionQualityStatus,
@@ -788,6 +789,7 @@ export const feedback = pgTable(
     // P1-001: Feedback generation status tracking
     status: text("status").default("pending").notNull(),
     statusReason: text("status_reason"),
+    outcomeReason: text("outcome_reason").$type<FeedbackOutcomeReason>(),
     rubricVersion: text("rubric_version").default("1.0.0").notNull(),
     schemaVersion: text("schema_version"),
     promptVersion: text("prompt_version"),
@@ -837,6 +839,10 @@ export const feedback = pgTable(
       "feedback_status_check",
       sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'skipped')`
     ),
+    outcomeReasonCheck: check(
+      "feedback_outcome_reason_check",
+      sql`${table.outcomeReason} IS NULL OR ${table.outcomeReason} IN ('feedback_generated', 'no_reviewable_answer', 'transcript_integrity_degraded', 'dispatch_failed', 'generation_failed')`
+    ),
     // P1-001: Indexes for polling and performance
     sessionIdStatusIdx: index("feedback_session_status_idx").on(
       table.sessionId,
@@ -866,8 +872,10 @@ export const feedback = pgTable(
         ${table.promptVersion} IS NOT NULL AND
         ${table.modelVersion} IS NOT NULL AND
         ${table.evaluationState} IS NOT NULL AND
-        ${table.schemaVersion} = 'feedback.v2' AND
-        ${table.promptVersion} = 'feedback.prompt.v2' AND
+        (
+          (${table.schemaVersion} = 'feedback.v2' AND ${table.promptVersion} = 'feedback.prompt.v2') OR
+          (${table.schemaVersion} = 'feedback.evidence-limited.v1' AND ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1')
+        ) AND
         length(trim(${table.modelVersion})) > 0 AND
         ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
         ${table.evaluationState} IN ('full', 'partial')
