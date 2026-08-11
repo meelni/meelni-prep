@@ -13,7 +13,8 @@ and collapse system degradation into candidate-insufficiency copy.
 One writer-scoped sequence namespace preserves ordered durable evidence, and
 every completed interview reaches one truthful typed feedback outcome based on
 the frozen trustworthy candidate evidence. Narrow healthy evidence receives
-useful grounded narrative feedback without numerical scores.
+useful grounded coaching without numerical scores through closed provider
+selections, server-owned qualitative templates, and exact trusted citations.
 
 ## Boundaries
 

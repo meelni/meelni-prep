@@ -192,7 +192,7 @@ deadline.
 
 7. Run strict preflight again; it must report `reconciled`,
    `migrationCount: 32`, and feedback-outcome schema fingerprint
-   `eec09e1a3fc51c8f457adf90001e3b8adf5adc1bf57c5422b8c0486edc1a7f6c`.
+   `b4ae3d866bb1c0f21f7a796848d5515012b31769c5ad12d9e95632ce6e2ac029`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

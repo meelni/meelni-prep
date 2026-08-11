@@ -4,15 +4,18 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  EVIDENCE_LIMITED_ACTION_CODES,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES,
+  EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
   type FeedbackEvaluationState,
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
   "feedback-provider-response-format.v9" as const;
 export const FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION =
-  "feedback-evidence-limited-provider-response-format.v2" as const;
+  "feedback-evidence-limited-provider-response-format.v3" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -173,73 +176,43 @@ export function serializeFeedbackProviderResponseFormat(
   return JSON.stringify(getFeedbackProviderResponseFormat(evaluationState));
 }
 
-export function getEvidenceLimitedProviderResponseFormat() {
-  const stringValue = { type: "string" as const };
-  const narrativeStringValue = {
-    ...stringValue,
-    description:
-      "Qualitative narrative only. Do not include digits, Unicode numeric symbols, English number words, ranges, ratios, percentages, dates, counts, copied metric values, or letter-grade symbols. Paraphrase quantitative evidence qualitatively; exact values belong only in the grounded evidence quote.",
-  };
-  const finding = {
+export function getEvidenceLimitedProviderResponseFormat(
+  candidateTurnRefs: readonly string[] = ["turn_0001"]
+) {
+  const allowedTurnRefs =
+    requireEvidenceLimitedProviderReferences(candidateTurnRefs);
+  const selection = (signalCodes: readonly string[]) => ({
     type: "object" as const,
     properties: {
-      dimension: { type: "string" as const, enum: FEEDBACK_DIMENSIONS },
-      observation: narrativeStringValue,
-      transcriptRefs: {
-        type: "array" as const,
-        items: stringValue,
-        minItems: 1,
-        maxItems: 1,
-      },
-      evidence: {
-        type: "array" as const,
-        description:
-          "Exact grounded candidate evidence. Quantitative values are allowed only in quote and must be copied exactly from the cited turn.",
-        minItems: 1,
-        maxItems: 1,
-        items: {
-          type: "object" as const,
-          properties: {
-            turnRef: stringValue,
-            quote: {
-              ...stringValue,
-              description:
-                "Copy one exact case-sensitive substring from the cited candidate turn. This trusted citation may contain quantitative values; never copy those values into observation, nextStep, or summary.",
-            },
-          },
-          required: ["turnRef", "quote"] as const,
-          additionalProperties: false,
-        },
-      },
-      nextStep: narrativeStringValue,
-      rubricVersion: {
+      signalCode: {
         type: "string" as const,
-        enum: [FEEDBACK_RUBRIC_VERSION],
+        enum: signalCodes,
       },
-      confidence: { type: "number" as const },
+      actionCode: {
+        type: "string" as const,
+        enum: EVIDENCE_LIMITED_ACTION_CODES,
+      },
+      transcriptRef: {
+        type: "string" as const,
+        enum: allowedTurnRefs,
+      },
     },
-    required: [
-      "dimension",
-      "observation",
-      "transcriptRefs",
-      "evidence",
-      "nextStep",
-      "rubricVersion",
-      "confidence",
-    ] as const,
+    required: ["signalCode", "actionCode", "transcriptRef"] as const,
     additionalProperties: false,
-  };
+  });
   return {
     type: "json_schema" as const,
     json_schema: {
-      name: "meelni_feedback_evidence_limited_v1",
+      name: "meelni_feedback_evidence_limited_selection_v1",
+      description:
+        "Closed PM-rubric selections and trusted candidate-turn aliases. The provider returns no narrative, quote text, score, confidence, or numeric value.",
       strict: true,
       schema: {
         type: "object" as const,
         properties: {
           schemaVersion: {
             type: "string" as const,
-            enum: [FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION],
+            enum: [FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION],
           },
           promptVersion: {
             type: "string" as const,
@@ -252,17 +225,16 @@ export function getEvidenceLimitedProviderResponseFormat() {
           evaluationState: { type: "string" as const, enum: ["partial"] },
           strengths: {
             type: "array" as const,
-            items: finding,
-            minItems: 0,
+            items: selection(EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES),
+            minItems: 1,
             maxItems: 2,
           },
           improvements: {
             type: "array" as const,
-            items: finding,
-            minItems: 0,
+            items: selection(EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES),
+            minItems: 1,
             maxItems: 2,
           },
-          summary: narrativeStringValue,
         },
         required: [
           "schemaVersion",
@@ -271,7 +243,6 @@ export function getEvidenceLimitedProviderResponseFormat() {
           "evaluationState",
           "strengths",
           "improvements",
-          "summary",
         ] as const,
         additionalProperties: false,
       },
@@ -296,8 +267,27 @@ export function getEvidenceLimitedProviderResponseFormatContractHash(): string {
     .update(
       JSON.stringify({
         version: FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION,
-        format: getEvidenceLimitedProviderResponseFormat(),
+        format: getEvidenceLimitedProviderResponseFormat(["turn_0001"]),
       })
     )
     .digest("hex");
+}
+
+function requireEvidenceLimitedProviderReferences(
+  candidateTurnRefs: readonly string[]
+): readonly string[] {
+  if (
+    candidateTurnRefs.length < 1 ||
+    candidateTurnRefs.length > 1_000 ||
+    candidateTurnRefs.some(
+      (reference) =>
+        typeof reference !== "string" ||
+        reference.length === 0 ||
+        reference.length > 512
+    ) ||
+    new Set(candidateTurnRefs).size !== candidateTurnRefs.length
+  ) {
+    throw new Error("evidence_limited_provider_references_invalid");
+  }
+  return [...candidateTurnRefs];
 }

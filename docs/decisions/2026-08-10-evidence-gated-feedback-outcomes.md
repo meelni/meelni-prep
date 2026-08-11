@@ -10,7 +10,11 @@ Meelni determines post-interview feedback from frozen trustworthy candidate
 evidence, never room duration or total transcript-turn count. At least one
 substantive candidate answer receives grounded feedback. Numerical scores
 require broader distinct evidence; narrow healthy evidence receives a
-scoreless narrative result under a separate strict schema.
+scoreless structured result under a separate strict schema. The limited
+provider response contains only closed PM-rubric signal/action codes and
+trusted candidate-turn aliases. The server owns every customer-visible
+qualitative template and restores exact citations from frozen evidence; the
+provider authors no narrative or quote.
 
 Feedback lifecycle state uses a closed durable taxonomy that distinguishes
 generated feedback, no reviewable answer, transcript integrity degradation,
@@ -28,7 +32,8 @@ and frozen watermarks treat them as one ordered stream.
   precision.
 - Long silent interviews cannot receive scores merely because time elapsed.
 - Degraded/corrupt transcripts remain fail closed and visibly system-owned.
-- Scored Feedback v2 retains its trust boundary; the scoreless companion reuses
-  the same semantic grounding checks.
+- Scored Feedback v2 remains unchanged. The scoreless companion removes
+  freeform provider narrative entirely and validates closed selections against
+  the same frozen transcript trust boundary.
 - Provider and authenticated isolated-staging rehearsal remains a separate
   owner-authorized rollout action under the human-owned launch decision.

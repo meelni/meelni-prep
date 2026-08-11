@@ -15,22 +15,26 @@ malformed, injected, or speech-missing evidence. One substantive candidate
 answer is eligible as partial; five distinct substantive answers are full.
 Duration and total turns remain statistics only. Four substantive answers are
 required for numerical scores. A healthy eligible partial below that precision
-boundary uses `feedback.evidence-limited.v1`.
+boundary uses `feedback.evidence-limited.v2`.
 
-The evidence-limited parser reuses Feedback v2's canonical transcript index,
-exact-quote restoration, uniqueness/non-overlap, observable-claim grounding,
-material and quantitative claim checks, confidence rules, and summary safety.
-It permits one to three total findings, no more than two per array, and rejects
-numeric values from every model-generated observation, next step, and summary
-by representation rather than semantic classification. It NFKC-canonicalizes
-those fields, removes Unicode format/default-ignorable controls, and rejects
-Unicode Number-category code points, English cardinal or ordinal number-value
-atoms, and explicit letter-grade symbols. No contextual exception exists for
-metrics, ratios, dates, percentages, counts, ranges, decimals, or compounds.
-Exact values may remain only in a grounded `evidence.quote` copied from the
-frozen candidate transcript; the narrative paraphrases the quantitative
-evidence qualitatively. A numeric-content rejection is a provider generation
-failure and never becomes `no_reviewable_answer`.
+The provider-facing `feedback.evidence-limited.selection.v1` schema has no
+freeform narrative or quote fields. It permits only closed strength signal,
+improvement signal, and next-action codes plus a candidate-turn alias selected
+from a request-specific enum. Both result arrays are non-empty, each is bounded
+at two items, and the total resolved result is bounded at three. The core
+parser rejects unknown or extra fields, dimension-mismatched code pairs,
+duplicate category references, and aliases that do not resolve to a frozen
+candidate turn. Those failures are provider generation failures and never
+become `no_reviewable_answer`.
+
+After selection validation, the server maps the codes to a finite PM-rubric
+template map for dimension, observation, next step, confidence, and summary.
+It restores the canonical event ID and exact frozen candidate-turn text as the
+citation. The provider never supplies customer copy, quotes, or copied numeric
+values. Persistence stores the selected codes and resolved exact templates;
+the bounded database read and client decoder fail closed if any template field
+or code is changed, while the database read also revalidates the citation
+against frozen evidence. Scored Feedback v2 remains unchanged.
 
 ## Durable outcomes and presentation
 

@@ -26,19 +26,17 @@ feedback.
 
 Numerical feedback requires at least four substantive candidate answers. A
 healthy eligible prefix below that precision boundary uses the scoreless
-`feedback.evidence-limited.v1` result: one to three exact-evidence-grounded
-findings and a bounded narrative summary. It shares Feedback v2 transcript
-preparation, aliasing, semantic grounding, evidence uniqueness, claim-safety,
-and recommendation normalization. It never persists or presents inferred
-scores. Every model-generated `observation`, `nextStep`, and `summary` is
-canonicalized with NFKC, stripped of Unicode format/default-ignorable controls,
-and rejected if it contains any Unicode Number-category code point, English
-cardinal or ordinal number-value atom, or explicit letter-grade symbol. There
-are no contextual exceptions for metrics, ratios, dates, counts, ranges, or
-compounds. Quantitative candidate evidence may appear only in an exact
-`evidence.quote` grounded to the frozen canonical transcript; narrative must
-paraphrase it qualitatively. An invalid provider result remains
-`generation_failed`, not candidate insufficiency.
+`feedback.evidence-limited.v2` result. Its provider contract contains no
+freeform narrative, quote, number, score, grade, or confidence field. The
+provider may select only closed PM-rubric signal/action codes and candidate
+turn aliases supplied in the request. The core parser validates every alias
+against the frozen canonical candidate evidence, then resolves the codes to a
+finite server-owned observation, next-step, dimension, confidence, and summary
+template map. It restores the exact frozen turn text as the citation; provider
+text is never copied into that citation. The resolved result persists two or
+three findings and never persists or presents inferred scores. Unknown codes,
+empty arrays, duplicate or invalid references, extra strings, or any malformed
+selection remain `generation_failed`, not candidate insufficiency.
 
 A frozen session with no trustworthy substantive candidate answer becomes
 `no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed
@@ -69,8 +67,9 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
 - Transcript evidence is normalized through the Feedback v2 trust boundary before evaluation.
-- Evidence-limited results use the same semantic grounding boundary; their
-  narrower output shape is not permission to weaken evidence validation.
+- Evidence-limited results use the same canonical frozen-transcript trust
+  boundary, but the provider supplies only closed codes and candidate aliases;
+  all customer-visible coaching copy and citations are server owned.
 - Insights are requested only after the completion compare-and-set applies. The insights event ID is stable for the session and generation event, so replay does not create a second update.
 - A terminal session missing its feedback row can be repaired through the interview-completion workflow before dispatch.
 - A session in `ending/user_end` is owned by the background end finalizer. The

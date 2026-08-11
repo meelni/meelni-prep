@@ -153,7 +153,7 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   assert.match(EVALUATION_SYSTEM_PROMPT, /flawless or perfect/);
 });
 
-test("evidence-limited prompt keeps model narrative numeric-free and exact values in evidence", () => {
+test("evidence-limited prompt requests only closed codes and trusted refs", () => {
   const prompt = getEvidenceLimitedEvaluationPrompt("execution", [
     {
       eventId: "turn_0001",
@@ -164,21 +164,17 @@ test("evidence-limited prompt keeps model narrative numeric-free and exact value
 
   assert.match(
     EVIDENCE_LIMITED_SYSTEM_PROMPT,
-    /observation, nextStep, and summary strings must contain no numeric values/
+    /Never author customer-visible narrative/
   );
   assert.match(
     EVIDENCE_LIMITED_SYSTEM_PROMPT,
-    /Exact quantitative text is allowed only inside evidence\.quote/
+    /The server owns all customer-visible language and restores citations/
   );
-  assert.match(prompt, /completely numeric-value-free/);
-  assert.match(
-    prompt,
-    /Paraphrase quantitative transcript evidence qualitatively/
-  );
-  assert.match(
-    prompt,
-    /Preserve the exact quantitative text only in evidence\.quote/
-  );
+  assert.match(prompt, /Closed selection catalog/);
+  assert.match(prompt, /customer_problem_connection/);
+  assert.match(prompt, /connect_customer_to_decision/);
+  assert.match(prompt, /Return only catalog signalCode\/actionCode values/);
+  assert.match(prompt, /Do not return narrative, quote text, copied evidence/);
   assert.match(prompt, /40%/);
   assert.match(prompt, /8\/10/);
 });

@@ -129,7 +129,7 @@ export function CompletedEvidenceLimitedReview({
       <div className="space-y-8">
         <FeedbackSectionCard title="Evidence-limited review" tone="warning">
           <p className="text-muted-foreground leading-6">
-            The recorded answer supports narrative feedback, but not honest
+            The recorded answer supports grounded coaching, but not honest
             numerical scores. No score has been inferred.
           </p>
         </FeedbackSectionCard>
