@@ -24,6 +24,11 @@ It permits one to three total findings, no more than two per array, and rejects
 explicit or implicit numerical-rating copy, including article-less and
 label-free spelled-out ratings, while preserving dates, percentages, counts,
 metrics, market share, revenue, time estimates, and compound quantity phrases.
+Quantity and compound recognition is structural and open-ended rather than a
+noun allowlist. The detector evaluates the remainder of the customer-copy
+field, so
+an immediate compound or count modifier never masks an explicit downstream
+score, rating, grade, assessment, or evaluation predicate.
 
 ## Durable outcomes and presentation
 

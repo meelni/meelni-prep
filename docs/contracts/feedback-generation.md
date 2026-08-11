@@ -30,7 +30,11 @@ healthy eligible prefix below that precision boundary uses the scoreless
 findings and a bounded narrative summary. It shares Feedback v2 transcript
 preparation, aliasing, semantic grounding, evidence uniqueness, claim-safety,
 and recommendation normalization. It never persists or presents inferred
-scores.
+scores. Narrative score withholding examines the complete customer-copy field:
+a legitimate open-ended quantity or compound remains usable evidence,
+but an explicit downstream score, rating, grade, assessment, or evaluation
+predicate makes the numerical phrase invalid regardless of its immediate
+modifier.
 
 A frozen session with no trustworthy substantive candidate answer becomes
 `no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed
