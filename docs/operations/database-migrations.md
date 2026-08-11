@@ -158,6 +158,15 @@ deadline.
    prior file untouched. Never substitute credentials from another
    environment. Before either pull, configure the same non-secret
    `MEELNI_PRODUCTION_SUPABASE_PROJECT_REF` in Vercel Preview and Production.
+   If only a Production database action is required and encrypted unrelated
+   runtime values pull blank, an existing private owner-local Production
+   database connection may be recovered with
+   `npm run env:recover:database:production -- --source-file /absolute/private/production.env`.
+   That command proves the fresh Vercel Production target and exact
+   database/public/canonical Supabase ref alignment, then writes a four-key
+   database-only `.env.production.local`; it never restores runtime/provider
+   values or weakens `env:pull:production`. Do not use the database-only file
+   for deployment preflight or LiveKit work.
 3. Run `npm run db:preflight:preview` or
    `npm run db:preflight:production` and retain its redacted output in the
    Linear issue. These commands explicitly select the file so an ambient shell

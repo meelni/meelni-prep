@@ -96,6 +96,43 @@ npm run env:adopt:production
 Both commands still require the restored database project to match the current
 scoped Vercel public Supabase project before any unrelated value is accepted.
 
+When a Vercel Production pull returns blank encrypted runtime values but an
+existing owner-local Production database connection is still available, use
+the narrower database-only recovery command instead of adopting or rotating
+unrelated provider credentials:
+
+```bash
+npm run env:recover:database:production -- \
+  --source-file /absolute/path/to/private/owner-production.env
+npm run db:preflight:production
+```
+
+The selected worktree must already be linked to the canonical `meelni/meelni`
+Vercel project. The source must be a regular owner-local file with no
+group/world permissions. The command performs a new `--environment=production`
+pull scoped to team `meelni` in a private temporary directory, rejects any
+conflicting Preview marker, and requires the source database ref, current
+public Supabase URL ref, configured Production ref, and repository-canonical
+Production ref to match exactly.
+
+Success atomically replaces only the root `.env.production.local` with mode
+`0600` and exactly these database/preflight values:
+
+```text
+MEELNI_ENV_PULL_ENVIRONMENT
+VERCEL_ENV
+MEELNI_PRODUCTION_SUPABASE_PROJECT_REF
+DATABASE_URL
+```
+
+No service-role token is copied because database preflight and migrations do
+not require one. No LiveKit, OpenAI, Inngest, Stripe, HMAC, application, or
+other runtime value is treated as restored. This intentionally database-only
+file cannot pass deployment/runtime preflight; run the unchanged strict
+`npm run env:pull:production` after restoring all Production runtime values
+before any runtime or provider deployment work. The recovery command performs
+no migration and does not replace the signed Production-action authorization.
+
 The Vercel CLI version used by the refresh is pinned in the script. A live lock
 prevents concurrent refreshes, and a lock owned by a dead process is recovered
 automatically. If a malformed lock file remains after an interrupted manual

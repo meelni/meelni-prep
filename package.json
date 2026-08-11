@@ -24,6 +24,7 @@
     "env:pull:production": "node scripts/pull-vercel-env.mjs .env.production.local production",
     "env:adopt:preview": "node scripts/pull-vercel-env.mjs .env.local preview --adopt-existing",
     "env:adopt:production": "node scripts/pull-vercel-env.mjs .env.production.local production --adopt-existing",
+    "env:recover:database:production": "node scripts/recover-production-database-env.mjs",
     "dev:local": "node scripts/start-local-dev.mjs",
     "dev": "next dev",
     "dev:web": "next dev",
