@@ -8706,6 +8706,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(duplicateIdentityRejected?.status, "processing");
   assert.equal(duplicateIdentityRejected?.strengths, null);
   assert.equal(duplicateIdentityRejected?.improvements, null);
+  assert.equal(duplicateIdentityRejected?.drills, null);
   assert.equal(duplicateIdentityRejected?.summary, null);
   assert.equal(
     await generationStore.fail({
@@ -8723,6 +8724,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(duplicateIdentityFailed?.outcomeReason, "generation_failed");
   assert.equal(duplicateIdentityFailed?.strengths, null);
   assert.equal(duplicateIdentityFailed?.improvements, null);
+  assert.equal(duplicateIdentityFailed?.drills, null);
   assert.equal(duplicateIdentityFailed?.summary, null);
 
   await seedSession(collision);
