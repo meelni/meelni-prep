@@ -21,7 +21,9 @@ The evidence-limited parser reuses Feedback v2's canonical transcript index,
 exact-quote restoration, uniqueness/non-overlap, observable-claim grounding,
 material and quantitative claim checks, confidence rules, and summary safety.
 It permits one to three total findings, no more than two per array, and rejects
-score fields or numerical-rating copy.
+explicit or implicit numerical-rating copy, including label-free spelled-out
+overall ratings, while preserving dates, percentages, counts, metrics, market
+share, revenue, and time estimates.
 
 ## Durable outcomes and presentation
 
@@ -34,18 +36,25 @@ score fields or numerical-rating copy.
 - `generation_failed`
 
 No-answer and degradation are immutable non-retryable outcomes. Dispatch and
-generation failure retain the existing fenced recovery rules. API and view
-models carry the taxonomy exactly. The degradation UI describes system
+generation failure retain the existing fenced recovery rules. A failed
+dispatch is preserved as a distinct provider-neutral lifecycle response from
+the bounded database read through the API, core decoder, view state, and retry
+UI. API and view models carry the taxonomy exactly. The degradation UI describes system
 unavailability and offers no candidate-directed duration, microphone,
 answer-length, or quality advice.
 
 ## Production-shaped verification
 
-Canonical fixtures enter the real provider-neutral boundaries in order:
-writer registration, out-of-order/duplicate transcript and marker ingest,
-settlement, frozen evidence, durable dispatch, exported Inngest handler,
-generation workflow, fake evaluator, compare-and-set persistence, presenter,
-runtime lifecycle decoder, and view state. A stage ledger makes direct terminal
-feedback insertion fail the test. The matrix includes the 6m14s collision
-shape, short/rich, long/silent, no-answer, corrupt, retry/duplicate, immutable
-completion, and representative PM rubric routes.
+Canonical fixtures cover the full provider-neutral matrix. The disposable
+PostgreSQL acceptance path crosses the real Drizzle writer, turn, marker and
+settlement stores; atomic finalizer/outbox; frozen reader; durable dispatch;
+exported Inngest handler and generation workflow; fake evaluator; generation
+claim and compare-and-set completion; bounded feedback read query; production
+API payload builder; runtime lifecycle decoder; and view state. It verifies
+out-of-order and duplicate evidence, duplicate finalization/dispatch/run,
+immutable completion, and the 6m14s turn-marker incident shape. Because the
+Python runtime and TypeScript web service are separate processes, the real
+Python allocator test produces a checked-in identity/sequence contract that
+the TypeScript fixture consumes through the disposable database seam. The
+broader provider-free fixture test retains short/rich, long/silent, no-answer,
+corrupt, retry/duplicate, and representative PM rubric routing coverage.

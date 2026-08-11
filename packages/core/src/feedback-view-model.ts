@@ -169,6 +169,12 @@ export type FeedbackLifecycleResponse =
       estimatedTimeRemaining?: number;
     }
   | {
+      status: "dispatch_failed";
+      retryable: boolean;
+      message: string;
+      outcomeReason: Extract<FeedbackOutcomeReason, "dispatch_failed">;
+    }
+  | {
       status: "completed";
       retryable: false;
       feedback: CompletedFeedbackView;
@@ -197,6 +203,12 @@ export type FeedbackViewState =
     }
   | { kind: "pending"; retryable: boolean; delayed: boolean }
   | { kind: "processing"; retryable: boolean; delayed: boolean }
+  | {
+      kind: "dispatch-failed";
+      retryable: boolean;
+      message: string;
+      outcomeReason: "dispatch_failed";
+    }
   | { kind: "completed-full"; feedback: FeedbackV2View }
   | { kind: "completed-partial"; feedback: FeedbackV2View }
   | {
@@ -348,6 +360,13 @@ export function toFeedbackViewState(
         retryable: response.retryable,
         delayed: response.delayed === true,
       };
+    case "dispatch_failed":
+      return {
+        kind: "dispatch-failed",
+        retryable: response.retryable,
+        message: response.message,
+        outcomeReason: response.outcomeReason,
+      };
     case "failed":
       return response.retryable
         ? {
@@ -433,6 +452,17 @@ export function decodeFeedbackLifecycleResponse(
             ...(value.estimatedTimeRemaining !== undefined
               ? { estimatedTimeRemaining: value.estimatedTimeRemaining }
               : {}),
+          }
+        : null;
+    case "dispatch_failed":
+      return typeof value.retryable === "boolean" &&
+        isBoundedString(value.message, FEEDBACK_READ_LIMITS.summary) &&
+        value.outcomeReason === "dispatch_failed"
+        ? {
+            status: "dispatch_failed",
+            retryable: value.retryable,
+            message: value.message,
+            outcomeReason: "dispatch_failed",
           }
         : null;
     case "failed":

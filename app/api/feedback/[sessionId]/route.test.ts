@@ -251,16 +251,18 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
-  it("reports failed dispatch as pending and retryable", async () => {
+  it("reports failed dispatch as a typed retryable system state", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({ dispatchStatus: "failed" }) as never
     );
 
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
@@ -374,9 +376,11 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 
@@ -416,10 +420,11 @@ describe("/api/feedback/[sessionId]", () => {
       }) as never
     );
     const response = await GET(request(), PARAMS);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
       retryable: false,
-      dispatch: { status: "failed", retryable: false },
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 
@@ -518,9 +523,11 @@ describe("/api/feedback/[sessionId]", () => {
 
     const response = await POST(request("POST"), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 

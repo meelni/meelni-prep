@@ -453,6 +453,15 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
     [{ status: "processing", retryable: false }, "processing"],
     [
       {
+        status: "dispatch_failed",
+        retryable: true,
+        message: "Your interview is saved, but feedback could not be queued.",
+        outcomeReason: "dispatch_failed",
+      },
+      "dispatch-failed",
+    ],
+    [
+      {
         status: "failed",
         retryable: true,
         message: "Could not complete.",
@@ -520,6 +529,12 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "pending", retryable: true, estimatedTimeRemaining: 10 },
     { status: "processing", retryable: false },
     {
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
+    },
+    {
       status: "failed",
       retryable: true,
       message: "Try again.",
@@ -550,6 +565,11 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "settling", retryable: true, delayed: "yes" },
     { status: "pending", retryable: "yes" },
     { status: "processing", retryable: false, estimatedTimeRemaining: -1 },
+    {
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Missing the required outcome.",
+    },
     { status: "failed", retryable: true },
     {
       status: "skipped",

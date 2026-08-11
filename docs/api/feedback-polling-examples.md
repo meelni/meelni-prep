@@ -5,9 +5,9 @@ lifecycle endpoint. Cross-user and unknown session IDs return the same `404`
 shape so session existence is not disclosed.
 
 Clients must runtime-decode the complete response variant. The top-level
-`retryable` field is the only recovery authority; nested dispatch metadata is
-diagnostic and must not independently trigger recovery. All authenticated
-responses use private caching.
+`retryable` field is the only recovery authority. Dispatch failure is a
+distinct provider-neutral lifecycle variant rather than nested metadata that
+can be lost by a decoder. All authenticated responses use private caching.
 
 ## In-progress variants
 
@@ -47,6 +47,15 @@ responses use private caching.
 
 ```json
 {
+  "status": "dispatch_failed",
+  "retryable": true,
+  "message": "Your interview is saved, but feedback could not be queued.",
+  "outcomeReason": "dispatch_failed"
+}
+```
+
+```json
+{
   "status": "processing",
   "retryable": false,
   "delayed": false,
@@ -54,7 +63,8 @@ responses use private caching.
 }
 ```
 
-`missing`, `settling`, `pending`, and `processing` can be retryable only when
+`missing`, `settling`, `pending`, `dispatch_failed`, and `processing` can be
+retryable only when
 the server has proved that recovery is safe. A user-ended `settling` session is
 retryable after the 30-second terminalization upper bound; deadline room
 cleanup remains non-retryable. `pending + sent` becomes retryable after its
@@ -71,7 +81,9 @@ POST /api/feedback/[sessionId]
 For stale user-end settlement, POST redelivers durable finalization and returns
 `settling`. For feedback states, POST repairs or redispatches the stored work.
 The client continues polling every returned `settling`, `pending`, or
-`processing` state, including after a successful recovery request.
+`processing` state, including after a successful recovery request. A
+`dispatch_failed` response stops indefinite polling and presents its safe retry
+action when `retryable` is true.
 
 ## Completed v2
 

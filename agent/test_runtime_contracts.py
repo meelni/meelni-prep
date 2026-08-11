@@ -1947,20 +1947,30 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
 class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
     def test_reported_turn_marker_shape_uses_one_writer_sequence_namespace(self):
         allocator = WriterSequenceAllocator()
+        contract_path = (
+            Path(__file__).parent
+            / ".."
+            / "packages"
+            / "test-fixtures"
+            / "writer-sequence-6m14.json"
+        ).resolve()
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
         # The Production incident spanned 6m14s; elapsed wall time must not
-        # affect allocation inside one writer generation.
-        turn_sequence = allocator.allocate(
-            event_id="writer-1:turn-at-000s", kind="transcript"
-        )
-        marker_sequence = allocator.allocate(
-            event_id="writer-1:marker-at-119s", kind="interruption_marker"
-        )
-        final_turn_sequence = allocator.allocate(
-            event_id="writer-1:turn-at-374s", kind="transcript"
-        )
-
-        self.assertEqual((turn_sequence, marker_sequence, final_turn_sequence), (1, 2, 3))
+        # affect allocation inside one writer generation. TypeScript consumes
+        # this same contract at the disposable database persistence seam.
+        self.assertEqual(contract["incidentDurationSeconds"], 374)
+        self.assertEqual(contract["markerOffsetSeconds"], 119)
+        for allocation in contract["allocations"]:
+            sequence = allocator.allocate(
+                event_id=allocation["eventId"], kind=allocation["kind"]
+            )
+            self.assertEqual(sequence, allocation["sequence"])
+        for replay in contract["replays"]:
+            sequence = allocator.allocate(
+                event_id=replay["eventId"], kind=replay["kind"]
+            )
+            self.assertEqual(sequence, replay["sequence"])
 
     def test_writer_sequence_replay_retains_identity_across_interleaving(self):
         allocator = WriterSequenceAllocator()

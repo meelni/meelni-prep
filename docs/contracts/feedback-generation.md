@@ -74,8 +74,11 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 ## Client recovery contract
 
 `GET /api/feedback/:sessionId` owns retry truth through its top-level
-`retryable` field. Feedback clients do not infer recovery from nested dispatch
-state. Missing feedback is retryable only for terminal sessions. Ending
+`retryable` field. A persisted failed dispatch crosses the read query and API
+as the typed provider-neutral `dispatch_failed` lifecycle response; the core
+decoder preserves it and the UI presents a queue retry without provider
+details. Feedback clients do not infer recovery from nested dispatch state.
+Missing feedback is retryable only for terminal sessions. Ending
 sessions return `settling` and `retryable: false`; active sessions remain
 `session_not_ended` and non-retryable.
 

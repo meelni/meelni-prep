@@ -80,6 +80,8 @@ export interface FeedbackGenerationStore {
   }): Promise<FeedbackGenerationRetryPreparation>;
 }
 
+export type FeedbackGenerationDatabase = Pick<typeof db, "query" | "update">;
+
 export function isFeedbackGenerationLeaseExpired(
   record: Pick<FeedbackGenerationRecord, "status" | "processingStartedAt">,
   now = new Date()
@@ -118,17 +120,19 @@ export function isFeedbackQueueLeaseExpired(
   );
 }
 
-export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore {
+export function createDrizzleFeedbackGenerationStore(
+  database: FeedbackGenerationDatabase = db
+): FeedbackGenerationStore {
   return {
     async get(sessionId) {
-      const row = await db.query.feedback.findFirst({
+      const row = await database.query.feedback.findFirst({
         where: eq(feedback.sessionId, sessionId),
       });
       return row ? mapRecord(row) : null;
     },
 
     async claim({ sessionId, eventId, now }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "processing",
@@ -150,7 +154,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
 
     async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
       const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "completed",
@@ -185,7 +189,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async skip({ sessionId, eventId, reason, completionTier }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "skipped",
@@ -214,7 +218,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async fail({ sessionId, eventId, reason }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "failed",
@@ -235,7 +239,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
       const staleQueueBefore = new Date(
         now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
       );
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "pending",

@@ -130,6 +130,31 @@ test("retryable failure exposes recovery instead of an indefinite loading state"
   assert.doesNotMatch(html, /Loading your saved feedback/);
 });
 
+test("dispatch failure remains a truthful actionable system state", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "dispatch-failed",
+        retryable: true,
+        message: "Your interview is saved, but feedback could not be queued.",
+        outcomeReason: "dispatch_failed",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Feedback could not be queued/);
+  assert.match(html, /interview is saved/i);
+  assert.match(html, /Queue feedback again/);
+  assert.match(html, /Back to dashboard/);
+  assert.doesNotMatch(
+    html,
+    /provider|model|duration|microphone|answer quality|try harder/i
+  );
+});
+
 test("invalid completed feedback exposes no inferred score", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {

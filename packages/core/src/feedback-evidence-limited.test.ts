@@ -84,10 +84,27 @@ test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
     )
   );
 
+  const covertRecommendation = response();
+  covertRecommendation.strengths[0]!.nextStep = "Aim for an eight overall.";
+  assert.throws(() =>
+    parseEvidenceLimitedFeedback(covertRecommendation, {
+      transcript,
+      modelVersion: "fixture-model-v1",
+    })
+  );
+
   for (const summary of [
     "The recorded answer receives a score of 8.",
     "The recorded answer is rated eight out of ten.",
     "The recorded answer receives 8/10.",
+    "Aim for an eight overall.",
+    "The answer lands at 8.5 overall.",
+    "Overall, this response is a nine.",
+    "Target an overall seven next time.",
+    "Work toward an eight next time.",
+    "I would call this answer an eight.",
+    "This answer is an eight.",
+    "Give this response an eight.",
   ]) {
     assert.throws(() =>
       parseEvidenceLimitedFeedback(
@@ -96,4 +113,19 @@ test("rejects ungrounded, empty, and score-bearing narrative responses", () => {
       )
     );
   }
+});
+
+test("preserves non-evaluative quantities in evidence and recommendations", () => {
+  const quantitative = response();
+  quantitative.strengths[0]!.nextStep =
+    "By August 8, plan an eight-week pilot, interview eight users, target 8% market share and $8 million revenue, and track three activation metrics plus a 200 ms latency guardrail.";
+
+  const parsed = parseEvidenceLimitedFeedback(quantitative, {
+    transcript,
+    modelVersion: "fixture-model-v1",
+  });
+
+  assert.match(parsed.strengths[0]!.nextStep, /8% market share/);
+  assert.match(parsed.strengths[0]!.nextStep, /\$8 million revenue/);
+  assert.match(parsed.strengths[0]!.nextStep, /eight-week pilot/);
 });
