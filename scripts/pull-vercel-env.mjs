@@ -359,7 +359,12 @@ export function validateTarget(target, environment, root) {
   }
 }
 
-function pullVercelEnvironment({ environment, root }) {
+export function pullVercelEnvironment({
+  environment,
+  execute = execFileSync,
+  root,
+  scope,
+}) {
   const tempRoot = resolve(root, ".context/tmp");
   mkdirSync(tempRoot, { recursive: true, mode: 0o700 });
   chmodSync(tempRoot, 0o700);
@@ -368,7 +373,8 @@ function pullVercelEnvironment({ environment, root }) {
   const tempTarget = resolve(tempDir, "pulled.env");
 
   try {
-    execFileSync(
+    const scopeArgs = scope ? ["--scope", scope] : [];
+    execute(
       "npx",
       [
         "--yes",
@@ -378,6 +384,7 @@ function pullVercelEnvironment({ environment, root }) {
         tempTarget,
         `--environment=${environment}`,
         "--yes",
+        ...scopeArgs,
       ],
       { cwd: root, stdio: "inherit", timeout: 120_000 }
     );
@@ -398,7 +405,7 @@ function readPublicDefaults(root) {
   );
 }
 
-function readExistingText(file) {
+export function readExistingText(file) {
   try {
     return readFileSync(file, "utf8");
   } catch (error) {
@@ -407,7 +414,7 @@ function readExistingText(file) {
   }
 }
 
-function writeEnvAtomically(target, env) {
+export function writeEnvAtomically(target, env) {
   mkdirSync(dirname(target), { recursive: true });
   const tempDir = mkdtempSync(resolve(dirname(target), ".env-refresh-"));
   chmodSync(tempDir, 0o700);
@@ -423,7 +430,7 @@ function writeEnvAtomically(target, env) {
   }
 }
 
-function acquireTargetLock(target) {
+export function acquireTargetLock(target) {
   const lockPath = `${target}.lock`;
   mkdirSync(dirname(target), { recursive: true });
   const token = randomUUID();
