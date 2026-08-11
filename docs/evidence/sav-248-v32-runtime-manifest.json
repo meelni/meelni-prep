@@ -7,8 +7,8 @@
   "esbuildVersion": "0.25.12",
   "buildContractSha256": "f245d2fb3bfd63a1d2fcd9ccc8ca4b8617a78ba2a7b74214a42a1dfedd6cfbae",
   "bundlePath": "scripts/generated/run-evaluation-calibration.bundle.mjs",
-  "bundleBytes": 1340748,
-  "bundleSha256": "8439e74a336a371397b48d8dc43eeb00cd06ccbdcbaac1c5606a41c9ea25dc14",
+  "bundleBytes": 1341617,
+  "bundleSha256": "05ccda2e82af37cb1c48aa0ed53f7518d2c6889a634beb1d6448a6221444bcb3",
   "externalImports": [
     "crypto",
     "fs",
