@@ -6,6 +6,8 @@ export * from "./drill-recommendation";
 export * from "./focused-practice-plan";
 export * from "./focused-practice-attempt";
 export * from "./feedback-v2";
+export * from "./feedback-evidence-limited";
+export * from "./feedback-outcome";
 export * from "./feedback-view-model";
 export * from "./feedback-transcript";
 export * from "./feedback-eligibility";

@@ -118,10 +118,11 @@ describe("Session Validator", () => {
 
       expect(validation.tier).toBe(SessionTier.ABANDONED);
       expect(validation.isValid).toBe(false);
-      expect(validation.reasons).toContain(
-        "Session abandoned: No conversation turns recorded"
-      );
-      expect(validation.recommendations).toHaveLength(3);
+      expect(validation.reasons).toEqual([
+        "No reviewable candidate answer was recorded",
+      ]);
+      expect(validation.recommendations).toHaveLength(0);
+      expect(validation.evidenceFailureReason).toBe("no_reviewable_answer");
     });
 
     it("should mark session as INSUFFICIENT with too few turns", async () => {
@@ -148,17 +149,18 @@ describe("Session Validator", () => {
 
       expect(validation.tier).toBe(SessionTier.INSUFFICIENT);
       expect(validation.isValid).toBe(false);
-      expect(validation.reasons[0]).toContain("Too few turns");
+      expect(validation.reasons).toEqual([
+        "No reviewable candidate answer was recorded",
+      ]);
     });
 
-    it("should mark session as INSUFFICIENT with too short duration", async () => {
-      // Create 10 turns but very short duration (2 minutes)
+    it("should qualify rich evidence regardless of short duration", async () => {
       const mockTurns = Array.from({ length: 10 }, (_, i) => ({
         speaker: i % 2 === 0 ? "interviewer" : "user",
         text:
           i % 2 === 0
             ? "Question here?"
-            : "This is my answer with enough words to be substantive and detailed.",
+            : `I would prioritize working parents because recurring scheduling pain blocks weekly coordination, then measure retained planning use for cohort ${i}.`,
         startedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10)),
         endedAt: new Date(Date.UTC(2024, 0, 1, 10, 0, i * 10 + 5)),
       }));
@@ -169,11 +171,9 @@ describe("Session Validator", () => {
 
       const validation = await validateSessionCompleteness("short-duration");
 
-      expect(validation.tier).toBe(SessionTier.INSUFFICIENT);
-      expect(validation.isValid).toBe(false);
-      expect(validation.reasons.some((r) => r.includes("Too short"))).toBe(
-        true
-      );
+      expect(validation.tier).toBe(SessionTier.FULL);
+      expect(validation.isValid).toBe(true);
+      expect(validation.reasons).toHaveLength(0);
     });
 
     it("should mark session as INSUFFICIENT when user never spoke", async () => {
@@ -192,7 +192,9 @@ describe("Session Validator", () => {
 
       expect(validation.tier).toBe(SessionTier.INSUFFICIENT);
       expect(validation.isValid).toBe(false);
-      expect(validation.reasons).toContain("User never spoke during session");
+      expect(validation.reasons).toEqual([
+        "No reviewable candidate answer was recorded",
+      ]);
     });
 
     it("should mark session as PARTIAL with minimum requirements", async () => {
@@ -259,7 +261,7 @@ describe("Session Validator", () => {
       expect(validation.tier).toBe(SessionTier.PARTIAL);
       expect(validation.isValid).toBe(true);
       expect(validation.reasons).toHaveLength(0);
-      expect(validation.recommendations[0]).toContain("comprehensive feedback");
+      expect(validation.recommendations).toHaveLength(0);
     });
 
     it("qualifies three ordinary PM answers in a five-turn canonical session", async () => {
@@ -346,9 +348,7 @@ describe("Session Validator", () => {
       expect(validation.tier).toBe(SessionTier.FULL);
       expect(validation.isValid).toBe(true);
       expect(validation.reasons).toHaveLength(0);
-      expect(validation.recommendations[0]).toContain(
-        "Excellent session length"
-      );
+      expect(validation.recommendations).toHaveLength(0);
     });
 
     it("should handle session with network disconnect mid-interview", async () => {
@@ -410,7 +410,9 @@ describe("Session Validator", () => {
 
       expect(validation.tier).toBe(SessionTier.INSUFFICIENT);
       expect(validation.isValid).toBe(false);
-      expect(validation.reasons[0]).toContain("Too few turns");
+      expect(validation.reasons).toEqual([
+        "No reviewable candidate answer was recorded",
+      ]);
     });
   });
 

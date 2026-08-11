@@ -1,6 +1,6 @@
 # Feedback v2 Contract
 
-Status: additive v2 write contract; legacy v1 read compatibility retained
+Status: additive scored v2 contract with a scoreless evidence-limited companion; legacy v1 read compatibility retained
 
 ## Purpose
 
@@ -84,8 +84,41 @@ Every v2 result stores:
 | `evaluationState` | `full` or `partial`, matching committed completion evidence |
 
 `partial` means conclusions are limited to the recorded portion. It is not a
-prediction of interview readiness. `insufficient` and `abandoned` sessions are
-skipped and receive no v2 result.
+prediction of interview readiness. A healthy partial session may receive
+scored Feedback v2 only when its distinct substantive evidence breadth meets
+the numerical-precision policy. `insufficient` and `abandoned` sessions are
+skipped and receive no scored v2 result.
+
+## Evidence-limited companion result
+
+`feedback.evidence-limited.v1` is the write contract for a healthy completed
+interview with at least one trustworthy substantive candidate answer but fewer
+than four distinct substantive answers. It stores:
+
+| Field             | Value or rule                                  |
+| ----------------- | ---------------------------------------------- |
+| `schemaVersion`   | `feedback.evidence-limited.v1`                 |
+| `promptVersion`   | `feedback.prompt.evidence-limited.v1`          |
+| `modelVersion`    | Non-empty configured provider model identifier |
+| `rubricVersion`   | `pm-feedback-rubric.v2`                        |
+| `evaluationState` | Exactly `partial`                              |
+
+The result has no `scores`, `overallScore`, or practice-drill collection. It
+contains one to three total findings across `strengths` and `improvements`,
+with no more than two in either array, plus a concise summary. Every finding
+retains the complete Feedback v2 finding shape. The provider-neutral parser
+reuses the scored contract's canonical transcript validation, exact quote
+restoration, evidence uniqueness and non-overlap checks, observable-claim
+grounding, material/quantitative polarity checks, confidence rules, and
+summary safety checks. Numerical ratings embedded in narrative customer copy
+are rejected.
+
+This companion result is useful evidence-limited coaching, not a synthetic
+score and not a readiness prediction. A session with no reviewable candidate
+answer receives the typed `no_reviewable_answer` lifecycle state instead. A
+corrupt or degraded transcript receives
+`transcript_integrity_degraded`; provider generation failure remains
+`generation_failed`.
 
 ## Finding shape
 

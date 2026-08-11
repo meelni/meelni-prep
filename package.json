@@ -109,7 +109,7 @@
     "auth:doctor:db": "node scripts/auth-doctor.mjs --db",
     "health:synthetic": "tsx scripts/check-service-health.ts",
     "test:sheets": "tsx scripts/test-google-sheets-connection.ts",
-    "test:feedback": "tsx --env-file=.env.local scripts/test-feedback-generation.ts",
+    "test:feedback": "tsx --test packages/test-fixtures/src/feedback-generation.test.ts lib/workflows/feedback-production-golden-path.test.ts",
     "calibration:preflight": "tsx scripts/run-evaluation-calibration.ts --mode preflight",
     "calibration:provider-preflight": "node scripts/check-calibration-provider-credential.mjs",
     "calibration:self-test": "tsx scripts/run-evaluation-calibration.ts --mode self-test",

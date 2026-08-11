@@ -9,6 +9,36 @@ Feedback generation is one idempotent workflow with durable dispatch and generat
 - The generation workflow is the only writer of generation status and evaluated feedback fields.
 - Completed and skipped rows are immutable. Recovery never reopens them.
 
+The feedback row also stores one content-free `outcome_reason` from the closed
+taxonomy `feedback_generated`, `no_reviewable_answer`,
+`transcript_integrity_degraded`, `dispatch_failed`, or `generation_failed`.
+Dispatch failures are transient and clear when a later claim succeeds. The
+completed and skipped outcome reasons remain immutable with their terminal row.
+
+## Evidence-gated evaluation
+
+Eligibility depends on the frozen canonical candidate evidence, not room
+duration or total transcript-turn count. One trustworthy substantive candidate
+answer is enough to request feedback. Five distinct substantive answers permit
+the full-depth evaluation state; smaller healthy prefixes remain partial.
+Duration and turn statistics remain diagnostic evidence only and cannot deny
+feedback.
+
+Numerical feedback requires at least four substantive candidate answers. A
+healthy eligible prefix below that precision boundary uses the scoreless
+`feedback.evidence-limited.v1` result: one to three exact-evidence-grounded
+findings and a bounded narrative summary. It shares Feedback v2 transcript
+preparation, aliasing, semantic grounding, evidence uniqueness, claim-safety,
+and recommendation normalization. It never persists or presents inferred
+scores.
+
+A frozen session with no trustworthy substantive candidate answer becomes
+`no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed
+canonical boundary, or detected transcript corruption becomes
+`transcript_integrity_degraded`. Neither state calls the feedback provider.
+Provider refusal, invalid generated output, timeout, and other evaluator
+failure remain the distinct `generation_failed` outcome.
+
 ## Event fencing
 
 Every dispatch attempt receives a distinct event ID. A worker may claim only a `pending` or `failed` row whose stored event ID exactly matches its event. Completion, skip, and failure are compare-and-set updates requiring all of:
@@ -31,6 +61,8 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
 - Transcript evidence is normalized through the Feedback v2 trust boundary before evaluation.
+- Evidence-limited results use the same semantic grounding boundary; their
+  narrower output shape is not permission to weaken evidence validation.
 - Insights are requested only after the completion compare-and-set applies. The insights event ID is stable for the session and generation event, so replay does not create a second update.
 - A terminal session missing its feedback row can be repaired through the interview-completion workflow before dispatch.
 - A session in `ending/user_end` is owned by the background end finalizer. The

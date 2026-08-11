@@ -42,6 +42,7 @@ import {
   DURABLE_CONTACT_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
+  FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
@@ -114,6 +115,12 @@ const SESSION_RECONNECT_INTEGRITY_VALID =
 const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
 const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
+const FEEDBACK_OUTCOME_BACKFILL_SESSIONS = [
+  "d1000000-0000-4000-8000-000000000001",
+  "d1000000-0000-4000-8000-000000000002",
+  "d1000000-0000-4000-8000-000000000003",
+  "d1000000-0000-4000-8000-000000000004",
+] as const;
 const QUESTION_PROVENANCE_ACTIVE = "f3333333-3333-4333-8333-333333333333";
 const QUESTION_PROVENANCE_INACTIVE = "f4444444-4444-4444-8444-444444444444";
 const FOCUSED_PRACTICE_USER = "f5000000-0000-4000-8000-000000000001";
@@ -286,7 +293,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -478,9 +485,10 @@ async function run() {
         FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
         DURABLE_CONTACT_SCHEMA_FINGERPRINT,
         TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
+        FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 30; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 31; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -500,7 +508,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 31; found 22/
+            /Strict launch preflight requires the exact latest migration count 32; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -515,6 +523,13 @@ async function run() {
           await upgrade`
             UPDATE user_settings SET share_anonymous_data = true
           `;
+        }
+        if (maxIndex === 30) {
+          await seedFeedbackOutcomeBackfillFixtures(upgrade);
+        }
+        if (maxIndex === 31) {
+          await verifyFeedbackOutcomeBackfill(upgrade);
+          await removeFeedbackOutcomeBackfillFixtures(upgrade);
         }
       }
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -801,7 +816,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 31);
+      assert.equal(await migrationCount(sql), 32);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -865,7 +880,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1110,7 +1125,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 31; found 25/
+      /exact latest migration count 32; found 25/
     );
 
     const genericRows = await sql<
@@ -1209,9 +1224,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 31);
+    assert.equal(await migrationCount(sql), 32);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "transcript_watermarks");
+    assert.equal(finalPreflight.startingContract, "feedback_outcomes");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 37);
@@ -1220,7 +1235,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -4727,10 +4742,11 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         }))
       )
     );
-    assert.equal(preClaimValidation.isValid, false);
+    assert.equal(preClaimValidation.isValid, true);
     assert.equal(preClaimValidation.stats.totalTurns, 4);
+    assert.equal(preClaimValidation.stats.substantiveResponses, 2);
 
-    let thresholdIngest!: ReturnType<(typeof stores)[number]["persist"]>;
+    let cutoffConcurrentIngest!: ReturnType<(typeof stores)[number]["persist"]>;
     let deadlineClaim!: ReturnType<typeof claimInterviewDeadline>;
     const ingestClient = clients[3]!;
     const claimClient = clients[4]!;
@@ -4746,7 +4762,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         WHERE id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
         FOR UPDATE
       `;
-      thresholdIngest = stores[3]!.persist({
+      cutoffConcurrentIngest = stores[3]!.persist({
         principal: { kind: "voice_runtime" },
         event: deadlineEvents[4]!,
       });
@@ -4763,9 +4779,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       );
       await waitForDatabaseLock(sql, claimBackend.pid);
     });
-    const thresholdIngestResult = await thresholdIngest;
+    const cutoffConcurrentIngestResult = await cutoffConcurrentIngest;
     assert.equal(
-      thresholdIngestResult.ok && thresholdIngestResult.disposition,
+      cutoffConcurrentIngestResult.ok &&
+        cutoffConcurrentIngestResult.disposition,
       "created"
     );
     assert.equal(await deadlineClaim, true);
@@ -5000,9 +5017,13 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         "insufficient_signal"
       );
       assert.equal(markerCompletion.feedback.status, "skipped");
-      assert.match(
-        markerCompletion.feedback.statusReason ?? "",
-        /Voice runtime reported degraded transcript integrity/
+      assert.equal(
+        markerCompletion.feedback.statusReason,
+        "transcript_integrity_degraded"
+      );
+      assert.equal(
+        markerCompletion.feedback.outcomeReason,
+        "transcript_integrity_degraded"
       );
     }
   } finally {
@@ -6354,7 +6375,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "transcript_watermarks");
+    assert.equal(refundedPreflight.startingContract, "feedback_outcomes");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -7172,7 +7193,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 31);
+  assert.equal(await migrationCount(sql), 32);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -8023,8 +8044,8 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
   await sql.begin(async (tx) => {
     await tx`
       UPDATE feedback
-      SET schema_version = 'feedback.v2',
-          prompt_version = 'feedback.prompt.v2',
+      SET schema_version = 'feedback.evidence-limited.v1',
+          prompt_version = 'feedback.prompt.evidence-limited.v1',
           model_version = 'fixture-model-v1',
           rubric_version = 'pm-feedback-rubric.v2',
           evaluation_state = 'partial'
@@ -8034,13 +8055,94 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       tx.savepoint("invalid_feedback_v2_tuple", async (savepoint) => {
         await savepoint`
           UPDATE feedback
-          SET prompt_version = NULL
+          SET prompt_version = 'feedback.prompt.v2'
           WHERE id = ${legacy.id}::uuid
         `;
       }),
       /feedback_version_tuple_check/
     );
+    await assert.rejects(
+      tx.savepoint("invalid_feedback_outcome", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET outcome_reason = 'duration_too_short'
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_outcome_reason_check/
+    );
   });
+}
+
+async function seedFeedbackOutcomeBackfillFixtures(sql: postgres.Sql) {
+  const [completed, failed, noAnswer, degraded] =
+    FEEDBACK_OUTCOME_BACKFILL_SESSIONS;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      terminal_reason, ending_at, ended_at, transcript_evidence_version,
+      transcript_evidence_state, transcript_cutoff_at,
+      transcript_evidence_frozen_at
+    ) VALUES
+      (${completed}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${failed}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${noAnswer}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${degraded}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'completed', 'completed', 'user_end',
+        '2026-08-10T12:00:00.000Z'::timestamptz,
+        '2026-08-10T12:00:00.000Z'::timestamptz, 1, 'degraded',
+        '2026-08-10T12:00:00.000Z'::timestamptz,
+        '2026-08-10T12:00:00.000Z'::timestamptz)
+  `;
+  await sql`
+    INSERT INTO feedback (session_id, status, status_reason)
+    VALUES
+      (${completed}::uuid, 'completed', 'sav397_completed_fixture'),
+      (${failed}::uuid, 'failed', 'sav397_failed_fixture'),
+      (${noAnswer}::uuid, 'skipped', 'sav397_no_answer_fixture'),
+      (${degraded}::uuid, 'skipped', 'sav397_degraded_fixture')
+  `;
+}
+
+async function verifyFeedbackOutcomeBackfill(sql: postgres.Sql) {
+  const rows = await sql<{ status_reason: string; outcome_reason: string }[]>`
+    SELECT status_reason, outcome_reason
+    FROM feedback
+    WHERE session_id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+    ORDER BY status_reason
+  `;
+  assert.deepEqual(Array.from(rows), [
+    {
+      status_reason: "sav397_completed_fixture",
+      outcome_reason: "feedback_generated",
+    },
+    {
+      status_reason: "sav397_degraded_fixture",
+      outcome_reason: "transcript_integrity_degraded",
+    },
+    {
+      status_reason: "sav397_failed_fixture",
+      outcome_reason: "generation_failed",
+    },
+    {
+      status_reason: "sav397_no_answer_fixture",
+      outcome_reason: "no_reviewable_answer",
+    },
+  ]);
+}
+
+async function removeFeedbackOutcomeBackfillFixtures(sql: postgres.Sql) {
+  await sql`
+    DELETE FROM feedback
+    WHERE session_id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+  `;
+  await sql`
+    DELETE FROM interview_session
+    WHERE id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+  `;
 }
 
 async function verifyAuthorization(sql: postgres.Sql) {

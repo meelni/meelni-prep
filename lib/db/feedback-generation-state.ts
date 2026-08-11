@@ -1,5 +1,10 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
-import type { FeedbackV2Result } from "@meelni/core";
+import {
+  isEvidenceLimitedFeedbackResult,
+  type FeedbackEvaluationResult,
+  type FeedbackOutcomeReason,
+  type SkippedFeedbackOutcomeReason,
+} from "@meelni/core";
 
 import { db } from "./index";
 import { feedback } from "./schema";
@@ -24,9 +29,17 @@ export interface FeedbackGenerationRecord {
   sessionId: string;
   status: FeedbackGenerationStatus;
   statusReason: string | null;
+  outcomeReason: FeedbackOutcomeReason | null;
   eventId: string | null;
   processingStartedAt: Date | null;
   completionTier: "full" | "partial" | "insufficient" | "abandoned" | null;
+  completionStats: {
+    totalTurns: number;
+    userTurns: number;
+    totalWords: number;
+    durationSeconds: number;
+    substantiveResponses: number;
+  } | null;
   dispatchStatus: "not_required" | "pending" | "sending" | "sent" | "failed";
   dispatchClaimedAt: Date | null;
   dispatchedAt: Date | null;
@@ -47,13 +60,13 @@ export interface FeedbackGenerationStore {
   complete(input: {
     sessionId: string;
     eventId: string;
-    evaluation: FeedbackV2Result;
+    evaluation: FeedbackEvaluationResult;
     processingDurationMs: number;
   }): Promise<boolean>;
   skip(input: {
     sessionId: string;
     eventId: string;
-    reason: string;
+    reason: SkippedFeedbackOutcomeReason;
     completionTier?: "insufficient";
   }): Promise<boolean>;
   fail(input: {
@@ -120,6 +133,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
         .set({
           status: "processing",
           statusReason: null,
+          outcomeReason: null,
           processingStartedAt: now,
         })
         .where(
@@ -135,20 +149,28 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
+      const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
       const rows = await db
         .update(feedback)
         .set({
           status: "completed",
           statusReason: null,
-          overallScore: evaluation.overallScore.toString(),
-          structureScore: evaluation.scores.structure,
-          clarityScore: evaluation.scores.clarity,
-          insightScore: evaluation.scores.insight,
-          communicationScore: evaluation.scores.communication,
-          leadershipScore: evaluation.scores.leadership,
+          outcomeReason: "feedback_generated",
+          overallScore: evidenceLimited
+            ? null
+            : evaluation.overallScore.toString(),
+          structureScore: evidenceLimited ? null : evaluation.scores.structure,
+          clarityScore: evidenceLimited ? null : evaluation.scores.clarity,
+          insightScore: evidenceLimited ? null : evaluation.scores.insight,
+          communicationScore: evidenceLimited
+            ? null
+            : evaluation.scores.communication,
+          leadershipScore: evidenceLimited
+            ? null
+            : evaluation.scores.leadership,
           strengths: evaluation.strengths,
           improvements: evaluation.improvements,
-          drills: evaluation.drills,
+          drills: evidenceLimited ? [] : evaluation.drills,
           summary: evaluation.summary,
           processingDurationMs,
           schemaVersion: evaluation.schemaVersion,
@@ -168,6 +190,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
         .set({
           status: "skipped",
           statusReason: reason,
+          outcomeReason: reason,
           ...(completionTier ? { completionTier } : {}),
           overallScore: null,
           structureScore: null,
@@ -196,6 +219,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
         .set({
           status: "failed",
           statusReason: reason,
+          outcomeReason: "generation_failed",
           dispatchStatus: "failed",
           dispatchLastError: "feedback_generation_failed",
         })
@@ -216,6 +240,7 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
         .set({
           status: "pending",
           statusReason: null,
+          outcomeReason: null,
           processingStartedAt: null,
           dispatchStatus: "failed",
           dispatchClaimedAt: null,
@@ -271,9 +296,11 @@ function mapRecord(
     sessionId: row.sessionId,
     status: row.status as FeedbackGenerationStatus,
     statusReason: row.statusReason,
+    outcomeReason: row.outcomeReason,
     eventId: row.dispatchEventId,
     processingStartedAt: row.processingStartedAt,
     completionTier: row.completionTier,
+    completionStats: row.completionStats,
     dispatchStatus: row.dispatchStatus,
     dispatchClaimedAt: row.dispatchClaimedAt,
     dispatchedAt: row.dispatchedAt,

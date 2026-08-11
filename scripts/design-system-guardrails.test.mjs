@@ -2675,7 +2675,7 @@ test("feedback result indicators use semantic status tokens", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("feedback eligibility UI and validator consume one canonical policy", async () => {
+test("feedback eligibility UI and validator consume evidence-only canonical policies", async () => {
   const policy = await readFile(
     "packages/core/src/feedback-eligibility.ts",
     "utf8"
@@ -2690,13 +2690,21 @@ test("feedback eligibility UI and validator consume one canonical policy", async
   );
   const violations = [];
 
-  for (const threshold of [
-    "minTurns: 5",
-    "minDurationMinutes: 5",
-    "minSubstantiveResponses: 3",
+  for (const contract of [
+    "FEEDBACK_ELIGIBILITY_POLICY",
+    "minSubstantiveResponses: 1",
+    "minSubstantiveResponses: 5",
+    "FEEDBACK_NUMERICAL_PRECISION_POLICY",
+    "minSubstantiveResponses: 4",
   ]) {
-    if (!policy.includes(threshold)) {
-      violations.push(`feedback-eligibility:${threshold}`);
+    if (!policy.includes(contract)) {
+      violations.push(`feedback-eligibility:${contract}`);
+    }
+  }
+
+  for (const retiredGate of ["minTurns", "minDurationMinutes"]) {
+    if (policy.includes(retiredGate)) {
+      violations.push(`feedback-eligibility:${retiredGate}`);
     }
   }
 

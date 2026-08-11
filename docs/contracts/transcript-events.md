@@ -43,7 +43,7 @@ Canonical writers publish this shape:
 | `event_id`                 | Non-empty opaque identity generated once for the event. Replays retain the exact value; consumers do not normalize or parse it.               |
 | `writer_id`                | Non-empty identity for one agent job/writer instance. A replacement writer in the same room receives a new ID.                                |
 | `writer_generation`        | Positive generation assigned by durable writer registration before the runtime can produce audible output.                                    |
-| `sequence`                 | Positive safe integer, monotonically assigned within one `writer_id`. Gaps are allowed.                                                       |
+| `sequence`                 | Positive safe integer from one writer-scoped namespace shared by turns and integrity markers. A stable event replay retains its assignment.   |
 | `session_id` / `room_name` | Both required. The durable session ID comes from validated room metadata; the room name comes from the runtime.                               |
 | `speaker`                  | `user` or `interviewer`.                                                                                                                      |
 | `text` / `is_final`        | Text is non-empty and finalized. Partial STT hypotheses are not canonical events.                                                             |
@@ -68,6 +68,13 @@ correlation, writer generation, identity, speaker, reason, and occurrence time b
 field. Markers live outside `transcript_turn`, are never rendered or passed to
 evaluation, and make the session ineligible for feedback because complete
 evidence cannot be proven.
+
+Turns and markers do not own independent counters. The runtime allocates both
+from one monotonic namespace per writer and remembers the assignment by stable
+event identity and event kind. Replaying the same identity and kind reuses the
+same sequence. Reusing an identity across kinds fails closed. This prevents a
+turn followed by the first marker from both claiming sequence `1`, while
+preserving the existing global event-ID idempotency boundary.
 
 Before producing any audible output, each runtime durably registers a
 metadata-only `runtime_writer_registration`. Registration is idempotent for the
@@ -95,7 +102,7 @@ Terminal completion freezes the per-writer committed boundaries and the
 terminal cutoff. Complete evidence requires every registered generation to
 have durable `settled` proof and no integrity fault. Missing settlement can
 produce partial feedback only when the frozen database prefix is healthy,
-gap-free, and independently passes the canonical partial threshold. A gap,
+gap-free, and independently satisfies the substantive-evidence boundary. A gap,
 marker, degraded settlement, or malformed boundary fails closed.
 Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.

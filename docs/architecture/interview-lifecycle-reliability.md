@@ -53,6 +53,9 @@ The immediate causes are structural rather than one provider outage:
   convergence into one opaque durable step.
 - Feedback eligibility depends on last-second runtime settlement even when a
   useful prefix of canonical turns may already be durable.
+- Historical feedback eligibility also used room-duration and total-turn
+  proxies, and the runtime allocated turns and integrity markers from separate
+  counters despite their shared durable sequence namespace.
 - Stage telemetry records duration and outcome but not enough allowlisted
   reason detail to separate absence, timeout, degraded evidence, and replay.
 
@@ -73,6 +76,10 @@ The immediate causes are structural rather than one provider outage:
   boundary.
 - Feedback uses only canonical persisted evidence and never infers missing
   speech from wall-clock room duration.
+- One trustworthy substantive candidate answer receives grounded narrative
+  feedback; numerical precision is withheld until evidence breadth supports
+  it. No-answer, transcript degradation, dispatch failure, generation failure,
+  and generated feedback remain distinct content-free outcomes.
 - A user sees a typed, bounded state: saving, queued, generating, completed,
   partial/skipped, delayed/recoverable, or unavailable.
 - Operational events contain no identity, transcript, feedback content,
@@ -157,13 +164,13 @@ decision.
 
 ## Verification status
 
-| Boundary                            | Automated or hosted evidence                                                                                                                                                                                                                   | Remaining live evidence                                                                                                                                                      |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stable start and credential handoff | Same-attempt replay, lost acknowledgement, bounded reads, token fencing, delayed canonical readiness, and no-token-churn tests pass.                                                                                                           | Authenticated warm start, simulated 20-second cold start, stalled provider read, and lost-response replay in isolated staging.                                               |
-| Transcript durability               | Version-2 ingest, idempotency, writer registration, gaps, marker degradation, settlement, committed watermark, frozen prefix, and migration tests pass.                                                                                        | Observe signed Python runtime writes and frozen per-generation evidence for a real synthetic staging interview.                                                              |
-| Explicit end                        | Acceptance-before-provider-work, bounded row-lock/statement/route deadlines, private dependency retry responses, bounded ambiguous client reconciliation, persistent End controls, independent finalizer checkpoints, and recovery tests pass. | Measure acceptance and terminalization latency while exercising normal end and a deliberately dropped finalizer delivery in staging.                                         |
-| Feedback dispatch and generation    | Ending/terminal room handoff, outbox fencing, three-second provider-send deadline, stale queue identity rotation, generation leases, lease-aware health evidence, terminal repair, delayed/recovery UI, and terminal presentation tests pass.  | Exercise unclaimed delivery, slow generation, partial/insufficient outcomes, and one recovery without duplicate evaluation in staging.                                       |
-| Operational readiness               | Exact-head `npm run test:ci`, `npm run check`, PostgreSQL 17 migration rehearsal, hosted CI, isolated browser QA, and exact-PR Preview dependency health passed. Canonical staging is currently dependency-unhealthy and tracked by SAV-387.   | Restore isolated staging, apply migration 0030, run the authenticated lifecycle rehearsal, and record privacy-safe stage events against database truth before tuning alerts. |
+| Boundary                            | Automated or hosted evidence                                                                                                                                                                                                                                         | Remaining live evidence                                                                                                                                                      |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stable start and credential handoff | Same-attempt replay, lost acknowledgement, bounded reads, token fencing, delayed canonical readiness, and no-token-churn tests pass.                                                                                                                                 | Authenticated warm start, simulated 20-second cold start, stalled provider read, and lost-response replay in isolated staging.                                               |
+| Transcript durability               | Version-2 ingest, idempotency, writer registration, gaps, marker degradation, settlement, committed watermark, frozen prefix, and migration tests pass.                                                                                                              | Observe signed Python runtime writes and frozen per-generation evidence for a real synthetic staging interview.                                                              |
+| Explicit end                        | Acceptance-before-provider-work, bounded row-lock/statement/route deadlines, private dependency retry responses, bounded ambiguous client reconciliation, persistent End controls, independent finalizer checkpoints, and recovery tests pass.                       | Measure acceptance and terminalization latency while exercising normal end and a deliberately dropped finalizer delivery in staging.                                         |
+| Feedback dispatch and generation    | Ending/terminal room handoff, shared turn/marker sequencing, evidence-gated scored/narrative outcomes, typed degradation/no-answer states, outbox fencing, generation leases, terminal repair, delayed/recovery UI, and provider-free end-to-view golden tests pass. | Exercise unclaimed delivery, slow generation, scoreless/scored outcomes, degradation, and one recovery without duplicate evaluation in isolated staging.                     |
+| Operational readiness               | Exact-head `npm run test:ci`, `npm run check`, PostgreSQL 17 migration rehearsal, hosted CI, isolated browser QA, and exact-PR Preview dependency health passed. Canonical staging is currently dependency-unhealthy and tracked by SAV-387.                         | Restore isolated staging, apply migration 0030, run the authenticated lifecycle rehearsal, and record privacy-safe stage events against database truth before tuning alerts. |
 
 Automated evidence proves deterministic contracts and failure convergence; it
 does not prove provider latency, webhook delivery, worker registration, or

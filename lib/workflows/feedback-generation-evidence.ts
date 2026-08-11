@@ -1,4 +1,5 @@
 import { SessionTier } from "@/lib/evaluation/session-validator";
+import type { SkippedFeedbackOutcomeReason } from "@meelni/core";
 
 export type StoredCompletionTier =
   | "full"
@@ -14,7 +15,7 @@ export type FeedbackGenerationEligibility =
 
 export interface FeedbackLateValidationSkip {
   status: "skipped";
-  statusReason: string;
+  statusReason: SkippedFeedbackOutcomeReason;
 }
 
 export function resolveFeedbackGenerationEligibility(
@@ -33,7 +34,7 @@ export function resolveFeedbackGenerationEligibility(
 }
 
 export function resolveFeedbackLateValidationSkip(
-  reason: string
+  reason: SkippedFeedbackOutcomeReason
 ): FeedbackLateValidationSkip {
   return { status: "skipped", statusReason: reason };
 }

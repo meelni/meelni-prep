@@ -10,6 +10,16 @@ import {
   type FeedbackV2Scores,
 } from "./feedback-v2";
 import {
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  parseEvidenceLimitedFeedback,
+  type EvidenceLimitedFeedbackResult,
+} from "./feedback-evidence-limited";
+import type {
+  FeedbackOutcomeReason,
+  SkippedFeedbackOutcomeReason,
+} from "./feedback-outcome";
+import {
   MAX_CANONICAL_EVENT_ID_LENGTH,
   prepareFeedbackTranscript,
 } from "./feedback-transcript";
@@ -66,13 +76,16 @@ export interface FeedbackNextPracticeRecommendation {
   actionId: string;
 }
 
-interface CompletedFeedbackBase {
+interface CompletedFeedbackIdentityBase {
   id: string;
   sessionId: string;
-  scores: FeedbackScoreView;
   summary: string;
   createdAt: string;
   nextPracticeRecommendation: FeedbackNextPracticeRecommendation | null;
+}
+
+interface CompletedFeedbackBase extends CompletedFeedbackIdentityBase {
+  scores: FeedbackScoreView;
 }
 
 export interface FeedbackV2View extends CompletedFeedbackBase {
@@ -93,6 +106,18 @@ export interface FeedbackLegacyView extends CompletedFeedbackBase {
   improvements: string[];
 }
 
+export interface FeedbackEvidenceLimitedView
+  extends CompletedFeedbackIdentityBase {
+  kind: "evidence-limited";
+  evaluationState: "partial";
+  schemaVersion: typeof FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
+  promptVersion: typeof FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION;
+  modelVersion: string;
+  rubricVersion: typeof FEEDBACK_RUBRIC_VERSION;
+  strengths: FeedbackV2Item[];
+  improvements: FeedbackV2Item[];
+}
+
 export interface FeedbackInvalidView {
   kind: "invalid";
   reason: "incompatible_or_corrupt";
@@ -100,10 +125,12 @@ export interface FeedbackInvalidView {
 
 export type CompletedFeedbackView =
   | FeedbackV2View
+  | FeedbackEvidenceLimitedView
   | FeedbackLegacyView
   | FeedbackInvalidView;
 
 export interface SkippedFeedbackDetails {
+  outcomeReason: SkippedFeedbackOutcomeReason;
   tier: "insufficient" | "abandoned";
   reasons: string[];
   recommendations: string[];
@@ -150,6 +177,7 @@ export type FeedbackLifecycleResponse =
       status: "failed";
       retryable: boolean;
       message: string;
+      outcomeReason: Extract<FeedbackOutcomeReason, "generation_failed">;
     }
   | {
       status: "skipped";
@@ -171,12 +199,24 @@ export type FeedbackViewState =
   | { kind: "processing"; retryable: boolean; delayed: boolean }
   | { kind: "completed-full"; feedback: FeedbackV2View }
   | { kind: "completed-partial"; feedback: FeedbackV2View }
+  | {
+      kind: "completed-evidence-limited";
+      feedback: FeedbackEvidenceLimitedView;
+    }
   | { kind: "completed-legacy"; feedback: FeedbackLegacyView }
   | { kind: "completed-invalid" }
-  | { kind: "failed-retryable"; message: string }
-  | { kind: "failed-terminal"; message: string }
-  | { kind: "skipped-insufficient"; details: SkippedFeedbackDetails }
-  | { kind: "skipped-abandoned"; details: SkippedFeedbackDetails };
+  | {
+      kind: "failed-retryable";
+      message: string;
+      outcomeReason: "generation_failed";
+    }
+  | {
+      kind: "failed-terminal";
+      message: string;
+      outcomeReason: "generation_failed";
+    }
+  | { kind: "no-reviewable-answer"; details: SkippedFeedbackDetails }
+  | { kind: "transcript-integrity-degraded"; details: SkippedFeedbackDetails };
 
 const DIMENSIONS = new Set<FeedbackDimension>([
   "structure",
@@ -204,9 +244,11 @@ export function presentCompletedFeedback(
   options: PresentCompletedFeedbackOptions
 ): CompletedFeedbackView {
   try {
-    return hasLegacyVersionTuple(input)
-      ? parseLegacyFeedback(input)
-      : parseV2Feedback(input, options.evidenceTurns);
+    if (hasLegacyVersionTuple(input)) return parseLegacyFeedback(input);
+    if (input.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION) {
+      return parseEvidenceLimitedFeedbackView(input, options.evidenceTurns);
+    }
+    return parseV2Feedback(input, options.evidenceTurns);
   } catch {
     return { kind: "invalid", reason: "incompatible_or_corrupt" };
   }
@@ -308,18 +350,32 @@ export function toFeedbackViewState(
       };
     case "failed":
       return response.retryable
-        ? { kind: "failed-retryable", message: response.message }
-        : { kind: "failed-terminal", message: response.message };
+        ? {
+            kind: "failed-retryable",
+            message: response.message,
+            outcomeReason: response.outcomeReason,
+          }
+        : {
+            kind: "failed-terminal",
+            message: response.message,
+            outcomeReason: response.outcomeReason,
+          };
     case "skipped":
-      return response.details.tier === "abandoned"
-        ? { kind: "skipped-abandoned", details: response.details }
-        : { kind: "skipped-insufficient", details: response.details };
+      return response.details.outcomeReason === "transcript_integrity_degraded"
+        ? { kind: "transcript-integrity-degraded", details: response.details }
+        : { kind: "no-reviewable-answer", details: response.details };
     case "completed":
       if (response.feedback.kind === "invalid") {
         return { kind: "completed-invalid" };
       }
       if (response.feedback.kind === "legacy") {
         return { kind: "completed-legacy", feedback: response.feedback };
+      }
+      if (response.feedback.kind === "evidence-limited") {
+        return {
+          kind: "completed-evidence-limited",
+          feedback: response.feedback,
+        };
       }
       return response.feedback.evaluationState === "partial"
         ? { kind: "completed-partial", feedback: response.feedback }
@@ -381,11 +437,13 @@ export function decodeFeedbackLifecycleResponse(
         : null;
     case "failed":
       return typeof value.retryable === "boolean" &&
-        isBoundedString(value.message, FEEDBACK_READ_LIMITS.summary)
+        isBoundedString(value.message, FEEDBACK_READ_LIMITS.summary) &&
+        value.outcomeReason === "generation_failed"
         ? {
             status: "failed",
             retryable: value.retryable,
             message: value.message,
+            outcomeReason: "generation_failed",
           }
         : null;
     case "skipped": {
@@ -408,6 +466,12 @@ export function decodeFeedbackLifecycleResponse(
 function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
   if (!isRecord(value)) return null;
   if (value.tier !== "insufficient" && value.tier !== "abandoned") return null;
+  if (
+    value.outcomeReason !== "no_reviewable_answer" &&
+    value.outcomeReason !== "transcript_integrity_degraded"
+  ) {
+    return null;
+  }
   if (!isBoundedStringArray(value.reasons, 20, FEEDBACK_READ_LIMITS.summary)) {
     return null;
   }
@@ -422,6 +486,7 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
   }
   if (value.stats !== undefined && !isSkippedStats(value.stats)) return null;
   return {
+    outcomeReason: value.outcomeReason,
     tier: value.tier,
     reasons: value.reasons,
     recommendations: value.recommendations,
@@ -436,6 +501,20 @@ function decodeCompletedFeedbackView(
   if (value.kind === "invalid") {
     return value.reason === "incompatible_or_corrupt"
       ? { kind: "invalid", reason: "incompatible_or_corrupt" }
+      : null;
+  }
+  if (value.kind === "evidence-limited") {
+    return isCompletedFeedbackIdentityBase(value) &&
+      value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
+      value.promptVersion === FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION &&
+      value.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
+      value.evaluationState === "partial" &&
+      isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) &&
+      isFeedbackFindingArray(value.strengths, 0) &&
+      isFeedbackFindingArray(value.improvements, 0) &&
+      value.strengths.length + value.improvements.length >= 1 &&
+      value.strengths.length + value.improvements.length <= 3
+      ? (value as unknown as FeedbackEvidenceLimitedView)
       : null;
   }
   if (!isCompletedFeedbackBase(value)) return null;
@@ -472,14 +551,21 @@ function decodeCompletedFeedbackView(
   return value as unknown as FeedbackV2View;
 }
 
-function isCompletedFeedbackBase(value: Record<string, unknown>): boolean {
+function isCompletedFeedbackIdentityBase(
+  value: Record<string, unknown>
+): boolean {
   return (
     isBoundedString(value.id, FEEDBACK_READ_LIMITS.identifier) &&
     isBoundedString(value.sessionId, FEEDBACK_READ_LIMITS.identifier) &&
-    isFeedbackScoreView(value.scores) &&
     isBoundedString(value.summary, FEEDBACK_READ_LIMITS.summary) &&
     isCanonicalDateString(value.createdAt) &&
     value.nextPracticeRecommendation === null
+  );
+}
+
+function isCompletedFeedbackBase(value: Record<string, unknown>): boolean {
+  return (
+    isCompletedFeedbackIdentityBase(value) && isFeedbackScoreView(value.scores)
   );
 }
 
@@ -513,10 +599,13 @@ function isDimensionScore(value: unknown): boolean {
   return Number.isInteger(value) && isScore(value);
 }
 
-function isFeedbackFindingArray(value: unknown): value is FeedbackV2Item[] {
+function isFeedbackFindingArray(
+  value: unknown,
+  minimum = 1
+): value is FeedbackV2Item[] {
   return (
     Array.isArray(value) &&
-    value.length >= 1 &&
+    value.length >= minimum &&
     value.length <= 5 &&
     value.every((entry) => {
       if (!isRecord(entry)) return false;
@@ -655,6 +744,51 @@ function parseV2Feedback(
     modelVersion: feedback.modelVersion,
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     evaluationState: feedback.evaluationState,
+    createdAt: requireDateString(input.createdAt),
+    nextPracticeRecommendation: null,
+  };
+}
+
+function parseEvidenceLimitedFeedbackView(
+  input: PersistedCompletedFeedback,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+): FeedbackEvidenceLimitedView {
+  const transcript = [...parseCanonicalEvidenceTurns(evidenceTurns)].map(
+    ([eventId, text]) => ({ eventId, speaker: "user" as const, text })
+  );
+  const feedback: EvidenceLimitedFeedbackResult = parseEvidenceLimitedFeedback(
+    {
+      schemaVersion: input.schemaVersion,
+      promptVersion: input.promptVersion,
+      rubricVersion: input.rubricVersion,
+      evaluationState: input.evaluationState,
+      strengths: input.strengths,
+      improvements: input.improvements,
+      summary: input.summary,
+    },
+    {
+      transcript,
+      modelVersion: requireBoundedString(
+        input.modelVersion,
+        FEEDBACK_READ_LIMITS.modelVersion
+      ),
+    }
+  );
+  return {
+    kind: "evidence-limited",
+    id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
+    sessionId: requireBoundedString(
+      input.sessionId,
+      FEEDBACK_READ_LIMITS.identifier
+    ),
+    summary: feedback.summary,
+    strengths: feedback.strengths,
+    improvements: feedback.improvements,
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: feedback.modelVersion,
+    rubricVersion: FEEDBACK_RUBRIC_VERSION,
+    evaluationState: "partial",
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
