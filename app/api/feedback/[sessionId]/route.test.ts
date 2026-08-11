@@ -53,6 +53,15 @@ vi.mock("@/lib/db/interactive-read", () => ({
 }));
 
 import { NextRequest } from "next/server";
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+} from "@meelni/core";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
@@ -251,16 +260,18 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
-  it("reports failed dispatch as pending and retryable", async () => {
+  it("reports failed dispatch as a typed retryable system state", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({ dispatchStatus: "failed" }) as never
     );
 
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
@@ -374,9 +385,11 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 
@@ -416,10 +429,11 @@ describe("/api/feedback/[sessionId]", () => {
       }) as never
     );
     const response = await GET(request(), PARAMS);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
       retryable: false,
-      dispatch: { status: "failed", retryable: false },
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 
@@ -518,9 +532,11 @@ describe("/api/feedback/[sessionId]", () => {
 
     const response = await POST(request("POST"), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "pending",
-      dispatch: { status: "failed", retryable: true },
+    await expect(response.json()).resolves.toEqual({
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
     });
   });
 
@@ -797,6 +813,149 @@ describe("/api/feedback/[sessionId]", () => {
         evaluationState: "partial",
       },
     });
+  });
+
+  it("returns only server-owned evidence-limited templates and grounded citations", async () => {
+    const strength = {
+      signalCode: "customer_problem_connection",
+      actionCode: "connect_customer_to_decision",
+      dimension: "insight",
+      observation:
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation,
+      transcriptRefs: ["writer:1"],
+      evidence: [
+        {
+          turnRef: "writer:1",
+          quote: "I would focus on working parents first.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    const improvement = {
+      signalCode: "structure_progression",
+      actionCode: "outline_reasoning",
+      dimension: "structure",
+      observation:
+        EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression.observation,
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        strengths: [strength],
+        improvements: [improvement],
+        drills: [],
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+        modelVersion: "fixture-model-v2",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: {
+        kind: "evidence-limited",
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        strengths: [strength],
+        improvements: [improvement],
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+        evaluationState: "partial",
+      },
+    });
+  });
+
+  it("fails closed before the API can return duplicate evidence-limited coaching identities", async () => {
+    const strength = {
+      signalCode: "customer_problem_connection",
+      actionCode: "connect_customer_to_decision",
+      dimension: "insight",
+      observation:
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation,
+      transcriptRefs: ["writer:1"],
+      evidence: [
+        {
+          turnRef: "writer:1",
+          quote: "I would focus on working parents first.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    const duplicateStrength = {
+      ...structuredClone(strength),
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+    };
+    const improvement = {
+      signalCode: "structure_progression",
+      actionCode: "outline_reasoning",
+      dimension: "structure",
+      observation:
+        EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression.observation,
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        strengths: [strength, duplicateStrength],
+        improvements: [improvement],
+        drills: [],
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+        modelVersion: "fixture-model-v2",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+    expect(JSON.stringify(payload)).not.toContain(
+      EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
+    );
   });
 });
 

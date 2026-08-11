@@ -42,6 +42,7 @@ import {
   DURABLE_CONTACT_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
+  FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
@@ -114,6 +115,12 @@ const SESSION_RECONNECT_INTEGRITY_VALID =
 const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
 const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
+const FEEDBACK_OUTCOME_BACKFILL_SESSIONS = [
+  "d1000000-0000-4000-8000-000000000001",
+  "d1000000-0000-4000-8000-000000000002",
+  "d1000000-0000-4000-8000-000000000003",
+  "d1000000-0000-4000-8000-000000000004",
+] as const;
 const QUESTION_PROVENANCE_ACTIVE = "f3333333-3333-4333-8333-333333333333";
 const QUESTION_PROVENANCE_INACTIVE = "f4444444-4444-4444-8444-444444444444";
 const FOCUSED_PRACTICE_USER = "f5000000-0000-4000-8000-000000000001";
@@ -264,6 +271,7 @@ async function run() {
     await verifyTranscriptIngest(clean, cleanUrl);
     await verifyReconnectTimeoutRuntimeIntegrity(clean, cleanUrl);
     await verifyFeedbackV2VersionTuple(clean);
+    await verifyFeedbackProductionDatabaseLifecycle(clean, cleanUrl);
     await verifyAuthorization(clean);
     await verifyStripeSubscriptionOrdering(clean);
     await verifyDeletionWebhookConcurrency(clean, cleanUrl);
@@ -286,7 +294,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -478,9 +486,10 @@ async function run() {
         FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
         DURABLE_CONTACT_SCHEMA_FINGERPRINT,
         TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
+        FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 30; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 31; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -500,7 +509,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 31; found 22/
+            /Strict launch preflight requires the exact latest migration count 32; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -515,6 +524,13 @@ async function run() {
           await upgrade`
             UPDATE user_settings SET share_anonymous_data = true
           `;
+        }
+        if (maxIndex === 30) {
+          await seedFeedbackOutcomeBackfillFixtures(upgrade);
+        }
+        if (maxIndex === 31) {
+          await verifyFeedbackOutcomeBackfill(upgrade);
+          await removeFeedbackOutcomeBackfillFixtures(upgrade);
         }
       }
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -801,7 +817,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 31);
+      assert.equal(await migrationCount(sql), 32);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -865,7 +881,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1110,7 +1126,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 31; found 25/
+      /exact latest migration count 32; found 25/
     );
 
     const genericRows = await sql<
@@ -1209,9 +1225,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 31);
+    assert.equal(await migrationCount(sql), 32);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "transcript_watermarks");
+    assert.equal(finalPreflight.startingContract, "feedback_outcomes");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 37);
@@ -1220,7 +1236,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -4727,10 +4743,11 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         }))
       )
     );
-    assert.equal(preClaimValidation.isValid, false);
+    assert.equal(preClaimValidation.isValid, true);
     assert.equal(preClaimValidation.stats.totalTurns, 4);
+    assert.equal(preClaimValidation.stats.substantiveResponses, 2);
 
-    let thresholdIngest!: ReturnType<(typeof stores)[number]["persist"]>;
+    let cutoffConcurrentIngest!: ReturnType<(typeof stores)[number]["persist"]>;
     let deadlineClaim!: ReturnType<typeof claimInterviewDeadline>;
     const ingestClient = clients[3]!;
     const claimClient = clients[4]!;
@@ -4746,7 +4763,7 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         WHERE id = ${SESSION_TRANSCRIPT_DEADLINE}::uuid
         FOR UPDATE
       `;
-      thresholdIngest = stores[3]!.persist({
+      cutoffConcurrentIngest = stores[3]!.persist({
         principal: { kind: "voice_runtime" },
         event: deadlineEvents[4]!,
       });
@@ -4763,9 +4780,10 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
       );
       await waitForDatabaseLock(sql, claimBackend.pid);
     });
-    const thresholdIngestResult = await thresholdIngest;
+    const cutoffConcurrentIngestResult = await cutoffConcurrentIngest;
     assert.equal(
-      thresholdIngestResult.ok && thresholdIngestResult.disposition,
+      cutoffConcurrentIngestResult.ok &&
+        cutoffConcurrentIngestResult.disposition,
       "created"
     );
     assert.equal(await deadlineClaim, true);
@@ -5000,9 +5018,13 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
         "insufficient_signal"
       );
       assert.equal(markerCompletion.feedback.status, "skipped");
-      assert.match(
-        markerCompletion.feedback.statusReason ?? "",
-        /Voice runtime reported degraded transcript integrity/
+      assert.equal(
+        markerCompletion.feedback.statusReason,
+        "transcript_integrity_degraded"
+      );
+      assert.equal(
+        markerCompletion.feedback.outcomeReason,
+        "transcript_integrity_degraded"
       );
     }
   } finally {
@@ -6354,7 +6376,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "transcript_watermarks");
+    assert.equal(refundedPreflight.startingContract, "feedback_outcomes");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -7172,7 +7194,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 31);
+  assert.equal(await migrationCount(sql), 32);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -8020,27 +8042,907 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
   assert.ok(legacy, "expected a legacy-compatible feedback row");
   assert.equal(legacy.rubric_version, "1.0.0");
 
+  const [legacyBefore] = await sql<
+    {
+      schema_version: string | null;
+      prompt_version: string | null;
+      model_version: string | null;
+      evaluation_state: string | null;
+    }[]
+  >`
+    SELECT schema_version, prompt_version, model_version, evaluation_state
+    FROM feedback
+    WHERE id = ${legacy.id}::uuid
+  `;
+  assert.deepEqual(legacyBefore, {
+    schema_version: null,
+    prompt_version: null,
+    model_version: null,
+    evaluation_state: null,
+  });
+
   await sql.begin(async (tx) => {
+    await assert.rejects(
+      tx.savepoint("retired_evidence_limited_v1", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET schema_version = 'feedback.evidence-limited.v1',
+              prompt_version = 'feedback.prompt.evidence-limited.v1',
+              model_version = 'fixture-model-v1',
+              rubric_version = 'pm-feedback-rubric.v2',
+              evaluation_state = 'partial'
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_version_tuple_check/
+    );
     await tx`
       UPDATE feedback
-      SET schema_version = 'feedback.v2',
-          prompt_version = 'feedback.prompt.v2',
+      SET schema_version = 'feedback.evidence-limited.v2',
+          prompt_version = 'feedback.prompt.evidence-limited.v2',
           model_version = 'fixture-model-v1',
           rubric_version = 'pm-feedback-rubric.v2',
           evaluation_state = 'partial'
       WHERE id = ${legacy.id}::uuid
     `;
     await assert.rejects(
-      tx.savepoint("invalid_feedback_v2_tuple", async (savepoint) => {
+      tx.savepoint("invalid_evidence_limited_full", async (savepoint) => {
         await savepoint`
           UPDATE feedback
-          SET prompt_version = NULL
+          SET evaluation_state = 'full'
           WHERE id = ${legacy.id}::uuid
         `;
       }),
       /feedback_version_tuple_check/
     );
+    await tx`
+      UPDATE feedback
+      SET schema_version = 'feedback.v2',
+          prompt_version = 'feedback.prompt.v2',
+          evaluation_state = 'full'
+      WHERE id = ${legacy.id}::uuid
+    `;
+    await tx`
+      UPDATE feedback
+      SET evaluation_state = 'partial'
+      WHERE id = ${legacy.id}::uuid
+    `;
+    await assert.rejects(
+      tx.savepoint("invalid_feedback_v2_tuple", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET prompt_version = 'feedback.prompt.evidence-limited.v2'
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_version_tuple_check/
+    );
+    await assert.rejects(
+      tx.savepoint("invalid_feedback_outcome", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET outcome_reason = 'duration_too_short'
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_outcome_reason_check/
+    );
+    await tx`
+      UPDATE feedback
+      SET schema_version = NULL,
+          prompt_version = NULL,
+          model_version = NULL,
+          rubric_version = '1.0.0',
+          evaluation_state = NULL
+      WHERE id = ${legacy.id}::uuid
+    `;
   });
+
+  const [legacyAfter] = await sql<
+    {
+      schema_version: string | null;
+      prompt_version: string | null;
+      model_version: string | null;
+      evaluation_state: string | null;
+      rubric_version: string;
+    }[]
+  >`
+    SELECT schema_version, prompt_version, model_version, evaluation_state,
+           rubric_version
+    FROM feedback
+    WHERE id = ${legacy.id}::uuid
+  `;
+  assert.deepEqual(legacyAfter, {
+    schema_version: null,
+    prompt_version: null,
+    model_version: null,
+    evaluation_state: null,
+    rubric_version: "1.0.0",
+  });
+}
+
+async function verifyFeedbackProductionDatabaseLifecycle(
+  sql: postgres.Sql,
+  databaseUrl: string
+) {
+  process.env.DATABASE_URL = databaseUrl;
+  const [
+    core,
+    fixtures,
+    { finalizeInterviewSession },
+    { createDrizzleFeedbackDispatchStore },
+    { createDrizzleFeedbackGenerationStore },
+    {
+      createDrizzleTranscriptIngestStore,
+      createDrizzleTranscriptInterruptionMarkerStore,
+      createDrizzleTranscriptRuntimeSettlementStore,
+      createDrizzleTranscriptRuntimeWriterStore,
+      getFeedbackEvidenceTurns,
+      getFrozenFeedbackTranscriptTurns,
+    },
+    { getFeedbackBySessionId, hasValidFeedbackLifecycleFields },
+    { getSessionById },
+    { runFeedbackGenerationRequested },
+    {
+      buildCompletedFeedbackLifecycleResponse,
+      buildDispatchFailedFeedbackLifecycleResponse,
+      buildSkippedFeedbackLifecycleResponse,
+    },
+    { dispatchFeedbackGenerationWorkflow },
+    { failFeedbackGenerationWorkflow },
+    { ingestTranscriptEvent },
+    { ingestTranscriptInterruptionMarker },
+    { ingestTranscriptRuntimeSettlement },
+    { ingestTranscriptRuntimeWriter },
+    schema,
+  ] = await Promise.all([
+    import("@meelni/core"),
+    import("@meelni/test-fixtures"),
+    import("../lib/db/end-interview-session"),
+    import("../lib/db/feedback-dispatch"),
+    import("../lib/db/feedback-generation-state"),
+    import("../lib/db/transcripts"),
+    import("../lib/db/feedback"),
+    import("../lib/db/sessions"),
+    import("../lib/inngest/functions/generate-feedback"),
+    import("../lib/feedback-lifecycle-response"),
+    import("../lib/workflows/dispatch-feedback-generation"),
+    import("../lib/workflows/generate-feedback"),
+    import("../lib/workflows/ingest-transcript-event"),
+    import("../lib/workflows/ingest-transcript-interruption-marker"),
+    import("../lib/workflows/ingest-transcript-runtime-settlement"),
+    import("../lib/workflows/ingest-transcript-runtime-writer"),
+    import("../lib/db/schema"),
+  ]);
+  const database = drizzle(sql, { schema });
+  const goldenFixtures = fixtures.createFeedbackGoldenPathFixtures();
+  const shortRich = goldenFixtures.find(
+    (fixture) => fixture.id === "short-rich"
+  );
+  const normalProductSense = goldenFixtures.find(
+    (fixture) => fixture.id === "normal-product-sense"
+  );
+  const collision = goldenFixtures.find(
+    (fixture) => fixture.id === "turn-marker-6m14"
+  );
+  const dispatchFailureFixture = goldenFixtures.find(
+    (fixture) => fixture.id === "rubric-behavioral"
+  );
+  assert.ok(shortRich);
+  assert.ok(normalProductSense);
+  assert.ok(collision);
+  assert.ok(dispatchFailureFixture);
+
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (${shortRich.userId}::uuid, 'sav-397-golden@example.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  const seedSession = async (fixture: typeof shortRich) => {
+    const durationMinutes =
+      Math.ceil(
+        (Date.parse(fixture.settlement.settled_at) -
+          Date.parse(fixture.writerRegistration.registered_at)) /
+          60_000
+      ) + 1;
+    await sql`
+      INSERT INTO interview_session (
+        id, user_id, role, round_type, mode, status, lifecycle_state,
+        lifecycle_version, activated_at, started_at, livekit_room_name, config
+      ) VALUES (
+        ${fixture.sessionId}::uuid,
+        ${fixture.userId}::uuid,
+        'pm',
+        ${fixture.roundType},
+        'voice_video',
+        'in_progress',
+        'active',
+        1,
+        ${fixture.writerRegistration.registered_at}::timestamptz,
+        ${fixture.writerRegistration.registered_at}::timestamptz,
+        ${fixture.roomName},
+        ${JSON.stringify({ duration: durationMinutes })}::jsonb
+      )
+    `;
+  };
+
+  const ingestFixture = async (fixture: typeof shortRich) => {
+    const writerStore = createDrizzleTranscriptRuntimeWriterStore(database);
+    const transcriptStore = createDrizzleTranscriptIngestStore(database);
+    const markerStore =
+      createDrizzleTranscriptInterruptionMarkerStore(database);
+    const settlementStore =
+      createDrizzleTranscriptRuntimeSettlementStore(database);
+
+    const registration = await ingestTranscriptRuntimeWriter({
+      requestSessionId: fixture.sessionId,
+      registration: fixture.writerRegistration,
+      store: writerStore,
+    });
+    assert.equal(registration.ok && registration.disposition, "created");
+    const registrationReplay = await ingestTranscriptRuntimeWriter({
+      requestSessionId: fixture.sessionId,
+      registration: fixture.writerRegistration,
+      store: writerStore,
+    });
+    assert.equal(
+      registrationReplay.ok && registrationReplay.disposition,
+      "existing"
+    );
+
+    for (const event of [...fixture.events].reverse()) {
+      const result = await ingestTranscriptEvent({
+        requestSessionId: fixture.sessionId,
+        principal: { kind: "voice_runtime" },
+        event,
+        store: transcriptStore,
+      });
+      assert.equal(result.ok, true, `${fixture.id}:${event.event_id}`);
+    }
+    const eventReplay = await ingestTranscriptEvent({
+      requestSessionId: fixture.sessionId,
+      principal: { kind: "voice_runtime" },
+      event: fixture.events[0],
+      store: transcriptStore,
+    });
+    assert.equal(eventReplay.ok && eventReplay.disposition, "existing");
+
+    for (const marker of fixture.markers) {
+      const markerResult = await ingestTranscriptInterruptionMarker({
+        requestSessionId: fixture.sessionId,
+        marker,
+        store: markerStore,
+      });
+      assert.equal(markerResult.ok, true, `${fixture.id}:${marker.event_id}`);
+      const markerReplay = await ingestTranscriptInterruptionMarker({
+        requestSessionId: fixture.sessionId,
+        marker,
+        store: markerStore,
+      });
+      assert.equal(markerReplay.ok && markerReplay.disposition, "existing");
+    }
+
+    const settlementResult = await ingestTranscriptRuntimeSettlement({
+      requestSessionId: fixture.sessionId,
+      settlement: fixture.settlement,
+      store: settlementStore,
+    });
+    assert.equal(settlementResult.ok, true, fixture.id);
+    const settlementReplay = await ingestTranscriptRuntimeSettlement({
+      requestSessionId: fixture.sessionId,
+      settlement: fixture.settlement,
+      store: settlementStore,
+    });
+    assert.equal(
+      settlementReplay.ok && settlementReplay.disposition,
+      "existing"
+    );
+  };
+
+  await seedSession(shortRich);
+  await ingestFixture(shortRich);
+  const finalizedAt = new Date(
+    Date.parse(shortRich.settlement.settled_at) + 1_000
+  );
+  const completion = await finalizeInterviewSession(
+    {
+      sessionId: shortRich.sessionId,
+      actor: { type: "user", userId: shortRich.userId },
+      requestedTerminalReason: "user_end",
+      now: finalizedAt,
+    },
+    database
+  );
+  assert.equal(completion.ok && completion.disposition, "applied");
+  assert.ok(completion.ok);
+  assert.equal(completion.feedback.status, "pending");
+  assert.equal(completion.feedback.dispatchStatus, "pending");
+  assert.equal(
+    completion.feedback.dispatchEventId,
+    `feedback/generate.requested:${shortRich.sessionId}:0`
+  );
+
+  const duplicateCompletion = await finalizeInterviewSession(
+    {
+      sessionId: shortRich.sessionId,
+      actor: { type: "user", userId: shortRich.userId },
+      requestedTerminalReason: "user_end",
+      now: new Date(finalizedAt.getTime() + 1_000),
+    },
+    database
+  );
+  assert.equal(
+    duplicateCompletion.ok && duplicateCompletion.disposition,
+    "existing"
+  );
+  assert.ok(duplicateCompletion.ok);
+  assert.equal(duplicateCompletion.feedback.id, completion.feedback.id);
+  assert.deepEqual(duplicateCompletion.stats, completion.stats);
+
+  const frozenTranscript = await getFrozenFeedbackTranscriptTurns(
+    shortRich.sessionId,
+    database
+  );
+  assert.equal(frozenTranscript.length, shortRich.events.length);
+  assert.deepEqual(
+    frozenTranscript.map((turn) => turn.eventId),
+    shortRich.events.map((event) => event.event_id)
+  );
+
+  const sentEvents: Array<{
+    id: string;
+    name: string;
+    data: { sessionId: string; userId: string; tier: string };
+  }> = [];
+  const dispatchStore = createDrizzleFeedbackDispatchStore(database);
+  const dispatchDeps = {
+    store: dispatchStore,
+    now: () => new Date(finalizedAt.getTime() + 2_000),
+    reportFailure: () => assert.fail("golden dispatch must not fail"),
+    async send(event: (typeof sentEvents)[number]) {
+      sentEvents.push(event);
+    },
+  };
+  const dispatch = await dispatchFeedbackGenerationWorkflow(
+    {
+      sessionId: shortRich.sessionId,
+      userId: shortRich.userId,
+      tier: completion.tier,
+    },
+    dispatchDeps
+  );
+  assert.equal(dispatch.ok && dispatch.disposition, "sent");
+  assert.ok(dispatch.dispatch?.eventId);
+  assert.equal(sentEvents.length, 1);
+  assert.equal(sentEvents[0]?.id, dispatch.dispatch.eventId);
+  const duplicateDispatch = await dispatchFeedbackGenerationWorkflow(
+    {
+      sessionId: shortRich.sessionId,
+      userId: shortRich.userId,
+      tier: completion.tier,
+    },
+    dispatchDeps
+  );
+  assert.equal(
+    duplicateDispatch.ok && duplicateDispatch.disposition,
+    "already_sent"
+  );
+  assert.equal(sentEvents.length, 1);
+
+  const eventId = dispatch.dispatch.eventId;
+  const generationStore = createDrizzleFeedbackGenerationStore(database);
+  const insightsEvents: unknown[] = [];
+  let evaluatorCalls = 0;
+  const steps = {
+    run<T>(_name: string, work: () => Promise<T>): Promise<T> {
+      return work();
+    },
+    async sendInsights(event: unknown) {
+      insightsEvents.push(event);
+    },
+  };
+  const handlerDeps = {
+    now: () => finalizedAt.getTime() + 3_000,
+    createWorkflowDeps: (handlerSteps: typeof steps) => ({
+      store: generationStore,
+      steps: handlerSteps,
+      now: () => new Date(finalizedAt.getTime() + 3_000),
+      isDeletionPending: async () => false,
+      async getSession(sessionId: string) {
+        const session = await getSessionById(sessionId, database);
+        return session
+          ? {
+              userId: session.userId,
+              roundType: session.roundType,
+              endingAtMs: session.endingAt?.getTime() ?? null,
+            }
+          : null;
+      },
+      validateLegacy: async () => {
+        throw new Error("database_golden_must_use_committed_completion_tier");
+      },
+      async getTranscript(sessionId: string) {
+        return core.prepareFeedbackTranscript(
+          await getFrozenFeedbackTranscriptTurns(sessionId, database),
+          { requireContractV2: true }
+        );
+      },
+      async evaluate(input: {
+        roundType: string;
+        transcript: Array<{ eventId: string; speaker: string; text: string }>;
+        evaluationState: "full" | "partial";
+        mode: "scored" | "evidence_limited";
+      }) {
+        evaluatorCalls += 1;
+        assert.equal(input.roundType, "product_sense");
+        assert.equal(input.evaluationState, "partial");
+        assert.equal(input.mode, "evidence_limited");
+        const turn = input.transcript.find(
+          (candidate) => candidate.speaker === "user"
+        );
+        assert.ok(turn);
+        return core.parseEvidenceLimitedFeedback(
+          {
+            schemaVersion:
+              core.FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
+            promptVersion: core.FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+            rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
+            evaluationState: "partial" as const,
+            strengths: [
+              {
+                signalCode: "customer_problem_connection" as const,
+                actionCode: "connect_customer_to_decision" as const,
+                transcriptRef: turn.eventId,
+              },
+            ],
+            improvements: [
+              {
+                signalCode: "tradeoff_decision" as const,
+                actionCode: "compare_tradeoffs_and_choose" as const,
+                transcriptRef: turn.eventId,
+              },
+            ],
+          },
+          {
+            transcript: [
+              {
+                eventId: turn.eventId,
+                speaker: "user" as const,
+                text: turn.text,
+              },
+            ],
+            modelVersion: "fake-evaluator-v2",
+          }
+        );
+      },
+    }),
+    reportResult() {},
+  };
+  const generated = await runFeedbackGenerationRequested({
+    eventId,
+    data: { sessionId: shortRich.sessionId, userId: shortRich.userId },
+    steps,
+    deps: handlerDeps,
+  });
+  assert.equal(generated.status, "completed");
+  assert.equal(generated.disposition, "applied");
+  assert.equal(evaluatorCalls, 1);
+  assert.equal(insightsEvents.length, 1);
+
+  const duplicateRun = await runFeedbackGenerationRequested({
+    eventId,
+    data: { sessionId: shortRich.sessionId, userId: shortRich.userId },
+    steps,
+    deps: handlerDeps,
+  });
+  assert.equal(duplicateRun.status, "completed");
+  assert.equal(duplicateRun.disposition, "already_terminal");
+  assert.equal(evaluatorCalls, 1);
+
+  const persistedBeforeLateFailure = await getFeedbackBySessionId(
+    shortRich.sessionId,
+    database
+  );
+  assert.ok(persistedBeforeLateFailure);
+  assert.equal(
+    hasValidFeedbackLifecycleFields(persistedBeforeLateFailure),
+    true
+  );
+  assert.equal(persistedBeforeLateFailure.status, "completed");
+  assert.equal(persistedBeforeLateFailure.outcomeReason, "feedback_generated");
+  assert.equal(persistedBeforeLateFailure.evaluationState, "partial");
+  assert.equal(persistedBeforeLateFailure.overallScore, null);
+  assert.equal(
+    await failFeedbackGenerationWorkflow(
+      {
+        sessionId: shortRich.sessionId,
+        userId: shortRich.userId,
+        eventId,
+        reason: "late_provider_failure",
+      },
+      {
+        store: generationStore,
+        isDeletionPending: async () => false,
+        async getSession(sessionId: string) {
+          const session = await getSessionById(sessionId, database);
+          return session
+            ? { userId: session.userId, roundType: session.roundType }
+            : null;
+        },
+      }
+    ),
+    false
+  );
+  const persistedAfterLateFailure = await getFeedbackBySessionId(
+    shortRich.sessionId,
+    database
+  );
+  assert.deepEqual(persistedAfterLateFailure, persistedBeforeLateFailure);
+
+  const evidenceTurns = await getFeedbackEvidenceTurns(
+    shortRich.sessionId,
+    database
+  );
+  const apiPayload = buildCompletedFeedbackLifecycleResponse(
+    persistedAfterLateFailure,
+    evidenceTurns
+  );
+  assert.equal(apiPayload.feedback.kind, "evidence-limited");
+  const decoded = core.decodeFeedbackLifecycleResponse(apiPayload);
+  assert.ok(decoded);
+  const view = core.toFeedbackViewState(decoded);
+  assert.equal(view.kind, "completed-evidence-limited");
+  if (view.kind !== "completed-evidence-limited") {
+    throw new Error("database golden path lost evidence-limited view state");
+  }
+  const frozenCandidate = evidenceTurns.find(
+    (candidate) => candidate.speaker === "user"
+  );
+  assert.ok(frozenCandidate);
+  assert.equal(
+    view.feedback.strengths[0]?.signalCode,
+    "customer_problem_connection"
+  );
+  assert.equal(
+    view.feedback.strengths[0]?.actionCode,
+    "connect_customer_to_decision"
+  );
+  assert.equal(
+    view.feedback.strengths[0]?.evidence[0]?.quote,
+    frozenCandidate.text
+  );
+
+  await seedSession(normalProductSense);
+  await ingestFixture(normalProductSense);
+  const duplicateIdentityFinalizedAt = new Date(
+    Date.parse(normalProductSense.settlement.settled_at) + 1_000
+  );
+  const duplicateIdentityCompletion = await finalizeInterviewSession(
+    {
+      sessionId: normalProductSense.sessionId,
+      actor: { type: "user", userId: normalProductSense.userId },
+      requestedTerminalReason: "user_end",
+      now: duplicateIdentityFinalizedAt,
+    },
+    database
+  );
+  assert.ok(duplicateIdentityCompletion.ok);
+  assert.equal(duplicateIdentityCompletion.feedback.status, "pending");
+  assert.ok(duplicateIdentityCompletion.feedback.dispatchEventId);
+  const duplicateIdentityEventId =
+    duplicateIdentityCompletion.feedback.dispatchEventId;
+  const duplicateIdentityClaim = await generationStore.claim({
+    sessionId: normalProductSense.sessionId,
+    eventId: duplicateIdentityEventId,
+    now: new Date(duplicateIdentityFinalizedAt.getTime() + 1_000),
+  });
+  assert.ok(duplicateIdentityClaim);
+  const duplicateIdentityTurns = (
+    await getFrozenFeedbackTranscriptTurns(
+      normalProductSense.sessionId,
+      database
+    )
+  ).filter((turn) => turn.speaker === "user");
+  assert.ok(duplicateIdentityTurns.length >= 2);
+  const firstDuplicateIdentityTurn = duplicateIdentityTurns[0]!;
+  const secondDuplicateIdentityTurn = duplicateIdentityTurns[1]!;
+  const firstStrength = {
+    ...structuredClone(view.feedback.strengths[0]!),
+    transcriptRefs: [firstDuplicateIdentityTurn.eventId],
+    evidence: [
+      {
+        turnRef: firstDuplicateIdentityTurn.eventId,
+        quote: firstDuplicateIdentityTurn.text,
+      },
+    ],
+  };
+  const duplicatePersistedSelection = {
+    schemaVersion: view.feedback.schemaVersion,
+    promptVersion: view.feedback.promptVersion,
+    modelVersion: view.feedback.modelVersion,
+    rubricVersion: view.feedback.rubricVersion,
+    evaluationState: view.feedback.evaluationState,
+    strengths: [
+      firstStrength,
+      {
+        ...structuredClone(firstStrength),
+        transcriptRefs: [secondDuplicateIdentityTurn.eventId],
+        evidence: [
+          {
+            turnRef: secondDuplicateIdentityTurn.eventId,
+            quote: secondDuplicateIdentityTurn.text,
+          },
+        ],
+      },
+    ],
+    improvements: [
+      {
+        ...structuredClone(view.feedback.improvements[0]!),
+        transcriptRefs: [firstDuplicateIdentityTurn.eventId],
+        evidence: [
+          {
+            turnRef: firstDuplicateIdentityTurn.eventId,
+            quote: firstDuplicateIdentityTurn.text,
+          },
+        ],
+      },
+    ],
+    summary: view.feedback.summary,
+  } as import("@meelni/core").FeedbackEvaluationResult;
+  await assert.rejects(
+    generationStore.complete({
+      sessionId: normalProductSense.sessionId,
+      eventId: duplicateIdentityEventId,
+      evaluation: duplicatePersistedSelection,
+      processingDurationMs: 1,
+    }),
+    /evidence_limited_persistence_contract_invalid/
+  );
+  const duplicateIdentityRejected = await getFeedbackBySessionId(
+    normalProductSense.sessionId,
+    database
+  );
+  assert.equal(duplicateIdentityRejected?.status, "processing");
+  assert.equal(duplicateIdentityRejected?.strengths, null);
+  assert.equal(duplicateIdentityRejected?.improvements, null);
+  assert.equal(duplicateIdentityRejected?.drills, null);
+  assert.equal(duplicateIdentityRejected?.summary, null);
+  assert.equal(
+    await generationStore.fail({
+      sessionId: normalProductSense.sessionId,
+      eventId: duplicateIdentityEventId,
+      reason: "Feedback evaluation failed. Check worker logs and retry.",
+    }),
+    true
+  );
+  const duplicateIdentityFailed = await getFeedbackBySessionId(
+    normalProductSense.sessionId,
+    database
+  );
+  assert.equal(duplicateIdentityFailed?.status, "failed");
+  assert.equal(duplicateIdentityFailed?.outcomeReason, "generation_failed");
+  assert.equal(duplicateIdentityFailed?.strengths, null);
+  assert.equal(duplicateIdentityFailed?.improvements, null);
+  assert.equal(duplicateIdentityFailed?.drills, null);
+  assert.equal(duplicateIdentityFailed?.summary, null);
+
+  await seedSession(collision);
+  await ingestFixture(collision);
+  const persistedSequenceNamespace = await sql<
+    { event_id: string; sequence: number; kind: string }[]
+  >`
+    SELECT event_id, sequence::int, 'transcript'::text AS kind
+    FROM transcript_turn
+    WHERE session_id = ${collision.sessionId}::uuid
+    UNION ALL
+    SELECT event_id, sequence::int, 'interruption_marker'::text AS kind
+    FROM transcript_interruption_marker
+    WHERE session_id = ${collision.sessionId}::uuid
+    ORDER BY sequence
+  `;
+  assert.deepEqual(
+    persistedSequenceNamespace.map((row) => ({ ...row })),
+    [
+      ...collision.events.map((event) => ({
+        event_id: event.event_id,
+        sequence: event.sequence,
+        kind: "transcript",
+      })),
+      ...collision.markers.map((marker) => ({
+        event_id: marker.event_id,
+        sequence: marker.sequence,
+        kind: "interruption_marker",
+      })),
+    ].sort((left, right) => left.sequence - right.sequence)
+  );
+  const collisionFinalizedAt = new Date(
+    Date.parse(collision.settlement.settled_at) + 1_000
+  );
+  const collisionCompletion = await finalizeInterviewSession(
+    {
+      sessionId: collision.sessionId,
+      actor: { type: "user", userId: collision.userId },
+      requestedTerminalReason: "user_end",
+      now: collisionFinalizedAt,
+    },
+    database
+  );
+  assert.ok(collisionCompletion.ok);
+  assert.equal(collisionCompletion.feedback.status, "skipped");
+  assert.equal(
+    collisionCompletion.feedback.outcomeReason,
+    "transcript_integrity_degraded"
+  );
+  assert.deepEqual(
+    await getFrozenFeedbackTranscriptTurns(collision.sessionId, database),
+    []
+  );
+  const collisionRecord = await getFeedbackBySessionId(
+    collision.sessionId,
+    database
+  );
+  assert.ok(collisionRecord);
+  const skippedPayload = buildSkippedFeedbackLifecycleResponse(collisionRecord);
+  assert.ok(skippedPayload);
+  const skippedDecoded = core.decodeFeedbackLifecycleResponse(skippedPayload);
+  assert.ok(skippedDecoded);
+  assert.equal(
+    core.toFeedbackViewState(skippedDecoded).kind,
+    "transcript-integrity-degraded"
+  );
+  const collisionReplay = await finalizeInterviewSession(
+    {
+      sessionId: collision.sessionId,
+      actor: { type: "user", userId: collision.userId },
+      requestedTerminalReason: "user_end",
+      now: new Date(collisionFinalizedAt.getTime() + 1_000),
+    },
+    database
+  );
+  assert.equal(collisionReplay.ok && collisionReplay.disposition, "existing");
+  assert.ok(collisionReplay.ok);
+  assert.equal(collisionReplay.feedback.id, collisionCompletion.feedback.id);
+
+  await seedSession(dispatchFailureFixture);
+  await ingestFixture(dispatchFailureFixture);
+  const failedDispatchCompletion = await finalizeInterviewSession(
+    {
+      sessionId: dispatchFailureFixture.sessionId,
+      actor: {
+        type: "user",
+        userId: dispatchFailureFixture.userId,
+      },
+      requestedTerminalReason: "user_end",
+      now: new Date(
+        Date.parse(dispatchFailureFixture.settlement.settled_at) + 1_000
+      ),
+    },
+    database
+  );
+  assert.ok(failedDispatchCompletion.ok);
+  assert.equal(failedDispatchCompletion.feedback.status, "pending");
+  let dispatchFailureReports = 0;
+  const failedDispatch = await dispatchFeedbackGenerationWorkflow(
+    {
+      sessionId: dispatchFailureFixture.sessionId,
+      userId: dispatchFailureFixture.userId,
+      tier: failedDispatchCompletion.tier,
+    },
+    {
+      store: createDrizzleFeedbackDispatchStore(database),
+      now: () =>
+        new Date(
+          Date.parse(dispatchFailureFixture.settlement.settled_at) + 2_000
+        ),
+      reportFailure: () => {
+        dispatchFailureReports += 1;
+      },
+      async send() {
+        throw new Error("secret-provider-failure-detail");
+      },
+    }
+  );
+  assert.equal(failedDispatch.ok, false);
+  assert.equal(failedDispatch.disposition, "failed");
+  assert.equal(dispatchFailureReports, 1);
+  const failedDispatchRecord = await getFeedbackBySessionId(
+    dispatchFailureFixture.sessionId,
+    database
+  );
+  assert.ok(failedDispatchRecord);
+  assert.equal(failedDispatchRecord.status, "pending");
+  assert.equal(failedDispatchRecord.dispatchStatus, "failed");
+  assert.equal(failedDispatchRecord.outcomeReason, "dispatch_failed");
+  const failedDispatchPayload =
+    buildDispatchFailedFeedbackLifecycleResponse(true);
+  const failedDispatchDecoded = core.decodeFeedbackLifecycleResponse(
+    failedDispatchPayload
+  );
+  assert.ok(failedDispatchDecoded);
+  assert.equal(
+    core.toFeedbackViewState(failedDispatchDecoded).kind,
+    "dispatch-failed"
+  );
+  assert.doesNotMatch(
+    JSON.stringify(failedDispatchPayload),
+    /secret|provider|model|duration|microphone|answer quality/i
+  );
+
+  console.log(
+    "Disposable PostgreSQL feedback lifecycle: finalizer/outbox/frozen-read/dispatch/Inngest/CAS/read/API-view passed"
+  );
+}
+
+async function seedFeedbackOutcomeBackfillFixtures(sql: postgres.Sql) {
+  const [completed, failed, noAnswer, degraded] =
+    FEEDBACK_OUTCOME_BACKFILL_SESSIONS;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status, lifecycle_state,
+      terminal_reason, ending_at, ended_at, transcript_evidence_version,
+      transcript_evidence_state, transcript_cutoff_at,
+      transcript_evidence_frozen_at
+    ) VALUES
+      (${completed}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${failed}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${noAnswer}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'in_progress', 'connecting', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+      (${degraded}::uuid, ${USER_ONE}::uuid, 'product_sense', 'voice_video',
+        'completed', 'completed', 'user_end',
+        '2026-08-10T12:00:00.000Z'::timestamptz,
+        '2026-08-10T12:00:00.000Z'::timestamptz, 1, 'degraded',
+        '2026-08-10T12:00:00.000Z'::timestamptz,
+        '2026-08-10T12:00:00.000Z'::timestamptz)
+  `;
+  await sql`
+    INSERT INTO feedback (session_id, status, status_reason)
+    VALUES
+      (${completed}::uuid, 'completed', 'sav397_completed_fixture'),
+      (${failed}::uuid, 'failed', 'sav397_failed_fixture'),
+      (${noAnswer}::uuid, 'skipped', 'sav397_no_answer_fixture'),
+      (${degraded}::uuid, 'skipped', 'sav397_degraded_fixture')
+  `;
+}
+
+async function verifyFeedbackOutcomeBackfill(sql: postgres.Sql) {
+  const rows = await sql<{ status_reason: string; outcome_reason: string }[]>`
+    SELECT status_reason, outcome_reason
+    FROM feedback
+    WHERE session_id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+    ORDER BY status_reason
+  `;
+  assert.deepEqual(Array.from(rows), [
+    {
+      status_reason: "sav397_completed_fixture",
+      outcome_reason: "feedback_generated",
+    },
+    {
+      status_reason: "sav397_degraded_fixture",
+      outcome_reason: "transcript_integrity_degraded",
+    },
+    {
+      status_reason: "sav397_failed_fixture",
+      outcome_reason: "generation_failed",
+    },
+    {
+      status_reason: "sav397_no_answer_fixture",
+      outcome_reason: "no_reviewable_answer",
+    },
+  ]);
+}
+
+async function removeFeedbackOutcomeBackfillFixtures(sql: postgres.Sql) {
+  await sql`
+    DELETE FROM feedback
+    WHERE session_id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+  `;
+  await sql`
+    DELETE FROM interview_session
+    WHERE id = ANY(${FEEDBACK_OUTCOME_BACKFILL_SESSIONS}::uuid[])
+  `;
 }
 
 async function verifyAuthorization(sql: postgres.Sql) {

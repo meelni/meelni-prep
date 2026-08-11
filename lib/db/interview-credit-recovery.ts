@@ -193,8 +193,8 @@ export function createDrizzleInterviewCreditRecoveryStore(
                 .values({
                   sessionId,
                   status: "skipped",
-                  statusReason:
-                    "Interview ended because its recovery window expired",
+                  statusReason: "transcript_integrity_degraded",
+                  outcomeReason: "transcript_integrity_degraded",
                   rubricVersion: "1.0.0",
                   dispatchStatus: "not_required",
                 })

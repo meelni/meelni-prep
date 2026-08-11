@@ -74,6 +74,7 @@ from shared.transcript_ingest import (
     TranscriptIngestQueue,
     TranscriptIngestQueueFull,
     TranscriptIngestQueueSealed,
+    WriterSequenceAllocator,
     canonical_json_bytes,
     create_interruption_marker,
     create_runtime_settlement,
@@ -1944,6 +1945,53 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
 
 
 class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
+    def test_reported_turn_marker_shape_uses_one_writer_sequence_namespace(self):
+        allocator = WriterSequenceAllocator()
+        contract_path = (
+            Path(__file__).parent
+            / ".."
+            / "packages"
+            / "test-fixtures"
+            / "writer-sequence-6m14.json"
+        ).resolve()
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+
+        # The Production incident spanned 6m14s; elapsed wall time must not
+        # affect allocation inside one writer generation. TypeScript consumes
+        # this same contract at the disposable database persistence seam.
+        self.assertEqual(contract["incidentDurationSeconds"], 374)
+        self.assertEqual(contract["markerOffsetSeconds"], 119)
+        for allocation in contract["allocations"]:
+            sequence = allocator.allocate(
+                event_id=allocation["eventId"], kind=allocation["kind"]
+            )
+            self.assertEqual(sequence, allocation["sequence"])
+        for replay in contract["replays"]:
+            sequence = allocator.allocate(
+                event_id=replay["eventId"], kind=replay["kind"]
+            )
+            self.assertEqual(sequence, replay["sequence"])
+
+    def test_writer_sequence_replay_retains_identity_across_interleaving(self):
+        allocator = WriterSequenceAllocator()
+
+        first = allocator.allocate(event_id="writer-1:message-1", kind="transcript")
+        marker = allocator.allocate(
+            event_id="writer-1:message-2:unavailable", kind="interruption_marker"
+        )
+        replay = allocator.allocate(event_id="writer-1:message-1", kind="transcript")
+
+        self.assertEqual((first, marker, replay), (1, 2, 1))
+
+    def test_writer_sequence_identity_cannot_cross_evidence_kinds(self):
+        allocator = WriterSequenceAllocator()
+        allocator.allocate(event_id="writer-1:evidence-1", kind="transcript")
+
+        with self.assertRaises(TranscriptIngestIdentityConflict):
+            allocator.allocate(
+                event_id="writer-1:evidence-1", kind="interruption_marker"
+            )
+
     async def test_shutdown_task_join_cancels_and_awaits_stragglers(self):
         started = asyncio.Event()
         cancelled = asyncio.Event()

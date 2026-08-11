@@ -37,6 +37,11 @@ and credit run as sibling checkpoints; a failed operation retries without
 replaying successful siblings. Cleanup and credit cannot delay feedback
 dispatch or reopen terminal truth.
 
+Transcript turns and integrity markers consume one writer-scoped monotonic
+sequence namespace. Stable replays preserve their original assignment, so a
+turn/marker interleave can arrive out of order without cross-kind sequence
+collisions or a manufactured writer gap.
+
 The synchronous End route has a 5.5-second server breaker below the browser's
 6.5-second transport deadline. Lock, statement, auth, or route exhaustion is a
 private retryable `503`; it is not an authorization failure. The three-second
@@ -117,12 +122,25 @@ under the owner/session/reservation/grant lock order. See
 
 ## Feedback Result
 
-- A completed and eligible session creates `feedback.status=pending`.
-- Any other terminal outcome creates `feedback.status=skipped` with a user-safe reason.
+- A completed session with at least one trustworthy substantive candidate
+  answer creates `feedback.status=pending`; duration and total-turn count are
+  not eligibility gates.
+- Five substantive answers permit full-depth evaluation. A smaller healthy
+  prefix remains partial, and fewer than four substantive answers receive
+  scoreless evidence-limited structured feedback rather than inferred scores.
+  The provider selects only closed PM-rubric codes and trusted candidate-turn
+  aliases. The server owns all qualitative copy and restores exact quantities
+  only through frozen-transcript evidence citations.
+- No trustworthy candidate answer creates terminal `feedback.status=skipped`
+  with `outcome_reason=no_reviewable_answer`.
+- A corrupt or degraded frozen transcript creates terminal
+  `feedback.status=skipped` with
+  `outcome_reason=transcript_integrity_degraded`.
 - `feedback.session_id` is unique.
 - The feedback worker may change feedback status and result fields. It must not write session lifecycle or legacy session status.
 - New completed feedback uses the strict, evidence-grounded
-  [feedback v2 contract](./feedback-v2.md). Legacy v1 feedback remains readable.
+  [Feedback v2 or evidence-limited companion contract](./feedback-v2.md).
+  Legacy v1 feedback remains readable.
 - Worker claims, terminal writes, retries, and stale-event behavior follow the
   [feedback generation contract](./feedback-generation.md).
 
@@ -196,6 +214,13 @@ cleanup; once acknowledged, it uses the same idempotent outbox retry path as
 deadline recovery. Other terminal reasons preserve the existing retry behavior
 and claim a new attempt identity only when the stored state is retryable. No
 path creates a second feedback row.
+
+Terminal feedback presentation preserves the typed outcome. No-answer copy is
+concise and non-scored. Transcript degradation is presented as a system
+unavailable state and never translated into duration, microphone, answer
+length, or answer-quality advice. A retry action appears only for retryable
+dispatch or generation work; immutable no-answer and frozen-degradation states
+do not offer a false recovery action.
 
 `GET /api/session/:sessionId` exposes `feedbackReady` for compatibility and
 diagnostics. The focused room hands presentation to the feedback lifecycle as

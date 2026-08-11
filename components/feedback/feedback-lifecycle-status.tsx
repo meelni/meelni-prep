@@ -17,12 +17,13 @@ import {
   FeedbackStatusPage,
 } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
-import type { FeedbackViewState, SkippedFeedbackDetails } from "@meelni/core";
+import type { FeedbackViewState } from "@meelni/core";
 
 type FeedbackNonCompletedState = Exclude<
   FeedbackViewState,
   | { kind: "completed-full" }
   | { kind: "completed-partial" }
+  | { kind: "completed-evidence-limited" }
   | { kind: "completed-legacy" }
 >;
 
@@ -230,14 +231,51 @@ export function FeedbackLifecycleStatus({
     );
   }
 
-  if (
-    state.kind === "skipped-insufficient" ||
-    state.kind === "skipped-abandoned"
-  ) {
+  if (state.kind === "dispatch-failed") {
     return (
-      <SkippedStatus
-        abandoned={state.kind === "skipped-abandoned"}
-        details={state.details}
+      <FeedbackStatusPage
+        role="alert"
+        tone="danger"
+        icon={<CircleX className="h-8 w-8" aria-hidden="true" />}
+        title="Feedback could not be queued"
+        description={recoveryError || state.message}
+        actions={
+          <>
+            {state.retryable && retryAction("Queue feedback again")}
+            <FeedbackDashboardLink />
+          </>
+        }
+      />
+    );
+  }
+
+  if (state.kind === "no-reviewable-answer") {
+    return (
+      <FeedbackStatusPage
+        tone="warning"
+        icon={<AlertTriangle className="h-8 w-8" aria-hidden="true" />}
+        title="No reviewable answer available"
+        description="The saved interview does not contain a reviewable candidate answer, so no score was inferred."
+        actions={
+          <Button asChild>
+            <Link href="/dashboard/new-interview">
+              Start a new mock interview
+            </Link>
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (state.kind === "transcript-integrity-degraded") {
+    return (
+      <FeedbackStatusPage
+        role="alert"
+        tone="danger"
+        icon={<FileWarning className="h-8 w-8" aria-hidden="true" />}
+        title="Interview feedback unavailable"
+        description="The saved transcript could not be verified, so we won’t infer scores or feedback from it."
+        actions={<FeedbackDashboardLink />}
       />
     );
   }
@@ -286,62 +324,6 @@ export function FeedbackLifecycleStatus({
   );
 }
 
-function SkippedStatus({
-  abandoned,
-  details,
-}: {
-  abandoned: boolean;
-  details: SkippedFeedbackDetails;
-}) {
-  return (
-    <FeedbackStatusPage
-      tone="warning"
-      icon={<AlertTriangle className="h-8 w-8" aria-hidden="true" />}
-      title={
-        abandoned
-          ? "Interview ended before practice began"
-          : "Not enough evidence for feedback"
-      }
-      description={
-        abandoned
-          ? "No recorded answer was available to evaluate."
-          : "The recorded interview did not meet the minimum evidence threshold for honest scores."
-      }
-      actions={
-        <Button asChild>
-          <Link href="/dashboard/new-interview">
-            Start a new mock interview
-          </Link>
-        </Button>
-      }
-    >
-      {(details.reasons.length > 0 || details.recommendations.length > 0) && (
-        <FeedbackSectionCard
-          title="What happened"
-          contentClassName="space-y-4 text-left"
-        >
-          {details.reasons.map((reason, index) => (
-            <p
-              key={`reason:${index}`}
-              className="text-muted-foreground text-sm wrap-anywhere"
-            >
-              {reason}
-            </p>
-          ))}
-          {details.recommendations.map((recommendation, index) => (
-            <p
-              key={`recommendation:${index}`}
-              className="text-foreground text-sm wrap-anywhere"
-            >
-              {recommendation}
-            </p>
-          ))}
-        </FeedbackSectionCard>
-      )}
-    </FeedbackStatusPage>
-  );
-}
-
 export function FeedbackLoadingSkeleton() {
   return (
     <FeedbackReviewShell
@@ -354,10 +336,14 @@ export function FeedbackLoadingSkeleton() {
       <span className="sr-only">Loading feedback</span>
       <div className="space-y-6 motion-reduce:[&_*]:animate-none">
         {["h-24", "h-40", "h-64"].map((height) => (
-          <div
+          <FeedbackSectionCard
             key={height}
-            className={`bg-muted animate-pulse rounded-lg ${height}`}
-          />
+            title={<span className="sr-only">Loading feedback section</span>}
+            headerClassName="sr-only"
+            contentClassName="p-0 sm:p-0"
+          >
+            <div className={`bg-muted animate-pulse ${height}`} />
+          </FeedbackSectionCard>
         ))}
       </div>
     </FeedbackReviewShell>

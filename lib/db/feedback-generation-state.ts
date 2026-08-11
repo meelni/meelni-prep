@@ -1,5 +1,11 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
-import type { FeedbackV2Result } from "@meelni/core";
+import {
+  hasServerOwnedEvidenceLimitedContent,
+  isEvidenceLimitedFeedbackResult,
+  type FeedbackEvaluationResult,
+  type FeedbackOutcomeReason,
+  type SkippedFeedbackOutcomeReason,
+} from "@meelni/core";
 
 import { db } from "./index";
 import { feedback } from "./schema";
@@ -24,9 +30,17 @@ export interface FeedbackGenerationRecord {
   sessionId: string;
   status: FeedbackGenerationStatus;
   statusReason: string | null;
+  outcomeReason: FeedbackOutcomeReason | null;
   eventId: string | null;
   processingStartedAt: Date | null;
   completionTier: "full" | "partial" | "insufficient" | "abandoned" | null;
+  completionStats: {
+    totalTurns: number;
+    userTurns: number;
+    totalWords: number;
+    durationSeconds: number;
+    substantiveResponses: number;
+  } | null;
   dispatchStatus: "not_required" | "pending" | "sending" | "sent" | "failed";
   dispatchClaimedAt: Date | null;
   dispatchedAt: Date | null;
@@ -47,13 +61,13 @@ export interface FeedbackGenerationStore {
   complete(input: {
     sessionId: string;
     eventId: string;
-    evaluation: FeedbackV2Result;
+    evaluation: FeedbackEvaluationResult;
     processingDurationMs: number;
   }): Promise<boolean>;
   skip(input: {
     sessionId: string;
     eventId: string;
-    reason: string;
+    reason: SkippedFeedbackOutcomeReason;
     completionTier?: "insufficient";
   }): Promise<boolean>;
   fail(input: {
@@ -66,6 +80,8 @@ export interface FeedbackGenerationStore {
     now: Date;
   }): Promise<FeedbackGenerationRetryPreparation>;
 }
+
+export type FeedbackGenerationDatabase = Pick<typeof db, "query" | "update">;
 
 export function isFeedbackGenerationLeaseExpired(
   record: Pick<FeedbackGenerationRecord, "status" | "processingStartedAt">,
@@ -105,21 +121,24 @@ export function isFeedbackQueueLeaseExpired(
   );
 }
 
-export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore {
+export function createDrizzleFeedbackGenerationStore(
+  database: FeedbackGenerationDatabase = db
+): FeedbackGenerationStore {
   return {
     async get(sessionId) {
-      const row = await db.query.feedback.findFirst({
+      const row = await database.query.feedback.findFirst({
         where: eq(feedback.sessionId, sessionId),
       });
       return row ? mapRecord(row) : null;
     },
 
     async claim({ sessionId, eventId, now }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "processing",
           statusReason: null,
+          outcomeReason: null,
           processingStartedAt: now,
         })
         .where(
@@ -135,20 +154,38 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
-      const rows = await db
+      const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
+      if (
+        evidenceLimited &&
+        !hasServerOwnedEvidenceLimitedContent({
+          strengths: evaluation.strengths,
+          improvements: evaluation.improvements,
+          summary: evaluation.summary,
+        })
+      ) {
+        throw new Error("evidence_limited_persistence_contract_invalid");
+      }
+      const rows = await database
         .update(feedback)
         .set({
           status: "completed",
           statusReason: null,
-          overallScore: evaluation.overallScore.toString(),
-          structureScore: evaluation.scores.structure,
-          clarityScore: evaluation.scores.clarity,
-          insightScore: evaluation.scores.insight,
-          communicationScore: evaluation.scores.communication,
-          leadershipScore: evaluation.scores.leadership,
+          outcomeReason: "feedback_generated",
+          overallScore: evidenceLimited
+            ? null
+            : evaluation.overallScore.toString(),
+          structureScore: evidenceLimited ? null : evaluation.scores.structure,
+          clarityScore: evidenceLimited ? null : evaluation.scores.clarity,
+          insightScore: evidenceLimited ? null : evaluation.scores.insight,
+          communicationScore: evidenceLimited
+            ? null
+            : evaluation.scores.communication,
+          leadershipScore: evidenceLimited
+            ? null
+            : evaluation.scores.leadership,
           strengths: evaluation.strengths,
           improvements: evaluation.improvements,
-          drills: evaluation.drills,
+          drills: evidenceLimited ? [] : evaluation.drills,
           summary: evaluation.summary,
           processingDurationMs,
           schemaVersion: evaluation.schemaVersion,
@@ -163,11 +200,12 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async skip({ sessionId, eventId, reason, completionTier }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "skipped",
           statusReason: reason,
+          outcomeReason: reason,
           ...(completionTier ? { completionTier } : {}),
           overallScore: null,
           structureScore: null,
@@ -191,11 +229,12 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
     },
 
     async fail({ sessionId, eventId, reason }) {
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "failed",
           statusReason: reason,
+          outcomeReason: "generation_failed",
           dispatchStatus: "failed",
           dispatchLastError: "feedback_generation_failed",
         })
@@ -211,11 +250,12 @@ export function createDrizzleFeedbackGenerationStore(): FeedbackGenerationStore 
       const staleQueueBefore = new Date(
         now.getTime() - FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS
       );
-      const rows = await db
+      const rows = await database
         .update(feedback)
         .set({
           status: "pending",
           statusReason: null,
+          outcomeReason: null,
           processingStartedAt: null,
           dispatchStatus: "failed",
           dispatchClaimedAt: null,
@@ -271,9 +311,11 @@ function mapRecord(
     sessionId: row.sessionId,
     status: row.status as FeedbackGenerationStatus,
     statusReason: row.statusReason,
+    outcomeReason: row.outcomeReason,
     eventId: row.dispatchEventId,
     processingStartedAt: row.processingStartedAt,
     completionTier: row.completionTier,
+    completionStats: row.completionStats,
     dispatchStatus: row.dispatchStatus,
     dispatchClaimedAt: row.dispatchClaimedAt,
     dispatchedAt: row.dispatchedAt,

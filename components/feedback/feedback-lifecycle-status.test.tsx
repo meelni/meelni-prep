@@ -118,6 +118,7 @@ test("retryable failure exposes recovery instead of an indefinite loading state"
       state: {
         kind: "failed-retryable",
         message: "The saved interview is ready to retry.",
+        outcomeReason: "generation_failed",
       },
       recovering: false,
       recoveryError: null,
@@ -127,6 +128,31 @@ test("retryable failure exposes recovery instead of an indefinite loading state"
   assert.match(html, /Feedback review failed/);
   assert.match(html, /Try feedback again/);
   assert.doesNotMatch(html, /Loading your saved feedback/);
+});
+
+test("dispatch failure remains a truthful actionable system state", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "dispatch-failed",
+        retryable: true,
+        message: "Your interview is saved, but feedback could not be queued.",
+        outcomeReason: "dispatch_failed",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Feedback could not be queued/);
+  assert.match(html, /interview is saved/i);
+  assert.match(html, /Queue feedback again/);
+  assert.match(html, /Back to dashboard/);
+  assert.doesNotMatch(
+    html,
+    /provider|model|duration|microphone|answer quality|try harder/i
+  );
 });
 
 test("invalid completed feedback exposes no inferred score", () => {
@@ -161,38 +187,23 @@ test("unsupported lifecycle payloads render an explicit unavailable state", () =
   assert.doesNotMatch(html, /Loading your saved feedback/);
 });
 
-for (const { name, stats } of [
-  {
-    name: "duration-only insufficiency",
-    stats: {
-      totalTurns: 6,
-      userTurns: 3,
-      totalWords: 180,
-      durationSeconds: 240,
-      substantiveResponses: 3,
-    },
-  },
-  {
-    name: "turn-count-only insufficiency",
-    stats: {
-      totalTurns: 4,
-      userTurns: 3,
-      totalWords: 180,
-      durationSeconds: 360,
-      substantiveResponses: 3,
-    },
-  },
-]) {
-  test(`uses threshold-neutral copy for ${name}`, () => {
+for (const outcomeReason of [
+  "no_reviewable_answer",
+  "transcript_integrity_degraded",
+] as const) {
+  test(`uses system-safe copy for ${outcomeReason}`, () => {
     const html = renderToStaticMarkup(
       React.createElement(FeedbackLifecycleStatus, {
         state: {
-          kind: "skipped-insufficient",
+          kind:
+            outcomeReason === "transcript_integrity_degraded"
+              ? "transcript-integrity-degraded"
+              : "no-reviewable-answer",
           details: {
+            outcomeReason,
             tier: "insufficient",
             reasons: [],
             recommendations: [],
-            stats,
           },
         },
         recovering: false,
@@ -203,8 +214,10 @@ for (const { name, stats } of [
 
     assert.match(
       html,
-      /The recorded interview did not meet the minimum evidence threshold for honest scores\./
+      outcomeReason === "transcript_integrity_degraded"
+        ? /saved transcript could not be verified/i
+        : /saved interview does not contain a reviewable candidate answer/i
     );
-    assert.doesNotMatch(html, /not enough substantive answers/i);
+    assert.doesNotMatch(html, /duration|microphone|try harder|answer length/i);
   });
 }

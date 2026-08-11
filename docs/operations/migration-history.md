@@ -37,10 +37,11 @@
 |    28 | `0028_focused_practice_attempts`         |
 |    29 | `0029_durable_contact_submission`        |
 |    30 | `0030_transcript_committed_watermarks`   |
+|    31 | `0031_sav_397_feedback_outcomes`         |
 
 <!-- migration-journal:end -->
 
-This thirty-one-entry inventory is generated from the same ordered contract as
+This thirty-two-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -334,3 +335,15 @@ can therefore freeze the exact database-proven prefix used by feedback without
 making availability depend on a final LiveKit round trip. Legacy terminal rows
 remain readable through the bounded compatibility path; rollback leaves the
 additive evidence fields and table unused rather than deleting customer data.
+
+## Evidence-gated feedback outcomes
+
+Migration `0031_sav_397_feedback_outcomes` adds the closed content-free
+`feedback.outcome_reason` taxonomy, backfills existing terminal and failed
+rows conservatively from feedback and frozen session state, and admits the
+strict scoreless `feedback.evidence-limited.v2` version tuple only with
+`evaluation_state = partial`, alongside scored Feedback v2's contracted
+`full` and `partial` states. The migration does not enqueue work, rerun
+evaluation, or change
+session, billing, provider, or customer state beyond this additive durable
+classification.

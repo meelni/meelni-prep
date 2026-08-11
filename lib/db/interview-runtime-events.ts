@@ -167,7 +167,8 @@ async function ensureProviderFailureFeedback(
     .values({
       sessionId,
       status: "skipped",
-      statusReason: "Interview ended because the voice service failed",
+      statusReason: "transcript_integrity_degraded",
+      outcomeReason: "transcript_integrity_degraded",
       rubricVersion: "1.0.0",
       dispatchStatus: "not_required",
     })

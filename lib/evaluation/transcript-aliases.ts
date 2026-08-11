@@ -2,6 +2,7 @@ import type {
   FeedbackTranscriptTurn,
   FeedbackV2Item,
   FeedbackV2Result,
+  EvidenceLimitedFeedbackResult,
 } from "@meelni/core";
 
 const TRANSCRIPT_ALIAS_PATTERN = /^turn_\d{4,}$/;
@@ -55,10 +56,9 @@ export function serializeEvaluationTranscript(
     .replace(/&/g, "\\u0026");
 }
 
-export function restoreCanonicalTranscriptIds(
-  result: FeedbackV2Result,
-  canonicalIdByAlias: ReadonlyMap<string, string>
-): FeedbackV2Result {
+export function restoreCanonicalTranscriptIds<
+  TResult extends FeedbackV2Result | EvidenceLimitedFeedbackResult,
+>(result: TResult, canonicalIdByAlias: ReadonlyMap<string, string>): TResult {
   return {
     ...result,
     strengths: result.strengths.map((item) =>
@@ -67,7 +67,7 @@ export function restoreCanonicalTranscriptIds(
     improvements: result.improvements.map((item) =>
       restoreItemIds(item, canonicalIdByAlias)
     ),
-  };
+  } as TResult;
 }
 
 function restoreItemIds(

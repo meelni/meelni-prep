@@ -10,6 +10,15 @@ import {
   type FeedbackLifecycleResponse,
   type PersistedCompletedFeedback,
 } from "./feedback-view-model";
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+} from "./feedback-evidence-limited";
 
 const finding = {
   dimension: "insight",
@@ -75,6 +84,67 @@ function present(
   return presentCompletedFeedback(input, { evidenceTurns: turns });
 }
 
+function evidenceLimitedCompleted(
+  overrides: Partial<PersistedCompletedFeedback> = {}
+): PersistedCompletedFeedback {
+  return completed({
+    structureScore: null,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: [
+      {
+        signalCode: "customer_problem_connection",
+        actionCode: "connect_customer_to_decision",
+        dimension: "insight",
+        observation:
+          EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+            .observation,
+        transcriptRefs: ["writer:1"],
+        evidence: [
+          {
+            turnRef: "writer:1",
+            quote: evidenceTurns[0]!.text,
+          },
+        ],
+        nextStep:
+          EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    improvements: [
+      {
+        signalCode: "structure_progression",
+        actionCode: "outline_reasoning",
+        dimension: "structure",
+        observation:
+          EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression
+            .observation,
+        transcriptRefs: ["writer:2"],
+        evidence: [
+          {
+            turnRef: "writer:2",
+            quote: evidenceTurns[1]!.text,
+          },
+        ],
+        nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    drills: [],
+    summary: EVIDENCE_LIMITED_SUMMARY,
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: "fixture-model-v2",
+    evaluationState: "partial",
+    ...overrides,
+  });
+}
+
 test("presents strict full and partial v2 feedback without score coercion", () => {
   const full = present(completed());
   assert.equal(full.kind, "v2");
@@ -103,6 +173,68 @@ test("presents strict full and partial v2 feedback without score coercion", () =
       feedback: partial,
     }).kind,
     "completed-partial"
+  );
+});
+
+test("presents and decodes only server-owned evidence-limited templates", () => {
+  const presented = present(evidenceLimitedCompleted());
+  assert.equal(presented.kind, "evidence-limited");
+  if (presented.kind !== "evidence-limited") return;
+  assert.equal(
+    presented.strengths[0]?.observation,
+    EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
+  );
+  assert.equal(
+    presented.strengths[0]?.evidence[0]?.quote,
+    evidenceTurns[0]!.text
+  );
+
+  const decoded = decodeFeedbackLifecycleResponse({
+    status: "completed",
+    retryable: false,
+    feedback: presented,
+  });
+  assert.equal(decoded?.status, "completed");
+  assert.equal(
+    toFeedbackViewState(decoded!).kind,
+    "completed-evidence-limited"
+  );
+
+  const providerCopy = structuredClone(presented);
+  providerCopy.strengths[0]!.observation = "VIII, grade A";
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: providerCopy,
+    }),
+    null
+  );
+  assert.equal(
+    present(evidenceLimitedCompleted({ strengths: providerCopy.strengths }))
+      .kind,
+    "invalid"
+  );
+
+  const duplicateIdentity = structuredClone(presented);
+  duplicateIdentity.strengths.push({
+    ...structuredClone(duplicateIdentity.strengths[0]!),
+    transcriptRefs: ["writer:2"],
+    evidence: [{ turnRef: "writer:2", quote: evidenceTurns[1]!.text }],
+  });
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: duplicateIdentity,
+    }),
+    null
+  );
+  assert.equal(
+    present(
+      evidenceLimitedCompleted({ strengths: duplicateIdentity.strengths })
+    ).kind,
+    "invalid"
   );
 });
 
@@ -421,16 +553,26 @@ test("keeps recovery attached to the authoritative lifecycle status", () => {
       status: "failed",
       retryable: true,
       message: "Feedback could not be completed.",
+      outcomeReason: "generation_failed",
     }),
-    { kind: "failed-retryable", message: "Feedback could not be completed." }
+    {
+      kind: "failed-retryable",
+      message: "Feedback could not be completed.",
+      outcomeReason: "generation_failed",
+    }
   );
   assert.equal(
     toFeedbackViewState({
       status: "skipped",
       retryable: false,
-      details: { tier: "abandoned", reasons: [], recommendations: [] },
+      details: {
+        outcomeReason: "no_reviewable_answer",
+        tier: "abandoned",
+        reasons: [],
+        recommendations: [],
+      },
     }).kind,
-    "skipped-abandoned"
+    "no-reviewable-answer"
   );
 });
 
@@ -442,28 +584,57 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
     [{ status: "pending", retryable: false }, "pending"],
     [{ status: "processing", retryable: false }, "processing"],
     [
-      { status: "failed", retryable: true, message: "Could not complete." },
+      {
+        status: "dispatch_failed",
+        retryable: true,
+        message: "Your interview is saved, but feedback could not be queued.",
+        outcomeReason: "dispatch_failed",
+      },
+      "dispatch-failed",
+    ],
+    [
+      {
+        status: "failed",
+        retryable: true,
+        message: "Could not complete.",
+        outcomeReason: "generation_failed",
+      },
       "failed-retryable",
     ],
     [
-      { status: "failed", retryable: false, message: "Could not complete." },
+      {
+        status: "failed",
+        retryable: false,
+        message: "Could not complete.",
+        outcomeReason: "generation_failed",
+      },
       "failed-terminal",
     ],
     [
       {
         status: "skipped",
         retryable: false,
-        details: { tier: "insufficient", reasons: [], recommendations: [] },
+        details: {
+          outcomeReason: "no_reviewable_answer",
+          tier: "insufficient",
+          reasons: [],
+          recommendations: [],
+        },
       },
-      "skipped-insufficient",
+      "no-reviewable-answer",
     ],
     [
       {
         status: "skipped",
         retryable: false,
-        details: { tier: "abandoned", reasons: [], recommendations: [] },
+        details: {
+          outcomeReason: "transcript_integrity_degraded",
+          tier: "abandoned",
+          reasons: [],
+          recommendations: [],
+        },
       },
-      "skipped-abandoned",
+      "transcript-integrity-degraded",
     ],
   ];
 
@@ -489,11 +660,27 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "settling", retryable: true, delayed: true },
     { status: "pending", retryable: true, estimatedTimeRemaining: 10 },
     { status: "processing", retryable: false },
-    { status: "failed", retryable: true, message: "Try again." },
+    {
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Your interview is saved, but feedback could not be queued.",
+      outcomeReason: "dispatch_failed",
+    },
+    {
+      status: "failed",
+      retryable: true,
+      message: "Try again.",
+      outcomeReason: "generation_failed",
+    },
     {
       status: "skipped",
       retryable: false,
-      details: { tier: "insufficient", reasons: [], recommendations: [] },
+      details: {
+        outcomeReason: "no_reviewable_answer",
+        tier: "insufficient",
+        reasons: [],
+        recommendations: [],
+      },
     },
     { status: "completed", retryable: false, feedback: validCompleted },
   ];
@@ -510,6 +697,11 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     { status: "settling", retryable: true, delayed: "yes" },
     { status: "pending", retryable: "yes" },
     { status: "processing", retryable: false, estimatedTimeRemaining: -1 },
+    {
+      status: "dispatch_failed",
+      retryable: true,
+      message: "Missing the required outcome.",
+    },
     { status: "failed", retryable: true },
     {
       status: "skipped",

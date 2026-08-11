@@ -16,7 +16,11 @@ import {
   useEvidenceTranscript,
 } from "./feedback-transcript";
 import { StatusPill } from "@/components/ui/app-surface";
-import type { FeedbackLegacyView, FeedbackV2View } from "@meelni/core";
+import type {
+  FeedbackEvidenceLimitedView,
+  FeedbackLegacyView,
+  FeedbackV2View,
+} from "@meelni/core";
 
 export function CompletedV2Review({
   feedback,
@@ -96,6 +100,76 @@ export function CompletedV2Review({
 
         <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
 
+        <FeedbackTranscriptSection
+          expanded={transcript.expanded}
+          onExpandedChange={transcript.setExpanded}
+          loading={transcript.loading}
+          error={transcript.error}
+          navigationError={transcript.navigationError}
+          turns={transcript.turns}
+          onRetry={transcript.retry}
+        />
+      </div>
+    </FeedbackReviewShell>
+  );
+}
+
+export function CompletedEvidenceLimitedReview({
+  feedback,
+}: {
+  feedback: FeedbackEvidenceLimitedView;
+}) {
+  const transcript = useEvidenceTranscript(feedback.sessionId);
+  return (
+    <FeedbackReviewShell
+      title="Interview feedback"
+      description="Useful observations grounded in the answer that was recorded."
+      action={<FeedbackDashboardLink />}
+    >
+      <div className="space-y-8">
+        <FeedbackSectionCard title="Evidence-limited review" tone="warning">
+          <p className="text-muted-foreground leading-6">
+            The recorded answer supports grounded coaching, but not honest
+            numerical scores. No score has been inferred.
+          </p>
+        </FeedbackSectionCard>
+        <FeedbackSectionCard title="Summary">
+          <p className="text-foreground text-base leading-7 wrap-anywhere">
+            {feedback.summary}
+          </p>
+        </FeedbackSectionCard>
+        {feedback.strengths.length > 0 && (
+          <FeedbackSectionCard
+            title="What worked"
+            icon={<CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
+            tone="success"
+            contentClassName="space-y-6"
+          >
+            {feedback.strengths.map((finding, index) => (
+              <FeedbackFindingCard
+                key={`strength:${index}`}
+                finding={finding}
+                onEvidenceSelect={transcript.selectEvidence}
+              />
+            ))}
+          </FeedbackSectionCard>
+        )}
+        {feedback.improvements.length > 0 && (
+          <FeedbackSectionCard
+            title="What to try next"
+            icon={<TrendingUp className="h-5 w-5" aria-hidden="true" />}
+            tone="warning"
+            contentClassName="space-y-6"
+          >
+            {feedback.improvements.map((finding, index) => (
+              <FeedbackFindingCard
+                key={`improvement:${index}`}
+                finding={finding}
+                onEvidenceSelect={transcript.selectEvidence}
+              />
+            ))}
+          </FeedbackSectionCard>
+        )}
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
           onExpandedChange={transcript.setExpanded}

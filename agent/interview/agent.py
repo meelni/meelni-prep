@@ -10,7 +10,6 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from itertools import count
 from pathlib import Path
 from uuid import uuid4
 from dotenv import load_dotenv
@@ -71,6 +70,7 @@ from shared.transcript_ingest import (
     TranscriptIngestQueueFull,
     TranscriptIngestQueueSealed,
     RuntimeSettlementRequestDispatcher,
+    WriterSequenceAllocator,
     create_interruption_marker,
     create_runtime_settlement,
     create_runtime_writer_registration,
@@ -262,8 +262,7 @@ async def entrypoint(ctx: JobContext):
         return
 
     # The runtime persists transcript evidence before publishing it to the room.
-    transcript_sequence = count(1)
-    interruption_sequence = count(1)
+    writer_sequence = WriterSequenceAllocator()
     background_transcript_tasks: set[asyncio.Task[object]] = set()
     background_transcript_projection_tasks: set[asyncio.Task[object]] = set()
     background_transcript_flush: asyncio.Task[object] | None = None
@@ -770,7 +769,8 @@ async def entrypoint(ctx: JobContext):
                     event_id=event_id,
                     writer_id=transcript_writer_id,
                     writer_generation=transcript_writer_generation,
-                    sequence=next(interruption_sequence),
+                    # Validate the marker before consuming the writer namespace.
+                    sequence=1,
                     session_id=session_id,
                     room_name=room_name,
                     speaker=speaker,
@@ -789,6 +789,9 @@ async def entrypoint(ctx: JobContext):
                             ),
                         )
                     ),
+                )
+                marker["sequence"] = writer_sequence.allocate(
+                    event_id=event_id, kind="interruption_marker"
                 )
                 interruption_markers_by_id[event_id] = marker
             elif marker["speaker"] != speaker or marker["reason"] != reason:
@@ -824,11 +827,8 @@ async def entrypoint(ctx: JobContext):
                 message=item,
                 writer_id=transcript_writer_id,
                 writer_generation=transcript_writer_generation,
-                sequence=(
-                    int(existing_event["sequence"])
-                    if existing_event is not None
-                    else next(transcript_sequence)
-                ),
+                # Validate a new event before consuming the writer namespace.
+                sequence=int(existing_event["sequence"]) if existing_event else 1,
                 session_id=session_id,
                 room_name=room_name,
                 section=round_type,
@@ -851,6 +851,9 @@ async def entrypoint(ctx: JobContext):
                 return
 
             if existing_event is None:
+                transcript_data["sequence"] = writer_sequence.allocate(
+                    event_id=transcript_event_id, kind="transcript"
+                )
                 transcript_events_by_id[transcript_event_id] = transcript_data
             transcript_queue.enqueue_transcript(
                 transcript_data,

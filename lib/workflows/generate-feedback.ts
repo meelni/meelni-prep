@@ -1,8 +1,12 @@
 import {
   prepareFeedbackTranscript,
+  isEvidenceLimitedFeedbackResult,
+  parsePersistedEvidenceLimitedFeedback,
+  FEEDBACK_NUMERICAL_PRECISION_POLICY,
   type FeedbackEvaluationState,
-  type FeedbackV2Result,
+  type FeedbackEvaluationResult,
   type PreparedFeedbackTranscript,
+  type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
 
 import {
@@ -17,6 +21,7 @@ import {
   generateFeedback as generateEvaluation,
   type StartFeedbackObservabilityTrace,
 } from "@/lib/evaluation/scorer";
+import { generateEvidenceLimitedFeedback } from "@/lib/evaluation/evidence-limited-scorer";
 import {
   SessionTier,
   validateSessionCompleteness,
@@ -57,7 +62,8 @@ export interface GenerateFeedbackWorkflowDeps {
     roundType: string;
     transcript: PreparedFeedbackTranscript["transcript"];
     evaluationState: FeedbackEvaluationState;
-  }): Promise<FeedbackV2Result>;
+    mode: "scored" | "evidence_limited";
+  }): Promise<FeedbackEvaluationResult>;
 }
 
 export type GenerateFeedbackWorkflowResult =
@@ -72,7 +78,7 @@ export type GenerateFeedbackWorkflowResult =
       status: "skipped";
       disposition: "applied" | "already_terminal";
       sessionId: string;
-      reason?: string;
+      reason?: SkippedFeedbackOutcomeReason;
       endToFeedbackMs?: number;
     }
   | {
@@ -149,9 +155,7 @@ export async function generateFeedbackWorkflow(
         input,
         deps,
         endingAtMs: authorization.session.endingAtMs,
-        reason:
-          validation.reasons.join(", ") ||
-          "Session is not eligible for feedback",
+        reason: validation.evidenceFailureReason ?? "no_reviewable_answer",
         completionTier: "insufficient",
       });
     }
@@ -161,7 +165,10 @@ export async function generateFeedbackWorkflow(
       input,
       deps,
       endingAtMs: authorization.session.endingAtMs,
-      reason: "Session is not eligible for feedback",
+      reason:
+        claimed.outcomeReason === "transcript_integrity_degraded"
+          ? "transcript_integrity_degraded"
+          : "no_reviewable_answer",
     });
   }
 
@@ -173,8 +180,14 @@ export async function generateFeedbackWorkflow(
       input,
       deps,
       endingAtMs: authorization.session.endingAtMs,
-      reason:
-        transcript.reasons[0] || "No trustworthy transcript evidence found",
+      reason: transcript.issues.some(
+        (issue) =>
+          issue.fatal &&
+          (issue.code === "malformed_event" ||
+            issue.code === "prompt_injection")
+      )
+        ? "transcript_integrity_degraded"
+        : "no_reviewable_answer",
       completionTier: "insufficient",
     });
   }
@@ -192,11 +205,35 @@ export async function generateFeedbackWorkflow(
     }
 
     const startedAt = deps.now();
-    const evaluation = await deps.evaluate({
+    const mode =
+      evaluationState === "partial" &&
+      (claimed.completionStats?.substantiveResponses ?? 1) <
+        FEEDBACK_NUMERICAL_PRECISION_POLICY.minSubstantiveResponses
+        ? "evidence_limited"
+        : "scored";
+    const providerEvaluation = await deps.evaluate({
       roundType: authorization.session.roundType || "product_sense",
       transcript: transcript.transcript,
       evaluationState,
+      mode,
     });
+    const evaluation = isEvidenceLimitedFeedbackResult(providerEvaluation)
+      ? parsePersistedEvidenceLimitedFeedback(
+          {
+            schemaVersion: providerEvaluation.schemaVersion,
+            promptVersion: providerEvaluation.promptVersion,
+            rubricVersion: providerEvaluation.rubricVersion,
+            evaluationState: providerEvaluation.evaluationState,
+            strengths: providerEvaluation.strengths,
+            improvements: providerEvaluation.improvements,
+            summary: providerEvaluation.summary,
+          },
+          {
+            transcript: transcript.transcript,
+            modelVersion: providerEvaluation.modelVersion,
+          }
+        )
+      : providerEvaluation;
     if (evaluation.evaluationState !== evaluationState) {
       throw new Error("feedback_generation_evaluation_state_mismatch");
     }
@@ -246,7 +283,9 @@ export async function generateFeedbackWorkflow(
     status: "completed",
     disposition: "applied",
     sessionId: input.sessionId,
-    overallScore: evaluated.evaluation.overallScore,
+    ...(!isEvidenceLimitedFeedbackResult(evaluated.evaluation)
+      ? { overallScore: evaluated.evaluation.overallScore }
+      : {}),
     ...endToFeedbackTiming(authorization.session.endingAtMs, completedAt),
   };
 }
@@ -320,10 +359,14 @@ export function createGenerateFeedbackWorkflowDeps(
         { requireContractV2: true }
       );
     },
-    evaluate: ({ roundType, transcript, evaluationState }) =>
-      generateEvaluation(roundType, transcript, evaluationState, {
-        startObservabilityTrace: dependencies.startObservabilityTrace,
-      }),
+    evaluate: ({ roundType, transcript, evaluationState, mode }) =>
+      mode === "evidence_limited"
+        ? generateEvidenceLimitedFeedback(roundType, transcript, {
+            startObservabilityTrace: dependencies.startObservabilityTrace,
+          })
+        : generateEvaluation(roundType, transcript, evaluationState, {
+            startObservabilityTrace: dependencies.startObservabilityTrace,
+          }),
   };
 }
 
@@ -340,7 +383,7 @@ async function skipClaimedFeedback(input: {
   input: GenerateFeedbackWorkflowInput;
   deps: GenerateFeedbackWorkflowDeps;
   endingAtMs: number | null | undefined;
-  reason: string;
+  reason: SkippedFeedbackOutcomeReason;
   completionTier?: "insufficient";
 }): Promise<GenerateFeedbackWorkflowResult> {
   await assertAccountIsActive(input.input.userId, input.deps);
