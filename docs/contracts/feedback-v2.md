@@ -140,8 +140,13 @@ taxonomy. `transcriptRef` is also an enum, dynamically restricted to candidate
 turn aliases in the frozen evidence snapshot. Additional properties and
 freeform strings are forbidden. Both arrays require at least one selection;
 unknown codes, dimension-mismatched signal/action pairs, empty arrays,
-duplicate references within one category, missing or interviewer references,
-and malformed selections fail as provider-neutral `generation_failed`.
+repeated signal codes within one category, repeated action codes across either
+category, duplicate references within one category, missing or interviewer
+references, and malformed selections fail as provider-neutral
+`generation_failed`. A different frozen reference does not make a repeated
+signal or action distinct. Distinct strength and improvement selections may
+share one frozen candidate turn; reference reuse across those categories is
+intentional for useful one-answer feedback.
 
 After validation, the server maps each code to an exact observation,
 next-step, dimension, and confidence template, maps the result summary to one

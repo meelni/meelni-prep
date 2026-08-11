@@ -881,6 +881,82 @@ describe("/api/feedback/[sessionId]", () => {
       },
     });
   });
+
+  it("fails closed before the API can return duplicate evidence-limited coaching identities", async () => {
+    const strength = {
+      signalCode: "customer_problem_connection",
+      actionCode: "connect_customer_to_decision",
+      dimension: "insight",
+      observation:
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation,
+      transcriptRefs: ["writer:1"],
+      evidence: [
+        {
+          turnRef: "writer:1",
+          quote: "I would focus on working parents first.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    const duplicateStrength = {
+      ...structuredClone(strength),
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+    };
+    const improvement = {
+      signalCode: "structure_progression",
+      actionCode: "outline_reasoning",
+      dimension: "structure",
+      observation:
+        EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression.observation,
+      transcriptRefs: ["writer:2"],
+      evidence: [
+        {
+          turnRef: "writer:2",
+          quote:
+            "First, I would define the goal; first, I would then prioritize.",
+        },
+      ],
+      nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+      rubricVersion: "pm-feedback-rubric.v2",
+      confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    };
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        strengths: [strength, duplicateStrength],
+        improvements: [improvement],
+        drills: [],
+        summary: EVIDENCE_LIMITED_SUMMARY,
+        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+        modelVersion: "fixture-model-v2",
+        rubricVersion: "pm-feedback-rubric.v2",
+        evaluationState: "partial",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+    expect(JSON.stringify(payload)).not.toContain(
+      EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
+    );
+  });
 });
 
 function request(method = "GET") {

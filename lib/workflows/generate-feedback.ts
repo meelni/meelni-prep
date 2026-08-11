@@ -1,6 +1,7 @@
 import {
   prepareFeedbackTranscript,
   isEvidenceLimitedFeedbackResult,
+  parsePersistedEvidenceLimitedFeedback,
   FEEDBACK_NUMERICAL_PRECISION_POLICY,
   type FeedbackEvaluationState,
   type FeedbackEvaluationResult,
@@ -210,12 +211,29 @@ export async function generateFeedbackWorkflow(
         FEEDBACK_NUMERICAL_PRECISION_POLICY.minSubstantiveResponses
         ? "evidence_limited"
         : "scored";
-    const evaluation = await deps.evaluate({
+    const providerEvaluation = await deps.evaluate({
       roundType: authorization.session.roundType || "product_sense",
       transcript: transcript.transcript,
       evaluationState,
       mode,
     });
+    const evaluation = isEvidenceLimitedFeedbackResult(providerEvaluation)
+      ? parsePersistedEvidenceLimitedFeedback(
+          {
+            schemaVersion: providerEvaluation.schemaVersion,
+            promptVersion: providerEvaluation.promptVersion,
+            rubricVersion: providerEvaluation.rubricVersion,
+            evaluationState: providerEvaluation.evaluationState,
+            strengths: providerEvaluation.strengths,
+            improvements: providerEvaluation.improvements,
+            summary: providerEvaluation.summary,
+          },
+          {
+            transcript: transcript.transcript,
+            modelVersion: providerEvaluation.modelVersion,
+          }
+        )
+      : providerEvaluation;
     if (evaluation.evaluationState !== evaluationState) {
       throw new Error("feedback_generation_evaluation_state_mismatch");
     }

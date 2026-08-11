@@ -17,11 +17,11 @@ import {
 test("evidence-limited provider schema permits only closed selections and trusted refs", () => {
   assert.equal(
     FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION,
-    "feedback-evidence-limited-provider-response-format.v3"
+    "feedback-evidence-limited-provider-response-format.v4"
   );
   assert.equal(
     getEvidenceLimitedProviderResponseFormatContractHash(),
-    "b1a2d8cd2f5235161f1c387894ab07162e61f0b3540d1f2a0be2454933deb38c"
+    "1026f1af3ae29b4d0f0df384ff840964256f0627b6792f0e8e6f0254c7df703f"
   );
 
   const format = getEvidenceLimitedProviderResponseFormat([
@@ -44,6 +44,8 @@ test("evidence-limited provider schema permits only closed selections and truste
   assert.equal(schema.properties.strengths.maxItems, 2);
   assert.equal(schema.properties.improvements.minItems, 1);
   assert.equal(schema.properties.improvements.maxItems, 2);
+  assert.match(schema.properties.strengths.description, /Do not repeat/);
+  assert.match(schema.properties.improvements.description, /across strengths/);
 
   const strength = schema.properties.strengths.items;
   const improvement = schema.properties.improvements.items;

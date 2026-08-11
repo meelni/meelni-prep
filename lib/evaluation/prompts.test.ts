@@ -175,6 +175,9 @@ test("evidence-limited prompt requests only closed codes and trusted refs", () =
   assert.match(prompt, /connect_customer_to_decision/);
   assert.match(prompt, /Return only catalog signalCode\/actionCode values/);
   assert.match(prompt, /Do not return narrative, quote text, copied evidence/);
+  assert.match(prompt, /Use each signalCode at most once/);
+  assert.match(prompt, /each actionCode at most once across the whole result/);
+  assert.match(prompt, /Distinct strength and improvement selections may cite/);
   assert.match(prompt, /40%/);
   assert.match(prompt, /8\/10/);
 });

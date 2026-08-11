@@ -23,9 +23,11 @@ improvement signal, and next-action codes plus a candidate-turn alias selected
 from a request-specific enum. Both result arrays are non-empty, each is bounded
 at two items, and the total resolved result is bounded at three. The core
 parser rejects unknown or extra fields, dimension-mismatched code pairs,
-duplicate category references, and aliases that do not resolve to a frozen
-candidate turn. Those failures are provider generation failures and never
-become `no_reviewable_answer`.
+repeated signal codes within a category, repeated action codes across the
+result even when references differ, duplicate category references, and aliases
+that do not resolve to a frozen candidate turn. Those failures are provider
+generation failures and never become `no_reviewable_answer`. Distinct strength
+and improvement selections may intentionally cite the same frozen turn.
 
 After selection validation, the server maps the codes to a finite PM-rubric
 template map for dimension, observation, next step, confidence, and summary.

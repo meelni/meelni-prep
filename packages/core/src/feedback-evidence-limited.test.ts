@@ -160,6 +160,39 @@ test("rejects unknown codes, malformed selections, empty arrays, and invalid ref
   });
   cases.push({ name: "duplicate strength ref", value: duplicateStrengthRef });
 
+  const duplicateStrengthIdentity = selection();
+  duplicateStrengthIdentity.strengths.push({
+    signalCode: "customer_problem_connection",
+    actionCode: "connect_customer_to_decision",
+    transcriptRef: "writer:answer:2",
+  });
+  cases.push({
+    name: "duplicate strength identity with a different ref",
+    value: duplicateStrengthIdentity,
+  });
+
+  const duplicateImprovementIdentity = selection();
+  duplicateImprovementIdentity.improvements.push({
+    signalCode: "tradeoff_decision",
+    actionCode: "compare_tradeoffs_and_choose",
+    transcriptRef: "writer:answer:2",
+  });
+  cases.push({
+    name: "duplicate improvement identity with a different ref",
+    value: duplicateImprovementIdentity,
+  });
+
+  const duplicateActionAcrossCategories = selection();
+  duplicateActionAcrossCategories.improvements[0] = {
+    signalCode: "customer_decision_connection",
+    actionCode: "connect_customer_to_decision",
+    transcriptRef: "writer:answer:2",
+  };
+  cases.push({
+    name: "duplicate action identity across strength and improvement",
+    value: duplicateActionAcrossCategories,
+  });
+
   const missingRef = selection();
   missingRef.strengths[0]!.transcriptRef = "writer:missing";
   cases.push({ name: "missing ref", value: missingRef });
@@ -243,6 +276,52 @@ test("persisted evidence-limited content must match codes, templates, and frozen
   tamperedCitation.strengths[0]!.evidence[0]!.quote = "40%";
   assert.throws(() =>
     parsePersistedEvidenceLimitedFeedback(tamperedCitation, {
+      transcript,
+      modelVersion: "fixture-model-v1",
+    })
+  );
+
+  const duplicateStrength = persisted(resolved);
+  duplicateStrength.strengths.push({
+    ...structuredClone(duplicateStrength.strengths[0]!),
+    transcriptRefs: ["writer:answer:2"],
+    evidence: [
+      {
+        turnRef: "writer:answer:2",
+        quote: transcript[2]!.text,
+      },
+    ],
+  });
+  assert.equal(hasServerOwnedEvidenceLimitedContent(duplicateStrength), false);
+  assert.throws(() =>
+    parsePersistedEvidenceLimitedFeedback(duplicateStrength, {
+      transcript,
+      modelVersion: "fixture-model-v1",
+    })
+  );
+
+  const duplicateAction = persisted(resolved);
+  duplicateAction.improvements[0] = {
+    signalCode: "customer_decision_connection",
+    actionCode: "connect_customer_to_decision",
+    dimension: "insight",
+    observation:
+      EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.customer_decision_connection
+        .observation,
+    transcriptRefs: ["writer:answer:2"],
+    evidence: [
+      {
+        turnRef: "writer:answer:2",
+        quote: transcript[2]!.text,
+      },
+    ],
+    nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+    rubricVersion: FEEDBACK_RUBRIC_VERSION,
+    confidence: EVIDENCE_LIMITED_CONFIDENCE,
+  };
+  assert.equal(hasServerOwnedEvidenceLimitedContent(duplicateAction), false);
+  assert.throws(() =>
+    parsePersistedEvidenceLimitedFeedback(duplicateAction, {
       transcript,
       modelVersion: "fixture-model-v1",
     })

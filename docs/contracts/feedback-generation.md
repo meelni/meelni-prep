@@ -35,8 +35,12 @@ finite server-owned observation, next-step, dimension, confidence, and summary
 template map. It restores the exact frozen turn text as the citation; provider
 text is never copied into that citation. The resolved result persists two or
 three findings and never persists or presents inferred scores. Unknown codes,
-empty arrays, duplicate or invalid references, extra strings, or any malformed
-selection remain `generation_failed`, not candidate insufficiency.
+empty arrays, repeated signal codes, repeated action codes even when their
+references differ, duplicate or invalid references, extra strings, or any
+malformed selection remain `generation_failed`, not candidate insufficiency.
+Signal identity is unique within strengths or improvements, and action identity
+is unique across both arrays. Distinct strength and improvement selections may
+cite the same frozen candidate turn so one-answer feedback remains useful.
 
 A frozen session with no trustworthy substantive candidate answer becomes
 `no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed

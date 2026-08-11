@@ -215,6 +215,27 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
       .kind,
     "invalid"
   );
+
+  const duplicateIdentity = structuredClone(presented);
+  duplicateIdentity.strengths.push({
+    ...structuredClone(duplicateIdentity.strengths[0]!),
+    transcriptRefs: ["writer:2"],
+    evidence: [{ turnRef: "writer:2", quote: evidenceTurns[1]!.text }],
+  });
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: duplicateIdentity,
+    }),
+    null
+  );
+  assert.equal(
+    present(
+      evidenceLimitedCompleted({ strengths: duplicateIdentity.strengths })
+    ).kind,
+    "invalid"
+  );
 });
 
 test("rebuilds the complete trusted Feedback v2 shape for internal workflows", () => {

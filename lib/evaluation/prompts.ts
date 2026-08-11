@@ -113,7 +113,7 @@ Return this exact JSON shape:
   ]
 }
 
-Return at least one strength and one improvement, no more than two in either array, and no more than three selections total. Use each transcriptRef at most once within strengths and at most once within improvements. A one-answer transcript may use the same candidate alias once as a strength and once as an improvement. Choose only signal and action codes listed in the supplied catalog, and choose an action whose PM dimension matches the signal. Include no fields other than the exact shape above. Never cite interviewer speech or invent an alias.`;
+Return at least one strength and one improvement, no more than two in either array, and no more than three selections total. Use each signalCode at most once within its selection category. Use each actionCode at most once across strengths and improvements. Different selections may cite the same candidate alias once in strengths and once in improvements, so a one-answer transcript can still receive useful feedback. Choose only signal and action codes listed in the supplied catalog, and choose an action whose PM dimension matches the signal. Include no fields other than the exact shape above. Never cite interviewer speech or invent an alias.`;
 
 export const ROUND_TYPE_PROMPTS = {
   product_sense: `
@@ -263,6 +263,8 @@ ${serializeEvidenceLimitedSelectionCatalog()}
 - Do not return narrative, quote text, copied evidence, numbers, confidence, scores, or any extra field.
 - Select each signal only when its cited candidate turn supports it.
 - The actionCode must use the same PM dimension as its signalCode.
+- Use each signalCode at most once within its category and each actionCode at most once across the whole result, even when different candidate turns support it.
+- Distinct strength and improvement selections may cite the same candidate alias.
 - Return at least one strength and one improvement, with no more than three selections total.
 
 **Aliased transcript records:**
