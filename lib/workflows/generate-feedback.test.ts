@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type {
-  FeedbackEvaluationState,
-  FeedbackV2Result,
-  PreparedFeedbackTranscript,
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  FeedbackV2ParseError,
+  type FeedbackEvaluationResult,
+  type FeedbackEvaluationState,
+  type FeedbackV2Result,
+  type PreparedFeedbackTranscript,
 } from "@meelni/core";
 
+import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import type {
   FeedbackGenerationRecord,
   FeedbackGenerationStore,
@@ -241,6 +251,171 @@ test("untrusted transcript is skipped without provider or insight work", async (
   assert.equal(insights.length, 0);
 });
 
+test("unknown evidence-limited selection remains generation failure, not insufficiency", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 2,
+        userTurns: 1,
+        totalWords: 24,
+        durationSeconds: 20,
+        substantiveResponses: 1,
+      },
+    })
+  );
+  const rejection = new FeedbackV2ParseError(
+    "finding_text_invalid",
+    "unknown evidence-limited strength signal code"
+  );
+  let observedMode: "scored" | "evidence_limited" | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observedMode = input.mode;
+      throw rejection;
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /unknown evidence-limited strength signal code/
+  );
+  assert.equal(observedMode, "evidence_limited");
+  assert.equal(store.current.status, "processing");
+  assert.notEqual(store.current.status, "skipped");
+
+  const failureReason = getEvaluationFailureReason(rejection);
+  assert.equal(
+    failureReason,
+    "Feedback evaluation failed. Check worker logs and retry."
+  );
+  assert.equal(
+    await failFeedbackGenerationWorkflow(
+      { ...input(EVENT_1), reason: failureReason },
+      {
+        store,
+        isDeletionPending: async () => false,
+        getSession: async () => ({ userId: USER_ID, roundType: "strategy" }),
+      }
+    ),
+    true
+  );
+  assert.equal(store.current.status, "failed");
+  assert.equal(store.current.statusReason, failureReason);
+});
+
+test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
+  const turns = [
+    {
+      eventId: "turn-1",
+      speaker: "user" as const,
+      text: "I would focus on new parents and measure retained use.",
+    },
+    {
+      eventId: "turn-2",
+      speaker: "user" as const,
+      text: "I would interview working parents and connect the need to prioritization.",
+    },
+  ];
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 2,
+        userTurns: 2,
+        totalWords: 22,
+        durationSeconds: 24,
+        substantiveResponses: 1,
+      },
+    })
+  );
+  const duplicateFinding = {
+    signalCode: "customer_problem_connection" as const,
+    actionCode: "connect_customer_to_decision" as const,
+    dimension: "insight" as const,
+    observation:
+      EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation,
+    transcriptRefs: [turns[0]!.eventId],
+    evidence: [{ turnRef: turns[0]!.eventId, quote: turns[0]!.text }],
+    nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+    rubricVersion: "pm-feedback-rubric.v2" as const,
+    confidence: EVIDENCE_LIMITED_CONFIDENCE,
+  };
+  const invalidEvaluation = {
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: "fixture-model-v2",
+    rubricVersion: "pm-feedback-rubric.v2" as const,
+    evaluationState: "partial" as const,
+    strengths: [
+      duplicateFinding,
+      {
+        ...duplicateFinding,
+        transcriptRefs: [turns[1]!.eventId],
+        evidence: [{ turnRef: turns[1]!.eventId, quote: turns[1]!.text }],
+      },
+    ],
+    improvements: [
+      {
+        signalCode: "structure_progression" as const,
+        actionCode: "outline_reasoning" as const,
+        dimension: "structure" as const,
+        observation:
+          EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.structure_progression
+            .observation,
+        transcriptRefs: [turns[0]!.eventId],
+        evidence: [{ turnRef: turns[0]!.eventId, quote: turns[0]!.text }],
+        nextStep: EVIDENCE_LIMITED_ACTIONS.outline_reasoning.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2" as const,
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    summary: EVIDENCE_LIMITED_SUMMARY,
+  };
+  const deps = dependencies(store, {
+    transcript: {
+      eligible: true,
+      transcript: turns,
+      reasons: [],
+      issues: [],
+      duplicateTurnsRemoved: 0,
+    },
+    async evaluate() {
+      return invalidEvaluation;
+    },
+  });
+
+  let rejection: unknown;
+  try {
+    await generateFeedbackWorkflow(input(EVENT_1), deps);
+  } catch (error) {
+    rejection = error;
+  }
+  assert.ok(rejection instanceof FeedbackV2ParseError);
+  assert.match(rejection.message, /selections must be unique/);
+  assert.equal(store.current.status, "processing");
+  assert.equal(store.completedScore, null);
+
+  const failureReason = getEvaluationFailureReason(rejection);
+  assert.equal(
+    failureReason,
+    "Feedback evaluation failed. Check worker logs and retry."
+  );
+  assert.equal(
+    await failFeedbackGenerationWorkflow(
+      { ...input(EVENT_1), reason: failureReason },
+      {
+        store,
+        isDeletionPending: async () => false,
+        getSession: async () => ({ userId: USER_ID, roundType: "strategy" }),
+      }
+    ),
+    true
+  );
+  assert.equal(store.current.status, "failed");
+  assert.notEqual(store.current.status, "skipped");
+});
+
 test("durable replay closes the completion-to-insights crash window exactly once", async () => {
   const store = new MemoryGenerationStore(record());
   const cachedSteps = new Map<string, unknown>();
@@ -368,9 +543,17 @@ function record(
     sessionId: SESSION_ID,
     status: "pending",
     statusReason: null,
+    outcomeReason: null,
     eventId: EVENT_1,
     processingStartedAt: null,
     completionTier: "full",
+    completionStats: {
+      totalTurns: 10,
+      userTurns: 5,
+      totalWords: 100,
+      durationSeconds: 60,
+      substantiveResponses: 5,
+    },
     dispatchStatus: "sent",
     dispatchClaimedAt: NOW,
     dispatchedAt: NOW,
@@ -436,15 +619,20 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
   async complete(input: {
     sessionId: string;
     eventId: string;
-    evaluation: FeedbackV2Result;
+    evaluation: FeedbackEvaluationResult;
   }) {
     if (!this.isActive(input.sessionId, input.eventId)) return false;
     this.current = { ...this.current, status: "completed" };
-    this.completedScore = input.evaluation.overallScore;
+    this.completedScore =
+      "overallScore" in input.evaluation ? input.evaluation.overallScore : null;
     return true;
   }
 
-  async skip(input: { sessionId: string; eventId: string; reason: string }) {
+  async skip(input: {
+    sessionId: string;
+    eventId: string;
+    reason: "no_reviewable_answer" | "transcript_integrity_degraded";
+  }) {
     if (!this.isActive(input.sessionId, input.eventId)) return false;
     this.current = {
       ...this.current,

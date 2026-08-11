@@ -4,11 +4,18 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  EVIDENCE_LIMITED_ACTION_CODES,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES,
+  EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
   type FeedbackEvaluationState,
 } from "@meelni/core";
 
 export const FEEDBACK_PROVIDER_RESPONSE_FORMAT_VERSION =
   "feedback-provider-response-format.v9" as const;
+export const FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION =
+  "feedback-evidence-limited-provider-response-format.v4" as const;
 
 const FEEDBACK_DIMENSIONS = [
   "structure",
@@ -169,6 +176,84 @@ export function serializeFeedbackProviderResponseFormat(
   return JSON.stringify(getFeedbackProviderResponseFormat(evaluationState));
 }
 
+export function getEvidenceLimitedProviderResponseFormat(
+  candidateTurnRefs: readonly string[] = ["turn_0001"]
+) {
+  const allowedTurnRefs =
+    requireEvidenceLimitedProviderReferences(candidateTurnRefs);
+  const selection = (signalCodes: readonly string[]) => ({
+    type: "object" as const,
+    properties: {
+      signalCode: {
+        type: "string" as const,
+        enum: signalCodes,
+      },
+      actionCode: {
+        type: "string" as const,
+        enum: EVIDENCE_LIMITED_ACTION_CODES,
+      },
+      transcriptRef: {
+        type: "string" as const,
+        enum: allowedTurnRefs,
+      },
+    },
+    required: ["signalCode", "actionCode", "transcriptRef"] as const,
+    additionalProperties: false,
+  });
+  return {
+    type: "json_schema" as const,
+    json_schema: {
+      name: "meelni_feedback_evidence_limited_selection_v1",
+      description:
+        "Closed PM-rubric selections and trusted candidate-turn aliases. The provider returns no narrative, quote text, score, confidence, or numeric value.",
+      strict: true,
+      schema: {
+        type: "object" as const,
+        properties: {
+          schemaVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION],
+          },
+          promptVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION],
+          },
+          rubricVersion: {
+            type: "string" as const,
+            enum: [FEEDBACK_RUBRIC_VERSION],
+          },
+          evaluationState: { type: "string" as const, enum: ["partial"] },
+          strengths: {
+            type: "array" as const,
+            description:
+              "Distinct strength selections only. Do not repeat a signalCode or actionCode, even with a different transcriptRef. Action codes must also remain unique across improvements.",
+            items: selection(EVIDENCE_LIMITED_STRENGTH_SIGNAL_CODES),
+            minItems: 1,
+            maxItems: 2,
+          },
+          improvements: {
+            type: "array" as const,
+            description:
+              "Distinct improvement selections only. Do not repeat a signalCode or actionCode, even with a different transcriptRef. Action codes must also remain unique across strengths.",
+            items: selection(EVIDENCE_LIMITED_IMPROVEMENT_SIGNAL_CODES),
+            minItems: 1,
+            maxItems: 2,
+          },
+        },
+        required: [
+          "schemaVersion",
+          "promptVersion",
+          "rubricVersion",
+          "evaluationState",
+          "strengths",
+          "improvements",
+        ] as const,
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 export function getFeedbackProviderResponseFormatContractHash(): string {
   return createHash("sha256")
     .update(
@@ -179,4 +264,34 @@ export function getFeedbackProviderResponseFormatContractHash(): string {
       })
     )
     .digest("hex");
+}
+
+export function getEvidenceLimitedProviderResponseFormatContractHash(): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: FEEDBACK_EVIDENCE_LIMITED_PROVIDER_RESPONSE_FORMAT_VERSION,
+        format: getEvidenceLimitedProviderResponseFormat(["turn_0001"]),
+      })
+    )
+    .digest("hex");
+}
+
+function requireEvidenceLimitedProviderReferences(
+  candidateTurnRefs: readonly string[]
+): readonly string[] {
+  if (
+    candidateTurnRefs.length < 1 ||
+    candidateTurnRefs.length > 1_000 ||
+    candidateTurnRefs.some(
+      (reference) =>
+        typeof reference !== "string" ||
+        reference.length === 0 ||
+        reference.length > 512
+    ) ||
+    new Set(candidateTurnRefs).size !== candidateTurnRefs.length
+  ) {
+    throw new Error("evidence_limited_provider_references_invalid");
+  }
+  return [...candidateTurnRefs];
 }

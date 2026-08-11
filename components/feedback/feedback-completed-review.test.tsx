@@ -4,10 +4,24 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  CompletedEvidenceLimitedReview,
   CompletedLegacyReview,
   CompletedV2Review,
 } from "./feedback-completed-review";
-import type { FeedbackLegacyView, FeedbackV2View } from "@meelni/core";
+import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
+import {
+  decodeFeedbackLifecycleResponse,
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  type FeedbackEvidenceLimitedView,
+  type FeedbackLegacyView,
+  type FeedbackV2View,
+} from "@meelni/core";
 
 const scores = {
   structure: 8,
@@ -57,6 +71,112 @@ test("completed v2 review hides technical version metadata", () => {
   assert.doesNotMatch(html, /\breps\b/i);
 });
 
+test("evidence-limited review renders server templates and exact quantitative citations without a score", () => {
+  const quantitativeCitation =
+    "We saw 40% activation after 8 customer interviews and an 8/10 task-success ratio.";
+  const feedback: FeedbackEvidenceLimitedView = {
+    kind: "evidence-limited",
+    id: "feedback-limited",
+    sessionId: "session-limited",
+    summary: EVIDENCE_LIMITED_SUMMARY,
+    strengths: [
+      {
+        signalCode: "customer_problem_connection",
+        actionCode: "connect_customer_to_decision",
+        dimension: "insight",
+        observation:
+          EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+            .observation,
+        transcriptRefs: ["writer:1"],
+        evidence: [{ turnRef: "writer:1", quote: quantitativeCitation }],
+        nextStep:
+          EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    improvements: [
+      {
+        signalCode: "tradeoff_decision",
+        actionCode: "compare_tradeoffs_and_choose",
+        dimension: "leadership",
+        observation:
+          EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.tradeoff_decision.observation,
+        transcriptRefs: ["writer:1"],
+        evidence: [{ turnRef: "writer:1", quote: quantitativeCitation }],
+        nextStep:
+          EVIDENCE_LIMITED_ACTIONS.compare_tradeoffs_and_choose.nextStep,
+        rubricVersion: "pm-feedback-rubric.v2",
+        confidence: EVIDENCE_LIMITED_CONFIDENCE,
+      },
+    ],
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: "fixture-model-v2",
+    rubricVersion: "pm-feedback-rubric.v2",
+    evaluationState: "partial",
+    createdAt: "2026-08-10T12:00:00.000Z",
+    nextPracticeRecommendation: null,
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedEvidenceLimitedReview, { feedback })
+  );
+  assert.match(html, new RegExp(escapeRegExp(EVIDENCE_LIMITED_SUMMARY)));
+  assert.match(
+    html,
+    new RegExp(
+      escapeRegExp(
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation
+      )
+    )
+  );
+  assert.match(html, /40% activation after 8 customer interviews/);
+  assert.match(html, /8\/10 task-success ratio/);
+  assert.match(html, /No score has been inferred/);
+  assert.doesNotMatch(html, /customer_problem_connection/);
+
+  const duplicateIdentity = structuredClone(feedback);
+  duplicateIdentity.strengths.push({
+    ...structuredClone(duplicateIdentity.strengths[0]!),
+    transcriptRefs: ["writer:2"],
+    evidence: [
+      {
+        turnRef: "writer:2",
+        quote: "A second individually valid frozen candidate turn.",
+      },
+    ],
+  });
+  const decoded = decodeFeedbackLifecycleResponse({
+    status: "completed",
+    retryable: false,
+    feedback: duplicateIdentity,
+  });
+  assert.equal(decoded, null);
+  const rejectedHtml = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "unavailable" as const,
+        message: "Feedback returned an unsupported response.",
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+  assert.match(rejectedHtml, /Feedback unavailable/);
+  assert.doesNotMatch(
+    rejectedHtml,
+    new RegExp(
+      escapeRegExp(
+        EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
+          .observation
+      )
+    )
+  );
+});
+
 test("legacy review stays explicitly historical", () => {
   const feedback: FeedbackLegacyView = {
     kind: "legacy",
@@ -76,3 +196,7 @@ test("legacy review stays explicitly historical", () => {
   assert.match(html, /Historical feedback/);
   assert.match(html, /do not include verifiable transcript evidence/);
 });
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

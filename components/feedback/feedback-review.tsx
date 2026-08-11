@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 
 import {
   CompletedLegacyReview,
+  CompletedEvidenceLimitedReview,
   CompletedV2Review,
 } from "./feedback-completed-review";
 import {
@@ -283,6 +284,9 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
   }
   if (viewState.kind === "completed-legacy") {
     return <CompletedLegacyReview feedback={viewState.feedback} />;
+  }
+  if (viewState.kind === "completed-evidence-limited") {
+    return <CompletedEvidenceLimitedReview feedback={viewState.feedback} />;
   }
   return (
     <FeedbackLifecycleStatus

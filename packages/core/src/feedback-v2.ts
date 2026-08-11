@@ -127,6 +127,12 @@ export interface FeedbackV2Result {
   summary: string;
 }
 
+export interface GroundedFeedbackNarrative {
+  strengths: FeedbackV2Item[];
+  improvements: FeedbackV2Item[];
+  summary: string;
+}
+
 export interface ParseFeedbackV2Options {
   transcript: FeedbackTranscriptTurn[];
   evaluationState: FeedbackEvaluationState;
@@ -355,6 +361,64 @@ export function parseFeedbackV2(
   };
 }
 
+/**
+ * Apply the Feedback v2 evidence and semantic-grounding boundary to a
+ * scoreless narrative result. Evidence-limited feedback changes presentation
+ * precision, not transcript trust.
+ */
+export function parseGroundedFeedbackNarrative(input: {
+  strengths: unknown;
+  improvements: unknown;
+  summary: unknown;
+  transcript: FeedbackTranscriptTurn[];
+  maximumFindings: number;
+}): GroundedFeedbackNarrative {
+  const transcriptById = buildTranscriptIndex(input.transcript);
+  const strengths = parseItems(
+    input.strengths,
+    "strengths",
+    transcriptById,
+    0,
+    input.maximumFindings
+  );
+  const improvements = parseItems(
+    input.improvements,
+    "improvements",
+    transcriptById,
+    0,
+    input.maximumFindings
+  );
+  const findings = [...strengths, ...improvements];
+  if (findings.length < 1 || findings.length > input.maximumFindings) {
+    throw new FeedbackV2ParseError(
+      "findings_count_invalid",
+      `narrative feedback must contain 1 to ${input.maximumFindings} total findings`
+    );
+  }
+  requireUniqueEvidence(findings, transcriptById);
+  for (const [index, finding] of strengths.entries()) {
+    requireObservableFindingSupport({
+      path: `strengths[${index}]`,
+      observation: finding.observation,
+      evidence: finding.evidence,
+      confidence: finding.confidence,
+      transcriptById,
+    });
+  }
+  for (const [index, finding] of improvements.entries()) {
+    requireObservableFindingSupport({
+      path: `improvements[${index}]`,
+      observation: finding.observation,
+      evidence: finding.evidence,
+      confidence: finding.confidence,
+      transcriptById,
+    });
+  }
+  const summary = requireNonEmpty(input.summary, "summary", "summary_invalid");
+  requireEvidenceLimitedSummary(summary, findings);
+  return { strengths, improvements, summary };
+}
+
 function buildTranscriptIndex(
   transcript: FeedbackTranscriptTurn[]
 ): Map<string, FeedbackTranscriptTurn> {
@@ -396,12 +460,18 @@ function buildTranscriptIndex(
 function parseItems(
   value: unknown,
   path: string,
-  transcriptById: Map<string, FeedbackTranscriptTurn>
+  transcriptById: Map<string, FeedbackTranscriptTurn>,
+  minimum = 1,
+  maximum = 5
 ): FeedbackV2Item[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
+  if (
+    !Array.isArray(value) ||
+    value.length < minimum ||
+    value.length > maximum
+  ) {
     throw new FeedbackV2ParseError(
       "findings_count_invalid",
-      `${path} must contain 1 to 5 items`
+      `${path} must contain ${minimum} to ${maximum} items`
     );
   }
   return value.map((entry, index) => {

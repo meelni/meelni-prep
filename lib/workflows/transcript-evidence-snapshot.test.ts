@@ -83,7 +83,7 @@ test("a sequence gap fails closed even when the runtime reports settlement", () 
   assert.match(snapshot.validation.reasons[0] ?? "", /sequence gap/);
 });
 
-test("an eligible prefix below the canonical threshold is insufficient", () => {
+test("a healthy prefix with no substantive answer remains insufficient", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
     interruptionCount: 0,

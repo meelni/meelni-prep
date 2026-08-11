@@ -66,6 +66,10 @@ export function buildTranscriptEvidenceSnapshot(input: {
   }));
 
   const integrityReasons = [
+    ...(input.baseValidation.evidenceFailureReason ===
+    "transcript_integrity_degraded"
+      ? ["Canonical transcript validation failed"]
+      : []),
     ...(writers.length === 0
       ? ["Voice runtime writer registration was not confirmed"]
       : []),
@@ -109,10 +113,7 @@ export function buildTranscriptEvidenceSnapshot(input: {
     validation: {
       ...input.baseValidation,
       tier: SessionTier.PARTIAL,
-      recommendations: [
-        "Feedback uses the verified transcript saved before the interview ended",
-        ...input.baseValidation.recommendations,
-      ],
+      recommendations: [],
     },
     writers,
     integrityReasons,
@@ -180,9 +181,7 @@ function invalidateForIntegrity(
     ...baseValidation,
     isValid: false,
     reasons: [...reasons, ...baseValidation.reasons],
-    recommendations: [
-      "Retry the interview so every heard turn can be verified",
-      ...baseValidation.recommendations,
-    ],
+    recommendations: [],
+    evidenceFailureReason: "transcript_integrity_degraded",
   };
 }

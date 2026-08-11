@@ -1,6 +1,6 @@
 # Feedback v2 Contract
 
-Status: additive v2 write contract; legacy v1 read compatibility retained
+Status: additive scored v2 contract with a scoreless evidence-limited companion; legacy v1 read compatibility retained
 
 ## Purpose
 
@@ -84,8 +84,87 @@ Every v2 result stores:
 | `evaluationState` | `full` or `partial`, matching committed completion evidence |
 
 `partial` means conclusions are limited to the recorded portion. It is not a
-prediction of interview readiness. `insufficient` and `abandoned` sessions are
-skipped and receive no v2 result.
+prediction of interview readiness. A healthy partial session may receive
+scored Feedback v2 only when its distinct substantive evidence breadth meets
+the numerical-precision policy. `insufficient` and `abandoned` sessions are
+skipped and receive no scored v2 result.
+
+## Evidence-limited companion result
+
+`feedback.evidence-limited.v2` is the write contract for a healthy completed
+interview with at least one trustworthy substantive candidate answer but fewer
+than four distinct substantive answers. It stores:
+
+| Field             | Value or rule                                  |
+| ----------------- | ---------------------------------------------- |
+| `schemaVersion`   | `feedback.evidence-limited.v2`                 |
+| `promptVersion`   | `feedback.prompt.evidence-limited.v2`          |
+| `modelVersion`    | Non-empty configured provider model identifier |
+| `rubricVersion`   | `pm-feedback-rubric.v2`                        |
+| `evaluationState` | Exactly `partial`                              |
+
+The result has no `scores`, `overallScore`, or practice-drill collection. It
+contains two or three total findings across non-empty `strengths` and
+`improvements`, with no more than two in either array, plus one exact
+server-owned summary. Each resolved finding retains the Feedback v2 evidence
+shape and also stores its closed `signalCode` and `actionCode`.
+
+The provider does not author any customer-visible string. Its strict
+`feedback.evidence-limited.selection.v1` response contains only:
+
+```json
+{
+  "schemaVersion": "feedback.evidence-limited.selection.v1",
+  "promptVersion": "feedback.prompt.evidence-limited.v2",
+  "rubricVersion": "pm-feedback-rubric.v2",
+  "evaluationState": "partial",
+  "strengths": [
+    {
+      "signalCode": "customer_problem_connection",
+      "actionCode": "connect_customer_to_decision",
+      "transcriptRef": "turn_0001"
+    }
+  ],
+  "improvements": [
+    {
+      "signalCode": "tradeoff_decision",
+      "actionCode": "compare_tradeoffs_and_choose",
+      "transcriptRef": "turn_0001"
+    }
+  ]
+}
+```
+
+Signal and action fields are JSON-schema enums from the finite PM-rubric
+taxonomy. `transcriptRef` is also an enum, dynamically restricted to candidate
+turn aliases in the frozen evidence snapshot. Additional properties and
+freeform strings are forbidden. Both arrays require at least one selection;
+unknown codes, dimension-mismatched signal/action pairs, empty arrays,
+repeated signal codes within one category, repeated action codes across either
+category, duplicate references within one category, missing or interviewer
+references, and malformed selections fail as provider-neutral
+`generation_failed`. A different frozen reference does not make a repeated
+signal or action distinct. Distinct strength and improvement selections may
+share one frozen candidate turn; reference reuse across those categories is
+intentional for useful one-answer feedback.
+
+After validation, the server maps each code to an exact observation,
+next-step, dimension, and confidence template, maps the result summary to one
+exact server template, restores the canonical event ID, and copies the entire
+frozen candidate turn into `evidence.quote`. The provider never returns a quote
+or copied value. Quantities, ratios, dates, counts, or grades remain visible
+only when they occur in that trusted server-restored transcript citation. The
+read parser and client decoder reject any persisted or transported observation,
+next step, summary, dimension, confidence, or code that does not match the
+server template map exactly; the database read additionally revalidates the
+citation against the frozen evidence snapshot.
+
+This companion result is useful evidence-limited coaching, not a synthetic
+score and not a readiness prediction. A session with no reviewable candidate
+answer receives the typed `no_reviewable_answer` lifecycle state instead. A
+corrupt or degraded transcript receives
+`transcript_integrity_degraded`; provider generation failure remains
+`generation_failed`.
 
 ## Finding shape
 

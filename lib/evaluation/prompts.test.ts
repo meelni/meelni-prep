@@ -6,7 +6,12 @@ import {
   appendCalibrationEvidenceHints,
   buildCalibrationEvidenceHints,
 } from "./calibration-evidence-hints";
-import { EVALUATION_SYSTEM_PROMPT, getEvaluationPrompt } from "./prompts";
+import {
+  EVALUATION_SYSTEM_PROMPT,
+  EVIDENCE_LIMITED_SYSTEM_PROMPT,
+  getEvaluationPrompt,
+  getEvidenceLimitedEvaluationPrompt,
+} from "./prompts";
 import { projectEvaluationTranscriptAliases } from "./transcript-aliases";
 
 type CalibrationCase = (typeof evaluationCalibrationCases)[number];
@@ -146,6 +151,35 @@ test("evaluation prompt preserves partial-delivery provenance and treats speech 
   );
   assert.match(EVALUATION_SYSTEM_PROMPT, /candidate-advancement claims/);
   assert.match(EVALUATION_SYSTEM_PROMPT, /flawless or perfect/);
+});
+
+test("evidence-limited prompt requests only closed codes and trusted refs", () => {
+  const prompt = getEvidenceLimitedEvaluationPrompt("execution", [
+    {
+      eventId: "turn_0001",
+      speaker: "user",
+      text: "I tracked activation at 40% and compared an 8/10 conversion ratio.",
+    },
+  ]);
+
+  assert.match(
+    EVIDENCE_LIMITED_SYSTEM_PROMPT,
+    /Never author customer-visible narrative/
+  );
+  assert.match(
+    EVIDENCE_LIMITED_SYSTEM_PROMPT,
+    /The server owns all customer-visible language and restores citations/
+  );
+  assert.match(prompt, /Closed selection catalog/);
+  assert.match(prompt, /customer_problem_connection/);
+  assert.match(prompt, /connect_customer_to_decision/);
+  assert.match(prompt, /Return only catalog signalCode\/actionCode values/);
+  assert.match(prompt, /Do not return narrative, quote text, copied evidence/);
+  assert.match(prompt, /Use each signalCode at most once/);
+  assert.match(prompt, /each actionCode at most once across the whole result/);
+  assert.match(prompt, /Distinct strength and improvement selections may cite/);
+  assert.match(prompt, /40%/);
+  assert.match(prompt, /8\/10/);
 });
 
 test("calibration evidence hints require approved anchors when present", () => {

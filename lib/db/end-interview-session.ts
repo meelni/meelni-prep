@@ -505,16 +505,19 @@ export async function finalizeInterviewSession(
     }
 
     const shouldGenerate = state === "completed" && validation.isValid;
-    const skippedReason = shouldGenerate
+    const outcomeReason = shouldGenerate
       ? null
-      : validation.reasons[0] ||
-        `Interview ended as ${state} (${terminalReason})`;
+      : evidenceSnapshot.state === "degraded" ||
+          validation.evidenceFailureReason === "transcript_integrity_degraded"
+        ? ("transcript_integrity_degraded" as const)
+        : ("no_reviewable_answer" as const);
     const inserted = await tx
       .insert(feedback)
       .values({
         sessionId: input.sessionId,
         status: shouldGenerate ? "pending" : "skipped",
-        statusReason: skippedReason,
+        statusReason: outcomeReason,
+        outcomeReason,
         rubricVersion: "1.0.0",
         completionTier: validation.tier,
         completionStats: validation.stats,
@@ -652,10 +655,8 @@ export function applyTranscriptIntegrityValidation(input: {
     ...input.baseValidation,
     isValid: false,
     reasons: [...integrityReasons, ...input.baseValidation.reasons],
-    recommendations: [
-      "Retry the interview so every heard turn can be verified",
-      ...input.baseValidation.recommendations,
-    ],
+    recommendations: [],
+    evidenceFailureReason: "transcript_integrity_degraded",
   };
 }
 

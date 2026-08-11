@@ -9,6 +9,46 @@ Feedback generation is one idempotent workflow with durable dispatch and generat
 - The generation workflow is the only writer of generation status and evaluated feedback fields.
 - Completed and skipped rows are immutable. Recovery never reopens them.
 
+The feedback row also stores one content-free `outcome_reason` from the closed
+taxonomy `feedback_generated`, `no_reviewable_answer`,
+`transcript_integrity_degraded`, `dispatch_failed`, or `generation_failed`.
+Dispatch failures are transient and clear when a later claim succeeds. The
+completed and skipped outcome reasons remain immutable with their terminal row.
+
+## Evidence-gated evaluation
+
+Eligibility depends on the frozen canonical candidate evidence, not room
+duration or total transcript-turn count. One trustworthy substantive candidate
+answer is enough to request feedback. Five distinct substantive answers permit
+the full-depth evaluation state; smaller healthy prefixes remain partial.
+Duration and turn statistics remain diagnostic evidence only and cannot deny
+feedback.
+
+Numerical feedback requires at least four substantive candidate answers. A
+healthy eligible prefix below that precision boundary uses the scoreless
+`feedback.evidence-limited.v2` result. Its provider contract contains no
+freeform narrative, quote, number, score, grade, or confidence field. The
+provider may select only closed PM-rubric signal/action codes and candidate
+turn aliases supplied in the request. The core parser validates every alias
+against the frozen canonical candidate evidence, then resolves the codes to a
+finite server-owned observation, next-step, dimension, confidence, and summary
+template map. It restores the exact frozen turn text as the citation; provider
+text is never copied into that citation. The resolved result persists two or
+three findings and never persists or presents inferred scores. Unknown codes,
+empty arrays, repeated signal codes, repeated action codes even when their
+references differ, duplicate or invalid references, extra strings, or any
+malformed selection remain `generation_failed`, not candidate insufficiency.
+Signal identity is unique within strengths or improvements, and action identity
+is unique across both arrays. Distinct strength and improvement selections may
+cite the same frozen candidate turn so one-answer feedback remains useful.
+
+A frozen session with no trustworthy substantive candidate answer becomes
+`no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed
+canonical boundary, or detected transcript corruption becomes
+`transcript_integrity_degraded`. Neither state calls the feedback provider.
+Provider refusal, invalid generated output, timeout, and other evaluator
+failure remain the distinct `generation_failed` outcome.
+
 ## Event fencing
 
 Every dispatch attempt receives a distinct event ID. A worker may claim only a `pending` or `failed` row whose stored event ID exactly matches its event. Completion, skip, and failure are compare-and-set updates requiring all of:
@@ -31,6 +71,9 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
 - Transcript evidence is normalized through the Feedback v2 trust boundary before evaluation.
+- Evidence-limited results use the same canonical frozen-transcript trust
+  boundary, but the provider supplies only closed codes and candidate aliases;
+  all customer-visible coaching copy and citations are server owned.
 - Insights are requested only after the completion compare-and-set applies. The insights event ID is stable for the session and generation event, so replay does not create a second update.
 - A terminal session missing its feedback row can be repaired through the interview-completion workflow before dispatch.
 - A session in `ending/user_end` is owned by the background end finalizer. The
@@ -42,8 +85,11 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 ## Client recovery contract
 
 `GET /api/feedback/:sessionId` owns retry truth through its top-level
-`retryable` field. Feedback clients do not infer recovery from nested dispatch
-state. Missing feedback is retryable only for terminal sessions. Ending
+`retryable` field. A persisted failed dispatch crosses the read query and API
+as the typed provider-neutral `dispatch_failed` lifecycle response; the core
+decoder preserves it and the UI presents a queue retry without provider
+details. Feedback clients do not infer recovery from nested dispatch state.
+Missing feedback is retryable only for terminal sessions. Ending
 sessions return `settling` and `retryable: false`; active sessions remain
 `session_not_ended` and non-retryable.
 

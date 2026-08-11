@@ -49,6 +49,7 @@ ItemKind = Literal[
     "transcript", "interruption_marker", "runtime_settlement", "runtime_event"
 ]
 ItemState = Literal["pending", "persisted", "complete", "permanent"]
+WriterSequenceKind = Literal["transcript", "interruption_marker"]
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,40 @@ class TranscriptIngestQueueSealed(TranscriptIngestError):
 
 class TranscriptIngestAfterCutoff(TranscriptIngestError):
     """Raised when evidence claims media or occurrence after the active cutoff."""
+
+
+class WriterSequenceAllocator:
+    """Allocate one monotonic namespace for every evidence kind from a writer.
+
+    Event identity is retained so an in-process replay receives its original
+    sequence. Reusing an identity for a different evidence kind fails closed.
+    """
+
+    def __init__(self) -> None:
+        self._next_sequence = 1
+        self._allocations: Dict[str, tuple[WriterSequenceKind, int]] = {}
+
+    def allocate(self, *, event_id: str, kind: WriterSequenceKind) -> int:
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise TranscriptIngestError("writer sequence identity is invalid")
+        if kind not in ("transcript", "interruption_marker"):
+            raise TranscriptIngestError("writer sequence kind is invalid")
+
+        existing = self._allocations.get(event_id)
+        if existing is not None:
+            existing_kind, sequence = existing
+            if existing_kind != kind:
+                raise TranscriptIngestIdentityConflict(
+                    "writer sequence identity was reused across evidence kinds"
+                )
+            return sequence
+
+        if self._next_sequence > MAX_SAFE_INTEGER:
+            raise TranscriptIngestQueueFull("writer sequence namespace is exhausted")
+        sequence = self._next_sequence
+        self._allocations[event_id] = (kind, sequence)
+        self._next_sequence += 1
+        return sequence
 
 
 def should_record_unconfirmed_interruption(
