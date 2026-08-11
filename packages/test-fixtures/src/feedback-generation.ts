@@ -4,6 +4,7 @@ import type {
   TranscriptRuntimeSettlement,
   TranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
+import writerSequence6m14 from "../writer-sequence-6m14.json";
 
 export type FeedbackGoldenRoundType =
   | "product_sense"
@@ -164,6 +165,9 @@ function createFixture(input: {
         },
       ]
     : [];
+  if (input.id === "turn-marker-6m14") {
+    applySharedWriterSequenceContract(events, markers);
+  }
   return {
     id: input.id,
     sessionId,
@@ -198,6 +202,28 @@ function createFixture(input: {
           ? "no_reviewable_answer"
           : "feedback_generated",
   };
+}
+
+function applySharedWriterSequenceContract(
+  events: TranscriptEvent[],
+  markers: TranscriptInterruptionMarker[]
+): void {
+  const sequences = new Map(
+    writerSequence6m14.allocations.map((allocation) => [
+      allocation.eventId,
+      allocation.sequence,
+    ])
+  );
+  for (const evidence of [...events, ...markers]) {
+    const sequence = sequences.get(evidence.event_id);
+    if (sequence === undefined) {
+      throw new Error(`writer_sequence_golden_missing:${evidence.event_id}`);
+    }
+    evidence.sequence = sequence;
+  }
+  if (sequences.size !== events.length + markers.length) {
+    throw new Error("writer_sequence_golden_has_unconsumed_allocation");
+  }
 }
 
 export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] {

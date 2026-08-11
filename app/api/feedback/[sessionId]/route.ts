@@ -20,11 +20,12 @@ import {
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
+import { isInterviewTerminalState } from "@meelni/core";
 import {
-  decodeFeedbackLifecycleResponse,
-  isInterviewTerminalState,
-  presentCompletedFeedback,
-} from "@meelni/core";
+  buildCompletedFeedbackLifecycleResponse,
+  buildDispatchFailedFeedbackLifecycleResponse,
+  buildSkippedFeedbackLifecycleResponse,
+} from "@/lib/feedback-lifecycle-response";
 import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
@@ -226,6 +227,16 @@ export async function GET(
                   feedbackRecord,
                   new Date(Date.now())
                 ));
+            if (feedbackRecord.dispatchStatus === "failed") {
+              return NextResponse.json(
+                buildDispatchFailedFeedbackLifecycleResponse(retryable),
+                {
+                  headers: {
+                    "Cache-Control": "private, no-store",
+                  },
+                }
+              );
+            }
             return NextResponse.json(
               {
                 status: "pending",
@@ -300,7 +311,7 @@ export async function GET(
             const evidenceTurns = hasVersionedFeedback
               ? await getFeedbackEvidenceTurns(sessionId, database)
               : [];
-            const feedbackView = presentCompletedFeedback(
+            const completedResponse = buildCompletedFeedbackLifecycleResponse(
               {
                 id: feedbackRecord.id,
                 sessionId: feedbackRecord.sessionId,
@@ -321,9 +332,9 @@ export async function GET(
                 evaluationState: feedbackRecord.evaluationState,
                 createdAt: feedbackRecord.createdAt,
               },
-              { evidenceTurns }
+              evidenceTurns
             );
-            if (feedbackView.kind === "invalid") {
+            if (completedResponse.feedback.kind === "invalid") {
               reportOperationalFailure({
                 operation: "feedback_dispatch",
                 errorCode: "feedback_integrity_invalid",
@@ -332,49 +343,23 @@ export async function GET(
                 correlationId,
               });
             }
-            return NextResponse.json(
-              {
-                status: "completed",
-                retryable: false,
-                feedback: feedbackView,
+            return NextResponse.json(completedResponse, {
+              headers: {
+                "Cache-Control":
+                  completedResponse.feedback.kind === "invalid"
+                    ? "private, no-store"
+                    : "private, max-age=3600",
               },
-              {
-                headers: {
-                  "Cache-Control":
-                    feedbackView.kind === "invalid"
-                      ? "private, no-store"
-                      : "private, max-age=3600",
-                },
-              }
-            );
+            });
           }
 
           // Case 4: Skipped - return immutable completion evidence. Do not rerun the
           // validator after terminalization because late transcript writes or a new
           // validator deployment cannot redefine the committed outcome.
           if (status === "skipped") {
-            const outcomeReason =
-              feedbackRecord.outcomeReason === "transcript_integrity_degraded"
-                ? "transcript_integrity_degraded"
-                : "no_reviewable_answer";
-            const candidate = {
-              status: "skipped",
-              retryable: false,
-              details: {
-                outcomeReason,
-                tier:
-                  feedbackRecord.completionTier === "abandoned"
-                    ? "abandoned"
-                    : "insufficient",
-                ...(feedbackRecord.completionStats !== null
-                  ? { stats: feedbackRecord.completionStats }
-                  : {}),
-                reasons: [],
-                recommendations: [],
-              },
-            };
-            const skippedResponse = decodeFeedbackLifecycleResponse(candidate);
-            if (!skippedResponse || skippedResponse.status !== "skipped") {
+            const skippedResponse =
+              buildSkippedFeedbackLifecycleResponse(feedbackRecord);
+            if (!skippedResponse) {
               reportOperationalFailure({
                 operation: "feedback_dispatch",
                 errorCode: "feedback_integrity_invalid",
@@ -632,13 +617,15 @@ async function handleFeedbackRecovery(
     );
   }
   return NextResponse.json(
-    {
-      status: result.status,
-      retryable: result.retryable,
-      dispatch: result.dispatch
-        ? { status: result.dispatch.status, retryable: result.retryable }
-        : null,
-    },
+    result.disposition === "dispatch_failed"
+      ? buildDispatchFailedFeedbackLifecycleResponse(result.retryable)
+      : {
+          status: result.status,
+          retryable: result.retryable,
+          dispatch: result.dispatch
+            ? { status: result.dispatch.status, retryable: result.retryable }
+            : null,
+        },
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

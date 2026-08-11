@@ -6,6 +6,7 @@ import {
   isTranscriptRuntimeSettlement,
   isTranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
+import writerSequence6m14 from "../writer-sequence-6m14.json";
 
 import { createFeedbackGoldenPathFixtures } from "./feedback-generation";
 
@@ -51,11 +52,16 @@ test("6m14 collision fixture uses one unique gap-free turn-marker namespace", ()
   assert.equal(new Set(sequences).size, sequences.length);
   assert.deepEqual(
     sequences,
-    Array.from({ length: sequences.length }, (_, index) => index + 1)
+    writerSequence6m14.allocations.map((allocation) => allocation.sequence)
   );
   assert.equal(
     Date.parse(fixture.settlement.settled_at) -
       Date.parse(fixture.writerRegistration.registered_at),
-    374_000
+    writerSequence6m14.incidentDurationSeconds * 1_000
+  );
+  assert.equal(
+    Date.parse(fixture.markers[0]!.occurred_at) -
+      Date.parse(fixture.writerRegistration.registered_at),
+    writerSequence6m14.markerOffsetSeconds * 1_000
   );
 });

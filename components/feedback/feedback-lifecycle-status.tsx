@@ -231,6 +231,24 @@ export function FeedbackLifecycleStatus({
     );
   }
 
+  if (state.kind === "dispatch-failed") {
+    return (
+      <FeedbackStatusPage
+        role="alert"
+        tone="danger"
+        icon={<CircleX className="h-8 w-8" aria-hidden="true" />}
+        title="Feedback could not be queued"
+        description={recoveryError || state.message}
+        actions={
+          <>
+            {state.retryable && retryAction("Queue feedback again")}
+            <FeedbackDashboardLink />
+          </>
+        }
+      />
+    );
+  }
+
   if (state.kind === "no-reviewable-answer") {
     return (
       <FeedbackStatusPage

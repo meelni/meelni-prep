@@ -82,11 +82,51 @@ export function parseEvidenceLimitedFeedback(
 }
 
 const RATING_NUMBER = String.raw`(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
+const IMPLICIT_RATING_NUMBER = String.raw`(?:10(?:\.0+)?|[0-9](?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)(?:[\s-]+point[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?)`;
 const RATING_SCALE = String.raw`(?:5|10|100|five|ten|hundred)`;
-const NUMERICAL_RATING_PATTERN = new RegExp(
-  String.raw`\b(?:score|rating|grade)(?:d)?\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b|\b${RATING_NUMBER}\s*(?:\/|out\s+of)\s*${RATING_SCALE}\b`,
-  "iu"
-);
+const QUANTITATIVE_UNIT = String.raw`(?:%|percent(?:age)?|basis[\s-]+points?|bps|milliseconds?|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?|users?|customers?|people|participants?|respondents?|interviews?|questions?|features?|ideas?|metrics?|markets?|segments?|experiments?|responses?|steps?|options?|examples?|findings?|teams?|companies|products?|dollars?|million|billion|revenue|market[\s-]+share)`;
+const NUMERICAL_RATING_PATTERNS = [
+  new RegExp(
+    String.raw`\b(?:score(?:d)?|rating|rated|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b${RATING_NUMBER}\s*(?:\/|out[\s-]+of)\s*${RATING_SCALE}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}[\s-]+overall\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:a|an)[\s-]+overall[\s-]+${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood)\s*(?:at|as)?\s*(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+] as const;
 
 function requireNoNumericalRating(
   narrative: Pick<
@@ -105,7 +145,11 @@ function requireNoNumericalRating(
       finding.nextStep,
     ]),
   ];
-  if (customerCopy.some((value) => NUMERICAL_RATING_PATTERN.test(value))) {
+  if (
+    customerCopy.some((value) =>
+      NUMERICAL_RATING_PATTERNS.some((pattern) => pattern.test(value))
+    )
+  ) {
     throw new FeedbackV2ParseError(
       "score_invalid",
       "evidence-limited feedback must withhold numerical ratings"

@@ -1,0 +1,34 @@
+{
+  "contractVersion": "writer-sequence-golden.v1",
+  "incidentDurationSeconds": 374,
+  "markerOffsetSeconds": 119,
+  "allocations": [
+    {
+      "kind": "transcript",
+      "eventId": "writer:turn-marker-6m14:question:1",
+      "sequence": 1
+    },
+    {
+      "kind": "transcript",
+      "eventId": "writer:turn-marker-6m14:answer:1",
+      "sequence": 2
+    },
+    {
+      "kind": "interruption_marker",
+      "eventId": "writer:turn-marker-6m14:marker:1",
+      "sequence": 3
+    }
+  ],
+  "replays": [
+    {
+      "kind": "transcript",
+      "eventId": "writer:turn-marker-6m14:question:1",
+      "sequence": 1
+    },
+    {
+      "kind": "interruption_marker",
+      "eventId": "writer:turn-marker-6m14:marker:1",
+      "sequence": 3
+    }
+  ]
+}

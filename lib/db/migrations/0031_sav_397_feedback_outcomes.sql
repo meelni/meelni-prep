@@ -23,10 +23,17 @@ ALTER TABLE "feedback" ADD CONSTRAINT "feedback_version_tuple_check" CHECK ((
         "feedback"."model_version" IS NOT NULL AND
         "feedback"."evaluation_state" IS NOT NULL AND
         (
-          ("feedback"."schema_version" = 'feedback.v2' AND "feedback"."prompt_version" = 'feedback.prompt.v2') OR
-          ("feedback"."schema_version" = 'feedback.evidence-limited.v1' AND "feedback"."prompt_version" = 'feedback.prompt.evidence-limited.v1')
+          (
+            "feedback"."schema_version" = 'feedback.v2' AND
+            "feedback"."prompt_version" = 'feedback.prompt.v2' AND
+            "feedback"."evaluation_state" IN ('full', 'partial')
+          ) OR
+          (
+            "feedback"."schema_version" = 'feedback.evidence-limited.v1' AND
+            "feedback"."prompt_version" = 'feedback.prompt.evidence-limited.v1' AND
+            "feedback"."evaluation_state" = 'partial'
+          )
         ) AND
         length(trim("feedback"."model_version")) > 0 AND
-        "feedback"."rubric_version" = 'pm-feedback-rubric.v2' AND
-        "feedback"."evaluation_state" IN ('full', 'partial')
+        "feedback"."rubric_version" = 'pm-feedback-rubric.v2'
       ));

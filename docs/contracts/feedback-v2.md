@@ -111,7 +111,11 @@ reuses the scored contract's canonical transcript validation, exact quote
 restoration, evidence uniqueness and non-overlap checks, observable-claim
 grounding, material/quantitative polarity checks, confidence rules, and
 summary safety checks. Numerical ratings embedded in narrative customer copy
-are rejected.
+are rejected, including label-free or spelled-out evaluation paraphrases such
+as `an eight overall`. Quantitative transcript evidence and non-evaluative
+recommendations remain valid when they describe dates, percentages, counts,
+metrics, market share, revenue, or time estimates rather than candidate or
+answer ratings.
 
 This companion result is useful evidence-limited coaching, not a synthetic
 score and not a readiness prediction. A session with no reviewable candidate

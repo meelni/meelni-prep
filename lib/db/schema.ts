@@ -873,12 +873,19 @@ export const feedback = pgTable(
         ${table.modelVersion} IS NOT NULL AND
         ${table.evaluationState} IS NOT NULL AND
         (
-          (${table.schemaVersion} = 'feedback.v2' AND ${table.promptVersion} = 'feedback.prompt.v2') OR
-          (${table.schemaVersion} = 'feedback.evidence-limited.v1' AND ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1')
+          (
+            ${table.schemaVersion} = 'feedback.v2' AND
+            ${table.promptVersion} = 'feedback.prompt.v2' AND
+            ${table.evaluationState} IN ('full', 'partial')
+          ) OR
+          (
+            ${table.schemaVersion} = 'feedback.evidence-limited.v1' AND
+            ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1' AND
+            ${table.evaluationState} = 'partial'
+          )
         ) AND
         length(trim(${table.modelVersion})) > 0 AND
-        ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
-        ${table.evaluationState} IN ('full', 'partial')
+        ${table.rubricVersion} = 'pm-feedback-rubric.v2'
       )`
     ),
     dispatchEventRequiredCheck: check(

@@ -5929,11 +5929,51 @@ function isEvidenceLimitedFeedbackResult(value) {
   return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
 }
 var RATING_NUMBER = String.raw`(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
+var IMPLICIT_RATING_NUMBER = String.raw`(?:10(?:\.0+)?|[0-9](?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)(?:[\s-]+point[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?)`;
 var RATING_SCALE = String.raw`(?:5|10|100|five|ten|hundred)`;
-var NUMERICAL_RATING_PATTERN = new RegExp(
-  String.raw`\b(?:score|rating|grade)(?:d)?\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b|\b${RATING_NUMBER}\s*(?:\/|out\s+of)\s*${RATING_SCALE}\b`,
-  "iu"
-);
+var QUANTITATIVE_UNIT = String.raw`(?:%|percent(?:age)?|basis[\s-]+points?|bps|milliseconds?|ms|seconds?|minutes?|hours?|days?|weeks?|months?|years?|users?|customers?|people|participants?|respondents?|interviews?|questions?|features?|ideas?|metrics?|markets?|segments?|experiments?|responses?|steps?|options?|examples?|findings?|teams?|companies|products?|dollars?|million|billion|revenue|market[\s-]+share)`;
+var NUMERICAL_RATING_PATTERNS = [
+  new RegExp(
+    String.raw`\b(?:score(?:d)?|rating|rated|grade(?:d)?)\s*(?:of|is|was|at|:)?\s*(?:a|an)?\s*${RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b${RATING_NUMBER}\s*(?:\/|out[\s-]+of)\s*${RATING_SCALE}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}[\s-]+overall\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:a|an)[\s-]+overall[\s-]+${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\boverall\b[\s,;:-]*(?:(?:the|this)[\s-]+)?(?:candidate|answer|response|performance|assessment|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood|rates?|rated|scores?|scored|merits?|earned?)\s*(?:at|as)?\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\boverall\s*[:=-]\s*(?:a|an)?\s*${IMPLICIT_RATING_NUMBER}\b`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:(?:aim|shoot|strive|work)\s+(?:for|toward|towards)|aim\s+to\s+(?:reach|get|become)|target|reach)\s+(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:call|consider|judge|place|put|rank)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s*(?:at|as)?\s*(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:is|was|lands?|landed|comes?|came|sits?|stood)\s*(?:at|as)?\s*(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`\b(?:give|award|assign)\s+(?:(?:the|this)\s+)?(?:candidate|answer|response|performance|attempt|it|this)\s+(?:a|an)\s+${IMPLICIT_RATING_NUMBER}\b(?![\s-]+${QUANTITATIVE_UNIT}\b|\s*%)`,
+    "iu"
+  )
+];
 
 // packages/core/src/feedback-outcome.ts
 var FEEDBACK_OUTCOME_REASONS = [
@@ -19023,12 +19063,19 @@ var feedback = pgTable(
         ${table.modelVersion} IS NOT NULL AND
         ${table.evaluationState} IS NOT NULL AND
         (
-          (${table.schemaVersion} = 'feedback.v2' AND ${table.promptVersion} = 'feedback.prompt.v2') OR
-          (${table.schemaVersion} = 'feedback.evidence-limited.v1' AND ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1')
+          (
+            ${table.schemaVersion} = 'feedback.v2' AND
+            ${table.promptVersion} = 'feedback.prompt.v2' AND
+            ${table.evaluationState} IN ('full', 'partial')
+          ) OR
+          (
+            ${table.schemaVersion} = 'feedback.evidence-limited.v1' AND
+            ${table.promptVersion} = 'feedback.prompt.evidence-limited.v1' AND
+            ${table.evaluationState} = 'partial'
+          )
         ) AND
         length(trim(${table.modelVersion})) > 0 AND
-        ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
-        ${table.evaluationState} IN ('full', 'partial')
+        ${table.rubricVersion} = 'pm-feedback-rubric.v2'
       )`
     ),
     dispatchEventRequiredCheck: check(

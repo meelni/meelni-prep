@@ -341,7 +341,9 @@ additive evidence fields and table unused rather than deleting customer data.
 Migration `0031_sav_397_feedback_outcomes` adds the closed content-free
 `feedback.outcome_reason` taxonomy, backfills existing terminal and failed
 rows conservatively from feedback and frozen session state, and admits the
-strict scoreless `feedback.evidence-limited.v1` version tuple alongside scored
-Feedback v2. The migration does not enqueue work, rerun evaluation, or change
+strict scoreless `feedback.evidence-limited.v1` version tuple only with
+`evaluation_state = partial`, alongside scored Feedback v2's contracted
+`full` and `partial` states. The migration does not enqueue work, rerun
+evaluation, or change
 session, billing, provider, or customer state beyond this additive durable
 classification.

@@ -40,6 +40,13 @@ Loopback HTTP is accepted only for local development.
   consume that capacity.
 - Stable event identity makes 2xx-created and 2xx-existing acknowledgements
   equivalent.
+- Turns and integrity markers share one writer-scoped monotonic sequence
+  allocator. The Python allocator test produces the checked-in 6m14s golden
+  identity/sequence contract, and the TypeScript fixture consumes that exact
+  contract through the real Drizzle transcript and marker stores in disposable
+  PostgreSQL. Python and TypeScript remain separate processes, so this shared
+  contract plus the database persistence seam is the intentional cross-language
+  boundary; no test claims an in-process Python-to-TypeScript call.
 - Network failures and HTTP 408/425/429/5xx retry; other statuses become
   permanent integrity failures.
 - Transcript text is published to the LiveKit room only after durable 2xx. The
