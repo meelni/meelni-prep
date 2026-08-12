@@ -108,10 +108,12 @@ const SESSION_RECONNECT_INTEGRITY_MISSING =
   "c1000000-0000-4000-8000-000000000001";
 const SESSION_RECONNECT_INTEGRITY_DEGRADED =
   "c2000000-0000-4000-8000-000000000002";
-const SESSION_RECONNECT_INTEGRITY_INTERRUPTED =
+const SESSION_RECONNECT_INTEGRITY_CANDIDATE_INTERRUPTED =
   "c3000000-0000-4000-8000-000000000003";
 const SESSION_RECONNECT_INTEGRITY_VALID =
   "c4000000-0000-4000-8000-000000000004";
+const SESSION_RECONNECT_INTEGRITY_INTERVIEWER_INTERRUPTED =
+  "c6000000-0000-4000-8000-000000000006";
 const STABLE_START_ATTEMPT = "f1111111-1111-4111-8111-111111111111";
 const STABLE_START_QUESTION = "f2222222-2222-4222-8222-222222222222";
 const SESSION_RUNTIME_WRITER_BACKFILL = "c5000000-0000-4000-8000-000000000005";
@@ -5058,38 +5060,58 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_MISSING,
       settlement: null,
-      interruption: false,
+      interruption: null,
       expectedReason: "disconnect_timeout",
       expectedState: "completed",
       expectedFeedback: "pending",
       expectedEvidence: "partial",
+      expectedModeConstraint: "evidence_limited_only",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_DEGRADED,
       settlement: "degraded" as const,
-      interruption: false,
+      interruption: null,
       expectedReason: "insufficient_signal",
       expectedState: "abandoned",
       expectedFeedback: "skipped",
       expectedEvidence: "degraded",
+      expectedModeConstraint: null,
     },
     {
-      sessionId: SESSION_RECONNECT_INTEGRITY_INTERRUPTED,
+      sessionId: SESSION_RECONNECT_INTEGRITY_CANDIDATE_INTERRUPTED,
       settlement: "settled" as const,
-      interruption: true,
+      interruption: {
+        speaker: "user" as const,
+        reason: "no_provider_confirmed_prefix" as const,
+      },
       expectedReason: "insufficient_signal",
       expectedState: "abandoned",
       expectedFeedback: "skipped",
       expectedEvidence: "degraded",
+      expectedModeConstraint: null,
+    },
+    {
+      sessionId: SESSION_RECONNECT_INTEGRITY_INTERVIEWER_INTERRUPTED,
+      settlement: "settled" as const,
+      interruption: {
+        speaker: "interviewer" as const,
+        reason: "no_provider_confirmed_prefix" as const,
+      },
+      expectedReason: "disconnect_timeout",
+      expectedState: "completed",
+      expectedFeedback: "pending",
+      expectedEvidence: "partial",
+      expectedModeConstraint: "evidence_limited_only",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_VALID,
       settlement: "settled" as const,
-      interruption: false,
+      interruption: null,
       expectedReason: "disconnect_timeout",
       expectedState: "completed",
       expectedFeedback: "pending",
       expectedEvidence: "complete",
+      expectedModeConstraint: null,
     },
   ] as const;
 
@@ -5209,9 +5231,9 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
           1,
           99,
           ${roomName},
-          'interviewer',
+          ${testCase.interruption.speaker},
           '2026-07-10T08:00:00.000Z'::timestamptz,
-          'no_provider_confirmed_prefix'
+          ${testCase.interruption.reason}
         )
       `;
     }
@@ -5300,11 +5322,14 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
         feedback_status: string;
         dispatch_status: string;
         transcript_evidence_state: string;
+        feedback_mode_constraint: string | null;
       }[]
     >`
       SELECT session.lifecycle_state, session.terminal_reason,
         session.transcript_evidence_state,
-        feedback.status AS feedback_status, feedback.dispatch_status
+        feedback.status AS feedback_status, feedback.dispatch_status,
+        feedback.completion_stats->>'feedbackModeConstraint'
+          AS feedback_mode_constraint
       FROM interview_session session
       JOIN feedback ON feedback.session_id = session.id
       WHERE session.id = ${testCase.sessionId}::uuid
@@ -5314,6 +5339,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       terminal_reason: testCase.expectedReason,
       feedback_status: testCase.expectedFeedback,
       transcript_evidence_state: testCase.expectedEvidence,
+      feedback_mode_constraint: testCase.expectedModeConstraint,
       dispatch_status:
         testCase.expectedFeedback === "pending" ? "pending" : "not_required",
     });

@@ -1,4 +1,8 @@
 import {
+  transcriptInterruptionDegradesCandidateEvidence,
+  type TranscriptInterruptionEvidence,
+} from "@meelni/core";
+import {
   SessionTier,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
@@ -48,7 +52,7 @@ export interface TranscriptEvidenceSnapshot {
  */
 export function buildTranscriptEvidenceSnapshot(input: {
   cutoffAt: Date;
-  interruptionCount: number;
+  interruptions: TranscriptInterruptionEvidence[];
   writers: RuntimeWriterEvidence[];
   baseValidation: SessionValidation;
 }): TranscriptEvidenceSnapshot {
@@ -64,6 +68,11 @@ export function buildTranscriptEvidenceSnapshot(input: {
     integrityState: writer.integrityState,
     settlementState: normalizeSettlementState(writer, cutoffMs),
   }));
+  const degradingInterruptionCount = input.interruptions.filter(
+    transcriptInterruptionDegradesCandidateEvidence
+  ).length;
+  const preservingInterruptionCount =
+    input.interruptions.length - degradingInterruptionCount;
 
   const integrityReasons = [
     ...(input.baseValidation.evidenceFailureReason ===
@@ -74,9 +83,9 @@ export function buildTranscriptEvidenceSnapshot(input: {
       ? ["Voice runtime writer registration was not confirmed"]
       : []),
     ...writers.flatMap((writer) => writerIntegrityReasons(writer, cutoffMs)),
-    ...(input.interruptionCount > 0
+    ...(degradingInterruptionCount > 0
       ? [
-          `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,
+          `Transcript integrity unavailable for ${degradingInterruptionCount} turn(s)`,
         ]
       : []),
   ];
@@ -100,7 +109,10 @@ export function buildTranscriptEvidenceSnapshot(input: {
       integrityReasons,
     };
   }
-  if (writers.every((writer) => writer.settlementState === "settled")) {
+  if (
+    writers.every((writer) => writer.settlementState === "settled") &&
+    preservingInterruptionCount === 0
+  ) {
     return {
       state: "complete",
       validation: input.baseValidation,
@@ -113,6 +125,10 @@ export function buildTranscriptEvidenceSnapshot(input: {
     validation: {
       ...input.baseValidation,
       tier: SessionTier.PARTIAL,
+      stats: {
+        ...input.baseValidation.stats,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
       recommendations: [],
     },
     writers,

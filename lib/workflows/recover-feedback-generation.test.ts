@@ -292,6 +292,7 @@ function record(
       totalWords: 100,
       durationSeconds: 60,
       substantiveResponses: 5,
+      scoreableResponses: 5,
     },
     dispatchStatus: "pending",
     dispatchClaimedAt: null,

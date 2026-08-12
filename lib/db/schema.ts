@@ -506,9 +506,11 @@ export const transcriptInterruptionMarker = pgTable(
     writerGeneration: integer("writer_generation").notNull(),
     sequence: bigint("sequence", { mode: "number" }).notNull(),
     roomName: text("room_name").notNull(),
-    speaker: text("speaker").notNull(),
+    speaker: text("speaker").$type<"user" | "interviewer">().notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-    reason: text("reason").notNull(),
+    reason: text("reason")
+      .$type<"no_provider_confirmed_prefix" | "canonicalization_failed">()
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -810,6 +812,8 @@ export const feedback = pgTable(
       totalWords: number;
       durationSeconds: number;
       substantiveResponses: number;
+      scoreableResponses?: number;
+      feedbackModeConstraint?: "evidence_limited_only";
     }>(),
     completionRecommendations: jsonb("completion_recommendations").$type<
       string[]

@@ -65,9 +65,12 @@ persists a separate `integrity_unavailable` marker. Unscheduled speculative
 generation and unmeasured user hypotheses are not audible evidence and do not
 create markers. A marker contains
 correlation, writer generation, identity, speaker, reason, and occurrence time but no `text`
-field. Markers live outside `transcript_turn`, are never rendered or passed to
-evaluation, and make the session ineligible for feedback because complete
-evidence cannot be proven.
+field. Markers live outside `transcript_turn` and are never rendered or passed
+to evaluation. Candidate markers and every `canonicalization_failed` marker
+make the session ineligible. The exact
+`interviewer/no_provider_confirmed_prefix` marker preserves independently
+trustworthy candidate evidence, but the frozen snapshot restricts any resulting
+feedback to qualitative-only mode.
 
 Turns and markers do not own independent counters. The runtime allocates both
 from one monotonic namespace per writer and remembers the assignment by stable
@@ -96,15 +99,19 @@ each canonical turn or marker, the database records the highest observed
 sequence and the highest contiguous committed sequence for that writer.
 Out-of-order delivery may temporarily create a gap; the committed watermark
 does not cross it, and arrival of the missing sequence converges the already
-stored suffix. A marker permanently degrades the writer. A `settled` assertion
-is rejected while the registered writer has a gap or degraded watermark.
+stored suffix. A candidate marker or any `canonicalization_failed` marker
+permanently degrades the writer. The exact
+`interviewer/no_provider_confirmed_prefix` marker advances the shared sequence
+but preserves writer integrity because it contains no candidate evidence. A
+`settled` assertion is rejected while the registered writer has a gap or
+degraded watermark.
 
 Terminal completion freezes the per-writer committed boundaries and the
 terminal cutoff. Complete evidence requires every registered generation to
 have durable `settled` proof and no integrity fault. Missing settlement can
 produce partial feedback only when the frozen database prefix is healthy,
-gap-free, and independently satisfies the substantive-evidence boundary. A gap,
-marker, degraded settlement, or malformed boundary fails closed.
+gap-free, and independently satisfies the reviewable-evidence boundary. A gap,
+degrading marker, degraded settlement, or malformed boundary fails closed.
 Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.
 

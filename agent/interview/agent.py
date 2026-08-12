@@ -75,6 +75,7 @@ from shared.transcript_ingest import (
     create_runtime_settlement,
     create_runtime_writer_registration,
     finish_tasks_before_shutdown,
+    interruption_marker_degrades_candidate_evidence,
     parse_runtime_settlement_request,
     post_ingest_request,
     register_runtime_writer,
@@ -788,7 +789,10 @@ async def entrypoint(ctx: JobContext):
         *, event_id: str, speaker: str, reason: str, occurred_at: float | None = None
     ) -> None:
         nonlocal transcript_integrity_unavailable, transcript_queue_overflowed
-        transcript_integrity_unavailable = True
+        if interruption_marker_degrades_candidate_evidence(
+            speaker=speaker, reason=reason
+        ):
+            transcript_integrity_unavailable = True
         try:
             marker = interruption_markers_by_id.get(event_id)
             if marker is None:

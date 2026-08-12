@@ -1903,6 +1903,102 @@ function countRecognizedCandidateEvidenceSignals(quote) {
 function hasRecognizedCandidateEvidenceSignal(quote) {
   return countRecognizedCandidateEvidenceSignals(quote) > 0;
 }
+var EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS = /* @__PURE__ */ new Set([
+  "after",
+  "before",
+  "because",
+  "by",
+  "if",
+  "into",
+  "means",
+  "so",
+  "than",
+  "then",
+  "therefore",
+  "through",
+  "when",
+  "while"
+]);
+var EVIDENCE_BROAD_RELATIONSHIP_CONNECTORS = /* @__PURE__ */ new Set([
+  ...EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS,
+  "and",
+  "are",
+  "as",
+  "but",
+  "for",
+  "from",
+  "is",
+  "or",
+  "to",
+  "was",
+  "were",
+  "with"
+]);
+function getRecognizedEvidenceOccurrences(words) {
+  return words.flatMap((word, tokenIndex) => {
+    const normalized = word.toLocaleLowerCase("en-US");
+    return EVIDENCE_DOMAIN_TERMS.has(normalized) || EVIDENCE_REASONING_TERMS.has(normalized) || EVIDENCE_DOMAIN_ACRONYMS.has(word.toLocaleUpperCase("en-US")) ? [{ lexeme: normalized, tokenIndex }] : [];
+  });
+}
+function countDisjointEvidenceRelationships(input) {
+  let count = 0;
+  let cursor = 0;
+  while (cursor < input.occurrences.length - 1) {
+    const left = input.occurrences[cursor];
+    let match = -1;
+    for (let next = cursor + 1; next < input.occurrences.length; next += 1) {
+      const right = input.occurrences[next];
+      if (right.tokenIndex - left.tokenIndex > 14) break;
+      if (right.lexeme === left.lexeme) continue;
+      const hasConnector = input.words.slice(left.tokenIndex + 1, right.tokenIndex).some((word) => input.connectors.has(word));
+      if (hasConnector) {
+        match = next;
+        break;
+      }
+    }
+    if (match < 0) {
+      cursor += 1;
+      continue;
+    }
+    count += 1;
+    cursor = match + 1;
+  }
+  return count;
+}
+function analyzeEvidenceLimitedCandidateResponseSignal(text2) {
+  const analysis = analyzeSurfaceCoherence(text2);
+  const lexicalTokenCount = analysis.words.length;
+  const occurrences = getRecognizedEvidenceOccurrences(analysis.words);
+  const recognizedEvidenceOccurrenceCount = occurrences.length;
+  const distinctRecognizedEvidenceLexemeCount = new Set(
+    occurrences.map((occurrence) => occurrence.lexeme)
+  ).size;
+  const recognizedEvidenceOccurrenceRatio = lexicalTokenCount === 0 ? 0 : recognizedEvidenceOccurrenceCount / lexicalTokenCount;
+  const recognizedEvidenceRepetitionIsBounded = recognizedEvidenceOccurrenceCount <= 2 * distinctRecognizedEvidenceLexemeCount;
+  const strongRelationshipCount = countDisjointEvidenceRelationships({
+    words: analysis.words,
+    occurrences,
+    connectors: EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS
+  });
+  const broadRelationshipCount = countDisjointEvidenceRelationships({
+    words: analysis.words,
+    occurrences,
+    connectors: EVIDENCE_BROAD_RELATIONSHIP_CONNECTORS
+  });
+  return {
+    lexicalTokenCount,
+    recognizedEvidenceOccurrenceCount,
+    distinctRecognizedEvidenceLexemeCount,
+    recognizedEvidenceOccurrenceRatio,
+    recognizedEvidenceRepetitionIsBounded,
+    strongRelationshipCount,
+    broadRelationshipCount,
+    qualifies: lexicalTokenCount >= 40 && recognizedEvidenceOccurrenceRatio <= 0.3 && recognizedEvidenceRepetitionIsBounded && strongRelationshipCount >= 1 && (distinctRecognizedEvidenceLexemeCount >= 5 && broadRelationshipCount >= 2 || lexicalTokenCount >= 46 && distinctRecognizedEvidenceLexemeCount >= 4 && broadRelationshipCount >= 1)
+  };
+}
+function hasEvidenceLimitedCandidateResponseSignal(text2) {
+  return analyzeEvidenceLimitedCandidateResponseSignal(text2).qualifies;
+}
 function hasSubstantiveCandidateResponseSignal(text2) {
   const analysis = analyzeSurfaceCoherence(text2);
   if (hasCompactSurfaceCoherence(analysis)) return true;
@@ -6325,12 +6421,17 @@ var FEEDBACK_ELIGIBILITY_POLICY = {
     minSubstantiveResponses: 1
   },
   full: {
-    minSubstantiveResponses: 5
+    minScoreableResponses: 5
   }
 };
 var FEEDBACK_NUMERICAL_PRECISION_POLICY = {
-  minSubstantiveResponses: 4
+  minScoreableResponses: 4
 };
+function classifyCandidateResponseEvidence(input) {
+  if (!input.passesQuantitativeGates) return "insufficient";
+  if (hasSubstantiveCandidateResponseSignal(input.text)) return "scoreable";
+  return hasEvidenceLimitedCandidateResponseSignal(input.text) ? "evidence_limited" : "insufficient";
+}
 
 // packages/core/src/session-lifecycle.ts
 var INTERVIEW_TERMINAL_STATES = [
@@ -19085,9 +19186,9 @@ var transcriptInterruptionMarker = pgTable(
     writerGeneration: integer("writer_generation").notNull(),
     sequence: bigint("sequence", { mode: "number" }).notNull(),
     roomName: text("room_name").notNull(),
-    speaker: text("speaker").notNull(),
+    speaker: text("speaker").$type().notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-    reason: text("reason").notNull(),
+    reason: text("reason").$type().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
@@ -20049,16 +20150,22 @@ function calculateSessionStatsFromTurns(turns) {
     0,
     Math.floor((Math.max(...endTimes) - Math.min(...startTimes)) / 1e3)
   ) : 0;
-  const substantiveResponses = turns.filter((turn) => {
-    if (turn.speaker !== "user" || !turn.text) return false;
-    return isSubstantiveUserResponse(turn.text);
-  }).length;
+  const evidenceLevels = turns.flatMap(
+    (turn) => turn.speaker === "user" && turn.text ? [classifyUserResponseEvidence(turn.text)] : []
+  );
+  const substantiveResponses = evidenceLevels.filter(
+    (level) => level !== "insufficient"
+  ).length;
+  const scoreableResponses = evidenceLevels.filter(
+    (level) => level === "scoreable"
+  ).length;
   return {
     totalTurns,
     userTurns,
     totalWords,
     durationSeconds,
-    substantiveResponses
+    substantiveResponses,
+    scoreableResponses
   };
 }
 var FILLER_WORDS = /* @__PURE__ */ new Set([
@@ -20090,15 +20197,18 @@ var FILLER_WORDS = /* @__PURE__ */ new Set([
   "yeah",
   "yes"
 ]);
-function isSubstantiveUserResponse(text2) {
+function classifyUserResponseEvidence(text2) {
   const words = tokenizeWords(text2).map(
     (word) => word.toLocaleLowerCase("en-US")
   );
-  if (words.length <= 10) return false;
+  if (words.length <= 10) return "insufficient";
   const uniqueWords = new Set(words);
   const contentWords = new Set(words.filter((word) => !FILLER_WORDS.has(word)));
   const alphabeticCharacters = (text2.match(new RegExp("\\p{L}", "gu")) ?? []).length;
-  return uniqueWords.size / words.length >= 0.35 && contentWords.size >= 6 && alphabeticCharacters >= 30 && hasSubstantiveCandidateResponseSignal(text2);
+  return classifyCandidateResponseEvidence({
+    text: text2,
+    passesQuantitativeGates: uniqueWords.size / words.length >= 0.35 && contentWords.size >= 6 && alphabeticCharacters >= 30
+  });
 }
 function tokenizeWords(text2) {
   return text2.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu) ?? [];
@@ -20175,7 +20285,7 @@ function validateSessionStats(stats) {
       evidenceFailureReason: "no_reviewable_answer"
     };
   }
-  const isFull = stats.substantiveResponses >= THRESHOLDS.FULL.minSubstantiveResponses;
+  const isFull = stats.scoreableResponses >= THRESHOLDS.FULL.minScoreableResponses;
   const tier = isFull ? "full" /* FULL */ : "partial" /* PARTIAL */;
   return {
     tier,
@@ -30099,7 +30209,8 @@ async function generateFeedbackWorkflow(input, deps) {
       return { disposition: "fenced" };
     }
     const startedAt = deps.now();
-    const mode = evaluationState === "partial" && (claimed.completionStats?.substantiveResponses ?? 1) < FEEDBACK_NUMERICAL_PRECISION_POLICY.minSubstantiveResponses ? "evidence_limited" : "scored";
+    const scoreableResponses = claimed.completionStats?.scoreableResponses ?? claimed.completionStats?.substantiveResponses ?? 1;
+    const mode = claimed.completionStats?.feedbackModeConstraint === "evidence_limited_only" || evaluationState === "partial" && scoreableResponses < FEEDBACK_NUMERICAL_PRECISION_POLICY.minScoreableResponses ? "evidence_limited" : "scored";
     const providerEvaluation = await deps.evaluate({
       roundType: authorization.session.roundType || "product_sense",
       transcript: transcript.transcript,
@@ -31039,7 +31150,8 @@ async function runCaseThroughGenerationWorkflow(input) {
       ).length,
       totalWords: 0,
       durationSeconds: 0,
-      substantiveResponses: 4
+      substantiveResponses: 4,
+      scoreableResponses: 4
     },
     dispatchStatus: "sent",
     dispatchClaimedAt: input.now,

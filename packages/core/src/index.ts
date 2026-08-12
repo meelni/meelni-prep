@@ -11,6 +11,7 @@ export * from "./feedback-outcome";
 export * from "./feedback-view-model";
 export * from "./feedback-transcript";
 export * from "./feedback-eligibility";
+export * from "./transcript-integrity";
 export * from "./question";
 export * from "./question-taxonomy";
 export * from "./interview-launch";

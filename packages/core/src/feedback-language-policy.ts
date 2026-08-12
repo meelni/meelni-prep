@@ -2517,6 +2517,161 @@ export function hasRecognizedCandidateEvidenceSignal(quote: string): boolean {
   return countRecognizedCandidateEvidenceSignals(quote) > 0;
 }
 
+/**
+ * Qualitative-only feedback accepts long recognized evidence with bounded,
+ * punctuation-independent lexical relationships. This is a reviewability
+ * gate, not semantic proof. Canonical security and quantitative gates are
+ * enforced by the caller; closed provider selections remain the semantic
+ * coaching boundary.
+ */
+export interface EvidenceLimitedCandidateResponseAnalysis {
+  lexicalTokenCount: number;
+  recognizedEvidenceOccurrenceCount: number;
+  distinctRecognizedEvidenceLexemeCount: number;
+  recognizedEvidenceOccurrenceRatio: number;
+  recognizedEvidenceRepetitionIsBounded: boolean;
+  strongRelationshipCount: number;
+  broadRelationshipCount: number;
+  qualifies: boolean;
+}
+
+const EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS = new Set([
+  "after",
+  "before",
+  "because",
+  "by",
+  "if",
+  "into",
+  "means",
+  "so",
+  "than",
+  "then",
+  "therefore",
+  "through",
+  "when",
+  "while",
+]);
+
+const EVIDENCE_BROAD_RELATIONSHIP_CONNECTORS = new Set([
+  ...EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS,
+  "and",
+  "are",
+  "as",
+  "but",
+  "for",
+  "from",
+  "is",
+  "or",
+  "to",
+  "was",
+  "were",
+  "with",
+]);
+
+interface RecognizedEvidenceOccurrence {
+  lexeme: string;
+  tokenIndex: number;
+}
+
+function getRecognizedEvidenceOccurrences(
+  words: readonly string[]
+): RecognizedEvidenceOccurrence[] {
+  return words.flatMap((word, tokenIndex) => {
+    const normalized = word.toLocaleLowerCase("en-US");
+    return EVIDENCE_DOMAIN_TERMS.has(normalized) ||
+      EVIDENCE_REASONING_TERMS.has(normalized) ||
+      EVIDENCE_DOMAIN_ACRONYMS.has(word.toLocaleUpperCase("en-US"))
+      ? [{ lexeme: normalized, tokenIndex }]
+      : [];
+  });
+}
+
+function countDisjointEvidenceRelationships(input: {
+  words: readonly string[];
+  occurrences: readonly RecognizedEvidenceOccurrence[];
+  connectors: ReadonlySet<string>;
+}): number {
+  let count = 0;
+  let cursor = 0;
+  while (cursor < input.occurrences.length - 1) {
+    const left = input.occurrences[cursor]!;
+    let match = -1;
+    for (let next = cursor + 1; next < input.occurrences.length; next += 1) {
+      const right = input.occurrences[next]!;
+      if (right.tokenIndex - left.tokenIndex > 14) break;
+      if (right.lexeme === left.lexeme) continue;
+      const hasConnector = input.words
+        .slice(left.tokenIndex + 1, right.tokenIndex)
+        .some((word) => input.connectors.has(word));
+      if (hasConnector) {
+        match = next;
+        break;
+      }
+    }
+    if (match < 0) {
+      cursor += 1;
+      continue;
+    }
+    count += 1;
+    cursor = match + 1;
+  }
+  return count;
+}
+
+export function analyzeEvidenceLimitedCandidateResponseSignal(
+  text: string
+): EvidenceLimitedCandidateResponseAnalysis {
+  const analysis = analyzeSurfaceCoherence(text);
+  const lexicalTokenCount = analysis.words.length;
+  const occurrences = getRecognizedEvidenceOccurrences(analysis.words);
+  const recognizedEvidenceOccurrenceCount = occurrences.length;
+  const distinctRecognizedEvidenceLexemeCount = new Set(
+    occurrences.map((occurrence) => occurrence.lexeme)
+  ).size;
+  const recognizedEvidenceOccurrenceRatio =
+    lexicalTokenCount === 0
+      ? 0
+      : recognizedEvidenceOccurrenceCount / lexicalTokenCount;
+  const recognizedEvidenceRepetitionIsBounded =
+    recognizedEvidenceOccurrenceCount <=
+    2 * distinctRecognizedEvidenceLexemeCount;
+  const strongRelationshipCount = countDisjointEvidenceRelationships({
+    words: analysis.words,
+    occurrences,
+    connectors: EVIDENCE_STRONG_RELATIONSHIP_CONNECTORS,
+  });
+  const broadRelationshipCount = countDisjointEvidenceRelationships({
+    words: analysis.words,
+    occurrences,
+    connectors: EVIDENCE_BROAD_RELATIONSHIP_CONNECTORS,
+  });
+  return {
+    lexicalTokenCount,
+    recognizedEvidenceOccurrenceCount,
+    distinctRecognizedEvidenceLexemeCount,
+    recognizedEvidenceOccurrenceRatio,
+    recognizedEvidenceRepetitionIsBounded,
+    strongRelationshipCount,
+    broadRelationshipCount,
+    qualifies:
+      lexicalTokenCount >= 40 &&
+      recognizedEvidenceOccurrenceRatio <= 0.3 &&
+      recognizedEvidenceRepetitionIsBounded &&
+      strongRelationshipCount >= 1 &&
+      ((distinctRecognizedEvidenceLexemeCount >= 5 &&
+        broadRelationshipCount >= 2) ||
+        (lexicalTokenCount >= 46 &&
+          distinctRecognizedEvidenceLexemeCount >= 4 &&
+          broadRelationshipCount >= 1)),
+  };
+}
+
+export function hasEvidenceLimitedCandidateResponseSignal(
+  text: string
+): boolean {
+  return analyzeEvidenceLimitedCandidateResponseSignal(text).qualifies;
+}
+
 /** A scoreable response needs both PM/reasoning signal and coherent language. */
 export function hasSubstantiveCandidateResponseSignal(text: string): boolean {
   const analysis = analyzeSurfaceCoherence(text);

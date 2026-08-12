@@ -6,6 +6,7 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  classifyTranscriptInterruptionIntegrity,
   decodeFeedbackLifecycleResponse,
   isEvidenceLimitedFeedbackResult,
   parseEvidenceLimitedFeedback,
@@ -62,11 +63,13 @@ const NOW = new Date("2026-08-09T17:58:53.000Z");
 
 test("provider-free production-shaped feedback lifecycle converges across all fixtures", async () => {
   const outcomes = new Map<string, string>();
+  const evaluatorModes = new Map<string, Set<string>>();
   const rubricRoutes = new Set<string>();
 
   for (const fixture of createFeedbackGoldenPathFixtures()) {
     const result = await runFixture(fixture);
     outcomes.set(fixture.id, result.outcome);
+    evaluatorModes.set(fixture.id, result.evaluatorModes);
     result.rubricRoutes.forEach((route) => rubricRoutes.add(route));
   }
 
@@ -78,6 +81,25 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
     "transcript_integrity_degraded"
   );
   assert.equal(outcomes.get("corrupt"), "transcript_integrity_degraded");
+  assert.equal(outcomes.get("spoken-evidence-limited"), "feedback_generated");
+  for (const id of [
+    "harmless-marker-settled-scoreable",
+    "harmless-marker-missing-scoreable",
+  ]) {
+    assert.equal(outcomes.get(id), "feedback_generated");
+    assert.deepEqual(evaluatorModes.get(id), new Set(["evidence_limited"]));
+  }
+  for (const id of [
+    "candidate-marker-settled",
+    "canonicalization-marker-settled",
+  ]) {
+    assert.equal(outcomes.get(id), "transcript_integrity_degraded");
+    assert.deepEqual(evaluatorModes.get(id), new Set());
+  }
+  assert.deepEqual(
+    evaluatorModes.get("spoken-evidence-limited"),
+    new Set(["evidence_limited"])
+  );
   assert.deepEqual(
     rubricRoutes,
     new Set(["product_sense", "behavioral", "strategy", "execution"])
@@ -168,12 +190,14 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   }
   stages.push("marker_ingest");
 
-  const settlement = await ingestTranscriptRuntimeSettlement({
-    requestSessionId: fixture.sessionId,
-    settlement: fixture.settlement,
-    store: evidence,
-  });
-  assert.equal(settlement.ok, true, fixture.id);
+  if (fixture.ingestSettlement) {
+    const settlement = await ingestTranscriptRuntimeSettlement({
+      requestSessionId: fixture.sessionId,
+      settlement: fixture.settlement,
+      store: evidence,
+    });
+    assert.equal(settlement.ok, true, fixture.id);
+  }
   stages.push("settlement_ingest");
 
   const turns = evidence.orderedTurns();
@@ -187,10 +211,19 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
       endedAt: new Date(turn.ended_at),
     }))
   );
+  if (fixture.id === "spoken-evidence-limited") {
+    assert.equal(validation.stats.userTurns, 6);
+    assert.equal(validation.stats.substantiveResponses, 6);
+    assert.equal(validation.stats.scoreableResponses, 0);
+    assert.equal(validation.tier, SessionTier.PARTIAL);
+  }
   const committedSequence = evidence.committedSequence();
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt: new Date(fixture.settlement.settled_at),
-    interruptionCount: evidence.markers.size,
+    interruptions: [...evidence.markers.values()].map((marker) => ({
+      speaker: marker.speaker,
+      reason: marker.reason,
+    })),
     writers: [
       {
         generation: 1,
@@ -200,13 +233,37 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
         committedSequence,
         committedEventId: evidence.eventIdForSequence(committedSequence),
         committedThroughAt: evidence.timeForSequence(committedSequence),
-        integrityState: fixture.markers.length > 0 ? "degraded" : "healthy",
-        settlementState: fixture.settlement.state,
-        settledAt: new Date(fixture.settlement.settled_at),
+        integrityState: fixture.markers.some(
+          (marker) =>
+            classifyTranscriptInterruptionIntegrity({
+              speaker: marker.speaker,
+              reason: marker.reason,
+            }) === "degrade"
+        )
+          ? "degraded"
+          : "healthy",
+        settlementState: fixture.ingestSettlement
+          ? fixture.settlement.state
+          : null,
+        settledAt: fixture.ingestSettlement
+          ? new Date(fixture.settlement.settled_at)
+          : null,
       },
     ],
     baseValidation: validation,
   });
+  if (
+    fixture.id === "harmless-marker-settled-scoreable" ||
+    fixture.id === "harmless-marker-missing-scoreable"
+  ) {
+    assert.ok(validation.stats.scoreableResponses >= 4);
+    assert.equal(snapshot.state, "partial");
+    assert.equal(snapshot.validation.tier, SessionTier.PARTIAL);
+    assert.equal(
+      snapshot.validation.stats.feedbackModeConstraint,
+      "evidence_limited_only"
+    );
+  }
 
   const outcomeReason: SkippedFeedbackOutcomeReason | null =
     snapshot.state === "degraded"
@@ -289,6 +346,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
     return {
       outcome: outcomeReason,
       rubricRoutes: new Set<string>(),
+      evaluatorModes: new Set<string>(),
       stages,
       generationStore,
     };
@@ -321,6 +379,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   stages.push("durable_dispatch");
 
   const rubricRoutes = new Set<string>();
+  const evaluatorModes = new Set<string>();
   const prepared: PreparedFeedbackTranscript = {
     eligible: true,
     transcript: turns.map((turn) => ({
@@ -347,6 +406,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
         transcript: prepared,
         stages,
         rubricRoutes,
+        evaluatorModes,
       }),
     reportResult() {},
   };
@@ -430,6 +490,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   return {
     outcome: "feedback_generated",
     rubricRoutes,
+    evaluatorModes,
     stages,
     generationStore,
   };
@@ -510,6 +571,7 @@ function createGenerationDeps(input: {
   transcript: PreparedFeedbackTranscript;
   stages: string[];
   rubricRoutes: Set<string>;
+  evaluatorModes: Set<string>;
 }): GenerateFeedbackWorkflowDeps {
   return {
     store: input.store,
@@ -528,6 +590,7 @@ function createGenerationDeps(input: {
     evaluate: async ({ roundType, transcript, mode, evaluationState }) => {
       input.stages.push("evaluator");
       input.rubricRoutes.add(roundType);
+      input.evaluatorModes.add(mode);
       const candidateTurns = transcript.filter(
         (turn) => turn.speaker === "user"
       );

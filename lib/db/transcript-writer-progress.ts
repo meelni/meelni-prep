@@ -13,6 +13,7 @@ export interface TranscriptWriterEvidenceFact {
   eventId: string;
   evidenceAt: Date;
   kind: "turn" | "marker";
+  integrityImpact: "preserve" | "degrade";
 }
 
 /**
@@ -38,13 +39,14 @@ export function deriveTranscriptWriterProgress(input: {
       throw new Error("invalid_transcript_writer_evidence_fact");
     }
     lastObservedSequence = Math.max(lastObservedSequence, fact.sequence);
-    if (fact.kind === "marker") integrityState = "degraded";
+    if (fact.integrityImpact === "degrade") integrityState = "degraded";
 
     const existing = bySequence.get(fact.sequence);
     if (existing) {
       if (
         existing.eventId !== fact.eventId ||
         existing.kind !== fact.kind ||
+        existing.integrityImpact !== fact.integrityImpact ||
         existing.evidenceAt.getTime() !== fact.evidenceAt.getTime()
       ) {
         integrityState = "degraded";
