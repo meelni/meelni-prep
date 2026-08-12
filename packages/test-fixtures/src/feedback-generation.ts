@@ -74,7 +74,11 @@ function createFixture(input: {
   roundType: FeedbackGoldenRoundType;
   answers?: string[];
   durationMs: number;
-  marker?: boolean;
+  marker?: {
+    speaker: "user" | "interviewer";
+    reason: "no_provider_confirmed_prefix" | "canonicalization_failed";
+  };
+  settlementState?: "settled" | "degraded";
   missingSettlement?: boolean;
   corrupt?: boolean;
   interviewerOnlyTurns?: number;
@@ -161,9 +165,9 @@ function createFixture(input: {
           sequence: sequence++,
           session_id: sessionId,
           room_name: roomName,
-          speaker: "interviewer",
+          speaker: input.marker.speaker,
           occurred_at: timestamp(119_000),
-          reason: "no_provider_confirmed_prefix",
+          reason: input.marker.reason,
         },
       ]
     : [];
@@ -194,12 +198,18 @@ function createFixture(input: {
       room_name: roomName,
       writer_id: writerId,
       writer_generation: 1,
-      state: input.marker || input.corrupt ? "degraded" : "settled",
+      state: input.settlementState ?? (input.corrupt ? "degraded" : "settled"),
       settled_at: timestamp(input.durationMs),
     },
     ingestSettlement: !input.missingSettlement,
     expectedOutcome:
-      (input.marker && !input.missingSettlement) || input.corrupt
+      input.settlementState === "degraded" ||
+      input.corrupt ||
+      (input.marker &&
+        !(
+          input.marker.speaker === "interviewer" &&
+          input.marker.reason === "no_provider_confirmed_prefix"
+        ))
         ? "transcript_integrity_degraded"
         : candidateAnswers.length === 0
           ? "no_reviewable_answer"
@@ -265,7 +275,11 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       roundType: "execution",
       answers: [ANSWERS.execution[0]!],
       durationMs: 374_000,
-      marker: true,
+      marker: {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
+      settlementState: "degraded",
     }),
     createFixture({
       id: "corrupt",
@@ -280,16 +294,60 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       sessionSuffix: "397007",
       roundType: "product_sense",
       answers: [
-        "The target customer is neighborhood volunteers. The recurring problem is changing delivery routes. Customer interviews are the first research step. A shared exception queue is the initial product choice. Completed deliveries are the primary metric. Late route changes are a guardrail metric. The evidence supports the next decision.",
-        "My recommendation is one coordination moment. The user sees an exception. A new owner takes the route quickly. Two workflow options enter the initial test. Speed is one tradeoff. Operational context is another tradeoff. Customer research informs the product decision.",
-        "Success means reliable recovery. Completed deliveries are the primary outcome. Reassignment time measures coordination effort. Duplicate assignments are the first guardrail. Support requests expose confusing workflow edges. Each coordinator cohort gets a separate metric review. The customer evidence guides the expansion decision.",
-        "The target research cohort is volunteer coordinators. The recurring problem is disrupted delivery ownership. Customer interviews are the first discovery step. A recent route exception is the interview topic. Frequent blockers are the primary priority. Rare reports are outside the first scope. The evidence supports the backlog decision.",
-        "The largest customer risk is notification fatigue. The workflow test is the volunteer routine. A separate product risk is missing delivery context. The prototype is the minimum useful detail set. The privacy boundary is unrelated personal information. Customer comprehension is one validation outcome. Reassignment success is another validation outcome. The findings are the launch input.",
-        "The launch cohort is one partner organization. The initial customer group is deliberately bounded. Completed deliveries are the weekly outcome. Reassignment time is a core metric. Support demand is the operational guardrail. Two operating cycles are the review window. Product evidence is the expansion gate. The decision record is the final artifact.",
+        "The target customer is neighborhood volunteers. The recurring problem is changing delivery routes. Customer interviews are the first research step. A shared exception queue is the initial product choice. Completed deliveries are the primary metric. Late route changes are a guardrail metric. Customer evidence feeds into the product decision.",
+        "My recommendation is one coordination moment. The user sees an exception. A new owner takes the route quickly. Two workflow options enter the initial test. Speed is one tradeoff. Operational context is another tradeoff. Customer research feeds into the product decision.",
+        "Success means reliable recovery. Completed deliveries are the primary outcome. Reassignment time measures coordination effort. Duplicate assignments are the first guardrail. Support requests expose confusing workflow edges. Each coordinator cohort gets a separate metric review. Customer workflow feeds into product evidence. The metric result feeds into the expansion decision.",
+        "The target research cohort is volunteer coordinators. The recurring problem is disrupted delivery ownership. Customer interviews are the first discovery step. A recent route exception is the interview topic. Frequent blockers are the primary priority. Rare reports are outside the first scope. Customer evidence feeds into the backlog decision.",
+        "The largest customer risk is notification fatigue. The workflow test is the volunteer routine. A separate product risk is missing delivery context. The prototype is the minimum useful detail set. The privacy boundary is unrelated personal information. Customer comprehension is one validation outcome. Reassignment success is another validation outcome. Product findings feed into the launch decision.",
+        "The launch cohort is one partner organization. The initial customer group is deliberately bounded. Completed deliveries are the weekly outcome. Reassignment time is a core metric. Support demand is the operational guardrail. Two operating cycles are the review window. Product evidence feeds into the expansion decision. The decision record is the final artifact.",
       ],
       durationMs: 330_000,
-      marker: true,
+      marker: {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
       missingSettlement: true,
+    }),
+    createFixture({
+      id: "harmless-marker-settled-scoreable",
+      sessionSuffix: "397008",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      marker: {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
+    }),
+    createFixture({
+      id: "harmless-marker-missing-scoreable",
+      sessionSuffix: "397009",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      marker: {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
+      missingSettlement: true,
+    }),
+    createFixture({
+      id: "candidate-marker-settled",
+      sessionSuffix: "397013",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      marker: {
+        speaker: "user",
+        reason: "no_provider_confirmed_prefix",
+      },
+    }),
+    createFixture({
+      id: "canonicalization-marker-settled",
+      sessionSuffix: "397014",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      marker: {
+        speaker: "interviewer",
+        reason: "canonicalization_failed",
+      },
     }),
     ...(["behavioral", "strategy", "execution"] as const).map(
       (roundType, index) =>

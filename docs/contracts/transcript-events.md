@@ -65,9 +65,12 @@ persists a separate `integrity_unavailable` marker. Unscheduled speculative
 generation and unmeasured user hypotheses are not audible evidence and do not
 create markers. A marker contains
 correlation, writer generation, identity, speaker, reason, and occurrence time but no `text`
-field. Markers live outside `transcript_turn`, are never rendered or passed to
-evaluation, and make the session ineligible for feedback because complete
-evidence cannot be proven.
+field. Markers live outside `transcript_turn` and are never rendered or passed
+to evaluation. Candidate markers and every `canonicalization_failed` marker
+make the session ineligible. The exact
+`interviewer/no_provider_confirmed_prefix` marker preserves independently
+trustworthy candidate evidence, but the frozen snapshot restricts any resulting
+feedback to qualitative-only mode.
 
 Turns and markers do not own independent counters. The runtime allocates both
 from one monotonic namespace per writer and remembers the assignment by stable
@@ -99,8 +102,9 @@ does not cross it, and arrival of the missing sequence converges the already
 stored suffix. A candidate marker or any `canonicalization_failed` marker
 permanently degrades the writer. The exact
 `interviewer/no_provider_confirmed_prefix` marker advances the shared sequence
-but preserves writer integrity because it contains no candidate evidence. A `settled` assertion
-is rejected while the registered writer has a gap or degraded watermark.
+but preserves writer integrity because it contains no candidate evidence. A
+`settled` assertion is rejected while the registered writer has a gap or
+degraded watermark.
 
 Terminal completion freezes the per-writer committed boundaries and the
 terminal cutoff. Complete evidence requires every registered generation to

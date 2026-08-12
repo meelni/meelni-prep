@@ -437,6 +437,15 @@ def is_interruption_marker(value: object) -> bool:
     )
 
 
+def interruption_marker_degrades_candidate_evidence(
+    *, speaker: object, reason: object
+) -> bool:
+    """Keep only the exact textless interviewer interruption non-degrading."""
+    return not (
+        speaker == "interviewer" and reason == "no_provider_confirmed_prefix"
+    )
+
+
 def create_interruption_marker(
     *,
     event_id: str,

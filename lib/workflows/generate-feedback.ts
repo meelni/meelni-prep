@@ -210,9 +210,11 @@ export async function generateFeedbackWorkflow(
       claimed.completionStats?.substantiveResponses ??
       1;
     const mode =
-      evaluationState === "partial" &&
-      scoreableResponses <
-        FEEDBACK_NUMERICAL_PRECISION_POLICY.minScoreableResponses
+      claimed.completionStats?.feedbackModeConstraint ===
+        "evidence_limited_only" ||
+      (evaluationState === "partial" &&
+        scoreableResponses <
+          FEEDBACK_NUMERICAL_PRECISION_POLICY.minScoreableResponses)
         ? "evidence_limited"
         : "scored";
     const providerEvaluation = await deps.evaluate({

@@ -5065,6 +5065,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedState: "completed",
       expectedFeedback: "pending",
       expectedEvidence: "partial",
+      expectedModeConstraint: "evidence_limited_only",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_DEGRADED,
@@ -5074,6 +5075,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedState: "abandoned",
       expectedFeedback: "skipped",
       expectedEvidence: "degraded",
+      expectedModeConstraint: null,
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_CANDIDATE_INTERRUPTED,
@@ -5086,6 +5088,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedState: "abandoned",
       expectedFeedback: "skipped",
       expectedEvidence: "degraded",
+      expectedModeConstraint: null,
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_INTERVIEWER_INTERRUPTED,
@@ -5097,7 +5100,8 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedReason: "disconnect_timeout",
       expectedState: "completed",
       expectedFeedback: "pending",
-      expectedEvidence: "complete",
+      expectedEvidence: "partial",
+      expectedModeConstraint: "evidence_limited_only",
     },
     {
       sessionId: SESSION_RECONNECT_INTEGRITY_VALID,
@@ -5107,6 +5111,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       expectedState: "completed",
       expectedFeedback: "pending",
       expectedEvidence: "complete",
+      expectedModeConstraint: null,
     },
   ] as const;
 
@@ -5317,11 +5322,14 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
         feedback_status: string;
         dispatch_status: string;
         transcript_evidence_state: string;
+        feedback_mode_constraint: string | null;
       }[]
     >`
       SELECT session.lifecycle_state, session.terminal_reason,
         session.transcript_evidence_state,
-        feedback.status AS feedback_status, feedback.dispatch_status
+        feedback.status AS feedback_status, feedback.dispatch_status,
+        feedback.completion_stats->>'feedbackModeConstraint'
+          AS feedback_mode_constraint
       FROM interview_session session
       JOIN feedback ON feedback.session_id = session.id
       WHERE session.id = ${testCase.sessionId}::uuid
@@ -5331,6 +5339,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
       terminal_reason: testCase.expectedReason,
       feedback_status: testCase.expectedFeedback,
       transcript_evidence_state: testCase.expectedEvidence,
+      feedback_mode_constraint: testCase.expectedModeConstraint,
       dispatch_status:
         testCase.expectedFeedback === "pending" ? "pending" : "not_required",
     });

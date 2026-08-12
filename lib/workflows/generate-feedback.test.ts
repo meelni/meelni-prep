@@ -338,6 +338,45 @@ test("five long-form fallback responses never unlock scored mode", async () => {
   assert.notEqual(store.current.status, "skipped");
 });
 
+test("a durable qualitative-only constraint overrides five scoreable responses", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 300,
+        durationSeconds: 240,
+        substantiveResponses: 5,
+        scoreableResponses: 5,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
+    })
+  );
+  let observed:
+    | { mode: "scored" | "evidence_limited"; state: FeedbackEvaluationState }
+    | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observed = { mode: input.mode, state: input.evaluationState };
+      throw new FeedbackV2ParseError(
+        "finding_text_invalid",
+        "provider supplied no valid closed selection"
+      );
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /provider supplied no valid closed selection/
+  );
+  assert.deepEqual(observed, {
+    mode: "evidence_limited",
+    state: "partial",
+  });
+  assert.notEqual(store.current.status, "skipped");
+});
+
 test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
   const turns = [
     {

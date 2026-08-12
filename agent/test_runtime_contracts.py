@@ -81,6 +81,7 @@ from shared.transcript_ingest import (
     create_runtime_writer_registration,
     finish_tasks_before_shutdown,
     derive_ingest_signing_key,
+    interruption_marker_degrades_candidate_evidence,
     is_interruption_marker,
     is_runtime_settlement,
     is_runtime_writer_registration,
@@ -1614,6 +1615,26 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
         self.assertTrue(is_interruption_marker(user_failure))
         self.assertEqual(user_failure["event_type"], "integrity_unavailable")
         self.assertEqual(user_failure["speaker"], "user")
+
+    def test_interruption_marker_integrity_impact_is_role_and_reason_scoped(self):
+        self.assertFalse(
+            interruption_marker_degrades_candidate_evidence(
+                speaker="interviewer", reason="no_provider_confirmed_prefix"
+            )
+        )
+        for speaker, reason in (
+            ("user", "no_provider_confirmed_prefix"),
+            ("user", "canonicalization_failed"),
+            ("interviewer", "canonicalization_failed"),
+            ("unknown", "no_provider_confirmed_prefix"),
+            ("interviewer", "unknown"),
+        ):
+            with self.subTest(speaker=speaker, reason=reason):
+                self.assertTrue(
+                    interruption_marker_degrades_candidate_evidence(
+                        speaker=speaker, reason=reason
+                    )
+                )
 
     def test_retryable_statuses_match_ingest_policy(self):
         for status in (408, 425, 429, 500, 503, 599):

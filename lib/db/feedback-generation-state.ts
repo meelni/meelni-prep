@@ -41,6 +41,7 @@ export interface FeedbackGenerationRecord {
     durationSeconds: number;
     substantiveResponses: number;
     scoreableResponses?: number;
+    feedbackModeConstraint?: "evidence_limited_only";
   } | null;
   dispatchStatus: "not_required" | "pending" | "sending" | "sent" | "failed";
   dispatchClaimedAt: Date | null;

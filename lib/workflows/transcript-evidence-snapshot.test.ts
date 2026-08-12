@@ -69,6 +69,10 @@ test("a healthy DB-proven prefix remains eligible as partial without settlement"
   assert.equal(snapshot.state, "partial");
   assert.equal(snapshot.validation.isValid, true);
   assert.equal(snapshot.validation.tier, SessionTier.PARTIAL);
+  assert.equal(
+    snapshot.validation.stats.feedbackModeConstraint,
+    "evidence_limited_only"
+  );
   assert.equal(snapshot.writers[0]?.settlementState, "missing");
 });
 
@@ -126,6 +130,32 @@ test("a textless interviewer interruption preserves an otherwise healthy partial
 
   assert.equal(snapshot.state, "partial");
   assert.equal(snapshot.validation.isValid, true);
+  assert.equal(
+    snapshot.validation.stats.feedbackModeConstraint,
+    "evidence_limited_only"
+  );
+});
+
+test("a settled textless interviewer interruption remains qualitative-only", () => {
+  const snapshot = buildTranscriptEvidenceSnapshot({
+    cutoffAt,
+    interruptions: [
+      {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
+    ],
+    writers: [writer()],
+    baseValidation: validation(),
+  });
+
+  assert.equal(snapshot.state, "partial");
+  assert.equal(snapshot.validation.tier, SessionTier.PARTIAL);
+  assert.equal(snapshot.validation.stats.scoreableResponses, 5);
+  assert.equal(
+    snapshot.validation.stats.feedbackModeConstraint,
+    "evidence_limited_only"
+  );
 });
 
 test("candidate and canonicalization interruption markers remain fail-closed", () => {

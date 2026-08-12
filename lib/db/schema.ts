@@ -813,6 +813,7 @@ export const feedback = pgTable(
       durationSeconds: number;
       substantiveResponses: number;
       scoreableResponses?: number;
+      feedbackModeConstraint?: "evidence_limited_only";
     }>(),
     completionRecommendations: jsonb("completion_recommendations").$type<
       string[]
