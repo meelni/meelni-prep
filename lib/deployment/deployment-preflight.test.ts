@@ -9,6 +9,7 @@ import {
   type StripeCatalogReader,
   type StripePriceEvidence,
 } from "./deployment-preflight";
+import { OpenAiModelAccessError } from "./openai-model-access";
 import { PREVIEW_LIVEKIT_IDENTITY } from "./provider-identities";
 
 const testPreviewLiveKitIdentity = {
@@ -1117,6 +1118,34 @@ test("fails closed when the pinned OpenAI model is not readable", async () => {
   assert.doesNotMatch(result.failures[0]?.message ?? "", /provider response/);
 });
 
+for (const [failureClass, code] of [
+  ["authentication", "openai_authentication_failed"],
+  ["authorization", "openai_authorization_failed"],
+  ["model_not_found", "openai_model_not_found"],
+  ["provider_unavailable", "openai_provider_unavailable"],
+  ["rate_limited", "openai_rate_limited"],
+  ["transport", "openai_transport_unavailable"],
+  ["unknown", "openai_model_unreadable"],
+] as const) {
+  test(`maps the normalized OpenAI ${failureClass} class to a fixed redacted code`, async () => {
+    const result = await runDeploymentPreflight({
+      env: validEnvironment("preview"),
+      liveKitProjectReader: validLiveKitReader(),
+      openAiModelReader: {
+        async verifyModelAccess() {
+          throw new OpenAiModelAccessError(failureClass);
+        },
+      },
+      stripeCatalogReader: validStripeReader(false),
+      target: "preview",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.failures[0]?.code, code);
+    assert.equal(result.failures[0]?.check, "openai.model.read_only");
+  });
+}
+
 test("bounds stalled provider reads", async () => {
   const startedAt = Date.now();
   const result = await runDeploymentPreflight({
@@ -1127,6 +1156,7 @@ test("bounds stalled provider reads", async () => {
         await new Promise(() => undefined);
       },
     },
+    openAiProviderBudgetMs: 10,
     providerTimeoutMs: 10,
     stripeCatalogReader: validStripeReader(false),
     target: "preview",

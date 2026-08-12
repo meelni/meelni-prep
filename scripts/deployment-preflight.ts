@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { RoomServiceClient } from "livekit-server-sdk";
 import {
   QUESTION_ROUND_TYPES,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/deployment/deployment-preflight";
 import { PREVIEW_LIVEKIT_IDENTITY } from "@/lib/deployment/provider-identities";
 import { createStripeCatalogReader } from "@/lib/deployment/stripe-catalog-reader";
+import { createOpenAiModelReader } from "@/lib/deployment/openai-model-reader";
 import { resolveLiveKitDeploymentCapability } from "@meelni/integrations";
 
 export const CANONICAL_VERCEL_DEPLOYMENT_IDENTITY = {
@@ -164,21 +164,6 @@ async function verifySupabaseCredential(url: URL, credential: string) {
   });
   await response.body?.cancel();
   if (!response.ok) throw new Error("Supabase credential verification failed");
-}
-
-function createOpenAiModelReader(apiKey: string | undefined) {
-  const normalizedApiKey = apiKey?.trim();
-  if (!normalizedApiKey) return undefined;
-  const client = new OpenAI({
-    apiKey: normalizedApiKey,
-    maxRetries: 0,
-    timeout: 10_000,
-  });
-  return {
-    async verifyModelAccess(model: string) {
-      await client.models.retrieve(model);
-    },
-  };
 }
 
 function createLiveKitProjectReader(
