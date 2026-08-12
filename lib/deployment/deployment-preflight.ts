@@ -20,6 +20,12 @@ import {
 } from "@/lib/supabase/supabase-jwt.mjs";
 import { isValidPublicDemoSecret } from "@/lib/security/public-demo-secret";
 import { isValidServerSecret } from "@/lib/security/server-secret";
+import {
+  OPENAI_MODEL_READ_BUDGET,
+  OpenAiModelAccessError,
+  type OpenAiModelAccessFailureClass,
+  type OpenAiModelReader,
+} from "@/lib/deployment/openai-model-access";
 export type DeploymentTarget = "preview" | "production";
 
 export const PRODUCTION_LIVEKIT_PROJECT_HOST = "meelni-ek4vaisp.livekit.cloud";
@@ -52,10 +58,6 @@ export interface LiveKitProjectReader {
   verifyProjectAccess(): Promise<void>;
 }
 
-export interface OpenAiModelReader {
-  verifyModelAccess(model: string): Promise<void>;
-}
-
 export interface SupabaseProjectReader {
   verifyAnonKey(): Promise<void>;
   verifyServiceRoleKey(): Promise<void>;
@@ -70,7 +72,14 @@ export type DeploymentPreflightFailureCode =
   | "duplicate_price_id"
   | "environment_identity_mismatch"
   | "livekit_project_unreadable"
+  | "openai_authentication_failed"
+  | "openai_authorization_failed"
+  | "openai_model_not_found"
   | "openai_model_unreadable"
+  | "openai_provider_unavailable"
+  | "openai_quota_exhausted"
+  | "openai_rate_limited"
+  | "openai_transport_unavailable"
   | "supabase_project_unreadable"
   | "question_bank_unavailable"
   | "stripe_price_unreadable"
@@ -141,6 +150,7 @@ export async function runDeploymentPreflight({
   env,
   liveKitProjectReader,
   openAiModelReader,
+  openAiProviderBudgetMs = OPENAI_MODEL_READ_BUDGET.overallTimeoutMs,
   previewLiveKitIdentity,
   providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
   supabaseProjectReader,
@@ -150,6 +160,7 @@ export async function runDeploymentPreflight({
   env: Environment;
   liveKitProjectReader?: LiveKitProjectReader;
   openAiModelReader?: OpenAiModelReader;
+  openAiProviderBudgetMs?: number;
   previewLiveKitIdentity?: LiveKitDeploymentIdentity;
   providerTimeoutMs?: number;
   supabaseProjectReader?: SupabaseProjectReader;
@@ -262,16 +273,11 @@ export async function runDeploymentPreflight({
       try {
         await withTimeout(
           openAiModelReader.verifyModelAccess(model),
-          providerTimeoutMs
+          openAiProviderBudgetMs
         );
         passedChecks.push("openai.model.read_only");
-      } catch {
-        failures.push({
-          area: "openai",
-          code: "openai_model_unreadable",
-          check: "openai.model.read_only",
-          message: "OpenAI model access could not be verified read-only.",
-        });
+      } catch (error) {
+        failures.push(openAiModelFailure(error));
       }
     }
   }
@@ -334,6 +340,56 @@ export async function runDeploymentPreflight({
     target,
     passedChecks,
     skippedChecks,
+  };
+}
+
+function openAiModelFailure(error: unknown): DeploymentPreflightFailure {
+  const failureClass =
+    error instanceof OpenAiModelAccessError ? error.failureClass : "unknown";
+  const fixedFailureByClass: Record<
+    OpenAiModelAccessFailureClass,
+    Pick<DeploymentPreflightFailure, "code" | "message">
+  > = {
+    authentication: {
+      code: "openai_authentication_failed",
+      message: "OpenAI model access authentication failed.",
+    },
+    authorization: {
+      code: "openai_authorization_failed",
+      message: "OpenAI model access authorization failed.",
+    },
+    model_not_found: {
+      code: "openai_model_not_found",
+      message: "The pinned OpenAI model was not found for this credential.",
+    },
+    provider_unavailable: {
+      code: "openai_provider_unavailable",
+      message:
+        "OpenAI model access remained unavailable after a bounded retry.",
+    },
+    quota_exhausted: {
+      code: "openai_quota_exhausted",
+      message: "OpenAI account quota does not permit model access.",
+    },
+    rate_limited: {
+      code: "openai_rate_limited",
+      message:
+        "OpenAI model access remained rate limited after a bounded retry.",
+    },
+    transport: {
+      code: "openai_transport_unavailable",
+      message:
+        "OpenAI model access transport remained unavailable after a bounded retry.",
+    },
+    unknown: {
+      code: "openai_model_unreadable",
+      message: "OpenAI model access could not be verified read-only.",
+    },
+  };
+  return {
+    area: "openai",
+    check: "openai.model.read_only",
+    ...fixedFailureByClass[failureClass],
   };
 }
 
