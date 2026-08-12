@@ -20311,6 +20311,64 @@ var FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS = INTERVIEW_LIFECYCLE_SLOS.feedback_completi
 // lib/db/account-deletions.ts
 var LIVEKIT_DELETION_PROVISIONING_LEASE_MS = 10 * 60 * 1e3;
 
+// lib/dashboard/feedback-presentation.ts
+var DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
+  findingsJson: 64e3,
+  drillsJson: 64,
+  summary: 4e3,
+  version: 256
+};
+
+// lib/db/sessions.ts
+var dashboardSessionSelection = {
+  id: interviewSession.id,
+  userId: interviewSession.userId,
+  role: interviewSession.role,
+  roundType: interviewSession.roundType,
+  mode: interviewSession.mode,
+  persona: interviewSession.persona,
+  livekitRoomName: interviewSession.livekitRoomName,
+  config: interviewSession.config,
+  startedAt: interviewSession.startedAt,
+  endedAt: interviewSession.endedAt,
+  lifecycleState: interviewSession.lifecycleState,
+  status: interviewSession.status,
+  lifecycleVersion: interviewSession.lifecycleVersion,
+  terminalReason: interviewSession.terminalReason,
+  activatedAt: interviewSession.activatedAt,
+  endingAt: interviewSession.endingAt,
+  lastTransitionAt: interviewSession.lastTransitionAt,
+  feedback: {
+    status: feedback.status,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore
+  },
+  feedbackPresentationCandidate: {
+    status: feedback.status,
+    outcomeReason: feedback.outcomeReason,
+    completionTier: feedback.completionTier,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore,
+    schemaVersion: sql`left(${feedback.schemaVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    promptVersion: sql`left(${feedback.promptVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    modelVersion: sql`left(${feedback.modelVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    rubricVersion: sql`left(${feedback.rubricVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    evaluationState: sql`left(${feedback.evaluationState}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    strengthsJson: sql`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    improvementsJson: sql`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    drillsJson: sql`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
+    summary: sql`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`
+  }
+};
+
 // packages/agent/src/room-metadata.ts
 var DEFAULT_INTERVIEW_RUNTIME_CONFIG = {
   difficulty: "intermediate",
