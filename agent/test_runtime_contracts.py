@@ -110,7 +110,9 @@ from shared.transcript_events import (
     publish_transcript_event,
 )
 from shared.transcript_settlement import (
+    RuntimeSettlementEvidenceGate,
     fence_session_for_runtime_settlement,
+    report_runtime_settlement_stage,
     settle_session_speech,
 )
 
@@ -1814,6 +1816,7 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             session,
             cutoff_at=1782600002,
             set_evidence_cutoff=lambda cutoff: calls.append(("cutoff", cutoff)),
+            begin_evidence_drain=lambda cutoff: calls.append(("drain", cutoff)),
         )
 
         await interruption
@@ -1821,11 +1824,125 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             calls,
             [
                 ("cutoff", 1782600002.0),
+                ("drain", 1782600002.0),
                 ("input", False),
                 ("output", False),
                 ("interrupt_all", True),
             ],
         )
+
+    def test_runtime_settlement_telemetry_is_closed_and_nonblocking(self):
+        records = []
+
+        class Handler(logging.Handler):
+            def emit(self, record):
+                records.append(record.runtime_settlement)
+
+        telemetry_logger = logging.getLogger("runtime-settlement-test")
+        telemetry_logger.handlers = [Handler()]
+        telemetry_logger.setLevel(logging.INFO)
+        telemetry_logger.propagate = False
+        event = report_runtime_settlement_stage(
+            telemetry_logger,
+            stage="local_fence",
+            source="dispatch",
+            outcome="succeeded",
+            reason="fence_installed",
+            duration_ms=1.6,
+        )
+
+        self.assertEqual(
+            event,
+            {
+                "event": "meelni_runtime_settlement_stage",
+                "version": 1,
+                "stage": "local_fence",
+                "source": "dispatch",
+                "outcome": "succeeded",
+                "reason": "fence_installed",
+                "duration_ms": 2,
+            },
+        )
+        self.assertEqual(records, [event])
+        self.assertNotIn("session", json.dumps(event))
+        self.assertIsNone(
+            report_runtime_settlement_stage(
+                telemetry_logger,
+                stage="customer-content",  # type: ignore[arg-type]
+                source="dispatch",
+                outcome="succeeded",
+                reason="fence_installed",
+                duration_ms=1,
+            )
+        )
+        self.assertIsNone(
+            report_runtime_settlement_stage(
+                telemetry_logger,
+                stage="drain",
+                source="none",
+                outcome="failed",
+                reason="drain_failed",
+                duration_ms=float("nan"),
+            )
+        )
+
+        class BrokenLogger:
+            def info(self, *_args, **_kwargs):
+                raise RuntimeError("provider payload must not escape")
+
+        self.assertIsNone(
+            report_runtime_settlement_stage(
+                BrokenLogger(),  # type: ignore[arg-type]
+                stage="drain",
+                source="none",
+                outcome="deferred",
+                reason="drain_degraded",
+                duration_ms=1,
+            )
+        )
+
+    def test_runtime_settlement_evidence_gate_requires_exact_measured_drain_facts(self):
+        cutoff = 1783650000.0
+        gate = RuntimeSettlementEvidenceGate()
+
+        self.assertTrue(
+            gate.allows_transcript(speaker="interviewer", measured_ended_at=None)
+        )
+        self.assertTrue(gate.allows_marker(occurred_at=None))
+        gate.begin_drain(cutoff)
+        gate.begin_drain(cutoff)
+        self.assertTrue(
+            gate.allows_transcript(
+                speaker="user", measured_ended_at=cutoff - 0.001
+            )
+        )
+        self.assertTrue(
+            gate.allows_transcript(speaker="user", measured_ended_at=cutoff)
+        )
+        self.assertFalse(
+            gate.allows_transcript(
+                speaker="user", measured_ended_at=cutoff + 0.001
+            )
+        )
+        self.assertFalse(
+            gate.allows_transcript(speaker="user", measured_ended_at=None)
+        )
+        self.assertTrue(
+            gate.allows_transcript(
+                speaker="interviewer", measured_ended_at=cutoff
+            )
+        )
+        self.assertTrue(gate.allows_marker(occurred_at=cutoff))
+        self.assertFalse(gate.allows_marker(occurred_at=None))
+        self.assertFalse(gate.allows_marker(occurred_at=cutoff + 0.001))
+        with self.assertRaisesRegex(ValueError, "cannot change"):
+            gate.begin_drain(cutoff - 1)
+
+        gate.close()
+        self.assertFalse(
+            gate.allows_transcript(speaker="user", measured_ended_at=cutoff)
+        )
+        self.assertFalse(gate.allows_marker(occurred_at=cutoff))
 
     async def test_mid_user_speech_is_committed_without_requesting_a_reply(self):
         calls = []
@@ -2223,6 +2340,505 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await retry.task, "settled")
         self.assertEqual(attempts, 2)
 
+    async def test_settlement_drain_preserves_only_measured_pre_cutoff_interview_evidence(self):
+        dispatcher = RuntimeSettlementRequestDispatcher()
+        request = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_request",
+            "session_id": "session-1",
+            "room_name": "room-1",
+            "writer_generation": 3,
+            "request_id": "reconnect-settlement:session-1:4:cutoff",
+            "cutoff_at": "2026-07-10T02:20:00.000Z",
+        }
+        cutoff = 1783650000.0
+        evidence_gate = RuntimeSettlementEvidenceGate()
+        attempted_http_kinds = []
+        persisted_event_ids = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            attempted_http_kinds.append(
+                "settlement" if "settlement" in envelope else "turn"
+            )
+            if "event" in envelope:
+                persisted_event_ids.append(envelope["event"]["event_id"])
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        def interrupt(**_kwargs):
+            future = asyncio.get_running_loop().create_future()
+            future.set_result(None)
+            return future
+
+        session = SimpleNamespace(
+            input=SimpleNamespace(set_audio_enabled=lambda _enabled: None),
+            output=SimpleNamespace(set_audio_enabled=lambda _enabled: None),
+            interrupt=interrupt,
+        )
+
+        async def operation():
+            self.assertTrue(evidence_gate.draining)
+            await queue.flush(0.5)
+            evidence_gate.close()
+            queue.seal_and_enqueue_runtime_settlement(
+                create_runtime_settlement(
+                    session_id="session-1",
+                    room_name="room-1",
+                    writer_id="writer-1",
+                    writer_generation=3,
+                    state="settled",
+                    settled_at=cutoff,
+                )
+            )
+            await queue.flush(0.5)
+            return queue.runtime_settlement_complete
+
+        def install_fence():
+            self.assertFalse(evidence_gate.draining)
+            fence_session_for_runtime_settlement(
+                session,
+                cutoff_at=cutoff,
+                set_evidence_cutoff=queue.set_evidence_cutoff,
+                begin_evidence_drain=evidence_gate.begin_drain,
+            )
+
+        dispatch = dispatcher.prepare(
+            request,
+            operation,
+            before_start=install_fence,
+        )
+        self.assertTrue(evidence_gate.draining)
+
+        def deliver_turn(event_id, sequence, ended_at, speaker="user"):
+            allowed = evidence_gate.allows_transcript(
+                speaker=speaker, measured_ended_at=ended_at
+            )
+            if not allowed:
+                return False
+            event = create_transcript_event(
+                event_id=event_id,
+                writer_id="writer-1",
+                writer_generation=3,
+                sequence=sequence,
+                session_id="session-1",
+                room_name="room-1",
+                speaker=speaker,
+                text="Synthetic measured interview evidence.",
+                started_at=ended_at - 1,
+                ended_at=ended_at,
+                audio_duration_ms=1000,
+                section="product_sense",
+            )
+            queue.enqueue_transcript(event, measured_ended_at=ended_at)
+            return True
+
+        self.assertTrue(
+            deliver_turn("writer-1:before-cutoff", 1, cutoff - 0.001)
+        )
+        self.assertTrue(deliver_turn("writer-1:at-cutoff", 2, cutoff))
+        self.assertTrue(deliver_turn("writer-1:at-cutoff", 2, cutoff))
+        self.assertTrue(
+            deliver_turn(
+                "writer-1:interviewer-before-cutoff",
+                3,
+                cutoff - 0.001,
+                "interviewer",
+            )
+        )
+        self.assertTrue(
+            deliver_turn(
+                "writer-1:interviewer-at-cutoff", 4, cutoff, "interviewer"
+            )
+        )
+        self.assertFalse(
+            evidence_gate.allows_transcript(
+                speaker="user", measured_ended_at=cutoff + 0.001
+            )
+        )
+        self.assertFalse(
+            evidence_gate.allows_transcript(
+                speaker="user", measured_ended_at=None
+            )
+        )
+        self.assertTrue(
+            evidence_gate.allows_transcript(
+                speaker="interviewer", measured_ended_at=cutoff
+            )
+        )
+        self.assertFalse(
+            evidence_gate.allows_transcript(
+                speaker="interviewer", measured_ended_at=cutoff + 0.001
+            )
+        )
+        self.assertFalse(
+            evidence_gate.allows_transcript(
+                speaker="interviewer", measured_ended_at=None
+            )
+        )
+        self.assertEqual(attempted_http_kinds, [])
+
+        self.assertTrue(await dispatch.task)
+        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertEqual(
+            attempted_http_kinds,
+            ["turn", "turn", "turn", "turn", "settlement"],
+        )
+        self.assertEqual(
+            persisted_event_ids,
+            [
+                "writer-1:before-cutoff",
+                "writer-1:at-cutoff",
+                "writer-1:interviewer-before-cutoff",
+                "writer-1:interviewer-at-cutoff",
+            ],
+        )
+        self.assertTrue(evidence_gate.closed)
+        self.assertFalse(
+            evidence_gate.allows_transcript(
+                speaker="user", measured_ended_at=cutoff
+            )
+        )
+        self.assertFalse(evidence_gate.allows_marker(occurred_at=cutoff))
+        await queue.flush(0.5)
+        self.assertEqual(
+            attempted_http_kinds,
+            ["turn", "turn", "turn", "turn", "settlement"],
+        )
+
+    async def test_end_during_candidate_speech_commits_measured_turn_before_settlement(self):
+        cutoff = 1783650000.0
+        evidence_gate = RuntimeSettlementEvidenceGate()
+        attempted_http_kinds = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            attempted_http_kinds.append(
+                "settlement" if "settlement" in envelope else "turn"
+            )
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+
+        class Session:
+            user_state = "speaking"
+            current_speech = None
+            input = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+            output = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+
+            def interrupt(self, *, force):
+                future = asyncio.get_running_loop().create_future()
+                future.set_result(None)
+                return future
+
+            async def commit_user_turn(self, **_kwargs):
+                if evidence_gate.allows_transcript(
+                    speaker="user", measured_ended_at=cutoff
+                ):
+                    queue.enqueue_transcript(
+                        create_transcript_event(
+                            event_id="writer-1:committed-at-end",
+                            writer_id="writer-1",
+                            writer_generation=3,
+                            sequence=1,
+                            session_id="session-1",
+                            room_name="room-1",
+                            speaker="user",
+                            text="Synthetic in-progress candidate answer.",
+                            started_at=cutoff - 1,
+                            ended_at=cutoff,
+                            audio_duration_ms=1000,
+                            section="product_sense",
+                        ),
+                        measured_ended_at=cutoff,
+                    )
+
+            async def wait_for_idle(self):
+                return None
+
+        session = Session()
+        fence_session_for_runtime_settlement(
+            session,
+            cutoff_at=cutoff,
+            set_evidence_cutoff=queue.set_evidence_cutoff,
+            begin_evidence_drain=evidence_gate.begin_drain,
+        )
+        speech = await settle_session_speech(session, timeout_seconds=0.5)
+        self.assertTrue(speech.settled)
+
+        await queue.flush(0.5)
+        evidence_gate.close()
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=3,
+                state="settled",
+                settled_at=cutoff,
+            )
+        )
+        await queue.flush(0.5)
+
+        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertEqual(attempted_http_kinds, ["turn", "settlement"])
+
+    async def test_pre_end_interviewer_speech_can_emit_one_cutoff_marker_only(self):
+        cutoff = 1783650000.0
+        evidence_gate = RuntimeSettlementEvidenceGate()
+        attempted_http_kinds = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            attempted_http_kinds.append(
+                "settlement"
+                if "settlement" in envelope
+                else "marker"
+                if "interruptionMarker" in envelope
+                else "turn"
+            )
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+
+        self.assertTrue(evidence_gate.track_speech("speech-before-end"))
+        evidence_gate.begin_drain(cutoff)
+        self.assertFalse(evidence_gate.track_speech("speech-after-end"))
+        allowed, occurred_at = evidence_gate.consume_speech_marker(
+            "speech-before-end"
+        )
+        self.assertEqual((allowed, occurred_at), (True, cutoff))
+        self.assertEqual(
+            evidence_gate.consume_speech_marker("speech-before-end"),
+            (False, None),
+        )
+        self.assertEqual(
+            evidence_gate.consume_speech_marker("speech-after-end"),
+            (False, None),
+        )
+
+        marker = create_interruption_marker(
+            event_id="writer-1:speech-before-end:unavailable",
+            writer_id="writer-1",
+            writer_generation=3,
+            sequence=1,
+            session_id="session-1",
+            room_name="room-1",
+            speaker="interviewer",
+            reason="no_provider_confirmed_prefix",
+            occurred_at=occurred_at,
+        )
+        self.assertTrue(evidence_gate.allows_marker(occurred_at=occurred_at))
+        queue.enqueue_interruption_marker(marker)
+        await queue.flush(0.5)
+
+        evidence_gate.close()
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=3,
+                state="settled",
+                settled_at=cutoff,
+            )
+        )
+        await queue.flush(0.5)
+
+        self.assertEqual(attempted_http_kinds, ["marker", "settlement"])
+
+    async def test_measured_candidate_canonicalization_failure_persists_integrity_marker(self):
+        cutoff = 1783650000.0
+        evidence_gate = RuntimeSettlementEvidenceGate()
+        attempted_http_kinds = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            attempted_http_kinds.append(
+                "settlement" if "settlement" in envelope else "marker"
+            )
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        message = SimpleNamespace(
+            id="candidate-invalid",
+            role="user",
+            text_content="",
+            metrics={
+                "started_speaking_at": cutoff - 1,
+                "stopped_speaking_at": cutoff,
+            },
+        )
+        self.assertIsNone(
+            create_transcript_event_from_message(
+                message=message,
+                writer_id="writer-1",
+                writer_generation=3,
+                sequence=1,
+                session_id="session-1",
+                room_name="room-1",
+                section="product_sense",
+            )
+        )
+        self.assertTrue(has_runtime_measured_delivery(message))
+        evidence_gate.begin_drain(cutoff)
+        self.assertTrue(evidence_gate.allows_marker(occurred_at=cutoff))
+        self.assertTrue(
+            interruption_marker_degrades_candidate_evidence(
+                speaker="user", reason="canonicalization_failed"
+            )
+        )
+        queue.enqueue_interruption_marker(
+            create_interruption_marker(
+                event_id="writer-1:candidate-invalid:unavailable",
+                writer_id="writer-1",
+                writer_generation=3,
+                sequence=1,
+                session_id="session-1",
+                room_name="room-1",
+                speaker="user",
+                reason="canonicalization_failed",
+                occurred_at=cutoff,
+            )
+        )
+        await queue.flush(0.5)
+        evidence_gate.close()
+        queue.seal_and_enqueue_runtime_settlement(
+            create_runtime_settlement(
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-1",
+                writer_generation=3,
+                state="degraded",
+                settled_at=cutoff,
+            )
+        )
+        await queue.flush(0.5)
+
+        self.assertEqual(attempted_http_kinds, ["marker", "settlement"])
+
+    async def test_partial_session_fence_keeps_cutoff_gate_active_and_retries_before_work(self):
+        dispatcher = RuntimeSettlementRequestDispatcher()
+        request = {
+            "request_id": "reconnect-settlement:retry-fence",
+            "cutoff_at": "2026-07-10T02:20:00.000Z",
+        }
+        cutoff = 1783650000.0
+        evidence_gate = RuntimeSettlementEvidenceGate()
+        input_attempts = 0
+        operation_attempts = 0
+        attempted_http_kinds = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            attempted_http_kinds.append(
+                "settlement" if "settlement" in envelope else "turn"
+            )
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+
+        def set_input(_enabled):
+            nonlocal input_attempts
+            input_attempts += 1
+            if input_attempts == 1:
+                raise RuntimeError("synthetic input fence failure")
+
+        def interrupt(**_kwargs):
+            future = asyncio.get_running_loop().create_future()
+            future.set_result(None)
+            return future
+
+        session = SimpleNamespace(
+            input=SimpleNamespace(set_audio_enabled=set_input),
+            output=SimpleNamespace(set_audio_enabled=lambda _enabled: None),
+            interrupt=interrupt,
+        )
+
+        def install_fence():
+            fence_session_for_runtime_settlement(
+                session,
+                cutoff_at=cutoff,
+                set_evidence_cutoff=lambda _cutoff: None,
+                begin_evidence_drain=evidence_gate.begin_drain,
+            )
+
+        async def operation():
+            nonlocal operation_attempts
+            operation_attempts += 1
+            self.assertTrue(evidence_gate.draining)
+            evidence_gate.close()
+            queue.seal_and_enqueue_runtime_settlement(
+                create_runtime_settlement(
+                    session_id="session-1",
+                    room_name="room-1",
+                    writer_id="writer-1",
+                    writer_generation=3,
+                    state="settled",
+                    settled_at=cutoff,
+                )
+            )
+            await queue.flush(0.5)
+            return queue.runtime_settlement_complete
+
+        with self.assertRaises(RuntimeError):
+            dispatcher.prepare(request, operation, before_start=install_fence)
+        self.assertTrue(evidence_gate.draining)
+        self.assertEqual(operation_attempts, 0)
+        if evidence_gate.allows_transcript(
+            speaker="user", measured_ended_at=cutoff + 0.001
+        ):
+            queue.enqueue_transcript(self.make_event())
+            await queue.flush(0.5)
+        self.assertEqual(attempted_http_kinds, [])
+
+        retry = dispatcher.prepare(request, operation, before_start=install_fence)
+        self.assertTrue(await retry.task)
+        self.assertEqual(input_attempts, 2)
+        self.assertEqual(operation_attempts, 1)
+        self.assertEqual(attempted_http_kinds, ["settlement"])
+        self.assertTrue(evidence_gate.closed)
+
     async def test_concurrent_exact_settlement_requests_are_single_flight(self):
         dispatcher = RuntimeSettlementRequestDispatcher()
         request = {
@@ -2404,6 +3020,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             Session(),
             cutoff_at=cutoff,
             set_evidence_cutoff=queue.set_evidence_cutoff,
+            begin_evidence_drain=lambda value: calls.append(("drain", value)),
         )
         with self.assertRaises(TranscriptIngestAfterCutoff):
             queue.enqueue_transcript(
@@ -2425,7 +3042,12 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.timed_out)
         self.assertEqual(
             calls,
-            [("input", False), ("output", False), ("interrupt_all", True)],
+            [
+                ("drain", float(cutoff)),
+                ("input", False),
+                ("output", False),
+                ("interrupt_all", True),
+            ],
         )
         self.assertEqual(
             ["settlement" if "settlement" in body else "event" for body in bodies],

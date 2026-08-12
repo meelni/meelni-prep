@@ -60,14 +60,34 @@ Loopback HTTP is accepted only for local development.
   participant target. Prefer one active kind-4 room participant; when that
   projection is absent or lacks name correlation, accept only one exact-room
   dispatch matching `LIVEKIT_INTERVIEW_AGENT_NAME`, with one running job and a
-  bounded provider participant identity. A projected wrong name or identity
-  mismatch and any ambiguity fail closed. The runtime installs the cutoff,
-  disables input and output, and
-  force-interrupts all current/queued generation before asynchronous drain. The
-  exact heard prefix at or before the cutoff is enqueued; later callbacks are
-  rejected locally rather than submitted to the closed web session. Every
+  bounded provider participant identity. Require exact job/dispatch linkage,
+  room job type, room and agent names, `deletedAt == 0`, `endedAt == 0`, and no
+  publisher-only participant projection. Every non-deleted room dispatch must
+  contain exactly one job. Explicitly deleted dispatches may omit retired jobs;
+  separate structurally valid completed dispatch jobs are ignored as history. A projected
+  wrong name or identity mismatch and any ambiguity fail closed. Re-read the
+  same durable writer generation before sending. The runtime installs the
+  cutoff-aware evidence gate, disables input and output, and force-interrupts
+  all current/queued generation before asynchronous drain. During drain only a
+  canonical candidate or confirmed interviewer turn measured at or before the
+  cutoff may enqueue. A marker requires an explicit trustworthy occurrence;
+  pre-drain scheduled interviewer speech interrupted by End may emit its one
+  no-prefix marker at the exact cutoff. This preserves a deliberate in-progress
+  candidate commit and confirmed heard prefix. Unmeasured, post-cutoff,
+  post-gate, or post-settlement callbacks are rejected locally rather than
+  submitted to the closed web session. Every
   registered writer generation must have durable `settled` proof; missing or
   degraded proof fails closed.
+- Runtime settlement observability is a closed identity-free schema. Web stages
+  are `target_resolution`, `generation_recheck`, `packet_send`, and
+  `durable_ack`; agent stages are `packet_validation`, `local_fence`, `drain`,
+  and `settlement_persist`. Both carry only fixed source/outcome/reason,
+  duration, and version. The web event additionally carries `occurredAt` and an
+  allowlisted web release SHA. Runtime stages are correlated to the separately
+  verified provider version and its `meelni.source_sha`; Python does not invent
+  or emit that SHA. Never add room, session, user,
+  writer, dispatch, job, participant, request, transcript, provider payload, or
+  arbitrary exception fields.
 - While `ending/user_end`, turns and interruption markers measured at or before
   `ending_at` remain admissible and the writer settlement must equal
   `ending_at` exactly. Later evidence is rejected. The session row is the
@@ -134,6 +154,15 @@ Loopback HTTP is accepted only for local development.
     `canPublishData=false`, disables audio input, commits active user speech,
     drains the outbox, and persists writer-scoped `runtime_settlement` rows
     before the browser calls the terminal API.
+    Exercise RoomService projection absence plus real AgentDispatch protobuf
+    history/current objects and confirm the exact current target succeeds. Then
+    inject ambiguity and malformed defaults and confirm no packet is sent.
+    Deliver measured candidate and confirmed interviewer callbacks immediately
+    before and at the cutoff; confirm they persist before the metadata-only
+    settlement. Confirm pre-drain interrupted interviewer speech emits one
+    no-prefix marker at `D`. Then confirm unmeasured or `D + 1ms` turns, a
+    post-gate speech handle, duplicates, and post-settlement callbacks cannot
+    create an extra HTTP request.
 11. Confirm reconnect timeout delivers a targeted request/ack while the room is
     live, records the durable settlement outcome, and deletes the room only
     afterward. A dropped request or missing acknowledgement must fail closed.

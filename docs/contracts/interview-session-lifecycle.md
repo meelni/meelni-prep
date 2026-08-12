@@ -338,7 +338,10 @@ The writer generation authenticates logical runtime correlation but is never
 used as the provider participant target. Targeting accepts one unique active
 agent participant, or a single running exact-room AgentDispatch job when the
 participant projection is transiently absent; ambiguity or stale provider state
-fails closed.
+fails closed. Dispatch fallback validates the pinned provider defaults and
+exact job/dispatch/room/agent linkage; malformed active projections never
+disappear as history. The worker rechecks the durable generation after provider
+resolution and sends nothing when it was replaced or is no longer unsettled.
 The worker awaits durable per-generation settlement acknowledgement or a
 bounded degraded/missing result before room deletion; a passive two-second
 delay is not evidence. One durable validation snapshot then selects any

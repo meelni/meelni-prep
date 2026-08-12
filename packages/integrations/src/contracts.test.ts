@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AccessToken } from "livekit-server-sdk";
+import {
+  AccessToken,
+  AgentDispatch,
+  ParticipantInfo,
+  Room,
+} from "livekit-server-sdk";
+import {
+  Job,
+  JobState,
+  JobStatus,
+  JobType,
+  ParticipantInfo_Kind,
+  ParticipantInfo_State,
+} from "@livekit/protocol";
 
 import { createLiveKitStartFixture } from "@meelni/test-fixtures";
 
@@ -2020,6 +2033,7 @@ test("LiveKit presence normalizes candidate connection states", async () => {
     apiKey: "key",
     apiSecret: "secret",
     url: "wss://test.livekit.cloud",
+    interviewAgentName: "meelni-interview-agent",
   };
   for (const state of [0, 1, 2]) {
     const result = await inspectInterviewParticipantPresence(
@@ -2089,7 +2103,14 @@ test("LiveKit presence normalizes candidate connection states", async () => {
   assert.deepEqual(disconnected, {
     ok: true,
     provider: "livekit",
-    data: { present: false, joined: false, joinedAt: null, agent: null },
+    data: {
+      present: false,
+      joined: false,
+      joinedAt: null,
+      agent: null,
+      targetSource: "none",
+      targetReason: "dispatch_absent",
+    },
   });
 });
 
@@ -2102,6 +2123,7 @@ test("LiveKit presence requires the exact standard candidate and provider agent 
         apiKey: "key",
         apiSecret: "secret",
         url: "wss://test.livekit.cloud",
+        interviewAgentName: "meelni-interview-agent",
       },
     },
     {
@@ -2131,6 +2153,7 @@ test("LiveKit presence requires the exact standard candidate and provider agent 
             state: 2,
             joinedAtMs: BigInt(1_783_670_430_002),
             kind: 4,
+            attributes: { "lk.agent.name": "meelni-interview-agent" },
           },
         ],
       }),
@@ -2143,6 +2166,86 @@ test("LiveKit presence requires the exact standard candidate and provider agent 
     assert.equal(result.data.joined, false);
     assert.equal(result.data.joinedAt, null);
     assert.equal(result.data.agent?.identity, "agent-worker");
+  }
+});
+
+test("LiveKit presence preserves candidate facts but never targets without a configured interview agent name", async (t) => {
+  for (const fixture of [
+    {
+      name: "missing name cannot authorize the sole named agent",
+      interviewAgentName: undefined,
+      includeAgent: true,
+    },
+    {
+      name: "blank name cannot authorize the sole named agent",
+      interviewAgentName: "   ",
+      includeAgent: true,
+    },
+    {
+      name: "missing name cannot authorize a running dispatch fallback",
+      interviewAgentName: undefined,
+      includeAgent: false,
+    },
+  ]) {
+    await t.test(fixture.name, async () => {
+      let dispatchInspected = false;
+      const participants: ParticipantInfo[] = [
+        new ParticipantInfo({
+          identity: "candidate-id",
+          state: ParticipantInfo_State.ACTIVE,
+          joinedAtMs: BigInt(1_783_670_430_000),
+          kind: ParticipantInfo_Kind.STANDARD,
+        }),
+      ];
+      if (fixture.includeAgent) {
+        participants.push(
+          new ParticipantInfo({
+            identity: "agent-worker",
+            state: ParticipantInfo_State.ACTIVE,
+            joinedAtMs: BigInt(1_783_670_430_001),
+            kind: ParticipantInfo_Kind.AGENT,
+            attributes: { "lk.agent.name": "meelni-interview-agent" },
+          })
+        );
+      }
+      const result = await inspectInterviewParticipantPresence(
+        {
+          roomName: "interview-presence-room",
+          participantIdentity: "candidate-id",
+          env: {
+            apiKey: "key",
+            apiSecret: "secret",
+            url: "wss://test.livekit.cloud",
+            interviewAgentName: fixture.interviewAgentName,
+          },
+        },
+        {
+          roomServiceClientFactory: () => ({
+            createRoom: async () => undefined,
+            listParticipants: async () => participants,
+          }),
+          agentDispatchClientFactory: () => ({
+            createDispatch: async () => {
+              throw new Error("presence inspection must not create a dispatch");
+            },
+            listDispatch: async () => {
+              dispatchInspected = true;
+              return [runningDispatch()];
+            },
+          }),
+        }
+      );
+
+      assert.equal(result.ok, true);
+      if (result.ok) {
+        assert.equal(result.data.present, true);
+        assert.equal(result.data.joined, true);
+        assert.equal(result.data.agent, null);
+        assert.equal(result.data.targetSource, "none");
+        assert.equal(result.data.targetReason, "agent_projection_invalid");
+      }
+      assert.equal(dispatchInspected, false);
+    });
   }
 });
 
@@ -2178,21 +2281,10 @@ test("LiveKit presence resolves a uniquely running room dispatch when the agent 
         listDispatch: async (room) => {
           calls.push(`dispatch:${room}`);
           return [
-            {
-              id: "dispatch-1",
+            runningDispatch({
               room,
-              agentName: "meelni-interview-agent",
-              state: {
-                jobs: [
-                  {
-                    state: {
-                      status: 1,
-                      participantIdentity: "agent-AJ_provider_owned",
-                    },
-                  },
-                ],
-              },
-            },
+              identity: "agent-AJ_provider_owned",
+            }),
           ];
         },
       }),
@@ -2203,6 +2295,8 @@ test("LiveKit presence resolves a uniquely running room dispatch when the agent 
   if (result.ok) {
     assert.equal(result.data.agent?.identity, "agent-AJ_provider_owned");
     assert.equal(result.data.agent?.joinedAt, null);
+    assert.equal(result.data.targetSource, "dispatch");
+    assert.equal(result.data.targetReason, "dispatch_exact");
   }
   assert.deepEqual(calls, ["dispatch:interview-presence-room"]);
 });
@@ -2353,179 +2447,229 @@ test("LiveKit presence fails closed for a wrong named or dispatch-mismatched age
   );
 });
 
-test("LiveKit dispatch fallback fails closed for ambiguous, stale, and invalid targets", async (t) => {
+test("LiveKit dispatch fallback normalizes real protocol history and fails closed for poisoned current projections", async (t) => {
   const exactLimitIdentity = "a".repeat(256);
   const cases: Array<{
     name: string;
-    dispatches: Array<{
-      id: string;
-      room: string;
-      agentName: string;
-      state?: {
-        jobs: Array<{
-          state?: { status: number; participantIdentity: string };
-        }>;
-      };
-    }>;
+    dispatches: AgentDispatch[];
     expectedIdentity: string | null;
+    expectedReason?: string;
   }> = [
     {
-      name: "accepts the exact 256-byte provider identity boundary",
+      name: "accepts one exact running room job without a participant projection",
+      dispatches: [runningDispatch()],
+      expectedIdentity: "agent-current",
+      expectedReason: "dispatch_exact",
+    },
+    {
+      name: "accepts terminal dispatch history plus one exact running room job",
       dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
-          state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: exactLimitIdentity },
-              },
-            ],
-          },
-        },
+        runningDispatch({ id: "dispatch-deleted", deletedAt: BigInt(2) }),
+        runningDispatch({
+          id: "dispatch-finished",
+          jobStatus: JobStatus.JS_SUCCESS,
+          endedAt: BigInt(3),
+        }),
+        runningDispatch({ identity: exactLimitIdentity }),
       ],
       expectedIdentity: exactLimitIdentity,
+      expectedReason: "dispatch_exact",
+    },
+    {
+      name: "ignores deleted dispatch history without requiring a retained job",
+      dispatches: [
+        deletedDispatchWithoutJobs(),
+        runningDispatch({ identity: exactLimitIdentity }),
+      ],
+      expectedIdentity: exactLimitIdentity,
+      expectedReason: "dispatch_exact",
+    },
+    {
+      name: "rejects terminal and current jobs inside one room dispatch",
+      dispatches: [dispatchWithTerminalJobHistory()],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects two running jobs inside one room dispatch",
+      dispatches: [dispatchWithSecondRunningJob()],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
     {
       name: "rejects a 257-byte identity",
-      dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
-          state: {
-            jobs: [
-              {
-                state: {
-                  status: 1,
-                  participantIdentity: "a".repeat(257),
-                },
-              },
-            ],
-          },
-        },
-      ],
+      dispatches: [runningDispatch({ identity: "a".repeat(257) })],
       expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
     {
-      name: "rejects multiple dispatches",
+      name: "rejects multiple running dispatches",
       dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
-          state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: "agent-one" },
-              },
-            ],
-          },
-        },
-        {
-          id: "dispatch-2",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
-          state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: "agent-two" },
-              },
-            ],
-          },
-        },
+        runningDispatch({ id: "dispatch-1", identity: "agent-one" }),
+        runningDispatch({ id: "dispatch-2", identity: "agent-two" }),
       ],
       expectedIdentity: null,
+      expectedReason: "dispatch_ambiguous",
     },
     {
-      name: "rejects multiple running jobs",
+      name: "rejects pending plus running contenders",
       dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
-          state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: "agent-one" },
-              },
-              {
-                state: { status: 1, participantIdentity: "agent-two" },
-              },
-            ],
-          },
-        },
+        runningDispatch({
+          id: "dispatch-pending",
+          jobStatus: JobStatus.JS_PENDING,
+          identity: "",
+        }),
+        runningDispatch({ id: "dispatch-running" }),
       ],
       expectedIdentity: null,
+      expectedReason: "dispatch_ambiguous",
     },
     {
-      name: "rejects a non-running job",
+      name: "rejects a malformed dispatch default instead of treating it as current",
       dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "meelni-interview-agent",
+        Object.assign(runningDispatch(), {
           state: {
-            jobs: [
-              {
-                state: { status: 2, participantIdentity: "agent-stopped" },
-              },
-            ],
+            deletedAt: undefined,
+            jobs: runningDispatch().state?.jobs ?? [],
           },
-        },
+        }) as unknown as AgentDispatch,
       ],
       expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
     {
-      name: "rejects a mismatched room",
+      name: "rejects a poisoned dispatch deleted-at type",
       dispatches: [
-        {
-          id: "dispatch-1",
-          room: "another-room",
-          agentName: "meelni-interview-agent",
+        Object.assign(runningDispatch(), {
           state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: "agent-wrong-room" },
-              },
-            ],
+            deletedAt: "0",
+            jobs: runningDispatch().state?.jobs ?? [],
           },
-        },
+        }) as unknown as AgentDispatch,
       ],
       expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
     {
-      name: "rejects a different named agent",
-      dispatches: [
-        {
-          id: "dispatch-1",
-          room: "interview-presence-room",
-          agentName: "another-agent",
-          state: {
-            jobs: [
-              {
-                state: { status: 1, participantIdentity: "agent-wrong-name" },
-              },
-            ],
-          },
-        },
-      ],
+      name: "rejects a running job with a poisoned ended-at default",
+      dispatches: [runningDispatchWithJobPoison({ endedAt: undefined })],
       expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
     {
-      name: "rejects blank dispatch and participant identities",
+      name: "rejects a running job with a poisoned ended-at type",
+      dispatches: [runningDispatchWithJobPoison({ endedAt: "0" })],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "does not ignore malformed terminal history",
       dispatches: [
-        {
-          id: " ",
-          room: "interview-presence-room",
-          agentName: " ",
-          state: {
-            jobs: [{ state: { status: 1, participantIdentity: " " } }],
-          },
-        },
+        runningDispatch({
+          id: "dispatch-malformed-terminal",
+          jobStatus: JobStatus.JS_SUCCESS,
+          endedAt: BigInt(3),
+          jobDispatchId: "another-dispatch",
+        }),
+        runningDispatch({ id: "dispatch-running" }),
       ],
       expectedIdentity: null,
+      expectedReason: "dispatch_ambiguous",
+    },
+    {
+      name: "does not ignore terminal status with a default ended-at timestamp",
+      dispatches: [
+        runningDispatch({
+          id: "dispatch-inconsistent-terminal",
+          jobStatus: JobStatus.JS_SUCCESS,
+          endedAt: BigInt(0),
+        }),
+        runningDispatch({ id: "dispatch-running" }),
+      ],
+      expectedIdentity: null,
+      expectedReason: "dispatch_ambiguous",
+    },
+    {
+      name: "rejects a wrong nested dispatch binding",
+      dispatches: [runningDispatch({ jobDispatchId: "another-dispatch" })],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a wrong nested room binding",
+      dispatches: [runningDispatchWithJobPoison({ room: "another-room" })],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a missing running job identity",
+      dispatches: [runningDispatch({ identity: "" })],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects the wrong job type",
+      dispatches: [runningDispatch({ jobType: JobType.JT_PUBLISHER })],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a wrong-kind optional job participant projection",
+      dispatches: [
+        runningDispatch({
+          participant: new ParticipantInfo({
+            identity: "agent-current",
+            kind: ParticipantInfo_Kind.STANDARD,
+            state: ParticipantInfo_State.ACTIVE,
+          }),
+        }),
+      ],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a disconnected optional job participant projection",
+      dispatches: [
+        runningDispatch({
+          participant: new ParticipantInfo({
+            identity: "agent-current",
+            kind: ParticipantInfo_Kind.AGENT,
+            state: ParticipantInfo_State.DISCONNECTED,
+          }),
+        }),
+      ],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a participant projection on a room job even when internally consistent",
+      dispatches: [
+        runningDispatch({
+          participant: new ParticipantInfo({
+            identity: "agent-current",
+            kind: ParticipantInfo_Kind.AGENT,
+            state: ParticipantInfo_State.ACTIVE,
+            attributes: { "lk.agent.name": "meelni-interview-agent" },
+          }),
+        }),
+      ],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
+    },
+    {
+      name: "rejects a mismatched optional job participant projection",
+      dispatches: [
+        runningDispatch({
+          participant: new ParticipantInfo({
+            identity: "another-agent",
+            kind: 4,
+            state: 2,
+            attributes: { "lk.agent.name": "meelni-interview-agent" },
+          }),
+        }),
+      ],
+      expectedIdentity: null,
+      expectedReason: "dispatch_projection_invalid",
     },
   ];
 
@@ -2562,10 +2706,194 @@ test("LiveKit dispatch fallback fails closed for ambiguous, stale, and invalid t
           result.data.agent?.identity ?? null,
           fixture.expectedIdentity
         );
+        if (fixture.expectedReason) {
+          assert.equal(result.data.targetReason, fixture.expectedReason);
+        }
       }
     });
   }
 });
+
+test("LiveKit presence rejects malformed active agent projections before exact targeting", async (t) => {
+  for (const fixture of [
+    { name: "blank identity", identity: "" },
+    { name: "overbound identity", identity: "a".repeat(257) },
+    { name: "non-string identity", identity: 42 },
+  ]) {
+    await t.test(fixture.name, async () => {
+      let dispatchInspected = false;
+      const result = await inspectInterviewParticipantPresence(
+        {
+          roomName: "interview-presence-room",
+          participantIdentity: "candidate-id",
+          env: {
+            apiKey: "key",
+            apiSecret: "secret",
+            url: "wss://test.livekit.cloud",
+            interviewAgentName: "meelni-interview-agent",
+          },
+        },
+        {
+          roomServiceClientFactory: () => ({
+            createRoom: async () => undefined,
+            listParticipants: async () => [
+              {
+                identity: fixture.identity,
+                state: ParticipantInfo_State.ACTIVE,
+                joinedAtMs: BigInt(1),
+                kind: ParticipantInfo_Kind.AGENT,
+              } as unknown as ParticipantInfo,
+              new ParticipantInfo({
+                identity: "valid-but-must-not-authorize",
+                state: ParticipantInfo_State.ACTIVE,
+                joinedAtMs: BigInt(2),
+                kind: ParticipantInfo_Kind.AGENT,
+                attributes: {
+                  "lk.agent.name": "meelni-interview-agent",
+                },
+              }),
+            ],
+          }),
+          agentDispatchClientFactory: () => ({
+            createDispatch: async () => {
+              throw new Error("presence inspection must not create a dispatch");
+            },
+            listDispatch: async () => {
+              dispatchInspected = true;
+              return [runningDispatch()];
+            },
+          }),
+        }
+      );
+
+      assert.equal(result.ok, true);
+      if (result.ok) {
+        assert.equal(result.data.agent, null);
+        assert.equal(result.data.targetSource, "none");
+        assert.equal(result.data.targetReason, "agent_projection_invalid");
+      }
+      assert.equal(dispatchInspected, false);
+    });
+  }
+});
+
+function runningDispatch({
+  id = "dispatch-current",
+  room = "interview-presence-room",
+  agentName = "meelni-interview-agent",
+  identity = "agent-current",
+  deletedAt = BigInt(0),
+  jobStatus = JobStatus.JS_RUNNING,
+  endedAt = BigInt(0),
+  jobDispatchId = id,
+  jobType = JobType.JT_ROOM,
+  participant,
+}: {
+  id?: string;
+  room?: string;
+  agentName?: string;
+  identity?: string;
+  deletedAt?: bigint;
+  jobStatus?: JobStatus;
+  endedAt?: bigint;
+  jobDispatchId?: string;
+  jobType?: JobType;
+  participant?: ParticipantInfo;
+} = {}): AgentDispatch {
+  return new AgentDispatch({
+    id,
+    room,
+    agentName,
+    state: {
+      deletedAt,
+      jobs: [
+        new Job({
+          id: `${id}-job`,
+          dispatchId: jobDispatchId,
+          type: jobType,
+          room: new Room({ name: room }),
+          agentName,
+          participant,
+          state: new JobState({
+            status: jobStatus,
+            endedAt,
+            participantIdentity: identity,
+          }),
+        }),
+      ],
+    },
+  });
+}
+
+function runningDispatchWithJobPoison(input: {
+  endedAt?: unknown;
+  room?: string;
+}): AgentDispatch {
+  const dispatch = runningDispatch();
+  assert.ok(dispatch.state);
+  const job = dispatch.state.jobs[0];
+  assert.ok(job);
+  assert.ok(job.state);
+  if ("endedAt" in input) {
+    Object.assign(job.state, { endedAt: input.endedAt });
+  }
+  if (input.room) {
+    job.room = new Room({ name: input.room });
+  }
+  return dispatch;
+}
+
+function dispatchWithTerminalJobHistory(): AgentDispatch {
+  const dispatch = runningDispatch({ id: "dispatch-with-history" });
+  assert.ok(dispatch.state);
+  dispatch.state.jobs.unshift(
+    new Job({
+      id: "dispatch-with-history-terminal-job",
+      dispatchId: dispatch.id,
+      type: JobType.JT_ROOM,
+      room: new Room({ name: dispatch.room }),
+      agentName: dispatch.agentName,
+      state: new JobState({
+        status: JobStatus.JS_SUCCESS,
+        endedAt: BigInt(3),
+        participantIdentity: "agent-terminal",
+      }),
+    })
+  );
+  return dispatch;
+}
+
+function dispatchWithSecondRunningJob(): AgentDispatch {
+  const dispatch = runningDispatch({ id: "dispatch-with-two-running-jobs" });
+  assert.ok(dispatch.state);
+  dispatch.state.jobs.push(
+    new Job({
+      id: "dispatch-with-two-running-jobs-second-job",
+      dispatchId: dispatch.id,
+      type: JobType.JT_ROOM,
+      room: new Room({ name: dispatch.room }),
+      agentName: dispatch.agentName,
+      state: new JobState({
+        status: JobStatus.JS_RUNNING,
+        endedAt: BigInt(0),
+        participantIdentity: "agent-second",
+      }),
+    })
+  );
+  return dispatch;
+}
+
+function deletedDispatchWithoutJobs(): AgentDispatch {
+  return new AgentDispatch({
+    id: "dispatch-deleted-without-jobs",
+    room: "interview-presence-room",
+    agentName: "meelni-interview-agent",
+    state: {
+      deletedAt: BigInt(2),
+      jobs: [],
+    },
+  });
+}
 
 test("LiveKit presence treats an absent room as absent and other failures as retryable", async () => {
   const input = {
@@ -2597,7 +2925,14 @@ test("LiveKit presence treats an absent room as absent and other failures as ret
   assert.deepEqual(absent, {
     ok: true,
     provider: "livekit",
-    data: { present: false, joined: false, joinedAt: null, agent: null },
+    data: {
+      present: false,
+      joined: false,
+      joinedAt: null,
+      agent: null,
+      targetSource: "none",
+      targetReason: "agent_absent",
+    },
   });
   assert.equal(failed.ok, false);
   if (!failed.ok) {
