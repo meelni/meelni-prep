@@ -6,9 +6,19 @@ import {
   appUser,
   feedback,
   sessionQuestion,
+  transcriptTurn,
 } from "./schema";
-import { eq, desc, and, sql } from "drizzle-orm";
-import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
+import { eq, desc, and, asc, inArray, sql } from "drizzle-orm";
+import {
+  isInterviewSessionCompletedForRead,
+  MAX_CANONICAL_EVENT_ID_LENGTH,
+  type PersistedFeedbackEvidenceTurn,
+} from "@/lib/internal/core";
+import {
+  classifyDashboardFeedbackPresentation,
+  DASHBOARD_FEEDBACK_PRESENTATION_LIMITS,
+  type DashboardFeedbackPresentationCandidate,
+} from "@/lib/dashboard/feedback-presentation";
 import { lockAccountIdentity } from "./account-identity-lock";
 import { AccountDeletionPendingError } from "./users";
 
@@ -246,41 +256,21 @@ export async function getUserSessionsPaginated(
   offset = 0
 ) {
   // Get sessions with pagination, including feedback data
-  const sessions = await db
-    .select({
-      id: interviewSession.id,
-      userId: interviewSession.userId,
-      role: interviewSession.role,
-      roundType: interviewSession.roundType,
-      mode: interviewSession.mode,
-      persona: interviewSession.persona,
-      livekitRoomName: interviewSession.livekitRoomName,
-      config: interviewSession.config,
-      startedAt: interviewSession.startedAt,
-      endedAt: interviewSession.endedAt,
-      lifecycleState: interviewSession.lifecycleState,
-      status: interviewSession.status,
-      lifecycleVersion: interviewSession.lifecycleVersion,
-      terminalReason: interviewSession.terminalReason,
-      activatedAt: interviewSession.activatedAt,
-      endingAt: interviewSession.endingAt,
-      lastTransitionAt: interviewSession.lastTransitionAt,
-      feedback: {
-        status: feedback.status,
-        overallScore: feedback.overallScore,
-        structureScore: feedback.structureScore,
-        clarityScore: feedback.clarityScore,
-        insightScore: feedback.insightScore,
-        communicationScore: feedback.communicationScore,
-        leadershipScore: feedback.leadershipScore,
-      },
-    })
+  const rows = await db
+    .select(dashboardSessionSelection)
     .from(interviewSession)
     .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
     .where(eq(interviewSession.userId, userId))
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
+  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const sessions = rows.map((row) =>
+    toDashboardSession(
+      row,
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+    )
+  );
 
   // Get total count
   const countResult = await db
@@ -327,34 +317,8 @@ export async function getUserSessionsByRoundTypePaginated(
   offset = 0
 ) {
   // Get sessions with pagination, including feedback data
-  const sessions = await db
-    .select({
-      id: interviewSession.id,
-      userId: interviewSession.userId,
-      role: interviewSession.role,
-      roundType: interviewSession.roundType,
-      mode: interviewSession.mode,
-      persona: interviewSession.persona,
-      livekitRoomName: interviewSession.livekitRoomName,
-      config: interviewSession.config,
-      startedAt: interviewSession.startedAt,
-      endedAt: interviewSession.endedAt,
-      lifecycleState: interviewSession.lifecycleState,
-      lifecycleVersion: interviewSession.lifecycleVersion,
-      terminalReason: interviewSession.terminalReason,
-      activatedAt: interviewSession.activatedAt,
-      endingAt: interviewSession.endingAt,
-      lastTransitionAt: interviewSession.lastTransitionAt,
-      feedback: {
-        status: feedback.status,
-        overallScore: feedback.overallScore,
-        structureScore: feedback.structureScore,
-        clarityScore: feedback.clarityScore,
-        insightScore: feedback.insightScore,
-        communicationScore: feedback.communicationScore,
-        leadershipScore: feedback.leadershipScore,
-      },
-    })
+  const rows = await db
+    .select(dashboardSessionSelection)
     .from(interviewSession)
     .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
     .where(
@@ -366,6 +330,13 @@ export async function getUserSessionsByRoundTypePaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
+  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const sessions = rows.map((row) =>
+    toDashboardSession(
+      row,
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+    )
+  );
 
   // Get total count
   const countResult = await db
@@ -381,6 +352,191 @@ export async function getUserSessionsByRoundTypePaginated(
   const total = Number(countResult[0]?.count || 0);
 
   return { sessions, total };
+}
+
+export const dashboardSessionSelection = {
+  id: interviewSession.id,
+  userId: interviewSession.userId,
+  role: interviewSession.role,
+  roundType: interviewSession.roundType,
+  mode: interviewSession.mode,
+  persona: interviewSession.persona,
+  livekitRoomName: interviewSession.livekitRoomName,
+  config: interviewSession.config,
+  startedAt: interviewSession.startedAt,
+  endedAt: interviewSession.endedAt,
+  lifecycleState: interviewSession.lifecycleState,
+  status: interviewSession.status,
+  lifecycleVersion: interviewSession.lifecycleVersion,
+  terminalReason: interviewSession.terminalReason,
+  activatedAt: interviewSession.activatedAt,
+  endingAt: interviewSession.endingAt,
+  lastTransitionAt: interviewSession.lastTransitionAt,
+  feedback: {
+    status: feedback.status,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore,
+  },
+  feedbackPresentationCandidate: {
+    id: feedback.id,
+    sessionId: feedback.sessionId,
+    status: feedback.status,
+    outcomeReason: feedback.outcomeReason,
+    completionTier: feedback.completionTier,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore,
+    schemaVersion: sql<
+      string | null
+    >`left(${feedback.schemaVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    promptVersion: sql<
+      string | null
+    >`left(${feedback.promptVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    modelVersion: sql<
+      string | null
+    >`left(${feedback.modelVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    rubricVersion: sql<
+      string | null
+    >`left(${feedback.rubricVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    evaluationState: sql<
+      string | null
+    >`left(${feedback.evaluationState}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    strengthsJson: sql<
+      string | null
+    >`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    improvementsJson: sql<
+      string | null
+    >`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    drillsJson: sql<
+      string | null
+    >`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
+    summary: sql<
+      string | null
+    >`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`,
+    createdAt: feedback.createdAt,
+  },
+};
+
+const EMPTY_FEEDBACK_EVIDENCE_TURNS: readonly PersistedFeedbackEvidenceTurn[] =
+  [];
+const MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE = 2_000;
+const MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
+
+/**
+ * Batch the canonical user evidence needed by completed versioned feedback.
+ * A page that exceeds the explicit aggregate cap fails closed rather than
+ * partially validating links from a truncated evidence set.
+ */
+async function loadDashboardFeedbackEvidenceTurns(
+  rows: readonly DashboardSessionRow[],
+  database: Pick<typeof db, "select"> = db
+): Promise<ReadonlyMap<string, readonly PersistedFeedbackEvidenceTurn[]>> {
+  const sessionIds = rows.flatMap((row) =>
+    row.feedbackPresentationCandidate &&
+    row.feedbackPresentationCandidate.status === "completed" &&
+    row.feedbackPresentationCandidate.schemaVersion !== null &&
+    typeof row.id === "string"
+      ? [row.id]
+      : []
+  );
+  if (sessionIds.length === 0) return new Map();
+
+  const evidenceRows = await buildDashboardFeedbackEvidenceTurnsQuery(
+    database,
+    sessionIds
+  );
+  if (evidenceRows.length > MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE) {
+    return new Map();
+  }
+
+  const grouped = new Map<string, PersistedFeedbackEvidenceTurn[]>();
+  for (const row of evidenceRows) {
+    const turns = grouped.get(row.sessionId) ?? [];
+    turns.push(row);
+    grouped.set(row.sessionId, turns);
+  }
+  return grouped;
+}
+
+export function buildDashboardFeedbackEvidenceTurnsQuery(
+  database: Pick<typeof db, "select">,
+  sessionIds: readonly string[]
+) {
+  return database
+    .select({
+      sessionId: transcriptTurn.sessionId,
+      eventId: sql<
+        string | null
+      >`left(${transcriptTurn.eventId}, ${MAX_CANONICAL_EVENT_ID_LENGTH + 1})`,
+      speaker: transcriptTurn.speaker,
+      text: sql<
+        string | null
+      >`left(${transcriptTurn.text}, ${MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH + 1})`,
+      contractVersion: transcriptTurn.contractVersion,
+    })
+    .from(transcriptTurn)
+    .where(
+      and(
+        inArray(transcriptTurn.sessionId, [...sessionIds]),
+        eq(transcriptTurn.speaker, "user")
+      )
+    )
+    .orderBy(
+      asc(transcriptTurn.sessionId),
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id)
+    )
+    .limit(MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE + 1);
+}
+
+type DashboardSessionRow = {
+  feedback: {
+    status: string;
+    overallScore: string | null;
+    structureScore: number | null;
+    clarityScore: number | null;
+    insightScore: number | null;
+    communicationScore: number | null;
+    leadershipScore: number | null;
+  } | null;
+  feedbackPresentationCandidate: DashboardFeedbackPresentationCandidate | null;
+} & Record<string, unknown>;
+
+export function toDashboardSession(
+  row: DashboardSessionRow,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = []
+): Omit<DashboardSessionRow, "feedbackPresentationCandidate" | "feedback"> & {
+  feedback:
+    | (NonNullable<DashboardSessionRow["feedback"]> & {
+        presentationKind: "scored" | "evidence_limited" | "unavailable";
+      })
+    | null;
+} {
+  const { feedbackPresentationCandidate, ...session } = row;
+  if (!session.feedback) return { ...session, feedback: null };
+
+  return {
+    ...session,
+    feedback: {
+      ...session.feedback,
+      presentationKind: feedbackPresentationCandidate
+        ? classifyDashboardFeedbackPresentation(
+            feedbackPresentationCandidate,
+            evidenceTurns
+          )
+        : "unavailable",
+    },
+  };
 }
 
 /**

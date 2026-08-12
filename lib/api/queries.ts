@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { DashboardFeedbackPresentationKind } from "@/lib/dashboard/feedback-presentation";
 
 // ============================================================================
 // TypeScript Types
@@ -18,6 +19,7 @@ export interface Session {
   createdAt?: Date | string;
   feedback?: {
     status: string | null;
+    presentationKind: DashboardFeedbackPresentationKind;
     overallScore: string | null;
     structureScore?: number | string | null;
     clarityScore?: number | string | null;
