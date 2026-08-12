@@ -6,9 +6,14 @@ import {
   appUser,
   feedback,
   sessionQuestion,
+  transcriptTurn,
 } from "./schema";
-import { eq, desc, and, sql } from "drizzle-orm";
-import { isInterviewSessionCompletedForRead } from "@/lib/internal/core";
+import { eq, desc, and, asc, inArray, sql } from "drizzle-orm";
+import {
+  isInterviewSessionCompletedForRead,
+  MAX_CANONICAL_EVENT_ID_LENGTH,
+  type PersistedFeedbackEvidenceTurn,
+} from "@/lib/internal/core";
 import {
   classifyDashboardFeedbackPresentation,
   DASHBOARD_FEEDBACK_PRESENTATION_LIMITS,
@@ -259,7 +264,13 @@ export async function getUserSessionsPaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const sessions = rows.map(toDashboardSession);
+  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const sessions = rows.map((row) =>
+    toDashboardSession(
+      row,
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+    )
+  );
 
   // Get total count
   const countResult = await db
@@ -319,7 +330,13 @@ export async function getUserSessionsByRoundTypePaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const sessions = rows.map(toDashboardSession);
+  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const sessions = rows.map((row) =>
+    toDashboardSession(
+      row,
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+    )
+  );
 
   // Get total count
   const countResult = await db
@@ -365,6 +382,8 @@ export const dashboardSessionSelection = {
     leadershipScore: feedback.leadershipScore,
   },
   feedbackPresentationCandidate: {
+    id: feedback.id,
+    sessionId: feedback.sessionId,
     status: feedback.status,
     outcomeReason: feedback.outcomeReason,
     completionTier: feedback.completionTier,
@@ -401,8 +420,84 @@ export const dashboardSessionSelection = {
     summary: sql<
       string | null
     >`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`,
+    createdAt: feedback.createdAt,
   },
 };
+
+const EMPTY_FEEDBACK_EVIDENCE_TURNS: readonly PersistedFeedbackEvidenceTurn[] =
+  [];
+const MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE = 2_000;
+const MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
+
+/**
+ * Batch the canonical user evidence needed by completed versioned feedback.
+ * A page that exceeds the explicit aggregate cap fails closed rather than
+ * partially validating links from a truncated evidence set.
+ */
+async function loadDashboardFeedbackEvidenceTurns(
+  rows: readonly DashboardSessionRow[],
+  database: Pick<typeof db, "select"> = db
+): Promise<ReadonlyMap<string, readonly PersistedFeedbackEvidenceTurn[]>> {
+  const sessionIds = rows.flatMap((row) =>
+    row.feedbackPresentationCandidate &&
+    row.feedbackPresentationCandidate.status === "completed" &&
+    row.feedbackPresentationCandidate.schemaVersion !== null &&
+    typeof row.id === "string"
+      ? [row.id]
+      : []
+  );
+  if (sessionIds.length === 0) return new Map();
+
+  const evidenceRows = await buildDashboardFeedbackEvidenceTurnsQuery(
+    database,
+    sessionIds
+  );
+  if (evidenceRows.length > MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE) {
+    return new Map();
+  }
+
+  const grouped = new Map<string, PersistedFeedbackEvidenceTurn[]>();
+  for (const row of evidenceRows) {
+    const turns = grouped.get(row.sessionId) ?? [];
+    turns.push(row);
+    grouped.set(row.sessionId, turns);
+  }
+  return grouped;
+}
+
+export function buildDashboardFeedbackEvidenceTurnsQuery(
+  database: Pick<typeof db, "select">,
+  sessionIds: readonly string[]
+) {
+  return database
+    .select({
+      sessionId: transcriptTurn.sessionId,
+      eventId: sql<
+        string | null
+      >`left(${transcriptTurn.eventId}, ${MAX_CANONICAL_EVENT_ID_LENGTH + 1})`,
+      speaker: transcriptTurn.speaker,
+      text: sql<
+        string | null
+      >`left(${transcriptTurn.text}, ${MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH + 1})`,
+      contractVersion: transcriptTurn.contractVersion,
+    })
+    .from(transcriptTurn)
+    .where(
+      and(
+        inArray(transcriptTurn.sessionId, [...sessionIds]),
+        eq(transcriptTurn.speaker, "user")
+      )
+    )
+    .orderBy(
+      asc(transcriptTurn.sessionId),
+      asc(transcriptTurn.startedAt),
+      asc(transcriptTurn.writerId),
+      asc(transcriptTurn.sequence),
+      asc(transcriptTurn.eventId),
+      asc(transcriptTurn.id)
+    )
+    .limit(MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE + 1);
+}
 
 type DashboardSessionRow = {
   feedback: {
@@ -417,10 +512,10 @@ type DashboardSessionRow = {
   feedbackPresentationCandidate: DashboardFeedbackPresentationCandidate | null;
 } & Record<string, unknown>;
 
-export function toDashboardSession(row: DashboardSessionRow): Omit<
-  DashboardSessionRow,
-  "feedbackPresentationCandidate" | "feedback"
-> & {
+export function toDashboardSession(
+  row: DashboardSessionRow,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = []
+): Omit<DashboardSessionRow, "feedbackPresentationCandidate" | "feedback"> & {
   feedback:
     | (NonNullable<DashboardSessionRow["feedback"]> & {
         presentationKind: "scored" | "evidence_limited" | "unavailable";
@@ -435,7 +530,10 @@ export function toDashboardSession(row: DashboardSessionRow): Omit<
     feedback: {
       ...session.feedback,
       presentationKind: feedbackPresentationCandidate
-        ? classifyDashboardFeedbackPresentation(feedbackPresentationCandidate)
+        ? classifyDashboardFeedbackPresentation(
+            feedbackPresentationCandidate,
+            evidenceTurns
+          )
         : "unavailable",
     },
   };

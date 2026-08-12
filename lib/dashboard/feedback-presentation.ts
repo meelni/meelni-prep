@@ -6,9 +6,10 @@ import {
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   getCompletedFeedbackScore,
-  hasServerOwnedEvidenceLimitedContent,
   LEGACY_FEEDBACK_RUBRIC_VERSION,
   parseRubricScore,
+  presentCompletedFeedback,
+  type PersistedFeedbackEvidenceTurn,
 } from "@meelni/core";
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
@@ -21,13 +22,17 @@ export type DashboardFeedbackPresentationKind =
   (typeof DASHBOARD_FEEDBACK_PRESENTATION_KINDS)[number];
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
-  findingsJson: 64_000,
-  drillsJson: 64,
+  // Match the canonical feedback read boundary. Dashboard reads still cap the
+  // value one character beyond each limit so corrupt rows fail closed.
+  findingsJson: 1_000_000,
+  drillsJson: 64_000,
   summary: 4_000,
   version: 256,
 } as const;
 
 export interface DashboardFeedbackPresentationCandidate {
+  id: unknown;
+  sessionId: unknown;
   status: unknown;
   outcomeReason: unknown;
   completionTier: unknown;
@@ -46,17 +51,59 @@ export interface DashboardFeedbackPresentationCandidate {
   improvementsJson: unknown;
   drillsJson: unknown;
   summary: unknown;
+  createdAt: unknown;
 }
 
 /**
  * Turn bounded persistence fields into the only feedback kinds the dashboard
- * may present as reviewable. The canonical feedback route still revalidates
- * transcript citations before rendering the review itself.
+ * may present as reviewable. This deliberately reuses the canonical completed
+ * feedback presenter so list links and the destination route share the same
+ * persisted-content and frozen-evidence trust boundary.
  */
 export function classifyDashboardFeedbackPresentation(
-  candidate: DashboardFeedbackPresentationCandidate
+  candidate: DashboardFeedbackPresentationCandidate,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
 ): DashboardFeedbackPresentationKind {
-  if (hasSupportedScoredMetadata(candidate)) {
+  const strengths = decodeBoundedJson(
+    candidate.strengthsJson,
+    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson
+  );
+  const improvements = decodeBoundedJson(
+    candidate.improvementsJson,
+    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson
+  );
+  const drills = decodeBoundedJson(
+    candidate.drillsJson,
+    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson
+  );
+  const presented = presentCompletedFeedback(
+    {
+      id: candidate.id,
+      sessionId: candidate.sessionId,
+      structureScore: candidate.structureScore,
+      clarityScore: candidate.clarityScore,
+      insightScore: candidate.insightScore,
+      communicationScore: candidate.communicationScore,
+      leadershipScore: candidate.leadershipScore,
+      overallScore: candidate.overallScore,
+      strengths,
+      improvements,
+      drills,
+      summary: candidate.summary,
+      rubricVersion: candidate.rubricVersion,
+      schemaVersion: candidate.schemaVersion,
+      promptVersion: candidate.promptVersion,
+      modelVersion: candidate.modelVersion,
+      evaluationState: candidate.evaluationState,
+      createdAt: candidate.createdAt,
+    },
+    { evidenceTurns }
+  );
+
+  if (
+    hasSupportedScoredMetadata(candidate) &&
+    (presented.kind === "v2" || presented.kind === "legacy")
+  ) {
     return "scored";
   }
 
@@ -81,26 +128,9 @@ export function classifyDashboardFeedbackPresentation(
     return "unavailable";
   }
 
-  const strengths = decodeBoundedJson(
-    candidate.strengthsJson,
-    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson
-  );
-  const improvements = decodeBoundedJson(
-    candidate.improvementsJson,
-    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson
-  );
-  const drills = decodeBoundedJson(
-    candidate.drillsJson,
-    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson
-  );
-
   return Array.isArray(drills) &&
     drills.length === 0 &&
-    hasServerOwnedEvidenceLimitedContent({
-      strengths,
-      improvements,
-      summary: candidate.summary,
-    })
+    presented.kind === "evidence-limited"
     ? "evidence_limited"
     : "unavailable";
 }

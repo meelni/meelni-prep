@@ -10,12 +10,15 @@ summary, and provider identity do not.
 `evidence_limited` requires completed/generated/partial lifecycle facts, the
 exact accepted evidence-limited provenance tuple, a bounded non-empty model
 identity, all score columns null, empty drills, and server-owned closed-template
-content. A null score, arbitrary completed row, malformed JSON, unknown code,
-or incompatible tuple remains unavailable. `scored` requires either the exact
-supported v2 tuple with complete coherent scores or the exact supported legacy
-tuple with complete in-range historical scores. The feedback route
-independently revalidates full stored content and, for v2, exact frozen
-transcript citations before rendering.
+content with exact quote/reference support in canonical user evidence. A null
+score, arbitrary completed row, malformed JSON, unknown code, forged quote,
+missing reference, or incompatible tuple remains unavailable. `scored`
+requires either the exact supported v2 tuple with complete coherent scores,
+valid findings and practice suggestions, and exact evidence support, or the
+exact supported legacy tuple with complete in-range historical scores and
+valid findings and practice suggestions. A bounded page-level evidence batch
+feeds the same canonical completed-feedback parser used by the feedback route;
+an oversized batch fails closed rather than partially validating links.
 
 ## Dashboard behavior
 
