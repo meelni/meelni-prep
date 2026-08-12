@@ -11,9 +11,10 @@ import { transcriptTurn } from "@/lib/db/schema";
 import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
 import { eq } from "drizzle-orm";
 import {
+  classifyCandidateResponseEvidence,
   FEEDBACK_ELIGIBILITY_POLICY,
-  hasSubstantiveCandidateResponseSignal,
   prepareFeedbackTranscript,
+  type CandidateResponseEvidenceLevel,
   type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
 
@@ -43,8 +44,10 @@ export interface SessionStats {
   totalWords: number;
   /** Session duration in seconds */
   durationSeconds: number;
-  /** Number of substantive user responses (>10 words) */
+  /** Reviewable responses for strict or qualitative-only feedback. */
   substantiveResponses: number;
+  /** Substantive responses that also satisfy numerical-score coherence. */
+  scoreableResponses: number;
 }
 
 /**
@@ -132,11 +135,17 @@ export function calculateSessionStatsFromTurns(
         )
       : 0;
 
-  // Count responses with enough length and lexical variety for honest scoring.
-  const substantiveResponses = turns.filter((turn) => {
-    if (turn.speaker !== "user" || !turn.text) return false;
-    return isSubstantiveUserResponse(turn.text);
-  }).length;
+  const evidenceLevels = turns.flatMap((turn) =>
+    turn.speaker === "user" && turn.text
+      ? [classifyUserResponseEvidence(turn.text)]
+      : []
+  );
+  const substantiveResponses = evidenceLevels.filter(
+    (level) => level !== "insufficient"
+  ).length;
+  const scoreableResponses = evidenceLevels.filter(
+    (level) => level === "scoreable"
+  ).length;
 
   return {
     totalTurns,
@@ -144,6 +153,7 @@ export function calculateSessionStatsFromTurns(
     totalWords,
     durationSeconds,
     substantiveResponses,
+    scoreableResponses,
   };
 }
 
@@ -177,20 +187,23 @@ const FILLER_WORDS = new Set([
   "yes",
 ]);
 
-function isSubstantiveUserResponse(text: string): boolean {
+function classifyUserResponseEvidence(
+  text: string
+): CandidateResponseEvidenceLevel {
   const words = tokenizeWords(text).map((word) =>
     word.toLocaleLowerCase("en-US")
   );
-  if (words.length <= 10) return false;
+  if (words.length <= 10) return "insufficient";
   const uniqueWords = new Set(words);
   const contentWords = new Set(words.filter((word) => !FILLER_WORDS.has(word)));
   const alphabeticCharacters = (text.match(/\p{L}/gu) ?? []).length;
-  return (
-    uniqueWords.size / words.length >= 0.35 &&
-    contentWords.size >= 6 &&
-    alphabeticCharacters >= 30 &&
-    hasSubstantiveCandidateResponseSignal(text)
-  );
+  return classifyCandidateResponseEvidence({
+    text,
+    passesQuantitativeGates:
+      uniqueWords.size / words.length >= 0.35 &&
+      contentWords.size >= 6 &&
+      alphabeticCharacters >= 30,
+  });
 }
 
 function tokenizeWords(text: string): string[] {
@@ -335,7 +348,7 @@ export function validateSessionStats(stats: SessionStats): SessionValidation {
   }
 
   const isFull =
-    stats.substantiveResponses >= THRESHOLDS.FULL.minSubstantiveResponses;
+    stats.scoreableResponses >= THRESHOLDS.FULL.minScoreableResponses;
 
   const tier = isFull ? SessionTier.FULL : SessionTier.PARTIAL;
 

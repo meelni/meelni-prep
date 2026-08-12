@@ -40,6 +40,7 @@ export interface FeedbackGenerationRecord {
     totalWords: number;
     durationSeconds: number;
     substantiveResponses: number;
+    scoreableResponses?: number;
   } | null;
   dispatchStatus: "not_required" | "pending" | "sending" | "sent" | "failed";
   dispatchClaimedAt: Date | null;

@@ -24,6 +24,7 @@ import type {
   TranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
 import {
+  classifyTranscriptInterruptionIntegrity,
   deriveInterviewDeadlineAt,
   isInterviewTerminalState,
   MAX_CANONICAL_EVENT_ID_LENGTH,
@@ -487,6 +488,10 @@ export function createDrizzleTranscriptInterruptionMarkerStore(
               eventId: marker.event_id,
               evidenceAt: new Date(marker.occurred_at),
               kind: "marker",
+              integrityImpact: classifyTranscriptInterruptionIntegrity({
+                speaker: marker.speaker,
+                reason: marker.reason,
+              }),
             },
           });
           return {
@@ -722,6 +727,7 @@ export function createDrizzleTranscriptIngestStore(
               eventId: event.event_id,
               evidenceAt: new Date(event.ended_at),
               kind: "turn",
+              integrityImpact: "preserve",
             },
           });
           return {
@@ -826,6 +832,8 @@ async function advanceStoredTranscriptWriterProgress(
           sequence: transcriptInterruptionMarker.sequence,
           eventId: transcriptInterruptionMarker.eventId,
           evidenceAt: transcriptInterruptionMarker.occurredAt,
+          speaker: transcriptInterruptionMarker.speaker,
+          reason: transcriptInterruptionMarker.reason,
         })
         .from(transcriptInterruptionMarker)
         .where(
@@ -849,13 +857,20 @@ async function advanceStoredTranscriptWriterProgress(
                 eventId: turn.eventId,
                 evidenceAt: turn.evidenceAt,
                 kind: "turn" as const,
+                integrityImpact: "preserve" as const,
               },
             ]
           : []
       ),
       ...markers.map((marker) => ({
-        ...marker,
+        sequence: marker.sequence,
+        eventId: marker.eventId,
+        evidenceAt: marker.evidenceAt,
         kind: "marker" as const,
+        integrityImpact: classifyTranscriptInterruptionIntegrity({
+          speaker: marker.speaker,
+          reason: marker.reason,
+        }),
       })),
     ];
   }

@@ -119,6 +119,7 @@ export interface EndInterviewSessionResponse {
     totalWords: number;
     durationSeconds: number;
     substantiveResponses: number;
+    scoreableResponses: number;
   };
   recommendations: string[];
   reason?: string;
