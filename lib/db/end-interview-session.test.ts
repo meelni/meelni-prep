@@ -37,7 +37,7 @@ test("a missing settlement after a usable disconnect remains a user charge", () 
       requestedTerminalReason: "disconnect_timeout",
       usableAt,
       missingRuntimeSettlement: true,
-      unavailableInterruptions: 0,
+      degradingInterruptionCount: 0,
     }),
     true
   );
@@ -46,7 +46,7 @@ test("a missing settlement after a usable disconnect remains a user charge", () 
       requestedTerminalReason: "disconnect_timeout",
       usableAt,
       missingRuntimeSettlement: true,
-      unavailableInterruptions: 1,
+      degradingInterruptionCount: 1,
     }),
     false
   );
@@ -55,7 +55,7 @@ test("a missing settlement after a usable disconnect remains a user charge", () 
       requestedTerminalReason: "user_end",
       usableAt,
       missingRuntimeSettlement: true,
-      unavailableInterruptions: 0,
+      degradingInterruptionCount: 0,
     }),
     false
   );
@@ -134,7 +134,7 @@ test("matching invalid provisional claims refine to insufficient signal", () => 
   );
 });
 
-test("runtime settlement and textless interruption own final feedback eligibility", () => {
+test("runtime settlement and degrading interruptions own final feedback eligibility", () => {
   const baseValidation = {
     isValid: true,
     tier: SessionTier.PARTIAL,
@@ -144,20 +144,26 @@ test("runtime settlement and textless interruption own final feedback eligibilit
       totalWords: 90,
       durationSeconds: 360,
       substantiveResponses: 3,
+      scoreableResponses: 3,
     },
     reasons: [],
     recommendations: [],
   };
 
   for (const input of [
-    { runtimeWriterStates: [], interruptionCount: 0 },
+    { runtimeWriterStates: [], interruptions: [] },
     {
       runtimeWriterStates: [{ generation: 1, state: "degraded" as const }],
-      interruptionCount: 0,
+      interruptions: [],
     },
     {
       runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
-      interruptionCount: 1,
+      interruptions: [
+        {
+          speaker: "user" as const,
+          reason: "no_provider_confirmed_prefix" as const,
+        },
+      ],
     },
   ]) {
     const result = applyTranscriptIntegrityValidation({
@@ -172,14 +178,14 @@ test("runtime settlement and textless interruption own final feedback eligibilit
     applyTranscriptIntegrityValidation({
       baseValidation,
       runtimeWriterStates: [{ generation: 1, state: "settled" }],
-      interruptionCount: 0,
+      interruptions: [],
     }),
     baseValidation
   );
 
   const replacementMissing = applyTranscriptIntegrityValidation({
     baseValidation,
-    interruptionCount: 0,
+    interruptions: [],
     runtimeWriterStates: [
       { generation: 1, state: null },
       { generation: 2, state: "settled" },
@@ -190,7 +196,7 @@ test("runtime settlement and textless interruption own final feedback eligibilit
 
   const replacementDegraded = applyTranscriptIntegrityValidation({
     baseValidation,
-    interruptionCount: 0,
+    interruptions: [],
     runtimeWriterStates: [
       { generation: 1, state: "degraded" },
       { generation: 2, state: "settled" },
@@ -201,11 +207,25 @@ test("runtime settlement and textless interruption own final feedback eligibilit
   assert.deepEqual(
     applyTranscriptIntegrityValidation({
       baseValidation,
-      interruptionCount: 0,
+      interruptions: [],
       runtimeWriterStates: [
         { generation: 1, state: "settled" },
         { generation: 2, state: "settled" },
       ],
+    }),
+    baseValidation
+  );
+
+  assert.deepEqual(
+    applyTranscriptIntegrityValidation({
+      baseValidation,
+      interruptions: [
+        {
+          speaker: "interviewer",
+          reason: "no_provider_confirmed_prefix",
+        },
+      ],
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
     }),
     baseValidation
   );
@@ -214,26 +234,43 @@ test("runtime settlement and textless interruption own final feedback eligibilit
 test("terminalization exposes a copy-independent transcript evidence classification", () => {
   assert.equal(
     classifyTranscriptEvidence({
-      interruptionCount: 0,
+      interruptions: [],
       runtimeWriterStates: [{ generation: 1, state: "settled" }],
     }),
     "available"
   );
   assert.equal(
     classifyTranscriptEvidence({
-      interruptionCount: 0,
+      interruptions: [],
       runtimeWriterStates: [{ generation: 1, state: "degraded" }],
     }),
     "degraded"
   );
+  assert.equal(
+    classifyTranscriptEvidence({
+      interruptions: [
+        {
+          speaker: "interviewer",
+          reason: "no_provider_confirmed_prefix",
+        },
+      ],
+      runtimeWriterStates: [{ generation: 1, state: "settled" }],
+    }),
+    "available"
+  );
   for (const input of [
-    { interruptionCount: 0, runtimeWriterStates: [] },
+    { interruptions: [], runtimeWriterStates: [] },
     {
-      interruptionCount: 0,
+      interruptions: [],
       runtimeWriterStates: [{ generation: 1, state: null }],
     },
     {
-      interruptionCount: 1,
+      interruptions: [
+        {
+          speaker: "user" as const,
+          reason: "no_provider_confirmed_prefix" as const,
+        },
+      ],
       runtimeWriterStates: [{ generation: 1, state: "settled" as const }],
     },
   ]) {
@@ -310,7 +347,7 @@ test("durable turns do not synthesize canonical activation during terminalizatio
                 selectCall === 2
                   ? validTurns
                   : selectCall === 3
-                    ? [{ value: 0 }]
+                    ? []
                     : selectCall === 4
                       ? [
                           {

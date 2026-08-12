@@ -119,6 +119,8 @@ export interface EndInterviewSessionResponse {
     totalWords: number;
     durationSeconds: number;
     substantiveResponses: number;
+    scoreableResponses: number;
+    feedbackModeConstraint?: "evidence_limited_only";
   };
   recommendations: string[];
   reason?: string;

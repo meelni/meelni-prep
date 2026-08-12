@@ -18,13 +18,21 @@ completed and skipped outcome reasons remain immutable with their terminal row.
 ## Evidence-gated evaluation
 
 Eligibility depends on the frozen canonical candidate evidence, not room
-duration or total transcript-turn count. One trustworthy substantive candidate
-answer is enough to request feedback. Five distinct substantive answers permit
-the full-depth evaluation state; smaller healthy prefixes remain partial.
+duration or total transcript-turn count. One trustworthy reviewable candidate
+answer is enough to request feedback. A response is reviewable when it passes
+the existing quantitative gates and either the strict scoreable language
+surface or the qualitative-only long-form recognized-evidence boundary. That
+fallback requires at least 40 tokens, recognized occurrences no denser than
+30% and no more than twice the distinct recognized-lexeme count, at least one
+strong connector-linked pair of different recognized lexemes within 14 token
+positions, and either five distinct lexemes with two broad linked pairs or at
+least 46 tokens with four distinct lexemes and one broad linked pair. Five
+distinct strict scoreable answers permit the full-depth evaluation state;
+smaller healthy prefixes and fallback-only evidence remain partial.
 Duration and turn statistics remain diagnostic evidence only and cannot deny
 feedback.
 
-Numerical feedback requires at least four substantive candidate answers. A
+Numerical feedback requires at least four strict scoreable candidate answers. A
 healthy eligible prefix below that precision boundary uses the scoreless
 `feedback.evidence-limited.v2` result. Its provider contract contains no
 freeform narrative, quote, number, score, grade, or confidence field. The
@@ -42,12 +50,22 @@ Signal identity is unique within strengths or improvements, and action identity
 is unique across both arrays. Distinct strength and improvement selections may
 cite the same frozen candidate turn so one-answer feedback remains useful.
 
-A frozen session with no trustworthy substantive candidate answer becomes
-`no_reviewable_answer`. A marker, writer gap, degraded settlement, malformed
+A frozen session with no trustworthy reviewable candidate answer becomes
+`no_reviewable_answer`. A degrading marker, writer gap, degraded settlement, malformed
 canonical boundary, or detected transcript corruption becomes
 `transcript_integrity_degraded`. Neither state calls the feedback provider.
 Provider refusal, invalid generated output, timeout, and other evaluator
 failure remain the distinct `generation_failed` outcome.
+
+The marker rule is role/reason scoped: the exact
+`interviewer/no_provider_confirmed_prefix` marker records textless inaudible
+interviewer speech and does not degrade independent candidate evidence.
+Candidate markers and every `canonicalization_failed` marker still fail closed.
+A preserving marker or missing runtime settlement is frozen with the durable
+`evidence_limited_only` feedback-mode constraint. This keeps the evaluator in
+partial scoreless mode even when four or five strict scoreable answers are
+otherwise present. The Python runtime uses the same exact role/reason rule, so
+the preserving marker alone does not manufacture a degraded settlement.
 
 ## Event fencing
 

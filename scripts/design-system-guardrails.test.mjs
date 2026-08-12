@@ -2693,9 +2693,10 @@ test("feedback eligibility UI and validator consume evidence-only canonical poli
   for (const contract of [
     "FEEDBACK_ELIGIBILITY_POLICY",
     "minSubstantiveResponses: 1",
-    "minSubstantiveResponses: 5",
+    "minScoreableResponses: 5",
     "FEEDBACK_NUMERICAL_PRECISION_POLICY",
-    "minSubstantiveResponses: 4",
+    "minScoreableResponses: 4",
+    "CandidateResponseEvidenceLevel",
   ]) {
     if (!policy.includes(contract)) {
       violations.push(`feedback-eligibility:${contract}`);

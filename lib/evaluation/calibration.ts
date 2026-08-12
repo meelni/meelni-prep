@@ -1002,6 +1002,7 @@ async function runCaseThroughGenerationWorkflow(input: {
       totalWords: 0,
       durationSeconds: 0,
       substantiveResponses: 4,
+      scoreableResponses: 4,
     },
     dispatchStatus: "sent",
     dispatchClaimedAt: input.now,

@@ -1001,6 +1001,7 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
       totalWords: 120,
       durationSeconds: 600,
       substantiveResponses: 3,
+      scoreableResponses: 3,
     },
     completionRecommendations: [],
     rubricVersion: "1.0.0",

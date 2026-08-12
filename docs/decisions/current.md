@@ -2,7 +2,7 @@
 
 Active accepted engineering decisions:
 
-- [Evidence-Gated Feedback Outcomes](2026-08-10-evidence-gated-feedback-outcomes.md): Base feedback on frozen trustworthy candidate evidence, withhold numerical precision for narrow evidence, preserve typed system outcomes, and share one runtime turn/marker sequence namespace.
+- [Evidence-Gated Feedback Outcomes](2026-08-10-evidence-gated-feedback-outcomes.md): Base feedback on frozen trustworthy candidate evidence, preserve long-form recognized spoken evidence for scoreless coaching, withhold numerical precision without strict scoreable breadth, scope interruption integrity to candidate evidence, and share one runtime turn/marker sequence namespace.
 - [Generic Preview LiveKit Capability](2026-08-09-generic-preview-livekit-capability.md): Keep generic Vercel PR Preview web-only with LiveKit intentionally disabled from Vercel system identity, while trusted staging and Production remain provider-backed and strict.
 - [Public Privacy Policy Approval](2026-07-26-public-privacy-policy.md): Publish the July 26, 2026 Privacy Policy with Meelni and `contact@meelni.com` as the accountable public identity, disclose implemented data and consent behavior, index `/privacy`, and keep Terms separate and unapproved.
 - [Delegated Agent Authorization Boundary](2026-07-23-delegated-agent-authorization-boundary.md): Allow explicitly labeled bounded agent authorization for repeat repo-only or synthetic-only work while preserving human-owner-only launch, spend, Production data, billing, destructive-action, and live-provider boundaries.
