@@ -9,11 +9,21 @@ import {
 
 import { createOpenAiModelReader } from "@/lib/deployment/openai-model-reader";
 import {
+  OPENAI_MODEL_READ_BUDGET,
   OpenAiModelAccessError,
   type OpenAiModelAccessFailureClass,
 } from "@/lib/deployment/openai-model-access";
 
 const MODEL = "gpt-5.1";
+
+test("the production model-read budget is exact and fast to verify", () => {
+  assert.deepEqual(OPENAI_MODEL_READ_BUDGET, {
+    attemptTimeoutMs: 10_000,
+    maxAttempts: 2,
+    overallTimeoutMs: 21_000,
+    retryDelayMs: 250,
+  });
+});
 
 test("a successful model read completes on the first attempt", async () => {
   let attempts = 0;

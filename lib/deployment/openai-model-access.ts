@@ -1,3 +1,10 @@
+export const OPENAI_MODEL_READ_BUDGET = {
+  attemptTimeoutMs: 10_000,
+  maxAttempts: 2,
+  overallTimeoutMs: 21_000,
+  retryDelayMs: 250,
+} as const;
+
 export type OpenAiModelAccessFailureClass =
   | "authentication"
   | "authorization"

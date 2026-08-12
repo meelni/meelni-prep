@@ -21,6 +21,7 @@ import {
 import { isValidPublicDemoSecret } from "@/lib/security/public-demo-secret";
 import { isValidServerSecret } from "@/lib/security/server-secret";
 import {
+  OPENAI_MODEL_READ_BUDGET,
   OpenAiModelAccessError,
   type OpenAiModelAccessFailureClass,
   type OpenAiModelReader,
@@ -144,13 +145,12 @@ const INTERVIEW_RUNTIME_NUMBER_ENV_CONTRACTS = {
 
 const DECIMAL_OR_EXPONENT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 10_000;
-const DEFAULT_OPENAI_PROVIDER_BUDGET_MS = 21_000;
 
 export async function runDeploymentPreflight({
   env,
   liveKitProjectReader,
   openAiModelReader,
-  openAiProviderBudgetMs = DEFAULT_OPENAI_PROVIDER_BUDGET_MS,
+  openAiProviderBudgetMs = OPENAI_MODEL_READ_BUDGET.overallTimeoutMs,
   previewLiveKitIdentity,
   providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
   supabaseProjectReader,
