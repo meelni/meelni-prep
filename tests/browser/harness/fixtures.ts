@@ -23,6 +23,7 @@ export const dashboardSessions = [
     endedAt: "2026-07-17T17:30:00.000Z",
     feedback: {
       status: "completed",
+      presentationKind: "scored" as const,
       overallScore: "7.6",
       structureScore: 7,
       clarityScore: 8,
@@ -34,6 +35,20 @@ export const dashboardSessions = [
 ];
 
 export const dashboardStatusSessions = [
+  {
+    id: "browser-qa-evidence-limited",
+    userId: "browser-qa-user",
+    role: "product_manager",
+    roundType: "product_sense",
+    mode: "voice_video",
+    startedAt: "2026-07-22T17:00:00.000Z",
+    endedAt: "2026-07-22T17:30:00.000Z",
+    feedback: {
+      status: "completed",
+      presentationKind: "evidence_limited" as const,
+      overallScore: null,
+    },
+  },
   {
     id: "browser-qa-not-scored",
     userId: "browser-qa-user",
@@ -53,6 +68,7 @@ export const dashboardStatusSessions = [
     endedAt: "2026-07-20T17:30:00.000Z",
     feedback: {
       status: "completed",
+      presentationKind: "unavailable" as const,
       overallScore: null,
     },
   },
@@ -66,19 +82,7 @@ export const dashboardStatusSessions = [
     endedAt: "2026-07-19T17:30:00.000Z",
     feedback: {
       status: "failed",
-      overallScore: null,
-    },
-  },
-  {
-    id: "browser-qa-feedback-skipped",
-    userId: "browser-qa-user",
-    role: "product_manager",
-    roundType: "behavioral",
-    mode: "voice_video",
-    startedAt: "2026-07-18T17:00:00.000Z",
-    endedAt: "2026-07-18T17:30:00.000Z",
-    feedback: {
-      status: "skipped",
+      presentationKind: "unavailable" as const,
       overallScore: null,
     },
   },
@@ -94,6 +98,7 @@ export const analyticsSessions = [
     endedAt: "2026-07-10T17:30:00.000Z",
     feedback: {
       status: "completed",
+      presentationKind: "scored" as const,
       overallScore: "7.1",
       structureScore: 6.5,
       clarityScore: 7.5,
@@ -109,6 +114,7 @@ export const analyticsSessions = [
     endedAt: "2026-07-03T17:30:00.000Z",
     feedback: {
       status: "completed",
+      presentationKind: "scored" as const,
       overallScore: "6.6",
       structureScore: 6,
       clarityScore: 7,

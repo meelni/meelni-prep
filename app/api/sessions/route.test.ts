@@ -52,4 +52,81 @@ describe("GET /api/sessions pagination", () => {
     expect(mocks.getSessionsByRoundType).not.toHaveBeenCalled();
     expect(mocks.getStats).not.toHaveBeenCalled();
   });
+
+  it("returns only the closed feedback presentation contract", async () => {
+    mocks.getSessions.mockResolvedValue({
+      sessions: [
+        {
+          id: "session-1",
+          feedback: {
+            status: "completed",
+            presentationKind: "evidence_limited",
+            overallScore: null,
+            structureScore: null,
+            clarityScore: null,
+            insightScore: null,
+            communicationScore: null,
+            leadershipScore: null,
+            modelVersion: "must-not-cross-api",
+            strengthsJson: '[{"must":"not cross"}]',
+          },
+        },
+      ],
+      total: 1,
+    });
+    mocks.getStats.mockResolvedValue({
+      totalSessions: 1,
+      totalMinutes: 5,
+      avgScore: 0,
+      completionRate: 100,
+    });
+
+    const response = await GET(
+      new NextRequest("https://meelni.test/api/sessions")
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.sessions[0].feedback).toEqual({
+      status: "completed",
+      presentationKind: "evidence_limited",
+      overallScore: null,
+      structureScore: null,
+      clarityScore: null,
+      insightScore: null,
+      communicationScore: null,
+      leadershipScore: null,
+    });
+    expect(JSON.stringify(body)).not.toContain("must-not-cross-api");
+    expect(JSON.stringify(body)).not.toContain("strengthsJson");
+  });
+
+  it("normalizes an unknown presentation kind to unavailable", async () => {
+    mocks.getSessions.mockResolvedValue({
+      sessions: [
+        {
+          id: "session-1",
+          feedback: {
+            status: "completed",
+            presentationKind: "forged-kind",
+            overallScore: null,
+          },
+        },
+      ],
+      total: 1,
+    });
+    mocks.getStats.mockResolvedValue({
+      totalSessions: 1,
+      totalMinutes: 5,
+      avgScore: 0,
+      completionRate: 100,
+    });
+
+    const response = await GET(
+      new NextRequest("https://meelni.test/api/sessions")
+    );
+    const body = await response.json();
+
+    expect(body.sessions[0].feedback.presentationKind).toBe("unavailable");
+  });
 });

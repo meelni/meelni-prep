@@ -61,6 +61,7 @@ import {
   getUserSessionStats,
 } from "@/lib/db/sessions";
 import { parseNonNegativeIntegerParam } from "@/lib/utils/pagination";
+import { DASHBOARD_FEEDBACK_PRESENTATION_KINDS } from "@/lib/dashboard/feedback-presentation";
 
 export async function GET(req: NextRequest) {
   try {
@@ -147,7 +148,7 @@ export async function GET(req: NextRequest) {
     };
 
     return NextResponse.json({
-      sessions,
+      sessions: sessions.map(presentSessionListEntry),
       pagination,
       stats,
     });
@@ -158,4 +159,41 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function presentSessionListEntry<
+  T extends {
+    feedback?:
+      | ({
+          status?: unknown;
+          presentationKind?: unknown;
+          overallScore?: unknown;
+          structureScore?: unknown;
+          clarityScore?: unknown;
+          insightScore?: unknown;
+          communicationScore?: unknown;
+          leadershipScore?: unknown;
+        } & Record<string, unknown>)
+      | null;
+  },
+>(session: T) {
+  const { feedback: feedbackRecord, ...sessionRecord } = session;
+  if (!feedbackRecord) return { ...sessionRecord, feedback: null };
+  const presentationKind = DASHBOARD_FEEDBACK_PRESENTATION_KINDS.find(
+    (kind) => kind === feedbackRecord.presentationKind
+  );
+
+  return {
+    ...sessionRecord,
+    feedback: {
+      status: feedbackRecord.status,
+      presentationKind: presentationKind ?? "unavailable",
+      overallScore: feedbackRecord.overallScore,
+      structureScore: feedbackRecord.structureScore,
+      clarityScore: feedbackRecord.clarityScore,
+      insightScore: feedbackRecord.insightScore,
+      communicationScore: feedbackRecord.communicationScore,
+      leadershipScore: feedbackRecord.leadershipScore,
+    },
+  };
 }

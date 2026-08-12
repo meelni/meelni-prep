@@ -1,5 +1,6 @@
 export interface DashboardProgressFeedbackFixture {
   status: "pending" | "processing" | "completed" | "failed" | "skipped";
+  presentationKind: "scored" | "evidence_limited" | "unavailable";
   overallScore: string | number | null;
   structureScore?: number | null;
   clarityScore?: number | null;
@@ -23,6 +24,7 @@ const completedSession: DashboardProgressSessionFixture = {
   endedAt: "2026-07-05T12:28:00.000Z",
   feedback: {
     status: "completed",
+    presentationKind: "scored",
     overallScore: "6.2",
     structureScore: 8.1,
     clarityScore: 7.4,
@@ -38,7 +40,12 @@ const statusSessions: DashboardProgressSessionFixture[] = [
     roundType: "execution",
     startedAt: "2026-07-10T12:00:00.000Z",
     endedAt: "2026-07-10T12:20:00.000Z",
-    feedback: { status: "pending", overallScore: "9.9", insightScore: 1 },
+    feedback: {
+      status: "pending",
+      presentationKind: "unavailable",
+      overallScore: "9.9",
+      insightScore: 1,
+    },
   },
   {
     id: "dashboard-processing",
@@ -47,6 +54,7 @@ const statusSessions: DashboardProgressSessionFixture[] = [
     endedAt: "2026-07-09T12:20:00.000Z",
     feedback: {
       status: "processing",
+      presentationKind: "unavailable",
       overallScore: "9.8",
       insightScore: 1,
     },
@@ -56,21 +64,48 @@ const statusSessions: DashboardProgressSessionFixture[] = [
     roundType: "behavioral",
     startedAt: "2026-07-08T12:00:00.000Z",
     endedAt: "2026-07-08T12:20:00.000Z",
-    feedback: { status: "failed", overallScore: "9.7", insightScore: 1 },
+    feedback: {
+      status: "failed",
+      presentationKind: "unavailable",
+      overallScore: "9.7",
+      insightScore: 1,
+    },
   },
   {
     id: "dashboard-skipped",
     roundType: "product_sense",
     startedAt: "2026-07-07T12:00:00.000Z",
     endedAt: "2026-07-07T12:01:00.000Z",
-    feedback: { status: "skipped", overallScore: "9.6", insightScore: 1 },
+    feedback: {
+      status: "skipped",
+      presentationKind: "unavailable",
+      overallScore: "9.6",
+      insightScore: 1,
+    },
   },
   {
-    id: "dashboard-unscored",
+    id: "dashboard-evidence-limited",
     roundType: "execution",
     startedAt: "2026-07-06T12:00:00.000Z",
     endedAt: "2026-07-06T12:20:00.000Z",
-    feedback: { status: "completed", overallScore: null, insightScore: 1 },
+    feedback: {
+      status: "completed",
+      presentationKind: "evidence_limited",
+      overallScore: null,
+      insightScore: null,
+    },
+  },
+  {
+    id: "dashboard-corrupt-completed",
+    roundType: "execution",
+    startedAt: "2026-07-05T18:00:00.000Z",
+    endedAt: "2026-07-05T18:20:00.000Z",
+    feedback: {
+      status: "completed",
+      presentationKind: "unavailable",
+      overallScore: null,
+      insightScore: null,
+    },
   },
   completedSession,
 ];

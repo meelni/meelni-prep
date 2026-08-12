@@ -35,7 +35,15 @@ test("dashboard progress fixtures cover zero, one, many, and every feedback stat
   assert.equal(fixtures.many.length, 3);
   assert.deepEqual(
     fixtures.everyFeedbackStatus.map((session) => session.feedback?.status),
-    ["pending", "processing", "failed", "skipped", "completed", "completed"]
+    [
+      "pending",
+      "processing",
+      "failed",
+      "skipped",
+      "completed",
+      "completed",
+      "completed",
+    ]
   );
   assert.equal(
     fixtures.everyFeedbackStatus.at(-1)?.feedback?.overallScore,
