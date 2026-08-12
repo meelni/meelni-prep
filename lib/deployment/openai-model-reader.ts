@@ -6,16 +6,13 @@ import OpenAI, {
 } from "openai";
 
 import {
+  OPENAI_MODEL_READ_BUDGET,
   OpenAiModelAccessError,
   type OpenAiModelAccessFailureClass,
   type OpenAiModelReader,
 } from "@/lib/deployment/openai-model-access";
 
-const DEFAULT_ATTEMPT_TIMEOUT_MS = 10_000;
-const DEFAULT_RETRY_DELAY_MS = 250;
-const DEFAULT_OVERALL_TIMEOUT_MS = 21_000;
 const CANONICAL_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const MAX_ATTEMPTS = 2;
 const RETRYABLE_SERVER_STATUSES = new Set([500, 502, 503, 504]);
 const RETRYABLE_RATE_LIMIT_CODES = new Set(["rate_limit_exceeded"]);
 const TERMINAL_QUOTA_CODES = new Set(["insufficient_quota"]);
@@ -48,7 +45,7 @@ export function createOpenAiModelReader(
         maxRetries: 0,
         organization: null,
         project: null,
-        timeout: DEFAULT_ATTEMPT_TIMEOUT_MS,
+        timeout: OPENAI_MODEL_READ_BUDGET.attemptTimeoutMs,
         webhookSecret: null,
       });
   const retrieveModel =
@@ -57,10 +54,11 @@ export function createOpenAiModelReader(
       await client!.models.retrieve(model);
     });
   const attemptTimeoutMs =
-    dependencies.attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
+    dependencies.attemptTimeoutMs ?? OPENAI_MODEL_READ_BUDGET.attemptTimeoutMs;
   const overallTimeoutMs =
-    dependencies.overallTimeoutMs ?? DEFAULT_OVERALL_TIMEOUT_MS;
-  const retryDelayMs = dependencies.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    dependencies.overallTimeoutMs ?? OPENAI_MODEL_READ_BUDGET.overallTimeoutMs;
+  const retryDelayMs =
+    dependencies.retryDelayMs ?? OPENAI_MODEL_READ_BUDGET.retryDelayMs;
   const sleep = dependencies.sleep ?? defaultSleep;
 
   return {
@@ -98,13 +96,20 @@ async function runAttempts({
   retryDelayMs: number;
   sleep: (delayMs: number) => Promise<void>;
 }) {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  for (
+    let attempt = 1;
+    attempt <= OPENAI_MODEL_READ_BUDGET.maxAttempts;
+    attempt += 1
+  ) {
     try {
       await withinTimeout(retrieveModel(model), attemptTimeoutMs, "transport");
       return;
     } catch (error) {
       const failureClass = classifyOpenAiModelAccessFailure(error);
-      if (!isRetryable(failureClass) || attempt === MAX_ATTEMPTS) {
+      if (
+        !isRetryable(failureClass) ||
+        attempt === OPENAI_MODEL_READ_BUDGET.maxAttempts
+      ) {
         throw new OpenAiModelAccessError(failureClass);
       }
       await sleep(retryDelayMs);
