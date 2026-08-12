@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -9,6 +10,28 @@ class SpeechSettlementResult:
     settled: bool
     timed_out: bool = False
     error_type: str | None = None
+
+
+def fence_session_for_runtime_settlement(
+    session: object,
+    *,
+    cutoff_at: float,
+    set_evidence_cutoff: Callable[[float], None],
+) -> asyncio.Future[None]:
+    """Freeze evidence before stopping all input, output, and queued speech."""
+    if (
+        isinstance(cutoff_at, bool)
+        or not isinstance(cutoff_at, (int, float))
+        or cutoff_at <= 0
+    ):
+        raise ValueError("runtime settlement cutoff must be positive")
+    set_evidence_cutoff(float(cutoff_at))
+    getattr(session, "input").set_audio_enabled(False)
+    getattr(session, "output").set_audio_enabled(False)
+    interruption = getattr(session, "interrupt")(force=True)
+    if not isinstance(interruption, asyncio.Future):
+        raise TypeError("runtime interruption must return an asyncio Future")
+    return interruption
 
 
 async def settle_session_speech(
@@ -29,10 +52,16 @@ async def settle_session_speech(
         user_was_speaking = getattr(session, "user_state") == "speaking"
         session_input = getattr(session, "input")
         session_input.set_audio_enabled(False)
+        session_output = getattr(session, "output")
+        session_output.set_audio_enabled(False)
+
+        interruption = getattr(session, "interrupt")(force=True)
+        if not isinstance(interruption, asyncio.Future):
+            raise TypeError("runtime interruption must return an asyncio Future")
+        settlement_tasks.append(interruption)
 
         current_speech = getattr(session, "current_speech")
         if current_speech is not None and not current_speech.done():
-            current_speech.interrupt(force=True)
             settlement_tasks.append(
                 asyncio.ensure_future(current_speech.wait_for_playout())
             )

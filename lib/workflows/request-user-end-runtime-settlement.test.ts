@@ -19,8 +19,12 @@ const ENV = {
 
 test("user end settles through trusted server data before terminalization", async () => {
   const fixture = createFixture();
-  fixture.deps.requestRuntimeSettlement = async ({ request }) => {
+  fixture.deps.requestRuntimeSettlement = async ({
+    agentIdentity,
+    request,
+  }) => {
     fixture.calls.push("request");
+    assert.equal(agentIdentity, "agent-worker");
     assert.deepEqual(request, {
       contract_version: 1,
       event_type: "runtime_settlement_request",
