@@ -111,6 +111,11 @@ the evidence classification, and one immutable committed boundary per writer
 in the same transaction as terminal truth and the feedback outbox. Statistics,
 feedback eligibility, and outcome use only turns inside those boundaries. The
 feedback worker later reads that frozen prefix, never the mutable session tail.
+Canonical statistics derive from prompt-bound candidate answer blocks rather
+than finalized transcript-row count. The provider-free derivation preserves
+exact source references and makes equivalent 1/2/5/10 STT segmentation produce
+the same completion statistics and feedback tier. Historical sessions without
+canonical identity retain the legacy row-based calculation.
 An invalid snapshot may versionedly refine
 the matching provisional user-end, deadline, or reconnect reason to
 `insufficient_signal`; provider and terminal reasons are not rewritten.

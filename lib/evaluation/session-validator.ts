@@ -12,8 +12,12 @@ import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
 import { eq } from "drizzle-orm";
 import {
   classifyCandidateResponseEvidence,
+  deriveCandidateAnswerBlocks,
   FEEDBACK_ELIGIBILITY_POLICY,
   prepareFeedbackTranscript,
+  type AnswerBlockIntegrityBoundaryEvent,
+  type AnswerBlockLedgerEvent,
+  type CandidateAnswerBlock,
   type CandidateResponseEvidenceLevel,
   type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
@@ -68,6 +72,36 @@ export interface SessionValidation {
   recommendations: string[];
   /** Closed, durable classification for non-reviewable evidence. */
   evidenceFailureReason?: SkippedFeedbackOutcomeReason | null;
+}
+
+export interface SessionValidationTurnInput {
+  speaker: string;
+  text: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  eventId?: string | null;
+  contractVersion?: number | null;
+  writerId?: string | null;
+  writerGeneration?: number | null;
+  sequence?: number | null;
+  audioMs?: number | null;
+  section?: string | null;
+  deliveryState?: string | null;
+}
+
+export interface SessionValidationInterruptionInput {
+  eventId: string;
+  writerId: string;
+  writerGeneration: number;
+  sequence: number;
+  speaker: "user" | "interviewer";
+  occurredAt: Date;
+  reason: "no_provider_confirmed_prefix" | "canonicalization_failed";
+}
+
+export interface CalculateValidatedSessionOptions {
+  interruptions?: readonly SessionValidationInterruptionInput[];
+  sessionEndAt?: Date;
 }
 
 /**
@@ -249,17 +283,20 @@ export async function validateSessionCompleteness(
  * retain the legacy statistics path for compatibility.
  */
 export function calculateValidatedSessionFromTurns(
-  turns: Array<{
-    speaker: string;
-    text: string | null;
-    startedAt: Date | null;
-    endedAt: Date | null;
-    eventId?: string | null;
-    contractVersion?: number | null;
-  }>
+  turns: SessionValidationTurnInput[],
+  options: CalculateValidatedSessionOptions = {}
 ): SessionValidation {
-  const hasCanonicalFields = turns.some(
-    (turn) => turn.contractVersion === 2 || turn.eventId != null
+  const hasCanonicalFields = turns.some((turn) =>
+    [
+      turn.contractVersion,
+      turn.eventId,
+      turn.writerId,
+      turn.writerGeneration,
+      turn.sequence,
+      turn.audioMs,
+      turn.section,
+      turn.deliveryState,
+    ].some((value) => value != null)
   );
   if (!hasCanonicalFields) {
     return validateSessionStats(calculateSessionStatsFromTurns(turns));
@@ -280,6 +317,7 @@ export function calculateValidatedSessionFromTurns(
       speaker: turn.speaker,
       text: turn.text,
       contractVersion: turn.contractVersion ?? null,
+      deliveryState: turn.deliveryState ?? null,
     })),
     { requireContractV2: true }
   );
@@ -288,26 +326,71 @@ export function calculateValidatedSessionFromTurns(
       turn.eventId ? [[turn.eventId, turn] as const] : []
     )
   );
-  const stats = calculateSessionStatsFromTurns(
-    prepared.transcript.map((turn) => {
-      const source = byEventId.get(turn.eventId);
-      return {
-        speaker: turn.speaker,
-        text: turn.text,
-        startedAt: source?.startedAt ?? null,
-        endedAt: source?.endedAt ?? null,
-      };
-    })
+  const answerBlockDerivation = deriveCandidateAnswerBlocks(
+    orderAnswerBlockLedgerEvents([
+      ...prepared.transcript.flatMap((turn) => {
+        const source = byEventId.get(turn.eventId);
+        return source ? toAnswerBlockTurn(source) : [];
+      }),
+      ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
+      ...(options.sessionEndAt &&
+      Number.isFinite(options.sessionEndAt.getTime())
+        ? [
+            {
+              kind: "session_end" as const,
+              occurredAtMs: options.sessionEndAt.getTime(),
+            },
+          ]
+        : []),
+    ])
   );
+  const preparedAnswerBlocks = answerBlockDerivation.blocks.map((block) =>
+    prepareFeedbackTranscript([
+      {
+        eventId: block.answerBlockId,
+        speaker: "user",
+        text: block.responseText,
+      },
+    ])
+  );
+  const evidenceLevels = preparedAnswerBlocks.flatMap((preparedBlock) =>
+    preparedBlock.transcript.map((turn) =>
+      classifyUserResponseEvidence(turn.text)
+    )
+  );
+  const stats: SessionStats = {
+    ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
+    substantiveResponses: evidenceLevels.filter(
+      (level) => level !== "insufficient"
+    ).length,
+    scoreableResponses: evidenceLevels.filter((level) => level === "scoreable")
+      .length,
+  };
   const thresholdValidation = validateSessionStats(stats);
-  if (prepared.eligible && !hasInvalidTiming) return thresholdValidation;
+  if (
+    prepared.eligible &&
+    answerBlockDerivation.eligible &&
+    preparedAnswerBlocks.every((preparedBlock) => preparedBlock.eligible) &&
+    !hasInvalidTiming
+  ) {
+    return thresholdValidation;
+  }
 
   const hasCorruptEvidence =
     hasInvalidTiming ||
+    !answerBlockDerivation.eligible ||
     prepared.issues.some(
       (issue) =>
         issue.fatal &&
         (issue.code === "malformed_event" || issue.code === "prompt_injection")
+    ) ||
+    preparedAnswerBlocks.some((preparedBlock) =>
+      preparedBlock.issues.some(
+        (issue) =>
+          issue.fatal &&
+          (issue.code === "malformed_event" ||
+            issue.code === "prompt_injection")
+      )
     );
 
   return {
@@ -324,6 +407,166 @@ export function calculateValidatedSessionFromTurns(
       ? "transcript_integrity_degraded"
       : "no_reviewable_answer",
   };
+}
+
+function calculateAnswerBlockSessionStats(
+  blocks: readonly CandidateAnswerBlock[]
+): SessionStats {
+  const promptGroups = new Map<string, CandidateAnswerBlock["prompt"]>();
+  for (const block of blocks) {
+    if (block.prompt.length === 0) continue;
+    promptGroups.set(
+      JSON.stringify(block.prompt.map((turn) => turn.eventId)),
+      block.prompt
+    );
+  }
+  const logicalTurns = [
+    ...[...promptGroups.values()].map((prompt) => ({
+      text: prompt.map((turn) => turn.text.trim()).join(" "),
+      startedAtMs: prompt[0]!.startedAtMs,
+      endedAtMs: prompt.at(-1)!.endedAtMs,
+    })),
+    ...blocks.map((block) => ({
+      text: block.responseText,
+      startedAtMs: block.startedAtMs,
+      endedAtMs: block.endedAtMs,
+    })),
+  ];
+  const startedAtMs = logicalTurns.map((turn) => turn.startedAtMs);
+  const endedAtMs = logicalTurns.map((turn) => turn.endedAtMs);
+  return {
+    totalTurns: logicalTurns.length,
+    userTurns: blocks.length,
+    totalWords: logicalTurns.reduce(
+      (sum, turn) => sum + tokenizeWords(turn.text).length,
+      0
+    ),
+    durationSeconds:
+      logicalTurns.length === 0
+        ? 0
+        : Math.max(
+            0,
+            Math.floor(
+              (Math.max(...endedAtMs) - Math.min(...startedAtMs)) / 1000
+            )
+          ),
+    substantiveResponses: 0,
+    scoreableResponses: 0,
+  };
+}
+
+function toAnswerBlockTurn(
+  turn: SessionValidationTurnInput
+): AnswerBlockLedgerEvent[] {
+  if (
+    turn.contractVersion !== 2 ||
+    !turn.eventId ||
+    !turn.writerId ||
+    !Number.isSafeInteger(turn.writerGeneration) ||
+    (turn.writerGeneration ?? 0) <= 0 ||
+    !Number.isSafeInteger(turn.sequence) ||
+    (turn.sequence ?? 0) <= 0 ||
+    (turn.speaker !== "user" && turn.speaker !== "interviewer") ||
+    !turn.text ||
+    !turn.startedAt ||
+    !turn.endedAt ||
+    !Number.isSafeInteger(turn.audioMs) ||
+    (turn.audioMs ?? 0) <= 0 ||
+    !turn.section ||
+    (turn.deliveryState !== "delivered" &&
+      turn.deliveryState !== "partially_delivered")
+  ) {
+    return [
+      {
+        kind: "turn",
+        contractVersion: 2,
+        eventId: turn.eventId ?? "",
+        writerId: turn.writerId ?? "",
+        writerGeneration: turn.writerGeneration ?? 0,
+        sequence: turn.sequence ?? 0,
+        speaker: turn.speaker === "interviewer" ? "interviewer" : "user",
+        text: turn.text ?? "",
+        isFinal: true,
+        startedAtMs: turn.startedAt?.getTime() ?? Number.NaN,
+        endedAtMs: turn.endedAt?.getTime() ?? Number.NaN,
+        audioDurationMs: turn.audioMs ?? 0,
+        section: turn.section ?? "",
+        deliveryState:
+          turn.deliveryState === "partially_delivered"
+            ? "partially_delivered"
+            : "delivered",
+      },
+    ];
+  }
+  return [
+    {
+      kind: "turn",
+      contractVersion: 2,
+      eventId: turn.eventId,
+      writerId: turn.writerId,
+      writerGeneration: turn.writerGeneration!,
+      sequence: turn.sequence!,
+      speaker: turn.speaker,
+      text: turn.text,
+      isFinal: true,
+      startedAtMs: turn.startedAt.getTime(),
+      endedAtMs: turn.endedAt.getTime(),
+      audioDurationMs: turn.audioMs!,
+      section: turn.section,
+      deliveryState: turn.deliveryState,
+    },
+  ];
+}
+
+function toAnswerBlockInterruption(
+  marker: SessionValidationInterruptionInput
+): AnswerBlockIntegrityBoundaryEvent {
+  return {
+    kind: "integrity_boundary",
+    eventId: marker.eventId,
+    writerId: marker.writerId,
+    writerGeneration: marker.writerGeneration,
+    sequence: marker.sequence,
+    speaker: marker.speaker,
+    occurredAtMs: marker.occurredAt.getTime(),
+    reason: marker.reason,
+  };
+}
+
+function orderAnswerBlockLedgerEvents(
+  events: AnswerBlockLedgerEvent[]
+): AnswerBlockLedgerEvent[] {
+  return events.sort((left, right) => {
+    if (
+      "writerGeneration" in left &&
+      "writerGeneration" in right &&
+      left.writerGeneration === right.writerGeneration &&
+      left.writerId === right.writerId
+    ) {
+      return left.sequence - right.sequence;
+    }
+    return (
+      answerBlockEventTime(left) - answerBlockEventTime(right) ||
+      answerBlockEventRank(left) - answerBlockEventRank(right) ||
+      ("writerGeneration" in left ? left.writerGeneration : 0) -
+        ("writerGeneration" in right ? right.writerGeneration : 0) ||
+      ("writerId" in left ? left.writerId : "").localeCompare(
+        "writerId" in right ? right.writerId : ""
+      ) ||
+      ("sequence" in left ? left.sequence : 0) -
+        ("sequence" in right ? right.sequence : 0)
+    );
+  });
+}
+
+function answerBlockEventTime(event: AnswerBlockLedgerEvent): number {
+  return event.kind === "turn" ? event.startedAtMs : event.occurredAtMs;
+}
+
+function answerBlockEventRank(event: AnswerBlockLedgerEvent): number {
+  if (event.kind === "turn") return 0;
+  if (event.kind === "integrity_boundary") return 1;
+  return 2;
 }
 
 export function validateSessionStats(stats: SessionStats): SessionValidation {

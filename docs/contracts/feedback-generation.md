@@ -32,6 +32,15 @@ smaller healthy prefixes and fallback-only evidence remain partial.
 Duration and turn statistics remain diagnostic evidence only and cannot deny
 feedback.
 
+Canonical rows are grouped deterministically into
+[candidate answer blocks](./answer-blocks.md) after transcript preparation.
+Evidence classification runs once per logical candidate response, and canonical
+completion statistics count bound prompt groups plus answer blocks rather than
+STT-final rows. Equivalent speech split into 1, 2, 5, or 10 adjacent finals must
+preserve the complete statistics shape, completion tier, and provider mode.
+The evaluator still receives exact prepared canonical turns, so citations keep
+their original event identities and text rather than derived block aliases.
+
 Numerical feedback requires at least four strict scoreable candidate answers. A
 healthy eligible prefix below that precision boundary uses the scoreless
 `feedback.evidence-limited.v2` result. Its provider contract contains no
