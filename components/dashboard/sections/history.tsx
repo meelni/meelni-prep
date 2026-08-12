@@ -216,11 +216,12 @@ export const HistorySection = memo(function HistorySection({
                       {row.feedbackHref ? (
                         <div className="space-y-2">
                           <DashboardFeedbackStatus
-                            state="ready"
-                            label="Feedback ready"
+                            state={row.feedbackState}
+                            label={row.statusLabel}
                           />
                           <span className="text-dashboard-muted block break-words">
-                            Focus: {row.focusLabel}
+                            {row.feedbackKind === "scored" ? "Focus: " : ""}
+                            {row.focusLabel}
                           </span>
                         </div>
                       ) : (
@@ -335,7 +336,8 @@ function CompactHistoryRow({ row }: { row: HistorySummary["rows"][number] }) {
           />
         </div>
         <p className="text-dashboard-muted mt-2 leading-6 break-words">
-          {row.feedbackHref ? `Focus: ${row.focusLabel}` : row.focusLabel}
+          {row.feedbackKind === "scored" ? "Focus: " : ""}
+          {row.focusLabel}
         </p>
       </div>
       <div className="flex min-w-0 items-center gap-3 sm:flex-col sm:items-end">

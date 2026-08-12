@@ -1,7 +1,9 @@
 import { getCompletedFeedbackScore, parseRubricScore } from "@meelni/core";
+import type { DashboardFeedbackPresentationKind } from "./feedback-presentation";
 
 export interface DashboardFeedback {
   status?: string | null;
+  presentationKind?: DashboardFeedbackPresentationKind;
   overallScore?: string | number | null;
   structureScore?: string | number | null;
   clarityScore?: string | number | null;
@@ -86,7 +88,12 @@ export interface DashboardPracticeSummary {
     roundLabel: string;
     focusLabel: string;
     scoreLabel: string;
+    statusLabel: string;
     feedbackState: DashboardFeedbackDisplayState;
+    feedbackKind: Exclude<
+      DashboardFeedbackPresentationKind,
+      "unavailable"
+    > | null;
     feedbackHref: string | null;
   }>;
   progressSignal: {
@@ -120,6 +127,10 @@ export interface HistorySummary {
     scoreLabel: string;
     statusLabel: string;
     feedbackState: DashboardFeedbackDisplayState;
+    feedbackKind: Exclude<
+      DashboardFeedbackPresentationKind,
+      "unavailable"
+    > | null;
     feedbackHref: string | null;
     repeatHref: string;
   }>;
@@ -188,12 +199,16 @@ export function buildDashboardPracticeSummary(
     (a, b) => getTime(b.startedAt) - getTime(a.startedAt)
   );
   const scoredSessions = sortedSessions.filter(
-    (session) => getCompletedFeedbackScore(session.feedback) !== null
+    (session) => getDashboardScoredFeedbackScore(session.feedback) !== null
   );
   const latestScored = scoredSessions[0] ?? null;
+  const latestReviewable =
+    sortedSessions.find(
+      (session) => getDashboardFeedbackReviewKind(session.feedback) !== null
+    ) ?? null;
   const recentScoredSessions = scoredSessions.slice(0, 5);
   const recentScores = recentScoredSessions
-    .map((session) => getCompletedFeedbackScore(session.feedback))
+    .map((session) => getDashboardScoredFeedbackScore(session.feedback))
     .filter((score): score is number => score !== null);
   const chronologicalScoredSessions = [...recentScoredSessions].reverse();
   const progressScore =
@@ -271,15 +286,18 @@ export function buildDashboardPracticeSummary(
             creditLabel: "1 credit",
             href: `/dashboard/new-interview?interview_type=${encodeURIComponent(roundParam)}`,
           },
-    lastFeedback: latestScored
+    lastFeedback: latestReviewable
       ? {
-          sessionId: latestScored.id,
+          sessionId: latestReviewable.id,
           label: "Latest feedback",
           summary:
-            bestSignal && focusArea
+            latestReviewable === latestScored && bestSignal && focusArea
               ? `Highest scored dimension: ${bestSignal}. Lowest scored dimension: ${focusArea.label}.`
-              : `Open the completed feedback from your latest ${latestRound.toLowerCase()} interview.`,
-          href: `/feedback/${latestScored.id}`,
+              : getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
+                  "evidence_limited"
+                ? `Open the grounded observations from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No numerical score was inferred.`
+                : `Open the completed feedback from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview.`,
+          href: `/feedback/${latestReviewable.id}`,
         }
       : null,
     prepPlan: [
@@ -312,17 +330,20 @@ export function buildDashboardPracticeSummary(
       },
     ],
     recentInterviews: sortedSessions.slice(0, 4).map((session) => {
-      const score = getCompletedFeedbackScore(session.feedback);
+      const score = getDashboardScoredFeedbackScore(session.feedback);
       const rowFocus = getFocusArea(session.feedback);
       const display = getFeedbackDisplay(session.feedback, rowFocus);
+      const reviewKind = getDashboardFeedbackReviewKind(session.feedback);
       return {
         id: session.id,
         dateLabel: formatSessionDate(session.startedAt),
         roundLabel: formatRoundType(session.roundType),
         focusLabel: display.focusLabel,
         scoreLabel: score === null ? display.scoreLabel : score.toFixed(1),
+        statusLabel: display.statusLabel,
         feedbackState: display.feedbackState,
-        feedbackHref: score === null ? null : `/feedback/${session.id}`,
+        feedbackKind: reviewKind,
+        feedbackHref: reviewKind ? `/feedback/${session.id}` : null,
       };
     }),
     progressSignal: {
@@ -382,10 +403,11 @@ export function buildHistorySummary(
   );
   const rows = sortedSessions.map((session) => {
     const focus = getFocusArea(session.feedback);
-    const score = getCompletedFeedbackScore(session.feedback);
+    const score = getDashboardScoredFeedbackScore(session.feedback);
     const hasScore = score !== null;
     const roundLabel = formatRoundType(session.roundType);
     const display = getFeedbackDisplay(session.feedback, focus);
+    const reviewKind = getDashboardFeedbackReviewKind(session.feedback);
 
     return {
       id: session.id,
@@ -396,7 +418,8 @@ export function buildHistorySummary(
       scoreLabel: hasScore ? score.toFixed(1) : display.scoreLabel,
       statusLabel: display.statusLabel,
       feedbackState: display.feedbackState,
-      feedbackHref: hasScore ? `/feedback/${session.id}` : null,
+      feedbackKind: reviewKind,
+      feedbackHref: reviewKind ? `/feedback/${session.id}` : null,
       repeatHref: `/dashboard/new-interview?interview_type=${encodeURIComponent(session.roundType || "product_sense")}`,
     };
   });
@@ -421,6 +444,10 @@ export function buildHistorySummary(
 
   const topPattern = patterns[0] ?? null;
   const latestReady = rows.find((row) => row.feedbackHref);
+  const latestScoredReady = rows.find(
+    (row) => row.feedbackKind === "scored" && row.feedbackHref
+  );
+  const nextReviewRow = topPattern ? latestScoredReady : latestReady;
 
   return {
     nextReview: {
@@ -430,15 +457,15 @@ export function buildHistorySummary(
           ? `${topPattern.label} repeats across scored interviews`
           : `${topPattern.label} is the lowest scored dimension in your latest feedback`
         : latestReady
-          ? "Review your latest scored interview"
+          ? "Review your latest feedback"
           : "No scored feedback to review yet",
       description:
         topPattern?.description ||
         (latestReady
           ? "No dimension-level pattern is available yet. Review the completed feedback before your next interview."
           : "Complete a mock interview and its feedback to reveal evidence-based practice patterns."),
-      feedbackHref: latestReady?.feedbackHref || null,
-      repeatHref: latestReady?.repeatHref || "/dashboard/new-interview",
+      feedbackHref: nextReviewRow?.feedbackHref || null,
+      repeatHref: nextReviewRow?.repeatHref || "/dashboard/new-interview",
     },
     filters: [
       "All interviews",
@@ -452,7 +479,7 @@ export function buildHistorySummary(
 export function getFocusArea(
   feedback?: DashboardFeedback | null
 ): DashboardFocusArea | null {
-  if (getCompletedFeedbackScore(feedback) === null) return null;
+  if (getDashboardScoredFeedbackScore(feedback) === null) return null;
 
   const scoredAreas = FOCUS_AREAS.map((area) => ({
     ...area,
@@ -484,7 +511,7 @@ export function parseScore(score: string | number | null | undefined) {
 }
 
 function getBestSignal(feedback?: DashboardFeedback | null) {
-  if (getCompletedFeedbackScore(feedback) === null) return null;
+  if (getDashboardScoredFeedbackScore(feedback) === null) return null;
 
   const scoredAreas = FOCUS_AREAS.map((area) => ({
     label: area.label,
@@ -527,11 +554,20 @@ function getFeedbackDisplay(
   feedback: DashboardFeedback | null | undefined,
   focusArea: DashboardFocusArea | null
 ) {
-  if (getCompletedFeedbackScore(feedback) !== null) {
+  const reviewKind = getDashboardFeedbackReviewKind(feedback);
+  if (reviewKind === "scored") {
     return {
       focusLabel: focusArea?.label || "Scored feedback",
       scoreLabel: "Scored",
       statusLabel: "Feedback ready",
+      feedbackState: "ready" as const,
+    };
+  }
+  if (reviewKind === "evidence_limited") {
+    return {
+      focusLabel: "Grounded observations from your recorded answers",
+      scoreLabel: "No score",
+      statusLabel: "Feedback ready — no score",
       feedbackState: "ready" as const,
     };
   }
@@ -562,10 +598,11 @@ function getFeedbackDisplay(
       };
     case "completed":
       return {
-        focusLabel: "Feedback was saved without a valid score.",
+        focusLabel:
+          "This completed feedback could not be validated for review.",
         scoreLabel: "Not scored",
-        statusLabel: "Feedback saved",
-        feedbackState: "unscored" as const,
+        statusLabel: "Feedback unavailable",
+        feedbackState: "unavailable" as const,
       };
     default:
       return {
@@ -575,6 +612,34 @@ function getFeedbackDisplay(
         feedbackState: "unscored" as const,
       };
   }
+}
+
+function getDashboardFeedbackReviewKind(
+  feedback: DashboardFeedback | null | undefined
+): Exclude<DashboardFeedbackPresentationKind, "unavailable"> | null {
+  if (feedback?.presentationKind === "unavailable") return null;
+  const score = getDashboardScoredFeedbackScore(feedback);
+  if (
+    feedback?.presentationKind === "scored" ||
+    (feedback?.presentationKind === undefined && score !== null)
+  ) {
+    return score === null ? null : "scored";
+  }
+  return feedback?.presentationKind === "evidence_limited" && score === null
+    ? "evidence_limited"
+    : null;
+}
+
+function getDashboardScoredFeedbackScore(
+  feedback: DashboardFeedback | null | undefined
+): number | null {
+  if (
+    feedback?.presentationKind === "evidence_limited" ||
+    feedback?.presentationKind === "unavailable"
+  ) {
+    return null;
+  }
+  return getCompletedFeedbackScore(feedback);
 }
 
 function getProgressSignalDescription(scores: number[]) {

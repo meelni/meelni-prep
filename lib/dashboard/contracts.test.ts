@@ -235,14 +235,131 @@ test("only completed, valid scores contribute to progress and weaknesses", () =>
     "Feedback failed"
   );
   assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "Not scored");
-  assert.equal(rowsById.get("dashboard-unscored")?.scoreLabel, "Not scored");
   assert.equal(
-    rowsById.get("dashboard-unscored")?.statusLabel,
-    "Feedback saved"
+    rowsById.get("dashboard-evidence-limited")?.scoreLabel,
+    "No score"
   );
+  assert.equal(
+    rowsById.get("dashboard-evidence-limited")?.statusLabel,
+    "Feedback ready — no score"
+  );
+  assert.equal(
+    rowsById.get("dashboard-evidence-limited")?.feedbackHref,
+    "/feedback/dashboard-evidence-limited"
+  );
+  assert.equal(
+    rowsById.get("dashboard-corrupt-completed")?.statusLabel,
+    "Feedback unavailable"
+  );
+  assert.equal(rowsById.get("dashboard-corrupt-completed")?.feedbackHref, null);
   assert.equal(
     rowsById.get("dashboard-skipped")?.feedbackState,
     "not-generated"
   );
   assert.equal(rowsById.get("dashboard-failed")?.feedbackHref, null);
+});
+
+test("an unavailable completed score cannot enter dashboard progress", () => {
+  const unsupported = {
+    ...baseSession,
+    id: "unsupported-scored-completed",
+    feedback: {
+      status: "completed",
+      presentationKind: "unavailable" as const,
+      overallScore: "9.9",
+      structureScore: 9.9,
+      clarityScore: 9.9,
+      insightScore: 9.9,
+      communicationScore: 9.9,
+      leadershipScore: 9.9,
+    },
+  };
+
+  const practice = buildDashboardPracticeSummary([unsupported]);
+  const history = buildHistorySummary([unsupported]);
+
+  assert.equal(practice.progress.scoredInterviewCount, 0);
+  assert.equal(practice.progress.score, null);
+  assert.equal(practice.focusArea, null);
+  assert.deepEqual(practice.progressSignal.bars, []);
+  assert.deepEqual(history.patterns, []);
+  assert.equal(history.rows[0]?.feedbackHref, null);
+});
+
+test("scoreless reviewability stays separate from scored progress evidence", () => {
+  const { everyFeedbackStatus } = createDashboardProgressFixtures();
+  const evidenceLimited = everyFeedbackStatus.find(
+    (session) => session.id === "dashboard-evidence-limited"
+  )!;
+  const scored = everyFeedbackStatus.at(-1)!;
+  const newerEvidenceLimited = {
+    ...evidenceLimited,
+    startedAt: "2026-07-11T12:00:00.000Z",
+  };
+
+  const practice = buildDashboardPracticeSummary([
+    newerEvidenceLimited,
+    scored,
+  ]);
+  const history = buildHistorySummary([newerEvidenceLimited, scored]);
+
+  assert.equal(practice.progress.scoredInterviewCount, 1);
+  assert.equal(practice.progress.score, 6.2);
+  assert.equal(practice.progressSignal.bars.length, 1);
+  assert.equal(practice.focusArea?.label, "Metrics depth");
+  assert.equal(
+    practice.lastFeedback?.href,
+    "/feedback/dashboard-evidence-limited"
+  );
+  assert.equal(
+    practice.recentInterviews[0]?.statusLabel,
+    "Feedback ready — no score"
+  );
+  assert.equal(history.patterns.length, 1);
+  assert.equal(history.nextReview.feedbackHref, `/feedback/${scored.id}`);
+});
+
+test("a scoreless-only history keeps feedback reachable without inventing patterns", () => {
+  const { everyFeedbackStatus } = createDashboardProgressFixtures();
+  const evidenceLimited = everyFeedbackStatus.find(
+    (session) => session.id === "dashboard-evidence-limited"
+  )!;
+  const practice = buildDashboardPracticeSummary([evidenceLimited]);
+  const history = buildHistorySummary([evidenceLimited]);
+
+  assert.equal(practice.progress.state, "empty");
+  assert.equal(practice.progress.score, null);
+  assert.equal(practice.focusArea, null);
+  assert.equal(practice.lastFeedback?.href, `/feedback/${evidenceLimited.id}`);
+  assert.deepEqual(history.patterns, []);
+  assert.equal(history.nextReview.title, "Review your latest feedback");
+  assert.equal(
+    history.nextReview.feedbackHref,
+    `/feedback/${evidenceLimited.id}`
+  );
+});
+
+test("completed null-score rows require the server-owned presentation kind", () => {
+  const history = buildHistorySummary([
+    {
+      ...baseSession,
+      id: "unsupported-completed",
+      feedback: { status: "completed", overallScore: null },
+    },
+    {
+      ...baseSession,
+      id: "explicitly-invalid-completed",
+      feedback: {
+        status: "completed",
+        presentationKind: "unavailable",
+        overallScore: null,
+      },
+    },
+    { ...baseSession, id: "missing-feedback", feedback: null },
+  ]);
+
+  for (const row of history.rows) {
+    assert.equal(row.feedbackHref, null);
+    assert.notEqual(row.statusLabel, "Feedback ready — no score");
+  }
 });
