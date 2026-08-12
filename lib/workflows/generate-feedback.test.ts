@@ -10,13 +10,22 @@ import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FeedbackV2ParseError,
+  prepareFeedbackTranscript,
   type FeedbackEvaluationResult,
   type FeedbackEvaluationState,
   type FeedbackV2Result,
   type PreparedFeedbackTranscript,
 } from "@meelni/core";
+import {
+  ANSWER_BLOCK_SEGMENT_COUNTS,
+  createAnswerBlockSegmentationFixture,
+} from "@meelni/test-fixtures";
 
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
+import {
+  calculateValidatedSessionFromTurns,
+  type SessionStats,
+} from "@/lib/evaluation/session-validator";
 import type {
   FeedbackGenerationRecord,
   FeedbackGenerationStore,
@@ -375,6 +384,104 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
     state: "partial",
   });
   assert.notEqual(store.current.status, "skipped");
+});
+
+test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, and exact citations", async () => {
+  const observations: Array<{
+    stats: SessionStats;
+    tier: string;
+    mode: "scored" | "evidence_limited";
+  }> = [];
+
+  for (const segmentCount of ANSWER_BLOCK_SEGMENT_COUNTS) {
+    const fixture = createAnswerBlockSegmentationFixture(segmentCount);
+    const sourceTurns = fixture.events.flatMap((event) =>
+      event.kind === "turn"
+        ? [
+            {
+              contractVersion: event.contractVersion,
+              eventId: event.eventId,
+              writerId: event.writerId,
+              writerGeneration: event.writerGeneration,
+              sequence: event.sequence,
+              speaker: event.speaker,
+              text: event.text,
+              startedAt: new Date(event.startedAtMs),
+              endedAt: new Date(event.endedAtMs),
+              audioMs: event.audioDurationMs,
+              section: event.section,
+              deliveryState: event.deliveryState,
+            },
+          ]
+        : []
+    );
+    const sessionEndAt = new Date(
+      fixture.events.find((event) => event.kind === "session_end")!.occurredAtMs
+    );
+    const validation = calculateValidatedSessionFromTurns(sourceTurns, {
+      sessionEndAt,
+    });
+    const prepared = prepareFeedbackTranscript(
+      sourceTurns.map((turn) => ({
+        eventId: turn.eventId,
+        contractVersion: turn.contractVersion,
+        speaker: turn.speaker,
+        text: turn.text,
+        deliveryState: turn.deliveryState,
+      })),
+      { requireContractV2: true }
+    );
+    const expectedCitations = prepared.transcript.map(({ eventId, text }) => ({
+      eventId,
+      text,
+    }));
+    const store = new MemoryGenerationStore(
+      record({
+        completionTier: validation.tier,
+        completionStats: validation.stats,
+      })
+    );
+    let observedMode: "scored" | "evidence_limited" | undefined;
+    const deps = dependencies(store, {
+      transcript: prepared,
+      async evaluate(input) {
+        observedMode = input.mode;
+        assert.deepEqual(
+          input.transcript.map(({ eventId, text }) => ({ eventId, text })),
+          expectedCitations,
+          String(segmentCount)
+        );
+        throw new Error("synthetic_stop_after_observation");
+      },
+    });
+
+    await assert.rejects(
+      generateFeedbackWorkflow(input(EVENT_1), deps),
+      /synthetic_stop_after_observation/
+    );
+    assert.ok(observedMode);
+    observations.push({
+      stats: validation.stats,
+      tier: validation.tier,
+      mode: observedMode,
+    });
+  }
+
+  for (const observation of observations.slice(1)) {
+    assert.deepEqual(observation, observations[0]);
+  }
+  assert.deepEqual(observations[0], {
+    stats: {
+      totalTurns: 4,
+      userTurns: 2,
+      totalWords: 63,
+      durationSeconds: 23,
+      substantiveResponses: 2,
+      scoreableResponses: 2,
+    },
+    tier: "partial",
+    mode: "evidence_limited",
+  });
 });
 
 test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
