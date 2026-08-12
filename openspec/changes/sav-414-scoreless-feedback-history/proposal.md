@@ -19,5 +19,6 @@ pattern behavior scored-only.
 - Do not expose provider/version/content fields in the sessions API.
 - Do not label invalid, corrupt, pending, processing, failed, skipped, or
   missing feedback as ready.
-- Keep the canonical feedback route as the strict citation/evidence presenter.
+- Reuse the canonical feedback route's persisted-content and citation/evidence
+  validation before a dashboard/history link is classified as reviewable.
 - Do not change generation, scoring, providers, Production data, or schemas.

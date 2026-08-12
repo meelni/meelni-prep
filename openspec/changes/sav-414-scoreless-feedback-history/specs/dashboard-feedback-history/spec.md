@@ -6,6 +6,9 @@
   presentation kind for dashboard reviewability.
 - Valid completed scored and evidence-limited feedback SHALL link to the
   canonical feedback route from Overview and History.
+- Reviewability SHALL use the canonical persisted-content parser and exact
+  transcript quote/reference support; forged citations, missing references,
+  malformed findings, and malformed practice suggestions SHALL fail closed.
 - Evidence-limited feedback SHALL be labeled ready without a numerical score.
 - Null-score, incomplete, failed, skipped, missing, malformed, corrupt, or
   incompatible feedback SHALL NOT be labeled or linked as a valid review.

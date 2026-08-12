@@ -21,8 +21,37 @@ const transcript = [
     eventId: "fixture:answer:1",
     speaker: "user" as const,
     text: "I would connect the customer need to the product decision, compare the tradeoffs, and choose a measurable outcome.",
+    contractVersion: 2,
   },
 ];
+
+const scoredStrength = {
+  dimension: "insight",
+  observation: "The answer connects customer evidence to the decision.",
+  transcriptRefs: [transcript[0]!.eventId],
+  evidence: [
+    {
+      turnRef: transcript[0]!.eventId,
+      quote: "connect the customer need to the product decision",
+    },
+  ],
+  nextStep: "Carry the evidence through the recommendation.",
+  rubricVersion: FEEDBACK_RUBRIC_VERSION,
+  confidence: 0.9,
+};
+
+const scoredImprovement = {
+  ...scoredStrength,
+  dimension: "structure",
+  observation: "The answer can make its sequence more explicit.",
+  evidence: [
+    {
+      turnRef: transcript[0]!.eventId,
+      quote: "compare the tradeoffs",
+    },
+  ],
+  nextStep: "State the sequence before explaining the tradeoffs.",
+};
 
 const evidenceLimited = parseEvidenceLimitedFeedback(
   {
@@ -52,6 +81,8 @@ function candidate(
   overrides: Partial<DashboardFeedbackPresentationCandidate> = {}
 ): DashboardFeedbackPresentationCandidate {
   return {
+    id: "feedback-1",
+    sessionId: "session-1",
     status: "completed",
     outcomeReason: "feedback_generated",
     completionTier: "partial",
@@ -70,30 +101,42 @@ function candidate(
     improvementsJson: JSON.stringify(evidenceLimited.improvements),
     drillsJson: "[]",
     summary: evidenceLimited.summary,
+    createdAt: new Date("2026-08-12T12:00:00.000Z"),
     ...overrides,
   };
 }
 
+function scoredCandidate(
+  overrides: Partial<DashboardFeedbackPresentationCandidate> = {}
+) {
+  return candidate({
+    overallScore: "7.4",
+    structureScore: 7,
+    clarityScore: 7,
+    insightScore: 8,
+    communicationScore: 7,
+    leadershipScore: 8,
+    schemaVersion: FEEDBACK_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_PROMPT_VERSION,
+    evaluationState: "full",
+    completionTier: "full",
+    strengthsJson: JSON.stringify([scoredStrength]),
+    improvementsJson: JSON.stringify([scoredImprovement]),
+    drillsJson: JSON.stringify([
+      "Practice a two-minute recommendation with explicit tradeoffs.",
+    ]),
+    summary: "The answer was grounded and can make its sequence clearer.",
+    ...overrides,
+  });
+}
+
 test("classifies valid completed scored and evidence-limited reviews", () => {
   assert.equal(
-    classifyDashboardFeedbackPresentation(
-      candidate({
-        overallScore: "7.4",
-        structureScore: 7,
-        clarityScore: 7,
-        insightScore: 8,
-        communicationScore: 7,
-        leadershipScore: 8,
-        schemaVersion: FEEDBACK_SCHEMA_VERSION,
-        promptVersion: FEEDBACK_PROMPT_VERSION,
-        evaluationState: "full",
-        completionTier: "full",
-      })
-    ),
+    classifyDashboardFeedbackPresentation(scoredCandidate(), transcript),
     "scored"
   );
   assert.equal(
-    classifyDashboardFeedbackPresentation(candidate()),
+    classifyDashboardFeedbackPresentation(candidate(), transcript),
     "evidence_limited"
   );
 });
@@ -113,8 +156,12 @@ test("keeps supported legacy scores reachable without accepting unknown scored t
     evaluationState: null,
     completionTier: null,
     outcomeReason: null,
+    strengthsJson: JSON.stringify(["Connected the decision to evidence."]),
+    improvementsJson: JSON.stringify(["State the recommendation first."]),
+    drillsJson: JSON.stringify(["Practice a concise opening."]),
+    summary: "A valid historical review.",
   });
-  assert.equal(classifyDashboardFeedbackPresentation(legacy), "scored");
+  assert.equal(classifyDashboardFeedbackPresentation(legacy, []), "scored");
 
   for (const overrides of [
     { rubricVersion: "unknown-legacy-rubric" },
@@ -124,25 +171,14 @@ test("keeps supported legacy scores reachable without accepting unknown scored t
     { evaluationState: "full" },
   ]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation({ ...legacy, ...overrides }),
+      classifyDashboardFeedbackPresentation({ ...legacy, ...overrides }, []),
       "unavailable"
     );
   }
 });
 
 test("rejects incomplete or incoherent scored metadata", () => {
-  const scored = candidate({
-    overallScore: "7.4",
-    structureScore: 7,
-    clarityScore: 7,
-    insightScore: 8,
-    communicationScore: 7,
-    leadershipScore: 8,
-    schemaVersion: FEEDBACK_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_PROMPT_VERSION,
-    evaluationState: "full",
-    completionTier: "full",
-  });
+  const scored = scoredCandidate();
 
   for (const overrides of [
     { structureScore: null },
@@ -153,7 +189,10 @@ test("rejects incomplete or incoherent scored metadata", () => {
     { outcomeReason: "generation_failed" },
   ]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation({ ...scored, ...overrides }),
+      classifyDashboardFeedbackPresentation(
+        { ...scored, ...overrides },
+        transcript
+      ),
       "unavailable"
     );
   }
@@ -172,7 +211,7 @@ test("never infers evidence-limited reviewability from completed plus null score
     { drillsJson: JSON.stringify(["provider drill"]) },
   ]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation(candidate(overrides)),
+      classifyDashboardFeedbackPresentation(candidate(overrides), transcript),
       "unavailable"
     );
   }
@@ -181,7 +220,7 @@ test("never infers evidence-limited reviewability from completed plus null score
 test("pending, processing, failed, skipped, and missing rows remain unavailable", () => {
   for (const status of ["pending", "processing", "failed", "skipped", null]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation(candidate({ status })),
+      classifyDashboardFeedbackPresentation(candidate({ status }), transcript),
       "unavailable"
     );
   }
@@ -205,7 +244,86 @@ test("malformed, oversized, unknown, and tampered content fails closed", () => {
     { summary: "Provider-authored summary" },
   ]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation(candidate(overrides)),
+      classifyDashboardFeedbackPresentation(candidate(overrides), transcript),
+      "unavailable"
+    );
+  }
+});
+
+test("requires exact frozen citations and references for every versioned review", () => {
+  const forgedEvidenceLimited = structuredClone(evidenceLimited.strengths);
+  forgedEvidenceLimited[0]!.evidence[0]!.quote = "A forged quote";
+  const missingEvidenceLimited = structuredClone(evidenceLimited.strengths);
+  missingEvidenceLimited[0]!.transcriptRefs = ["fixture:missing"];
+  missingEvidenceLimited[0]!.evidence = [
+    { turnRef: "fixture:missing", quote: "A missing quote" },
+  ];
+
+  for (const review of [
+    candidate({ strengthsJson: JSON.stringify(forgedEvidenceLimited) }),
+    candidate({ strengthsJson: JSON.stringify(missingEvidenceLimited) }),
+    scoredCandidate({
+      strengthsJson: JSON.stringify([
+        {
+          ...scoredStrength,
+          evidence: [
+            { turnRef: transcript[0]!.eventId, quote: "A forged quote" },
+          ],
+        },
+      ]),
+    }),
+    scoredCandidate({
+      strengthsJson: JSON.stringify([
+        {
+          ...scoredStrength,
+          transcriptRefs: ["fixture:missing"],
+          evidence: [{ turnRef: "fixture:missing", quote: "A missing quote" }],
+        },
+      ]),
+    }),
+  ]) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(review, transcript),
+      "unavailable"
+    );
+  }
+});
+
+test("rejects malformed scored v2 and legacy findings and practice suggestions", () => {
+  const legacy = candidate({
+    overallScore: "8.0",
+    structureScore: 8,
+    clarityScore: 8,
+    insightScore: 8,
+    communicationScore: 8,
+    leadershipScore: 8,
+    schemaVersion: null,
+    promptVersion: null,
+    modelVersion: null,
+    rubricVersion: LEGACY_FEEDBACK_RUBRIC_VERSION,
+    evaluationState: null,
+    completionTier: null,
+    outcomeReason: null,
+    strengthsJson: JSON.stringify(["Valid historical strength."]),
+    improvementsJson: JSON.stringify(["Valid historical improvement."]),
+    drillsJson: JSON.stringify(["Valid historical practice suggestion."]),
+    summary: "A valid historical review.",
+  });
+
+  for (const [review, turns] of [
+    [
+      scoredCandidate({ strengthsJson: JSON.stringify([{ text: "invalid" }]) }),
+      transcript,
+    ],
+    [
+      scoredCandidate({ drillsJson: JSON.stringify([{ text: "invalid" }]) }),
+      transcript,
+    ],
+    [{ ...legacy, strengthsJson: JSON.stringify([{ note: "invalid" }]) }, []],
+    [{ ...legacy, drillsJson: JSON.stringify([{ text: "invalid" }]) }, []],
+  ] as const) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(review, turns),
       "unavailable"
     );
   }

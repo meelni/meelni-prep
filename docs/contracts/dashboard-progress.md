@@ -51,14 +51,18 @@ score labels keep the source 0–10 rubric scale.
 The sessions persistence adapter owns a closed presentation discriminator:
 `scored`, `evidence_limited`, or `unavailable`. Evidence-limited reviewability
 requires the exact accepted provenance tuple and completion facts, all score
-columns null, empty drills, bounded JSON, and server-owned closed-template
-content. Scored reviewability requires either the exact supported v2 provenance
-tuple with complete, coherent scores or the exact supported legacy tuple with
-complete in-range historical scores. The API does not expose the version tuple,
-findings, summary, model identity, or transcript references. A score, null
-score, or `completed` status alone is never enough. The canonical feedback
-route remains the stricter read boundary that revalidates exact frozen
-transcript citations and full persisted content before rendering.
+columns null, empty drills, bounded JSON, server-owned closed-template content,
+and exact persisted quote/reference support in canonical user evidence. Scored
+reviewability requires either the exact supported v2 provenance tuple with
+complete, coherent scores, valid findings and practice suggestions, and exact
+persisted quote/reference support, or the exact supported legacy tuple with
+complete in-range historical scores and valid historical findings and practice
+suggestions. The bounded sessions adapter reuses the canonical completed
+feedback parser after one capped page-level evidence read, so it cannot label a
+row reviewable when the destination route would reject its stored content. The
+API does not expose the version tuple, findings, summary, model identity, or
+transcript references. A score, null score, or `completed` status alone is never
+enough.
 
 Overview and History may link both scored and valid evidence-limited reviews.
 The latest-feedback action selects the newest reviewable result; practice
@@ -84,8 +88,9 @@ fallback, not a personalized fit claim.
 - `@meelni/core` owns completed-score eligibility through
   `getCompletedFeedbackScore`.
 - The sessions persistence adapter owns the bounded dashboard reviewability
-  discriminator; dashboard summaries consume that discriminator rather than
-  raw provider or version fields.
+  discriminator and applies the canonical persisted-content/evidence parser;
+  dashboard summaries consume that discriminator rather than raw provider or
+  version fields.
 - Dashboard summaries and the insights aggregator must use the shared rule.
 - `@meelni/test-fixtures` supplies zero, one, many, and every-feedback-status
   regression scenarios.

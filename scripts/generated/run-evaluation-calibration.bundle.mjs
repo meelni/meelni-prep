@@ -20313,8 +20313,10 @@ var LIVEKIT_DELETION_PROVISIONING_LEASE_MS = 10 * 60 * 1e3;
 
 // lib/dashboard/feedback-presentation.ts
 var DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
-  findingsJson: 64e3,
-  drillsJson: 64,
+  // Match the canonical feedback read boundary. Dashboard reads still cap the
+  // value one character beyond each limit so corrupt rows fail closed.
+  findingsJson: 1e6,
+  drillsJson: 64e3,
   summary: 4e3,
   version: 256
 };
@@ -20348,6 +20350,8 @@ var dashboardSessionSelection = {
     leadershipScore: feedback.leadershipScore
   },
   feedbackPresentationCandidate: {
+    id: feedback.id,
+    sessionId: feedback.sessionId,
     status: feedback.status,
     outcomeReason: feedback.outcomeReason,
     completionTier: feedback.completionTier,
@@ -20365,7 +20369,8 @@ var dashboardSessionSelection = {
     strengthsJson: sql`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
     improvementsJson: sql`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
     drillsJson: sql`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
-    summary: sql`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`
+    summary: sql`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`,
+    createdAt: feedback.createdAt
   }
 };
 
