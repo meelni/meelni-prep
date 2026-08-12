@@ -29,6 +29,15 @@ for (const viewport of [
     await page.evaluate(() => document.fonts.ready);
     await expect(page.getByText("Recent interviews")).toBeVisible();
     await expect(
+      page.getByRole("link", { name: "Review latest feedback" })
+    ).toHaveAttribute(
+      "data-browser-qa-href",
+      "/feedback/browser-qa-evidence-limited"
+    );
+    await expect(
+      page.getByText("Feedback ready — no score", { exact: true }).first()
+    ).toBeVisible();
+    await expect(
       page.getByText("No feedback result is available for this interview.")
     ).toBeVisible();
     await expect(
@@ -46,8 +55,23 @@ for (const viewport of [
     ).toBeVisible();
     await expect(
       history
+        .getByText("Feedback ready — no score", { exact: true })
+        .filter({ visible: true })
+    ).toBeVisible();
+    await expect(
+      history
+        .getByRole("link", { name: "Review" })
+        .filter({ visible: true })
+        .first()
+    ).toHaveAttribute(
+      "data-browser-qa-href",
+      "/feedback/browser-qa-evidence-limited"
+    );
+    await expect(
+      history
         .getByText("Feedback unavailable", { exact: true })
         .filter({ visible: true })
+        .first()
     ).toBeVisible();
     await expect(
       history
