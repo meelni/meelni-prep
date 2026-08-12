@@ -108,7 +108,10 @@ from shared.transcript_events import (
     is_transcript_event,
     publish_transcript_event,
 )
-from shared.transcript_settlement import settle_session_speech
+from shared.transcript_settlement import (
+    fence_session_for_runtime_settlement,
+    settle_session_speech,
+)
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -1767,6 +1770,42 @@ class TranscriptIngestPrimitiveTests(unittest.TestCase):
 
 
 class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def completed_interruption(calls):
+        calls.append(("interrupt_all", True))
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(None)
+        return future
+
+    async def test_trusted_end_applies_cutoff_before_disabling_io_and_interrupting_all_speech(self):
+        calls = []
+        session = SimpleNamespace(
+            input=SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("input", enabled))
+            ),
+            output=SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("output", enabled))
+            ),
+            interrupt=lambda **kwargs: self.completed_interruption(calls),
+        )
+
+        interruption = fence_session_for_runtime_settlement(
+            session,
+            cutoff_at=1782600002,
+            set_evidence_cutoff=lambda cutoff: calls.append(("cutoff", cutoff)),
+        )
+
+        await interruption
+        self.assertEqual(
+            calls,
+            [
+                ("cutoff", 1782600002.0),
+                ("input", False),
+                ("output", False),
+                ("interrupt_all", True),
+            ],
+        )
+
     async def test_mid_user_speech_is_committed_without_requesting_a_reply(self):
         calls = []
 
@@ -1775,9 +1814,17 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             current_speech = None
             input = SimpleNamespace(
                 set_audio_enabled=lambda enabled: calls.append(
-                    ("audio_enabled", enabled)
+                    ("input_enabled", enabled)
                 )
             )
+            output = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("output_enabled", enabled)
+                )
+            )
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption(calls)
 
             def commit_user_turn(self, **kwargs):
                 calls.append(("commit_user_turn", kwargs))
@@ -1796,7 +1843,9 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             calls,
             [
-                ("audio_enabled", False),
+                ("input_enabled", False),
+                ("output_enabled", False),
+                ("interrupt_all", True),
                 (
                     "commit_user_turn",
                     {
@@ -1817,9 +1866,6 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             def done(self):
                 return False
 
-            def interrupt(self, *, force):
-                calls.append(("interrupt", force))
-
             async def wait_for_playout(self):
                 calls.append(("playout_stopped",))
 
@@ -1828,9 +1874,17 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             current_speech = Speech()
             input = SimpleNamespace(
                 set_audio_enabled=lambda enabled: calls.append(
-                    ("audio_enabled", enabled)
+                    ("input_enabled", enabled)
                 )
             )
+            output = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("output_enabled", enabled)
+                )
+            )
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption(calls)
 
             def commit_user_turn(self, **_kwargs):
                 raise AssertionError("idle user speech must not be committed")
@@ -1844,8 +1898,9 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             calls,
             [
-                ("audio_enabled", False),
-                ("interrupt", True),
+                ("input_enabled", False),
+                ("output_enabled", False),
+                ("interrupt_all", True),
                 ("playout_stopped",),
                 ("idle",),
             ],
@@ -1859,9 +1914,17 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             current_speech = None
             input = SimpleNamespace(
                 set_audio_enabled=lambda enabled: calls.append(
-                    ("audio_enabled", enabled)
+                    ("input_enabled", enabled)
                 )
             )
+            output = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(
+                    ("output_enabled", enabled)
+                )
+            )
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption(calls)
 
             def commit_user_turn(self, **_kwargs):
                 raise AssertionError("idle user speech must not be committed")
@@ -1872,7 +1935,15 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
         result = await settle_session_speech(Session(), timeout_seconds=0.5)
 
         self.assertTrue(result.settled)
-        self.assertEqual(calls, [("audio_enabled", False), ("idle",)])
+        self.assertEqual(
+            calls,
+            [
+                ("input_enabled", False),
+                ("output_enabled", False),
+                ("interrupt_all", True),
+                ("idle",),
+            ],
+        )
 
     async def test_timeout_cancels_runtime_idle_wait_and_reports_degraded_evidence(self):
         cancelled = asyncio.Event()
@@ -1881,6 +1952,10 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             user_state = "listening"
             current_speech = None
             input = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+            output = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption([])
 
             async def wait_for_idle(self):
                 try:
@@ -1903,6 +1978,8 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             user_state="listening",
             current_speech=None,
             input=SimpleNamespace(set_audio_enabled=fail_audio_disable),
+            output=SimpleNamespace(set_audio_enabled=lambda _enabled: None),
+            interrupt=lambda **_kwargs: self.completed_interruption([]),
         )
 
         result = await settle_session_speech(session, timeout_seconds=0.5)
@@ -1928,6 +2005,10 @@ class SpeechSettlementTests(unittest.IsolatedAsyncioTestCase):
             user_state = "speaking"
             current_speech = Speech()
             input = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+            output = SimpleNamespace(set_audio_enabled=lambda _enabled: None)
+
+            def interrupt(self, *, force):
+                return SpeechSettlementTests.completed_interruption([])
 
             def commit_user_turn(self, **_kwargs):
                 raise RuntimeError("synthetic commit failure")
@@ -2251,6 +2332,92 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         queue.seal_and_enqueue_runtime_settlement(settlement)
         await queue.flush(0.5)
         self.assertEqual(settlement["settled_at"], equal_event["ended_at"])
+
+    async def test_sav_410_end_fence_rejects_late_turn_and_acks_over_hung_evidence_transport(self):
+        evidence_started = asyncio.Event()
+        evidence_released = asyncio.Event()
+        bodies = []
+        calls = []
+
+        async def transport(_url, body, _headers):
+            envelope = json.loads(body)
+            bodies.append(envelope)
+            if "event" in envelope:
+                evidence_started.set()
+                await evidence_released.wait()
+            return IngestResponse(200)
+
+        async def publisher(_event):
+            return None
+
+        queue = TranscriptIngestQueue(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            transport=transport,
+            publisher=publisher,
+        )
+        queue.enqueue_transcript(self.make_event(sequence=1))
+        background = asyncio.create_task(queue.flush(30))
+        await evidence_started.wait()
+        self.assertEqual(
+            await finish_tasks_before_shutdown((background,), 0.01),
+            1,
+        )
+
+        class Session:
+            input = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("input", enabled))
+            )
+            output = SimpleNamespace(
+                set_audio_enabled=lambda enabled: calls.append(("output", enabled))
+            )
+
+            def interrupt(self, *, force):
+                calls.append(("interrupt_all", force))
+                future = asyncio.get_running_loop().create_future()
+                future.set_result(None)
+                return future
+
+        cutoff = 1782600002
+        await fence_session_for_runtime_settlement(
+            Session(),
+            cutoff_at=cutoff,
+            set_evidence_cutoff=queue.set_evidence_cutoff,
+        )
+        with self.assertRaises(TranscriptIngestAfterCutoff):
+            queue.enqueue_transcript(
+                self.make_event(event_id="writer-1:message-after-end", sequence=2)
+            )
+
+        settlement = create_runtime_settlement(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            writer_generation=1,
+            state="degraded",
+            settled_at=cutoff,
+        )
+        queue.seal_and_enqueue_runtime_settlement(settlement)
+        result = await queue.flush(0.02)
+
+        self.assertTrue(queue.runtime_settlement_complete)
+        self.assertTrue(result.timed_out)
+        self.assertEqual(
+            calls,
+            [("input", False), ("output", False), ("interrupt_all", True)],
+        )
+        self.assertEqual(
+            ["settlement" if "settlement" in body else "event" for body in bodies],
+            ["event", "settlement"],
+        )
+        self.assertNotIn(
+            "writer-1:message-after-end",
+            json.dumps(bodies),
+        )
+
+        evidence_released.set()
+        completed = await queue.flush(0.5)
+        self.assertTrue(completed.settled)
 
     async def test_hard_deadline_rejects_late_evidence_before_settlement_begins(self):
         async def transport(_url, _body, _headers):

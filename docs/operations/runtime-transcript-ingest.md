@@ -55,10 +55,17 @@ Loopback HTTP is accepted only for local development.
   stable row identity and final ordering.
 - Explicit end atomically records `ending/user_end` and `ending_at`; a
   recoverable background server worker sends a reliable metadata-only packet
-  to the current agent and writer
-  generation while the browser token retains `canPublishData=false`. Active
-  playout is interrupted, the exact heard prefix or no-prefix marker is
-  enqueued, and the outbox drains before application terminalization. Every
+  to the current writer generation's exact provider-owned agent identity while
+  the browser token retains `canPublishData=false`. The writer UUID is never a
+  participant target. Prefer one active kind-4 room participant; when that
+  projection is absent or lacks name correlation, accept only one exact-room
+  dispatch matching `LIVEKIT_INTERVIEW_AGENT_NAME`, with one running job and a
+  bounded provider participant identity. A projected wrong name or identity
+  mismatch and any ambiguity fail closed. The runtime installs the cutoff,
+  disables input and output, and
+  force-interrupts all current/queued generation before asynchronous drain. The
+  exact heard prefix at or before the cutoff is enqueued; later callbacks are
+  rejected locally rather than submitted to the closed web session. Every
   registered writer generation must have durable `settled` proof; missing or
   degraded proof fails closed.
 - While `ending/user_end`, turns and interruption markers measured at or before
@@ -83,6 +90,11 @@ Loopback HTTP is accepted only for local development.
   4.5-second stage budget under the server's five-second wait. Room transcript
   and status projection are separately bounded best-effort notifications and
   never retain durable queue ownership.
+- If a shielded evidence transport remains hung after quiescence, the queue
+  retains that single in-flight attempt but prioritizes its reserved
+  metadata-only settlement item. This permits a durable degraded acknowledgement
+  inside the control deadline without a duplicate evidence POST; later flushes
+  may finish the retained request.
 - Shutdown first fences new settlement dispatch, gives active server settlement
   tasks a 20-second join, then serializes through the same settlement lock and
   performs the final queue drain. A hard process crash can still lose in-memory

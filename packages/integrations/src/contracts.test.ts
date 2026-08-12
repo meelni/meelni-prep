@@ -1109,6 +1109,7 @@ test("getLiveKitEnvironment accepts public or server websocket URL", () => {
     LIVEKIT_API_KEY: "key",
     LIVEKIT_API_SECRET: "secret",
     LIVEKIT_URL: "wss://server.livekit.cloud",
+    LIVEKIT_INTERVIEW_AGENT_NAME: " interview-agent-prod ",
   });
 
   assert.equal(result.ok, true);
@@ -1117,6 +1118,7 @@ test("getLiveKitEnvironment accepts public or server websocket URL", () => {
       apiKey: "key",
       apiSecret: "secret",
       url: "wss://server.livekit.cloud",
+      interviewAgentName: "interview-agent-prod",
     });
   }
 });
@@ -2027,6 +2029,12 @@ test("LiveKit presence normalizes candidate connection states", async () => {
         env,
       },
       {
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            throw new Error("presence inspection must not create a dispatch");
+          },
+          listDispatch: async () => [],
+        }),
         roomServiceClientFactory: () => ({
           createRoom: async () => undefined,
           listParticipants: async () => [
@@ -2059,6 +2067,12 @@ test("LiveKit presence normalizes candidate connection states", async () => {
       env,
     },
     {
+      agentDispatchClientFactory: () => ({
+        createDispatch: async () => {
+          throw new Error("presence inspection must not create a dispatch");
+        },
+        listDispatch: async () => [],
+      }),
       roomServiceClientFactory: () => ({
         createRoom: async () => undefined,
         listParticipants: async () => [
@@ -2129,6 +2143,427 @@ test("LiveKit presence requires the exact standard candidate and provider agent 
     assert.equal(result.data.joined, false);
     assert.equal(result.data.joinedAt, null);
     assert.equal(result.data.agent?.identity, "agent-worker");
+  }
+});
+
+test("LiveKit presence resolves a uniquely running room dispatch when the agent participant projection is transiently absent", async () => {
+  const calls: string[] = [];
+  const result = await inspectInterviewParticipantPresence(
+    {
+      roomName: "interview-presence-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+        interviewAgentName: "meelni-interview-agent",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listParticipants: async () => [
+          {
+            identity: "candidate-id",
+            state: 2,
+            joinedAtMs: BigInt(1_783_670_430_000),
+            kind: 0,
+          },
+        ],
+      }),
+      agentDispatchClientFactory: () => ({
+        createDispatch: async () => {
+          throw new Error("presence inspection must not create a dispatch");
+        },
+        listDispatch: async (room) => {
+          calls.push(`dispatch:${room}`);
+          return [
+            {
+              id: "dispatch-1",
+              room,
+              agentName: "meelni-interview-agent",
+              state: {
+                jobs: [
+                  {
+                    state: {
+                      status: 1,
+                      participantIdentity: "agent-AJ_provider_owned",
+                    },
+                  },
+                ],
+              },
+            },
+          ];
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data.agent?.identity, "agent-AJ_provider_owned");
+    assert.equal(result.data.agent?.joinedAt, null);
+  }
+  assert.deepEqual(calls, ["dispatch:interview-presence-room"]);
+});
+
+test("LiveKit presence never guesses across multiple active provider agents", async () => {
+  let dispatchInspected = false;
+  const result = await inspectInterviewParticipantPresence(
+    {
+      roomName: "interview-presence-room",
+      participantIdentity: "candidate-id",
+      env: {
+        apiKey: "key",
+        apiSecret: "secret",
+        url: "wss://test.livekit.cloud",
+        interviewAgentName: "meelni-interview-agent",
+      },
+    },
+    {
+      roomServiceClientFactory: () => ({
+        createRoom: async () => undefined,
+        listParticipants: async () => [
+          {
+            identity: "agent-one",
+            state: 2,
+            joinedAtMs: BigInt(1),
+            kind: 4,
+          },
+          {
+            identity: "agent-two",
+            state: 2,
+            joinedAtMs: BigInt(2),
+            kind: 4,
+          },
+        ],
+      }),
+      agentDispatchClientFactory: () => ({
+        createDispatch: async () => {
+          throw new Error("presence inspection must not create a dispatch");
+        },
+        listDispatch: async () => {
+          dispatchInspected = true;
+          return [];
+        },
+      }),
+    }
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.data.agent, null);
+  assert.equal(dispatchInspected, false);
+});
+
+test("LiveKit presence fails closed for a wrong named or dispatch-mismatched agent", async (t) => {
+  const env = {
+    apiKey: "key",
+    apiSecret: "secret",
+    url: "wss://test.livekit.cloud",
+    interviewAgentName: "meelni-interview-agent",
+  };
+
+  await t.test("wrong projected agent name", async () => {
+    let dispatchInspected = false;
+    const result = await inspectInterviewParticipantPresence(
+      {
+        roomName: "interview-presence-room",
+        participantIdentity: "candidate-id",
+        env,
+      },
+      {
+        roomServiceClientFactory: () => ({
+          createRoom: async () => undefined,
+          listParticipants: async () => [
+            {
+              identity: "agent-wrong-name",
+              state: 2,
+              joinedAtMs: BigInt(1),
+              kind: 4,
+              attributes: { "lk.agent.name": "another-agent" },
+            },
+          ],
+        }),
+        agentDispatchClientFactory: () => ({
+          createDispatch: async () => {
+            throw new Error("presence inspection must not create a dispatch");
+          },
+          listDispatch: async () => {
+            dispatchInspected = true;
+            return [];
+          },
+        }),
+      }
+    );
+
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.data.agent, null);
+    assert.equal(dispatchInspected, false);
+  });
+
+  await t.test(
+    "projected identity disagrees with running dispatch",
+    async () => {
+      const result = await inspectInterviewParticipantPresence(
+        {
+          roomName: "interview-presence-room",
+          participantIdentity: "candidate-id",
+          env,
+        },
+        {
+          roomServiceClientFactory: () => ({
+            createRoom: async () => undefined,
+            listParticipants: async () => [
+              {
+                identity: "agent-projected",
+                state: 2,
+                joinedAtMs: BigInt(1),
+                kind: 4,
+              },
+            ],
+          }),
+          agentDispatchClientFactory: () => ({
+            createDispatch: async () => {
+              throw new Error("presence inspection must not create a dispatch");
+            },
+            listDispatch: async (room) => [
+              {
+                id: "dispatch-1",
+                room,
+                agentName: "meelni-interview-agent",
+                state: {
+                  jobs: [
+                    {
+                      state: {
+                        status: 1,
+                        participantIdentity: "agent-dispatch",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        }
+      );
+
+      assert.equal(result.ok, true);
+      if (result.ok) assert.equal(result.data.agent, null);
+    }
+  );
+});
+
+test("LiveKit dispatch fallback fails closed for ambiguous, stale, and invalid targets", async (t) => {
+  const exactLimitIdentity = "a".repeat(256);
+  const cases: Array<{
+    name: string;
+    dispatches: Array<{
+      id: string;
+      room: string;
+      agentName: string;
+      state?: {
+        jobs: Array<{
+          state?: { status: number; participantIdentity: string };
+        }>;
+      };
+    }>;
+    expectedIdentity: string | null;
+  }> = [
+    {
+      name: "accepts the exact 256-byte provider identity boundary",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: exactLimitIdentity },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: exactLimitIdentity,
+    },
+    {
+      name: "rejects a 257-byte identity",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: {
+                  status: 1,
+                  participantIdentity: "a".repeat(257),
+                },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects multiple dispatches",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: "agent-one" },
+              },
+            ],
+          },
+        },
+        {
+          id: "dispatch-2",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: "agent-two" },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects multiple running jobs",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: "agent-one" },
+              },
+              {
+                state: { status: 1, participantIdentity: "agent-two" },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects a non-running job",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 2, participantIdentity: "agent-stopped" },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects a mismatched room",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "another-room",
+          agentName: "meelni-interview-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: "agent-wrong-room" },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects a different named agent",
+      dispatches: [
+        {
+          id: "dispatch-1",
+          room: "interview-presence-room",
+          agentName: "another-agent",
+          state: {
+            jobs: [
+              {
+                state: { status: 1, participantIdentity: "agent-wrong-name" },
+              },
+            ],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+    {
+      name: "rejects blank dispatch and participant identities",
+      dispatches: [
+        {
+          id: " ",
+          room: "interview-presence-room",
+          agentName: " ",
+          state: {
+            jobs: [{ state: { status: 1, participantIdentity: " " } }],
+          },
+        },
+      ],
+      expectedIdentity: null,
+    },
+  ];
+
+  for (const fixture of cases) {
+    await t.test(fixture.name, async () => {
+      const result = await inspectInterviewParticipantPresence(
+        {
+          roomName: "interview-presence-room",
+          participantIdentity: "candidate-id",
+          env: {
+            apiKey: "key",
+            apiSecret: "secret",
+            url: "wss://test.livekit.cloud",
+            interviewAgentName: "meelni-interview-agent",
+          },
+        },
+        {
+          roomServiceClientFactory: () => ({
+            createRoom: async () => undefined,
+            listParticipants: async () => [],
+          }),
+          agentDispatchClientFactory: () => ({
+            createDispatch: async () => {
+              throw new Error("presence inspection must not create a dispatch");
+            },
+            listDispatch: async () => fixture.dispatches,
+          }),
+        }
+      );
+
+      assert.equal(result.ok, true);
+      if (result.ok) {
+        assert.equal(
+          result.data.agent?.identity ?? null,
+          fixture.expectedIdentity
+        );
+      }
+    });
   }
 });
 
