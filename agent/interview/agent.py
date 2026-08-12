@@ -81,7 +81,10 @@ from shared.transcript_ingest import (
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
 )
-from shared.transcript_settlement import settle_session_speech
+from shared.transcript_settlement import (
+    fence_session_for_runtime_settlement,
+    settle_session_speech,
+)
 from shared.utils.prompt_builder import build_agent_prompt
 
 load_dotenv()
@@ -695,6 +698,7 @@ async def entrypoint(ctx: JobContext):
 
     @ctx.room.on("data_received")
     def on_runtime_settlement_request(packet) -> None:
+        nonlocal runtime_settlement_cutoff, transcript_integrity_unavailable
         try:
             request = parse_runtime_settlement_request(
                 data=packet.data,
@@ -719,10 +723,18 @@ async def entrypoint(ctx: JobContext):
         cutoff = parse_deadline_at(request["cutoff_at"])
         if cutoff is None:
             return
+        cutoff_timestamp = cutoff.timestamp()
+        if (
+            runtime_settlement_cutoff is not None
+            and runtime_settlement_cutoff != cutoff_timestamp
+        ):
+            transcript_integrity_unavailable = True
+            logger.warning("Rejected conflicting runtime settlement cutoff")
+            return
         try:
             settlement_dispatch = runtime_settlement_requests.prepare(
                 request,
-                lambda: settle_runtime(cutoff.timestamp()),
+                lambda: settle_runtime(cutoff_timestamp),
             )
         except TranscriptIngestError as error:
             log_exception_class(
@@ -733,10 +745,25 @@ async def entrypoint(ctx: JobContext):
             )
             return
 
-        session.input.set_audio_enabled(False)
-        current_speech = session.current_speech
-        if current_speech is not None and not current_speech.done():
-            current_speech.interrupt(force=True)
+        def apply_evidence_cutoff(value: float) -> None:
+            nonlocal runtime_settlement_cutoff
+            transcript_queue.set_evidence_cutoff(value)
+            runtime_settlement_cutoff = value
+
+        try:
+            fence_session_for_runtime_settlement(
+                session,
+                cutoff_at=cutoff_timestamp,
+                set_evidence_cutoff=apply_evidence_cutoff,
+            )
+        except Exception as error:
+            transcript_integrity_unavailable = True
+            log_exception_class(
+                logger,
+                logging.ERROR,
+                "Runtime settlement input/output fence failed",
+                error,
+            )
         if not settlement_dispatch.started:
             return
         task = settlement_dispatch.task
@@ -874,11 +901,13 @@ async def entrypoint(ctx: JobContext):
             schedule_transcript_flush()
         except TranscriptIngestAfterCutoff:
             transcript_integrity_unavailable = True
-            queue_integrity_marker(
-                event_id=f"{transcript_writer_id}:{item.id or uuid4()}:cutoff",
-                speaker="user" if item.role == "user" else "interviewer",
-                reason="canonicalization_failed",
-                occurred_at=runtime_settlement_cutoff,
+            logger.warning(
+                "Transcript turn rejected at the runtime settlement cutoff",
+                extra={
+                    "speaker": (
+                        "user" if item.role == "user" else "interviewer"
+                    )
+                },
             )
         except TranscriptIngestQueueFull:
             transcript_queue_overflowed = True

@@ -85,8 +85,9 @@ prior writer's settlement obligation. Every turn, marker, settlement, and
 targeted reconnect-settlement request carries the registered generation.
 
 At an explicit end or semantic cutoff `D`, the runtime first disables audio
-input and output at `D`, commits only measured evidence whose event time is at
-or before `D`, interrupts active interviewer speech, and drains the signed
+input and output at `D`, installs the immutable evidence cutoff synchronously,
+force-interrupts current and queued generation, commits only measured evidence
+whose event time is at or before `D`, and drains the signed
 outbox. Each writer persists its own metadata-only `runtime_settlement` at its
 semantic drain boundary: the active ending generation uses `D`, while a fenced
 generation may retain its earlier reconnect/handoff cutoff. Database creation
@@ -223,7 +224,10 @@ and existing terminal truth remain immutable.
 
 The runtime outbox is memory-only, bounded at 1,000 identities, and reserves
 control capacity for the mandatory settlement item so transcript data cannot
-consume the final control slot. It retries network failures plus HTTP
+consume the final control slot. When an evidence transport remains in flight,
+the foreground drain retains that single-flight request and prioritizes the
+metadata-only settlement acknowledgement; the acknowledgement is degraded and
+does not reinterpret missing evidence as complete. It retries network failures plus HTTP
 408/425/429/5xx and treats other HTTP failures as permanent.
 It publishes transcript text to the room only after a 2xx persistence
 acknowledgement. Browser reload/reconnect hydrates owned durable turns and

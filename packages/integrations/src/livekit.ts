@@ -19,6 +19,7 @@ export interface LiveKitEnvironment {
   apiKey: string;
   apiSecret: string;
   url: string;
+  interviewAgentName?: string;
 }
 
 export type LiveKitAgentKind = "interview" | "demo";
@@ -26,6 +27,8 @@ export type LiveKitAgentKind = "interview" | "demo";
 export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 const INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS = 2;
+const LIVEKIT_MAX_PARTICIPANT_IDENTITY_BYTES = 256;
+const LIVEKIT_JOB_STATUS_RUNNING = 1;
 export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
 export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
@@ -190,6 +193,14 @@ interface AgentDispatchLike {
   id: string;
   agentName: string;
   room: string;
+  state?: {
+    jobs: Array<{
+      state?: {
+        status: number;
+        participantIdentity: string;
+      };
+    }>;
+  };
 }
 
 type AgentDispatchClientFactory = (
@@ -222,6 +233,7 @@ interface RoomServiceClientLike {
       state: number;
       joinedAtMs: bigint;
       kind: number;
+      attributes?: Record<string, string>;
     }>
   >;
   sendData?(
@@ -265,6 +277,9 @@ export function getLiveKitEnvironment(
     apiKey: envSource.LIVEKIT_API_KEY!,
     apiSecret: envSource.LIVEKIT_API_SECRET!,
     url: url!,
+    ...(envSource.LIVEKIT_INTERVIEW_AGENT_NAME?.trim()
+      ? { interviewAgentName: envSource.LIVEKIT_INTERVIEW_AGENT_NAME.trim() }
+      : {}),
   });
 }
 
@@ -1062,6 +1077,10 @@ export async function inspectInterviewParticipantPresence(
     env: LiveKitEnvironment;
   },
   {
+    agentDispatchClientFactory = (url, apiKey, apiSecret) =>
+      new AgentDispatchClient(url, apiKey, apiSecret, {
+        requestTimeout: INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS,
+      }),
     roomServiceClientFactory = (url, apiKey, apiSecret) =>
       new RoomServiceClient(url, apiKey, apiSecret, {
         requestTimeout: INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS,
@@ -1092,24 +1111,29 @@ export async function inspectInterviewParticipantPresence(
       participant && (participant.state === 1 || participant.state === 2)
     );
     const joinedAtMs = participant ? Number(participant.joinedAtMs) : 0;
-    const agentParticipant = participants.find(
+    const expectedAgentName = input.env.interviewAgentName?.trim() || null;
+    const agentParticipants = participants.filter(
       (candidate) =>
         candidate.kind === 4 &&
         (candidate.state === 1 || candidate.state === 2) &&
         candidate.identity !== input.participantIdentity &&
-        candidate.identity.trim().length > 0
+        isBoundedLiveKitParticipantIdentity(candidate.identity)
     );
+    const agentParticipant =
+      agentParticipants.length === 1 ? agentParticipants[0] : undefined;
     const agentJoinedAtMs = agentParticipant
       ? Number(agentParticipant.joinedAtMs)
       : 0;
-    return providerSuccess("livekit", {
-      present,
-      joined,
-      joinedAt:
-        present && Number.isSafeInteger(joinedAtMs) && joinedAtMs > 0
-          ? new Date(joinedAtMs)
-          : null,
-      agent: agentParticipant
+    const projectedAgentName = agentParticipant?.attributes?.["lk.agent.name"];
+    const projectedAgentNameConflicts = Boolean(
+      expectedAgentName &&
+        projectedAgentName?.trim() &&
+        projectedAgentName !== expectedAgentName
+    );
+    let agent =
+      agentParticipant &&
+      !projectedAgentNameConflicts &&
+      (!expectedAgentName || projectedAgentName === expectedAgentName)
         ? {
             identity: agentParticipant.identity,
             joinedAt:
@@ -1117,7 +1141,37 @@ export async function inspectInterviewParticipantPresence(
                 ? new Date(agentJoinedAtMs)
                 : null,
           }
-        : null,
+        : null;
+    if (
+      expectedAgentName &&
+      !projectedAgentNameConflicts &&
+      agentParticipants.length <= 1 &&
+      agent === null
+    ) {
+      const dispatchClient = agentDispatchClientFactory(
+        input.env.url,
+        input.env.apiKey,
+        input.env.apiSecret
+      );
+      const dispatches = await dispatchClient.listDispatch(input.roomName);
+      const dispatchIdentity = resolveRunningDispatchAgentIdentity(
+        dispatches,
+        input.roomName,
+        expectedAgentName,
+        agentParticipant?.identity ?? null
+      );
+      if (dispatchIdentity) {
+        agent = { identity: dispatchIdentity, joinedAt: null };
+      }
+    }
+    return providerSuccess("livekit", {
+      present,
+      joined,
+      joinedAt:
+        present && Number.isSafeInteger(joinedAtMs) && joinedAtMs > 0
+          ? new Date(joinedAtMs)
+          : null,
+      agent,
     });
   } catch (error) {
     if (isLiveKitNotFoundError(error)) {
@@ -1135,6 +1189,48 @@ export async function inspectInterviewParticipantPresence(
       cause: error,
     });
   }
+}
+
+function resolveRunningDispatchAgentIdentity(
+  dispatches: AgentDispatchLike[],
+  roomName: string,
+  expectedAgentName: string,
+  observedAgentIdentity: string | null
+): string | null {
+  if (dispatches.length !== 1) return null;
+  const dispatch = dispatches[0];
+  if (
+    !dispatch.id.trim() ||
+    dispatch.agentName !== expectedAgentName ||
+    dispatch.room !== roomName
+  ) {
+    return null;
+  }
+  const jobs = dispatch.state?.jobs ?? [];
+  if (jobs.length !== 1) return null;
+  const state = jobs[0].state;
+  if (
+    !state ||
+    state.status !== LIVEKIT_JOB_STATUS_RUNNING ||
+    !isBoundedLiveKitParticipantIdentity(state.participantIdentity)
+  ) {
+    return null;
+  }
+  if (
+    observedAgentIdentity !== null &&
+    state.participantIdentity !== observedAgentIdentity
+  ) {
+    return null;
+  }
+  return state.participantIdentity;
+}
+
+function isBoundedLiveKitParticipantIdentity(identity: string): boolean {
+  return (
+    identity.trim().length > 0 &&
+    new TextEncoder().encode(identity).byteLength <=
+      LIVEKIT_MAX_PARTICIPANT_IDENTITY_BYTES
+  );
 }
 
 function isLiveKitNotFoundError(error: unknown): boolean {

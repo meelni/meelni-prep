@@ -334,6 +334,11 @@ absence allows the worker to atomically claim provisional
 fences candidate access but keeps the room and agent alive while the server
 sends a reliable trusted metadata-only settlement request targeted to the
 current registered writer generation, room, request ID, and semantic cutoff.
+The writer generation authenticates logical runtime correlation but is never
+used as the provider participant target. Targeting accepts one unique active
+agent participant, or a single running exact-room AgentDispatch job when the
+participant projection is transiently absent; ambiguity or stale provider state
+fails closed.
 The worker awaits durable per-generation settlement acknowledgement or a
 bounded degraded/missing result before room deletion; a passive two-second
 delay is not evidence. One durable validation snapshot then selects any
