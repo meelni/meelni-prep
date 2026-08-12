@@ -95,8 +95,8 @@ skipped and receive no scored v2 result.
 interview with at least one trustworthy reviewable candidate answer but fewer
 than four distinct strict scoreable answers. Long-form recognized evidence may
 be reviewable without being scoreable when it passes the existing quantitative
-gates, contains at least 40 lexical tokens and two distinct PM/reasoning
-signals, and distributes recognized evidence across two bounded segments. It
+gates and satisfies the bounded punctuation-independent recognized-evidence
+relationship policy in the accepted evidence-gated feedback decision. It
 stores:
 
 | Field             | Value or rule                                  |
@@ -525,14 +525,18 @@ before both eligibility and model evaluation:
 - qualitative-only long-form evidence does not use the English agreement,
   sentence-ownership, or predicate-complement parser. Canonical preparation and
   the existing quantitative diversity gates still run first. The fallback
-  requires 40 lexical tokens, two distinct recognized PM/reasoning signals,
-  and recognized evidence across two punctuation-bounded segments. It
+  requires 40 tokens, bounded recognized-lexeme density and repetition, at
+  least one strong connector-linked recognized pair within 14 token positions,
+  and the accepted four-or-five-distinct-lexeme relationship breadth. It
   contributes reviewability but never scoreable breadth. The closed
   evidence-limited provider selection remains the semantic coaching gate;
   invalid selections are `generation_failed`, not candidate insufficiency.
-  Deterministic recognition is not a claim of arbitrary semantic proof, and
-  the existing strict path intentionally continues to send structurally
-  coherent but implausible answers to the evaluator for weak grounded feedback;
+  Deterministic recognition is not semantic proof: engineered low-density
+  unrelated prose or rotated distinct-anchor loops can satisfy the lexical
+  boundary, but they remain scoreless and cannot author narrative, citations,
+  or unsupported provider selections. The existing strict path intentionally
+  continues to send structurally coherent but implausible answers to the
+  evaluator for weak grounded feedback;
 - no usable user speech routes to `insufficient`;
 - a security-only NFKC scan projection removes default-ignorable separators and
   normalizes Unicode punctuation without changing stored transcript or evidence

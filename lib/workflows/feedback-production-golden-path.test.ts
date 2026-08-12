@@ -82,6 +82,20 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
   );
   assert.equal(outcomes.get("corrupt"), "transcript_integrity_degraded");
   assert.equal(outcomes.get("spoken-evidence-limited"), "feedback_generated");
+  for (const id of [
+    "harmless-marker-settled-scoreable",
+    "harmless-marker-missing-scoreable",
+  ]) {
+    assert.equal(outcomes.get(id), "feedback_generated");
+    assert.deepEqual(evaluatorModes.get(id), new Set(["evidence_limited"]));
+  }
+  for (const id of [
+    "candidate-marker-settled",
+    "canonicalization-marker-settled",
+  ]) {
+    assert.equal(outcomes.get(id), "transcript_integrity_degraded");
+    assert.deepEqual(evaluatorModes.get(id), new Set());
+  }
   assert.deepEqual(
     evaluatorModes.get("spoken-evidence-limited"),
     new Set(["evidence_limited"])
@@ -238,6 +252,18 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
     ],
     baseValidation: validation,
   });
+  if (
+    fixture.id === "harmless-marker-settled-scoreable" ||
+    fixture.id === "harmless-marker-missing-scoreable"
+  ) {
+    assert.ok(validation.stats.scoreableResponses >= 4);
+    assert.equal(snapshot.state, "partial");
+    assert.equal(snapshot.validation.tier, SessionTier.PARTIAL);
+    assert.equal(
+      snapshot.validation.stats.feedbackModeConstraint,
+      "evidence_limited_only"
+    );
+  }
 
   const outcomeReason: SkippedFeedbackOutcomeReason | null =
     snapshot.state === "degraded"

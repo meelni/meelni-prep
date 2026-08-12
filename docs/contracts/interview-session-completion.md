@@ -32,8 +32,9 @@ when settlement is missing, an otherwise eligible database-proven prefix is
 explicitly downgraded to partial feedback. Degraded settlement, candidate
 markers, canonicalization-failure markers, gaps, and malformed boundaries fail
 closed. The exact `interviewer/no_provider_confirmed_prefix` marker contains no
-candidate evidence and preserves an independently trustworthy prefix. Runtime
-settlement, terminalization,
+candidate evidence and preserves an independently trustworthy prefix while
+durably restricting feedback to qualitative-only mode. Missing settlement has
+the same score-precision restriction. Runtime settlement, terminalization,
 feedback dispatch, room-cleanup scheduling, and credit convergence use stable,
 versioned durable checkpoints. After terminal truth commits, dispatch, cleanup,
 and credit run as sibling checkpoints; a failed operation retries without
@@ -130,11 +131,13 @@ under the owner/session/reservation/grant lock order. See
   not eligibility gates.
 - Long-form recognized evidence may be reviewable for qualitative coaching
   without satisfying the strict scoreable language surface. It requires the
-  existing quantitative gates, at least 40 lexical tokens, two distinct
-  recognized PM/reasoning signals, and signals in two bounded segments.
+  existing quantitative gates and the accepted bounded,
+  punctuation-independent recognized-lexeme relationship policy.
 - Five strict scoreable answers permit full-depth evaluation. A smaller healthy
   prefix remains partial, and fewer than four scoreable answers receive
   scoreless evidence-limited structured feedback rather than inferred scores.
+  A preserving interviewer marker or missing writer settlement also forces
+  scoreless evidence-limited mode regardless of the strict scoreable count.
   The provider selects only closed PM-rubric codes and trusted candidate-turn
   aliases. The server owns all qualitative copy and restores exact quantities
   only through frozen-transcript evidence citations.

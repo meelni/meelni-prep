@@ -48,6 +48,8 @@ export interface SessionStats {
   substantiveResponses: number;
   /** Substantive responses that also satisfy numerical-score coherence. */
   scoreableResponses: number;
+  /** Durable freeze-time restriction when evidence must remain qualitative. */
+  feedbackModeConstraint?: "evidence_limited_only";
 }
 
 /**

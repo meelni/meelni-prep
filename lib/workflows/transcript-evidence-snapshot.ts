@@ -71,6 +71,8 @@ export function buildTranscriptEvidenceSnapshot(input: {
   const degradingInterruptionCount = input.interruptions.filter(
     transcriptInterruptionDegradesCandidateEvidence
   ).length;
+  const preservingInterruptionCount =
+    input.interruptions.length - degradingInterruptionCount;
 
   const integrityReasons = [
     ...(input.baseValidation.evidenceFailureReason ===
@@ -107,7 +109,10 @@ export function buildTranscriptEvidenceSnapshot(input: {
       integrityReasons,
     };
   }
-  if (writers.every((writer) => writer.settlementState === "settled")) {
+  if (
+    writers.every((writer) => writer.settlementState === "settled") &&
+    preservingInterruptionCount === 0
+  ) {
     return {
       state: "complete",
       validation: input.baseValidation,
@@ -120,6 +125,10 @@ export function buildTranscriptEvidenceSnapshot(input: {
     validation: {
       ...input.baseValidation,
       tier: SessionTier.PARTIAL,
+      stats: {
+        ...input.baseValidation.stats,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
       recommendations: [],
     },
     writers,

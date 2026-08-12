@@ -6,5 +6,5 @@
 - [x] Reuse the marker classifier across writer progress and final snapshot.
 - [x] Add sanitized spoken, missing-settlement, and adversarial regressions.
 - [x] Amend accepted decisions, contracts, task intake, and OpenSpec.
-- [x] Run the required broad local validation.
+- [x] Run the required broad local validation at the final generated-runtime head.
 - [ ] Publish a ready PR, monitor hosted checks, and hand off without merge.
