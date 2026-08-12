@@ -130,6 +130,90 @@ test("a provider send failure remains retryable", async () => {
   });
 });
 
+test("dispatch targeting rechecks the exact writer generation before one packet", async () => {
+  const fixture = createFixture();
+  const stages: string[] = [];
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: true,
+      joined: true,
+      joinedAt: null,
+      agent: { identity: "agent-dispatch-current", joinedAt: null },
+      targetSource: "dispatch",
+      targetReason: "dispatch_exact",
+    });
+  fixture.deps.onStage = ({ stage, targetSource, reason }) => {
+    stages.push(`${stage}:${targetSource}:${reason}`);
+  };
+  let readinessReads = 0;
+  fixture.deps.getSettlementReadiness = async () => {
+    readinessReads += 1;
+    return readiness(null, 2);
+  };
+  let sends = 0;
+  fixture.deps.requestRuntimeSettlement = async ({ agentIdentity }) => {
+    sends += 1;
+    assert.equal(agentIdentity, "agent-dispatch-current");
+    return providerSuccess("livekit", {});
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(readinessReads, 2);
+  assert.equal(sends, 1);
+  assert.deepEqual(stages, [
+    "target_resolution:dispatch:dispatch_exact",
+    "generation_recheck:dispatch:generation_current",
+    "packet_send:dispatch:packet_sent",
+    "durable_ack:dispatch:ack_settled",
+  ]);
+});
+
+test("writer replacement during target lookup fails before packet delivery", async () => {
+  const fixture = createFixture();
+  let readinessReads = 0;
+  fixture.deps.getSettlementReadiness = async () => {
+    readinessReads += 1;
+    return readiness(null, readinessReads === 1 ? 2 : 3);
+  };
+  let sends = 0;
+  fixture.deps.requestRuntimeSettlement = async () => {
+    sends += 1;
+    return providerSuccess("livekit", {});
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.deepEqual(result, {
+    ok: false,
+    reason: "runtime_not_ready",
+    retryable: true,
+  });
+  assert.equal(readinessReads, 2);
+  assert.equal(sends, 0);
+});
+
+test("a generation settled during target lookup returns durable truth without another packet", async () => {
+  const fixture = createFixture();
+  let readinessReads = 0;
+  fixture.deps.getSettlementReadiness = async () => {
+    readinessReads += 1;
+    return readiness(readinessReads === 1 ? null : "settled", 2);
+  };
+  let sends = 0;
+  fixture.deps.requestRuntimeSettlement = async () => {
+    sends += 1;
+    return providerSuccess("livekit", {});
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(readinessReads, 2);
+  assert.equal(sends, 0);
+});
+
 test("a durable degraded settlement permits safe terminalization without feedback", async () => {
   const fixture = createFixture();
   fixture.deps.waitForRuntimeSettlement = async () => readiness("degraded", 2);
