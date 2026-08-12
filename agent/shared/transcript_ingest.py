@@ -1004,6 +1004,9 @@ class TranscriptIngestQueue:
                 ]
                 if not pending:
                     return
+                # A degraded settlement is the control-plane acknowledgement that
+                # lets the web tier stop waiting when evidence transport is hung.
+                pending.sort(key=lambda item: item.kind != "runtime_settlement")
                 retry = False
                 for item in pending:
                     retry = await self._deliver(item) or retry

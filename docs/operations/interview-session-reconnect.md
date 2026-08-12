@@ -62,7 +62,10 @@ Never place an intermediary in front of the route that rewrites the body.
   strictly before the stored reconnect deadline,
   fences candidate access, keeps the room and agent alive, and sends a reliable
   trusted metadata-only settlement request targeted to the current registered
-  writer generation and semantic cutoff. It waits for durable database
+  writer generation and semantic cutoff. The generation is logical correlation,
+  not the participant target. The target is one unique active provider agent or,
+  when participant projection is absent, the exact identity of the room's one
+  running dispatch job; ambiguity and stale state stop closed. It waits for durable database
   acknowledgement (settled, degraded, or bounded missing result), then deletes
   the room and finalizes from one validation snapshot. Passive drain time is not
   settlement evidence, and transcript data cannot consume the outbox's reserved

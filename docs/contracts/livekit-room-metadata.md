@@ -219,6 +219,15 @@ correlation. It awaits durable acknowledgement before room deletion. This
 control exchange never carries transcript text, provider credentials, or
 question content.
 
+The registered writer UUID is an ingest identity, not a LiveKit participant
+identity. The server targets exactly one provider-owned agent identity: first a
+unique joined/active kind-4 room participant correlated to the configured
+interview agent name, or, only when that projection is absent or incomplete,
+the exact identity from the room's single dispatch with that configured name
+and single running job. Ambiguous agents, dispatches, or jobs; stale job state;
+wrong agent or room state; identity disagreement; and blank or over-limit
+identities fail closed without sending data.
+
 A realtime data packet is a post-persistence display notification. A turn
 counts as durable lifecycle signal only after the signed runtime endpoint
 verifies session/room correlation and acknowledges persistence. The browser
