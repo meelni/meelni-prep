@@ -60,3 +60,18 @@ References:
 - <https://docs.livekit.io/reference/agents/agent-dispatch-service-api/>
 - <https://github.com/livekit/protocol/blob/main/protobufs/livekit_agent_dispatch.proto>
 - <https://github.com/livekit/agents/blob/main/livekit-agents/livekit/agents/voice/agent_session.py>
+
+## SAV-419 normalization amendment
+
+Production proved the pre-send boundary: an active writer coexisted with target
+resolution that returned no usable agent. Cleanup made the historical provider
+projection unavailable. The original idealized fallback fixture did not cover
+real pinned protobuf history/current projections, so SAV-419 supplies the
+smallest Production-shaped amendment: only a structurally complete current room
+job with exact default bigint state and linkage may authorize targeting;
+malformed active projections remain visible and fail closed. It also rechecks
+the durable generation before send and installs the exact cutoff-aware runtime
+callback gate synchronously before creating settlement work. That gate permits
+only canonical candidate or confirmed interviewer evidence measured at or
+before the cutoff, plus explicitly timed integrity facts from pre-drain work,
+then closes completely at settlement persistence.

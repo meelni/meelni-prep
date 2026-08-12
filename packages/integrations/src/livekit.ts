@@ -6,6 +6,13 @@ import {
   RoomServiceClient,
   TrackSource,
 } from "livekit-server-sdk";
+import {
+  JobStatus,
+  JobType,
+  ParticipantInfo_Kind,
+  ParticipantInfo_State,
+  type AgentDispatch,
+} from "@livekit/protocol";
 
 import { findMissingRequiredEnv } from "./environment";
 import { resolveLiveKitDeploymentCapability } from "./livekit-capability";
@@ -28,7 +35,6 @@ export const INTERVIEW_ROOM_DEPARTURE_TIMEOUT_SECONDS = 60;
 const INTERVIEW_PARTICIPANT_TOKEN_TTL_SECONDS = 5 * 60;
 const INTERVIEW_PRESENCE_REQUEST_TIMEOUT_SECONDS = 2;
 const LIVEKIT_MAX_PARTICIPANT_IDENTITY_BYTES = 256;
-const LIVEKIT_JOB_STATUS_RUNNING = 1;
 export const PUBLIC_DEMO_DURATION_SECONDS = 2 * 60;
 export const PUBLIC_DEMO_TOKEN_DELIVERY_MARGIN_SECONDS = 5;
 
@@ -123,7 +129,23 @@ export interface InterviewParticipantPresence {
   joined: boolean;
   joinedAt: Date | null;
   agent: { identity: string; joinedAt: Date | null } | null;
+  targetSource?: LiveKitInterviewTargetSource;
+  targetReason?: LiveKitInterviewTargetReason;
 }
+
+export type LiveKitInterviewTargetSource = "participant" | "dispatch" | "none";
+
+export type LiveKitInterviewTargetReason =
+  | "participant_exact"
+  | "dispatch_exact"
+  | "agent_absent"
+  | "agent_ambiguous"
+  | "agent_projection_invalid"
+  | "agent_name_conflict"
+  | "dispatch_absent"
+  | "dispatch_pending"
+  | "dispatch_ambiguous"
+  | "dispatch_projection_invalid";
 
 export interface LiveKitInterviewProvider {
   startInterviewRoom(
@@ -189,19 +211,34 @@ interface AgentDispatchClientLike {
   listDispatch(roomName: string): Promise<AgentDispatchLike[]>;
 }
 
-interface AgentDispatchLike {
-  id: string;
-  agentName: string;
-  room: string;
+type AgentDispatchLike = Pick<AgentDispatch, "id" | "agentName" | "room"> & {
   state?: {
-    jobs: Array<{
-      state?: {
-        status: number;
-        participantIdentity: string;
-      };
-    }>;
+    deletedAt?: bigint;
+    jobs: AgentJobLike[];
   };
-}
+};
+
+type AgentJobLike = {
+  id?: string;
+  dispatchId?: string;
+  type?: number;
+  room?: { name: string };
+  agentName?: string;
+  participant?: ParticipantInfoLike;
+  state?: {
+    status: number;
+    endedAt?: bigint;
+    participantIdentity: string;
+  };
+};
+
+type ParticipantInfoLike = {
+  identity: unknown;
+  state: number;
+  joinedAtMs: bigint;
+  kind: number;
+  attributes?: Record<string, string>;
+};
 
 type AgentDispatchClientFactory = (
   url: string,
@@ -227,15 +264,7 @@ interface RoomServiceClientLike {
     identity: string,
     options?: { revokeTokenTs?: bigint }
   ): Promise<void>;
-  listParticipants?(roomName: string): Promise<
-    Array<{
-      identity: string;
-      state: number;
-      joinedAtMs: bigint;
-      kind: number;
-      attributes?: Record<string, string>;
-    }>
-  >;
+  listParticipants?(roomName: string): Promise<ParticipantInfoLike[]>;
   sendData?(
     roomName: string,
     data: Uint8Array,
@@ -833,12 +862,14 @@ export function createLiveKitPublicDemoProvider({
 }
 
 function hasRemoteAgentParticipant(
-  participants: Array<{ identity?: string; kind?: number }>,
+  participants: Array<{ identity?: unknown; kind?: number }>,
   localIdentity: string
 ): boolean {
   return participants.some(
     (participant) =>
-      participant.kind === 4 && participant.identity !== localIdentity
+      participant.kind === ParticipantInfo_Kind.AGENT &&
+      participant.identity !== localIdentity &&
+      isBoundedLiveKitParticipantIdentity(participant.identity)
   );
 }
 
@@ -1104,36 +1135,52 @@ export async function inspectInterviewParticipantPresence(
     const participants = await roomClient.listParticipants(input.roomName);
     const participant = participants.find(
       (candidate) =>
-        candidate.identity === input.participantIdentity && candidate.kind === 0
+        candidate.identity === input.participantIdentity &&
+        candidate.kind === ParticipantInfo_Kind.STANDARD
     );
-    const present = Boolean(participant && participant.state !== 3);
+    const present = Boolean(
+      participant && participant.state !== ParticipantInfo_State.DISCONNECTED
+    );
     const joined = Boolean(
-      participant && (participant.state === 1 || participant.state === 2)
+      participant && isActiveParticipantState(participant.state)
     );
     const joinedAtMs = participant ? Number(participant.joinedAtMs) : 0;
     const expectedAgentName = input.env.interviewAgentName?.trim() || null;
     const agentParticipants = participants.filter(
       (candidate) =>
-        candidate.kind === 4 &&
-        (candidate.state === 1 || candidate.state === 2) &&
-        candidate.identity !== input.participantIdentity &&
-        isBoundedLiveKitParticipantIdentity(candidate.identity)
+        candidate.kind === ParticipantInfo_Kind.AGENT &&
+        isActiveParticipantState(candidate.state) &&
+        candidate.identity !== input.participantIdentity
+    );
+    const hasInvalidAgentProjection = agentParticipants.some(
+      (candidate) => !isBoundedLiveKitParticipantIdentity(candidate.identity)
     );
     const agentParticipant =
       agentParticipants.length === 1 ? agentParticipants[0] : undefined;
     const agentJoinedAtMs = agentParticipant
       ? Number(agentParticipant.joinedAtMs)
       : 0;
-    const projectedAgentName = agentParticipant?.attributes?.["lk.agent.name"];
+    const projectedAgentName = normalizeProjectedAgentName(agentParticipant);
     const projectedAgentNameConflicts = Boolean(
       expectedAgentName &&
-        projectedAgentName?.trim() &&
+        projectedAgentName &&
         projectedAgentName !== expectedAgentName
     );
+    let targetSource: LiveKitInterviewTargetSource = "none";
+    let targetReason: LiveKitInterviewTargetReason = !expectedAgentName
+      ? "agent_projection_invalid"
+      : hasInvalidAgentProjection
+        ? "agent_projection_invalid"
+        : agentParticipants.length > 1
+          ? "agent_ambiguous"
+          : "agent_absent";
     let agent =
+      expectedAgentName &&
       agentParticipant &&
+      !hasInvalidAgentProjection &&
+      isBoundedLiveKitParticipantIdentity(agentParticipant.identity) &&
       !projectedAgentNameConflicts &&
-      (!expectedAgentName || projectedAgentName === expectedAgentName)
+      projectedAgentName === expectedAgentName
         ? {
             identity: agentParticipant.identity,
             joinedAt:
@@ -1142,8 +1189,17 @@ export async function inspectInterviewParticipantPresence(
                 : null,
           }
         : null;
+    if (agent) {
+      targetSource = "participant";
+      targetReason = "participant_exact";
+    } else if (projectedAgentNameConflicts) {
+      targetReason = "agent_name_conflict";
+    } else if (agentParticipant && !projectedAgentName) {
+      targetReason = "agent_projection_invalid";
+    }
     if (
       expectedAgentName &&
+      !hasInvalidAgentProjection &&
       !projectedAgentNameConflicts &&
       agentParticipants.length <= 1 &&
       agent === null
@@ -1154,14 +1210,16 @@ export async function inspectInterviewParticipantPresence(
         input.env.apiSecret
       );
       const dispatches = await dispatchClient.listDispatch(input.roomName);
-      const dispatchIdentity = resolveRunningDispatchAgentIdentity(
+      const dispatchTarget = resolveRunningDispatchAgentTarget(
         dispatches,
         input.roomName,
         expectedAgentName,
-        agentParticipant?.identity ?? null
+        agentParticipant ?? null
       );
-      if (dispatchIdentity) {
-        agent = { identity: dispatchIdentity, joinedAt: null };
+      targetSource = dispatchTarget.source;
+      targetReason = dispatchTarget.reason;
+      if (dispatchTarget.identity) {
+        agent = { identity: dispatchTarget.identity, joinedAt: null };
       }
     }
     return providerSuccess("livekit", {
@@ -1172,6 +1230,8 @@ export async function inspectInterviewParticipantPresence(
           ? new Date(joinedAtMs)
           : null,
       agent,
+      targetSource,
+      targetReason,
     });
   } catch (error) {
     if (isLiveKitNotFoundError(error)) {
@@ -1180,6 +1240,8 @@ export async function inspectInterviewParticipantPresence(
         joined: false,
         joinedAt: null,
         agent: null,
+        targetSource: "none",
+        targetReason: "agent_absent",
       });
     }
     return providerFailure("livekit", {
@@ -1191,42 +1253,204 @@ export async function inspectInterviewParticipantPresence(
   }
 }
 
-function resolveRunningDispatchAgentIdentity(
+function resolveRunningDispatchAgentTarget(
   dispatches: AgentDispatchLike[],
   roomName: string,
   expectedAgentName: string,
-  observedAgentIdentity: string | null
-): string | null {
-  if (dispatches.length !== 1) return null;
-  const dispatch = dispatches[0];
-  if (
-    !dispatch.id.trim() ||
-    dispatch.agentName !== expectedAgentName ||
-    dispatch.room !== roomName
-  ) {
-    return null;
+  observedAgent: ParticipantInfoLike | null
+): {
+  source: LiveKitInterviewTargetSource;
+  reason: LiveKitInterviewTargetReason;
+  identity: string | null;
+} {
+  const exactDispatches = dispatches.filter(
+    (dispatch) =>
+      dispatch.room === roomName && dispatch.agentName === expectedAgentName
+  );
+  if (exactDispatches.length === 0) {
+    return { source: "none", reason: "dispatch_absent", identity: null };
   }
-  const jobs = dispatch.state?.jobs ?? [];
-  if (jobs.length !== 1) return null;
-  const state = jobs[0].state;
+
+  const candidates: Array<{
+    identity: string | null;
+    state: "running" | "pending" | "invalid";
+  }> = [];
+  for (const dispatch of exactDispatches) {
+    if (!dispatch.state || typeof dispatch.state.deletedAt !== "bigint") {
+      candidates.push({ identity: null, state: "invalid" });
+      continue;
+    }
+    if (dispatch.state.deletedAt > BigInt(0)) {
+      continue;
+    }
+    if (dispatch.state.deletedAt !== BigInt(0)) {
+      candidates.push({ identity: null, state: "invalid" });
+      continue;
+    }
+    const jobs = dispatch.state.jobs;
+    if (!Array.isArray(jobs) || jobs.length !== 1) {
+      candidates.push({ identity: null, state: "invalid" });
+      continue;
+    }
+    const job = jobs[0];
+    if (
+      !job ||
+      job.participant != null ||
+      !hasExactRoomJobBinding({
+        dispatch,
+        job,
+        roomName,
+        expectedAgentName,
+      })
+    ) {
+      candidates.push({ identity: null, state: "invalid" });
+      continue;
+    }
+    if (
+      isStructurallyValidTerminalRoomJob({
+        dispatch,
+        job,
+        roomName,
+        expectedAgentName,
+      })
+    ) {
+      continue;
+    }
+    if (job.state?.status === JobStatus.JS_PENDING) {
+      candidates.push({
+        identity: null,
+        state: job.state.endedAt === BigInt(0) ? "pending" : "invalid",
+      });
+      continue;
+    }
+    const identity = validateCurrentRunningRoomJob({
+      dispatch,
+      job,
+      roomName,
+      expectedAgentName,
+      observedAgent,
+    });
+    candidates.push({ identity, state: identity ? "running" : "invalid" });
+  }
+
+  if (candidates.length === 0) {
+    return { source: "none", reason: "dispatch_absent", identity: null };
+  }
+  if (candidates.length !== 1) {
+    return { source: "none", reason: "dispatch_ambiguous", identity: null };
+  }
+  const candidate = candidates[0];
+  if (candidate.state === "pending") {
+    return { source: "none", reason: "dispatch_pending", identity: null };
+  }
+  if (candidate.state !== "running" || !candidate.identity) {
+    return {
+      source: "none",
+      reason: "dispatch_projection_invalid",
+      identity: null,
+    };
+  }
+  return {
+    source: "dispatch",
+    reason: "dispatch_exact",
+    identity: candidate.identity,
+  };
+}
+
+function validateCurrentRunningRoomJob(input: {
+  dispatch: AgentDispatchLike;
+  job: AgentJobLike;
+  roomName: string;
+  expectedAgentName: string;
+  observedAgent: ParticipantInfoLike | null;
+}): string | null {
+  const { dispatch, job, roomName, expectedAgentName, observedAgent } = input;
+  const state = job.state;
   if (
+    !hasExactRoomJobBinding({
+      dispatch,
+      job,
+      roomName,
+      expectedAgentName,
+    }) ||
     !state ||
-    state.status !== LIVEKIT_JOB_STATUS_RUNNING ||
+    state.status !== JobStatus.JS_RUNNING ||
+    state.endedAt !== BigInt(0) ||
     !isBoundedLiveKitParticipantIdentity(state.participantIdentity)
   ) {
     return null;
   }
+  const identity = state.participantIdentity;
   if (
-    observedAgentIdentity !== null &&
-    state.participantIdentity !== observedAgentIdentity
+    observedAgent &&
+    (observedAgent.identity !== identity ||
+      normalizeProjectedAgentName(observedAgent) !== null)
   ) {
     return null;
   }
-  return state.participantIdentity;
+  return identity;
 }
 
-function isBoundedLiveKitParticipantIdentity(identity: string): boolean {
+function isStructurallyValidTerminalRoomJob(input: {
+  dispatch: AgentDispatchLike;
+  job: AgentJobLike;
+  roomName: string;
+  expectedAgentName: string;
+}): boolean {
+  const { dispatch, job, roomName, expectedAgentName } = input;
   return (
+    hasExactRoomJobBinding({
+      dispatch,
+      job,
+      roomName,
+      expectedAgentName,
+    }) &&
+    typeof job.state?.endedAt === "bigint" &&
+    job.state.endedAt > BigInt(0) &&
+    (job.state.status === JobStatus.JS_SUCCESS ||
+      job.state.status === JobStatus.JS_FAILED)
+  );
+}
+
+function hasExactRoomJobBinding(input: {
+  dispatch: AgentDispatchLike;
+  job: AgentJobLike;
+  roomName: string;
+  expectedAgentName: string;
+}): boolean {
+  const { dispatch, job, roomName, expectedAgentName } = input;
+  return (
+    typeof dispatch.id === "string" &&
+    Boolean(dispatch.id.trim()) &&
+    typeof job.id === "string" &&
+    Boolean(job.id.trim()) &&
+    job.dispatchId === dispatch.id &&
+    job.type === JobType.JT_ROOM &&
+    job.room?.name === roomName &&
+    job.agentName === expectedAgentName &&
+    Boolean(job.state)
+  );
+}
+
+function isActiveParticipantState(state: number): boolean {
+  return (
+    state === ParticipantInfo_State.JOINED ||
+    state === ParticipantInfo_State.ACTIVE
+  );
+}
+
+function normalizeProjectedAgentName(
+  participant: Pick<ParticipantInfoLike, "attributes"> | undefined
+): string | null {
+  const value = participant?.attributes?.["lk.agent.name"];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function isBoundedLiveKitParticipantIdentity(
+  identity: unknown
+): identity is string {
+  return (
+    typeof identity === "string" &&
     identity.trim().length > 0 &&
     new TextEncoder().encode(identity).byteLength <=
       LIVEKIT_MAX_PARTICIPANT_IDENTITY_BYTES

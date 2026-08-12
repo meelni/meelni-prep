@@ -11,6 +11,7 @@ import {
   inspectInterviewParticipantPresence,
   sendReliableInterviewRoomData,
   type InterviewParticipantPresence,
+  type LiveKitInterviewTargetSource,
   type LiveKitEnvironment,
   type ProviderResult,
 } from "@/lib/internal/integrations";
@@ -19,6 +20,12 @@ import {
   TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_TOPIC,
   type TranscriptRuntimeSettlementRequest,
 } from "@/lib/internal/agent";
+import {
+  reportRuntimeSettlementStage,
+  type RuntimeSettlementStage,
+  type RuntimeSettlementStageOutcome,
+  type RuntimeSettlementStageReason,
+} from "@/lib/operations/runtime-settlement-stage";
 
 export interface UserEndRuntimeSettlement {
   settled: boolean;
@@ -63,6 +70,14 @@ export interface RequestUserEndRuntimeSettlementDeps {
     writerGeneration: number;
     timeoutMs: number;
   }): Promise<TranscriptRuntimeSettlementReadiness>;
+  now?(): number;
+  onStage?(event: {
+    stage: RuntimeSettlementStage;
+    targetSource: LiveKitInterviewTargetSource;
+    outcome: RuntimeSettlementStageOutcome;
+    reason: RuntimeSettlementStageReason;
+    durationMs: number;
+  }): void;
 }
 
 export type RequestUserEndRuntimeSettlementResult =
@@ -135,6 +150,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
 
+  const targetResolutionStartedAt = runtimeNow(deps);
   const presence = await withinDeadline(
     deps.inspectPresence({
       roomName: session.roomName,
@@ -144,15 +160,85 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     deadline
   );
   if (!presence) {
+    observeStage(deps, {
+      stage: "target_resolution",
+      targetSource: "none",
+      outcome: "failed",
+      reason: "provider_unavailable",
+      durationMs: elapsedRuntime(deps, targetResolutionStartedAt),
+    });
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
   if (!presence.ok) {
+    observeStage(deps, {
+      stage: "target_resolution",
+      targetSource: "none",
+      outcome: "failed",
+      reason: "provider_unavailable",
+      durationMs: elapsedRuntime(deps, targetResolutionStartedAt),
+    });
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
+  const targetSource =
+    presence.data.targetSource ??
+    (presence.data.agent ? "participant" : "none");
+  const targetReason =
+    presence.data.targetReason ??
+    (presence.data.agent ? "participant_exact" : "agent_absent");
   const agentIdentity = presence.data.agent?.identity;
   if (!agentIdentity) {
+    observeStage(deps, {
+      stage: "target_resolution",
+      targetSource,
+      outcome: "deferred",
+      reason: targetReason,
+      durationMs: elapsedRuntime(deps, targetResolutionStartedAt),
+    });
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
+  observeStage(deps, {
+    stage: "target_resolution",
+    targetSource,
+    outcome: "succeeded",
+    reason: targetReason,
+    durationMs: elapsedRuntime(deps, targetResolutionStartedAt),
+  });
+
+  const generationRecheckStartedAt = runtimeNow(deps);
+  const rechecked = await withinDeadline(
+    deps.getSettlementReadiness(input.sessionId),
+    deadline
+  );
+  if (!rechecked || rechecked.currentWriterGeneration !== writerGeneration) {
+    observeStage(deps, {
+      stage: "generation_recheck",
+      targetSource,
+      outcome: "deferred",
+      reason: "generation_replaced",
+      durationMs: elapsedRuntime(deps, generationRecheckStartedAt),
+    });
+    return { ok: false, reason: "runtime_not_ready", retryable: true };
+  }
+  if (rechecked.currentWriterState !== null) {
+    observeStage(deps, {
+      stage: "generation_recheck",
+      targetSource,
+      outcome: "succeeded",
+      reason: "generation_already_settled",
+      durationMs: elapsedRuntime(deps, generationRecheckStartedAt),
+    });
+    return {
+      ok: true,
+      settlement: settlementFromReadiness(rechecked),
+    };
+  }
+  observeStage(deps, {
+    stage: "generation_recheck",
+    targetSource,
+    outcome: "succeeded",
+    reason: "generation_current",
+    durationMs: elapsedRuntime(deps, generationRecheckStartedAt),
+  });
 
   const config = isRecord(session.config) ? session.config : {};
   const hardDeadlineAt = deriveInterviewDeadlineAt({
@@ -173,6 +259,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     writerGeneration,
     cutoffAt,
   });
+  const packetSendStartedAt = runtimeNow(deps);
   const requested = await withinDeadline(
     deps.requestRuntimeSettlement({
       roomName: session.roomName,
@@ -183,12 +270,34 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     deadline
   );
   if (!requested) {
+    observeStage(deps, {
+      stage: "packet_send",
+      targetSource,
+      outcome: "failed",
+      reason: "packet_send_failed",
+      durationMs: elapsedRuntime(deps, packetSendStartedAt),
+    });
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
   if (!requested.ok) {
+    observeStage(deps, {
+      stage: "packet_send",
+      targetSource,
+      outcome: "failed",
+      reason: "packet_send_failed",
+      durationMs: elapsedRuntime(deps, packetSendStartedAt),
+    });
     return { ok: false, reason: "provider_unavailable", retryable: true };
   }
+  observeStage(deps, {
+    stage: "packet_send",
+    targetSource,
+    outcome: "succeeded",
+    reason: "packet_sent",
+    durationMs: elapsedRuntime(deps, packetSendStartedAt),
+  });
 
+  const durableAckStartedAt = runtimeNow(deps);
   const readiness = await withinDeadline(
     deps.waitForRuntimeSettlement({
       sessionId: input.sessionId,
@@ -198,14 +307,38 @@ export async function requestUserEndRuntimeSettlementWorkflow(
     deadline
   );
   if (!readiness) {
+    observeStage(deps, {
+      stage: "durable_ack",
+      targetSource,
+      outcome: "deferred",
+      reason: "ack_missing",
+      durationMs: elapsedRuntime(deps, durableAckStartedAt),
+    });
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
   if (
     readiness.currentWriterGeneration !== writerGeneration ||
     readiness.currentWriterState === null
   ) {
+    observeStage(deps, {
+      stage: "durable_ack",
+      targetSource,
+      outcome: "deferred",
+      reason: "ack_missing",
+      durationMs: elapsedRuntime(deps, durableAckStartedAt),
+    });
     return { ok: false, reason: "runtime_not_ready", retryable: true };
   }
+  observeStage(deps, {
+    stage: "durable_ack",
+    targetSource,
+    outcome: "succeeded",
+    reason:
+      readiness.currentWriterState === "settled"
+        ? "ack_settled"
+        : "ack_degraded",
+    durationMs: elapsedRuntime(deps, durableAckStartedAt),
+  });
 
   return {
     ok: true,
@@ -269,7 +402,32 @@ export function createRequestUserEndRuntimeSettlementDeps(): RequestUserEndRunti
         env,
       }),
     waitForRuntimeSettlement,
+    now: () => performance.now(),
   };
+}
+
+function observeStage(
+  deps: RequestUserEndRuntimeSettlementDeps,
+  event: Parameters<typeof reportRuntimeSettlementStage>[0]
+): void {
+  reportRuntimeSettlementStage(event);
+  try {
+    deps.onStage?.(event);
+  } catch {
+    // Observability never changes settlement behavior.
+  }
+}
+
+function runtimeNow(deps: RequestUserEndRuntimeSettlementDeps): number {
+  const value = deps.now?.() ?? performance.now();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function elapsedRuntime(
+  deps: RequestUserEndRuntimeSettlementDeps,
+  startedAt: number
+): number {
+  return Math.max(0, runtimeNow(deps) - startedAt);
 }
 
 async function waitForRuntimeSettlement(input: {

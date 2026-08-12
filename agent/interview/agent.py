@@ -83,7 +83,9 @@ from shared.transcript_ingest import (
     should_record_unconfirmed_interruption,
 )
 from shared.transcript_settlement import (
+    RuntimeSettlementEvidenceGate,
     fence_session_for_runtime_settlement,
+    report_runtime_settlement_stage,
     settle_session_speech,
 )
 from shared.utils.prompt_builder import build_agent_prompt
@@ -275,6 +277,8 @@ async def entrypoint(ctx: JobContext):
     transcript_integrity_unavailable = False
     runtime_settlement_payload: dict[str, object] | None = None
     runtime_settlement_cutoff: float | None = None
+    runtime_settlement_evidence_gate = RuntimeSettlementEvidenceGate()
+    runtime_settlement_session_fenced = False
     runtime_settlement_lock = asyncio.Lock()
     runtime_settlement_requests = RuntimeSettlementRequestDispatcher()
     server_settlement_tasks: set[asyncio.Task[object]] = set()
@@ -582,20 +586,42 @@ async def entrypoint(ctx: JobContext):
         timeout_seconds: float = 5.0,
     ) -> bool:
         nonlocal runtime_settlement_payload
-        if runtime_settlement_payload is None:
-            runtime_settlement_payload = create_runtime_settlement(
-                session_id=session_id,
-                room_name=room_name,
-                writer_id=transcript_writer_id,
-                writer_generation=transcript_writer_generation,
-                state=state,
-                settled_at=cutoff_at,
+        persist_started_at = time.monotonic()
+        try:
+            if runtime_settlement_payload is None:
+                runtime_settlement_evidence_gate.close()
+                runtime_settlement_payload = create_runtime_settlement(
+                    session_id=session_id,
+                    room_name=room_name,
+                    writer_id=transcript_writer_id,
+                    writer_generation=transcript_writer_generation,
+                    state=state,
+                    settled_at=cutoff_at,
+                )
+                transcript_queue.seal_and_enqueue_runtime_settlement(
+                    runtime_settlement_payload
+                )
+            await transcript_queue.flush(timeout_seconds)
+            persisted = transcript_queue.runtime_settlement_complete
+            report_runtime_settlement_stage(
+                logger,
+                stage="settlement_persist",
+                source="none",
+                outcome="succeeded" if persisted else "deferred",
+                reason="settlement_persisted" if persisted else "settlement_failed",
+                duration_ms=(time.monotonic() - persist_started_at) * 1000,
             )
-            transcript_queue.seal_and_enqueue_runtime_settlement(
-                runtime_settlement_payload
+            return persisted
+        except Exception:
+            report_runtime_settlement_stage(
+                logger,
+                stage="settlement_persist",
+                source="none",
+                outcome="failed",
+                reason="settlement_failed",
+                duration_ms=(time.monotonic() - persist_started_at) * 1000,
             )
-        await transcript_queue.flush(timeout_seconds)
-        return transcript_queue.runtime_settlement_complete
+            raise
 
     async def settle_current_speech(timeout_seconds: float = 5.0) -> bool:
         nonlocal transcript_integrity_unavailable
@@ -625,12 +651,27 @@ async def entrypoint(ctx: JobContext):
                 transcript_queue.set_evidence_cutoff(cutoff_at)
             elif runtime_settlement_cutoff != cutoff_at:
                 transcript_integrity_unavailable = True
+            if not runtime_settlement_evidence_gate.closed:
+                runtime_settlement_evidence_gate.begin_drain(cutoff_at)
 
             foreground_transcript_flush_active = True
+            drain_reported = False
+            drain_started_at = time.monotonic()
             try:
                 await quiesce_background_transcript_flush()
                 if runtime_settlement_payload is not None:
-                    await transcript_queue.flush(5.0)
+                    result = await transcript_queue.flush(5.0)
+                    report_runtime_settlement_stage(
+                        logger,
+                        stage="drain",
+                        source="none",
+                        outcome="succeeded" if result.settled else "deferred",
+                        reason=(
+                            "drain_settled" if result.settled else "drain_degraded"
+                        ),
+                        duration_ms=(time.monotonic() - drain_started_at) * 1000,
+                    )
+                    drain_reported = True
                 else:
                     speech_settled = await settle_current_speech(
                         TRANSCRIPT_SPEECH_SETTLEMENT_TIMEOUT_SECONDS
@@ -658,6 +699,23 @@ async def entrypoint(ctx: JobContext):
                         or transcript_queue.post_cutoff_evidence
                         else "settled"
                     )
+                    report_runtime_settlement_stage(
+                        logger,
+                        stage="drain",
+                        source="none",
+                        outcome=(
+                            "succeeded"
+                            if settlement_state == "settled"
+                            else "deferred"
+                        ),
+                        reason=(
+                            "drain_settled"
+                            if settlement_state == "settled"
+                            else "drain_degraded"
+                        ),
+                        duration_ms=(time.monotonic() - drain_started_at) * 1000,
+                    )
+                    drain_reported = True
                     await persist_runtime_settlement(
                         settlement_state,
                         runtime_settlement_cutoff,
@@ -675,6 +733,17 @@ async def entrypoint(ctx: JobContext):
                         or transcript_queue.post_cutoff_evidence
                     ),
                 }
+            except Exception:
+                if not drain_reported:
+                    report_runtime_settlement_stage(
+                        logger,
+                        stage="drain",
+                        source="none",
+                        outcome="failed",
+                        reason="drain_failed",
+                        duration_ms=(time.monotonic() - drain_started_at) * 1000,
+                    )
+                raise
             finally:
                 foreground_transcript_flush_active = False
 
@@ -699,7 +768,9 @@ async def entrypoint(ctx: JobContext):
 
     @ctx.room.on("data_received")
     def on_runtime_settlement_request(packet) -> None:
+        nonlocal runtime_settlement_session_fenced
         nonlocal runtime_settlement_cutoff, transcript_integrity_unavailable
+        validation_started_at = time.monotonic()
         try:
             request = parse_runtime_settlement_request(
                 data=packet.data,
@@ -712,6 +783,14 @@ async def entrypoint(ctx: JobContext):
                 hard_deadline_at=deadline_at,
             )
         except TranscriptIngestError as error:
+            report_runtime_settlement_stage(
+                logger,
+                stage="packet_validation",
+                source="none",
+                outcome="failed",
+                reason="packet_invalid",
+                duration_ms=(time.monotonic() - validation_started_at) * 1000,
+            )
             log_exception_class(
                 logger,
                 logging.WARNING,
@@ -723,6 +802,14 @@ async def entrypoint(ctx: JobContext):
             return
         cutoff = parse_deadline_at(request["cutoff_at"])
         if cutoff is None:
+            report_runtime_settlement_stage(
+                logger,
+                stage="packet_validation",
+                source="none",
+                outcome="failed",
+                reason="packet_rejected",
+                duration_ms=(time.monotonic() - validation_started_at) * 1000,
+            )
             return
         cutoff_timestamp = cutoff.timestamp()
         if (
@@ -730,41 +817,93 @@ async def entrypoint(ctx: JobContext):
             and runtime_settlement_cutoff != cutoff_timestamp
         ):
             transcript_integrity_unavailable = True
+            report_runtime_settlement_stage(
+                logger,
+                stage="packet_validation",
+                source="none",
+                outcome="failed",
+                reason="packet_rejected",
+                duration_ms=(time.monotonic() - validation_started_at) * 1000,
+            )
             logger.warning("Rejected conflicting runtime settlement cutoff")
             return
-        try:
-            settlement_dispatch = runtime_settlement_requests.prepare(
-                request,
-                lambda: settle_runtime(cutoff_timestamp),
-            )
-        except TranscriptIngestError as error:
-            log_exception_class(
-                logger,
-                logging.WARNING,
-                "Rejected runtime settlement request identity",
-                error,
-            )
-            return
+        report_runtime_settlement_stage(
+            logger,
+            stage="packet_validation",
+            source="none",
+            outcome="succeeded",
+            reason="packet_valid",
+            duration_ms=(time.monotonic() - validation_started_at) * 1000,
+        )
 
         def apply_evidence_cutoff(value: float) -> None:
             nonlocal runtime_settlement_cutoff
             transcript_queue.set_evidence_cutoff(value)
             runtime_settlement_cutoff = value
 
-        try:
-            fence_session_for_runtime_settlement(
-                session,
-                cutoff_at=cutoff_timestamp,
-                set_evidence_cutoff=apply_evidence_cutoff,
-            )
-        except Exception as error:
-            transcript_integrity_unavailable = True
-            log_exception_class(
+        def begin_evidence_drain(value: float) -> None:
+            runtime_settlement_evidence_gate.begin_drain(value)
+
+        fence_attempted = False
+
+        def install_local_fence() -> None:
+            nonlocal fence_attempted
+            nonlocal runtime_settlement_session_fenced
+            fence_attempted = True
+            fence_started_at = time.monotonic()
+            if runtime_settlement_session_fenced:
+                apply_evidence_cutoff(cutoff_timestamp)
+            else:
+                fence_session_for_runtime_settlement(
+                    session,
+                    cutoff_at=cutoff_timestamp,
+                    set_evidence_cutoff=apply_evidence_cutoff,
+                    begin_evidence_drain=begin_evidence_drain,
+                )
+                runtime_settlement_session_fenced = True
+            report_runtime_settlement_stage(
                 logger,
-                logging.ERROR,
-                "Runtime settlement input/output fence failed",
-                error,
+                stage="local_fence",
+                source="none",
+                outcome="succeeded",
+                reason="fence_installed",
+                duration_ms=(time.monotonic() - fence_started_at) * 1000,
             )
+
+        try:
+            settlement_dispatch = runtime_settlement_requests.prepare(
+                request,
+                lambda: settle_runtime(cutoff_timestamp),
+                before_start=install_local_fence,
+            )
+        except Exception:
+            if fence_attempted and not runtime_settlement_evidence_gate.draining:
+                try:
+                    runtime_settlement_evidence_gate.begin_drain(cutoff_timestamp)
+                except Exception:
+                    runtime_settlement_evidence_gate.close()
+            transcript_integrity_unavailable = True
+            if fence_attempted:
+                report_runtime_settlement_stage(
+                    logger,
+                    stage="local_fence",
+                    source="none",
+                    outcome="failed",
+                    reason="fence_failed",
+                    duration_ms=0,
+                )
+                logger.error("Runtime settlement input/output fence failed")
+            else:
+                report_runtime_settlement_stage(
+                    logger,
+                    stage="packet_validation",
+                    source="none",
+                    outcome="failed",
+                    reason="packet_rejected",
+                    duration_ms=(time.monotonic() - validation_started_at) * 1000,
+                )
+                logger.warning("Rejected runtime settlement request identity")
+            return
         if not settlement_dispatch.started:
             return
         task = settlement_dispatch.task
@@ -789,6 +928,10 @@ async def entrypoint(ctx: JobContext):
         *, event_id: str, speaker: str, reason: str, occurred_at: float | None = None
     ) -> None:
         nonlocal transcript_integrity_unavailable, transcript_queue_overflowed
+        if not runtime_settlement_evidence_gate.allows_marker(
+            occurred_at=occurred_at
+        ):
+            return
         if interruption_marker_degrades_candidate_evidence(
             speaker=speaker, reason=reason
         ):
@@ -851,6 +994,11 @@ async def entrypoint(ctx: JobContext):
         try:
             if not isinstance(item, ChatMessage):
                 return
+            measured_ended_at = (
+                item.metrics.get("stopped_speaking_at")
+                if isinstance(item.metrics, dict)
+                else None
+            )
             message_id = item.id if isinstance(item.id, str) else ""
             transcript_event_id = f"{transcript_writer_id}:{message_id}"
             existing_event = transcript_events_by_id.get(transcript_event_id)
@@ -878,7 +1026,17 @@ async def entrypoint(ctx: JobContext):
                     ),
                     speaker="user" if item.role == "user" else "interviewer",
                     reason="canonicalization_failed",
+                    occurred_at=(
+                        measured_ended_at
+                        if has_runtime_measured_delivery(item)
+                        else None
+                    ),
                 )
+                return
+            if not runtime_settlement_evidence_gate.allows_transcript(
+                speaker=str(transcript_data["speaker"]),
+                measured_ended_at=measured_ended_at,
+            ):
                 return
 
             if existing_event is None:
@@ -888,11 +1046,7 @@ async def entrypoint(ctx: JobContext):
                 transcript_events_by_id[transcript_event_id] = transcript_data
             transcript_queue.enqueue_transcript(
                 transcript_data,
-                measured_ended_at=(
-                    item.metrics.get("stopped_speaking_at")
-                    if isinstance(item.metrics, dict)
-                    else None
-                ),
+                measured_ended_at=measured_ended_at,
             )
             logger.info(
                 "Transcript turn queued",
@@ -930,6 +1084,11 @@ async def entrypoint(ctx: JobContext):
                     ),
                     speaker="user" if item.role == "user" else "interviewer",
                     reason="canonicalization_failed",
+                    occurred_at=(
+                        measured_ended_at
+                        if has_runtime_measured_delivery(item)
+                        else None
+                    ),
                 )
             logger.error(
                 "Committed transcript turn normalization failed",
@@ -940,8 +1099,14 @@ async def entrypoint(ctx: JobContext):
     def on_speech_created(event: SpeechCreatedEvent):
         """Persist a textless marker when interrupted output had no heard prefix."""
         handle = event.speech_handle
+        runtime_settlement_evidence_gate.track_speech(handle.id)
 
         def on_speech_done(done_handle) -> None:
+            marker_allowed, marker_occurred_at = (
+                runtime_settlement_evidence_gate.consume_speech_marker(
+                    done_handle.id
+                )
+            )
             has_confirmed_prefix = any(
                 isinstance(item, ChatMessage)
                 and item.role == "assistant"
@@ -955,10 +1120,13 @@ async def entrypoint(ctx: JobContext):
                 has_confirmed_prefix=has_confirmed_prefix,
             ):
                 return
+            if not marker_allowed:
+                return
             queue_integrity_marker(
                 event_id=f"{transcript_writer_id}:{done_handle.id}:unavailable",
                 speaker="interviewer",
                 reason="no_provider_confirmed_prefix",
+                occurred_at=marker_occurred_at,
             )
 
         handle.add_done_callback(on_speech_done)
