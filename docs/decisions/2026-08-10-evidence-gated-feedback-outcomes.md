@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Date: 2026-08-10
+Date: 2026-08-10; amended 2026-08-12 by SAV-411
 
 ## Decision
 
@@ -26,6 +26,22 @@ Transcript turns and integrity markers from one runtime writer share one
 monotonic replay-stable sequence namespace because persistence, settlement,
 and frozen watermarks treat them as one ordered stream.
 
+Qualitative reviewability and numerical precision are separate evidence
+levels. A canonical response that passes the existing quantitative gates may
+be qualitative-only when it contains at least 40 lexical tokens, two distinct
+recognized PM/reasoning signals, and recognized evidence across two bounded
+segments. It never contributes numerical-score breadth unless it independently
+passes the existing strict surface-coherence contract. The long-form fallback
+is deliberately lexical and evidence-based; it does not add another agreement
+or sentence-grammar parser.
+
+Interruption integrity is scoped to the evidence that may have been lost. The
+exact `interviewer/no_provider_confirmed_prefix` marker represents textless
+inaudible interviewer speech and preserves independently trustworthy candidate
+evidence. Candidate markers and every canonicalization failure remain
+degrading. Writer progress and the frozen snapshot use the same closed
+speaker/reason classifier.
+
 ## Consequences
 
 - Short substantive interviews can produce useful feedback without invented
@@ -37,5 +53,11 @@ and frozen watermarks treat them as one ordered stream.
   the same frozen transcript trust boundary. Signal codes are unique within
   their category and action codes are unique across the result, regardless of
   which frozen turn is cited.
+- Full depth requires five strict scoreable responses and numerical scores
+  require four. Any number of qualitative-only fallback responses remains
+  partial and scoreless.
+- Deterministic evidence recognition is not arbitrary semantic proof. Invalid
+  closed provider selections fail as `generation_failed`; they do not become
+  false candidate insufficiency.
 - Provider and authenticated isolated-staging rehearsal remains a separate
   owner-authorized rollout action under the human-owned launch decision.

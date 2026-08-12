@@ -281,6 +281,7 @@ function validation(): SessionValidation {
       totalWords: 800,
       durationSeconds: 1200,
       substantiveResponses: 8,
+      scoreableResponses: 8,
     },
     reasons: [],
     recommendations: [],

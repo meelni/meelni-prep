@@ -304,6 +304,7 @@ function completion(): InterviewSessionSettlement {
       totalWords: 480,
       durationSeconds: 420,
       substantiveResponses: 5,
+      scoreableResponses: 5,
     },
     tier: SessionTier.FULL,
     recommendations: [],

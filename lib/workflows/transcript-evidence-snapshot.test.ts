@@ -22,6 +22,7 @@ function validation(isValid = true): SessionValidation {
       totalWords: isValid ? 500 : 5,
       durationSeconds: isValid ? 1_200 : 10,
       substantiveResponses: isValid ? 5 : 0,
+      scoreableResponses: isValid ? 5 : 0,
     },
     reasons: isValid ? [] : ["Not enough evidence"],
     recommendations: [],
@@ -49,7 +50,7 @@ function writer(
 test("complete evidence requires a healthy gap-free settled prefix", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
-    interruptionCount: 0,
+    interruptions: [],
     writers: [writer()],
     baseValidation: validation(),
   });
@@ -61,7 +62,7 @@ test("complete evidence requires a healthy gap-free settled prefix", () => {
 test("a healthy DB-proven prefix remains eligible as partial without settlement", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
-    interruptionCount: 0,
+    interruptions: [],
     writers: [writer({ settlementState: null, settledAt: null })],
     baseValidation: validation(),
   });
@@ -74,7 +75,7 @@ test("a healthy DB-proven prefix remains eligible as partial without settlement"
 test("a sequence gap fails closed even when the runtime reports settlement", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
-    interruptionCount: 0,
+    interruptions: [],
     writers: [writer({ lastObservedSequence: 22 })],
     baseValidation: validation(),
   });
@@ -86,7 +87,7 @@ test("a sequence gap fails closed even when the runtime reports settlement", () 
 test("a healthy prefix with no substantive answer remains insufficient", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
-    interruptionCount: 0,
+    interruptions: [],
     writers: [writer()],
     baseValidation: validation(false),
   });
@@ -97,7 +98,7 @@ test("a healthy prefix with no substantive answer remains insufficient", () => {
 test("settlement from a fenced generation may precede the terminal cutoff", () => {
   const snapshot = buildTranscriptEvidenceSnapshot({
     cutoffAt,
-    interruptionCount: 0,
+    interruptions: [],
     writers: [
       writer({
         generation: 1,
@@ -108,4 +109,38 @@ test("settlement from a fenced generation may precede the terminal cutoff", () =
     baseValidation: validation(),
   });
   assert.equal(snapshot.state, "complete");
+});
+
+test("a textless interviewer interruption preserves an otherwise healthy partial prefix", () => {
+  const snapshot = buildTranscriptEvidenceSnapshot({
+    cutoffAt,
+    interruptions: [
+      {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+      },
+    ],
+    writers: [writer({ settlementState: null, settledAt: null })],
+    baseValidation: validation(),
+  });
+
+  assert.equal(snapshot.state, "partial");
+  assert.equal(snapshot.validation.isValid, true);
+});
+
+test("candidate and canonicalization interruption markers remain fail-closed", () => {
+  for (const interruption of [
+    { speaker: "user", reason: "no_provider_confirmed_prefix" },
+    { speaker: "interviewer", reason: "canonicalization_failed" },
+  ] as const) {
+    const snapshot = buildTranscriptEvidenceSnapshot({
+      cutoffAt,
+      interruptions: [interruption],
+      writers: [writer()],
+      baseValidation: validation(),
+    });
+
+    assert.equal(snapshot.state, "degraded");
+    assert.equal(snapshot.validation.isValid, false);
+  }
 });

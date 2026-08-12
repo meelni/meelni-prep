@@ -15,7 +15,13 @@ const EMPTY: TranscriptWriterProgress = {
   integrityState: "healthy",
 };
 
-function fact(sequence: number, kind: "turn" | "marker" = "turn") {
+function fact(
+  sequence: number,
+  kind: "turn" | "marker" = "turn",
+  integrityImpact: "preserve" | "degrade" = kind === "marker"
+    ? "degrade"
+    : "preserve"
+) {
   return {
     sequence,
     eventId: `${kind}-${sequence}`,
@@ -23,6 +29,7 @@ function fact(sequence: number, kind: "turn" | "marker" = "turn") {
       `2026-08-07T20:00:${String(sequence).padStart(2, "0")}.000Z`
     ),
     kind,
+    integrityImpact,
   } as const;
 }
 
@@ -79,6 +86,16 @@ test("a committed marker permanently degrades writer integrity", () => {
 
   assert.equal(progress.committedSequence, 1);
   assert.equal(progress.integrityState, "degraded");
+});
+
+test("a scoped interviewer marker advances without degrading candidate evidence", () => {
+  const progress = deriveTranscriptWriterProgress({
+    current: EMPTY,
+    evidence: [fact(1, "marker", "preserve")],
+  });
+
+  assert.equal(progress.committedSequence, 1);
+  assert.equal(progress.integrityState, "healthy");
 });
 
 test("conflicting facts for one writer sequence fail closed as degraded", () => {

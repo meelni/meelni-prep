@@ -258,9 +258,10 @@ test("unknown evidence-limited selection remains generation failure, not insuffi
       completionStats: {
         totalTurns: 2,
         userTurns: 1,
-        totalWords: 24,
+        totalWords: 48,
         durationSeconds: 20,
         substantiveResponses: 1,
+        scoreableResponses: 0,
       },
     })
   );
@@ -304,6 +305,39 @@ test("unknown evidence-limited selection remains generation failure, not insuffi
   assert.equal(store.current.statusReason, failureReason);
 });
 
+test("five long-form fallback responses never unlock scored mode", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 300,
+        durationSeconds: 240,
+        substantiveResponses: 5,
+        scoreableResponses: 0,
+      },
+    })
+  );
+  let observedMode: "scored" | "evidence_limited" | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observedMode = input.mode;
+      throw new FeedbackV2ParseError(
+        "finding_text_invalid",
+        "provider supplied no valid closed selection"
+      );
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /provider supplied no valid closed selection/
+  );
+  assert.equal(observedMode, "evidence_limited");
+  assert.notEqual(store.current.status, "skipped");
+});
+
 test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
   const turns = [
     {
@@ -326,6 +360,7 @@ test("duplicate evidence-limited selection identities fail before persistence as
         totalWords: 22,
         durationSeconds: 24,
         substantiveResponses: 1,
+        scoreableResponses: 1,
       },
     })
   );
@@ -553,6 +588,7 @@ function record(
       totalWords: 100,
       durationSeconds: 60,
       substantiveResponses: 5,
+      scoreableResponses: 5,
     },
     dispatchStatus: "sent",
     dispatchClaimedAt: NOW,

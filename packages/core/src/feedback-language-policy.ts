@@ -2517,6 +2517,50 @@ export function hasRecognizedCandidateEvidenceSignal(quote: string): boolean {
   return countRecognizedCandidateEvidenceSignals(quote) > 0;
 }
 
+/**
+ * Qualitative-only feedback accepts long recognized evidence across multiple
+ * segments without pretending another deterministic grammar parser proves
+ * meaning. Canonical security and quantitative gates are enforced by the
+ * caller; closed provider selections remain the semantic coaching boundary.
+ */
+export interface EvidenceLimitedCandidateResponseAnalysis {
+  lexicalTokenCount: number;
+  recognizedEvidenceSignalCount: number;
+  signalBearingSegmentCount: number;
+  qualifies: boolean;
+}
+
+export function analyzeEvidenceLimitedCandidateResponseSignal(
+  text: string
+): EvidenceLimitedCandidateResponseAnalysis {
+  const analysis = analyzeSurfaceCoherence(text);
+  const recognizedEvidenceSignalCount =
+    countRecognizedCandidateEvidenceSignals(text);
+  const lexicalTokenCount = analysis.words.length;
+  const signalBearingSegmentCount = text
+    .split(/[.!?;:\n]+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter(
+      (segment) => countRecognizedCandidateEvidenceSignals(segment) > 0
+    ).length;
+  return {
+    lexicalTokenCount,
+    recognizedEvidenceSignalCount,
+    signalBearingSegmentCount,
+    qualifies:
+      lexicalTokenCount >= 40 &&
+      recognizedEvidenceSignalCount >= 2 &&
+      signalBearingSegmentCount >= 2,
+  };
+}
+
+export function hasEvidenceLimitedCandidateResponseSignal(
+  text: string
+): boolean {
+  return analyzeEvidenceLimitedCandidateResponseSignal(text).qualifies;
+}
+
 /** A scoreable response needs both PM/reasoning signal and coherent language. */
 export function hasSubstantiveCandidateResponseSignal(text: string): boolean {
   const analysis = analyzeSurfaceCoherence(text);

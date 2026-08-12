@@ -96,15 +96,18 @@ each canonical turn or marker, the database records the highest observed
 sequence and the highest contiguous committed sequence for that writer.
 Out-of-order delivery may temporarily create a gap; the committed watermark
 does not cross it, and arrival of the missing sequence converges the already
-stored suffix. A marker permanently degrades the writer. A `settled` assertion
+stored suffix. A candidate marker or any `canonicalization_failed` marker
+permanently degrades the writer. The exact
+`interviewer/no_provider_confirmed_prefix` marker advances the shared sequence
+but preserves writer integrity because it contains no candidate evidence. A `settled` assertion
 is rejected while the registered writer has a gap or degraded watermark.
 
 Terminal completion freezes the per-writer committed boundaries and the
 terminal cutoff. Complete evidence requires every registered generation to
 have durable `settled` proof and no integrity fault. Missing settlement can
 produce partial feedback only when the frozen database prefix is healthy,
-gap-free, and independently satisfies the substantive-evidence boundary. A gap,
-marker, degraded settlement, or malformed boundary fails closed.
+gap-free, and independently satisfies the reviewable-evidence boundary. A gap,
+degrading marker, degraded settlement, or malformed boundary fails closed.
 Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.
 

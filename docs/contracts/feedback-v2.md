@@ -92,8 +92,12 @@ skipped and receive no scored v2 result.
 ## Evidence-limited companion result
 
 `feedback.evidence-limited.v2` is the write contract for a healthy completed
-interview with at least one trustworthy substantive candidate answer but fewer
-than four distinct substantive answers. It stores:
+interview with at least one trustworthy reviewable candidate answer but fewer
+than four distinct strict scoreable answers. Long-form recognized evidence may
+be reviewable without being scoreable when it passes the existing quantitative
+gates, contains at least 40 lexical tokens and two distinct PM/reasoning
+signals, and distributes recognized evidence across two bounded segments. It
+stores:
 
 | Field             | Value or rule                                  |
 | ----------------- | ---------------------------------------------- |
@@ -481,7 +485,7 @@ before both eligibility and model evaluation:
   substantive corrections remain distinct evidence. One-token terminal
   corrections among `retention`, `conversion`, and `revenue` are explicitly
   preserved rather than being mistaken for a replay-family suffix;
-- substantive answers require Unicode-aware lexical/grapheme diversity and a
+- strict scoreable answers require Unicode-aware lexical/grapheme diversity and a
   structural language scaffold. Spaced English responses require an ordered
   main clause plus a grammatically plausible dependent, relative, coordinated,
   enumerated, or fronted-context structure. A separate multi-sentence path uses
@@ -518,6 +522,17 @@ before both eligibility and model evaluation:
   Keyword lists, varied filler, repeated graphemes, and arbitrary non-Latin
   strings cannot create numerical precision; unknown language families fail
   honestly rather than qualifying from grapheme diversity alone;
+- qualitative-only long-form evidence does not use the English agreement,
+  sentence-ownership, or predicate-complement parser. Canonical preparation and
+  the existing quantitative diversity gates still run first. The fallback
+  requires 40 lexical tokens, two distinct recognized PM/reasoning signals,
+  and recognized evidence across two punctuation-bounded segments. It
+  contributes reviewability but never scoreable breadth. The closed
+  evidence-limited provider selection remains the semantic coaching gate;
+  invalid selections are `generation_failed`, not candidate insufficiency.
+  Deterministic recognition is not a claim of arbitrary semantic proof, and
+  the existing strict path intentionally continues to send structurally
+  coherent but implausible answers to the evaluator for weak grounded feedback;
 - no usable user speech routes to `insufficient`;
 - a security-only NFKC scan projection removes default-ignorable separators and
   normalizes Unicode punctuation without changing stored transcript or evidence

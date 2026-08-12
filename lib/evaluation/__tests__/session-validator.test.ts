@@ -323,6 +323,7 @@ describe("Session Validator", () => {
         userTurns: 3,
         durationSeconds: 390,
         substantiveResponses: 3,
+        scoreableResponses: 3,
       });
       expect(validation.reasons).toHaveLength(0);
     });
@@ -457,6 +458,7 @@ describe("Session Validator", () => {
           totalWords: 500,
           durationSeconds: 1380, // 23 minutes
           substantiveResponses: 10,
+          scoreableResponses: 10,
         },
         reasons: [],
         recommendations: ["Excellent session length"],
@@ -479,6 +481,7 @@ describe("Session Validator", () => {
           totalWords: 20,
           durationSeconds: 120,
           substantiveResponses: 0,
+          scoreableResponses: 0,
         },
         reasons: ["Too few turns: 2 < 5 required"],
         recommendations: [],

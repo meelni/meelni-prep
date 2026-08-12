@@ -4,9 +4,11 @@ import {
   deriveInterviewTerminalState,
   isInterviewTerminalState,
   projectLegacyInterviewSessionStatus,
+  transcriptInterruptionDegradesCandidateEvidence,
   type InterviewLifecycleState,
   type InterviewBillingFault,
   type InterviewTerminalReason,
+  type TranscriptInterruptionEvidence,
 } from "@meelni/core";
 
 import {
@@ -136,7 +138,7 @@ export async function finalizeInterviewSession(
       }) ??
       stored.endingAt ??
       now;
-    const [storedTurns, interruptionCounts, liveWriterEvidence, frozenWriters] =
+    const [storedTurns, interruptions, liveWriterEvidence, frozenWriters] =
       await Promise.all([
         tx
           .select({
@@ -153,7 +155,10 @@ export async function finalizeInterviewSession(
           .where(eq(transcriptTurn.sessionId, input.sessionId))
           .orderBy(...transcriptChronologicalOrder()),
         tx
-          .select({ value: sql<number>`count(*)::int` })
+          .select({
+            speaker: transcriptInterruptionMarker.speaker,
+            reason: transcriptInterruptionMarker.reason,
+          })
           .from(transcriptInterruptionMarker)
           .where(eq(transcriptInterruptionMarker.sessionId, input.sessionId)),
         tx
@@ -242,14 +247,16 @@ export async function finalizeInterviewSession(
       );
     });
     const baseValidation = calculateValidatedSessionFromTurns(turns);
-    const unavailableInterruptions = interruptionCounts[0]?.value ?? 0;
+    const degradingInterruptionCount = interruptions.filter(
+      transcriptInterruptionDegradesCandidateEvidence
+    ).length;
     const runtimeWriterStates = writerEvidence.map((writer) => ({
       generation: writer.generation,
       state: writer.settlementState,
     }));
     const evidenceSnapshot = buildTranscriptEvidenceSnapshot({
       cutoffAt,
-      interruptionCount: unavailableInterruptions,
+      interruptions,
       writers: writerEvidence,
       baseValidation,
     });
@@ -265,7 +272,7 @@ export async function finalizeInterviewSession(
         missingRuntimeSettlement:
           runtimeWriterStates.length === 0 ||
           runtimeWriterStates.some((writer) => writer.state === null),
-        unavailableInterruptions,
+        degradingInterruptionCount,
       });
     const hasIntegrityFault =
       evidenceSnapshot.state === "degraded" &&
@@ -542,6 +549,14 @@ export async function finalizeInterviewSession(
     if (!feedbackRecord) {
       throw new Error("Interview completion is missing its feedback result");
     }
+    const completionStats = feedbackRecord.completionStats
+      ? {
+          ...feedbackRecord.completionStats,
+          scoreableResponses:
+            feedbackRecord.completionStats.scoreableResponses ??
+            feedbackRecord.completionStats.substantiveResponses,
+        }
+      : validation.stats;
 
     return {
       ok: true,
@@ -558,7 +573,7 @@ export async function finalizeInterviewSession(
       deadlineRoomCleanupStatus: hardDeadlineOwnsCleanup
         ? (stored.deadlineRoomCleanupStatus ?? "pending")
         : stored.deadlineRoomCleanupStatus,
-      stats: feedbackRecord.completionStats ?? validation.stats,
+      stats: completionStats,
       tier:
         (feedbackRecord.completionTier as SessionValidation["tier"] | null) ??
         validation.tier,
@@ -569,14 +584,14 @@ export async function finalizeInterviewSession(
 }
 
 export function classifyTranscriptEvidence(input: {
-  interruptionCount: number;
+  interruptions: TranscriptInterruptionEvidence[];
   runtimeWriterStates: Array<{
     generation: number;
     state: "settled" | "degraded" | null;
   }>;
 }): "available" | "degraded" | "missing" {
   if (
-    input.interruptionCount > 0 ||
+    input.interruptions.some(transcriptInterruptionDegradesCandidateEvidence) ||
     input.runtimeWriterStates.length === 0 ||
     input.runtimeWriterStates.some((writer) => writer.state === null)
   ) {
@@ -619,7 +634,7 @@ export function shouldRefineProvisionalTerminalReason(input: {
 
 export function applyTranscriptIntegrityValidation(input: {
   baseValidation: SessionValidation;
-  interruptionCount: number;
+  interruptions: TranscriptInterruptionEvidence[];
   runtimeWriterStates: Array<{
     generation: number;
     state: "settled" | "degraded" | null;
@@ -630,6 +645,9 @@ export function applyTranscriptIntegrityValidation(input: {
     (writer) => writer.state === "degraded"
   );
   const missingWriters = writerStates.filter((writer) => writer.state === null);
+  const degradingInterruptionCount = input.interruptions.filter(
+    transcriptInterruptionDegradesCandidateEvidence
+  ).length;
   const integrityReasons = [
     ...(writerStates.length === 0
       ? ["Voice runtime writer registration was not confirmed"]
@@ -644,9 +662,9 @@ export function applyTranscriptIntegrityValidation(input: {
           `Voice runtime transcript settlement was not confirmed for ${missingWriters.length} writer generation(s)`,
         ]
       : []),
-    ...(input.interruptionCount > 0
+    ...(degradingInterruptionCount > 0
       ? [
-          `Transcript integrity unavailable for ${input.interruptionCount} turn(s)`,
+          `Transcript integrity unavailable for ${degradingInterruptionCount} turn(s)`,
         ]
       : []),
   ];
@@ -682,12 +700,12 @@ export function shouldPreservePostUsableDisconnectCharge(input: {
     | "disconnect_timeout";
   usableAt: Date | null;
   missingRuntimeSettlement: boolean;
-  unavailableInterruptions: number;
+  degradingInterruptionCount: number;
 }): boolean {
   return (
     input.requestedTerminalReason === "disconnect_timeout" &&
     input.usableAt !== null &&
     input.missingRuntimeSettlement &&
-    input.unavailableInterruptions === 0
+    input.degradingInterruptionCount === 0
   );
 }
