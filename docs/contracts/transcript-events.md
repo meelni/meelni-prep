@@ -211,7 +211,18 @@ attempts a short, bounded reliable metadata-only settlement request before
 terminalization, but runtime timeout, absence, or provider failure cannot reject
 the user's end intent. The runtime interrupts active interviewer playout,
 commits in-progress candidate speech when possible, and drains its bounded
-in-memory outbox. The terminal transaction then calculates feedback eligibility
+in-memory outbox. A trusted packet synchronously freezes the evidence cutoff,
+installs a cutoff-aware callback gate, disables input/output, and interrupts
+speech before its asynchronous settlement task is created. During drain, only a
+canonical candidate or confirmed interviewer turn measured at or before the
+cutoff may enqueue. A marker requires an explicit trustworthy occurrence at or
+before the cutoff; scheduled interviewer speech registered before drain may
+emit its single no-prefix marker at exact End. This retains a deliberate
+in-progress candidate commit and any confirmed heard prefix. Unmeasured,
+post-cutoff, post-gate, and post-settlement callbacks are rejected locally. A
+partial session-fence failure starts no task and keeps that cutoff gate active;
+an exact retry must finish the session fence before settlement can run. The
+terminal transaction then calculates feedback eligibility
 from durable turns, markers, registered writers, and per-generation settlements.
 Missing or degraded proof fails closed and skips feedback.
 

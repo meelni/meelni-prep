@@ -134,6 +134,7 @@
     "@elevenlabs/elevenlabs-js": "^2.22.0",
     "@elevenlabs/react": "^0.9.1",
     "@livekit/components-react": "^2.9.15",
+    "@livekit/protocol": "1.49.0",
     "@meelni/agent": "file:packages/agent",
     "@meelni/core": "file:packages/core",
     "@meelni/integrations": "file:packages/integrations",

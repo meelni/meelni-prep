@@ -224,6 +224,8 @@ class RuntimeSettlementRequestDispatcher:
         self,
         request: Dict[str, object],
         operation: Callable[[], Awaitable[object]],
+        *,
+        before_start: Callable[[], None] | None = None,
     ) -> RuntimeSettlementDispatch:
         if self._closed:
             raise TranscriptIngestQueueSealed(
@@ -231,7 +233,11 @@ class RuntimeSettlementRequestDispatcher:
             )
         if not callable(operation):
             raise TranscriptIngestError("settlement replay operation must be callable")
+        if before_start is not None and not callable(before_start):
+            raise TranscriptIngestError("settlement pre-start fence must be callable")
         self._ledger.accept(request)
+        if before_start is not None:
+            before_start()
         request_id = str(request["request_id"])
         existing = self._tasks.get(request_id)
         if existing is not None:
