@@ -2046,6 +2046,37 @@ test("joined answer-block security rejects a control split across ten finals", (
   }
 });
 
+test("replacement writers cannot turn overlapping candidate speech into reviewable blocks", () => {
+  const first = turn(
+    1,
+    "user",
+    "I would prioritize working parents because recurring scheduling failures create the clearest coordination problem.",
+    10
+  );
+  const overlappingReplacement = {
+    ...turn(
+      1,
+      "user",
+      "I would validate that problem through weekly interviews before selecting the first product workflow.",
+      20
+    ),
+    eventId: "replacement-writer:1",
+    writerId: "replacement-writer",
+    writerGeneration: 2,
+  };
+  const validation = calculateValidatedSessionFromTurns(
+    [first, overlappingReplacement],
+    { sessionEndAt: overlappingReplacement.endedAt }
+  );
+
+  assert.equal(validation.isValid, false);
+  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
+  assert.equal(
+    validation.evidenceFailureReason,
+    "transcript_integrity_degraded"
+  );
+});
+
 function splitSyntheticWords(text: string, count: number): string[] {
   const words = text.split(" ");
   return Array.from({ length: count }, (_, index) => {

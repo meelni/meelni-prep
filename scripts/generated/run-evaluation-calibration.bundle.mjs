@@ -6433,6 +6433,230 @@ function classifyCandidateResponseEvidence(input) {
   return hasEvidenceLimitedCandidateResponseSignal(input.text) ? "evidence_limited" : "insufficient";
 }
 
+// packages/core/src/answer-blocks.ts
+var ANSWER_BLOCK_CONTRACT_VERSION = 1;
+var ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS = 5e3;
+function deriveCandidateAnswerBlocks(events, options = {}) {
+  const maxContinuationGapMs = options.maxContinuationGapMs ?? ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS;
+  if (!Number.isSafeInteger(maxContinuationGapMs) || maxContinuationGapMs < 0) {
+    throw new Error("answer_block_invalid_max_continuation_gap");
+  }
+  const blocks = [];
+  const boundaries = [];
+  const issues = [];
+  const eventIds = /* @__PURE__ */ new Set();
+  const lastSequenceByWriter = /* @__PURE__ */ new Map();
+  let currentPrompt = [];
+  let current = null;
+  let previousTurn = null;
+  let sessionEnded = false;
+  const closeCurrent = (closedBy, boundary = {
+    afterEventId: current?.response.at(-1)?.eventId ?? null,
+    beforeEventId: null,
+    boundaryEventId: null
+  }) => {
+    if (!current) return;
+    const response = current.response;
+    const ordinal = blocks.length + 1;
+    boundaries.push({ kind: closedBy, ...boundary });
+    blocks.push({
+      contractVersion: ANSWER_BLOCK_CONTRACT_VERSION,
+      answerBlockId: `answer-block:${String(ordinal).padStart(4, "0")}`,
+      ordinal,
+      prompt: current.prompt,
+      response,
+      promptText: joinBlockText(current.prompt),
+      responseText: joinBlockText(response),
+      startedAtMs: response[0].startedAtMs,
+      endedAtMs: response.at(-1).endedAtMs,
+      closedBy
+    });
+    current = null;
+  };
+  const closeOrRecordBoundary = (kind, boundary) => {
+    if (current) closeCurrent(kind, boundary);
+    else boundaries.push({ kind, ...boundary });
+  };
+  for (const event of events) {
+    const eventId = "eventId" in event ? event.eventId : null;
+    if (sessionEnded) {
+      issues.push({ code: "event_after_session_end", eventId });
+      continue;
+    }
+    if (eventId && eventIds.has(eventId)) {
+      closeOrRecordBoundary("canonicalization_failure", {
+        afterEventId: current?.response.at(-1)?.eventId ?? null,
+        beforeEventId: eventId,
+        boundaryEventId: eventId
+      });
+      issues.push({ code: "duplicate_event_id", eventId });
+      currentPrompt = [];
+      previousTurn = null;
+      continue;
+    }
+    if (eventId) eventIds.add(eventId);
+    if (event.kind === "session_end") {
+      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+        closeOrRecordBoundary("invalid_timing", {
+          afterEventId: previousTurn.eventId,
+          beforeEventId: null,
+          boundaryEventId: null
+        });
+        issues.push({
+          code: "invalid_ledger_order",
+          eventId: previousTurn.eventId
+        });
+      }
+      closeOrRecordBoundary("session_end", {
+        afterEventId: previousTurn?.eventId ?? null,
+        beforeEventId: null,
+        boundaryEventId: null
+      });
+      currentPrompt = [];
+      previousTurn = null;
+      sessionEnded = true;
+      continue;
+    }
+    if (event.kind === "cutoff") {
+      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+        closeOrRecordBoundary("invalid_timing", {
+          afterEventId: previousTurn.eventId,
+          beforeEventId: null,
+          boundaryEventId: null
+        });
+        issues.push({
+          code: "invalid_ledger_order",
+          eventId: previousTurn.eventId
+        });
+      }
+      closeOrRecordBoundary("session_cutoff", {
+        afterEventId: previousTurn?.eventId ?? null,
+        beforeEventId: null,
+        boundaryEventId: null
+      });
+      currentPrompt = [];
+      previousTurn = null;
+      sessionEnded = true;
+      continue;
+    }
+    const sequenceIssue = recordWriterSequence(event, lastSequenceByWriter);
+    if (sequenceIssue) {
+      closeOrRecordBoundary(sequenceIssue.boundary, {
+        afterEventId: previousTurn?.eventId ?? null,
+        beforeEventId: event.eventId,
+        boundaryEventId: null
+      });
+      if (sequenceIssue.fatal) {
+        issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
+        currentPrompt = [];
+        previousTurn = null;
+      }
+    }
+    if (event.kind === "integrity_boundary") {
+      const boundaryKind = event.reason === "canonicalization_failed" ? "canonicalization_failure" : "interruption_marker";
+      closeOrRecordBoundary(boundaryKind, {
+        afterEventId: current?.response.at(-1)?.eventId ?? null,
+        beforeEventId: null,
+        boundaryEventId: event.eventId
+      });
+      if (event.reason === "canonicalization_failed" || event.speaker === "user") {
+        issues.push({ code: "integrity_boundary", eventId: event.eventId });
+      }
+      currentPrompt = [];
+      previousTurn = null;
+      continue;
+    }
+    if (!isCanonicalAnswerBlockTurn(event)) {
+      closeOrRecordBoundary("canonicalization_failure", {
+        afterEventId: previousTurn?.eventId ?? null,
+        beforeEventId: event.eventId || null,
+        boundaryEventId: event.eventId || null
+      });
+      issues.push({ code: "invalid_turn", eventId: event.eventId || null });
+      currentPrompt = [];
+      previousTurn = null;
+      continue;
+    }
+    const source = toSourceTurn(event);
+    const transition2 = previousTurn ? classifyTurnTransition(previousTurn, event, maxContinuationGapMs) : null;
+    if (transition2 && transition2 !== sequenceIssue?.boundary) {
+      closeOrRecordBoundary(transition2, {
+        afterEventId: previousTurn?.eventId ?? null,
+        beforeEventId: event.eventId,
+        boundaryEventId: null
+      });
+      if (transition2 === "invalid_timing") {
+        issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
+        currentPrompt = [];
+      }
+    }
+    if (event.speaker === "interviewer") {
+      currentPrompt = previousTurn?.speaker === "interviewer" && transition2 === null ? [...currentPrompt, source] : [source];
+    } else if (current) {
+      current.response.push(source);
+    } else {
+      current = { prompt: [...currentPrompt], response: [source] };
+    }
+    previousTurn = event;
+  }
+  if (current) closeCurrent("input_exhausted");
+  return {
+    blocks,
+    boundaries,
+    issues,
+    eligible: issues.length === 0
+  };
+}
+function recordWriterSequence(event, lastSequenceByWriter) {
+  const writerKey = `${event.writerGeneration}\0${event.writerId}`;
+  const previousSequence = lastSequenceByWriter.get(writerKey);
+  lastSequenceByWriter.set(writerKey, event.sequence);
+  if (previousSequence === void 0 || event.sequence === previousSequence + 1) {
+    return null;
+  }
+  return {
+    boundary: "sequence_gap",
+    fatal: event.sequence <= previousSequence
+  };
+}
+function classifyTurnTransition(previous, current, maxContinuationGapMs) {
+  if (current.endedAtMs < previous.startedAtMs) return "invalid_timing";
+  if (previous.speaker !== current.speaker) {
+    return current.speaker === "interviewer" ? "interviewer_follow_up" : "speaker_change";
+  }
+  if (current.startedAtMs < previous.endedAtMs) return "invalid_timing";
+  if (previous.writerGeneration !== current.writerGeneration || previous.writerId !== current.writerId) {
+    return "writer_generation";
+  }
+  if (previous.section !== current.section) return "section_change";
+  if (current.startedAtMs - previous.endedAtMs > maxContinuationGapMs) {
+    return "long_silence";
+  }
+  return null;
+}
+function isCanonicalAnswerBlockTurn(turn) {
+  return turn.contractVersion === 2 && turn.isFinal === true && Boolean(turn.eventId) && Boolean(turn.writerId) && Number.isSafeInteger(turn.writerGeneration) && turn.writerGeneration > 0 && Number.isSafeInteger(turn.sequence) && turn.sequence > 0 && (turn.speaker === "user" || turn.speaker === "interviewer") && Boolean(turn.text.trim()) && Number.isFinite(turn.startedAtMs) && Number.isFinite(turn.endedAtMs) && turn.endedAtMs > turn.startedAtMs && Number.isSafeInteger(turn.audioDurationMs) && turn.audioDurationMs > 0 && Math.abs(turn.endedAtMs - turn.startedAtMs - turn.audioDurationMs) <= 1 && Boolean(turn.section) && (turn.deliveryState === "delivered" || turn.deliveryState === "partially_delivered");
+}
+function toSourceTurn(turn) {
+  return {
+    eventId: turn.eventId,
+    writerId: turn.writerId,
+    writerGeneration: turn.writerGeneration,
+    sequence: turn.sequence,
+    speaker: turn.speaker,
+    text: turn.text,
+    textUtf8Bytes: new TextEncoder().encode(turn.text),
+    startedAtMs: turn.startedAtMs,
+    endedAtMs: turn.endedAtMs,
+    audioDurationMs: turn.audioDurationMs,
+    section: turn.section,
+    deliveryState: turn.deliveryState
+  };
+}
+function joinBlockText(turns) {
+  return turns.map((turn) => turn.text.trim()).join(" ").replace(/\s+/gu, " ").trim();
+}
+
 // packages/core/src/session-lifecycle.ts
 var INTERVIEW_TERMINAL_STATES = [
   "completed",
@@ -8363,15 +8587,22 @@ function timedTurns(id, turns) {
   const start = Date.parse("2026-07-01T12:00:00.000Z");
   let userSequence = 0;
   let interviewerSequence = 0;
-  return turns.map(([speaker, text2, startedSeconds, endedSeconds]) => {
-    const sequence = speaker === "user" ? ++userSequence : ++interviewerSequence;
+  return turns.map(([speaker, text2, startedSeconds, endedSeconds], index2) => {
+    const sequence = index2 + 1;
+    const speakerSequence = speaker === "user" ? ++userSequence : ++interviewerSequence;
     return {
       contractVersion: 2,
-      eventId: `${id}:${speaker}:${sequence}`,
+      eventId: `${id}:${speaker}:${speakerSequence}`,
+      writerId: `${id}:writer`,
+      writerGeneration: 1,
+      sequence,
       speaker,
       text: text2,
       startedAt: new Date(start + startedSeconds * 1e3),
-      endedAt: new Date(start + endedSeconds * 1e3)
+      endedAt: new Date(start + endedSeconds * 1e3),
+      audioMs: (endedSeconds - startedSeconds) * 1e3,
+      section: id.split(":", 1)[0] || "product_sense",
+      deliveryState: "delivered"
     };
   });
 }
@@ -20213,9 +20444,18 @@ function classifyUserResponseEvidence(text2) {
 function tokenizeWords(text2) {
   return text2.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu) ?? [];
 }
-function calculateValidatedSessionFromTurns(turns) {
+function calculateValidatedSessionFromTurns(turns, options = {}) {
   const hasCanonicalFields = turns.some(
-    (turn) => turn.contractVersion === 2 || turn.eventId != null
+    (turn) => [
+      turn.contractVersion,
+      turn.eventId,
+      turn.writerId,
+      turn.writerGeneration,
+      turn.sequence,
+      turn.audioMs,
+      turn.section,
+      turn.deliveryState
+    ].some((value) => value != null)
   );
   if (!hasCanonicalFields) {
     return validateSessionStats(calculateSessionStatsFromTurns(turns));
@@ -20228,7 +20468,8 @@ function calculateValidatedSessionFromTurns(turns) {
       eventId: turn.eventId ?? null,
       speaker: turn.speaker,
       text: turn.text,
-      contractVersion: turn.contractVersion ?? null
+      contractVersion: turn.contractVersion ?? null,
+      deliveryState: turn.deliveryState ?? null
     })),
     { requireContractV2: true }
   );
@@ -20237,21 +20478,52 @@ function calculateValidatedSessionFromTurns(turns) {
       (turn) => turn.eventId ? [[turn.eventId, turn]] : []
     )
   );
-  const stats = calculateSessionStatsFromTurns(
-    prepared.transcript.map((turn) => {
-      const source = byEventId.get(turn.eventId);
-      return {
-        speaker: turn.speaker,
-        text: turn.text,
-        startedAt: source?.startedAt ?? null,
-        endedAt: source?.endedAt ?? null
-      };
-    })
+  const answerBlockDerivation = deriveCandidateAnswerBlocks(
+    orderAnswerBlockLedgerEvents([
+      ...prepared.transcript.flatMap((turn) => {
+        const source = byEventId.get(turn.eventId);
+        return source ? toAnswerBlockTurn(source) : [];
+      }),
+      ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
+      ...options.sessionEndAt && Number.isFinite(options.sessionEndAt.getTime()) ? [
+        {
+          kind: "session_end",
+          occurredAtMs: options.sessionEndAt.getTime()
+        }
+      ] : []
+    ])
   );
+  const preparedAnswerBlocks = answerBlockDerivation.blocks.map(
+    (block) => prepareFeedbackTranscript([
+      {
+        eventId: block.answerBlockId,
+        speaker: "user",
+        text: block.responseText
+      }
+    ])
+  );
+  const evidenceLevels = preparedAnswerBlocks.flatMap(
+    (preparedBlock) => preparedBlock.transcript.map(
+      (turn) => classifyUserResponseEvidence(turn.text)
+    )
+  );
+  const stats = {
+    ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
+    substantiveResponses: evidenceLevels.filter(
+      (level) => level !== "insufficient"
+    ).length,
+    scoreableResponses: evidenceLevels.filter((level) => level === "scoreable").length
+  };
   const thresholdValidation = validateSessionStats(stats);
-  if (prepared.eligible && !hasInvalidTiming) return thresholdValidation;
-  const hasCorruptEvidence = hasInvalidTiming || prepared.issues.some(
+  if (prepared.eligible && answerBlockDerivation.eligible && preparedAnswerBlocks.every((preparedBlock) => preparedBlock.eligible) && !hasInvalidTiming) {
+    return thresholdValidation;
+  }
+  const hasCorruptEvidence = hasInvalidTiming || !answerBlockDerivation.eligible || prepared.issues.some(
     (issue) => issue.fatal && (issue.code === "malformed_event" || issue.code === "prompt_injection")
+  ) || preparedAnswerBlocks.some(
+    (preparedBlock) => preparedBlock.issues.some(
+      (issue) => issue.fatal && (issue.code === "malformed_event" || issue.code === "prompt_injection")
+    )
   );
   return {
     tier: turns.length === 0 ? "abandoned" /* ABANDONED */ : "insufficient" /* INSUFFICIENT */,
@@ -20263,6 +20535,116 @@ function calculateValidatedSessionFromTurns(turns) {
     recommendations: [],
     evidenceFailureReason: hasCorruptEvidence ? "transcript_integrity_degraded" : "no_reviewable_answer"
   };
+}
+function calculateAnswerBlockSessionStats(blocks) {
+  const promptGroups = /* @__PURE__ */ new Map();
+  for (const block of blocks) {
+    if (block.prompt.length === 0) continue;
+    promptGroups.set(
+      JSON.stringify(block.prompt.map((turn) => turn.eventId)),
+      block.prompt
+    );
+  }
+  const logicalTurns = [
+    ...[...promptGroups.values()].map((prompt) => ({
+      text: prompt.map((turn) => turn.text.trim()).join(" "),
+      startedAtMs: prompt[0].startedAtMs,
+      endedAtMs: prompt.at(-1).endedAtMs
+    })),
+    ...blocks.map((block) => ({
+      text: block.responseText,
+      startedAtMs: block.startedAtMs,
+      endedAtMs: block.endedAtMs
+    }))
+  ];
+  const startedAtMs = logicalTurns.map((turn) => turn.startedAtMs);
+  const endedAtMs = logicalTurns.map((turn) => turn.endedAtMs);
+  return {
+    totalTurns: logicalTurns.length,
+    userTurns: blocks.length,
+    totalWords: logicalTurns.reduce(
+      (sum, turn) => sum + tokenizeWords(turn.text).length,
+      0
+    ),
+    durationSeconds: logicalTurns.length === 0 ? 0 : Math.max(
+      0,
+      Math.floor(
+        (Math.max(...endedAtMs) - Math.min(...startedAtMs)) / 1e3
+      )
+    ),
+    substantiveResponses: 0,
+    scoreableResponses: 0
+  };
+}
+function toAnswerBlockTurn(turn) {
+  if (turn.contractVersion !== 2 || !turn.eventId || !turn.writerId || !Number.isSafeInteger(turn.writerGeneration) || (turn.writerGeneration ?? 0) <= 0 || !Number.isSafeInteger(turn.sequence) || (turn.sequence ?? 0) <= 0 || turn.speaker !== "user" && turn.speaker !== "interviewer" || !turn.text || !turn.startedAt || !turn.endedAt || !Number.isSafeInteger(turn.audioMs) || (turn.audioMs ?? 0) <= 0 || !turn.section || turn.deliveryState !== "delivered" && turn.deliveryState !== "partially_delivered") {
+    return [
+      {
+        kind: "turn",
+        contractVersion: 2,
+        eventId: turn.eventId ?? "",
+        writerId: turn.writerId ?? "",
+        writerGeneration: turn.writerGeneration ?? 0,
+        sequence: turn.sequence ?? 0,
+        speaker: turn.speaker === "interviewer" ? "interviewer" : "user",
+        text: turn.text ?? "",
+        isFinal: true,
+        startedAtMs: turn.startedAt?.getTime() ?? Number.NaN,
+        endedAtMs: turn.endedAt?.getTime() ?? Number.NaN,
+        audioDurationMs: turn.audioMs ?? 0,
+        section: turn.section ?? "",
+        deliveryState: turn.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
+      }
+    ];
+  }
+  return [
+    {
+      kind: "turn",
+      contractVersion: 2,
+      eventId: turn.eventId,
+      writerId: turn.writerId,
+      writerGeneration: turn.writerGeneration,
+      sequence: turn.sequence,
+      speaker: turn.speaker,
+      text: turn.text,
+      isFinal: true,
+      startedAtMs: turn.startedAt.getTime(),
+      endedAtMs: turn.endedAt.getTime(),
+      audioDurationMs: turn.audioMs,
+      section: turn.section,
+      deliveryState: turn.deliveryState
+    }
+  ];
+}
+function toAnswerBlockInterruption(marker) {
+  return {
+    kind: "integrity_boundary",
+    eventId: marker.eventId,
+    writerId: marker.writerId,
+    writerGeneration: marker.writerGeneration,
+    sequence: marker.sequence,
+    speaker: marker.speaker,
+    occurredAtMs: marker.occurredAt.getTime(),
+    reason: marker.reason
+  };
+}
+function orderAnswerBlockLedgerEvents(events) {
+  return events.sort((left, right) => {
+    if ("writerGeneration" in left && "writerGeneration" in right && left.writerGeneration === right.writerGeneration && left.writerId === right.writerId) {
+      return left.sequence - right.sequence;
+    }
+    return answerBlockEventTime(left) - answerBlockEventTime(right) || answerBlockEventRank(left) - answerBlockEventRank(right) || ("writerGeneration" in left ? left.writerGeneration : 0) - ("writerGeneration" in right ? right.writerGeneration : 0) || ("writerId" in left ? left.writerId : "").localeCompare(
+      "writerId" in right ? right.writerId : ""
+    ) || ("sequence" in left ? left.sequence : 0) - ("sequence" in right ? right.sequence : 0);
+  });
+}
+function answerBlockEventTime(event) {
+  return event.kind === "turn" ? event.startedAtMs : event.occurredAtMs;
+}
+function answerBlockEventRank(event) {
+  if (event.kind === "turn") return 0;
+  if (event.kind === "integrity_boundary") return 1;
+  return 2;
 }
 function validateSessionStats(stats) {
   if (stats.totalTurns === 0) {

@@ -369,12 +369,6 @@ function classifyTurnTransition(
   current: CanonicalAnswerBlockTurn,
   maxContinuationGapMs: number
 ): AnswerBlockBoundaryKind | null {
-  if (
-    previous.writerGeneration !== current.writerGeneration ||
-    previous.writerId !== current.writerId
-  ) {
-    return "writer_generation";
-  }
   if (current.endedAtMs < previous.startedAtMs) return "invalid_timing";
   if (previous.speaker !== current.speaker) {
     return current.speaker === "interviewer"
@@ -382,6 +376,12 @@ function classifyTurnTransition(
       : "speaker_change";
   }
   if (current.startedAtMs < previous.endedAtMs) return "invalid_timing";
+  if (
+    previous.writerGeneration !== current.writerGeneration ||
+    previous.writerId !== current.writerId
+  ) {
+    return "writer_generation";
+  }
   if (previous.section !== current.section) return "section_change";
   if (current.startedAtMs - previous.endedAtMs > maxContinuationGapMs) {
     return "long_silence";

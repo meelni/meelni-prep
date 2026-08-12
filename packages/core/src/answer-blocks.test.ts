@@ -277,6 +277,31 @@ test("same-speaker timing overlap fails closed while interviewer overlap remains
   );
 });
 
+test("replacement writers cannot hide same-speaker overlap or reversed timing", () => {
+  const first = createAnswerBlockTurn({
+    sequence: 1,
+    startedAtMs: 1_000,
+    endedAtMs: 2_000,
+  });
+  const replacement = {
+    writerId: "replacement-writer",
+    writerGeneration: 2,
+    sequence: 1,
+    eventId: "replacement-writer:1",
+  } as const;
+  for (const timing of [
+    { startedAtMs: 1_900, endedAtMs: 2_900, audioDurationMs: 1_000 },
+    { startedAtMs: 0, endedAtMs: 500, audioDurationMs: 500 },
+  ]) {
+    const derived = deriveCandidateAnswerBlocks([
+      first,
+      createAnswerBlockTurn({ ...replacement, ...timing }),
+    ]);
+    assert.equal(derived.eligible, false);
+    assert.ok(derived.boundaries.some(({ kind }) => kind === "invalid_timing"));
+  }
+});
+
 test("a forward sequence gap is an explicit non-coalescing boundary", () => {
   const first = createAnswerBlockTurn({ sequence: 1, startedAtMs: 0 });
   const afterGap = createAnswerBlockTurn({
