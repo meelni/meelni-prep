@@ -44,8 +44,10 @@ The `build` command invokes preflight immediately before Next.js and derives the
 - `OPENAI_API_KEY` is nonblank and key-shaped.
 - `OPENAI_FEEDBACK_MODEL` exactly matches the accepted `gpt-5.1` model, and a read-only model retrieval succeeds.
 - The OpenAI read uses at most two attempts. Each attempt is capped at 10 seconds, the single retry waits a fixed 250 milliseconds, and the complete read is capped at 21 seconds.
-- Only SDK-authenticated transport failures, rate limiting, and the explicitly accepted transient server-error classes retry. Authentication, authorization, missing-model, other client failures, and unknown or malformed errors fail immediately.
-- OpenAI failures cross the adapter only as fixed classes. Preflight never reads or emits provider exception text, payloads, headers, request IDs, provider codes/types, or numeric status values.
+- Only SDK-authenticated transport failures, rate limiting with an absent or recognized transient code, and the explicitly accepted transient server-error classes retry. Authentication, authorization, missing-model, exhausted-quota, other client failures, and unknown or malformed errors fail immediately.
+- The SDK adapter reads only SDK class identity and numeric status. For status 429 only, it also reads the SDK's top-level `code` discriminator: `insufficient_quota` becomes the fixed terminal quota class, `rate_limit_exceeded` remains retryable, an absent code remains retryable, and every other or malformed code fails closed as unknown. The raw status and code are immediately normalized and never cross the adapter.
+- The adapter never reads provider exception text, payload objects, headers, request IDs, parameters, or provider type. Preflight emits none of those fields, and it emits neither numeric status nor raw provider code.
+- The SDK client pins `https://api.openai.com/v1`, disables SDK logging, disables SDK retries, and explicitly declines ambient organization, project, and webhook configuration. Ambient OpenAI routing or logging variables cannot alter the read or receive its credential.
 
 Inngest does not expose a safe read-only Event Key validation endpoint. An authorized target-specific smoke event is release evidence, not a per-build prerequisite. It must be recorded separately and never replaced with a self-attested environment label.
 
@@ -112,6 +114,7 @@ Stable codes:
 - `openai_model_not_found`
 - `openai_model_unreadable`
 - `openai_provider_unavailable`
+- `openai_quota_exhausted`
 - `openai_rate_limited`
 - `openai_transport_unavailable`
 - `stripe_price_unreadable`

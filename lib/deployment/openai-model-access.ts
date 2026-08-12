@@ -3,6 +3,7 @@ export type OpenAiModelAccessFailureClass =
   | "authorization"
   | "model_not_found"
   | "provider_unavailable"
+  | "quota_exhausted"
   | "rate_limited"
   | "transport"
   | "unknown";

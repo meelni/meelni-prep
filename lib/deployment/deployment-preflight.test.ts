@@ -1123,6 +1123,7 @@ for (const [failureClass, code] of [
   ["authorization", "openai_authorization_failed"],
   ["model_not_found", "openai_model_not_found"],
   ["provider_unavailable", "openai_provider_unavailable"],
+  ["quota_exhausted", "openai_quota_exhausted"],
   ["rate_limited", "openai_rate_limited"],
   ["transport", "openai_transport_unavailable"],
   ["unknown", "openai_model_unreadable"],
