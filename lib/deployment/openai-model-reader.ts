@@ -2,6 +2,7 @@ import OpenAI, {
   APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
+  type ClientOptions,
 } from "openai";
 
 import {
@@ -13,11 +14,16 @@ import {
 const DEFAULT_ATTEMPT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRY_DELAY_MS = 250;
 const DEFAULT_OVERALL_TIMEOUT_MS = 21_000;
+const CANONICAL_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const MAX_ATTEMPTS = 2;
 const RETRYABLE_SERVER_STATUSES = new Set([500, 502, 503, 504]);
+const RETRYABLE_RATE_LIMIT_CODES = new Set(["rate_limit_exceeded"]);
+const TERMINAL_QUOTA_CODES = new Set(["insufficient_quota"]);
 
 interface OpenAiModelReaderDependencies {
   attemptTimeoutMs?: number;
+  fetch?: typeof globalThis.fetch;
+  logger?: ClientOptions["logger"];
   overallTimeoutMs?: number;
   retrieveModel?: (model: string) => Promise<void>;
   retryDelayMs?: number;
@@ -35,8 +41,15 @@ export function createOpenAiModelReader(
     ? undefined
     : new OpenAI({
         apiKey: normalizedApiKey,
+        baseURL: CANONICAL_OPENAI_BASE_URL,
+        fetch: dependencies.fetch,
+        logLevel: "off",
+        logger: dependencies.logger,
         maxRetries: 0,
+        organization: null,
+        project: null,
         timeout: DEFAULT_ATTEMPT_TIMEOUT_MS,
+        webhookSecret: null,
       });
   const retrieveModel =
     dependencies.retrieveModel ??
@@ -115,10 +128,18 @@ function classifyOpenAiModelAccessFailure(
   if (error.status === 401) return "authentication";
   if (error.status === 403) return "authorization";
   if (error.status === 404) return "model_not_found";
-  if (error.status === 429) return "rate_limited";
+  if (error.status === 429) return classifyRateLimit(error.code);
   if (RETRYABLE_SERVER_STATUSES.has(error.status)) {
     return "provider_unavailable";
   }
+  return "unknown";
+}
+
+function classifyRateLimit(code: unknown): OpenAiModelAccessFailureClass {
+  if (code === null || code === undefined) return "rate_limited";
+  if (typeof code !== "string") return "unknown";
+  if (TERMINAL_QUOTA_CODES.has(code)) return "quota_exhausted";
+  if (RETRYABLE_RATE_LIMIT_CODES.has(code)) return "rate_limited";
   return "unknown";
 }
 

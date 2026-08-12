@@ -76,6 +76,7 @@ export type DeploymentPreflightFailureCode =
   | "openai_model_not_found"
   | "openai_model_unreadable"
   | "openai_provider_unavailable"
+  | "openai_quota_exhausted"
   | "openai_rate_limited"
   | "openai_transport_unavailable"
   | "supabase_project_unreadable"
@@ -365,6 +366,10 @@ function openAiModelFailure(error: unknown): DeploymentPreflightFailure {
       code: "openai_provider_unavailable",
       message:
         "OpenAI model access remained unavailable after a bounded retry.",
+    },
+    quota_exhausted: {
+      code: "openai_quota_exhausted",
+      message: "OpenAI account quota does not permit model access.",
     },
     rate_limited: {
       code: "openai_rate_limited",
