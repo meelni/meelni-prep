@@ -293,8 +293,6 @@ export function calculateValidatedSessionFromTurns(
       turn.writerId,
       turn.writerGeneration,
       turn.sequence,
-      turn.audioMs,
-      turn.section,
       turn.deliveryState,
     ].some((value) => value != null)
   );

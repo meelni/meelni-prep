@@ -1914,7 +1914,7 @@ test("a zero-duration canonical turn invalidates feedback eligibility", () => {
   );
 });
 
-test("legacy rows without canonical event identity retain the compatibility statistics path", () => {
+test("legacy rows with historical audio and section retain the compatibility statistics path", () => {
   const validation = calculateValidatedSessionFromTurns(
     [
       turn(1, "interviewer", "Choose a segment.", 0),
@@ -1945,8 +1945,6 @@ test("legacy rows without canonical event identity retain the compatibility stat
         writerId: _writerId,
         writerGeneration: _writerGeneration,
         sequence: _sequence,
-        audioMs: _audioMs,
-        section: _section,
         deliveryState: _deliveryState,
         ...legacy
       }) => legacy
@@ -1955,6 +1953,8 @@ test("legacy rows without canonical event identity retain the compatibility stat
 
   assert.equal(validation.tier, SessionTier.PARTIAL);
   assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.totalTurns, 6);
+  assert.equal(validation.stats.userTurns, 3);
 });
 
 test("partial or unsupported canonical provenance cannot enter the legacy path", () => {
