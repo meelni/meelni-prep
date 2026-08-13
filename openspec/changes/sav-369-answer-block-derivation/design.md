@@ -14,7 +14,9 @@ forward timing. A prompt/follow-up, role transition, interruption marker,
 canonicalization failure, sequence gap, writer change, section change, longer
 silence, same-speaker overlap, reversed interval, cutoff, or end closes the
 current block. Cross-role timing overlap remains valid under the transcript
-contract but is still a role boundary.
+contract but is still a role boundary. Cutoff and session end validate against
+the maximum end time across all canonical speech events, so an intervening role
+cannot hide speech that extends beyond the terminal boundary.
 
 ## Workflow integration
 

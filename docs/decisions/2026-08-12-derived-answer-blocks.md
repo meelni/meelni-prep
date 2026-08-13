@@ -12,6 +12,8 @@ evaluation and presentation unit after canonical trust, replay, and injection
 preparation. Adjacent finalized candidate fragments may coalesce only across a
 bounded, explicit continuity contract; interviewer follow-up, role, integrity,
 timing, writer, section, cutoff, and end boundaries prevent coalescing.
+Terminal boundaries are validated against every canonical speech event rather
+than only the most recent role.
 
 Answer-block derivation is deterministic core behavior with no provider call or
 raw transcript telemetry. Equivalent semantic speech split into 1, 2, 5, or 10

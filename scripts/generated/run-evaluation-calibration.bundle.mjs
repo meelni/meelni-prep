@@ -6468,6 +6468,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
   const lastSequenceByWriter = /* @__PURE__ */ new Map();
   const acceptedTurnsByEventId = /* @__PURE__ */ new Map();
   const previousLedgerTurnBySpeaker = /* @__PURE__ */ new Map();
+  let latestLedgerEndTurn = null;
   let currentPrompt = [];
   let current = null;
   let previousLedgerTurn = null;
@@ -6522,15 +6523,15 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
     }
     if (eventId) eventIds.add(eventId);
     if (event.kind === "session_end") {
-      if (previousLedgerTurn && previousLedgerTurn.endedAtMs > event.occurredAtMs) {
+      if (latestLedgerEndTurn && latestLedgerEndTurn.endedAtMs > event.occurredAtMs) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousLedgerTurn.eventId,
+          afterEventId: latestLedgerEndTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousLedgerTurn.eventId
+          eventId: latestLedgerEndTurn.eventId
         });
       }
       closeOrRecordBoundary("session_end", {
@@ -6546,15 +6547,15 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       continue;
     }
     if (event.kind === "cutoff") {
-      if (previousLedgerTurn && previousLedgerTurn.endedAtMs > event.occurredAtMs) {
+      if (latestLedgerEndTurn && latestLedgerEndTurn.endedAtMs > event.occurredAtMs) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousLedgerTurn.eventId,
+          afterEventId: latestLedgerEndTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousLedgerTurn.eventId
+          eventId: latestLedgerEndTurn.eventId
         });
       }
       closeOrRecordBoundary("session_cutoff", {
@@ -6614,6 +6615,9 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
+    if (latestLedgerEndTurn === null || event.endedAtMs > latestLedgerEndTurn.endedAtMs) {
+      latestLedgerEndTurn = event;
+    }
     const transitionCursor = event.kind === "turn" ? previousEvidenceTurn : previousLedgerTurn;
     const transition2 = transitionCursor ? classifyTurnTransition(
       transitionCursor,
@@ -6645,6 +6649,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
       currentPrompt = [];
     }
+    previousLedgerTurnBySpeaker.set(event.speaker, event);
     if (event.kind === "semantic_replay") {
       const anchor = acceptedTurnsByEventId.get(event.replayOfEventId);
       const attemptedCandidateBridge = hadOpenCandidateBlock && event.speaker === "user";
@@ -6663,7 +6668,6 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       if (event.speaker === "interviewer" && previousLedgerTurn?.speaker !== "interviewer") {
         currentPrompt = [];
       }
-      previousLedgerTurnBySpeaker.set(event.speaker, event);
       previousLedgerTurn = event;
       continue;
     }
@@ -6683,7 +6687,6 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         pendingReplayFamilyPromptEventId = event.eventId;
       }
       if (event.speaker === "interviewer") currentPrompt = [];
-      previousLedgerTurnBySpeaker.set(event.speaker, event);
       previousLedgerTurn = event;
       previousEvidenceTurn = null;
       continue;
@@ -6704,7 +6707,6 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       if (current) current.response.push(source);
       else current = { prompt: [...currentPrompt], response: [source] };
     }
-    previousLedgerTurnBySpeaker.set(event.speaker, event);
     previousLedgerTurn = event;
     previousEvidenceTurn = event;
   }
