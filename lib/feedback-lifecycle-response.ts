@@ -48,7 +48,6 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
   status: unknown;
   outcomeReason: unknown;
   completionTier: unknown;
-  completionStats: unknown;
   creditSettlementAction?: unknown;
   creditSettledAt?: unknown;
 }): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
@@ -59,8 +58,11 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
     status: "skipped",
     retryable: false,
     details: {
-      outcomeReason: classification.outcomeReason,
-      tier: classification.completionTier,
+      outcome: "unable_to_review",
+      scoreWithheldReason:
+        classification.outcomeReason === "transcript_integrity_degraded"
+          ? "verified_evidence_integrity"
+          : "rubric_coverage",
       recovery:
         classification.outcomeReason === "transcript_integrity_degraded"
           ? (record.creditSettlementAction === "refund" ||
@@ -70,11 +72,6 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
             ? "credit_returned"
             : "credit_recovery_in_progress"
           : "start_another_interview",
-      ...(record.completionStats !== null
-        ? { stats: record.completionStats }
-        : {}),
-      reasons: [],
-      recommendations: [],
     },
   };
   const decoded = decodeFeedbackLifecycleResponse(candidate);

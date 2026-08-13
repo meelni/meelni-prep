@@ -675,20 +675,21 @@ function dimensionCoverageEvaluation(
 
 function skippedResponse(
   outcomeReason: SkippedFeedbackOutcomeReason,
-  tier: SessionTier
+  _tier: SessionTier
 ): FeedbackLifecycleResponse {
   return {
     status: "skipped",
     retryable: false,
     details: {
-      outcomeReason,
-      tier: tier === SessionTier.ABANDONED ? "abandoned" : "insufficient",
+      outcome: "unable_to_review",
+      scoreWithheldReason:
+        outcomeReason === "transcript_integrity_degraded"
+          ? "verified_evidence_integrity"
+          : "rubric_coverage",
       recovery:
         outcomeReason === "transcript_integrity_degraded"
           ? "credit_recovery_in_progress"
           : "start_another_interview",
-      reasons: [],
-      recommendations: [],
     },
   };
 }

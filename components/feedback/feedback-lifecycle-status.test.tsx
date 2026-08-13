@@ -201,14 +201,15 @@ for (const outcomeReason of [
               ? "transcript-integrity-degraded"
               : "no-reviewable-answer",
           details: {
-            outcomeReason,
-            tier: "insufficient",
+            outcome: "unable_to_review",
+            scoreWithheldReason:
+              outcomeReason === "transcript_integrity_degraded"
+                ? "verified_evidence_integrity"
+                : "rubric_coverage",
             recovery:
               outcomeReason === "transcript_integrity_degraded"
                 ? "credit_recovery_in_progress"
                 : "start_another_interview",
-            reasons: [],
-            recommendations: [],
           },
         },
         recovering: false,
@@ -241,11 +242,9 @@ test("integrity failure confirms a returned credit without exposing internals", 
       state: {
         kind: "transcript-integrity-degraded",
         details: {
-          outcomeReason: "transcript_integrity_degraded",
-          tier: "abandoned",
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
           recovery: "credit_returned",
-          reasons: [],
-          recommendations: [],
         },
       },
       recovering: false,
