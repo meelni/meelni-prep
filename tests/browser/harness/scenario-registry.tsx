@@ -51,6 +51,7 @@ export const HARNESS_SCENARIOS = [
   "feedback-partial",
   "feedback-full-scorecard",
   "feedback-partial-scorecard",
+  "feedback-focused-practice-unavailable",
   "feedback-coaching-review",
   "feedback-insufficient",
   "feedback-integrity",
@@ -353,6 +354,10 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
         <CompletedDimensionCoverageReview feedback={fullScorecardFeedback} />
       );
     case "feedback-partial-scorecard":
+      return (
+        <CompletedDimensionCoverageReview feedback={partialScorecardFeedback} />
+      );
+    case "feedback-focused-practice-unavailable":
       return (
         <CompletedDimensionCoverageReview feedback={partialScorecardFeedback} />
       );

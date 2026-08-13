@@ -2,7 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FocusedPracticeAttempt } from "@meelni/core";
+import {
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  buildFocusedPracticeGroundedPlan,
+  createFocusedPracticeGroundedAttempt,
+  type FocusedPracticeAttempt,
+} from "@meelni/core";
 
 vi.mock("@/lib/workflows/focused-practice-attempt", () => ({
   startFocusedPracticeAttemptWorkflow: vi.fn(),
@@ -159,6 +165,30 @@ describe("focused-practice attempt APIs", () => {
     expect(startFocusedPracticeAttemptWorkflow).toHaveBeenCalledTimes(1);
   });
 
+  it("projects v2 attempts through a privacy-safe allow list", async () => {
+    const groundedAttempt = createGroundedAttempt();
+    vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      attempt: groundedAttempt,
+    });
+    const response = await handleStartFocusedPracticeAttempt(
+      jsonRequest({ sourceSessionId: groundedAttempt.sourceSessionId }),
+      dependencies()
+    );
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(response.status).toBe(201);
+    expect(body.attempt.plan.source.questionText).toBe(
+      "How would you make a synthetic planning product easier to choose?"
+    );
+    expect(serialized).not.toMatch(
+      /sourceFinding|sourceFingerprint|signalCode|actionCode|transcriptRef|exact_candidate_citation|synthetic-private-evidence|synthetic-model/i
+    );
+    expect(serialized).not.toMatch(/weakestScore|overallScore/);
+  });
+
   it("maps missing and cross-owner sources to the same non-enumerating response", async () => {
     vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
       ok: false,
@@ -231,3 +261,57 @@ describe("focused-practice attempt APIs", () => {
     );
   });
 });
+
+function createGroundedAttempt() {
+  const built = buildFocusedPracticeGroundedPlan({
+    sourceQuestion: {
+      questionId: "synthetic-question",
+      questionText:
+        "How would you make a synthetic planning product easier to choose?",
+    },
+    roundType: "product_sense",
+    focusIdentity: {
+      kind: "evidence_limited_improvement",
+      dimension: "clarity",
+      signalCode: "recommendation_directness",
+      actionCode: "lead_with_recommendation",
+    },
+  });
+  if (built.state !== "available")
+    throw new Error("synthetic plan unavailable");
+  const created = createFocusedPracticeGroundedAttempt({
+    attemptId: "synthetic-focused-practice-attempt-v2",
+    userId: ATTEMPT.userId,
+    sourceSessionId: ATTEMPT.sourceSessionId,
+    sourceFeedbackId: ATTEMPT.sourceFeedbackId,
+    feedbackVersion: {
+      schemaVersion: "feedback.evidence-limited.v2",
+      promptVersion: "feedback.prompt.evidence-limited.v2",
+      rubricVersion: "pm-feedback-rubric.v2",
+      modelVersion: "synthetic-model-private",
+      evaluationState: "partial",
+      reviewOutcome: "coaching_review",
+      scoreWithheldReason: "rubric_coverage",
+      sourceFingerprint: "a".repeat(64),
+    },
+    plan: built.plan,
+    sourceFinding: {
+      kind: "evidence_limited_improvement",
+      dimension: "clarity",
+      observation:
+        EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.recommendation_directness
+          .observation,
+      nextStep: EVIDENCE_LIMITED_ACTIONS.lead_with_recommendation.nextStep,
+      signalCode: "recommendation_directness",
+      actionCode: "lead_with_recommendation",
+      evidence: {
+        kind: "exact_candidate_citation",
+        transcriptRefs: ["synthetic-private-ref"],
+        quote: "synthetic-private-evidence",
+      },
+    },
+    startedAt: new Date("2026-08-13T12:00:00.000Z"),
+  });
+  if (created.state !== "created") throw new Error("synthetic attempt invalid");
+  return created.attempt;
+}

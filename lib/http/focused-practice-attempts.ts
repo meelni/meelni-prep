@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { FocusedPracticeAttempt } from "@meelni/core";
+import {
+  presentFocusedPracticeAttempt,
+  type AnyFocusedPracticeAttempt,
+} from "@meelni/core";
 import { NextResponse } from "next/server";
 
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
@@ -243,11 +246,8 @@ function completionResultResponse(
   return errorResponse(409, "focused_practice_conflict");
 }
 
-function presentAttempt(attempt: FocusedPracticeAttempt) {
-  const { userId, sourceFeedbackId, ...customerAttempt } = attempt;
-  void userId;
-  void sourceFeedbackId;
-  return customerAttempt;
+function presentAttempt(attempt: AnyFocusedPracticeAttempt) {
+  return presentFocusedPracticeAttempt(attempt);
 }
 
 async function readBoundedJson(

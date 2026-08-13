@@ -45,6 +45,7 @@ import {
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
   FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
+  FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -131,6 +132,12 @@ const FOCUSED_PRACTICE_OTHER_USER = "f5000000-0000-4000-8000-000000000002";
 const FOCUSED_PRACTICE_SESSION = "f5000000-0000-4000-8000-000000000003";
 const FOCUSED_PRACTICE_FEEDBACK = "f5000000-0000-4000-8000-000000000004";
 const FOCUSED_PRACTICE_ATTEMPT = "f5000000-0000-4000-8000-000000000005";
+const FOCUSED_PRACTICE_SCORELESS_SESSION =
+  "f5000000-0000-4000-8000-000000000006";
+const FOCUSED_PRACTICE_SCORELESS_FEEDBACK =
+  "f5000000-0000-4000-8000-000000000007";
+const FOCUSED_PRACTICE_SCORELESS_ATTEMPT =
+  "f5000000-0000-4000-8000-000000000008";
 const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
 const CONTACT_DELETE_SESSION = "15151515-1515-4515-8515-151515151515";
 const CONTACT_WINS_RACE_USER = "16161616-1616-4616-8616-161616161616";
@@ -297,7 +304,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, DIMENSION_COVERAGE_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -491,9 +501,10 @@ async function run() {
         TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
         FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
         DIMENSION_COVERAGE_SCHEMA_FINGERPRINT,
+        FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 32; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 33; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -513,7 +524,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 33; found 22/
+            /Strict launch preflight requires the exact latest migration count 34; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -821,7 +832,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 33);
+      assert.equal(await migrationCount(sql), 34);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -885,7 +896,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
+      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1130,7 +1141,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 33; found 25/
+      /exact latest migration count 34; found 25/
     );
 
     const genericRows = await sql<
@@ -1229,9 +1240,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 33);
+    assert.equal(await migrationCount(sql), 34);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "dimension_coverage");
+    assert.equal(finalPreflight.startingContract, "scoreless_focused_practice");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 37);
@@ -1240,7 +1251,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
+      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6405,7 +6416,10 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "dimension_coverage");
+    assert.equal(
+      refundedPreflight.startingContract,
+      "scoreless_focused_practice"
+    );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -7026,20 +7040,33 @@ async function verifyFocusedPracticePersistence(
   `;
   await sql`
     INSERT INTO interview_session (id, user_id, round_type, mode)
-    VALUES (
-      ${FOCUSED_PRACTICE_SESSION}::uuid,
-      ${FOCUSED_PRACTICE_USER}::uuid,
-      'product_sense',
-      'voice_video'
-    )
+    VALUES
+      (
+        ${FOCUSED_PRACTICE_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        'product_sense',
+        'voice_video'
+      ),
+      (
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        'product_sense',
+        'voice_video'
+      )
   `;
   await sql`
     INSERT INTO feedback (id, session_id, status)
-    VALUES (
-      ${FOCUSED_PRACTICE_FEEDBACK}::uuid,
-      ${FOCUSED_PRACTICE_SESSION}::uuid,
-      'completed'
-    )
+    VALUES
+      (
+        ${FOCUSED_PRACTICE_FEEDBACK}::uuid,
+        ${FOCUSED_PRACTICE_SESSION}::uuid,
+        'completed'
+      ),
+      (
+        ${FOCUSED_PRACTICE_SCORELESS_FEEDBACK}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+        'completed'
+      )
   `;
   await sql`
     INSERT INTO focused_practice_attempt (
@@ -7062,6 +7089,127 @@ async function verifyFocusedPracticePersistence(
     )
   `;
 
+  const scorelessFeedbackVersion = {
+    schemaVersion: "feedback.dimension-coverage.v1",
+    promptVersion: "feedback.prompt.dimension-coverage.v1",
+    rubricVersion: "pm-feedback-rubric.v3",
+    modelVersion: "synthetic-migration-test",
+    evaluationState: "partial",
+    reviewOutcome: "partial_scorecard",
+    scoreWithheldReason: "rubric_coverage",
+    sourceFingerprint: "a".repeat(64),
+  };
+  const scorelessPlan = {
+    state: "available",
+    contractVersion: "focused-practice-plan.v2",
+    templateVersion: "focused-practice-templates.v2",
+    templateId:
+      "focused-practice:focused-practice-templates.v2:product_sense:insight:dimension_coverage_focus:customer_need:reinforce_grounded_rubric_move",
+    source: {
+      focusIdentity: { kind: "dimension_coverage_focus" },
+    },
+  };
+  const scorelessFinding = { kind: "dimension_coverage_focus" };
+
+  await assert.rejects(
+    () => sql`
+      INSERT INTO focused_practice_attempt (
+        id, user_id, source_session_id, source_feedback_id,
+        contract_version, lifecycle_version, state, feedback_version,
+        plan_contract_version, plan_template_version, plan_template_id,
+        plan, source_finding, started_at
+      ) VALUES (
+        ${FOCUSED_PRACTICE_SCORELESS_ATTEMPT}::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_FEEDBACK}::uuid,
+        'focused-practice-attempt.v2', 0, 'in_progress',
+        ${JSON.stringify({
+          ...scorelessFeedbackVersion,
+          sourceFingerprint: "not-a-fingerprint",
+        })}::jsonb,
+        'focused-practice-plan.v2', 'focused-practice-templates.v2',
+        ${scorelessPlan.templateId}, ${JSON.stringify(scorelessPlan)}::jsonb,
+        ${JSON.stringify(scorelessFinding)}::jsonb,
+        '2026-08-13T12:00:00.000Z'::timestamptz
+      )
+    `,
+    /focused_practice_attempt_snapshot_version_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO focused_practice_attempt (
+        id, user_id, source_session_id, source_feedback_id,
+        contract_version, lifecycle_version, state, feedback_version,
+        plan_contract_version, plan_template_version, plan_template_id,
+        plan, source_finding, started_at
+      ) VALUES (
+        ${FOCUSED_PRACTICE_SCORELESS_ATTEMPT}::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_FEEDBACK}::uuid,
+        'focused-practice-attempt.v2', 0, 'in_progress',
+        ${JSON.stringify({
+          schemaVersion: "feedback.evidence-limited.v2",
+          promptVersion: "feedback.prompt.evidence-limited.v2",
+          rubricVersion: "pm-feedback-rubric.v2",
+          modelVersion: "synthetic-migration-test",
+          evaluationState: "partial",
+          reviewOutcome: "coaching_review",
+          scoreWithheldReason: "rubric_coverage",
+          sourceFingerprint: "a".repeat(64),
+        })}::jsonb,
+        'focused-practice-plan.v2', 'focused-practice-templates.v2',
+        ${scorelessPlan.templateId}, ${JSON.stringify(scorelessPlan)}::jsonb,
+        ${JSON.stringify(scorelessFinding)}::jsonb,
+        '2026-08-13T12:00:00.000Z'::timestamptz
+      )
+    `,
+    /focused_practice_attempt_snapshot_version_check/
+  );
+  await sql`
+    INSERT INTO focused_practice_attempt (
+      id, user_id, source_session_id, source_feedback_id,
+      contract_version, lifecycle_version, state, feedback_version,
+      plan_contract_version, plan_template_version, plan_template_id,
+      plan, source_finding, started_at
+    ) VALUES (
+      ${FOCUSED_PRACTICE_SCORELESS_ATTEMPT}::uuid,
+      ${FOCUSED_PRACTICE_USER}::uuid,
+      ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+      ${FOCUSED_PRACTICE_SCORELESS_FEEDBACK}::uuid,
+      'focused-practice-attempt.v2', 0, 'in_progress',
+      ${JSON.stringify(scorelessFeedbackVersion)}::jsonb,
+      'focused-practice-plan.v2', 'focused-practice-templates.v2',
+      ${scorelessPlan.templateId}, ${JSON.stringify(scorelessPlan)}::jsonb,
+      ${JSON.stringify(scorelessFinding)}::jsonb,
+      '2026-08-13T12:00:00.000Z'::timestamptz
+    )
+  `;
+
+  await assert.rejects(
+    () => sql`
+      INSERT INTO focused_practice_attempt (
+        id, user_id, source_session_id, source_feedback_id,
+        contract_version, lifecycle_version, state, feedback_version,
+        plan_contract_version, plan_template_version, plan_template_id,
+        plan, source_finding, started_at
+      ) VALUES (
+        'f5000000-0000-4000-8000-000000000009'::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        ${FOCUSED_PRACTICE_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_FEEDBACK}::uuid,
+        'focused-practice-attempt.v2', 0, 'in_progress',
+        ${JSON.stringify(scorelessFeedbackVersion)}::jsonb,
+        'focused-practice-plan.v2', 'focused-practice-templates.v2',
+        ${scorelessPlan.templateId}, ${JSON.stringify(scorelessPlan)}::jsonb,
+        ${JSON.stringify(scorelessFinding)}::jsonb,
+        '2026-08-13T12:00:00.000Z'::timestamptz
+      )
+    `,
+    /focused_practice_attempt_owner_source_idx/
+  );
+
   await assert.rejects(
     () => sql`
       INSERT INTO focused_practice_attempt (
@@ -7070,7 +7218,7 @@ async function verifyFocusedPracticePersistence(
         plan_contract_version, plan_template_version, plan_template_id,
         plan, source_finding, started_at
       ) SELECT
-        'f5000000-0000-4000-8000-000000000006'::uuid,
+        'f5000000-0000-4000-8000-000000000010'::uuid,
         ${FOCUSED_PRACTICE_OTHER_USER}::uuid,
         source_session_id, source_feedback_id, contract_version,
         lifecycle_version, state, feedback_version, plan_contract_version,
@@ -7089,7 +7237,7 @@ async function verifyFocusedPracticePersistence(
       SELECT count(*)::int AS rows FROM focused_practice_attempt
     `;
   });
-  assert.equal(visibleToOwner[0]?.rows, 1);
+  assert.equal(visibleToOwner[0]?.rows, 2);
   const hiddenFromOtherUser = await sql.begin(async (tx) => {
     await tx.unsafe("SET LOCAL ROLE authenticated");
     await tx`SELECT set_config('request.jwt.claim.sub', ${FOCUSED_PRACTICE_OTHER_USER}, true)`;
@@ -7179,10 +7327,10 @@ async function verifyFocusedPracticePersistence(
         "../lib/db/account-export"
       );
       const source = await loadAccountExportSource(FOCUSED_PRACTICE_USER);
-      assert.equal(source.focusedPracticeAttempts.length, 1);
-      assert.equal(
-        source.focusedPracticeAttempts[0]?.id,
-        FOCUSED_PRACTICE_ATTEMPT
+      assert.equal(source.focusedPracticeAttempts.length, 2);
+      assert.deepEqual(
+        new Set(source.focusedPracticeAttempts.map((attempt) => attempt.id)),
+        new Set([FOCUSED_PRACTICE_ATTEMPT, FOCUSED_PRACTICE_SCORELESS_ATTEMPT])
       );
 
       const { deleteUserApplicationData } = await import(
@@ -7206,11 +7354,17 @@ async function verifyFocusedPracticePersistence(
     `;
     await sql`
       DELETE FROM feedback
-      WHERE session_id = ${FOCUSED_PRACTICE_SESSION}::uuid
+      WHERE session_id IN (
+        ${FOCUSED_PRACTICE_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid
+      )
     `;
     await sql`
       DELETE FROM interview_session
-      WHERE id = ${FOCUSED_PRACTICE_SESSION}::uuid
+      WHERE id IN (
+        ${FOCUSED_PRACTICE_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid
+      )
     `;
     await sql`
       DELETE FROM app_user
@@ -7223,7 +7377,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 33);
+  assert.equal(await migrationCount(sql), 34);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
