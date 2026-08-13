@@ -22,7 +22,10 @@ import type {
   FocusedPracticeFeedbackVersionSnapshot,
   FocusedPracticeSourceFindingSnapshot,
   AvailableFocusedPracticePlan,
+  DimensionCoverageFeedbackMode,
+  DimensionCoverageResultDimensions,
   FeedbackOutcomeReason,
+  RoundType,
 } from "@meelni/core";
 import type {
   QuestionQualityStatus,
@@ -797,6 +800,10 @@ export const feedback = pgTable(
     promptVersion: text("prompt_version"),
     modelVersion: text("model_version"),
     evaluationState: text("evaluation_state").$type<"full" | "partial">(),
+    feedbackMode: text("feedback_mode").$type<DimensionCoverageFeedbackMode>(),
+    feedbackRoundType: text("feedback_round_type").$type<RoundType>(),
+    dimensionCoverage:
+      jsonb("dimension_coverage").$type<DimensionCoverageResultDimensions>(),
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true,
     }),
@@ -880,16 +887,38 @@ export const feedback = pgTable(
           (
             ${table.schemaVersion} = 'feedback.v2' AND
             ${table.promptVersion} = 'feedback.prompt.v2' AND
+            ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
             ${table.evaluationState} IN ('full', 'partial')
           ) OR
           (
             ${table.schemaVersion} = 'feedback.evidence-limited.v2' AND
             ${table.promptVersion} = 'feedback.prompt.evidence-limited.v2' AND
+            ${table.rubricVersion} = 'pm-feedback-rubric.v2' AND
             ${table.evaluationState} = 'partial'
+          ) OR
+          (
+            ${table.schemaVersion} = 'feedback.dimension-coverage.v1' AND
+            ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
+            ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
+            ${table.evaluationState} IN ('full', 'partial')
           )
         ) AND
-        length(trim(${table.modelVersion})) > 0 AND
-        ${table.rubricVersion} = 'pm-feedback-rubric.v2'
+        length(trim(${table.modelVersion})) > 0
+      )`
+    ),
+    dimensionCoverageTupleCheck: check(
+      "feedback_dimension_coverage_tuple_check",
+      sql`(
+        ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v1' AND
+        ${table.feedbackMode} IS NULL AND
+        ${table.feedbackRoundType} IS NULL AND
+        ${table.dimensionCoverage} IS NULL
+      ) OR (
+        ${table.schemaVersion} = 'feedback.dimension-coverage.v1' AND
+        ${table.feedbackMode} IN ('full_scorecard', 'partial_scorecard', 'coaching_review') AND
+        ${table.feedbackRoundType} IN ('product_sense', 'execution', 'behavioral', 'strategy') AND
+        ${table.dimensionCoverage} IS NOT NULL AND
+        ${table.rubricVersion} = 'pm-feedback-rubric.v3'
       )`
     ),
     dispatchEventRequiredCheck: check(

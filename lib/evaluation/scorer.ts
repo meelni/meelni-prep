@@ -240,7 +240,7 @@ export async function generateFeedbackWithUsage(
           { OPENAI_API_KEY: options.calibrationCredentials?.openaiApiKey },
           options.beforePhysicalRequest!
         )
-      : getOpenAI();
+      : createFeedbackOpenAIClient();
     const userPrompt = appendCalibrationEvidenceHints(
       getEvaluationPrompt(
         roundType,
@@ -277,7 +277,7 @@ export async function generateFeedbackWithUsage(
     });
 
     const observedServiceTier = completion.service_tier ?? null;
-    const usage = parseProviderUsage(
+    const usage = parseFeedbackProviderUsage(
       completion.usage,
       completion.model,
       observedServiceTier
@@ -618,7 +618,7 @@ function sentenceCaseSummaryObservation(observation: string): string {
   return /[.!?]$/u.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
-function parseProviderUsage(
+export function parseFeedbackProviderUsage(
   usage:
     | {
         prompt_tokens?: number;
@@ -753,7 +753,7 @@ function getProviderErrorName(error: unknown): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
-function getOpenAI() {
+export function createFeedbackOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");

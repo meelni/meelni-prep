@@ -19,6 +19,17 @@ import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
 } from "./feedback-evidence-limited";
+import {
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  parseDimensionCoverageProviderSelection,
+  type DimensionCoverageProviderSelection,
+} from "./feedback-dimension-coverage";
+import { deriveCandidateAnswerBlocks } from "./answer-blocks";
+import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
 
 const finding = {
   dimension: "insight",
@@ -718,6 +729,115 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     kind: "unavailable",
     message: "Feedback returned an unsupported response.",
   });
+});
+
+test("presents and runtime-decodes exact-grounded dimension coverage", () => {
+  const blocks = deriveCandidateAnswerBlocks(
+    createAnswerBlockSegmentationFixture(5).events
+  ).blocks;
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const facetCount =
+      dimension === "structure" ? 2 : dimension === "insight" ? 1 : 0;
+    dimensions[dimension] = {
+      score: dimension === "structure" ? 7 : null,
+      evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[dimension].facets
+        .slice(0, facetCount)
+        .map((facet) => ({
+          facetCode: facet.code,
+          answerBlockRef: blocks[0]!.answerBlockId,
+        })),
+    };
+  }
+  const result = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks: blocks,
+      modelVersion: "synthetic-presenter-v1",
+      allowNumericalScores: true,
+    }
+  );
+  const persisted = completed({
+    structureScore: 7,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: null,
+    improvements: null,
+    drills: [],
+    summary: result.summary,
+    rubricVersion: result.rubricVersion,
+    schemaVersion: result.schemaVersion,
+    promptVersion: result.promptVersion,
+    modelVersion: result.modelVersion,
+    evaluationState: result.evaluationState,
+    feedbackMode: result.mode,
+    feedbackRoundType: result.roundType,
+    dimensionCoverage: result.dimensions,
+  });
+  const view = presentCompletedFeedback(persisted, {
+    evidenceTurns: [],
+    answerBlocks: blocks,
+    expectedRoundType: "product_sense",
+    frozenEvidenceState: "complete",
+  });
+
+  assert.equal(view.kind, "dimension-coverage");
+  if (view.kind !== "dimension-coverage") return;
+  assert.equal(view.mode, "partial_scorecard");
+  assert.equal(view.overallScore, null);
+  assert.equal(view.dimensions.structure.score, 7);
+  assert.equal(view.dimensions.insight.score, null);
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+    }).kind,
+    "invalid"
+  );
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "strategy",
+      frozenEvidenceState: "complete",
+    }).kind,
+    "invalid"
+  );
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "product_sense",
+      frozenEvidenceState: "partial",
+    }).kind,
+    "invalid"
+  );
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: view,
+    })?.status,
+    "completed"
+  );
+  assert.equal(
+    toFeedbackViewState({
+      status: "completed",
+      retryable: false,
+      feedback: view,
+    }).kind,
+    "completed-partial-scorecard"
+  );
 });
 
 test("confidence language describes evidence strength rather than readiness", () => {

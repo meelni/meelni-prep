@@ -4,12 +4,23 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  CompletedDimensionCoverageReview,
   CompletedEvidenceLimitedReview,
   CompletedLegacyReview,
   CompletedV2Review,
 } from "./feedback-completed-review";
 import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
 import {
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  deriveCandidateAnswerBlocks,
+  parseDimensionCoverageProviderSelection,
+  type DimensionCoverageProviderSelection,
+  type FeedbackDimension,
+  type FeedbackDimensionCoverageView,
   decodeFeedbackLifecycleResponse,
   EVIDENCE_LIMITED_ACTIONS,
   EVIDENCE_LIMITED_CONFIDENCE,
@@ -22,6 +33,7 @@ import {
   type FeedbackLegacyView,
   type FeedbackV2View,
 } from "@meelni/core";
+import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
 
 const scores = {
   structure: 8,
@@ -196,6 +208,102 @@ test("legacy review stays explicitly historical", () => {
   assert.match(html, /Historical feedback/);
   assert.match(html, /do not include verifiable transcript evidence/);
 });
+
+test("dimension coverage review renders a full scorecard only with complete support", () => {
+  const feedback = dimensionCoverageView("full");
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /Full scorecard/);
+  assert.match(html, /Overall score/);
+  assert.match(html, /8\.0/);
+  assert.match(html, /Sufficient evidence/);
+  assert.match(html, /working parents because schedule changes/);
+});
+
+test("dimension coverage review withholds unsupported and overall scores in a partial scorecard", () => {
+  const feedback = dimensionCoverageView("partial");
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /Partial scorecard/);
+  assert.match(html, /8\/10/);
+  assert.match(html, /Partial evidence/);
+  assert.match(html, /No evidence/);
+  assert.doesNotMatch(html, /Overall score/);
+  assert.doesNotMatch(html, /Clarity score/);
+  assert.doesNotMatch(html, /answer-block:0001/);
+});
+
+test("dimension coverage coaching review never renders numerical scores", () => {
+  const feedback = dimensionCoverageView("coaching");
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /Coaching review/);
+  assert.match(html, /Grounded coaching without scores/);
+  assert.match(html, /working parents because schedule changes/);
+  assert.doesNotMatch(html, /Overall score/);
+  assert.doesNotMatch(html, />\d+\/10</);
+});
+
+function dimensionCoverageView(
+  kind: "full" | "partial" | "coaching"
+): FeedbackDimensionCoverageView {
+  const blocks = deriveCandidateAnswerBlocks(
+    createAnswerBlockSegmentationFixture(2).events
+  ).blocks;
+  const selection = createCoverageSelection(blocks[0]!.answerBlockId, kind);
+  const result = parseDimensionCoverageProviderSelection(selection, {
+    roundType: "product_sense",
+    answerBlocks: blocks,
+    modelVersion: "synthetic-ui-fixture-v1",
+    allowNumericalScores: kind !== "coaching",
+  });
+  return {
+    kind: "dimension-coverage",
+    id: `feedback-${kind}`,
+    sessionId: `session-${kind}`,
+    ...result,
+    createdAt: "2026-08-12T12:00:00.000Z",
+    nextPracticeRecommendation: null,
+  };
+}
+
+function createCoverageSelection(
+  answerBlockRef: string,
+  kind: "full" | "partial" | "coaching"
+): DimensionCoverageProviderSelection {
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const facetCount =
+      kind === "full" || kind === "coaching"
+        ? 2
+        : dimension === "structure"
+          ? 2
+          : dimension === "insight"
+            ? 1
+            : 0;
+    dimensions[dimension] = {
+      score: facetCount === 2 && kind !== "coaching" ? 8 : null,
+      evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[
+        dimension as FeedbackDimension
+      ].facets
+        .slice(0, facetCount)
+        .map((facet) => ({ facetCode: facet.code, answerBlockRef })),
+    };
+  }
+  return {
+    schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+    rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+    roundType: "product_sense",
+    dimensions,
+  };
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

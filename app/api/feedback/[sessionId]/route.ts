@@ -13,14 +13,22 @@ import {
   getFeedbackBySessionId,
   hasValidFeedbackLifecycleFields,
 } from "@/lib/db/feedback";
-import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
+import {
+  getFeedbackEvidenceTurns,
+  getFrozenFeedbackEvaluationEvidence,
+} from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
-import { isInterviewTerminalState } from "@meelni/core";
+import {
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  isInterviewTerminalState,
+  isValidRoundType,
+} from "@meelni/core";
+import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
 import {
   buildCompletedFeedbackLifecycleResponse,
   buildDispatchFailedFeedbackLifecycleResponse,
@@ -308,9 +316,34 @@ export async function GET(
               feedbackRecord.modelVersion,
               feedbackRecord.evaluationState,
             ].some((value) => value !== null);
-            const evidenceTurns = hasVersionedFeedback
+            const needsTurnEvidence =
+              hasVersionedFeedback &&
+              feedbackRecord.schemaVersion !==
+                FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+            const evidenceTurns = needsTurnEvidence
               ? await getFeedbackEvidenceTurns(sessionId, database)
               : [];
+            const frozenAnswerEvidence =
+              feedbackRecord.schemaVersion ===
+              FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+                ? await getFrozenFeedbackEvaluationEvidence(sessionId, database)
+                : null;
+            const preparedAnswerEvidence = frozenAnswerEvidence
+              ? prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+                  frozenAnswerEvidence
+                )
+              : null;
+            const answerBlocks = preparedAnswerEvidence?.eligible
+              ? preparedAnswerEvidence.blocks
+              : [];
+            const frozenEvidenceState =
+              frozenAnswerEvidence?.snapshotValid === true
+                ? (frozenAnswerEvidence.snapshotState ?? undefined)
+                : undefined;
+            const expectedRoundType =
+              session && isValidRoundType(session.roundType)
+                ? session.roundType
+                : undefined;
             const completedResponse = buildCompletedFeedbackLifecycleResponse(
               {
                 id: feedbackRecord.id,
@@ -330,9 +363,15 @@ export async function GET(
                 promptVersion: feedbackRecord.promptVersion,
                 modelVersion: feedbackRecord.modelVersion,
                 evaluationState: feedbackRecord.evaluationState,
+                feedbackMode: feedbackRecord.feedbackMode,
+                feedbackRoundType: feedbackRecord.feedbackRoundType,
+                dimensionCoverage: feedbackRecord.dimensionCoverage,
                 createdAt: feedbackRecord.createdAt,
               },
-              evidenceTurns
+              evidenceTurns,
+              answerBlocks,
+              expectedRoundType,
+              frozenEvidenceState
             );
             if (completedResponse.feedback.kind === "invalid") {
               reportOperationalFailure({

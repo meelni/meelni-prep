@@ -11,6 +11,7 @@ import { transcriptTurn } from "@/lib/db/schema";
 import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
 import { eq } from "drizzle-orm";
 import {
+  analyzeEvidenceLimitedCandidateResponseSignal,
   classifyCandidateResponseEvidence,
   deriveCandidateAnswerBlocks,
   FEEDBACK_ELIGIBILITY_POLICY,
@@ -102,6 +103,16 @@ export interface SessionValidationInterruptionInput {
 export interface CalculateValidatedSessionOptions {
   interruptions?: readonly SessionValidationInterruptionInput[];
   sessionEndAt?: Date;
+  /** Bounded persistence readers set this when any frozen source was truncated. */
+  sourceOverflow?: boolean;
+  /** Preserve the retired v2 threshold only inside its synthetic calibration harness. */
+  legacySurfaceEligibilityForSyntheticCalibration?: true;
+}
+
+export interface PreparedCandidateAnswerBlockEvidence {
+  blocks: CandidateAnswerBlock[];
+  eligible: boolean;
+  evidenceFailureReason: SkippedFeedbackOutcomeReason | null;
 }
 
 /**
@@ -223,7 +234,48 @@ const FILLER_WORDS = new Set([
   "yes",
 ]);
 
+const USABLE_RELATIONSHIP_WORDS = new Set([
+  "after",
+  "and",
+  "because",
+  "before",
+  "but",
+  "if",
+  "so",
+  "then",
+  "while",
+]);
+
 function classifyUserResponseEvidence(
+  text: string
+): CandidateResponseEvidenceLevel {
+  const words = tokenizeWords(text).map((word) =>
+    word.toLocaleLowerCase("en-US")
+  );
+  // This gate rejects empty/filler-only audio, not concise PM reasoning. The
+  // round rubric owns whether the usable answer supports any scored facet.
+  if (words.length < 4) return "insufficient";
+  const uniqueWords = new Set(words);
+  const contentWords = new Set(words.filter((word) => !FILLER_WORDS.has(word)));
+  const alphabeticCharacters = (text.match(/\p{L}/gu) ?? []).length;
+  const passesMinimumUsableSignal =
+    uniqueWords.size / words.length >= 0.35 &&
+    contentWords.size >= 3 &&
+    alphabeticCharacters >= 15;
+  if (!passesMinimumUsableSignal) return "insufficient";
+  const classified = classifyCandidateResponseEvidence({
+    text,
+    passesQuantitativeGates: true,
+  });
+  if (classified !== "insufficient") return classified;
+  const analysis = analyzeEvidenceLimitedCandidateResponseSignal(text);
+  return words.some((word) => USABLE_RELATIONSHIP_WORDS.has(word)) &&
+    analysis.recognizedEvidenceOccurrenceRatio <= 0.3
+    ? "evidence_limited"
+    : "insufficient";
+}
+
+function classifyLegacySyntheticCalibrationEvidence(
   text: string
 ): CandidateResponseEvidenceLevel {
   const words = tokenizeWords(text).map((word) =>
@@ -300,6 +352,135 @@ export function calculateValidatedSessionFromTurns(
     return validateSessionStats(calculateSessionStatsFromTurns(turns));
   }
 
+  const answerEvidence = deriveCandidateAnswerBlockEvidenceFromTurns(
+    turns,
+    options
+  );
+  const {
+    answerBlockDerivation,
+    hasInvalidTiming,
+    prepared,
+    preparedAnswerBlocks,
+  } = answerEvidence;
+  const evidenceLevels = preparedAnswerBlocks.flatMap((preparedBlock) =>
+    preparedBlock.transcript.map((turn) =>
+      options.legacySurfaceEligibilityForSyntheticCalibration === true
+        ? classifyLegacySyntheticCalibrationEvidence(turn.text)
+        : classifyUserResponseEvidence(turn.text)
+    )
+  );
+  const hasInvalidReplayContinuity = answerBlockDerivation.issues.some(
+    (issue) => issue.code === "invalid_replay_continuity"
+  );
+  const stats: SessionStats = hasInvalidReplayContinuity
+    ? {
+        totalTurns: 0,
+        userTurns: 0,
+        totalWords: 0,
+        durationSeconds: 0,
+        substantiveResponses: 0,
+        scoreableResponses: 0,
+      }
+    : {
+        ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
+        substantiveResponses: evidenceLevels.filter(
+          (level) => level !== "insufficient"
+        ).length,
+        scoreableResponses: evidenceLevels.filter(
+          (level) => level === "scoreable"
+        ).length,
+      };
+  const thresholdValidation = validateSessionStats(stats);
+  if (
+    prepared.eligible &&
+    answerBlockDerivation.eligible &&
+    preparedAnswerBlocks.every((preparedBlock) => preparedBlock.eligible) &&
+    !hasInvalidTiming
+  ) {
+    return thresholdValidation;
+  }
+
+  const hasCorruptEvidence =
+    hasInvalidTiming ||
+    !answerBlockDerivation.eligible ||
+    prepared.issues.some(
+      (issue) =>
+        issue.fatal &&
+        (issue.code === "malformed_event" || issue.code === "prompt_injection")
+    ) ||
+    preparedAnswerBlocks.some((preparedBlock) =>
+      preparedBlock.issues.some(
+        (issue) =>
+          issue.fatal &&
+          (issue.code === "malformed_event" ||
+            issue.code === "prompt_injection")
+      )
+    );
+
+  return {
+    tier: turns.length === 0 ? SessionTier.ABANDONED : SessionTier.INSUFFICIENT,
+    isValid: false,
+    stats,
+    reasons: [
+      hasCorruptEvidence
+        ? "The saved transcript could not be verified"
+        : "No reviewable candidate answer was recorded",
+    ],
+    recommendations: [],
+    evidenceFailureReason: hasCorruptEvidence
+      ? "transcript_integrity_degraded"
+      : "no_reviewable_answer",
+  };
+}
+
+/**
+ * Rebuild the SAV-369 evaluation unit from frozen canonical evidence. Callers
+ * receive no replacement transcript model: the returned blocks retain their
+ * immutable source-turn lineage and are valid only when every integrity and
+ * untrusted-content gate passes.
+ */
+export function prepareCandidateAnswerBlockEvidenceFromTurns(
+  turns: SessionValidationTurnInput[],
+  options: CalculateValidatedSessionOptions = {}
+): PreparedCandidateAnswerBlockEvidence {
+  const derived = deriveCandidateAnswerBlockEvidenceFromTurns(turns, options);
+  const hasCorruptEvidence = hasCorruptCandidateAnswerBlockEvidence(derived);
+  return {
+    blocks: derived.answerBlockDerivation.blocks,
+    eligible:
+      !hasCorruptEvidence && derived.answerBlockDerivation.blocks.length > 0,
+    evidenceFailureReason: hasCorruptEvidence
+      ? "transcript_integrity_degraded"
+      : derived.answerBlockDerivation.blocks.length === 0
+        ? "no_reviewable_answer"
+        : null,
+  };
+}
+
+export interface FrozenCandidateAnswerBlockEvidenceSnapshot {
+  snapshotValid: boolean;
+  snapshotState: "complete" | "partial" | null;
+  turns: SessionValidationTurnInput[];
+  interruptions: SessionValidationInterruptionInput[];
+  sessionEndAt: Date | null;
+  sourceOverflow: boolean;
+}
+
+/** Invalid freeze metadata is an integrity failure, never a v3 fallback. */
+export function prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+  evidence: FrozenCandidateAnswerBlockEvidenceSnapshot
+): PreparedCandidateAnswerBlockEvidence {
+  return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
+    interruptions: evidence.interruptions,
+    ...(evidence.sessionEndAt ? { sessionEndAt: evidence.sessionEndAt } : {}),
+    sourceOverflow: evidence.sourceOverflow || !evidence.snapshotValid,
+  });
+}
+
+function deriveCandidateAnswerBlockEvidenceFromTurns(
+  turns: SessionValidationTurnInput[],
+  options: CalculateValidatedSessionOptions
+) {
   const hasInvalidTiming = turns.some(
     (turn) =>
       !turn.startedAt ||
@@ -308,7 +489,6 @@ export function calculateValidatedSessionFromTurns(
       !Number.isFinite(turn.endedAt.getTime()) ||
       turn.endedAt <= turn.startedAt
   );
-
   const prepared = prepareFeedbackTranscript(
     turns.map((turn) => ({
       eventId: turn.eventId ?? null,
@@ -377,73 +557,36 @@ export function calculateValidatedSessionFromTurns(
       },
     ])
   );
-  const evidenceLevels = preparedAnswerBlocks.flatMap((preparedBlock) =>
-    preparedBlock.transcript.map((turn) =>
-      classifyUserResponseEvidence(turn.text)
-    )
-  );
-  const hasInvalidReplayContinuity = answerBlockDerivation.issues.some(
-    (issue) => issue.code === "invalid_replay_continuity"
-  );
-  const stats: SessionStats = hasInvalidReplayContinuity
-    ? {
-        totalTurns: 0,
-        userTurns: 0,
-        totalWords: 0,
-        durationSeconds: 0,
-        substantiveResponses: 0,
-        scoreableResponses: 0,
-      }
-    : {
-        ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
-        substantiveResponses: evidenceLevels.filter(
-          (level) => level !== "insufficient"
-        ).length,
-        scoreableResponses: evidenceLevels.filter(
-          (level) => level === "scoreable"
-        ).length,
-      };
-  const thresholdValidation = validateSessionStats(stats);
-  if (
-    prepared.eligible &&
-    answerBlockDerivation.eligible &&
-    preparedAnswerBlocks.every((preparedBlock) => preparedBlock.eligible) &&
-    !hasInvalidTiming
-  ) {
-    return thresholdValidation;
-  }
+  return {
+    answerBlockDerivation,
+    hasInvalidTiming,
+    hasSourceOverflow: options.sourceOverflow === true,
+    prepared,
+    preparedAnswerBlocks,
+  };
+}
 
-  const hasCorruptEvidence =
-    hasInvalidTiming ||
-    !answerBlockDerivation.eligible ||
-    prepared.issues.some(
+function hasCorruptCandidateAnswerBlockEvidence(
+  derived: ReturnType<typeof deriveCandidateAnswerBlockEvidenceFromTurns>
+): boolean {
+  return (
+    derived.hasInvalidTiming ||
+    derived.hasSourceOverflow ||
+    !derived.answerBlockDerivation.eligible ||
+    derived.prepared.issues.some(
       (issue) =>
         issue.fatal &&
         (issue.code === "malformed_event" || issue.code === "prompt_injection")
     ) ||
-    preparedAnswerBlocks.some((preparedBlock) =>
+    derived.preparedAnswerBlocks.some((preparedBlock) =>
       preparedBlock.issues.some(
         (issue) =>
           issue.fatal &&
           (issue.code === "malformed_event" ||
             issue.code === "prompt_injection")
       )
-    );
-
-  return {
-    tier: turns.length === 0 ? SessionTier.ABANDONED : SessionTier.INSUFFICIENT,
-    isValid: false,
-    stats,
-    reasons: [
-      hasCorruptEvidence
-        ? "The saved transcript could not be verified"
-        : "No reviewable candidate answer was recorded",
-    ],
-    recommendations: [],
-    evidenceFailureReason: hasCorruptEvidence
-      ? "transcript_integrity_degraded"
-      : "no_reviewable_answer",
-  };
+    )
+  );
 }
 
 function calculateAnswerBlockSessionStats(

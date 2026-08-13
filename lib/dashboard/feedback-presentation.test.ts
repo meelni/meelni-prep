@@ -1,14 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   LEGACY_FEEDBACK_RUBRIC_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  deriveCandidateAnswerBlocks,
+  parseDimensionCoverageProviderSelection,
   parseEvidenceLimitedFeedback,
 } from "@meelni/core";
+import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
 
 import {
   classifyDashboardFeedbackPresentation,
@@ -77,6 +85,10 @@ const evidenceLimited = parseEvidenceLimitedFeedback(
   { transcript, modelVersion: "fixture-model" }
 );
 
+const answerBlocks = deriveCandidateAnswerBlocks(
+  createAnswerBlockSegmentationFixture(1).events
+).blocks;
+
 function candidate(
   overrides: Partial<DashboardFeedbackPresentationCandidate> = {}
 ): DashboardFeedbackPresentationCandidate {
@@ -97,6 +109,9 @@ function candidate(
     modelVersion: "fixture-model",
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     evaluationState: "partial",
+    feedbackMode: null,
+    feedbackRoundType: null,
+    dimensionCoverageJson: null,
     strengthsJson: JSON.stringify(evidenceLimited.strengths),
     improvementsJson: JSON.stringify(evidenceLimited.improvements),
     drillsJson: "[]",
@@ -130,6 +145,71 @@ function scoredCandidate(
   });
 }
 
+function dimensionCoverageCandidate(
+  mode: "full_scorecard" | "partial_scorecard" | "coaching_review"
+) {
+  const dimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => {
+      const sufficient =
+        mode === "full_scorecard" ||
+        (mode === "partial_scorecard" && dimension === "structure");
+      const partial = mode === "coaching_review" && dimension === "insight";
+      return [
+        dimension,
+        {
+          score: sufficient ? 8 : null,
+          evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[
+            dimension
+          ].facets
+            .slice(0, sufficient ? 2 : partial ? 1 : 0)
+            .map((facet) => ({
+              facetCode: facet.code,
+              answerBlockRef: answerBlocks[0]!.answerBlockId,
+            })),
+        },
+      ];
+    })
+  );
+  const result = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks,
+      modelVersion: "synthetic-dashboard-model",
+      allowNumericalScores: true,
+    }
+  );
+  assert.equal(result.mode, mode);
+  return candidate({
+    completionTier: "partial",
+    overallScore:
+      result.overallScore === null ? null : result.overallScore.toString(),
+    structureScore: result.dimensions.structure.score,
+    clarityScore: result.dimensions.clarity.score,
+    insightScore: result.dimensions.insight.score,
+    communicationScore: result.dimensions.communication.score,
+    leadershipScore: result.dimensions.leadership.score,
+    schemaVersion: result.schemaVersion,
+    promptVersion: result.promptVersion,
+    modelVersion: result.modelVersion,
+    rubricVersion: result.rubricVersion,
+    evaluationState: result.evaluationState,
+    feedbackMode: result.mode,
+    feedbackRoundType: result.roundType,
+    dimensionCoverageJson: JSON.stringify(result.dimensions),
+    strengthsJson: null,
+    improvementsJson: null,
+    drillsJson: "[]",
+    summary: result.summary,
+  });
+}
+
 test("classifies valid completed scored and evidence-limited reviews", () => {
   assert.equal(
     classifyDashboardFeedbackPresentation(scoredCandidate(), transcript),
@@ -138,6 +218,71 @@ test("classifies valid completed scored and evidence-limited reviews", () => {
   assert.equal(
     classifyDashboardFeedbackPresentation(candidate(), transcript),
     "evidence_limited"
+  );
+});
+
+test("keeps full, partial, and coaching dimension-coverage reviews reachable", () => {
+  for (const mode of [
+    "full_scorecard",
+    "partial_scorecard",
+    "coaching_review",
+  ] as const) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(
+        dimensionCoverageCandidate(mode),
+        [],
+        answerBlocks,
+        "product_sense",
+        "complete"
+      ),
+      mode
+    );
+  }
+});
+
+test("dimension-coverage dashboard reads fail closed without eligible frozen answer blocks", () => {
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("full_scorecard"),
+      [],
+      [],
+      "product_sense",
+      "complete"
+    ),
+    "unavailable"
+  );
+});
+
+test("dimension-coverage dashboard binds the owning round and snapshot score policy", () => {
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("full_scorecard"),
+      [],
+      answerBlocks,
+      "strategy",
+      "complete"
+    ),
+    "unavailable"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("partial_scorecard"),
+      [],
+      answerBlocks,
+      "product_sense",
+      "partial"
+    ),
+    "unavailable"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("coaching_review"),
+      [],
+      answerBlocks,
+      "product_sense",
+      "partial"
+    ),
+    "coaching_review"
   );
 });
 

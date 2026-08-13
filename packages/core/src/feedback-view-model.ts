@@ -18,6 +18,18 @@ import {
   type EvidenceLimitedStrengthItem,
   type EvidenceLimitedFeedbackResult,
 } from "./feedback-evidence-limited";
+import {
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  parsePersistedDimensionCoverageFeedback,
+  type DimensionCoverageFeedbackMode,
+  type DimensionCoverageResultDimensions,
+} from "./feedback-dimension-coverage";
+import type { CandidateAnswerBlock } from "./answer-blocks";
+import type { RoundType } from "./interview";
 import type {
   FeedbackOutcomeReason,
   SkippedFeedbackOutcomeReason,
@@ -47,6 +59,9 @@ export interface PersistedCompletedFeedback {
   promptVersion: unknown;
   modelVersion: unknown;
   evaluationState: unknown;
+  feedbackMode?: unknown;
+  feedbackRoundType?: unknown;
+  dimensionCoverage?: unknown;
   createdAt: unknown;
 }
 
@@ -59,6 +74,9 @@ export interface PersistedFeedbackEvidenceTurn {
 
 export interface PresentCompletedFeedbackOptions {
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[];
+  answerBlocks?: readonly CandidateAnswerBlock[];
+  expectedRoundType?: RoundType;
+  frozenEvidenceState?: "complete" | "partial";
 }
 
 export interface FeedbackScoreView {
@@ -121,6 +139,20 @@ export interface FeedbackEvidenceLimitedView
   improvements: EvidenceLimitedImprovementItem[];
 }
 
+export interface FeedbackDimensionCoverageView
+  extends CompletedFeedbackIdentityBase {
+  kind: "dimension-coverage";
+  schemaVersion: typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+  promptVersion: typeof FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION;
+  modelVersion: string;
+  rubricVersion: typeof FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION;
+  roundType: RoundType;
+  evaluationState: "full" | "partial";
+  mode: DimensionCoverageFeedbackMode;
+  dimensions: DimensionCoverageResultDimensions;
+  overallScore: number | null;
+}
+
 export interface FeedbackInvalidView {
   kind: "invalid";
   reason: "incompatible_or_corrupt";
@@ -129,6 +161,7 @@ export interface FeedbackInvalidView {
 export type CompletedFeedbackView =
   | FeedbackV2View
   | FeedbackEvidenceLimitedView
+  | FeedbackDimensionCoverageView
   | FeedbackLegacyView
   | FeedbackInvalidView;
 
@@ -218,6 +251,18 @@ export type FeedbackViewState =
       kind: "completed-evidence-limited";
       feedback: FeedbackEvidenceLimitedView;
     }
+  | {
+      kind: "completed-full-scorecard";
+      feedback: FeedbackDimensionCoverageView;
+    }
+  | {
+      kind: "completed-partial-scorecard";
+      feedback: FeedbackDimensionCoverageView;
+    }
+  | {
+      kind: "completed-coaching-review";
+      feedback: FeedbackDimensionCoverageView;
+    }
   | { kind: "completed-legacy"; feedback: FeedbackLegacyView }
   | { kind: "completed-invalid" }
   | {
@@ -260,6 +305,22 @@ export function presentCompletedFeedback(
 ): CompletedFeedbackView {
   try {
     if (hasLegacyVersionTuple(input)) return parseLegacyFeedback(input);
+    if (input.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION) {
+      if (
+        options.expectedRoundType === undefined ||
+        options.frozenEvidenceState === undefined
+      ) {
+        throw new Error("verified v3 presentation context required");
+      }
+      if (input.feedbackRoundType !== options.expectedRoundType) {
+        throw new Error("feedback round mismatch");
+      }
+      return parseDimensionCoverageFeedbackView(
+        input,
+        options.answerBlocks ?? [],
+        options.frozenEvidenceState
+      );
+    }
     if (input.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION) {
       return parseEvidenceLimitedFeedbackView(input, options.evidenceTurns);
     }
@@ -389,6 +450,24 @@ export function toFeedbackViewState(
     case "completed":
       if (response.feedback.kind === "invalid") {
         return { kind: "completed-invalid" };
+      }
+      if (response.feedback.kind === "dimension-coverage") {
+        if (response.feedback.mode === "full_scorecard") {
+          return {
+            kind: "completed-full-scorecard",
+            feedback: response.feedback,
+          };
+        }
+        if (response.feedback.mode === "partial_scorecard") {
+          return {
+            kind: "completed-partial-scorecard",
+            feedback: response.feedback,
+          };
+        }
+        return {
+          kind: "completed-coaching-review",
+          feedback: response.feedback,
+        };
       }
       if (response.feedback.kind === "legacy") {
         return { kind: "completed-legacy", feedback: response.feedback };
@@ -551,6 +630,12 @@ function decodeCompletedFeedbackView(
       ? (value as unknown as FeedbackEvidenceLimitedView)
       : null;
   }
+  if (value.kind === "dimension-coverage") {
+    return isCompletedFeedbackIdentityBase(value) &&
+      isDimensionCoverageFeedbackView(value)
+      ? (value as unknown as FeedbackDimensionCoverageView)
+      : null;
+  }
   if (!isCompletedFeedbackBase(value)) return null;
   if (value.kind === "legacy") {
     return value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
@@ -583,6 +668,100 @@ function decodeCompletedFeedbackView(
     return null;
   }
   return value as unknown as FeedbackV2View;
+}
+
+function isDimensionCoverageFeedbackView(
+  value: Record<string, unknown>
+): boolean {
+  if (
+    value.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+    value.promptVersion !== FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION ||
+    value.rubricVersion !== FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION ||
+    !isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) ||
+    (value.roundType !== "product_sense" &&
+      value.roundType !== "execution" &&
+      value.roundType !== "behavioral" &&
+      value.roundType !== "strategy") ||
+    (value.mode !== "full_scorecard" &&
+      value.mode !== "partial_scorecard" &&
+      value.mode !== "coaching_review") ||
+    !isRecord(value.dimensions)
+  ) {
+    return false;
+  }
+  const dimensions = value.dimensions;
+  const roundType = value.roundType;
+  if (
+    Object.keys(dimensions).length !== FEEDBACK_DIMENSIONS.length ||
+    FEEDBACK_DIMENSIONS.some((dimension) => !(dimension in dimensions))
+  ) {
+    return false;
+  }
+  let sufficientCount = 0;
+  const numericScores: Partial<Record<FeedbackDimension, number>> = {};
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const candidate = dimensions[dimension];
+    if (!isRecord(candidate) || !Array.isArray(candidate.evidence))
+      return false;
+    const expectedCount =
+      candidate.coverage === "absent"
+        ? 0
+        : candidate.coverage === "partial"
+          ? 1
+          : candidate.coverage === "sufficient"
+            ? 2
+            : -1;
+    if (candidate.evidence.length !== expectedCount) return false;
+    const facets = new Set<string>();
+    for (const item of candidate.evidence) {
+      if (
+        !isRecord(item) ||
+        !isBoundedString(item.facetCode, 128) ||
+        !isBoundedString(item.facetLabel, 256) ||
+        !isBoundedString(item.answerBlockRef, 128) ||
+        !/^answer-block:\d{4}$/.test(item.answerBlockRef) ||
+        !isBoundedString(item.evidenceText, 32_000) ||
+        facets.has(item.facetCode)
+      ) {
+        return false;
+      }
+      const definition = ROUND_DIMENSION_COVERAGE_CONFIG[roundType][
+        dimension
+      ].facets.find((facet) => facet.code === item.facetCode);
+      if (!definition || definition.label !== item.facetLabel) return false;
+      facets.add(item.facetCode);
+    }
+    if (candidate.coverage === "sufficient") sufficientCount += 1;
+    if (candidate.score !== null) {
+      if (!isDimensionScore(candidate.score)) return false;
+      numericScores[dimension] = candidate.score as number;
+    }
+    if (
+      value.mode !== "coaching_review" &&
+      (candidate.coverage === "sufficient") !== (candidate.score !== null)
+    ) {
+      return false;
+    }
+    if (value.mode === "coaching_review" && candidate.score !== null) {
+      return false;
+    }
+  }
+  if (value.mode === "full_scorecard") {
+    return (
+      value.evaluationState === "full" &&
+      sufficientCount === FEEDBACK_DIMENSIONS.length &&
+      isScore(value.overallScore) &&
+      calculateOverallScore(
+        numericScores as Record<FeedbackDimension, number>
+      ) === (value.overallScore as number)
+    );
+  }
+  if (value.overallScore !== null || value.evaluationState !== "partial") {
+    return false;
+  }
+  return value.mode === "coaching_review"
+    ? true
+    : sufficientCount > 0 && sufficientCount < FEEDBACK_DIMENSIONS.length;
 }
 
 function isCompletedFeedbackIdentityBase(
@@ -778,6 +957,71 @@ function parseV2Feedback(
     modelVersion: feedback.modelVersion,
     rubricVersion: FEEDBACK_RUBRIC_VERSION,
     evaluationState: feedback.evaluationState,
+    createdAt: requireDateString(input.createdAt),
+    nextPracticeRecommendation: null,
+  };
+}
+
+function parseDimensionCoverageFeedbackView(
+  input: PersistedCompletedFeedback,
+  answerBlocks: readonly CandidateAnswerBlock[],
+  frozenEvidenceState: "complete" | "partial"
+): FeedbackDimensionCoverageView {
+  const overallScore =
+    input.overallScore === null
+      ? null
+      : requireNumberInRange(input.overallScore);
+  const feedback = parsePersistedDimensionCoverageFeedback(
+    {
+      schemaVersion: input.schemaVersion,
+      promptVersion: input.promptVersion,
+      rubricVersion: input.rubricVersion,
+      modelVersion: input.modelVersion,
+      roundType: input.feedbackRoundType,
+      evaluationState: input.evaluationState,
+      mode: input.feedbackMode,
+      dimensions: input.dimensionCoverage,
+      overallScore,
+      summary: input.summary,
+    },
+    {
+      answerBlocks,
+      allowNumericalScores: frozenEvidenceState === "complete",
+    }
+  );
+  const persistedScores: Record<FeedbackDimension, unknown> = {
+    structure: input.structureScore,
+    clarity: input.clarityScore,
+    insight: input.insightScore,
+    communication: input.communicationScore,
+    leadership: input.leadershipScore,
+  };
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const persisted =
+      persistedScores[dimension] === null
+        ? null
+        : requireScore(persistedScores[dimension]);
+    if (persisted !== feedback.dimensions[dimension].score) {
+      throw new Error("dimension score mismatch");
+    }
+  }
+  return {
+    kind: "dimension-coverage",
+    id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
+    sessionId: requireBoundedString(
+      input.sessionId,
+      FEEDBACK_READ_LIMITS.identifier
+    ),
+    summary: feedback.summary,
+    schemaVersion: feedback.schemaVersion,
+    promptVersion: feedback.promptVersion,
+    modelVersion: feedback.modelVersion,
+    rubricVersion: feedback.rubricVersion,
+    roundType: feedback.roundType,
+    evaluationState: feedback.evaluationState,
+    mode: feedback.mode,
+    dimensions: feedback.dimensions,
+    overallScore: feedback.overallScore,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };

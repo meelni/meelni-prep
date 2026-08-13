@@ -294,7 +294,9 @@ export function buildDashboardPracticeSummary(
             latestReviewable === latestScored && bestSignal && focusArea
               ? `Highest scored dimension: ${bestSignal}. Lowest scored dimension: ${focusArea.label}.`
               : getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
-                  "evidence_limited"
+                    "evidence_limited" ||
+                  getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
+                    "coaching_review"
                 ? `Open the grounded observations from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No numerical score was inferred.`
                 : `Open the completed feedback from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview.`,
           href: `/feedback/${latestReviewable.id}`,
@@ -426,6 +428,7 @@ export function buildHistorySummary(
 
   const focusCounts = new Map<string, number>();
   for (const session of sortedSessions) {
+    if (getDashboardScoredFeedbackScore(session.feedback) === null) continue;
     const focus = getFocusArea(session.feedback);
     if (!focus) continue;
     focusCounts.set(focus.label, (focusCounts.get(focus.label) || 0) + 1);
@@ -445,7 +448,10 @@ export function buildHistorySummary(
   const topPattern = patterns[0] ?? null;
   const latestReady = rows.find((row) => row.feedbackHref);
   const latestScoredReady = rows.find(
-    (row) => row.feedbackKind === "scored" && row.feedbackHref
+    (row) =>
+      (row.feedbackKind === "scored" ||
+        row.feedbackKind === "full_scorecard") &&
+      row.feedbackHref
   );
   const nextReviewRow = topPattern ? latestScoredReady : latestReady;
 
@@ -563,7 +569,23 @@ function getFeedbackDisplay(
       feedbackState: "ready" as const,
     };
   }
-  if (reviewKind === "evidence_limited") {
+  if (reviewKind === "full_scorecard") {
+    return {
+      focusLabel: focusArea?.label || "Complete scorecard",
+      scoreLabel: "Scored",
+      statusLabel: "Feedback ready",
+      feedbackState: "ready" as const,
+    };
+  }
+  if (reviewKind === "partial_scorecard") {
+    return {
+      focusLabel: "Scores for supported PM dimensions",
+      scoreLabel: "Partial scores",
+      statusLabel: "Feedback ready — partial scorecard",
+      feedbackState: "ready" as const,
+    };
+  }
+  if (reviewKind === "evidence_limited" || reviewKind === "coaching_review") {
     return {
       focusLabel: "Grounded observations from your recorded answers",
       scoreLabel: "No score",
@@ -621,12 +643,16 @@ function getDashboardFeedbackReviewKind(
   const score = getDashboardScoredFeedbackScore(feedback);
   if (
     feedback?.presentationKind === "scored" ||
+    feedback?.presentationKind === "full_scorecard" ||
     (feedback?.presentationKind === undefined && score !== null)
   ) {
-    return score === null ? null : "scored";
+    return score === null ? null : (feedback?.presentationKind ?? "scored");
   }
-  return feedback?.presentationKind === "evidence_limited" && score === null
-    ? "evidence_limited"
+  return score === null &&
+    (feedback?.presentationKind === "evidence_limited" ||
+      feedback?.presentationKind === "partial_scorecard" ||
+      feedback?.presentationKind === "coaching_review")
+    ? feedback.presentationKind
     : null;
 }
 
@@ -635,6 +661,8 @@ function getDashboardScoredFeedbackScore(
 ): number | null {
   if (
     feedback?.presentationKind === "evidence_limited" ||
+    feedback?.presentationKind === "partial_scorecard" ||
+    feedback?.presentationKind === "coaching_review" ||
     feedback?.presentationKind === "unavailable"
   ) {
     return null;

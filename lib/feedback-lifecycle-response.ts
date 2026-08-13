@@ -2,8 +2,10 @@ import {
   decodeFeedbackLifecycleResponse,
   presentCompletedFeedback,
   type FeedbackLifecycleResponse,
+  type CandidateAnswerBlock,
   type PersistedCompletedFeedback,
   type PersistedFeedbackEvidenceTurn,
+  type RoundType,
 } from "@meelni/core";
 
 export const DISPATCH_FAILED_CUSTOMER_MESSAGE =
@@ -22,12 +24,20 @@ export function buildDispatchFailedFeedbackLifecycleResponse(
 
 export function buildCompletedFeedbackLifecycleResponse(
   record: PersistedCompletedFeedback,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
+  answerBlocks: readonly CandidateAnswerBlock[] = [],
+  expectedRoundType?: RoundType,
+  frozenEvidenceState?: "complete" | "partial"
 ): Extract<FeedbackLifecycleResponse, { status: "completed" }> {
   return {
     status: "completed",
     retryable: false,
-    feedback: presentCompletedFeedback(record, { evidenceTurns }),
+    feedback: presentCompletedFeedback(record, {
+      evidenceTurns,
+      answerBlocks,
+      expectedRoundType,
+      frozenEvidenceState,
+    }),
   };
 }
 
