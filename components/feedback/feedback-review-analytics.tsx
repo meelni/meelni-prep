@@ -31,15 +31,17 @@ function FeedbackReviewAnalyticsTracker({
   const emittedRef = useRef(false);
 
   useEffect(() => {
+    if (emittedRef.current || !eligibilityRef.current.eligible) return;
     if (
       !resolved ||
       !resolvedForUserId ||
-      emittedRef.current ||
-      !eligibilityRef.current.eligible ||
       eligibilityRef.current.subject !== resolvedForUserId ||
-      decision !== "accepted" ||
-      !runtimeReady
+      decision !== "accepted"
     ) {
+      eligibilityRef.current.eligible = false;
+      return;
+    }
+    if (!runtimeReady) {
       return;
     }
     emittedRef.current = true;
