@@ -6035,20 +6035,6 @@ function sourceRecommendationId(roundType, dimension, evidenceGap) {
   ].join(":");
 }
 
-// packages/core/src/focused-practice-attempt.ts
-var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
-  revised_answer: 8e3,
-  reflection: 2e3
-});
-
-// packages/core/src/feedback-evidence-limited.ts
-var FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION = "feedback.evidence-limited.v2";
-var FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION = "feedback.evidence-limited.selection.v1";
-var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited.v2";
-function isEvidenceLimitedFeedbackResult(value) {
-  return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
-}
-
 // packages/core/src/feedback-dimension-coverage.ts
 var FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION = "feedback.dimension-coverage.v1";
 var FEEDBACK_DIMENSIONS = [
@@ -6354,6 +6340,20 @@ var ROUND_DIMENSION_COVERAGE_CONFIG = {
 function isDimensionCoverageFeedbackResult(value) {
   return value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
 }
+
+// packages/core/src/feedback-evidence-limited.ts
+var FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION = "feedback.evidence-limited.v2";
+var FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION = "feedback.evidence-limited.selection.v1";
+var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited.v2";
+function isEvidenceLimitedFeedbackResult(value) {
+  return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
+}
+
+// packages/core/src/focused-practice-attempt.ts
+var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
+  revised_answer: 8e3,
+  reflection: 2e3
+});
 
 // packages/core/src/feedback-outcome.ts
 var FEEDBACK_OUTCOME_REASONS = [
@@ -20003,9 +20003,9 @@ var focusedPracticeAttempt = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
   },
   (table) => ({
-    ownerSourceContractUnique: uniqueIndex(
-      "focused_practice_attempt_owner_source_contract_idx"
-    ).on(table.userId, table.sourceSessionId, table.contractVersion),
+    ownerSourceUnique: uniqueIndex(
+      "focused_practice_attempt_owner_source_idx"
+    ).on(table.userId, table.sourceSessionId),
     ownerAttemptUnique: unique("focused_practice_attempt_id_user_uniq").on(
       table.id,
       table.userId
@@ -20022,25 +20022,62 @@ var focusedPracticeAttempt = pgTable(
     }).onDelete("cascade"),
     contractVersionCheck: check(
       "focused_practice_attempt_contract_version_check",
-      sql`${table.contractVersion} = 'focused-practice-attempt.v1'`
+      sql`${table.contractVersion} IN ('focused-practice-attempt.v1', 'focused-practice-attempt.v2')`
     ),
     planVersionCheck: check(
       "focused_practice_attempt_plan_version_check",
-      sql`${table.planContractVersion} = 'focused-practice-plan.v1' AND ${table.planTemplateVersion} = 'focused-practice-templates.v1' AND length(trim(${table.planTemplateId})) > 0`
+      sql`((
+          ${table.contractVersion} = 'focused-practice-attempt.v1' AND
+          ${table.planContractVersion} = 'focused-practice-plan.v1' AND
+          ${table.planTemplateVersion} = 'focused-practice-templates.v1'
+        ) OR (
+          ${table.contractVersion} = 'focused-practice-attempt.v2' AND
+          ${table.planContractVersion} = 'focused-practice-plan.v2' AND
+          ${table.planTemplateVersion} = 'focused-practice-templates.v2'
+        )) AND length(trim(${table.planTemplateId})) > 0`
     ),
     snapshotVersionCheck: check(
       "focused_practice_attempt_snapshot_version_check",
-      sql`jsonb_typeof(${table.feedbackVersion}) = 'object' AND
-        ${table.feedbackVersion}->>'schemaVersion' = 'feedback.v2' AND
-        ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.v2' AND
-        ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v2' AND
-        ${table.feedbackVersion}->>'evaluationState' IN ('full', 'partial') AND
+      sql`jsonb_typeof(${table.feedbackVersion}) = 'object' AND (
+        (
+          ${table.contractVersion} = 'focused-practice-attempt.v1' AND
+          ${table.feedbackVersion}->>'schemaVersion' = 'feedback.v2' AND
+          ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.v2' AND
+          ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v2' AND
+          ${table.feedbackVersion}->>'evaluationState' IN ('full', 'partial')
+        ) OR (
+          ${table.contractVersion} = 'focused-practice-attempt.v2' AND
+          ${table.feedbackVersion}->>'schemaVersion' = 'feedback.evidence-limited.v2' AND
+          ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.evidence-limited.v2' AND
+          ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v2' AND
+          ${table.feedbackVersion}->>'evaluationState' = 'partial' AND
+          ${table.feedbackVersion}->>'reviewOutcome' = 'coaching_review' AND
+          ${table.feedbackVersion}->>'scoreWithheldReason' IN ('rubric_coverage', 'verified_evidence_integrity') AND
+          ${table.feedbackVersion}->>'sourceFingerprint' ~ '^[0-9a-f]{64}$'
+        ) OR (
+          ${table.contractVersion} = 'focused-practice-attempt.v2' AND
+          ${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND
+          ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.dimension-coverage.v1' AND
+          ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v3' AND
+          ${table.feedbackVersion}->>'evaluationState' = 'partial' AND
+          ${table.feedbackVersion}->>'reviewOutcome' IN ('partial_scorecard', 'coaching_review') AND
+          ${table.feedbackVersion}->>'scoreWithheldReason' IN ('rubric_coverage', 'verified_evidence_integrity') AND
+          (${table.feedbackVersion}->>'reviewOutcome' <> 'partial_scorecard' OR ${table.feedbackVersion}->>'scoreWithheldReason' = 'rubric_coverage') AND
+          ${table.feedbackVersion}->>'sourceFingerprint' ~ '^[0-9a-f]{64}$'
+        )
+      ) AND
         jsonb_typeof(${table.plan}) = 'object' AND
         ${table.plan}->>'state' = 'available' AND
         ${table.plan}->>'contractVersion' = ${table.planContractVersion} AND
         ${table.plan}->>'templateVersion' = ${table.planTemplateVersion} AND
         ${table.plan}->>'templateId' = ${table.planTemplateId} AND
         jsonb_typeof(${table.sourceFinding}) = 'object' AND
+        (
+          ${table.contractVersion} = 'focused-practice-attempt.v1' OR (
+            ${table.sourceFinding}->>'kind' IN ('evidence_limited_improvement', 'dimension_coverage_focus') AND
+            ${table.plan}#>>'{source,focusIdentity,kind}' = ${table.sourceFinding}->>'kind'
+          )
+        ) AND
         octet_length(${table.feedbackVersion}::text) <= 65536 AND
         octet_length(${table.plan}::text) <= 65536 AND
         octet_length(${table.sourceFinding}::text) <= 65536 AND
