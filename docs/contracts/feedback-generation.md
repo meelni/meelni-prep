@@ -17,47 +17,31 @@ completed and skipped outcome reasons remain immutable with their terminal row.
 
 ## Evidence-gated evaluation
 
-Eligibility depends on the frozen canonical candidate evidence, not room
-duration or total transcript-turn count. One trustworthy reviewable candidate
-answer is enough to request feedback. A response is reviewable when it passes
-the existing quantitative gates and either the strict scoreable language
-surface or the qualitative-only long-form recognized-evidence boundary. That
-fallback requires at least 40 tokens, recognized occurrences no denser than
-30% and no more than twice the distinct recognized-lexeme count, at least one
-strong connector-linked pair of different recognized lexemes within 14 token
-positions, and either five distinct lexemes with two broad linked pairs or at
-least 46 tokens with four distinct lexemes and one broad linked pair. Five
-distinct strict scoreable answers permit the full-depth evaluation state;
-smaller healthy prefixes and fallback-only evidence remain partial.
-Duration and turn statistics remain diagnostic evidence only and cannot deny
-feedback.
+Eligibility depends on frozen canonical candidate evidence, not room duration
+or transcript-row count. One trustworthy usable candidate answer is enough to
+request evaluation. Deterministic gates may reject empty/filler-only audio,
+corruption, injection, or bounded-source overflow, but punctuation and surface
+grammar never prove PM competence or numerical precision. Duration and turn
+statistics remain diagnostic only.
 
 Canonical rows are grouped deterministically into
 [candidate answer blocks](./answer-blocks.md) after transcript preparation.
-Evidence classification runs once per logical candidate response, and canonical
+Evidence classification runs once per logical candidate response, and
 completion statistics count bound prompt groups plus answer blocks rather than
 STT-final rows. Equivalent speech split into 1, 2, 5, or 10 adjacent finals must
-preserve the complete statistics shape, completion tier, and provider mode.
-The evaluator still receives exact prepared canonical turns, so citations keep
-their original event identities and text rather than derived block aliases.
+preserve statistics, completion tier, provider input, coverage, scores, mode,
+citations, and persisted evaluation content. The evaluator receives only the
+derived answer blocks. Canonical source-event provenance remains the server-
+only integrity authority.
 
-Numerical feedback requires at least four strict scoreable candidate answers. A
-healthy eligible prefix below that precision boundary uses the scoreless
-`feedback.evidence-limited.v2` result. Its provider contract contains no
-freeform narrative, quote, number, score, grade, or confidence field. The
-provider may select only closed PM-rubric signal/action codes and candidate
-turn aliases supplied in the request. The core parser validates every alias
-against the frozen canonical candidate evidence, then resolves the codes to a
-finite server-owned observation, next-step, dimension, confidence, and summary
-template map. It restores the exact frozen turn text as the citation; provider
-text is never copied into that citation. The resolved result persists two or
-three findings and never persists or presents inferred scores. Unknown codes,
-empty arrays, repeated signal codes, repeated action codes even when their
-references differ, duplicate or invalid references, extra strings, or any
-malformed selection remain `generation_failed`, not candidate insufficiency.
-Signal identity is unique within strengths or improvements, and action identity
-is unique across both arrays. Distinct strength and improvement selections may
-cite the same frozen candidate turn so one-answer feedback remains useful.
+New evaluations use
+[`feedback.dimension-coverage.v1`](./dimension-evidence-coverage.md). The
+provider selects only closed round-specific rubric facets and supplied answer-
+block aliases. Core derives `sufficient | partial | absent` coverage, sparse
+dimension scores, the result mode, exact evidence text, and any overall score.
+Numerical scores require sufficient rubric-facet coverage, not a number of
+strict scoreable answers. Legacy completed v2 and evidence-limited v2 rows keep
+their existing immutable read paths.
 
 A frozen session with no trustworthy reviewable candidate answer becomes
 `no_reviewable_answer`. A degrading marker, writer gap, degraded settlement,
@@ -73,10 +57,10 @@ The marker rule is role/reason scoped: the exact
 interviewer speech and does not degrade independent candidate evidence.
 Candidate markers and every `canonicalization_failed` marker still fail closed.
 A preserving marker or missing runtime settlement is frozen with the durable
-`evidence_limited_only` feedback-mode constraint. This keeps the evaluator in
-partial scoreless mode even when four or five strict scoreable answers are
-otherwise present. The Python runtime uses the same exact role/reason rule, so
-the preserving marker alone does not manufacture a degraded settlement.
+`evidence_limited_only` feedback-mode constraint. New evaluation may still
+record grounded facet coverage, but core forces `coaching_review` with all
+scores and overall absent. The Python runtime uses the same exact role/reason
+rule, so the preserving marker alone does not manufacture degradation.
 
 ## Event fencing
 
@@ -99,10 +83,11 @@ Concurrent recovery calls are safe: preparation is conditional, dispatch claim i
 ## Authorization and side effects
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
-- Transcript evidence is normalized through the Feedback v2 trust boundary before evaluation.
-- Evidence-limited results use the same canonical frozen-transcript trust
-  boundary, but the provider supplies only closed codes and candidate aliases;
-  all customer-visible coaching copy and citations are server owned.
+- Transcript evidence is normalized through the canonical trust boundary and
+  SAV-369 answer-block derivation before evaluation.
+- Dimension-coverage provider output is closed to facet codes, block aliases,
+  and nullable scores. Coverage, mode, overall, evidence text, and summary are
+  server derived.
 - Insights are requested only after the completion compare-and-set applies. The insights event ID is stable for the session and generation event, so replay does not create a second update.
 - A terminal session missing its feedback row can be repaired through the interview-completion workflow before dispatch.
 - A session in `ending/user_end` is owned by the background end finalizer. The
@@ -157,4 +142,7 @@ double the latency tail.
 
 ## Compatibility
 
-Retired direct-generation endpoints remain explicit `410 Gone` tombstones. Legacy direct database writers are removed; read APIs remain compatible with stored Feedback v1 and Feedback v2 records.
+Retired direct-generation endpoints remain explicit `410 Gone` tombstones.
+Legacy direct database writers are removed; read APIs remain compatible with
+stored Feedback v1, Feedback v2, and evidence-limited v2 records without
+rewriting them.

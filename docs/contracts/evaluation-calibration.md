@@ -19,6 +19,24 @@ SAV-197:
 
 No calibration path connects to the application database.
 
+## Dimension-coverage calibration
+
+New `feedback.dimension-coverage.v1` evaluation has a separate provider-free
+synthetic artifact,
+`packages/test-fixtures/src/dimension-coverage-calibration.ts`, versioned as
+`dimension-coverage-calibration.v1`. It validates the closed reducer and
+integrity boundary for natural spoken answers, punctuation-poor STT, concise
+answers, filler, keyword salad, prompt injection, off-topic prose, sparse
+coverage, and complete coverage in all four rounds. The answer-block suite also
+verifies identical coverage, scores, mode, citations, and persistence under
+1/2/5/10 equivalent event segmentation.
+
+This deterministic suite makes no provider call, uses no credentials, and
+contains only fully synthetic candidate text. The legacy Feedback v2 paid-run
+authorization and score-band corpus below do not authorize a provider run for
+the new v3 prompt/rubric. Any future live v3 calibration remains separately
+owner-authorized.
+
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns

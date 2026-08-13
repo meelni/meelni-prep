@@ -41,6 +41,7 @@ import {
   DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT,
   DURABLE_CONTACT_SCHEMA_FINGERPRINT,
   DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT,
+  DIMENSION_COVERAGE_SCHEMA_FINGERPRINT,
   FEEDBACK_V2_SCHEMA_FINGERPRINT,
   FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
@@ -296,7 +297,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT);
+    assert.equal(cleanFingerprint, DIMENSION_COVERAGE_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -489,9 +490,10 @@ async function run() {
         DURABLE_CONTACT_SCHEMA_FINGERPRINT,
         TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT,
         FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
+        DIMENSION_COVERAGE_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 31; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 32; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -511,7 +513,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 32; found 22/
+            /Strict launch preflight requires the exact latest migration count 33; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -819,7 +821,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 32);
+      assert.equal(await migrationCount(sql), 33);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -883,7 +885,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
+      DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1128,7 +1130,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 32; found 25/
+      /exact latest migration count 33; found 25/
     );
 
     const genericRows = await sql<
@@ -1227,9 +1229,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 32);
+    assert.equal(await migrationCount(sql), 33);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "feedback_outcomes");
+    assert.equal(finalPreflight.startingContract, "dimension_coverage");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 37);
@@ -1238,7 +1240,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
+      DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6403,7 +6405,7 @@ async function verifyProviderCreditRecovery(
       skipped_feedback: 1,
     });
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(refundedPreflight.startingContract, "feedback_outcomes");
+    assert.equal(refundedPreflight.startingContract, "dimension_coverage");
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
       0
@@ -7221,7 +7223,7 @@ async function verifyFocusedPracticePersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 32);
+  assert.equal(await migrationCount(sql), 33);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -8205,6 +8207,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
       createDrizzleTranscriptRuntimeSettlementStore,
       createDrizzleTranscriptRuntimeWriterStore,
       getFeedbackEvidenceTurns,
+      getFrozenFeedbackEvaluationEvidence,
       getFrozenFeedbackTranscriptTurns,
     },
     { getFeedbackBySessionId, hasValidFeedbackLifecycleFields },
@@ -8221,6 +8224,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     { ingestTranscriptInterruptionMarker },
     { ingestTranscriptRuntimeSettlement },
     { ingestTranscriptRuntimeWriter },
+    { prepareCandidateAnswerBlockEvidenceFromTurns },
     schema,
   ] = await Promise.all([
     import("@meelni/core"),
@@ -8239,6 +8243,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     import("../lib/workflows/ingest-transcript-interruption-marker"),
     import("../lib/workflows/ingest-transcript-runtime-settlement"),
     import("../lib/workflows/ingest-transcript-runtime-writer"),
+    import("../lib/evaluation/session-validator"),
     import("../lib/db/schema"),
   ]);
   const database = drizzle(sql, { schema });
@@ -8489,57 +8494,62 @@ async function verifyFeedbackProductionDatabaseLifecycle(
       validateLegacy: async () => {
         throw new Error("database_golden_must_use_committed_completion_tier");
       },
-      async getTranscript(sessionId: string) {
-        return core.prepareFeedbackTranscript(
-          await getFrozenFeedbackTranscriptTurns(sessionId, database),
-          { requireContractV2: true }
+      async getAnswerBlockEvidence(sessionId: string) {
+        const evidence = await getFrozenFeedbackEvaluationEvidence(
+          sessionId,
+          database
         );
+        return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
+          interruptions: evidence.interruptions,
+          ...(evidence.sessionEndAt
+            ? { sessionEndAt: evidence.sessionEndAt }
+            : {}),
+          sourceOverflow: evidence.sourceOverflow,
+        });
       },
       async evaluate(input: {
-        roundType: string;
-        transcript: Array<{ eventId: string; speaker: string; text: string }>;
-        evaluationState: "full" | "partial";
-        mode: "scored" | "evidence_limited";
+        roundType: "product_sense" | "behavioral" | "execution" | "strategy";
+        answerBlocks: readonly import("@meelni/core").CandidateAnswerBlock[];
+        allowNumericalScores: boolean;
       }) {
         evaluatorCalls += 1;
         assert.equal(input.roundType, "product_sense");
-        assert.equal(input.evaluationState, "partial");
-        assert.equal(input.mode, "evidence_limited");
-        const turn = input.transcript.find(
-          (candidate) => candidate.speaker === "user"
+        assert.equal(input.allowNumericalScores, true);
+        const answerBlockRef = input.answerBlocks[0]?.answerBlockId;
+        assert.ok(answerBlockRef);
+        const dimensions = Object.fromEntries(
+          core.FEEDBACK_DIMENSIONS.map((dimension) => {
+            const facets =
+              core.ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[dimension]
+                .facets;
+            return [
+              dimension,
+              dimension === "structure"
+                ? {
+                    score: 7,
+                    evidence: facets.map((facet) => ({
+                      facetCode: facet.code,
+                      answerBlockRef,
+                    })),
+                  }
+                : { score: null, evidence: [] },
+            ];
+          })
         );
-        assert.ok(turn);
-        return core.parseEvidenceLimitedFeedback(
+        return core.parseDimensionCoverageProviderSelection(
           {
             schemaVersion:
-              core.FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
-            promptVersion: core.FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-            rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
-            evaluationState: "partial" as const,
-            strengths: [
-              {
-                signalCode: "customer_problem_connection" as const,
-                actionCode: "connect_customer_to_decision" as const,
-                transcriptRef: turn.eventId,
-              },
-            ],
-            improvements: [
-              {
-                signalCode: "tradeoff_decision" as const,
-                actionCode: "compare_tradeoffs_and_choose" as const,
-                transcriptRef: turn.eventId,
-              },
-            ],
+              core.FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+            promptVersion: core.FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+            rubricVersion: core.FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+            roundType: "product_sense",
+            dimensions,
           },
           {
-            transcript: [
-              {
-                eventId: turn.eventId,
-                speaker: "user" as const,
-                text: turn.text,
-              },
-            ],
-            modelVersion: "fake-evaluator-v2",
+            roundType: "product_sense",
+            answerBlocks: input.answerBlocks,
+            modelVersion: "fake-dimension-evaluator-v1",
+            allowNumericalScores: true,
           }
         );
       },
@@ -8580,6 +8590,33 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(persistedBeforeLateFailure.outcomeReason, "feedback_generated");
   assert.equal(persistedBeforeLateFailure.evaluationState, "partial");
   assert.equal(persistedBeforeLateFailure.overallScore, null);
+  assert.equal(persistedBeforeLateFailure.feedbackMode, "partial_scorecard");
+  assert.equal(persistedBeforeLateFailure.feedbackRoundType, "product_sense");
+  assert.equal(
+    (
+      persistedBeforeLateFailure.dimensionCoverage as {
+        structure?: { coverage?: string; score?: number | null };
+        clarity?: { coverage?: string; score?: number | null };
+      }
+    ).structure?.coverage,
+    "sufficient"
+  );
+  assert.equal(
+    (
+      persistedBeforeLateFailure.dimensionCoverage as {
+        structure?: { score?: number | null };
+      }
+    ).structure?.score,
+    7
+  );
+  assert.equal(
+    (
+      persistedBeforeLateFailure.dimensionCoverage as {
+        clarity?: { coverage?: string; score?: number | null };
+      }
+    ).clarity?.coverage,
+    "absent"
+  );
   assert.equal(
     await failFeedbackGenerationWorkflow(
       {
@@ -8611,33 +8648,45 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     shortRich.sessionId,
     database
   );
+  const persistedEvidence = await getFrozenFeedbackEvaluationEvidence(
+    shortRich.sessionId,
+    database
+  );
+  const persistedAnswerBlocks = prepareCandidateAnswerBlockEvidenceFromTurns(
+    persistedEvidence.turns,
+    {
+      interruptions: persistedEvidence.interruptions,
+      ...(persistedEvidence.sessionEndAt
+        ? { sessionEndAt: persistedEvidence.sessionEndAt }
+        : {}),
+      sourceOverflow: persistedEvidence.sourceOverflow,
+    }
+  ).blocks;
   const apiPayload = buildCompletedFeedbackLifecycleResponse(
     persistedAfterLateFailure,
-    evidenceTurns
+    evidenceTurns,
+    persistedAnswerBlocks
   );
-  assert.equal(apiPayload.feedback.kind, "evidence-limited");
+  assert.equal(apiPayload.feedback.kind, "dimension-coverage");
+  if (apiPayload.feedback.kind === "dimension-coverage") {
+    assert.equal(apiPayload.feedback.mode, "partial_scorecard");
+    assert.equal(apiPayload.feedback.overallScore, null);
+    assert.equal(apiPayload.feedback.dimensions.structure.score, 7);
+    assert.equal(apiPayload.feedback.dimensions.clarity.score, null);
+  }
   const decoded = core.decodeFeedbackLifecycleResponse(apiPayload);
   assert.ok(decoded);
   const view = core.toFeedbackViewState(decoded);
-  assert.equal(view.kind, "completed-evidence-limited");
-  if (view.kind !== "completed-evidence-limited") {
-    throw new Error("database golden path lost evidence-limited view state");
+  assert.equal(view.kind, "completed-partial-scorecard");
+  if (view.kind !== "completed-partial-scorecard") {
+    throw new Error("database golden path lost partial scorecard view state");
   }
-  const frozenCandidate = evidenceTurns.find(
-    (candidate) => candidate.speaker === "user"
-  );
-  assert.ok(frozenCandidate);
+  assert.equal(view.feedback.dimensions.structure.coverage, "sufficient");
+  assert.equal(view.feedback.dimensions.structure.score, 7);
+  assert.equal(view.feedback.dimensions.structure.evidence.length, 2);
   assert.equal(
-    view.feedback.strengths[0]?.signalCode,
-    "customer_problem_connection"
-  );
-  assert.equal(
-    view.feedback.strengths[0]?.actionCode,
-    "connect_customer_to_decision"
-  );
-  assert.equal(
-    view.feedback.strengths[0]?.evidence[0]?.quote,
-    frozenCandidate.text
+    view.feedback.dimensions.structure.evidence[0]?.evidenceText,
+    persistedAnswerBlocks[0]?.responseText
   );
 
   await seedSession(normalProductSense);
@@ -8674,8 +8723,46 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.ok(duplicateIdentityTurns.length >= 2);
   const firstDuplicateIdentityTurn = duplicateIdentityTurns[0]!;
   const secondDuplicateIdentityTurn = duplicateIdentityTurns[1]!;
+  assert.ok(firstDuplicateIdentityTurn.eventId);
+  assert.ok(firstDuplicateIdentityTurn.text);
+  assert.ok(secondDuplicateIdentityTurn.eventId);
+  assert.ok(secondDuplicateIdentityTurn.text);
+  const baselineEvidenceLimited = core.parseEvidenceLimitedFeedback(
+    {
+      schemaVersion: core.FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
+      promptVersion: core.FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+      rubricVersion: core.FEEDBACK_RUBRIC_VERSION,
+      evaluationState: "partial",
+      strengths: [
+        {
+          signalCode: "customer_problem_connection",
+          actionCode: "connect_customer_to_decision",
+          transcriptRef: firstDuplicateIdentityTurn.eventId,
+        },
+      ],
+      improvements: [
+        {
+          signalCode: "tradeoff_decision",
+          actionCode: "compare_tradeoffs_and_choose",
+          transcriptRef: firstDuplicateIdentityTurn.eventId,
+        },
+      ],
+    },
+    {
+      transcript: duplicateIdentityTurns.map((turn) => {
+        assert.ok(turn.eventId);
+        assert.ok(turn.text);
+        return {
+          eventId: turn.eventId,
+          speaker: "user" as const,
+          text: turn.text,
+        };
+      }),
+      modelVersion: "fake-evidence-limited-v2",
+    }
+  );
   const firstStrength = {
-    ...structuredClone(view.feedback.strengths[0]!),
+    ...structuredClone(baselineEvidenceLimited.strengths[0]!),
     transcriptRefs: [firstDuplicateIdentityTurn.eventId],
     evidence: [
       {
@@ -8685,11 +8772,11 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     ],
   };
   const duplicatePersistedSelection = {
-    schemaVersion: view.feedback.schemaVersion,
-    promptVersion: view.feedback.promptVersion,
-    modelVersion: view.feedback.modelVersion,
-    rubricVersion: view.feedback.rubricVersion,
-    evaluationState: view.feedback.evaluationState,
+    schemaVersion: baselineEvidenceLimited.schemaVersion,
+    promptVersion: baselineEvidenceLimited.promptVersion,
+    modelVersion: baselineEvidenceLimited.modelVersion,
+    rubricVersion: baselineEvidenceLimited.rubricVersion,
+    evaluationState: baselineEvidenceLimited.evaluationState,
     strengths: [
       firstStrength,
       {
@@ -8705,7 +8792,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     ],
     improvements: [
       {
-        ...structuredClone(view.feedback.improvements[0]!),
+        ...structuredClone(baselineEvidenceLimited.improvements[0]!),
         transcriptRefs: [firstDuplicateIdentityTurn.eventId],
         evidence: [
           {
@@ -8715,7 +8802,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
         ],
       },
     ],
-    summary: view.feedback.summary,
+    summary: baselineEvidenceLimited.summary,
   } as import("@meelni/core").FeedbackEvaluationResult;
   await assert.rejects(
     generationStore.complete({

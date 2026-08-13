@@ -9,6 +9,7 @@ import {
   calculateSessionStats,
   isSessionValid,
   getValidationSummary,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
   SessionTier,
 } from "../session-validator";
 import { db } from "@/lib/db";
@@ -108,6 +109,32 @@ describe("Session Validator", () => {
 
       expect(stats.substantiveResponses).toBe(1);
     });
+
+    it("keeps a concise grounded PM answer reviewable", async () => {
+      vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue([
+        {
+          speaker: "user",
+          text: "Prioritize nurses because delayed handoffs create patient risk.",
+          startedAt: new Date("2024-01-01T10:00:00Z"),
+          endedAt: new Date("2024-01-01T10:00:04Z"),
+        },
+      ] as any);
+
+      const stats = await calculateSessionStats("concise-session");
+
+      expect(stats.substantiveResponses).toBe(1);
+    });
+  });
+
+  it("fails closed when a frozen evidence reader reports bounded-source overflow", () => {
+    const evidence = prepareCandidateAnswerBlockEvidenceFromTurns([], {
+      sourceOverflow: true,
+    });
+
+    expect(evidence.eligible).toBe(false);
+    expect(evidence.evidenceFailureReason).toBe(
+      "transcript_integrity_degraded"
+    );
   });
 
   describe("validateSessionCompleteness", () => {

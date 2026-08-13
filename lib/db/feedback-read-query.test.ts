@@ -30,6 +30,9 @@ test("feedback read query projects and bounds persisted presenter fields", async
     "prompt_version",
     "model_version",
     "evaluation_state",
+    "feedback_mode",
+    "feedback_round_type",
+    "dimension_coverage",
     "status",
     "outcome_reason",
     "completion_tier",
@@ -52,6 +55,9 @@ test("feedback read query projects and bounds persisted presenter fields", async
     FEEDBACK_DB_READ_LIMITS.version + 1,
     FEEDBACK_DB_READ_LIMITS.version + 1,
     FEEDBACK_DB_READ_LIMITS.version + 1,
+    FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1,
+    FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1,
+    FEEDBACK_DB_READ_LIMITS.dimensionCoverageJson + 1,
     FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1,
     FEEDBACK_DB_READ_LIMITS.outcomeReason + 1,
     FEEDBACK_DB_READ_LIMITS.completionTier + 1,
@@ -86,6 +92,9 @@ test("bounded feedback rows decode valid JSON but preserve oversize sentinels", 
     promptVersion: null,
     modelVersion: null,
     evaluationState: null,
+    feedbackMode: null,
+    feedbackRoundType: null,
+    dimensionCoverageJson: null,
     createdAt: new Date("2026-07-10T00:00:00.000Z"),
     status: "completed",
     outcomeReason: "feedback_generated",
@@ -104,6 +113,7 @@ test("bounded feedback rows decode valid JSON but preserve oversize sentinels", 
   assert.deepEqual(decoded.drills, ["practice"]);
   assert.equal(decoded.completionStats, null);
   assert.deepEqual(decoded.completionRecommendations, ["Review one answer."]);
+  assert.equal(decoded.dimensionCoverage, null);
   assert.equal(
     presentCompletedFeedback(
       {

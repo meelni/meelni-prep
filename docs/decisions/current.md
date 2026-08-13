@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Round-Specific Dimension Evidence Coverage](2026-08-12-round-specific-dimension-evidence-coverage.md): Score only sufficiently grounded round-specific rubric dimensions over answer blocks; withhold unsupported dimensions and overall scores.
 - [Derived Answer Blocks As The Evaluation Unit](2026-08-12-derived-answer-blocks.md): Keep canonical transcript events as immutable citation truth while deriving prompt-bound, segmentation-invariant candidate answers for evaluation and presentation.
 - [Evidence-Gated Feedback Outcomes](2026-08-10-evidence-gated-feedback-outcomes.md): Base feedback on frozen trustworthy candidate evidence, preserve long-form recognized spoken evidence for scoreless coaching, withhold numerical precision without strict scoreable breadth, scope interruption integrity to candidate evidence, and share one runtime turn/marker sequence namespace.
 - [Generic Preview LiveKit Capability](2026-08-09-generic-preview-livekit-capability.md): Keep generic Vercel PR Preview web-only with LiveKit intentionally disabled from Vercel system identity, while trusted staging and Production remain provider-backed and strict.

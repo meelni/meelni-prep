@@ -38,10 +38,11 @@
 |    29 | `0029_durable_contact_submission`        |
 |    30 | `0030_transcript_committed_watermarks`   |
 |    31 | `0031_sav_397_feedback_outcomes`         |
+|    32 | `0032_dimension_evidence_coverage`       |
 
 <!-- migration-journal:end -->
 
-This thirty-two-entry inventory is generated from the same ordered contract as
+This thirty-three-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -347,3 +348,12 @@ strict scoreless `feedback.evidence-limited.v2` version tuple only with
 evaluation, or change
 session, billing, provider, or customer state beyond this additive durable
 classification.
+
+## Round-specific dimension evidence coverage
+
+Migration `0032_dimension_evidence_coverage` additively stores the closed
+feedback mode, canonical PM round, and server-derived per-dimension evidence
+coverage for `feedback.dimension-coverage.v1`. It admits only the exact v3
+schema, prompt, and rubric tuple while requiring legacy, scored v2, and
+evidence-limited v2 rows to keep the new fields null. Existing completed rows
+are not rewritten, rescored, or backfilled.

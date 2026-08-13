@@ -2,6 +2,7 @@ import {
   decodeFeedbackLifecycleResponse,
   presentCompletedFeedback,
   type FeedbackLifecycleResponse,
+  type CandidateAnswerBlock,
   type PersistedCompletedFeedback,
   type PersistedFeedbackEvidenceTurn,
 } from "@meelni/core";
@@ -22,12 +23,13 @@ export function buildDispatchFailedFeedbackLifecycleResponse(
 
 export function buildCompletedFeedbackLifecycleResponse(
   record: PersistedCompletedFeedback,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
+  answerBlocks: readonly CandidateAnswerBlock[] = []
 ): Extract<FeedbackLifecycleResponse, { status: "completed" }> {
   return {
     status: "completed",
     retryable: false,
-    feedback: presentCompletedFeedback(record, { evidenceTurns }),
+    feedback: presentCompletedFeedback(record, { evidenceTurns, answerBlocks }),
   };
 }
 

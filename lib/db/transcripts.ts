@@ -1211,6 +1211,124 @@ export async function getFrozenFeedbackTranscriptTurns(
   });
 }
 
+/**
+ * Read the complete frozen ledger projection needed to reconstruct SAV-369
+ * answer blocks. The snapshot remains server-only; callers must not log it or
+ * expose source writer metadata to clients.
+ */
+export async function getFrozenFeedbackEvaluationEvidence(
+  sessionId: string,
+  database: TranscriptPersistenceDatabase | Pick<typeof db, "select"> = db
+) {
+  const readFrozenEvidence = async (tx: Pick<typeof db, "select">) => {
+    const sessions = await tx
+      .select({
+        evidenceVersion: interviewSession.transcriptEvidenceVersion,
+        evidenceState: interviewSession.transcriptEvidenceState,
+        cutoffAt: interviewSession.transcriptCutoffAt,
+      })
+      .from(interviewSession)
+      .where(eq(interviewSession.id, sessionId))
+      .limit(1);
+    const session = sessions[0];
+    if (!session) {
+      return {
+        turns: [],
+        interruptions: [],
+        sessionEndAt: null,
+        sourceOverflow: false,
+      };
+    }
+
+    const rows = await buildBoundedFeedbackTranscriptQuery(
+      tx,
+      sessionId,
+      session.cutoffAt ?? undefined
+    );
+    const markers = await tx
+      .select({
+        eventId: transcriptInterruptionMarker.eventId,
+        writerId: transcriptInterruptionMarker.writerId,
+        writerGeneration: transcriptInterruptionMarker.writerGeneration,
+        sequence: transcriptInterruptionMarker.sequence,
+        speaker: transcriptInterruptionMarker.speaker,
+        occurredAt: transcriptInterruptionMarker.occurredAt,
+        reason: transcriptInterruptionMarker.reason,
+      })
+      .from(transcriptInterruptionMarker)
+      .where(
+        session.cutoffAt
+          ? and(
+              eq(transcriptInterruptionMarker.sessionId, sessionId),
+              lte(transcriptInterruptionMarker.occurredAt, session.cutoffAt)
+            )
+          : eq(transcriptInterruptionMarker.sessionId, sessionId)
+      )
+      .limit(MAX_INTERRUPTION_MARKERS_PER_SESSION + 1);
+    const sourceOverflow =
+      rows.length > MAX_CANONICAL_TURNS_PER_SESSION ||
+      markers.length > MAX_INTERRUPTION_MARKERS_PER_SESSION;
+    const boundedRows = rows.slice(0, MAX_CANONICAL_TURNS_PER_SESSION);
+    const boundedMarkers = markers.slice(
+      0,
+      MAX_INTERRUPTION_MARKERS_PER_SESSION
+    );
+
+    if (
+      session.evidenceVersion !== 1 ||
+      !session.cutoffAt ||
+      (session.evidenceState !== "complete" &&
+        session.evidenceState !== "partial")
+    ) {
+      return {
+        turns: boundedRows,
+        interruptions: boundedMarkers,
+        sessionEndAt: session.cutoffAt,
+        sourceOverflow,
+      };
+    }
+
+    const cutoffs = await tx
+      .select({
+        writerGeneration: transcriptEvidenceWriterCutoff.writerGeneration,
+        committedSequence: transcriptEvidenceWriterCutoff.committedSequence,
+      })
+      .from(transcriptEvidenceWriterCutoff)
+      .where(eq(transcriptEvidenceWriterCutoff.sessionId, sessionId));
+    const committedByGeneration = new Map(
+      cutoffs.map((cutoff) => [
+        cutoff.writerGeneration,
+        cutoff.committedSequence,
+      ])
+    );
+    if (committedByGeneration.size === 0) {
+      return {
+        turns: [],
+        interruptions: [],
+        sessionEndAt: session.cutoffAt,
+        sourceOverflow,
+      };
+    }
+    return {
+      turns: boundedRows.filter((row) => {
+        if (row.writerGeneration === null || row.sequence === null)
+          return false;
+        const committed = committedByGeneration.get(row.writerGeneration);
+        return committed !== undefined && row.sequence <= committed;
+      }),
+      interruptions: boundedMarkers.filter((marker) => {
+        const committed = committedByGeneration.get(marker.writerGeneration);
+        return committed !== undefined && marker.sequence <= committed;
+      }),
+      sessionEndAt: session.cutoffAt,
+      sourceOverflow,
+    };
+  };
+  return "transaction" in database
+    ? database.transaction(readFrozenEvidence)
+    : readFrozenEvidence(database);
+}
+
 function buildBoundedFeedbackTranscriptQuery(
   database: Pick<typeof db, "select">,
   sessionId: string,
@@ -1219,12 +1337,17 @@ function buildBoundedFeedbackTranscriptQuery(
   return database
     .select({
       eventId: transcriptTurn.eventId,
+      writerId: transcriptTurn.writerId,
       speaker: transcriptTurn.speaker,
       text: transcriptTurn.text,
       contractVersion: transcriptTurn.contractVersion,
       deliveryState: transcriptTurn.deliveryState,
       writerGeneration: transcriptTurn.writerGeneration,
       sequence: transcriptTurn.sequence,
+      startedAt: transcriptTurn.startedAt,
+      endedAt: transcriptTurn.endedAt,
+      audioMs: transcriptTurn.audioMs,
+      section: transcriptTurn.section,
     })
     .from(transcriptTurn)
     .where(
