@@ -15,6 +15,7 @@ import {
   EVIDENCE_LIMITED_STRENGTH_SIGNALS,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   parsePersistedEvidenceLimitedFeedback,
+  selectEvidenceLimitedPracticeFocus,
   type EvidenceLimitedImprovementItem,
   type EvidenceLimitedStrengthItem,
   type EvidenceLimitedFeedbackResult,
@@ -23,7 +24,9 @@ import {
   FEEDBACK_DIMENSIONS,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   parsePersistedDimensionCoverageFeedback,
+  selectDimensionCoveragePracticeFocus,
   type DimensionCoverageFeedbackMode,
+  type DimensionCoveragePracticeFocusSource,
   type DimensionCoverageResultDimensions,
 } from "./feedback-dimension-coverage";
 import type { CandidateAnswerBlock } from "./answer-blocks";
@@ -1071,7 +1074,9 @@ function parseDimensionCoverageFeedbackView(
   const dimensions = toDimensionResultsView(feedback.dimensions, answerBlocks);
   const coaching = buildDimensionCoverageCoachingPresentation(
     dimensions,
-    feedback.mode
+    feedback.mode,
+    selectDimensionCoveragePracticeFocus(feedback),
+    answerBlocks
   );
   return {
     kind: "dimension-coverage",
@@ -1173,7 +1178,9 @@ function toDimensionResultsView(
 
 function buildDimensionCoverageCoachingPresentation(
   dimensions: FeedbackDimensionResultsView,
-  mode: DimensionCoverageFeedbackMode
+  mode: DimensionCoverageFeedbackMode,
+  selectedSource?: DimensionCoveragePracticeFocusSource | null,
+  answerBlocks: readonly CandidateAnswerBlock[] = []
 ): {
   signals: FeedbackCoachingSignalView[];
   practiceFocus: FeedbackPracticeFocusView | null;
@@ -1191,22 +1198,40 @@ function buildDimensionCoverageCoachingPresentation(
       evidenceSupport: "exact_candidate_citation" as const,
     }))
   ).slice(0, 3);
-  const selected = signals[0];
-  if (!selected) {
+  const selectedBlock = selectedSource
+    ? answerBlocks.find(
+        (block) => block.answerBlockId === selectedSource.answerBlockRef
+      )
+    : null;
+  const selectedTranscriptRef = selectedBlock?.response[0]?.eventId;
+  const exactSelectedEvidence =
+    selectedSource &&
+    selectedTranscriptRef &&
+    selectedBlock.responseText === selectedSource.evidenceText
+      ? {
+          label: selectedSource.facetLabel,
+          citation: selectedSource.evidenceText,
+          transcriptRef: selectedTranscriptRef,
+        }
+      : null;
+  const selectedEvidence = selectedSource ? exactSelectedEvidence : signals[0];
+  const selectedDimension = selectedSource?.dimension ?? signals[0]?.dimension;
+  const selectedTitle = selectedSource?.facetLabel ?? signals[0]?.label;
+  if (!selectedDimension || !selectedTitle || !selectedEvidence) {
     throw new Error("coaching presentation requires grounded evidence");
   }
 
   return {
     signals,
     practiceFocus: {
-      dimension: selected.dimension,
-      title: selected.label,
+      dimension: selectedDimension,
+      title: selectedTitle,
       guidance:
         "Practice stating this PM-rubric move in one clear sentence, then connect it to your next decision.",
       rationale:
         "This focus comes from one exact citation in this interview. It was not selected from a weakest score.",
-      citation: selected.citation,
-      transcriptRef: selected.transcriptRef,
+      citation: selectedEvidence.citation,
+      transcriptRef: selectedEvidence.transcriptRef,
     },
   };
 }
@@ -1239,26 +1264,6 @@ function toEvidenceLimitedPracticeFocusView(
     citation: view.citation,
     transcriptRef: view.transcriptRef,
   };
-}
-
-function selectEvidenceLimitedPracticeFocus(
-  improvements: readonly EvidenceLimitedImprovementItem[]
-): EvidenceLimitedImprovementItem {
-  const dimensionOrder = new Map(
-    FEEDBACK_DIMENSIONS.map((dimension, index) => [dimension, index])
-  );
-  const selected = [...improvements].sort(
-    (left, right) =>
-      (dimensionOrder.get(left.dimension) ?? Number.MAX_SAFE_INTEGER) -
-        (dimensionOrder.get(right.dimension) ?? Number.MAX_SAFE_INTEGER) ||
-      left.actionCode.localeCompare(right.actionCode) ||
-      left.signalCode.localeCompare(right.signalCode) ||
-      left.transcriptRefs
-        .join(":")
-        .localeCompare(right.transcriptRefs.join(":"))
-  )[0];
-  if (!selected) throw new Error("coaching review requires a practice focus");
-  return selected;
 }
 
 function isEvidenceLimitedFindingViewArray(

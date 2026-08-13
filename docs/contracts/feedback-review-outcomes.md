@@ -61,8 +61,10 @@ formats retain their explicit compatibility treatment.
 - `Exact cited evidence` means an observation is tied directly to the shown
   excerpt. It is not a skill rating, readiness estimate, probability, or
   progress measure.
-- Exactly one deterministic focus is presented. It is not called a weakest
-  score or persisted as focused practice; SAV-418 owns that persistence.
+- Exactly one deterministic focus is presented. It is not called or derived
+  from a weakest score. SAV-418 persists the validated closed identity and
+  exact frozen evidence as one focused-practice v2 attempt while exposing only
+  the privacy-safe plan view to the customer.
 - Repeated citation controls have distinguishable accessible names and select
   the exact canonical transcript event behind the answer-block citation.
 

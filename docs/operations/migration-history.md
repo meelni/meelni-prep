@@ -39,10 +39,11 @@
 |    30 | `0030_transcript_committed_watermarks`   |
 |    31 | `0031_sav_397_feedback_outcomes`         |
 |    32 | `0032_dimension_evidence_coverage`       |
+|    33 | `0033_scoreless_focused_practice`        |
 
 <!-- migration-journal:end -->
 
-This thirty-three-entry inventory is generated from the same ordered contract as
+This thirty-four-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -357,3 +358,13 @@ coverage for `feedback.dimension-coverage.v1`. It admits only the exact v3
 schema, prompt, and rubric tuple while requiring legacy, scored v2, and
 evidence-limited v2 rows to keep the new fields null. Existing completed rows
 are not rewritten, rescored, or backfilled.
+
+## Scoreless focused practice
+
+Migration `0033_scoreless_focused_practice` additively admits the strict v2
+focused-practice attempt, plan, and template tuple for partial scorecards and
+coaching reviews. It preserves v1 rows and lifecycle behavior, fences each
+owner/source review to one attempt across contract versions, and requires the
+v2 immutable source fingerprint and closed grounded-focus snapshot. The
+migration does not create attempts, rewrite feedback or transcript evidence,
+or invoke any provider.

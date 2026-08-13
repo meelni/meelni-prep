@@ -9,6 +9,7 @@ import {
 
 const nativeFetch = window.fetch.bind(window);
 let comparisonRequests = 0;
+let focusedPracticeCompleted = false;
 const bookmarkedQuestionIds = new Set<string>();
 
 function json(body: unknown, status = 200): Response {
@@ -19,6 +20,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 export function installSyntheticFetch() {
+  focusedPracticeCompleted = false;
   window.fetch = async (input, init) => {
     const href =
       typeof input === "string"
@@ -125,6 +127,39 @@ export function installSyntheticFetch() {
     if (url.pathname === "/api/user/export") {
       return json({ status: "queued" }, 202);
     }
+    if (
+      url.pathname === "/api/focused-practice/attempts/start" &&
+      init?.method === "POST"
+    ) {
+      if (
+        new URLSearchParams(window.location.search).get("scenario") ===
+        "feedback-focused-practice-unavailable"
+      ) {
+        return json({ error: "focused_practice_unavailable" }, 409);
+      }
+      return json(
+        {
+          disposition: focusedPracticeCompleted
+            ? "already_completed"
+            : "created",
+          attempt: focusedPracticeAttempt(
+            focusedPracticeCompleted ? "completed" : "in_progress"
+          ),
+        },
+        focusedPracticeCompleted ? 200 : 201
+      );
+    }
+    if (
+      url.pathname ===
+        "/api/focused-practice/attempts/synthetic-focused-practice-attempt/complete" &&
+      init?.method === "POST"
+    ) {
+      focusedPracticeCompleted = true;
+      return json({
+        disposition: "completed",
+        attempt: focusedPracticeAttempt("completed"),
+      });
+    }
 
     if (url.pathname.startsWith("/api/")) {
       throw new Error(
@@ -138,4 +173,69 @@ export function installSyntheticFetch() {
       `Browser QA fixture blocked external request to ${url.origin}`
     );
   };
+}
+
+function focusedPracticeAttempt(state: "in_progress" | "completed") {
+  const base = {
+    attemptId: "synthetic-focused-practice-attempt",
+    sourceSessionId: "browser-qa-session",
+    contractVersion: "focused-practice-attempt.v2",
+    plan: {
+      state: "available",
+      contractVersion: "focused-practice-plan.v2",
+      durationMinutes: 5,
+      title: "Deepen the user insight",
+      objective:
+        "Connect a specific supported user need to the product decision it changes.",
+      instructions: [
+        "Use only the grounded focus selected by Meelni.",
+        "Practice the decision aloud before saving your self-review.",
+      ],
+      successCriterion:
+        "The revision names the user need and the product decision it changes.",
+      selfReviewPrompt:
+        "Does the supported user need clearly change the product decision?",
+      source: {
+        questionId: "browser-qa-question",
+        questionText:
+          "How would you help working parents coordinate a changing schedule?",
+        roundType: "product_sense",
+        focusDimension: "insight",
+      },
+    },
+    startedAt: "2026-08-13T12:00:00.000Z",
+  } as const;
+  return state === "in_progress"
+    ? {
+        ...base,
+        state,
+        lifecycleVersion: 0,
+        completedAt: null,
+        completion: null,
+      }
+    : {
+        ...base,
+        state,
+        lifecycleVersion: 1,
+        completedAt: "2026-08-13T12:05:00.000Z",
+        completion: {
+          contractVersion: "focused-practice-completion.v1",
+          practicedAloud: true,
+          selfReview: {
+            version: "focused-practice-self-review.v1",
+            kind: "self_review",
+            focusDimension: "insight",
+            sourceObservation:
+              "The recorded answer included a supported user need.",
+            sourceNextStep:
+              "Make the connection from that need to the product decision explicit.",
+            successCriterion: base.plan.successCriterion,
+            prompt: base.plan.selfReviewPrompt,
+            response: {
+              kind: "revised_answer",
+              text: "I would connect the changing schedule need directly to the coordination decision.",
+            },
+          },
+        },
+      };
 }

@@ -3,14 +3,23 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
-  FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_CONFIDENCE,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
+  EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FOCUSED_PRACTICE_COMPLETION_CONTRACT_VERSION,
-  type CompletedFocusedPracticeAttempt,
-  type FocusedPracticeAttempt,
+  type AnyCompletedFocusedPracticeAttempt,
+  type AnyFocusedPracticeAttempt,
+  type AnyInProgressFocusedPracticeAttempt,
   type FocusedPracticeCompletionInput,
-  type InProgressFocusedPracticeAttempt,
 } from "@meelni/core";
-import { createFocusedPracticeAttemptSourceFixtures } from "@meelni/test-fixtures";
+import {
+  createFocusedPracticeAttemptSourceFixtures,
+  createSyntheticFeedbackReviewOutcomeFixtures,
+} from "@meelni/test-fixtures";
 import {
   completeFocusedPracticeAttemptWorkflow,
   readFocusedPracticeAttemptWorkflow,
@@ -26,7 +35,7 @@ const COMPLETED_AT = new Date("2026-07-19T12:05:00.000Z");
 
 class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
   readonly sources = new Map<string, BoundedFocusedPracticeSource>();
-  readonly attempts = new Map<string, FocusedPracticeAttempt>();
+  readonly attempts = new Map<string, AnyFocusedPracticeAttempt>();
   sourceReads = 0;
   attemptWrites = 0;
   completionWrites = 0;
@@ -35,25 +44,20 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
   afterFindOwnedBySource: (() => void) | null = null;
   beforeCreateOrLoad: (() => void) | null = null;
   beforeComplete: (() => void) | null = null;
-  forcedCreateAttempt: InProgressFocusedPracticeAttempt | null = null;
-  forcedGetAttempt: FocusedPracticeAttempt | null = null;
-  forcedCompletionAttempt: CompletedFocusedPracticeAttempt | null = null;
+  forcedCreateAttempt: AnyInProgressFocusedPracticeAttempt | null = null;
+  forcedGetAttempt: AnyFocusedPracticeAttempt | null = null;
+  forcedCompletionAttempt: AnyCompletedFocusedPracticeAttempt | null = null;
 
   constructor(source: BoundedFocusedPracticeSource) {
     this.sources.set(source.sessionId, source);
   }
 
-  async findOwnedBySource(input: {
-    userId: string;
-    sourceSessionId: string;
-    contractVersion: typeof FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION;
-  }) {
+  async findOwnedBySource(input: { userId: string; sourceSessionId: string }) {
     const result =
       [...this.attempts.values()].find(
         (attempt) =>
           attempt.userId === input.userId &&
-          attempt.sourceSessionId === input.sourceSessionId &&
-          attempt.contractVersion === input.contractVersion
+          attempt.sourceSessionId === input.sourceSessionId
       ) ?? null;
     this.afterFindOwnedBySource?.();
     return result;
@@ -68,7 +72,7 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
   async createOrLoadOwned(input: {
     userId: string;
     sourceSessionId: string;
-    attempt: InProgressFocusedPracticeAttempt;
+    attempt: AnyInProgressFocusedPracticeAttempt;
   }) {
     this.beforeCreateOrLoad?.();
     if (this.atomicDeletionPending) {
@@ -87,14 +91,17 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
     if (!source || source.userId !== input.userId) {
       return { disposition: "not_found" } as const;
     }
+    if (
+      input.attempt.contractVersion === "focused-practice-attempt.v2" &&
+      input.attempt.feedbackVersion.sourceFingerprint !==
+        source.sourceFingerprint
+    ) {
+      return { disposition: "source_conflict" } as const;
+    }
     const existing = [...this.attempts.values()].find(
       (attempt) =>
         attempt.userId === input.userId &&
-        attempt.sourceSessionId === input.sourceSessionId &&
-        attempt.sourceFeedbackId === input.attempt.sourceFeedbackId &&
-        attempt.plan.source.recommendationId ===
-          input.attempt.plan.source.recommendationId &&
-        attempt.plan.templateId === input.attempt.plan.templateId
+        attempt.sourceSessionId === input.sourceSessionId
     );
     if (existing) {
       if (!sameImmutableSource(existing, input.attempt)) {
@@ -178,6 +185,10 @@ function source(index = 0): BoundedFocusedPracticeSource {
     question: { ...fixture.question },
     feedback: structuredClone(fixture.persistedFeedback),
     evidenceTurns: structuredClone(fixture.evidenceTurns),
+    answerBlocks: [],
+    frozenEvidenceState: null,
+    sourceFingerprint: "f".repeat(64),
+    completionStats: null,
   };
 }
 
@@ -233,6 +244,10 @@ test("starts full and partial attempts from revalidated owned Feedback v2", asyn
 
     assert.equal(result.ok, true);
     if (!result.ok) continue;
+    assert.equal(result.attempt.contractVersion, "focused-practice-attempt.v1");
+    if (result.attempt.contractVersion !== "focused-practice-attempt.v1") {
+      continue;
+    }
     assert.equal(result.disposition, "created");
     assert.equal(
       result.attempt.feedbackVersion.evaluationState,
@@ -263,8 +278,8 @@ test("server reconstruction ignores stored provider suggestion copy", async () =
     startFocusedPracticeAttemptWorkflow(startInput(firstSource), first.deps),
     startFocusedPracticeAttemptWorkflow(startInput(secondSource), second.deps),
   ]);
-  assert.equal(firstResult.ok, true);
-  assert.equal(secondResult.ok, true);
+  assert.equal(firstResult.ok, true, JSON.stringify(firstResult));
+  assert.equal(secondResult.ok, true, JSON.stringify(secondResult));
   if (firstResult.ok && secondResult.ok) {
     assert.equal(
       firstResult.attempt.plan.templateId,
@@ -275,6 +290,106 @@ test("server reconstruction ignores stored provider suggestion copy", async () =
       secondResult.attempt.sourceFinding
     );
   }
+});
+
+test("partial scorecards and coaching reviews create one scoreless grounded path", async () => {
+  for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
+    const sourceFixture = dimensionCoverageSource(outcome);
+    const harness = createHarness(sourceFixture);
+    const result = await startFocusedPracticeAttemptWorkflow(
+      startInput(sourceFixture),
+      harness.deps
+    );
+
+    assert.equal(result.ok, true);
+    if (!result.ok) continue;
+    assert.equal(result.disposition, "created");
+    assert.equal(result.attempt.contractVersion, "focused-practice-attempt.v2");
+    assert.equal(
+      result.attempt.plan.contractVersion,
+      "focused-practice-plan.v2"
+    );
+    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(harness.repository.attemptWrites, 1);
+    assert.doesNotMatch(
+      JSON.stringify(result.attempt.plan),
+      /weakestScore|overallScore|provider-authored/i
+    );
+  }
+});
+
+test("evidence-limited coaching creates a closed scoreless path independent of provider order", async () => {
+  const firstSource = evidenceLimitedSource();
+  const secondSource = evidenceLimitedSource();
+  secondSource.feedback.improvements = [
+    ...(secondSource.feedback.improvements as unknown[]),
+  ].reverse();
+  const first = createHarness(firstSource);
+  const second = createHarness(secondSource);
+  const [firstResult, secondResult] = await Promise.all([
+    startFocusedPracticeAttemptWorkflow(startInput(firstSource), first.deps),
+    startFocusedPracticeAttemptWorkflow(startInput(secondSource), second.deps),
+  ]);
+
+  assert.equal(firstResult.ok, true, JSON.stringify(firstResult));
+  assert.equal(secondResult.ok, true, JSON.stringify(secondResult));
+  if (!firstResult.ok || !secondResult.ok) return;
+  assert.equal(
+    firstResult.attempt.contractVersion,
+    "focused-practice-attempt.v2"
+  );
+  assert.equal(
+    firstResult.attempt.feedbackVersion.reviewOutcome,
+    "coaching_review"
+  );
+  assert.deepEqual(firstResult.attempt.plan, secondResult.attempt.plan);
+  assert.deepEqual(
+    firstResult.attempt.sourceFinding,
+    secondResult.attempt.sourceFinding
+  );
+});
+
+test("full coverage and corrupt scoreless sources remain unavailable without writes", async () => {
+  const full = dimensionCoverageSource("full_scorecard");
+  const fullHarness = createHarness(full);
+  assert.deepEqual(
+    await startFocusedPracticeAttemptWorkflow(
+      startInput(full),
+      fullHarness.deps
+    ),
+    { ok: false, reason: "recommendation_unavailable" }
+  );
+  assert.equal(fullHarness.repository.attemptWrites, 0);
+
+  const corrupt = dimensionCoverageSource("partial_scorecard");
+  corrupt.answerBlocks = [];
+  const corruptHarness = createHarness(corrupt);
+  assert.deepEqual(
+    await startFocusedPracticeAttemptWorkflow(
+      startInput(corrupt),
+      corruptHarness.deps
+    ),
+    { ok: false, reason: "source_integrity_invalid" }
+  );
+  assert.equal(corruptHarness.repository.attemptWrites, 0);
+});
+
+test("scoreless creation fails closed when the frozen source changes before insert", async () => {
+  const sourceFixture = dimensionCoverageSource("partial_scorecard");
+  const harness = createHarness(sourceFixture);
+  harness.repository.beforeCreateOrLoad = () => {
+    harness.repository.sources.get(sourceFixture.sessionId)!.sourceFingerprint =
+      "0".repeat(64);
+  };
+
+  assert.deepEqual(
+    await startFocusedPracticeAttemptWorkflow(
+      startInput(sourceFixture),
+      harness.deps
+    ),
+    { ok: false, reason: "source_conflict" }
+  );
+  assert.equal(harness.repository.attemptWrites, 0);
 });
 
 test("missing and cross-user source access are non-enumerating and mutation-free", async () => {
@@ -577,7 +692,7 @@ test("corrupt repository attempts fail closed before resume or completion", asyn
   resumeHarness.repository.attempts.set(started.attempt.attemptId, {
     ...structuredClone(started.attempt),
     contractVersion: "focused-practice-attempt.v2",
-  } as unknown as FocusedPracticeAttempt);
+  } as unknown as AnyFocusedPracticeAttempt);
   assert.deepEqual(
     await startFocusedPracticeAttemptWorkflow(
       startInput(sourceFixture),
@@ -604,7 +719,7 @@ test("corrupt repository attempts fail closed before resume or completion", asyn
           questionText: "",
         },
       },
-    } as unknown as FocusedPracticeAttempt
+    } as unknown as AnyFocusedPracticeAttempt
   );
   assert.deepEqual(
     await completeFocusedPracticeAttemptWorkflow(
@@ -633,7 +748,7 @@ test("valid repository rows are bound to the requested owner, source, and attemp
   const wrongInProgress = {
     ...structuredClone(otherStarted.attempt),
     attemptId: "wrong-focused-practice-attempt",
-  } as InProgressFocusedPracticeAttempt;
+  } as AnyInProgressFocusedPracticeAttempt;
 
   const createHarnessWithWrongRow = createHarness(ownSource);
   createHarnessWithWrongRow.repository.forcedCreateAttempt = wrongInProgress;
@@ -653,7 +768,8 @@ test("valid repository rows are bound to the requested owner, source, and attemp
   assert.equal(referenceStarted.ok, true);
   if (
     !referenceStarted.ok ||
-    referenceStarted.attempt.state !== "in_progress"
+    referenceStarted.attempt.state !== "in_progress" ||
+    referenceStarted.attempt.contractVersion !== "focused-practice-attempt.v1"
   ) {
     return;
   }
@@ -956,20 +1072,180 @@ test("workflow stays provider-free with no network or cost-bearing dependency bo
   }
 });
 
+function dimensionCoverageSource(
+  outcome: "full_scorecard" | "partial_scorecard" | "coaching_review"
+): BoundedFocusedPracticeSource {
+  const fixture = createSyntheticFeedbackReviewOutcomeFixtures().find(
+    (candidate) => candidate.expected.outcome === outcome
+  );
+  const variant = fixture?.sourceVariants[1];
+  const result = variant?.coverageResult;
+  if (!fixture || !variant || !result) {
+    throw new Error(`missing synthetic ${outcome} fixture`);
+  }
+  const sessionId = `synthetic-focused-practice-${outcome}`;
+  const feedbackId = `synthetic-feedback-${outcome}`;
+  return {
+    userId: "synthetic-focused-practice-owner",
+    sessionId,
+    feedbackId,
+    roundType: result.roundType,
+    feedbackStatus: "completed",
+    question: {
+      questionId: "synthetic-focused-practice-question",
+      questionText: "How would you improve a shared planning product?",
+    },
+    feedback: {
+      id: feedbackId,
+      sessionId,
+      structureScore: result.dimensions.structure.score,
+      clarityScore: result.dimensions.clarity.score,
+      insightScore: result.dimensions.insight.score,
+      communicationScore: result.dimensions.communication.score,
+      leadershipScore: result.dimensions.leadership.score,
+      overallScore: result.overallScore,
+      strengths: null,
+      improvements: null,
+      drills: null,
+      summary: result.summary,
+      rubricVersion: result.rubricVersion,
+      schemaVersion: result.schemaVersion,
+      promptVersion: result.promptVersion,
+      modelVersion: result.modelVersion,
+      evaluationState: result.evaluationState,
+      feedbackMode: result.mode,
+      feedbackRoundType: result.roundType,
+      dimensionCoverage: structuredClone(result.dimensions),
+      createdAt: new Date("2026-08-13T12:00:00.000Z"),
+    },
+    evidenceTurns: [],
+    answerBlocks: structuredClone(variant.answerBlocks),
+    frozenEvidenceState: "complete",
+    sourceFingerprint: "a".repeat(64),
+    completionStats: null,
+  };
+}
+
+function evidenceLimitedSource(): BoundedFocusedPracticeSource {
+  const sessionId = "synthetic-evidence-limited-session";
+  const feedbackId = "synthetic-evidence-limited-feedback";
+  const quote =
+    "I would connect the chosen user need to a decision, compare tradeoffs, and lead with the recommendation.";
+  const secondQuote =
+    "I would state the recommendation first, then explain the evidence behind it.";
+  const finding = {
+    dimension: "insight",
+    observation:
+      EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation,
+    transcriptRefs: ["synthetic-evidence:1"],
+    evidence: [{ turnRef: "synthetic-evidence:1", quote }],
+    nextStep: EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
+    rubricVersion: "pm-feedback-rubric.v2",
+    confidence: EVIDENCE_LIMITED_CONFIDENCE,
+    signalCode: "customer_problem_connection",
+    actionCode: "connect_customer_to_decision",
+  };
+  return {
+    userId: "synthetic-focused-practice-owner",
+    sessionId,
+    feedbackId,
+    roundType: "product_sense",
+    feedbackStatus: "completed",
+    question: {
+      questionId: "synthetic-focused-practice-question",
+      questionText: "How would you improve a shared planning product?",
+    },
+    feedback: {
+      id: feedbackId,
+      sessionId,
+      structureScore: null,
+      clarityScore: null,
+      insightScore: null,
+      communicationScore: null,
+      leadershipScore: null,
+      overallScore: null,
+      strengths: [finding],
+      improvements: [
+        {
+          ...finding,
+          dimension: "leadership",
+          observation:
+            EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.tradeoff_decision.observation,
+          nextStep:
+            EVIDENCE_LIMITED_ACTIONS.compare_tradeoffs_and_choose.nextStep,
+          signalCode: "tradeoff_decision",
+          actionCode: "compare_tradeoffs_and_choose",
+        },
+        {
+          ...finding,
+          dimension: "clarity",
+          observation:
+            EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.recommendation_directness
+              .observation,
+          nextStep: EVIDENCE_LIMITED_ACTIONS.lead_with_recommendation.nextStep,
+          signalCode: "recommendation_directness",
+          actionCode: "lead_with_recommendation",
+          transcriptRefs: ["synthetic-evidence:2"],
+          evidence: [{ turnRef: "synthetic-evidence:2", quote: secondQuote }],
+        },
+      ],
+      drills: ["Synthetic provider copy must not enter a plan."],
+      summary: EVIDENCE_LIMITED_SUMMARY,
+      rubricVersion: "pm-feedback-rubric.v2",
+      schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+      modelVersion: "synthetic-scoreless-model",
+      evaluationState: "partial",
+      createdAt: new Date("2026-08-13T12:00:00.000Z"),
+    },
+    evidenceTurns: [
+      {
+        eventId: "synthetic-evidence:1",
+        speaker: "user",
+        text: quote,
+        contractVersion: 2,
+      },
+      {
+        eventId: "synthetic-evidence:2",
+        speaker: "user",
+        text: secondQuote,
+        contractVersion: 2,
+      },
+    ],
+    answerBlocks: [],
+    frozenEvidenceState: null,
+    sourceFingerprint: "b".repeat(64),
+    completionStats: { feedbackModeConstraint: "evidence_limited_only" },
+  };
+}
+
 function sameImmutableSource(
-  left: FocusedPracticeAttempt,
-  right: FocusedPracticeAttempt
+  left: AnyFocusedPracticeAttempt,
+  right: AnyFocusedPracticeAttempt
 ): boolean {
   return (
-    JSON.stringify({
+    canonicalJson({
       feedbackVersion: left.feedbackVersion,
       plan: left.plan,
       sourceFinding: left.sourceFinding,
     }) ===
-    JSON.stringify({
+    canonicalJson({
       feedbackVersion: right.feedbackVersion,
       plan: right.plan,
       sourceFinding: right.sourceFinding,
     })
   );
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }

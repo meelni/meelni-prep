@@ -651,6 +651,11 @@ describe("feedback transcript read states", () => {
         "I would revise the answer by naming the user, problem, and priority first."
       )
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "Practice this question in another mock interview",
+      })
+    ).toHaveAttribute("href", "/dashboard/new-interview?questionId=question-1");
   });
 });
 
@@ -773,8 +778,8 @@ function focusedPracticeAttempt(state: "in_progress" | "completed") {
       objective:
         "Connect the user goal, problem, solution choice, and prioritization in a clear sequence.",
       instructions: [
-        "Replay the original question and answer the same prompt aloud.",
-        "Rewrite only the part named in the feedback so the success criterion is clear.",
+        "Use the cited feedback from the completed interview to choose the part of the answer to revise.",
+        "Revise the part that connects the chosen user and problem to a clear product decision.",
       ],
       successCriterion:
         "The revision moves from one target user and problem to a prioritized solution with an explicit product rationale.",
@@ -784,7 +789,7 @@ function focusedPracticeAttempt(state: "in_progress" | "completed") {
         questionId: "question-1",
         questionText: "Design a product for working parents.",
         recommendationId:
-          "focused-practice:focused-practice-templates.v1:product_sense:structure:grounded_full",
+          "pm-drill:pm-drill-templates.v1:product_sense:structure:grounded_full",
         roundType: "product_sense",
         focusDimension: "structure",
         evidenceGap: "grounded_full",
