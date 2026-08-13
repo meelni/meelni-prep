@@ -72,8 +72,9 @@ failures retain their existing retry controls.
 
 Feedback-route and Dashboard reads share one strict skipped-tuple classifier.
 `no_reviewable_answer` requires an `insufficient` or `abandoned` completion
-tier. Integrity recovery may legitimately have no completion tier when it
-terminalizes before answer validation; that exact null remains compatible for
+tier. Integrity failure remains independent of candidate coverage, so it may
+retain any validated completion tier or have no tier when it terminalizes
+before answer validation; that exact null remains compatible for
 `transcript_integrity_degraded` only. Unknown or incoherent status, reason, and
 tier combinations fail closed instead of being coerced into a customer reason.
 

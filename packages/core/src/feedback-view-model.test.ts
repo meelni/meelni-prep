@@ -704,6 +704,17 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
       retryable: false,
       details: {
         outcomeReason: "transcript_integrity_degraded",
+        tier: "partial",
+        recovery: "credit_returned",
+        reasons: [],
+        recommendations: [],
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcomeReason: "transcript_integrity_degraded",
         tier: null,
         recovery: "credit_recovery_in_progress",
         reasons: [],

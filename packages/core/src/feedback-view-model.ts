@@ -219,7 +219,7 @@ export type CompletedFeedbackView =
 
 export interface SkippedFeedbackDetails {
   outcomeReason: SkippedFeedbackOutcomeReason;
-  tier: "insufficient" | "abandoned" | null;
+  tier: "full" | "partial" | "insufficient" | "abandoned" | null;
   recovery:
     | "start_another_interview"
     | "credit_returned"
@@ -647,6 +647,8 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
     value.outcomeReason === "no_reviewable_answer"
       ? value.tier === "insufficient" || value.tier === "abandoned"
       : value.tier === null ||
+        value.tier === "full" ||
+        value.tier === "partial" ||
         value.tier === "insufficient" ||
         value.tier === "abandoned";
   if (!validTier) return null;

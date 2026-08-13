@@ -19,6 +19,17 @@ test("classifies only coherent skipped feedback tuples", () => {
     classifySkippedFeedbackLifecycle({
       status: "skipped",
       outcomeReason: "transcript_integrity_degraded",
+      completionTier: "full",
+    }),
+    {
+      outcomeReason: "transcript_integrity_degraded",
+      completionTier: "full",
+    }
+  );
+  assert.deepEqual(
+    classifySkippedFeedbackLifecycle({
+      status: "skipped",
+      outcomeReason: "transcript_integrity_degraded",
       completionTier: null,
     }),
     {
@@ -45,7 +56,7 @@ test("classifies only coherent skipped feedback tuples", () => {
     },
     {
       status: "skipped",
-      outcomeReason: "transcript_integrity_degraded",
+      outcomeReason: "no_reviewable_answer",
       completionTier: "full",
     },
   ]) {
