@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -33,6 +34,9 @@ test("synthetic dimension-coverage calibration manifest is broad and round-compl
     "concise_answer",
     "filler",
     "keyword_salad",
+    "repeated_token_stuffing",
+    "low_density_engineered_anchors",
+    "semantic_absurdity",
     "prompt_injection",
     "off_topic_prose",
     "sparse_coverage",
@@ -59,6 +63,15 @@ test("synthetic dimension-coverage calibration manifest is broad and round-compl
       roundType
     );
   }
+});
+
+test("synthetic dimension-coverage corpus is hash-bound", () => {
+  assert.equal(
+    createHash("sha256")
+      .update(JSON.stringify(DIMENSION_COVERAGE_CALIBRATION_CASES))
+      .digest("hex"),
+    "f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3"
+  );
 });
 
 test("adjudicated synthetic cases produce only their closed outcome", () => {

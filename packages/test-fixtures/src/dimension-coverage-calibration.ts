@@ -13,6 +13,9 @@ export type DimensionCoverageCalibrationFamily =
   | "concise_answer"
   | "filler"
   | "keyword_salad"
+  | "repeated_token_stuffing"
+  | "low_density_engineered_anchors"
+  | "semantic_absurdity"
   | "prompt_injection"
   | "off_topic_prose"
   | "sparse_coverage"
@@ -80,6 +83,30 @@ export const DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "user metric strategy retention segment roadmap leadership market growth",
     "unable_to_review_no_usable_answer",
     null
+  ),
+  calibrationCase(
+    "repeated-metric-stuffing",
+    "repeated_token_stuffing",
+    "execution",
+    "metric metric metric because metric metric metric metric metric metric",
+    "unable_to_review_no_usable_answer",
+    null
+  ),
+  calibrationCase(
+    "engineered-anchor-density",
+    "low_density_engineered_anchors",
+    "product_sense",
+    "customer metric roadmap because flarn quorv zint plesh wonda glint fexor bavin",
+    "coaching_review",
+    absent
+  ),
+  calibrationCase(
+    "causal-semantic-absurdity",
+    "semantic_absurdity",
+    "strategy",
+    "I prioritized the moon because quarterly umbrellas negotiated with the calendar, then I measured purple gravity.",
+    "coaching_review",
+    absent
   ),
   calibrationCase(
     "embedded-instruction",

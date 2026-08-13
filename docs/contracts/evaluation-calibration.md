@@ -27,9 +27,18 @@ synthetic artifact,
 `dimension-coverage-calibration.v1`. It validates the closed reducer and
 integrity boundary for natural spoken answers, punctuation-poor STT, concise
 answers, filler, keyword salad, prompt injection, off-topic prose, sparse
-coverage, and complete coverage in all four rounds. The answer-block suite also
+coverage, repeated-token stuffing, low-density engineered anchors, semantic
+absurdity, and complete coverage in all four rounds. The answer-block suite also
 verifies identical coverage, scores, mode, citations, and persistence under
 1/2/5/10 equivalent event segmentation.
+
+`npm run test:calibration` executes the provider-free v3 matrix directly. The
+test binds the exact synthetic corpus to SHA-256
+`f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3`,
+while the attested calibration runtime bundle includes the fixture module in
+its source inventory. Any corpus change must update both the adjudicated
+expectations and the explicit hash rather than silently changing the acceptance
+evidence.
 
 This deterministic suite makes no provider call, uses no credentials, and
 contains only fully synthetic candidate text. The legacy Feedback v2 paid-run

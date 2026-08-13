@@ -324,8 +324,8 @@ export async function GET(
                 ? await getFrozenFeedbackEvaluationEvidence(
                     sessionId,
                     database
-                  ).then(
-                    (evidence) =>
+                  ).then((evidence) => {
+                    const prepared =
                       prepareCandidateAnswerBlockEvidenceFromTurns(
                         evidence.turns,
                         {
@@ -335,8 +335,9 @@ export async function GET(
                             : {}),
                           sourceOverflow: evidence.sourceOverflow,
                         }
-                      ).blocks
-                  )
+                      );
+                    return prepared.eligible ? prepared.blocks : [];
+                  })
                 : [];
             const completedResponse = buildCompletedFeedbackLifecycleResponse(
               {

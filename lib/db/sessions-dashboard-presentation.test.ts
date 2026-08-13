@@ -50,6 +50,9 @@ test("dashboard session query bounds private presentation evidence", async () =>
     "model_version",
     "rubric_version",
     "evaluation_state",
+    "feedback_mode",
+    "feedback_round_type",
+    "dimension_coverage",
     "strengths",
     "improvements",
     "drills",
@@ -104,6 +107,9 @@ test("dashboard session mapping strips private evidence and emits one closed kin
         modelVersion: "private-model-identity",
         rubricVersion: "pm-feedback-rubric.v2",
         evaluationState: "full",
+        feedbackMode: null,
+        feedbackRoundType: null,
+        dimensionCoverageJson: null,
         strengthsJson: JSON.stringify([finding]),
         improvementsJson: JSON.stringify([
           {
@@ -163,6 +169,9 @@ test("dashboard session mapping fails closed when persisted evidence is forged",
         modelVersion: "fixture-model",
         rubricVersion: "pm-feedback-rubric.v2",
         evaluationState: "full",
+        feedbackMode: null,
+        feedbackRoundType: null,
+        dimensionCoverageJson: null,
         strengthsJson: JSON.stringify([
           {
             ...finding,

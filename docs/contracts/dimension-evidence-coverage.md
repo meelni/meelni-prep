@@ -86,6 +86,10 @@ adversarial and calibration fixtures are fully synthetic.
 
 The provider-free `dimension-coverage-calibration.v1` corpus covers natural
 spoken answers, punctuation-poor STT, concise answers, filler, keyword salad,
+repeated-token stuffing, low-density engineered anchors, semantic absurdity,
 prompt injection, off-topic prose, sparse coverage, complete coverage for all
-rounds, and segmentation equivalence. It validates closed outcomes and exact
-grounding without credentials or provider calls.
+rounds, and segmentation equivalence. Its exact synthetic case list is bound
+to SHA-256
+`f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3`.
+It validates closed outcomes and exact grounding without credentials or
+provider calls.

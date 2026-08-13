@@ -10,15 +10,20 @@ import {
 } from "./schema";
 import { eq, desc, and, asc, inArray, sql } from "drizzle-orm";
 import {
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   isInterviewSessionCompletedForRead,
   MAX_CANONICAL_EVENT_ID_LENGTH,
+  type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
 } from "@/lib/internal/core";
 import {
   classifyDashboardFeedbackPresentation,
   DASHBOARD_FEEDBACK_PRESENTATION_LIMITS,
   type DashboardFeedbackPresentationCandidate,
+  type DashboardFeedbackPresentationKind,
 } from "@/lib/dashboard/feedback-presentation";
+import { getFrozenFeedbackEvaluationEvidence } from "./transcripts";
+import { prepareCandidateAnswerBlockEvidenceFromTurns } from "@/lib/evaluation/session-validator";
 import { lockAccountIdentity } from "./account-identity-lock";
 import { AccountDeletionPendingError } from "./users";
 
@@ -264,11 +269,15 @@ export async function getUserSessionsPaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const [evidenceBySession, answerBlocksBySession] = await Promise.all([
+    loadDashboardFeedbackEvidenceTurns(rows),
+    loadDashboardDimensionCoverageAnswerBlocks(rows),
+  ]);
   const sessions = rows.map((row) =>
     toDashboardSession(
       row,
-      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS,
+      answerBlocksBySession.get(String(row.id)) ?? EMPTY_CANDIDATE_ANSWER_BLOCKS
     )
   );
 
@@ -330,11 +339,15 @@ export async function getUserSessionsByRoundTypePaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const evidenceBySession = await loadDashboardFeedbackEvidenceTurns(rows);
+  const [evidenceBySession, answerBlocksBySession] = await Promise.all([
+    loadDashboardFeedbackEvidenceTurns(rows),
+    loadDashboardDimensionCoverageAnswerBlocks(rows),
+  ]);
   const sessions = rows.map((row) =>
     toDashboardSession(
       row,
-      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS,
+      answerBlocksBySession.get(String(row.id)) ?? EMPTY_CANDIDATE_ANSWER_BLOCKS
     )
   );
 
@@ -408,6 +421,15 @@ export const dashboardSessionSelection = {
     evaluationState: sql<
       string | null
     >`left(${feedback.evaluationState}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    feedbackMode: sql<
+      string | null
+    >`left(${feedback.feedbackMode}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    feedbackRoundType: sql<
+      string | null
+    >`left(${feedback.feedbackRoundType}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    dimensionCoverageJson: sql<
+      string | null
+    >`left(${feedback.dimensionCoverage}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson + 1})`,
     strengthsJson: sql<
       string | null
     >`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
@@ -426,6 +448,7 @@ export const dashboardSessionSelection = {
 
 const EMPTY_FEEDBACK_EVIDENCE_TURNS: readonly PersistedFeedbackEvidenceTurn[] =
   [];
+const EMPTY_CANDIDATE_ANSWER_BLOCKS: readonly CandidateAnswerBlock[] = [];
 const MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE = 2_000;
 const MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
 
@@ -463,6 +486,39 @@ async function loadDashboardFeedbackEvidenceTurns(
     grouped.set(row.sessionId, turns);
   }
   return grouped;
+}
+
+async function loadDashboardDimensionCoverageAnswerBlocks(
+  rows: readonly DashboardSessionRow[]
+): Promise<ReadonlyMap<string, readonly CandidateAnswerBlock[]>> {
+  const sessionIds = rows.flatMap((row) =>
+    row.feedbackPresentationCandidate?.status === "completed" &&
+    row.feedbackPresentationCandidate.schemaVersion ===
+      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    typeof row.id === "string"
+      ? [row.id]
+      : []
+  );
+  const entries = await Promise.all(
+    sessionIds.map(async (sessionId) => {
+      const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
+      const prepared = prepareCandidateAnswerBlockEvidenceFromTurns(
+        evidence.turns,
+        {
+          interruptions: evidence.interruptions,
+          ...(evidence.sessionEndAt
+            ? { sessionEndAt: evidence.sessionEndAt }
+            : {}),
+          sourceOverflow: evidence.sourceOverflow,
+        }
+      );
+      return [
+        sessionId,
+        prepared.eligible ? prepared.blocks : EMPTY_CANDIDATE_ANSWER_BLOCKS,
+      ] as const;
+    })
+  );
+  return new Map(entries);
 }
 
 export function buildDashboardFeedbackEvidenceTurnsQuery(
@@ -514,11 +570,12 @@ type DashboardSessionRow = {
 
 export function toDashboardSession(
   row: DashboardSessionRow,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = []
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = [],
+  answerBlocks: readonly CandidateAnswerBlock[] = []
 ): Omit<DashboardSessionRow, "feedbackPresentationCandidate" | "feedback"> & {
   feedback:
     | (NonNullable<DashboardSessionRow["feedback"]> & {
-        presentationKind: "scored" | "evidence_limited" | "unavailable";
+        presentationKind: DashboardFeedbackPresentationKind;
       })
     | null;
 } {
@@ -532,7 +589,8 @@ export function toDashboardSession(
       presentationKind: feedbackPresentationCandidate
         ? classifyDashboardFeedbackPresentation(
             feedbackPresentationCandidate,
-            evidenceTurns
+            evidenceTurns,
+            answerBlocks
           )
         : "unavailable",
     },

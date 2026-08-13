@@ -38,6 +38,7 @@ vi.mock("@/lib/db/feedback", () => ({
 }));
 vi.mock("@/lib/db/transcripts", () => ({
   getFeedbackEvidenceTurns: vi.fn(),
+  getFrozenFeedbackEvaluationEvidence: vi.fn(),
 }));
 vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
   recoverFeedbackGenerationWorkflow: vi.fn(),
@@ -59,13 +60,23 @@ import {
   EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
   EVIDENCE_LIMITED_STRENGTH_SIGNALS,
   EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  parseDimensionCoverageProviderSelection,
 } from "@meelni/core";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
 import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
-import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
+import {
+  getFeedbackEvidenceTurns,
+  getFrozenFeedbackEvaluationEvidence,
+} from "@/lib/db/transcripts";
+import { prepareCandidateAnswerBlockEvidenceFromTurns } from "@/lib/evaluation/session-validator";
 import { createClient } from "@/lib/supabase/server";
 import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
@@ -98,6 +109,9 @@ describe("/api/feedback/[sessionId]", () => {
         contractVersion: 2,
       },
     ] as never);
+    vi.mocked(getFrozenFeedbackEvaluationEvidence).mockResolvedValue(
+      frozenDimensionEvidence() as never
+    );
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -882,6 +896,61 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it.each([
+    {
+      name: "bounded source overflow",
+      evidence: () => ({
+        ...frozenDimensionEvidence(),
+        sourceOverflow: true,
+      }),
+    },
+    {
+      name: "candidate integrity boundary",
+      evidence: () => ({
+        ...frozenDimensionEvidence(),
+        interruptions: [
+          {
+            eventId: "synthetic-writer:3",
+            writerId: "synthetic-writer",
+            writerGeneration: 1,
+            sequence: 3,
+            speaker: "user" as const,
+            occurredAt: new Date("2026-08-12T20:00:02.600Z"),
+            reason: "canonicalization_failed" as const,
+          },
+        ],
+      }),
+    },
+  ])("fails closed for v3 reads with $name", async ({ evidence }) => {
+    const result = syntheticDimensionCoverageResult();
+    vi.mocked(getFrozenFeedbackEvaluationEvidence).mockResolvedValue(
+      evidence() as never
+    );
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "completed",
+        summary: result.summary,
+        schemaVersion: result.schemaVersion,
+        promptVersion: result.promptVersion,
+        modelVersion: result.modelVersion,
+        rubricVersion: result.rubricVersion,
+        evaluationState: result.evaluationState,
+        feedbackMode: result.mode,
+        feedbackRoundType: result.roundType,
+        dimensionCoverage: result.dimensions,
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+  });
+
   it("fails closed before the API can return duplicate evidence-limited coaching identities", async () => {
     const strength = {
       signalCode: "customer_problem_connection",
@@ -1012,4 +1081,70 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
     createdAt: new Date("2026-07-09T22:00:00.000Z"),
     ...overrides,
   };
+}
+
+function frozenDimensionEvidence() {
+  return {
+    turns: [
+      {
+        contractVersion: 2,
+        eventId: "synthetic-writer:1",
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        sequence: 1,
+        speaker: "interviewer",
+        text: "How would you choose the first product segment?",
+        startedAt: new Date("2026-08-12T20:00:01.000Z"),
+        endedAt: new Date("2026-08-12T20:00:01.500Z"),
+        audioMs: 500,
+        section: "synthetic-read-regression",
+        deliveryState: "delivered",
+      },
+      {
+        contractVersion: 2,
+        eventId: "synthetic-writer:2",
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        sequence: 2,
+        speaker: "user",
+        text: "I would choose caregivers first because repeated handoffs create weekly coordination risk.",
+        startedAt: new Date("2026-08-12T20:00:02.000Z"),
+        endedAt: new Date("2026-08-12T20:00:02.500Z"),
+        audioMs: 500,
+        section: "synthetic-read-regression",
+        deliveryState: "delivered",
+      },
+    ],
+    interruptions: [],
+    sessionEndAt: new Date("2026-08-12T20:00:04.000Z"),
+    sourceOverflow: false,
+  };
+}
+
+function syntheticDimensionCoverageResult() {
+  const prepared = prepareCandidateAnswerBlockEvidenceFromTurns(
+    frozenDimensionEvidence().turns
+  );
+  expect(prepared.eligible).toBe(true);
+  const dimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => [
+      dimension,
+      { score: null, evidence: [] },
+    ])
+  );
+  return parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks: prepared.blocks,
+      modelVersion: "synthetic-read-regression-v1",
+      allowNumericalScores: true,
+    }
+  );
 }
