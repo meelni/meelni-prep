@@ -6620,6 +6620,12 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       maxContinuationGapMs,
       event.kind === "turn"
     ) : null;
+    const replaySuccessorTimingConflict = event.kind === "turn" && previousLedgerTurn?.kind === "semantic_replay" && classifyTurnTransition(
+      previousLedgerTurn,
+      event,
+      maxContinuationGapMs,
+      false
+    ) === "invalid_timing";
     if (transition2 && transition2 !== sequenceIssue?.boundary) {
       closeOrRecordBoundary(transition2, {
         afterEventId: transitionCursor?.eventId ?? null,
@@ -6631,11 +6637,20 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         currentPrompt = [];
       }
     }
+    if (replaySuccessorTimingConflict && transition2 !== "invalid_timing") {
+      closeOrRecordBoundary("invalid_timing", {
+        afterEventId: previousLedgerTurn?.eventId ?? null,
+        beforeEventId: event.eventId,
+        boundaryEventId: null
+      });
+      issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
+      currentPrompt = [];
+    }
     if (event.kind === "semantic_replay") {
       const anchor = acceptedTurnsByEventId.get(event.replayOfEventId);
       const attemptedCandidateBridge = hadOpenCandidateBlock && event.speaker === "user";
       const validAnchor = anchor !== void 0 && anchor.speaker === event.speaker && anchor.writerId === event.writerId && anchor.writerGeneration === event.writerGeneration && isExactFeedbackTranscriptReplayText(event.text, anchor.text);
-      const validCandidateContinuity = !attemptedCandidateBridge || previousLedgerTurn?.speaker === "user" && anchor?.eventId === previousLedgerTurn.eventId && previousLedgerTurn.writerId === event.writerId && previousLedgerTurn.writerGeneration === event.writerGeneration && sequenceIssue === null && transition2 === null;
+      const validCandidateContinuity = !attemptedCandidateBridge || previousLedgerTurn?.speaker === "user" && anchor?.eventId === previousEvidenceTurn?.eventId && previousLedgerTurn.writerId === event.writerId && previousLedgerTurn.writerGeneration === event.writerGeneration && sequenceIssue === null && transition2 === null;
       if (!validAnchor || !validCandidateContinuity) {
         issues.push({
           code: "invalid_replay_continuity",

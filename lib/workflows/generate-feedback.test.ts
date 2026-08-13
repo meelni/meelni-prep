@@ -716,6 +716,25 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
     audioMs: 500,
   };
 
+  const conflictingSuccessorTiming =
+    createReplayContinuityWorkflowTurns("literal");
+  const successorReplayIndex = conflictingSuccessorTiming.findIndex(
+    (turn, index) =>
+      index > 0 && turn.text === conflictingSuccessorTiming[index - 1]!.text
+  );
+  assert.ok(successorReplayIndex > 0);
+  const successorReplay = conflictingSuccessorTiming[successorReplayIndex]!;
+  const replaySuccessor = conflictingSuccessorTiming[successorReplayIndex + 1]!;
+  const replaySuccessorStartedAt = new Date(
+    successorReplay.endedAt!.getTime() - 100
+  );
+  conflictingSuccessorTiming[successorReplayIndex + 1] = {
+    ...replaySuccessor,
+    startedAt: replaySuccessorStartedAt,
+    endedAt: new Date(replaySuccessorStartedAt.getTime() + 900),
+    audioMs: 900,
+  };
+
   const missingSequence = createReplayContinuityWorkflowTurns("none").map(
     (turn, index) =>
       index < 3
@@ -727,7 +746,12 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
           }
   );
 
-  for (const turns of [conflictingReplay, conflictingTiming, missingSequence]) {
+  for (const turns of [
+    conflictingReplay,
+    conflictingTiming,
+    conflictingSuccessorTiming,
+    missingSequence,
+  ]) {
     const validation = calculateValidatedSessionFromTurns(turns, {
       sessionEndAt: turns.at(-1)!.endedAt!,
     });
