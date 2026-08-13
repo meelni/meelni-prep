@@ -526,6 +526,55 @@ test("replay continuity rejects missing anchors, sequence gaps, timing conflicts
   }
 });
 
+test("an intervening role turn cannot hide same-speaker replay overlap", () => {
+  const anchor = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    startedAtMs: 0,
+    endedAtMs: 10_000,
+    audioDurationMs: 10_000,
+  });
+  const followUp = createAnswerBlockTurn({
+    sequence: 2,
+    eventId: "synthetic-writer:2",
+    speaker: "interviewer",
+    text: "Which assumption would you validate first?",
+    startedAtMs: 2_000,
+    endedAtMs: 3_000,
+    audioDurationMs: 1_000,
+  });
+  const replay = {
+    ...createAnswerBlockTurn({
+      sequence: 3,
+      eventId: "synthetic-writer:3",
+      text: anchor.text,
+      startedAtMs: 4_000,
+      endedAtMs: 5_000,
+      audioDurationMs: 1_000,
+    }),
+    kind: "semantic_replay" as const,
+    replayOfEventId: anchor.eventId,
+  };
+
+  const derived = deriveCandidateAnswerBlocks([anchor, followUp, replay]);
+
+  assert.equal(derived.eligible, false);
+  assert.ok(
+    derived.issues.some(
+      ({ code, eventId }) =>
+        code === "invalid_ledger_order" && eventId === replay.eventId
+    )
+  );
+  assert.ok(
+    derived.boundaries.some(
+      ({ kind, afterEventId, beforeEventId }) =>
+        kind === "invalid_timing" &&
+        afterEventId === anchor.eventId &&
+        beforeEventId === replay.eventId
+    )
+  );
+});
+
 test("a non-exact replay-family omission fails closed as an explicit non-bridging boundary", () => {
   const first = createAnswerBlockTurn({
     sequence: 1,

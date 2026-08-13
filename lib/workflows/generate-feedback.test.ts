@@ -746,14 +746,63 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
           }
   );
 
+  const baseMs = Date.parse("2026-07-10T12:45:00.000Z");
+  const interleavedReplayOverlap: SessionValidationTurnInput[] = [
+    {
+      contractVersion: 2,
+      eventId: "interleaved-writer:1",
+      writerId: "interleaved-writer",
+      writerGeneration: 1,
+      sequence: 1,
+      speaker: "user",
+      text: "I would prioritize working parents because recurring coordination failures create frequent severe planning pain every week.",
+      startedAt: new Date(baseMs),
+      endedAt: new Date(baseMs + 10_000),
+      audioMs: 10_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+    {
+      contractVersion: 2,
+      eventId: "interleaved-writer:2",
+      writerId: "interleaved-writer",
+      writerGeneration: 1,
+      sequence: 2,
+      speaker: "interviewer",
+      text: "Which assumption would you validate first?",
+      startedAt: new Date(baseMs + 2_000),
+      endedAt: new Date(baseMs + 3_000),
+      audioMs: 1_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+    {
+      contractVersion: 2,
+      eventId: "interleaved-writer:3",
+      writerId: "interleaved-writer",
+      writerGeneration: 1,
+      sequence: 3,
+      speaker: "user",
+      text: "I would prioritize working parents because recurring coordination failures create frequent severe planning pain every week.",
+      startedAt: new Date(baseMs + 4_000),
+      endedAt: new Date(baseMs + 5_000),
+      audioMs: 1_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+  ];
+
   for (const turns of [
     conflictingReplay,
     conflictingTiming,
     conflictingSuccessorTiming,
+    interleavedReplayOverlap,
     missingSequence,
   ]) {
     const validation = calculateValidatedSessionFromTurns(turns, {
-      sessionEndAt: turns.at(-1)!.endedAt!,
+      sessionEndAt: new Date(
+        Math.max(...turns.map((turn) => turn.endedAt!.getTime())) + 1_000
+      ),
     });
     assert.equal(validation.isValid, false);
     assert.equal(
