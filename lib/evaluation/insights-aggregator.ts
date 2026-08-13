@@ -7,10 +7,11 @@
  * breakdowns.
  */
 
-import { db } from "@/lib/db";
-import { interviewSession } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
 import { getCompletedFeedbackScore } from "@meelni/core";
+import {
+  getUserSessionsForFeedbackAnalytics,
+  type FeedbackAnalyticsSession,
+} from "@/lib/db/sessions";
 
 /**
  * Complete user insights data structure (matches userInsights JSONB schema)
@@ -80,26 +81,7 @@ export interface DifficultyStats {
 /**
  * Session with feedback joined
  */
-interface SessionWithFeedback {
-  id: string;
-  userId: string;
-  roundType: string;
-  startedAt: Date | null;
-  endedAt: Date | null;
-  config: {
-    difficulty?: string;
-    [key: string]: unknown;
-  };
-  feedback: {
-    status: string | null;
-    overallScore: string;
-    structureScore: number | null;
-    clarityScore: number | null;
-    insightScore: number | null;
-    communicationScore: number | null;
-    leadershipScore: number | null;
-  } | null;
-}
+type SessionWithFeedback = FeedbackAnalyticsSession;
 
 /**
  * Calculate complete user insights from all session/feedback data
@@ -120,27 +102,14 @@ export async function aggregateUserInsights(
   userId: string
 ): Promise<UserInsights> {
   // Fetch all sessions for user with feedback
-  const sessions = (await db.query.interviewSession.findMany({
-    where: eq(interviewSession.userId, userId),
-    with: {
-      feedback: {
-        columns: {
-          status: true,
-          overallScore: true,
-          structureScore: true,
-          clarityScore: true,
-          insightScore: true,
-          communicationScore: true,
-          leadershipScore: true,
-        },
-      },
-    },
-    orderBy: [desc(interviewSession.startedAt)],
-  })) as SessionWithFeedback[];
+  const sessions = await getUserSessionsForFeedbackAnalytics(userId);
 
-  // Progress claims require completed feedback with a valid rubric score.
+  // Progress claims require a strictly presented legacy/v2/full scorecard.
   const completedSessions = sessions.filter(
-    (session) => getCompletedFeedbackScore(session.feedback) !== null
+    (session) =>
+      (session.feedback?.presentationKind === "scored" ||
+        session.feedback?.presentationKind === "full_scorecard") &&
+      getCompletedFeedbackScore(session.feedback) !== null
   );
 
   // Handle zero sessions case
@@ -184,11 +153,7 @@ export async function aggregateUserInsights(
   };
 
   // Group by difficulty (from session config)
-  const byDifficultyRaw = groupBy(completedSessions, (s) =>
-    typeof s.config?.difficulty === "string"
-      ? s.config.difficulty
-      : "intermediate"
-  );
+  const byDifficultyRaw = groupBy(completedSessions, sessionDifficulty);
   const byDifficulty = {
     junior: calculateDifficultyStats(byDifficultyRaw["junior"] || []),
     intermediate: calculateDifficultyStats(
@@ -323,6 +288,18 @@ function groupBy<T>(
   );
 }
 
+function sessionDifficulty(session: SessionWithFeedback): string {
+  if (
+    typeof session.config === "object" &&
+    session.config !== null &&
+    "difficulty" in session.config &&
+    typeof session.config.difficulty === "string"
+  ) {
+    return session.config.difficulty;
+  }
+  return "intermediate";
+}
+
 /**
  * Calculate average of numbers
  */
@@ -407,7 +384,7 @@ function calculateTypeStats(
     return { count: 0, avgScore: 0, last5Avg: 0 };
   }
 
-  const scores = sessions.map((s) => parseFloat(s.feedback!.overallScore));
+  const scores = sessions.map((s) => getCompletedFeedbackScore(s.feedback)!);
   const last5Scores = scores.slice(0, Math.min(5, scores.length));
 
   return {
@@ -427,7 +404,7 @@ function calculateDifficultyStats(
     return { count: 0, avgScore: 0 };
   }
 
-  const scores = sessions.map((s) => parseFloat(s.feedback!.overallScore));
+  const scores = sessions.map((s) => getCompletedFeedbackScore(s.feedback)!);
 
   return {
     count: sessions.length,

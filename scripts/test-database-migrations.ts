@@ -8224,7 +8224,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     { ingestTranscriptInterruptionMarker },
     { ingestTranscriptRuntimeSettlement },
     { ingestTranscriptRuntimeWriter },
-    { prepareCandidateAnswerBlockEvidenceFromTurns },
+    { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot },
     schema,
   ] = await Promise.all([
     import("@meelni/core"),
@@ -8499,13 +8499,10 @@ async function verifyFeedbackProductionDatabaseLifecycle(
           sessionId,
           database
         );
-        return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
-          interruptions: evidence.interruptions,
-          ...(evidence.sessionEndAt
-            ? { sessionEndAt: evidence.sessionEndAt }
-            : {}),
-          sourceOverflow: evidence.sourceOverflow,
-        });
+        return {
+          ...prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence),
+          snapshotState: evidence.snapshotState,
+        };
       },
       async evaluate(input: {
         roundType: "product_sense" | "behavioral" | "execution" | "strategy";
@@ -8652,20 +8649,16 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     shortRich.sessionId,
     database
   );
-  const persistedAnswerBlocks = prepareCandidateAnswerBlockEvidenceFromTurns(
-    persistedEvidence.turns,
-    {
-      interruptions: persistedEvidence.interruptions,
-      ...(persistedEvidence.sessionEndAt
-        ? { sessionEndAt: persistedEvidence.sessionEndAt }
-        : {}),
-      sourceOverflow: persistedEvidence.sourceOverflow,
-    }
-  ).blocks;
+  const persistedAnswerBlocks =
+    prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+      persistedEvidence
+    ).blocks;
   const apiPayload = buildCompletedFeedbackLifecycleResponse(
     persistedAfterLateFailure,
     evidenceTurns,
-    persistedAnswerBlocks
+    persistedAnswerBlocks,
+    "product_sense",
+    persistedEvidence.snapshotState ?? undefined
   );
   assert.equal(apiPayload.feedback.kind, "dimension-coverage");
   if (apiPayload.feedback.kind === "dimension-coverage") {

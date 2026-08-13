@@ -70,12 +70,33 @@ reconstructed frozen answer blocks and stores the exact server-derived
 Authenticated reads reconstruct the blocks again and compare every persisted
 field before presentation. JSON object key order is irrelevant; value, array
 order, versions, scores, aliases, labels, and exact evidence text must match.
+The read context must also prove the owning session round and a complete
+canonical frozen-evidence tuple: version 1, complete or partial evidence state,
+cutoff, frozen timestamp, terminal lifecycle, and committed writer cutoffs.
+Cutoffs must exactly cover every registered runtime writer, bind the committed
+event boundary to the frozen ledger, and precede the session cutoff. Missing or
+internally inconsistent freeze metadata, a wrong owning round, a truncated
+source, or an answer-block integrity failure makes the v3 row unavailable. It
+never falls back to the mutable transcript tail.
+
+A partial frozen snapshot is qualitative-only at generation and read time. A
+self-consistent persisted partial or full numerical scorecard over that
+snapshot is still invalid; only a canonical all-null coaching review may be
+presented.
 
 New rows store the v3 version tuple, round, mode, and bounded dimension JSON.
 Existing scalar score columns are sparse for partial scorecards and empty for
 coaching. Overall is populated only for full scorecards. Legacy, Feedback v2,
 and evidence-limited v2 completed rows remain readable and immutable; no
 backfill or reinterpretation is allowed.
+
+Dashboard/history, session-list APIs, insights, and attempt comparison consume
+only the strict authenticated presentation projection. Unavailable and
+coaching rows expose no scalar scores. Partial rows may expose only their
+sufficient dimension scores and never an overall. Numeric trends, aggregate
+insights, and attempt deltas admit only validated historical/scored feedback or
+validated v3 full scorecards. Comparison does not derive citations from mutable
+transcript-row counts or row-length heuristics.
 
 ## Privacy and calibration
 

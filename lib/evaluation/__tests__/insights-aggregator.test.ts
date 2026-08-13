@@ -5,17 +5,11 @@
 
 import { beforeEach, describe, test, expect, vi } from "vitest";
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    query: {
-      interviewSession: {
-        findMany: vi.fn(),
-      },
-    },
-  },
+vi.mock("@/lib/db/sessions", () => ({
+  getUserSessionsForFeedbackAnalytics: vi.fn(),
 }));
 
-import { db } from "@/lib/db";
+import { getUserSessionsForFeedbackAnalytics } from "@/lib/db/sessions";
 import {
   computeAverageScores,
   aggregateUserInsights,
@@ -143,11 +137,11 @@ describe("computeAverageScores", () => {
 
 describe("aggregateUserInsights", () => {
   beforeEach(() => {
-    vi.mocked(db.query.interviewSession.findMany).mockReset();
+    vi.mocked(getUserSessionsForFeedbackAnalytics).mockReset();
   });
 
   test("should return empty insights for user with zero sessions", async () => {
-    vi.mocked(db.query.interviewSession.findMany).mockResolvedValue([]);
+    vi.mocked(getUserSessionsForFeedbackAnalytics).mockResolvedValue([]);
 
     const insights = await aggregateUserInsights("user-with-no-sessions");
 
@@ -166,7 +160,7 @@ describe("aggregateUserInsights", () => {
       communicationScore: 9,
       leadershipScore: 7,
     };
-    vi.mocked(db.query.interviewSession.findMany).mockResolvedValue([
+    vi.mocked(getUserSessionsForFeedbackAnalytics).mockResolvedValue([
       {
         id: "completed-1",
         userId: "user-123",
@@ -176,6 +170,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "senior" },
         feedback: {
           status: "completed",
+          presentationKind: "scored",
           overallScore: "8",
           ...feedbackScores,
         },
@@ -189,6 +184,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "intermediate" },
         feedback: {
           status: "processing",
+          presentationKind: "unavailable",
           overallScore: "10",
           ...feedbackScores,
         },
@@ -202,6 +198,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "junior" },
         feedback: {
           status: "completed",
+          presentationKind: "unavailable",
           overallScore: "NaN",
           ...feedbackScores,
         },
@@ -215,6 +212,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "junior" },
         feedback: {
           status: "completed",
+          presentationKind: "scored",
           overallScore: "6",
           ...feedbackScores,
         },
@@ -241,6 +239,45 @@ describe("aggregateUserInsights", () => {
     expect(insights.byDifficulty.junior.count).toBe(1);
     expect(insights.overallStats).not.toHaveProperty("currentStreak");
     expect(insights.overallStats).not.toHaveProperty("longestStreak");
+  });
+
+  test("excludes partial, coaching, and unavailable projections from every numeric insight", async () => {
+    const startedAt = new Date("2026-08-12T12:00:00.000Z");
+    const endedAt = new Date("2026-08-12T12:30:00.000Z");
+    const rawScores = {
+      status: "completed",
+      overallScore: "9",
+      structureScore: 9,
+      clarityScore: 9,
+      insightScore: 9,
+      communicationScore: 9,
+      leadershipScore: 9,
+    };
+    vi.mocked(getUserSessionsForFeedbackAnalytics).mockResolvedValue(
+      ["partial_scorecard", "coaching_review", "unavailable"].map(
+        (presentationKind, index) => ({
+          id: `synthetic-scoreless-${index}`,
+          userId: "user-123",
+          roundType: "product_sense",
+          startedAt,
+          endedAt,
+          config: { difficulty: "intermediate" },
+          feedback: { ...rawScores, presentationKind },
+        })
+      ) as never
+    );
+
+    const insights = await aggregateUserInsights("user-123");
+
+    expect(insights.overallStats.completedSessions).toBe(0);
+    expect(insights.overallStats.avgScore).toBe(0);
+    expect(insights.competencySampleSizes).toEqual({
+      structure: 0,
+      clarity: 0,
+      insight: 0,
+      communication: 0,
+      leadership: 0,
+    });
   });
 });
 

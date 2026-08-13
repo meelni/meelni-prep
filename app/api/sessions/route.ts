@@ -182,18 +182,31 @@ function presentSessionListEntry<
   const presentationKind = DASHBOARD_FEEDBACK_PRESENTATION_KINDS.find(
     (kind) => kind === feedbackRecord.presentationKind
   );
+  const closedKind = presentationKind ?? "unavailable";
+  const exposesDimensionScores =
+    closedKind === "scored" ||
+    closedKind === "full_scorecard" ||
+    closedKind === "partial_scorecard";
+  const exposesOverallScore =
+    closedKind === "scored" || closedKind === "full_scorecard";
 
   return {
     ...sessionRecord,
     feedback: {
       status: feedbackRecord.status,
-      presentationKind: presentationKind ?? "unavailable",
-      overallScore: feedbackRecord.overallScore,
-      structureScore: feedbackRecord.structureScore,
-      clarityScore: feedbackRecord.clarityScore,
-      insightScore: feedbackRecord.insightScore,
-      communicationScore: feedbackRecord.communicationScore,
-      leadershipScore: feedbackRecord.leadershipScore,
+      presentationKind: closedKind,
+      overallScore: exposesOverallScore ? feedbackRecord.overallScore : null,
+      structureScore: exposesDimensionScores
+        ? feedbackRecord.structureScore
+        : null,
+      clarityScore: exposesDimensionScores ? feedbackRecord.clarityScore : null,
+      insightScore: exposesDimensionScores ? feedbackRecord.insightScore : null,
+      communicationScore: exposesDimensionScores
+        ? feedbackRecord.communicationScore
+        : null,
+      leadershipScore: exposesDimensionScores
+        ? feedbackRecord.leadershipScore
+        : null,
     },
   };
 }

@@ -764,29 +764,32 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
       allowNumericalScores: true,
     }
   );
-  const view = presentCompletedFeedback(
-    completed({
-      structureScore: 7,
-      clarityScore: null,
-      insightScore: null,
-      communicationScore: null,
-      leadershipScore: null,
-      overallScore: null,
-      strengths: null,
-      improvements: null,
-      drills: [],
-      summary: result.summary,
-      rubricVersion: result.rubricVersion,
-      schemaVersion: result.schemaVersion,
-      promptVersion: result.promptVersion,
-      modelVersion: result.modelVersion,
-      evaluationState: result.evaluationState,
-      feedbackMode: result.mode,
-      feedbackRoundType: result.roundType,
-      dimensionCoverage: result.dimensions,
-    }),
-    { evidenceTurns: [], answerBlocks: blocks }
-  );
+  const persisted = completed({
+    structureScore: 7,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: null,
+    improvements: null,
+    drills: [],
+    summary: result.summary,
+    rubricVersion: result.rubricVersion,
+    schemaVersion: result.schemaVersion,
+    promptVersion: result.promptVersion,
+    modelVersion: result.modelVersion,
+    evaluationState: result.evaluationState,
+    feedbackMode: result.mode,
+    feedbackRoundType: result.roundType,
+    dimensionCoverage: result.dimensions,
+  });
+  const view = presentCompletedFeedback(persisted, {
+    evidenceTurns: [],
+    answerBlocks: blocks,
+    expectedRoundType: "product_sense",
+    frozenEvidenceState: "complete",
+  });
 
   assert.equal(view.kind, "dimension-coverage");
   if (view.kind !== "dimension-coverage") return;
@@ -794,6 +797,31 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
   assert.equal(view.overallScore, null);
   assert.equal(view.dimensions.structure.score, 7);
   assert.equal(view.dimensions.insight.score, null);
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+    }).kind,
+    "invalid"
+  );
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "strategy",
+      frozenEvidenceState: "complete",
+    }).kind,
+    "invalid"
+  );
+  assert.equal(
+    presentCompletedFeedback(persisted, {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "product_sense",
+      frozenEvidenceState: "partial",
+    }).kind,
+    "invalid"
+  );
   assert.equal(
     decodeFeedbackLifecycleResponse({
       status: "completed",

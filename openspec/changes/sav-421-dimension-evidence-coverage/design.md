@@ -33,7 +33,9 @@ Provider refusal, malformed output, or parser rejection remains a generation fai
 
 ## Persistence and compatibility
 
-New completed writes use an additive schema tuple and store the server-derived mode plus bounded dimension coverage JSON. Existing scalar score columns remain useful for aggregate queries: sparse dimensions may be populated for partial scorecards, and overall is populated only for full scorecards. Existing aggregate/trend consumers continue to require overall and therefore exclude partial/coaching rows.
+New completed writes use an additive schema tuple and store the server-derived mode plus bounded dimension coverage JSON. Existing scalar score columns remain useful only after strict presentation validation: sparse dimensions may be populated for partial scorecards, and overall is populated only for full scorecards. Dashboard, session-list, insights, and comparison consumers use the validated projection; unavailable/coaching scores are cleared, partial overall is cleared, and numeric trends or deltas admit only validated historical/scored rows or v3 full scorecards.
+
+Every v3 generation or read binds the persisted feedback round to the owning session round and requires the canonical frozen-evidence tuple: version 1, complete or partial state, cutoff, frozen timestamp, terminal lifecycle, and committed writer cutoffs that exactly cover every registered runtime writer and bind each committed event boundary before the session cutoff. Invalid metadata never reconstructs from a mutable fallback tail. A partial frozen snapshot forces qualitative-only evaluation and presentation, so persisted numerical scorecards over that snapshot fail closed even when internally self-consistent.
 
 Legacy, scored v2, and evidence-limited v2 completed rows keep their current parsers and are never rewritten or backfilled. An invalid new row renders unavailable rather than falling back to a historical parser.
 

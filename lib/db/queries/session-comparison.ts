@@ -1,73 +1,32 @@
-/**
- * Database queries for session comparison feature
- */
+/** Strict, owner-scoped score comparison over canonically presented feedback. */
 
-import { db } from "@/lib/db";
-import { interviewSession, feedback, transcriptTurn } from "@/lib/db/schema";
-import { transcriptChronologicalOrder } from "@/lib/db/transcript-ordering";
-import { eq, and, desc, isNotNull } from "drizzle-orm";
 import {
+  getUserSessionsForFeedbackAnalytics,
+  type FeedbackAnalyticsSession,
+} from "@/lib/db/sessions";
+import type {
+  FeedbackContent,
+  FeedbackScores,
+  ScoreDelta,
   SessionAttempt,
   SessionComparisonDetail,
-  FeedbackScores,
-  FeedbackContent,
-  ScoreDelta,
 } from "@/lib/types/comparison";
-import { projectFeedbackItems } from "@meelni/core";
+import { getCompletedFeedbackScore } from "@meelni/core";
 
-/**
- * Get all sessions for a specific user and interview type
- * Used to populate the attempt selection dropdown
- */
+export type ValidatedComparisonSession = FeedbackAnalyticsSession;
+
 export async function getSessionsByInterviewType(
   userId: string,
   roundType: string
 ): Promise<SessionAttempt[]> {
-  const sessions = await db
-    .select({
-      id: interviewSession.id,
-      startedAt: interviewSession.startedAt,
-      endedAt: interviewSession.endedAt,
-      roundType: interviewSession.roundType,
-      mode: interviewSession.mode,
-      overallScore: feedback.overallScore,
-      structureScore: feedback.structureScore,
-      clarityScore: feedback.clarityScore,
-      insightScore: feedback.insightScore,
-      communicationScore: feedback.communicationScore,
-      leadershipScore: feedback.leadershipScore,
-    })
-    .from(interviewSession)
-    .leftJoin(feedback, eq(interviewSession.id, feedback.sessionId))
-    .where(
-      and(
-        eq(interviewSession.userId, userId),
-        eq(interviewSession.roundType, roundType),
-        isNotNull(interviewSession.startedAt)
-      )
-    )
-    .orderBy(desc(interviewSession.startedAt))
-    .limit(10); // Limit to 10 most recent attempts
-
-  return sessions.map((session) => ({
-    id: session.id,
-    startedAt: session.startedAt!.toISOString(),
-    endedAt: session.endedAt?.toISOString() || null,
-    roundType: session.roundType,
-    mode: session.mode,
-    overallScore: session.overallScore ? Number(session.overallScore) : null,
-    structureScore: session.structureScore,
-    clarityScore: session.clarityScore,
-    insightScore: session.insightScore,
-    communicationScore: session.communicationScore,
-    leadershipScore: session.leadershipScore,
-  }));
+  const sessions = await getUserSessionsForFeedbackAnalytics(userId);
+  return sessions
+    .filter(isComparableSession)
+    .filter((session) => session.roundType === roundType)
+    .slice(0, 10)
+    .map(toSessionAttempt);
 }
 
-/**
- * Get detailed comparison data for two sessions
- * Includes feedback scores, strengths/improvements, and key transcript quotes
- */
 export async function getSessionComparison(
   sessionId1: string,
   sessionId2: string,
@@ -77,146 +36,126 @@ export async function getSessionComparison(
   session2: SessionComparisonDetail;
   scoreDelta: ScoreDelta;
 } | null> {
-  // Fetch both sessions with feedback
-  const [session1Data, session2Data] = await Promise.all([
-    fetchSessionDetail(sessionId1, userId),
-    fetchSessionDetail(sessionId2, userId),
-  ]);
+  const sessions = await getUserSessionsForFeedbackAnalytics(userId);
+  return buildSessionComparisonFromValidatedSessions(
+    sessions,
+    sessionId1,
+    sessionId2
+  );
+}
 
-  if (!session1Data || !session2Data) {
+export function buildSessionComparisonFromValidatedSessions(
+  sessions: readonly ValidatedComparisonSession[],
+  sessionId1: string,
+  sessionId2: string
+) {
+  if (sessionId1 === sessionId2) return null;
+  const first = sessions.find((session) => session.id === sessionId1);
+  const second = sessions.find((session) => session.id === sessionId2);
+  if (
+    !first ||
+    !second ||
+    first.roundType !== second.roundType ||
+    !isComparableSession(first) ||
+    !isComparableSession(second)
+  ) {
     return null;
   }
-
-  // Calculate score delta
-  const scoreDelta: ScoreDelta = {
-    overall:
-      session1Data.scores.overall !== null &&
-      session2Data.scores.overall !== null
-        ? session2Data.scores.overall - session1Data.scores.overall
-        : null,
-    structure:
-      session1Data.scores.structure !== null &&
-      session2Data.scores.structure !== null
-        ? session2Data.scores.structure - session1Data.scores.structure
-        : null,
-    clarity:
-      session1Data.scores.clarity !== null &&
-      session2Data.scores.clarity !== null
-        ? session2Data.scores.clarity - session1Data.scores.clarity
-        : null,
-    insight:
-      session1Data.scores.insight !== null &&
-      session2Data.scores.insight !== null
-        ? session2Data.scores.insight - session1Data.scores.insight
-        : null,
-    communication:
-      session1Data.scores.communication !== null &&
-      session2Data.scores.communication !== null
-        ? session2Data.scores.communication - session1Data.scores.communication
-        : null,
-    leadership:
-      session1Data.scores.leadership !== null &&
-      session2Data.scores.leadership !== null
-        ? session2Data.scores.leadership - session1Data.scores.leadership
-        : null,
-  };
-
+  const session1 = toSessionDetail(first);
+  const session2 = toSessionDetail(second);
   return {
-    session1: session1Data,
-    session2: session2Data,
-    scoreDelta,
+    session1,
+    session2,
+    scoreDelta: scoreDelta(session1.scores, session2.scores),
   };
 }
 
-/**
- * Helper: Fetch detailed session data
- */
-async function fetchSessionDetail(
-  sessionId: string,
-  userId: string
-): Promise<SessionComparisonDetail | null> {
-  // Fetch session with feedback
-  const sessionWithFeedback = await db
-    .select({
-      id: interviewSession.id,
-      startedAt: interviewSession.startedAt,
-      endedAt: interviewSession.endedAt,
-      roundType: interviewSession.roundType,
-      mode: interviewSession.mode,
-      userId: interviewSession.userId,
-      overallScore: feedback.overallScore,
-      structureScore: feedback.structureScore,
-      clarityScore: feedback.clarityScore,
-      insightScore: feedback.insightScore,
-      communicationScore: feedback.communicationScore,
-      leadershipScore: feedback.leadershipScore,
-      strengths: feedback.strengths,
-      improvements: feedback.improvements,
-      summary: feedback.summary,
-    })
-    .from(interviewSession)
-    .leftJoin(feedback, eq(interviewSession.id, feedback.sessionId))
-    .where(eq(interviewSession.id, sessionId))
-    .limit(1);
+function isComparableSession(
+  session: ValidatedComparisonSession
+): session is ValidatedComparisonSession & {
+  feedback: NonNullable<ValidatedComparisonSession["feedback"]>;
+} {
+  return (
+    (session.feedback?.presentationKind === "scored" ||
+      session.feedback?.presentationKind === "full_scorecard") &&
+    getCompletedFeedbackScore(session.feedback) !== null
+  );
+}
 
-  if (sessionWithFeedback.length === 0) {
-    return null;
+function toSessionAttempt(
+  session: ValidatedComparisonSession & {
+    feedback: NonNullable<ValidatedComparisonSession["feedback"]>;
   }
-
-  const session = sessionWithFeedback[0];
-
-  // Verify ownership
-  if (session.userId !== userId) {
-    return null;
-  }
-
-  // Fetch transcript turns (user turns only for key quotes)
-  const transcriptTurns = await db
-    .select({
-      text: transcriptTurn.text,
-      speaker: transcriptTurn.speaker,
-    })
-    .from(transcriptTurn)
-    .where(
-      and(
-        eq(transcriptTurn.sessionId, sessionId),
-        eq(transcriptTurn.speaker, "user")
-      )
-    )
-    .orderBy(...transcriptChronologicalOrder())
-    .limit(20); // Limit to 20 turns
-
-  // Extract key quotes (take first 3-4 meaningful user responses)
-  const keyQuotes = transcriptTurns
-    .filter((turn) => turn.text && turn.text.length > 50) // Filter short responses
-    .slice(0, 4)
-    .map((turn) => turn.text || "");
-
-  // Build feedback scores
-  const scores: FeedbackScores = {
-    overall: session.overallScore ? Number(session.overallScore) : null,
-    structure: session.structureScore,
-    clarity: session.clarityScore,
-    insight: session.insightScore,
-    communication: session.communicationScore,
-    leadership: session.leadershipScore,
-  };
-
-  // Build feedback content
-  const feedbackContent: FeedbackContent = {
-    strengths: projectFeedbackItems(session.strengths),
-    improvements: projectFeedbackItems(session.improvements),
-    summary: session.summary,
-  };
-
+): SessionAttempt {
   return {
     id: session.id,
-    startedAt: session.startedAt?.toISOString() || "",
-    endedAt: session.endedAt?.toISOString() || null,
+    startedAt: dateString(session.startedAt),
+    endedAt: nullableDateString(session.endedAt),
     roundType: session.roundType,
     mode: session.mode,
-    scores,
-    feedback: feedbackContent,
-    keyQuotes,
+    overallScore: getCompletedFeedbackScore(session.feedback),
+    structureScore: session.feedback.structureScore,
+    clarityScore: session.feedback.clarityScore,
+    insightScore: session.feedback.insightScore,
+    communicationScore: session.feedback.communicationScore,
+    leadershipScore: session.feedback.leadershipScore,
   };
+}
+
+function toSessionDetail(
+  session: ValidatedComparisonSession & {
+    feedback: NonNullable<ValidatedComparisonSession["feedback"]>;
+  }
+): SessionComparisonDetail {
+  return {
+    id: session.id,
+    startedAt: dateString(session.startedAt),
+    endedAt: nullableDateString(session.endedAt),
+    roundType: session.roundType,
+    mode: session.mode,
+    scores: {
+      overall: getCompletedFeedbackScore(session.feedback),
+      structure: session.feedback.structureScore,
+      clarity: session.feedback.clarityScore,
+      insight: session.feedback.insightScore,
+      communication: session.feedback.communicationScore,
+      leadership: session.feedback.leadershipScore,
+    },
+    feedback: emptyFeedbackContent(),
+    // Comparison never invents row-based quotes. Exact citations remain on the
+    // canonical feedback review and are invariant to transcript segmentation.
+    keyQuotes: [],
+  };
+}
+
+function scoreDelta(first: FeedbackScores, second: FeedbackScores): ScoreDelta {
+  return {
+    overall: delta(first.overall, second.overall),
+    structure: delta(first.structure, second.structure),
+    clarity: delta(first.clarity, second.clarity),
+    insight: delta(first.insight, second.insight),
+    communication: delta(first.communication, second.communication),
+    leadership: delta(first.leadership, second.leadership),
+  };
+}
+
+function delta(first: number | null, second: number | null) {
+  return first === null || second === null ? null : second - first;
+}
+
+function emptyFeedbackContent(): FeedbackContent {
+  return { strengths: [], improvements: [], summary: null };
+}
+
+function dateString(value: Date | string | null): string {
+  return nullableDateString(value) ?? "";
+}
+
+function nullableDateString(value: Date | string | null): string | null {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value.toISOString();
+  }
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }

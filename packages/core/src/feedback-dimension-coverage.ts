@@ -536,7 +536,10 @@ export function parseDimensionCoverageProviderSelection(
 
 export function parsePersistedDimensionCoverageFeedback(
   value: unknown,
-  options: { answerBlocks: readonly CandidateAnswerBlock[] }
+  options: {
+    answerBlocks: readonly CandidateAnswerBlock[];
+    allowNumericalScores?: boolean;
+  }
 ): DimensionCoverageFeedbackResult {
   const root = requireRecord(value);
   requireKeys(root, [
@@ -597,7 +600,8 @@ export function parsePersistedDimensionCoverageFeedback(
       answerBlocks: options.answerBlocks,
       modelVersion:
         typeof root.modelVersion === "string" ? root.modelVersion : "",
-      allowNumericalScores: mode !== "coaching_review",
+      allowNumericalScores:
+        options.allowNumericalScores ?? mode !== "coaching_review",
     }
   );
   if (canonicalJson(derived) !== canonicalJson(root)) {

@@ -203,4 +203,14 @@ test("dashboard session mapping fails closed when persisted evidence is forged",
   );
 
   assert.equal(mapped.feedback?.presentationKind, "unavailable");
+  assert.deepEqual(mapped.feedback, {
+    status: "completed",
+    overallScore: null,
+    structureScore: null,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    presentationKind: "unavailable",
+  });
 });

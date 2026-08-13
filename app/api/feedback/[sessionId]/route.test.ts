@@ -92,6 +92,7 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(isSessionOwnedByUser).mockResolvedValue(true);
     vi.mocked(getSessionById).mockResolvedValue({
       userId: "user-1",
+      roundType: "product_sense",
       lifecycleState: "completed",
       terminalReason: "user_end",
     } as never);
@@ -152,6 +153,7 @@ describe("/api/feedback/[sessionId]", () => {
 
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
+    expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       status: "missing",
       retryable: true,
@@ -896,6 +898,71 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("returns a grounded coaching review from a valid partial frozen snapshot", async () => {
+    const result = syntheticDimensionCoverageResult();
+    vi.mocked(getFrozenFeedbackEvaluationEvidence).mockResolvedValue({
+      ...frozenDimensionEvidence(),
+      snapshotState: "partial",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      dimensionCoverageFeedbackRecord(result) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      feedback: {
+        kind: "dimension-coverage",
+        mode: "coaching_review",
+        overallScore: null,
+      },
+    });
+  });
+
+  it("fails closed when a v3 row is bound to a different owning round", async () => {
+    const result = syntheticDimensionCoverageResult();
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "strategy",
+      lifecycleState: "completed",
+      terminalReason: "user_end",
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      dimensionCoverageFeedbackRecord(result) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+  });
+
+  it("fails closed when usable-looking v3 turns do not have a valid frozen snapshot", async () => {
+    const result = syntheticDimensionCoverageResult();
+    vi.mocked(getFrozenFeedbackEvaluationEvidence).mockResolvedValue({
+      ...frozenDimensionEvidence(),
+      snapshotValid: false,
+      snapshotState: null,
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      dimensionCoverageFeedbackRecord(result) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toEqual({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    });
+  });
+
   it.each([
     {
       name: "bounded source overflow",
@@ -1085,6 +1152,8 @@ function feedbackRecord(overrides: Record<string, unknown> = {}) {
 
 function frozenDimensionEvidence() {
   return {
+    snapshotValid: true,
+    snapshotState: "complete" as const,
     turns: [
       {
         contractVersion: 2,
@@ -1147,4 +1216,28 @@ function syntheticDimensionCoverageResult() {
       allowNumericalScores: true,
     }
   );
+}
+
+function dimensionCoverageFeedbackRecord(
+  result: ReturnType<typeof syntheticDimensionCoverageResult>
+) {
+  return feedbackRecord({
+    status: "completed",
+    structureScore: result.dimensions.structure.score,
+    clarityScore: result.dimensions.clarity.score,
+    insightScore: result.dimensions.insight.score,
+    communicationScore: result.dimensions.communication.score,
+    leadershipScore: result.dimensions.leadership.score,
+    overallScore:
+      result.overallScore === null ? null : String(result.overallScore),
+    summary: result.summary,
+    schemaVersion: result.schemaVersion,
+    promptVersion: result.promptVersion,
+    modelVersion: result.modelVersion,
+    rubricVersion: result.rubricVersion,
+    evaluationState: result.evaluationState,
+    feedbackMode: result.mode,
+    feedbackRoundType: result.roundType,
+    dimensionCoverage: result.dimensions,
+  });
 }
