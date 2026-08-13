@@ -25,6 +25,8 @@ export interface FeedbackTranscriptIssue {
   code: FeedbackTranscriptIssueCode;
   eventId: string | null;
   fatal: boolean;
+  replayKind?: "authenticated_exact" | "semantic_family";
+  replayOfEventId?: string;
 }
 
 export interface PreparedFeedbackTranscript {
@@ -143,6 +145,13 @@ export function prepareFeedbackTranscript(
     user: createReplayPrefixTrieNode(),
     interviewer: createReplayPrefixTrieNode(),
   };
+  const acceptedExactEventIds: Record<
+    FeedbackTranscriptTurn["speaker"],
+    Map<string, string>
+  > = {
+    user: new Map(),
+    interviewer: new Map(),
+  };
   // Retain bounded tails for two- and three-event scans plus typed state for a
   // command split across at most six candidate events. Interviewer and
   // malformed events are barriers for both mechanisms.
@@ -225,7 +234,15 @@ export function prepareFeedbackTranscript(
     const canonicalSpeaker = speaker as FeedbackTranscriptTurn["speaker"];
     const replaySemanticIndex = replaySemanticIndexes[canonicalSpeaker];
     if (replaySemanticIndex.exactTexts.has(semanticText)) {
-      issues.push({ code: "repeated_turn", eventId, fatal: false });
+      const replayOfEventId =
+        acceptedExactEventIds[canonicalSpeaker].get(semanticText);
+      issues.push({
+        code: "repeated_turn",
+        eventId,
+        fatal: false,
+        replayKind: replayOfEventId ? "authenticated_exact" : "semantic_family",
+        ...(replayOfEventId ? { replayOfEventId } : {}),
+      });
       continue;
     }
     const replayPrefixTrie = replayPrefixTries[canonicalSpeaker];
@@ -276,9 +293,15 @@ export function prepareFeedbackTranscript(
     );
     addReplayPrefixObservation(replayPrefixTrie, semanticTurn, accepted);
     if (!accepted) {
-      issues.push({ code: "repeated_turn", eventId, fatal: false });
+      issues.push({
+        code: "repeated_turn",
+        eventId,
+        fatal: false,
+        replayKind: "semantic_family",
+      });
       continue;
     }
+    acceptedExactEventIds[canonicalSpeaker].set(semanticText, eventId);
     transcript.push({
       eventId,
       speaker: canonicalSpeaker,
@@ -339,6 +362,16 @@ export function isPromptInjectionShaped(text: string): boolean {
     ) ||
     EMBEDDED_INSTRUCTION_DISCLOSURE.test(directiveScanText) ||
     isFeedbackManipulationShaped(directiveScanText)
+  );
+}
+
+/** Shared exact semantic equivalence used to authenticate replay continuity. */
+export function isExactFeedbackTranscriptReplayText(
+  candidate: string,
+  acceptedAnchor: string
+): boolean {
+  return (
+    normalizeSemanticText(candidate) === normalizeSemanticText(acceptedAnchor)
   );
 }
 

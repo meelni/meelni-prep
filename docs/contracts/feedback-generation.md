@@ -32,6 +32,15 @@ smaller healthy prefixes and fallback-only evidence remain partial.
 Duration and turn statistics remain diagnostic evidence only and cannot deny
 feedback.
 
+Canonical rows are grouped deterministically into
+[candidate answer blocks](./answer-blocks.md) after transcript preparation.
+Evidence classification runs once per logical candidate response, and canonical
+completion statistics count bound prompt groups plus answer blocks rather than
+STT-final rows. Equivalent speech split into 1, 2, 5, or 10 adjacent finals must
+preserve the complete statistics shape, completion tier, and provider mode.
+The evaluator still receives exact prepared canonical turns, so citations keep
+their original event identities and text rather than derived block aliases.
+
 Numerical feedback requires at least four strict scoreable candidate answers. A
 healthy eligible prefix below that precision boundary uses the scoreless
 `feedback.evidence-limited.v2` result. Its provider contract contains no
@@ -51,9 +60,11 @@ is unique across both arrays. Distinct strength and improvement selections may
 cite the same frozen candidate turn so one-answer feedback remains useful.
 
 A frozen session with no trustworthy reviewable candidate answer becomes
-`no_reviewable_answer`. A degrading marker, writer gap, degraded settlement, malformed
-canonical boundary, or detected transcript corruption becomes
-`transcript_integrity_degraded`. Neither state calls the feedback provider.
+`no_reviewable_answer`. A degrading marker, writer gap, degraded settlement,
+malformed canonical boundary, conflicting replay continuity, detected
+transcript corruption, or a non-exact replay-family omission that affects
+candidate evidence or prompt binding becomes `transcript_integrity_degraded`.
+Neither state calls the feedback provider.
 Provider refusal, invalid generated output, timeout, and other evaluator
 failure remain the distinct `generation_failed` outcome.
 

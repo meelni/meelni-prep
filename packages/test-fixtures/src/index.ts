@@ -23,6 +23,7 @@ export * from "./focused-practice-attempt";
 export * from "./evaluation-validation";
 export * from "./feedback-generation";
 export * from "./evaluation-calibration";
+export * from "./answer-blocks";
 
 export const FIXTURE_CLOCK = {
   startedAt: new Date("2026-06-27T17:30:00.000Z"),

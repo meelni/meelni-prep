@@ -64,10 +64,16 @@ const DELEGATED_CORRECTION_CASE_IDS = new Set([
 export interface CalibrationTranscriptTurn {
   contractVersion: 2;
   eventId: string;
+  writerId: string;
+  writerGeneration: number;
+  sequence: number;
   speaker: "user" | "interviewer";
   text: string;
   startedAt: Date;
   endedAt: Date;
+  audioMs: number;
+  section: string;
+  deliveryState: "delivered";
 }
 
 export interface CalibrationScoreBand {
@@ -839,16 +845,23 @@ function timedTurns(
   const start = Date.parse("2026-07-01T12:00:00.000Z");
   let userSequence = 0;
   let interviewerSequence = 0;
-  return turns.map(([speaker, text, startedSeconds, endedSeconds]) => {
-    const sequence =
+  return turns.map(([speaker, text, startedSeconds, endedSeconds], index) => {
+    const sequence = index + 1;
+    const speakerSequence =
       speaker === "user" ? ++userSequence : ++interviewerSequence;
     return {
       contractVersion: 2,
-      eventId: `${id}:${speaker}:${sequence}`,
+      eventId: `${id}:${speaker}:${speakerSequence}`,
+      writerId: `${id}:writer`,
+      writerGeneration: 1,
+      sequence,
       speaker,
       text,
       startedAt: new Date(start + startedSeconds * 1000),
       endedAt: new Date(start + endedSeconds * 1000),
+      audioMs: (endedSeconds - startedSeconds) * 1000,
+      section: id.split(":", 1)[0] || "product_sense",
+      deliveryState: "delivered",
     };
   });
 }

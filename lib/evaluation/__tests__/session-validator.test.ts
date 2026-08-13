@@ -306,7 +306,15 @@ describe("Session Validator", () => {
           startedAt: new Date("2024-01-01T10:05:30Z"),
           endedAt: new Date("2024-01-01T10:06:30Z"),
         },
-      ];
+      ].map((turn, index) => ({
+        ...turn,
+        writerId: "writer:ordinary-partial",
+        writerGeneration: 1,
+        sequence: index + 1,
+        audioMs: turn.endedAt.getTime() - turn.startedAt.getTime(),
+        section: "product_sense",
+        deliveryState: "delivered",
+      }));
 
       vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue(
         mockTurns as any
