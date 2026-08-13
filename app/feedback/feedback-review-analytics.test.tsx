@@ -82,23 +82,42 @@ describe("FeedbackReviewAnalytics", () => {
     expect(mocks.track).not.toHaveBeenCalled();
   });
 
-  it("drops a pending event after withdrawal or account switch", () => {
+  it("permanently drops a pending event after withdrawal", () => {
     const withdrawn = render(
       <FeedbackReviewAnalytics outcome="coaching_review" />
     );
     mocks.consent.decision = "declined";
+    withdrawn.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
+
+    mocks.consent.decision = "accepted";
     mocks.runtimeReady = true;
     withdrawn.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
     expect(mocks.track).not.toHaveBeenCalled();
-    withdrawn.unmount();
+  });
 
-    mocks.runtimeReady = false;
-    mocks.consent.decision = "accepted";
+  it("permanently drops a pending event after consent resolution is lost", () => {
+    const unresolved = render(
+      <FeedbackReviewAnalytics outcome="coaching_review" />
+    );
+    mocks.consent.resolved = false;
+    mocks.consent.resolvedForUserId = null;
+    unresolved.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
+
+    mocks.consent.resolved = true;
     mocks.consent.resolvedForUserId = "synthetic-user-a";
+    mocks.runtimeReady = true;
+    unresolved.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
+    expect(mocks.track).not.toHaveBeenCalled();
+  });
+
+  it("permanently drops a pending event after an account switch", () => {
     const switched = render(
       <FeedbackReviewAnalytics outcome="coaching_review" />
     );
     mocks.consent.resolvedForUserId = "synthetic-user-b";
+    switched.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
+
+    mocks.consent.resolvedForUserId = "synthetic-user-a";
     mocks.runtimeReady = true;
     switched.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
     expect(mocks.track).not.toHaveBeenCalled();
