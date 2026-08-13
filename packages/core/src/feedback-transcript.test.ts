@@ -35,6 +35,16 @@ test("prepares unique canonical user evidence and removes semantic replays", () 
   assert.equal(result.eligible, true);
   assert.equal(result.transcript.length, 2);
   assert.equal(result.duplicateTurnsRemoved, 1);
+  assert.deepEqual(
+    result.issues.find((issue) => issue.code === "repeated_turn"),
+    {
+      code: "repeated_turn",
+      eventId: "writer:3",
+      fatal: false,
+      replayKind: "authenticated_exact",
+      replayOfEventId: "writer:2",
+    }
+  );
 });
 
 test("preserves provider-neutral partial-delivery provenance", () => {

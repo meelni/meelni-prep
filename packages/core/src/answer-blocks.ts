@@ -1,11 +1,12 @@
+import { isExactFeedbackTranscriptReplayText } from "./feedback-transcript";
+
 export const ANSWER_BLOCK_CONTRACT_VERSION = 1 as const;
 export const ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS = 5_000 as const;
 
 export type AnswerBlockSpeaker = "user" | "interviewer";
 export type AnswerBlockDeliveryState = "delivered" | "partially_delivered";
 
-export interface CanonicalAnswerBlockTurn {
-  kind: "turn";
+interface AnswerBlockCanonicalSpeechEvent {
   contractVersion: 2;
   eventId: string;
   writerId: string;
@@ -19,6 +20,28 @@ export interface CanonicalAnswerBlockTurn {
   audioDurationMs: number;
   section: string;
   deliveryState: AnswerBlockDeliveryState;
+}
+
+export interface CanonicalAnswerBlockTurn
+  extends AnswerBlockCanonicalSpeechEvent {
+  kind: "turn";
+}
+
+/**
+ * A canonical turn removed from reviewable evidence as a semantic replay.
+ * It advances ledger continuity and preserves structural boundaries without
+ * becoming answer text, evidence, or citation provenance.
+ */
+export interface AnswerBlockSemanticReplayTurn
+  extends AnswerBlockCanonicalSpeechEvent {
+  kind: "semantic_replay";
+  replayOfEventId: string;
+}
+
+/** A known non-exact replay-family omission that must remain a boundary. */
+export interface AnswerBlockSemanticReplayBoundaryTurn
+  extends AnswerBlockCanonicalSpeechEvent {
+  kind: "semantic_replay_boundary";
 }
 
 export interface AnswerBlockIntegrityBoundaryEvent {
@@ -45,6 +68,8 @@ export interface AnswerBlockSessionEndEvent {
 
 export type AnswerBlockLedgerEvent =
   | CanonicalAnswerBlockTurn
+  | AnswerBlockSemanticReplayTurn
+  | AnswerBlockSemanticReplayBoundaryTurn
   | AnswerBlockIntegrityBoundaryEvent
   | AnswerBlockCutoffEvent
   | AnswerBlockSessionEndEvent;
@@ -58,6 +83,7 @@ export type AnswerBlockBoundaryKind =
   | "session_cutoff"
   | "writer_generation"
   | "sequence_gap"
+  | "semantic_replay"
   | "section_change"
   | "invalid_timing"
   | "session_end"
@@ -104,6 +130,7 @@ export interface AnswerBlockDerivationIssue {
     | "event_after_session_end"
     | "integrity_boundary"
     | "invalid_ledger_order"
+    | "invalid_replay_continuity"
     | "invalid_turn";
   eventId: string | null;
 }
@@ -146,9 +173,10 @@ export function deriveCandidateAnswerBlocks(
   const issues: AnswerBlockDerivationIssue[] = [];
   const eventIds = new Set<string>();
   const lastSequenceByWriter = new Map<string, number>();
+  const acceptedTurnsByEventId = new Map<string, CanonicalAnswerBlockTurn>();
   let currentPrompt: AnswerBlockSourceTurn[] = [];
   let current: PendingAnswerBlock | null = null;
-  let previousTurn: CanonicalAnswerBlockTurn | null = null;
+  let previousTurn: AnswerBlockCanonicalSpeechEvent | null = null;
   let sessionEnded = false;
 
   const closeCurrent = (
@@ -250,6 +278,7 @@ export function deriveCandidateAnswerBlocks(
       continue;
     }
 
+    const hadOpenCandidateBlock = current !== null;
     const sequenceIssue = recordWriterSequence(event, lastSequenceByWriter);
     if (sequenceIssue) {
       closeOrRecordBoundary(sequenceIssue.boundary, {
@@ -285,7 +314,7 @@ export function deriveCandidateAnswerBlocks(
       continue;
     }
 
-    if (!isCanonicalAnswerBlockTurn(event)) {
+    if (!isCanonicalAnswerBlockSpeechEvent(event)) {
       closeOrRecordBoundary("canonicalization_failure", {
         afterEventId: previousTurn?.eventId ?? null,
         beforeEventId: event.eventId || null,
@@ -297,7 +326,6 @@ export function deriveCandidateAnswerBlocks(
       continue;
     }
 
-    const source = toSourceTurn(event);
     const transition = previousTurn
       ? classifyTurnTransition(previousTurn, event, maxContinuationGapMs)
       : null;
@@ -313,6 +341,55 @@ export function deriveCandidateAnswerBlocks(
       }
     }
 
+    if (event.kind === "semantic_replay") {
+      const anchor = acceptedTurnsByEventId.get(event.replayOfEventId);
+      const attemptedCandidateBridge =
+        hadOpenCandidateBlock && event.speaker === "user";
+      const validAnchor =
+        anchor !== undefined &&
+        anchor.speaker === event.speaker &&
+        anchor.writerId === event.writerId &&
+        anchor.writerGeneration === event.writerGeneration &&
+        isExactFeedbackTranscriptReplayText(event.text, anchor.text);
+      const validCandidateContinuity =
+        !attemptedCandidateBridge ||
+        (previousTurn?.speaker === "user" &&
+          anchor?.eventId === previousTurn.eventId &&
+          previousTurn.writerId === event.writerId &&
+          previousTurn.writerGeneration === event.writerGeneration &&
+          sequenceIssue === null &&
+          transition === null);
+      if (!validAnchor || !validCandidateContinuity) {
+        issues.push({
+          code: "invalid_replay_continuity",
+          eventId: event.eventId,
+        });
+        currentPrompt = [];
+        previousTurn = null;
+        continue;
+      }
+      if (
+        event.speaker === "interviewer" &&
+        previousTurn?.speaker !== "interviewer"
+      ) {
+        currentPrompt = [];
+      }
+      previousTurn = event;
+      continue;
+    }
+    if (event.kind === "semantic_replay_boundary") {
+      closeOrRecordBoundary("semantic_replay", {
+        afterEventId: current?.response.at(-1)?.eventId ?? null,
+        beforeEventId: event.eventId,
+        boundaryEventId: event.eventId,
+      });
+      if (event.speaker === "interviewer") currentPrompt = [];
+      previousTurn = event;
+      continue;
+    }
+
+    const source = toSourceTurn(event);
+    acceptedTurnsByEventId.set(event.eventId, event);
     if (event.speaker === "interviewer") {
       currentPrompt =
         previousTurn?.speaker === "interviewer" && transition === null
@@ -346,7 +423,11 @@ export function projectAnswerBlocksForReviewability(
 }
 
 function recordWriterSequence(
-  event: CanonicalAnswerBlockTurn | AnswerBlockIntegrityBoundaryEvent,
+  event:
+    | CanonicalAnswerBlockTurn
+    | AnswerBlockSemanticReplayTurn
+    | AnswerBlockSemanticReplayBoundaryTurn
+    | AnswerBlockIntegrityBoundaryEvent,
   lastSequenceByWriter: Map<string, number>
 ): { boundary: "sequence_gap"; fatal: boolean } | null {
   const writerKey = `${event.writerGeneration}\u0000${event.writerId}`;
@@ -360,13 +441,13 @@ function recordWriterSequence(
   }
   return {
     boundary: "sequence_gap",
-    fatal: event.sequence <= previousSequence,
+    fatal: true,
   };
 }
 
 function classifyTurnTransition(
-  previous: CanonicalAnswerBlockTurn,
-  current: CanonicalAnswerBlockTurn,
+  previous: AnswerBlockCanonicalSpeechEvent,
+  current: AnswerBlockCanonicalSpeechEvent,
   maxContinuationGapMs: number
 ): AnswerBlockBoundaryKind | null {
   if (current.endedAtMs < previous.startedAtMs) return "invalid_timing";
@@ -389,7 +470,12 @@ function classifyTurnTransition(
   return null;
 }
 
-function isCanonicalAnswerBlockTurn(turn: CanonicalAnswerBlockTurn): boolean {
+function isCanonicalAnswerBlockSpeechEvent(
+  turn:
+    | CanonicalAnswerBlockTurn
+    | AnswerBlockSemanticReplayTurn
+    | AnswerBlockSemanticReplayBoundaryTurn
+): boolean {
   return (
     turn.contractVersion === 2 &&
     turn.isFinal === true &&
@@ -408,6 +494,7 @@ function isCanonicalAnswerBlockTurn(turn: CanonicalAnswerBlockTurn): boolean {
     turn.audioDurationMs > 0 &&
     Math.abs(turn.endedAtMs - turn.startedAtMs - turn.audioDurationMs) <= 1 &&
     Boolean(turn.section) &&
+    (turn.kind !== "semantic_replay" || Boolean(turn.replayOfEventId)) &&
     (turn.deliveryState === "delivered" ||
       turn.deliveryState === "partially_delivered")
   );

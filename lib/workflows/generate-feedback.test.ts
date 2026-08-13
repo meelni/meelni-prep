@@ -24,6 +24,7 @@ import {
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import {
   calculateValidatedSessionFromTurns,
+  type SessionValidationTurnInput,
   type SessionStats,
 } from "@/lib/evaluation/session-validator";
 import type {
@@ -484,6 +485,159 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
   });
 });
 
+test("authenticated exact replay insertion preserves completion stats, tier, provider mode, and accepted citations", async () => {
+  const observations: Array<{
+    stats: SessionStats;
+    tier: string;
+    mode: "scored" | "evidence_limited";
+  }> = [];
+
+  for (const withReplays of [false, true]) {
+    const turns = createReplayContinuityWorkflowTurns(withReplays);
+    const validation = calculateValidatedSessionFromTurns(turns, {
+      sessionEndAt: turns.at(-1)!.endedAt!,
+    });
+    const prepared = prepareFeedbackTranscript(
+      turns.map((turn) => ({
+        eventId: turn.eventId ?? null,
+        contractVersion: turn.contractVersion,
+        speaker: turn.speaker,
+        text: turn.text,
+        deliveryState: turn.deliveryState,
+      })),
+      { requireContractV2: true }
+    );
+    if (withReplays) {
+      assert.equal(prepared.duplicateTurnsRemoved, 4);
+      assert.equal(
+        prepared.issues.filter(
+          (issue) => issue.replayKind === "authenticated_exact"
+        ).length,
+        4
+      );
+    }
+    const store = new MemoryGenerationStore(
+      record({
+        completionTier: validation.tier,
+        completionStats: validation.stats,
+      })
+    );
+    let observedMode: "scored" | "evidence_limited" | undefined;
+    const deps = dependencies(store, {
+      transcript: prepared,
+      async evaluate(input) {
+        observedMode = input.mode;
+        assert.deepEqual(
+          input.transcript.map(({ eventId, text }) => ({ eventId, text })),
+          prepared.transcript.map(({ eventId, text }) => ({ eventId, text }))
+        );
+        throw new Error("synthetic_stop_after_replay_observation");
+      },
+    });
+
+    await assert.rejects(
+      generateFeedbackWorkflow(input(EVENT_1), deps),
+      /synthetic_stop_after_replay_observation/
+    );
+    assert.ok(observedMode);
+    observations.push({
+      stats: validation.stats,
+      tier: validation.tier,
+      mode: observedMode,
+    });
+  }
+
+  assert.deepEqual(observations[1], observations[0]);
+  assert.equal(observations[0]!.stats.userTurns, 1);
+  assert.equal(observations[0]!.stats.scoreableResponses, 1);
+  assert.equal(observations[0]!.tier, "partial");
+  assert.equal(observations[0]!.mode, "evidence_limited");
+});
+
+test("conflicting exact replay identity or timing and a true missing sequence fail closed before provider work", async () => {
+  const conflictingReplay = createReplayContinuityWorkflowTurns(true);
+  const replayIndex = conflictingReplay.findIndex(
+    (turn, index) =>
+      index > 0 && turn.text === conflictingReplay[index - 1]!.text
+  );
+  assert.ok(replayIndex > 0);
+  conflictingReplay[replayIndex] = {
+    ...conflictingReplay[replayIndex]!,
+    eventId: "replacement-writer:1",
+    writerId: "replacement-writer",
+    writerGeneration: 2,
+    sequence: 1,
+  };
+
+  const conflictingTiming = createReplayContinuityWorkflowTurns(true);
+  const timingReplayIndex = conflictingTiming.findIndex(
+    (turn, index) =>
+      index > 0 && turn.text === conflictingTiming[index - 1]!.text
+  );
+  assert.ok(timingReplayIndex > 0);
+  const timingPredecessor = conflictingTiming[timingReplayIndex - 1]!;
+  conflictingTiming[timingReplayIndex] = {
+    ...conflictingTiming[timingReplayIndex]!,
+    startedAt: new Date(timingPredecessor.endedAt!.getTime() - 100),
+    endedAt: new Date(timingPredecessor.endedAt!.getTime() + 400),
+    audioMs: 500,
+  };
+
+  const missingSequence = createReplayContinuityWorkflowTurns(false).map(
+    (turn, index) =>
+      index < 3
+        ? turn
+        : {
+            ...turn,
+            eventId: `writer:${(turn.sequence ?? 0) + 1}`,
+            sequence: (turn.sequence ?? 0) + 1,
+          }
+  );
+
+  for (const turns of [conflictingReplay, conflictingTiming, missingSequence]) {
+    const validation = calculateValidatedSessionFromTurns(turns, {
+      sessionEndAt: turns.at(-1)!.endedAt!,
+    });
+    assert.equal(validation.isValid, false);
+    assert.equal(
+      validation.evidenceFailureReason,
+      "transcript_integrity_degraded"
+    );
+    const prepared = prepareFeedbackTranscript(
+      turns.map((turn) => ({
+        eventId: turn.eventId ?? null,
+        contractVersion: turn.contractVersion,
+        speaker: turn.speaker,
+        text: turn.text,
+        deliveryState: turn.deliveryState,
+      })),
+      { requireContractV2: true }
+    );
+    let evaluations = 0;
+    const store = new MemoryGenerationStore(
+      record({
+        completionTier: "insufficient",
+        completionStats: validation.stats,
+        outcomeReason: "transcript_integrity_degraded",
+      })
+    );
+    const result = await generateFeedbackWorkflow(
+      input(EVENT_1),
+      dependencies(store, {
+        transcript: prepared,
+        async evaluate() {
+          evaluations += 1;
+          return evaluation("full");
+        },
+      })
+    );
+
+    assert.equal(result.status, "skipped");
+    assert.equal(evaluations, 0);
+    assert.equal(store.current.statusReason, "transcript_integrity_degraded");
+  }
+});
+
 test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
   const turns = [
     {
@@ -671,6 +825,72 @@ test("account deletion fences evaluation and insight work", async () => {
   assert.equal(insights.length, 0);
   assert.equal(store.current.status, "pending");
 });
+
+function createReplayContinuityWorkflowTurns(
+  withReplays: boolean
+): SessionValidationTurnInput[] {
+  const baseMs = Date.parse("2026-07-10T12:00:00.000Z");
+  const fragments = [
+    "I would start with working parents whose recurring household coordination creates frequent planning failures each week.",
+    "I would validate severity through interviews and task diaries before choosing the first narrow workflow to support.",
+    "I would prioritize the segment using frequency urgency willingness to change and access for rapid product discovery.",
+    "I would test a lightweight shared planning prototype and watch whether families complete the recurring coordination job.",
+    "I would measure weekly retained households alongside successful task handoffs and qualitative evidence that coordination improved.",
+  ];
+  const turns: SessionValidationTurnInput[] = [
+    {
+      contractVersion: 2,
+      eventId: "writer:1",
+      writerId: "writer",
+      writerGeneration: 1,
+      sequence: 1,
+      speaker: "interviewer",
+      text: "How would you identify and validate the first customer problem?",
+      startedAt: new Date(baseMs),
+      endedAt: new Date(baseMs + 1_000),
+      audioMs: 1_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+  ];
+  let sequence = 2;
+  for (const [index, text] of fragments.entries()) {
+    const startedAtMs = baseMs + 2_000 + index * 2_000;
+    turns.push({
+      contractVersion: 2,
+      eventId: `writer:${sequence}`,
+      writerId: "writer",
+      writerGeneration: 1,
+      sequence,
+      speaker: "user",
+      text,
+      startedAt: new Date(startedAtMs),
+      endedAt: new Date(startedAtMs + 900),
+      audioMs: 900,
+      section: "product_sense",
+      deliveryState: "delivered",
+    });
+    sequence += 1;
+    if (withReplays && index < fragments.length - 1) {
+      turns.push({
+        contractVersion: 2,
+        eventId: `writer:${sequence}`,
+        writerId: "writer",
+        writerGeneration: 1,
+        sequence,
+        speaker: "user",
+        text,
+        startedAt: new Date(startedAtMs + 1_000),
+        endedAt: new Date(startedAtMs + 1_500),
+        audioMs: 500,
+        section: "product_sense",
+        deliveryState: "delivered",
+      });
+      sequence += 1;
+    }
+  }
+  return turns;
+}
 
 function dependencies(
   store: MemoryGenerationStore,

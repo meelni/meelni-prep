@@ -19,6 +19,12 @@ adjacent finals must preserve workflow completion statistics, completion tier,
 and provider mode. Exact source event identities and text remain the only
 citation authority.
 
+An exact semantic replay authenticated by the transcript preparation boundary
+may advance sequence continuity only when its accepted anchor, speaker, writer
+identity/generation, and timing are coherent. It never becomes evidence. A
+non-exact replay family remains a boundary, and an unknown sequence gap or
+conflicting replay continuity fails closed.
+
 ## Consequences
 
 - Transcript transport segmentation cannot create or remove reviewable answer
