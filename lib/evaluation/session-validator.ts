@@ -382,14 +382,27 @@ export function calculateValidatedSessionFromTurns(
       classifyUserResponseEvidence(turn.text)
     )
   );
-  const stats: SessionStats = {
-    ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
-    substantiveResponses: evidenceLevels.filter(
-      (level) => level !== "insufficient"
-    ).length,
-    scoreableResponses: evidenceLevels.filter((level) => level === "scoreable")
-      .length,
-  };
+  const hasInvalidReplayContinuity = answerBlockDerivation.issues.some(
+    (issue) => issue.code === "invalid_replay_continuity"
+  );
+  const stats: SessionStats = hasInvalidReplayContinuity
+    ? {
+        totalTurns: 0,
+        userTurns: 0,
+        totalWords: 0,
+        durationSeconds: 0,
+        substantiveResponses: 0,
+        scoreableResponses: 0,
+      }
+    : {
+        ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
+        substantiveResponses: evidenceLevels.filter(
+          (level) => level !== "insufficient"
+        ).length,
+        scoreableResponses: evidenceLevels.filter(
+          (level) => level === "scoreable"
+        ).length,
+      };
   const thresholdValidation = validateSessionStats(stats);
   if (
     prepared.eligible &&

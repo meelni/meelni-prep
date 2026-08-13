@@ -177,6 +177,7 @@ export function deriveCandidateAnswerBlocks(
   let currentPrompt: AnswerBlockSourceTurn[] = [];
   let current: PendingAnswerBlock | null = null;
   let previousTurn: AnswerBlockCanonicalSpeechEvent | null = null;
+  let pendingReplayFamilyPromptEventId: string | null = null;
   let sessionEnded = false;
 
   const closeCurrent = (
@@ -229,6 +230,7 @@ export function deriveCandidateAnswerBlocks(
       issues.push({ code: "duplicate_event_id", eventId });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (eventId) eventIds.add(eventId);
@@ -252,6 +254,7 @@ export function deriveCandidateAnswerBlocks(
       });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
@@ -274,6 +277,7 @@ export function deriveCandidateAnswerBlocks(
       });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
@@ -290,6 +294,7 @@ export function deriveCandidateAnswerBlocks(
         issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
         currentPrompt = [];
         previousTurn = null;
+        pendingReplayFamilyPromptEventId = null;
       }
     }
 
@@ -311,6 +316,7 @@ export function deriveCandidateAnswerBlocks(
       }
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
 
@@ -323,6 +329,7 @@ export function deriveCandidateAnswerBlocks(
       issues.push({ code: "invalid_turn", eventId: event.eventId || null });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
 
@@ -383,6 +390,15 @@ export function deriveCandidateAnswerBlocks(
         beforeEventId: event.eventId,
         boundaryEventId: event.eventId,
       });
+      if (event.speaker === "user" || hadOpenCandidateBlock) {
+        issues.push({
+          code: "invalid_replay_continuity",
+          eventId: event.eventId,
+        });
+        pendingReplayFamilyPromptEventId = null;
+      } else {
+        pendingReplayFamilyPromptEventId = event.eventId;
+      }
       if (event.speaker === "interviewer") currentPrompt = [];
       previousTurn = event;
       continue;
@@ -391,14 +407,21 @@ export function deriveCandidateAnswerBlocks(
     const source = toSourceTurn(event);
     acceptedTurnsByEventId.set(event.eventId, event);
     if (event.speaker === "interviewer") {
+      pendingReplayFamilyPromptEventId = null;
       currentPrompt =
         previousTurn?.speaker === "interviewer" && transition === null
           ? [...currentPrompt, source]
           : [source];
-    } else if (current) {
-      current.response.push(source);
     } else {
-      current = { prompt: [...currentPrompt], response: [source] };
+      if (pendingReplayFamilyPromptEventId) {
+        issues.push({
+          code: "invalid_replay_continuity",
+          eventId: pendingReplayFamilyPromptEventId,
+        });
+        pendingReplayFamilyPromptEventId = null;
+      }
+      if (current) current.response.push(source);
+      else current = { prompt: [...currentPrompt], response: [source] };
     }
     previousTurn = event;
   }

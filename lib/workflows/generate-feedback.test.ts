@@ -487,13 +487,15 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
 
 test("authenticated exact replay insertion preserves completion stats, tier, provider mode, and accepted citations", async () => {
   const observations: Array<{
+    variant: "none" | "literal" | "normalized";
     stats: SessionStats;
     tier: string;
     mode: "scored" | "evidence_limited";
+    providerInput: Array<{ eventId: string; text: string }>;
   }> = [];
 
-  for (const withReplays of [false, true]) {
-    const turns = createReplayContinuityWorkflowTurns(withReplays);
+  for (const variant of ["none", "literal", "normalized"] as const) {
+    const turns = createReplayContinuityWorkflowTurns(variant);
     const validation = calculateValidatedSessionFromTurns(turns, {
       sessionEndAt: turns.at(-1)!.endedAt!,
     });
@@ -507,7 +509,7 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       })),
       { requireContractV2: true }
     );
-    if (withReplays) {
+    if (variant !== "none") {
       assert.equal(prepared.duplicateTurnsRemoved, 4);
       assert.equal(
         prepared.issues.filter(
@@ -523,12 +525,17 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       })
     );
     let observedMode: "scored" | "evidence_limited" | undefined;
+    let providerInput: Array<{ eventId: string; text: string }> | undefined;
     const deps = dependencies(store, {
       transcript: prepared,
       async evaluate(input) {
         observedMode = input.mode;
+        providerInput = input.transcript.map(({ eventId, text }) => ({
+          eventId,
+          text,
+        }));
         assert.deepEqual(
-          input.transcript.map(({ eventId, text }) => ({ eventId, text })),
+          providerInput,
           prepared.transcript.map(({ eventId, text }) => ({ eventId, text }))
         );
         throw new Error("synthetic_stop_after_replay_observation");
@@ -540,14 +547,34 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       /synthetic_stop_after_replay_observation/
     );
     assert.ok(observedMode);
+    assert.ok(providerInput);
     observations.push({
+      variant,
       stats: validation.stats,
       tier: validation.tier,
       mode: observedMode,
+      providerInput,
     });
   }
 
-  assert.deepEqual(observations[1], observations[0]);
+  for (const observation of observations.slice(1)) {
+    assert.deepEqual(
+      {
+        stats: observation.stats,
+        tier: observation.tier,
+        mode: observation.mode,
+      },
+      {
+        stats: observations[0]!.stats,
+        tier: observations[0]!.tier,
+        mode: observations[0]!.mode,
+      }
+    );
+  }
+  assert.deepEqual(
+    observations[2]!.providerInput,
+    observations[1]!.providerInput
+  );
   assert.equal(observations[0]!.stats.userTurns, 1);
   assert.equal(observations[0]!.stats.scoreableResponses, 1);
   assert.equal(observations[0]!.tier, "partial");
@@ -555,7 +582,7 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
 });
 
 test("conflicting exact replay identity or timing and a true missing sequence fail closed before provider work", async () => {
-  const conflictingReplay = createReplayContinuityWorkflowTurns(true);
+  const conflictingReplay = createReplayContinuityWorkflowTurns("literal");
   const replayIndex = conflictingReplay.findIndex(
     (turn, index) =>
       index > 0 && turn.text === conflictingReplay[index - 1]!.text
@@ -569,7 +596,7 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
     sequence: 1,
   };
 
-  const conflictingTiming = createReplayContinuityWorkflowTurns(true);
+  const conflictingTiming = createReplayContinuityWorkflowTurns("literal");
   const timingReplayIndex = conflictingTiming.findIndex(
     (turn, index) =>
       index > 0 && turn.text === conflictingTiming[index - 1]!.text
@@ -583,7 +610,7 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
     audioMs: 500,
   };
 
-  const missingSequence = createReplayContinuityWorkflowTurns(false).map(
+  const missingSequence = createReplayContinuityWorkflowTurns("none").map(
     (turn, index) =>
       index < 3
         ? turn
@@ -636,6 +663,85 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
     assert.equal(evaluations, 0);
     assert.equal(store.current.statusReason, "transcript_integrity_degraded");
   }
+});
+
+test("excluded replay families with identical accepted citations fail closed without manufacturing breadth or provider mode", async () => {
+  const exactTurns = createReplayFamilyWorkflowTurns("authenticated_exact");
+  const familyTurns = createReplayFamilyWorkflowTurns("semantic_family");
+  const prepare = (turns: SessionValidationTurnInput[]) =>
+    prepareFeedbackTranscript(
+      turns.map((turn) => ({
+        eventId: turn.eventId ?? null,
+        contractVersion: turn.contractVersion,
+        speaker: turn.speaker,
+        text: turn.text,
+        deliveryState: turn.deliveryState,
+      })),
+      { requireContractV2: true }
+    );
+  const exactPrepared = prepare(exactTurns);
+  const familyPrepared = prepare(familyTurns);
+  assert.deepEqual(
+    familyPrepared.transcript.map(({ eventId, text }) => ({ eventId, text })),
+    exactPrepared.transcript.map(({ eventId, text }) => ({ eventId, text }))
+  );
+  assert.equal(
+    familyPrepared.issues.filter(
+      (issue) => issue.replayKind === "semantic_family"
+    ).length,
+    6
+  );
+
+  const exactValidation = calculateValidatedSessionFromTurns(exactTurns, {
+    sessionEndAt: exactTurns.at(-1)!.endedAt!,
+  });
+  const familyValidation = calculateValidatedSessionFromTurns(familyTurns, {
+    sessionEndAt: familyTurns.at(-1)!.endedAt!,
+  });
+  assert.equal(exactValidation.isValid, true);
+  assert.equal(exactValidation.tier, "partial");
+  assert.equal(exactValidation.stats.userTurns, 1);
+  assert.equal(exactValidation.stats.substantiveResponses, 1);
+  assert.equal(exactValidation.stats.scoreableResponses, 0);
+  assert.equal(familyValidation.isValid, false);
+  assert.equal(familyValidation.tier, "insufficient");
+  assert.deepEqual(familyValidation.stats, {
+    totalTurns: 0,
+    userTurns: 0,
+    totalWords: 0,
+    durationSeconds: 0,
+    substantiveResponses: 0,
+    scoreableResponses: 0,
+  });
+  assert.equal(
+    familyValidation.evidenceFailureReason,
+    "transcript_integrity_degraded"
+  );
+
+  let familyEvaluations = 0;
+  const familyStore = new MemoryGenerationStore(
+    record({
+      completionTier: "insufficient",
+      completionStats: familyValidation.stats,
+      outcomeReason: "transcript_integrity_degraded",
+    })
+  );
+  const result = await generateFeedbackWorkflow(
+    input(EVENT_1),
+    dependencies(familyStore, {
+      transcript: familyPrepared,
+      async evaluate() {
+        familyEvaluations += 1;
+        return evaluation("full");
+      },
+    })
+  );
+  assert.equal(result.status, "skipped");
+  assert.equal(familyEvaluations, 0);
+  assert.equal(
+    familyStore.current.statusReason,
+    "transcript_integrity_degraded"
+  );
 });
 
 test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
@@ -827,7 +933,7 @@ test("account deletion fences evaluation and insight work", async () => {
 });
 
 function createReplayContinuityWorkflowTurns(
-  withReplays: boolean
+  replayVariant: "none" | "literal" | "normalized"
 ): SessionValidationTurnInput[] {
   const baseMs = Date.parse("2026-07-10T12:00:00.000Z");
   const fragments = [
@@ -871,7 +977,7 @@ function createReplayContinuityWorkflowTurns(
       deliveryState: "delivered",
     });
     sequence += 1;
-    if (withReplays && index < fragments.length - 1) {
+    if (replayVariant !== "none" && index < fragments.length - 1) {
       turns.push({
         contractVersion: 2,
         eventId: `writer:${sequence}`,
@@ -879,9 +985,73 @@ function createReplayContinuityWorkflowTurns(
         writerGeneration: 1,
         sequence,
         speaker: "user",
-        text,
+        text: replayVariant === "normalized" ? text.toUpperCase() : text,
         startedAt: new Date(startedAtMs + 1_000),
         endedAt: new Date(startedAtMs + 1_500),
+        audioMs: 500,
+        section: "product_sense",
+        deliveryState: "delivered",
+      });
+      sequence += 1;
+    }
+  }
+  return turns;
+}
+
+function createReplayFamilyWorkflowTurns(
+  excludedKind: "authenticated_exact" | "semantic_family"
+): SessionValidationTurnInput[] {
+  const baseMs = Date.parse("2026-07-10T13:00:00.000Z");
+  const sections = [
+    "I would choose working parents whose weekly household coordination repeatedly breaks down and creates urgent planning pain",
+    "I would validate severity through individual interviews plus task diaries that reveal failed handoffs and current workarounds",
+    "I would prioritize opportunities by comparing frequency urgency segment reach switching friction and discovery access",
+    "I would prototype a lightweight shared planner and observe whether families complete recurring responsibilities without reminders",
+    "I would measure retained households successful weekly handoffs time saved and qualitative confidence in coordination",
+    "I would launch with one accessible cohort then review activation retention support themes and unmet jobs before expanding",
+  ];
+  const turns: SessionValidationTurnInput[] = [
+    {
+      contractVersion: 2,
+      eventId: "family-writer:1",
+      writerId: "family-writer",
+      writerGeneration: 1,
+      sequence: 1,
+      speaker: "interviewer",
+      text: "Walk me through the complete discovery and launch plan.",
+      startedAt: new Date(baseMs),
+      endedAt: new Date(baseMs + 400),
+      audioMs: 400,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+  ];
+  let sequence = 2;
+  for (const [sectionIndex, base] of sections.entries()) {
+    const acceptedTexts = [
+      `${base} banana cucumber zeppelin giraffe`,
+      `${base} marmalade telescope violin waterfall`,
+    ];
+    const excludedText =
+      excludedKind === "authenticated_exact"
+        ? acceptedTexts[1]!
+        : `${base} quartz umbrella notebook lantern`;
+    for (const [variantIndex, text] of [
+      ...acceptedTexts,
+      excludedText,
+    ].entries()) {
+      const startedAtMs =
+        baseMs + 1_000 + (sectionIndex * 3 + variantIndex) * 600;
+      turns.push({
+        contractVersion: 2,
+        eventId: `family-writer:${sequence}`,
+        writerId: "family-writer",
+        writerGeneration: 1,
+        sequence,
+        speaker: "user",
+        text,
+        startedAt: new Date(startedAtMs),
+        endedAt: new Date(startedAtMs + 500),
         audioMs: 500,
         section: "product_sense",
         deliveryState: "delivered",

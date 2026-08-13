@@ -50,10 +50,15 @@ text, evidence breadth, source provenance, or citations. Consequently inserting
 authenticated exact replay rows cannot turn one answer into several blocks.
 
 A non-exact replay-family omission is a typed `semantic_replay_boundary`: it
-consumes its known ledger sequence but cannot bridge blocks. A missing anchor,
+consumes its known ledger sequence but cannot bridge blocks. Because omitted
+candidate speech, or an omitted prompt to which later candidate evidence could
+bind, would otherwise change answer identity or breadth, that condition makes
+the derived evaluation snapshot ineligible and degrades the workflow to zero
+reviewability statistics. An interviewer-only transcript with no candidate
+evidence remains `no_reviewable_answer`. A missing anchor,
 identity/generation conflict, unknown sequence gap, overlap/reversal, or other
-invalid continuity fails closed. Replay projections still preserve structural
-role, marker, cutoff, and end boundaries from the immutable ledger.
+invalid continuity also fails closed. Replay projections still preserve
+structural role, marker, cutoff, and end boundaries from the immutable ledger.
 
 The derivation creates numbered, invocation-local identities such as
 `answer-block:0001`. These identify a derived projection only; canonical event
@@ -106,9 +111,13 @@ The existing canonical preparation boundary still owns malformed-event,
 semantic-replay, trust, and prompt-injection handling. Joined block text crosses
 that preparation boundary again so an unsafe instruction split across multiple
 STT finals cannot bypass it. Only authenticated exact replay rows may advance
-continuity without becoming evidence; non-exact replay families remain explicit
-boundaries and unknown gaps fail closed. Exact replays therefore cannot
-manufacture block boundaries or inflate breadth, tier, or provider mode.
+continuity without becoming evidence. Non-exact replay-family omissions make
+the snapshot ineligible when they can affect candidate evidence or prompt
+binding rather than producing countable boundaries, and unknown gaps fail
+closed. Exact replay variants therefore preserve accepted canonical citations
+and provider input and cannot manufacture block boundaries or inflate breadth,
+tier, or provider mode. Non-exact or conflicting replay input from an eligible
+snapshot never reaches the evaluator.
 
 Historical persisted sessions with no canonical identity fields keep the
 legacy row-based statistics path. A mixed or malformed canonical shape does not

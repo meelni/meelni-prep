@@ -427,7 +427,7 @@ test("replay continuity rejects missing anchors, sequence gaps, timing conflicts
   }
 });
 
-test("a non-exact replay-family omission remains an explicit non-bridging boundary", () => {
+test("a non-exact replay-family omission fails closed as an explicit non-bridging boundary", () => {
   const first = createAnswerBlockTurn({
     sequence: 1,
     eventId: "synthetic-writer:1",
@@ -459,12 +459,67 @@ test("a non-exact replay-family omission remains an explicit non-bridging bounda
     second,
   ]);
 
-  assert.equal(derived.eligible, true);
+  assert.equal(derived.eligible, false);
   assert.deepEqual(
     derived.blocks.map((block) => block.response.map(({ eventId }) => eventId)),
     [[first.eventId], [second.eventId]]
   );
   assert.ok(derived.boundaries.some(({ kind }) => kind === "semantic_replay"));
+  assert.ok(
+    derived.issues.some(({ code }) => code === "invalid_replay_continuity")
+  );
+});
+
+test("an omitted interviewer replay family degrades only when later candidate evidence could bind to it", () => {
+  const prompt = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    speaker: "interviewer",
+    startedAtMs: 0,
+    endedAtMs: 800,
+    audioDurationMs: 800,
+  });
+  const omittedPrompt = {
+    ...createAnswerBlockTurn({
+      sequence: 2,
+      eventId: "synthetic-writer:2",
+      speaker: "interviewer",
+      text: `${prompt.text} option three`,
+      startedAtMs: 900,
+      endedAtMs: 1_200,
+      audioDurationMs: 300,
+    }),
+    kind: "semantic_replay_boundary" as const,
+  };
+  const candidate = createAnswerBlockTurn({
+    sequence: 3,
+    eventId: "synthetic-writer:3",
+    startedAtMs: 1_300,
+    endedAtMs: 2_100,
+    audioDurationMs: 800,
+  });
+
+  const interviewerOnly = deriveCandidateAnswerBlocks([
+    prompt,
+    omittedPrompt,
+    { kind: "session_end", occurredAtMs: 1_300 },
+  ]);
+  assert.equal(interviewerOnly.eligible, true);
+  assert.equal(interviewerOnly.blocks.length, 0);
+
+  const candidateBound = deriveCandidateAnswerBlocks([
+    prompt,
+    omittedPrompt,
+    candidate,
+  ]);
+  assert.equal(candidateBound.eligible, false);
+  assert.ok(
+    candidateBound.issues.some(
+      (issue) =>
+        issue.code === "invalid_replay_continuity" &&
+        issue.eventId === omittedPrompt.eventId
+    )
+  );
 });
 
 test("duplicate identities, reversed writer order, malformed timing, and post-end events fail closed", () => {

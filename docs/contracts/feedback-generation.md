@@ -60,9 +60,11 @@ is unique across both arrays. Distinct strength and improvement selections may
 cite the same frozen candidate turn so one-answer feedback remains useful.
 
 A frozen session with no trustworthy reviewable candidate answer becomes
-`no_reviewable_answer`. A degrading marker, writer gap, degraded settlement, malformed
-canonical boundary, or detected transcript corruption becomes
-`transcript_integrity_degraded`. Neither state calls the feedback provider.
+`no_reviewable_answer`. A degrading marker, writer gap, degraded settlement,
+malformed canonical boundary, conflicting replay continuity, detected
+transcript corruption, or a non-exact replay-family omission that affects
+candidate evidence or prompt binding becomes `transcript_integrity_degraded`.
+Neither state calls the feedback provider.
 Provider refusal, invalid generated output, timeout, and other evaluator
 failure remain the distinct `generation_failed` outcome.
 
