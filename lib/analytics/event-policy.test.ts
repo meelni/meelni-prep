@@ -7,6 +7,69 @@ import {
   toSafeAnalyticsErrorCode,
 } from "./event-policy";
 
+test("feedback quality analytics admits only closed content-free fields", () => {
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("feedback_viewed", {
+      outcome: "partial_scorecard",
+      session_id: "00000000-0000-4000-8000-000000000001",
+      overall_score: 9,
+      transcript: "synthetic answer content",
+    }),
+    { outcome: "partial_scorecard" }
+  );
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "coaching_review",
+      response: "not_helpful",
+      reason: "arbitrary user sentence",
+      email: "candidate@example.test",
+    }),
+    null
+  );
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "coaching_review",
+      response: "not_helpful",
+      reason: "score_withholding_unclear",
+    }),
+    {
+      outcome: "coaching_review",
+      response: "not_helpful",
+      reason: "score_withholding_unclear",
+    }
+  );
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("feedback_practice_started", {
+      outcome: "unable_to_review",
+      practice_kind: "focused_practice",
+      feedback_id: "00000000-0000-4000-8000-000000000002",
+    }),
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "coaching_review",
+      response: "not_helpful",
+      reason: "score_explanation_unclear",
+    }),
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "full_scorecard",
+      response: "helpful",
+      reason: "not_specific_enough",
+    }),
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_practice_started", {
+      outcome: "partial_scorecard",
+    }),
+    null
+  );
+});
+
 test("per-event policy drops identifiers and arbitrary launch context", () => {
   assert.deepEqual(
     sanitizeAnalyticsEventProperties("new_interview_start_attempted", {

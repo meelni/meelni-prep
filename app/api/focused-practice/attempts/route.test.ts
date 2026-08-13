@@ -57,6 +57,7 @@ function dependencies(
     resolveRelaunchAccess: vi.fn().mockResolvedValue(true),
     repository: {} as never,
     isDeletionPending: vi.fn().mockResolvedValue(false),
+    trackPracticeStarted: vi.fn().mockResolvedValue(undefined),
     now: () => new Date("2026-07-19T12:00:00.000Z"),
     createAttemptId: () => ATTEMPT.attemptId,
   };
@@ -205,6 +206,49 @@ describe("focused-practice attempt APIs", () => {
     expect(first.status).toBe(404);
     expect(second.status).toBe(404);
     expect(await first.json()).toEqual(await second.json());
+  });
+
+  it("tracks only a newly created durable focused-practice attempt", async () => {
+    const deps = dependencies();
+    vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      attempt: createGroundedAttempt(),
+    });
+    const created = await handleStartFocusedPracticeAttempt(
+      jsonRequest({ sourceSessionId: ATTEMPT.sourceSessionId }),
+      deps
+    );
+    expect(created.status).toBe(201);
+    expect(deps.trackPracticeStarted).toHaveBeenCalledTimes(1);
+
+    vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "resumed",
+      attempt: createGroundedAttempt(),
+    });
+    const resumed = await handleStartFocusedPracticeAttempt(
+      jsonRequest({ sourceSessionId: ATTEMPT.sourceSessionId }),
+      deps
+    );
+    expect(resumed.status).toBe(200);
+    expect(deps.trackPracticeStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not emit after deletion wins between creation and delivery", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.isDeletionPending).mockResolvedValue(true);
+    vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      attempt: createGroundedAttempt(),
+    });
+    const response = await handleStartFocusedPracticeAttempt(
+      jsonRequest({ sourceSessionId: ATTEMPT.sourceSessionId }),
+      deps
+    );
+    expect(response.status).toBe(201);
+    expect(deps.trackPracticeStarted).not.toHaveBeenCalled();
   });
 
   it("keeps read and completion responses private and non-enumerating", async () => {

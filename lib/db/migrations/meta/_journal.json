@@ -239,6 +239,13 @@
       "when": 1786614570225,
       "tag": "0033_scoreless_focused_practice",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786622902735,
+      "tag": "0034_feedback_quality_signals",
+      "breakpoints": true
     }
   ]
 }
