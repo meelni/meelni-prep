@@ -1,11 +1,10 @@
 import {
-  prepareFeedbackTranscript,
-  isEvidenceLimitedFeedbackResult,
-  parsePersistedEvidenceLimitedFeedback,
-  FEEDBACK_NUMERICAL_PRECISION_POLICY,
+  isDimensionCoverageFeedbackResult,
+  isValidRoundType,
+  type CandidateAnswerBlock,
   type FeedbackEvaluationState,
   type FeedbackEvaluationResult,
-  type PreparedFeedbackTranscript,
+  type RoundType,
   type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
 
@@ -16,14 +15,12 @@ import {
 } from "@/lib/db/feedback-generation-state";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
-import { getFrozenFeedbackTranscriptTurns } from "@/lib/db/transcripts";
-import {
-  generateFeedback as generateEvaluation,
-  type StartFeedbackObservabilityTrace,
-} from "@/lib/evaluation/scorer";
-import { generateEvidenceLimitedFeedback } from "@/lib/evaluation/evidence-limited-scorer";
+import { getFrozenFeedbackEvaluationEvidence } from "@/lib/db/transcripts";
+import { type StartFeedbackObservabilityTrace } from "@/lib/evaluation/scorer";
+import { generateDimensionCoverageFeedback } from "@/lib/evaluation/dimension-coverage-scorer";
 import {
   SessionTier,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
   validateSessionCompleteness,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
@@ -57,13 +54,18 @@ export interface GenerateFeedbackWorkflowDeps {
   isDeletionPending(userId: string): Promise<boolean>;
   getSession(sessionId: string): Promise<FeedbackGenerationSession | null>;
   validateLegacy(sessionId: string): Promise<SessionValidation>;
-  getTranscript(sessionId: string): Promise<PreparedFeedbackTranscript>;
+  getAnswerBlockEvidence(sessionId: string): Promise<{
+    blocks: CandidateAnswerBlock[];
+    eligible: boolean;
+    evidenceFailureReason: SkippedFeedbackOutcomeReason | null;
+  }>;
   evaluate(input: {
-    roundType: string;
-    transcript: PreparedFeedbackTranscript["transcript"];
-    evaluationState: FeedbackEvaluationState;
-    mode: "scored" | "evidence_limited";
+    roundType: RoundType;
+    answerBlocks: readonly CandidateAnswerBlock[];
+    allowNumericalScores: boolean;
   }): Promise<FeedbackEvaluationResult>;
+  /** In-memory compatibility only for the pre-v3 synthetic calibration harness. */
+  allowLegacyEvaluationForSyntheticCalibration?: true;
 }
 
 export type GenerateFeedbackWorkflowResult =
@@ -138,13 +140,11 @@ export async function generateFeedbackWorkflow(
   const eligibility = resolveFeedbackGenerationEligibility(
     claimed.completionTier
   );
-  let evaluationState: FeedbackEvaluationState;
   if (eligibility.disposition === "committed_eligible") {
     const committedState = toEvaluationState(eligibility.tier);
     if (!committedState) {
       throw new Error("feedback_generation_invalid_committed_tier");
     }
-    evaluationState = committedState;
   } else if (eligibility.disposition === "legacy_requires_validation") {
     const validation = await deps.steps.run("validate-legacy-session", () =>
       deps.validateLegacy(input.sessionId)
@@ -159,7 +159,6 @@ export async function generateFeedbackWorkflow(
         completionTier: "insufficient",
       });
     }
-    evaluationState = validatedState;
   } else {
     return skipClaimedFeedback({
       input,
@@ -172,25 +171,22 @@ export async function generateFeedbackWorkflow(
     });
   }
 
-  const transcript = await deps.steps.run("fetch-feedback-transcript", () =>
-    deps.getTranscript(input.sessionId)
+  const evidence = await deps.steps.run("fetch-feedback-answer-blocks", () =>
+    deps.getAnswerBlockEvidence(input.sessionId)
   );
-  if (!transcript.eligible || transcript.transcript.length === 0) {
+  if (!evidence.eligible || evidence.blocks.length === 0) {
     return skipClaimedFeedback({
       input,
       deps,
       endingAtMs: authorization.session.endingAtMs,
-      reason: transcript.issues.some(
-        (issue) =>
-          issue.fatal &&
-          (issue.code === "malformed_event" ||
-            issue.code === "prompt_injection")
-      )
-        ? "transcript_integrity_degraded"
-        : "no_reviewable_answer",
+      reason: evidence.evidenceFailureReason ?? "no_reviewable_answer",
       completionTier: "insufficient",
     });
   }
+  if (!isValidRoundType(authorization.session.roundType)) {
+    throw new Error("feedback_generation_round_type_invalid");
+  }
+  const roundType = authorization.session.roundType;
 
   await assertAccountIsActive(input.userId, deps);
 
@@ -205,43 +201,26 @@ export async function generateFeedbackWorkflow(
     }
 
     const startedAt = deps.now();
-    const scoreableResponses =
-      claimed.completionStats?.scoreableResponses ??
-      claimed.completionStats?.substantiveResponses ??
-      1;
-    const mode =
-      claimed.completionStats?.feedbackModeConstraint ===
-        "evidence_limited_only" ||
-      (evaluationState === "partial" &&
-        scoreableResponses <
-          FEEDBACK_NUMERICAL_PRECISION_POLICY.minScoreableResponses)
-        ? "evidence_limited"
-        : "scored";
-    const providerEvaluation = await deps.evaluate({
-      roundType: authorization.session.roundType || "product_sense",
-      transcript: transcript.transcript,
-      evaluationState,
-      mode,
+    const allowNumericalScores =
+      claimed.completionStats?.feedbackModeConstraint !==
+      "evidence_limited_only";
+    const evaluation = await deps.evaluate({
+      roundType,
+      answerBlocks: evidence.blocks,
+      allowNumericalScores,
     });
-    const evaluation = isEvidenceLimitedFeedbackResult(providerEvaluation)
-      ? parsePersistedEvidenceLimitedFeedback(
-          {
-            schemaVersion: providerEvaluation.schemaVersion,
-            promptVersion: providerEvaluation.promptVersion,
-            rubricVersion: providerEvaluation.rubricVersion,
-            evaluationState: providerEvaluation.evaluationState,
-            strengths: providerEvaluation.strengths,
-            improvements: providerEvaluation.improvements,
-            summary: providerEvaluation.summary,
-          },
-          {
-            transcript: transcript.transcript,
-            modelVersion: providerEvaluation.modelVersion,
-          }
-        )
-      : providerEvaluation;
-    if (evaluation.evaluationState !== evaluationState) {
-      throw new Error("feedback_generation_evaluation_state_mismatch");
+    if (
+      !isDimensionCoverageFeedbackResult(evaluation) &&
+      deps.allowLegacyEvaluationForSyntheticCalibration !== true
+    ) {
+      throw new Error("feedback_generation_dimension_coverage_required");
+    }
+    if (
+      !allowNumericalScores &&
+      isDimensionCoverageFeedbackResult(evaluation) &&
+      evaluation.mode !== "coaching_review"
+    ) {
+      throw new Error("feedback_generation_qualitative_constraint_violated");
     }
     return {
       disposition: "evaluated" as const,
@@ -289,9 +268,13 @@ export async function generateFeedbackWorkflow(
     status: "completed",
     disposition: "applied",
     sessionId: input.sessionId,
-    ...(!isEvidenceLimitedFeedbackResult(evaluated.evaluation)
-      ? { overallScore: evaluated.evaluation.overallScore }
-      : {}),
+    ...(isDimensionCoverageFeedbackResult(evaluated.evaluation)
+      ? evaluated.evaluation.overallScore !== null
+        ? { overallScore: evaluated.evaluation.overallScore }
+        : {}
+      : "overallScore" in evaluated.evaluation
+        ? { overallScore: evaluated.evaluation.overallScore }
+        : {}),
     ...endToFeedbackTiming(authorization.session.endingAtMs, completedAt),
   };
 }
@@ -359,20 +342,23 @@ export function createGenerateFeedbackWorkflowDeps(
         : null;
     },
     validateLegacy: validateSessionCompleteness,
-    async getTranscript(sessionId) {
-      return prepareFeedbackTranscript(
-        await getFrozenFeedbackTranscriptTurns(sessionId),
-        { requireContractV2: true }
-      );
+    async getAnswerBlockEvidence(sessionId) {
+      const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
+      return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
+        interruptions: evidence.interruptions,
+        ...(evidence.sessionEndAt
+          ? { sessionEndAt: evidence.sessionEndAt }
+          : {}),
+        sourceOverflow: evidence.sourceOverflow,
+      });
     },
-    evaluate: ({ roundType, transcript, evaluationState, mode }) =>
-      mode === "evidence_limited"
-        ? generateEvidenceLimitedFeedback(roundType, transcript, {
-            startObservabilityTrace: dependencies.startObservabilityTrace,
-          })
-        : generateEvaluation(roundType, transcript, evaluationState, {
-            startObservabilityTrace: dependencies.startObservabilityTrace,
-          }),
+    evaluate: ({ roundType, answerBlocks, allowNumericalScores }) =>
+      generateDimensionCoverageFeedback(
+        roundType,
+        answerBlocks,
+        allowNumericalScores,
+        { startObservabilityTrace: dependencies.startObservabilityTrace }
+      ),
   };
 }
 

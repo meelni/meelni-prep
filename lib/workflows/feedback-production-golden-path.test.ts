@@ -1,22 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-  FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
-  FEEDBACK_PROMPT_VERSION,
-  FEEDBACK_RUBRIC_VERSION,
-  FEEDBACK_SCHEMA_VERSION,
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
   classifyTranscriptInterruptionIntegrity,
   decodeFeedbackLifecycleResponse,
-  isEvidenceLimitedFeedbackResult,
-  parseEvidenceLimitedFeedback,
+  isDimensionCoverageFeedbackResult,
+  parseDimensionCoverageProviderSelection,
   presentCompletedFeedback,
   toFeedbackViewState,
+  type CandidateAnswerBlock,
+  type DimensionCoverageProviderSelection,
   type FeedbackEvaluationResult,
   type FeedbackLifecycleResponse,
   type PersistedCompletedFeedback,
-  type FeedbackV2Item,
-  type PreparedFeedbackTranscript,
   type SkippedFeedbackOutcomeReason,
 } from "@meelni/core";
 import {
@@ -41,6 +41,7 @@ import {
 } from "@/lib/inngest/functions/generate-feedback";
 import {
   calculateValidatedSessionFromTurns,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
   SessionTier,
 } from "@/lib/evaluation/session-validator";
 import { ingestTranscriptEvent } from "./ingest-transcript-event";
@@ -87,7 +88,7 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
     "harmless-marker-missing-scoreable",
   ]) {
     assert.equal(outcomes.get(id), "feedback_generated");
-    assert.deepEqual(evaluatorModes.get(id), new Set(["evidence_limited"]));
+    assert.deepEqual(evaluatorModes.get(id), new Set(["coaching_review"]));
   }
   for (const id of [
     "candidate-marker-settled",
@@ -98,7 +99,7 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
   }
   assert.deepEqual(
     evaluatorModes.get("spoken-evidence-limited"),
-    new Set(["evidence_limited"])
+    new Set(["coaching_review"])
   );
   assert.deepEqual(
     rubricRoutes,
@@ -201,21 +202,37 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   stages.push("settlement_ingest");
 
   const turns = evidence.orderedTurns();
-  const validation = calculateValidatedSessionFromTurns(
-    turns.map((turn) => ({
-      eventId: turn.event_id,
-      contractVersion: turn.contract_version,
-      writerId: turn.writer_id,
-      writerGeneration: turn.writer_generation,
-      sequence: turn.sequence,
-      speaker: turn.speaker,
-      text: turn.text,
-      startedAt: new Date(turn.started_at),
-      endedAt: new Date(turn.ended_at),
-      audioMs: turn.audio_duration_ms,
-      section: turn.section,
-      deliveryState: turn.delivery_state,
-    }))
+  const validationTurns = turns.map((turn) => ({
+    eventId: turn.event_id,
+    contractVersion: turn.contract_version,
+    writerId: turn.writer_id,
+    writerGeneration: turn.writer_generation,
+    sequence: turn.sequence,
+    speaker: turn.speaker,
+    text: turn.text,
+    startedAt: new Date(turn.started_at),
+    endedAt: new Date(turn.ended_at),
+    audioMs: turn.audio_duration_ms,
+    section: turn.section,
+    deliveryState: turn.delivery_state,
+  }));
+  const interruptions = [...evidence.markers.values()].map((marker) => ({
+    eventId: marker.event_id,
+    writerId: marker.writer_id,
+    writerGeneration: marker.writer_generation,
+    sequence: marker.sequence,
+    speaker: marker.speaker,
+    occurredAt: new Date(marker.occurred_at),
+    reason: marker.reason,
+  }));
+  const sessionEndAt = new Date(fixture.settlement.settled_at);
+  const validation = calculateValidatedSessionFromTurns(validationTurns, {
+    interruptions,
+    sessionEndAt,
+  });
+  const answerBlockEvidence = prepareCandidateAnswerBlockEvidenceFromTurns(
+    validationTurns,
+    { interruptions, sessionEndAt }
   );
   if (fixture.id === "spoken-evidence-limited") {
     assert.equal(validation.stats.userTurns, 6);
@@ -386,18 +403,6 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
 
   const rubricRoutes = new Set<string>();
   const evaluatorModes = new Set<string>();
-  const prepared: PreparedFeedbackTranscript = {
-    eligible: true,
-    transcript: turns.map((turn) => ({
-      eventId: turn.event_id,
-      speaker: turn.speaker,
-      text: turn.text,
-      deliveryState: turn.delivery_state,
-    })),
-    issues: [],
-    reasons: [],
-    duplicateTurnsRemoved: 0,
-  };
   const steps: FeedbackGenerationSteps = {
     run: (_name, work) => work(),
     async sendInsights() {},
@@ -409,7 +414,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
         fixture,
         store: generationStore,
         steps: handlerSteps,
-        transcript: prepared,
+        answerBlocks: answerBlockEvidence.blocks,
         stages,
         rubricRoutes,
         evaluatorModes,
@@ -452,6 +457,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
           text: turn.text,
           contractVersion: turn.contract_version,
         })),
+      answerBlocks: answerBlockEvidence.blocks,
     }
   );
   assert.notEqual(feedbackView.kind, "invalid", fixture.id);
@@ -464,21 +470,30 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   assert.ok(decoded && decoded.status === "completed", fixture.id);
   const view = toFeedbackViewState(decoded);
   assert.ok(
-    view.kind === "completed-full" ||
-      view.kind === "completed-partial" ||
-      view.kind === "completed-evidence-limited",
+    view.kind === "completed-full-scorecard" ||
+      view.kind === "completed-partial-scorecard" ||
+      view.kind === "completed-coaching-review",
     fixture.id
   );
-  if (view.kind === "completed-evidence-limited") {
-    const candidateTurn = turns.find((turn) => turn.speaker === "user");
-    assert.ok(candidateTurn, fixture.id);
-    assert.equal(
-      view.feedback.strengths[0]?.evidence[0]?.quote,
-      candidateTurn.text,
+  if (
+    view.kind === "completed-partial-scorecard" ||
+    view.kind === "completed-coaching-review" ||
+    view.kind === "completed-full-scorecard"
+  ) {
+    const grounded = Object.values(view.feedback.dimensions).flatMap(
+      (dimension) => dimension.evidence
+    );
+    assert.ok(grounded.length > 0, fixture.id);
+    assert.ok(
+      grounded.every((item) =>
+        answerBlockEvidence.blocks.some(
+          (block) =>
+            block.answerBlockId === item.answerBlockRef &&
+            block.responseText === item.evidenceText
+        )
+      ),
       fixture.id
     );
-    assert.match(view.feedback.strengths[0]?.signalCode ?? "", /_/);
-    assert.match(view.feedback.improvements[0]?.actionCode ?? "", /_/);
   }
   stages.push("api_view_model");
   assert.deepEqual(stages, [
@@ -551,6 +566,9 @@ function frozenEndCompletion(
       promptVersion: null,
       modelVersion: null,
       evaluationState: null,
+      feedbackMode: null,
+      feedbackRoundType: null,
+      dimensionCoverage: null,
       processingStartedAt: null,
       processingDurationMs: null,
       completionTier: snapshot.validation.tier,
@@ -574,7 +592,7 @@ function createGenerationDeps(input: {
   fixture: FeedbackGoldenPathFixture;
   store: MemoryGenerationStore;
   steps: FeedbackGenerationSteps;
-  transcript: PreparedFeedbackTranscript;
+  answerBlocks: CandidateAnswerBlock[];
   stages: string[];
   rubricRoutes: Set<string>;
   evaluatorModes: Set<string>;
@@ -592,137 +610,60 @@ function createGenerationDeps(input: {
     validateLegacy: async () => {
       throw new Error("golden_path_never_uses_legacy_validation");
     },
-    getTranscript: async () => input.transcript,
-    evaluate: async ({ roundType, transcript, mode, evaluationState }) => {
+    getAnswerBlockEvidence: async () => ({
+      blocks: input.answerBlocks,
+      eligible: input.answerBlocks.length > 0,
+      evidenceFailureReason:
+        input.answerBlocks.length > 0 ? null : "no_reviewable_answer",
+    }),
+    evaluate: async ({ roundType, answerBlocks, allowNumericalScores }) => {
       input.stages.push("evaluator");
       input.rubricRoutes.add(roundType);
-      input.evaluatorModes.add(mode);
-      const candidateTurns = transcript.filter(
-        (turn) => turn.speaker === "user"
+      const result = dimensionCoverageEvaluation(
+        roundType,
+        answerBlocks,
+        allowNumericalScores,
+        input.fixture.id === "spoken-evidence-limited" ? "sparse" : "complete"
       );
-      return mode === "evidence_limited"
-        ? evidenceLimitedEvaluation(roundType, candidateTurns[0]!)
-        : scoredEvaluation(candidateTurns, evaluationState);
+      input.evaluatorModes.add(result.mode);
+      return result;
     },
   };
 }
 
-function evidenceLimitedEvaluation(
-  roundType: string,
-  turn: PreparedFeedbackTranscript["transcript"][number]
-): FeedbackEvaluationResult {
-  const route = {
-    product_sense: {
-      strength: "customer_problem_connection" as const,
-      strengthAction: "connect_customer_to_decision" as const,
-      improvement: "tradeoff_decision" as const,
-      improvementAction: "compare_tradeoffs_and_choose" as const,
-    },
-    behavioral: {
-      strength: "tradeoff_ownership" as const,
-      strengthAction: "compare_tradeoffs_and_choose" as const,
-      improvement: "main_point_focus" as const,
-      improvementAction: "state_point_then_support" as const,
-    },
-    strategy: {
-      strength: "tradeoff_ownership" as const,
-      strengthAction: "compare_tradeoffs_and_choose" as const,
-      improvement: "customer_decision_connection" as const,
-      improvementAction: "connect_customer_to_decision" as const,
-    },
-    execution: {
-      strength: "customer_problem_connection" as const,
-      strengthAction: "connect_customer_to_decision" as const,
-      improvement: "structure_progression" as const,
-      improvementAction: "outline_reasoning" as const,
-    },
-  }[roundType] ?? {
-    strength: "structured_reasoning" as const,
-    strengthAction: "outline_reasoning" as const,
-    improvement: "recommendation_directness" as const,
-    improvementAction: "lead_with_recommendation" as const,
-  };
-  return parseEvidenceLimitedFeedback(
+function dimensionCoverageEvaluation(
+  roundType: FeedbackGoldenPathFixture["roundType"],
+  answerBlocks: readonly CandidateAnswerBlock[],
+  allowNumericalScores: boolean,
+  coverage: "complete" | "sparse"
+) {
+  const answerBlockRef = answerBlocks[0]?.answerBlockId;
+  assert.ok(answerBlockRef);
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const facetCount = coverage === "complete" ? 2 : 1;
+    dimensions[dimension] = {
+      score: allowNumericalScores && facetCount === 2 ? 7 : null,
+      evidence: ROUND_DIMENSION_COVERAGE_CONFIG[roundType][dimension].facets
+        .slice(0, facetCount)
+        .map((facet) => ({ facetCode: facet.code, answerBlockRef })),
+    };
+  }
+  return parseDimensionCoverageProviderSelection(
     {
-      schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
-      promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-      rubricVersion: FEEDBACK_RUBRIC_VERSION,
-      evaluationState: "partial",
-      strengths: [
-        {
-          signalCode: route.strength,
-          actionCode: route.strengthAction,
-          transcriptRef: turn.eventId,
-        },
-      ],
-      improvements: [
-        {
-          signalCode: route.improvement,
-          actionCode: route.improvementAction,
-          transcriptRef: turn.eventId,
-        },
-      ],
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType,
+      dimensions,
     },
     {
-      transcript: [turn],
-      modelVersion: "fake-evaluator-v2",
+      roundType,
+      answerBlocks,
+      modelVersion: "fake-dimension-evaluator-v1",
+      allowNumericalScores,
     }
   );
-}
-
-function scoredEvaluation(
-  turns: PreparedFeedbackTranscript["transcript"],
-  evaluationState: "full" | "partial"
-): FeedbackEvaluationResult {
-  const candidateTurns = turns.filter((turn) => turn.speaker === "user");
-  return {
-    schemaVersion: FEEDBACK_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_PROMPT_VERSION,
-    modelVersion: "fake-evaluator-v1",
-    rubricVersion: FEEDBACK_RUBRIC_VERSION,
-    evaluationState,
-    scores: {
-      structure: 7,
-      clarity: 7,
-      insight: 7,
-      communication: 7,
-      leadership: 7,
-    },
-    overallScore: 7,
-    strengths: [
-      finding(
-        candidateTurns[0]!,
-        "insight",
-        "The answer identifies concrete evidence."
-      ),
-    ],
-    improvements: [
-      finding(
-        candidateTurns[1]!,
-        "structure",
-        "The answer can state a decision threshold earlier."
-      ),
-    ],
-    drills: ["Focused practice: state one decision threshold."],
-    summary:
-      "The cited answers show specific reasoning and a next step for structure.",
-  };
-}
-
-function finding(
-  turn: PreparedFeedbackTranscript["transcript"][number],
-  dimension: FeedbackV2Item["dimension"],
-  observation: string
-): FeedbackV2Item {
-  return {
-    dimension,
-    observation,
-    transcriptRefs: [turn.eventId],
-    evidence: [{ turnRef: turn.eventId, quote: turn.text }],
-    nextStep: "Use this exact evidence in the next focused practice answer.",
-    rubricVersion: FEEDBACK_RUBRIC_VERSION,
-    confidence: 0.7,
-  };
 }
 
 function skippedResponse(
@@ -893,7 +834,34 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
     processingDurationMs: number;
   }) {
     if (!this.active(input)) return false;
-    if (isEvidenceLimitedFeedbackResult(input.evaluation)) {
+    if (isDimensionCoverageFeedbackResult(input.evaluation)) {
+      this.persisted = {
+        structureScore: input.evaluation.dimensions.structure.score,
+        clarityScore: input.evaluation.dimensions.clarity.score,
+        insightScore: input.evaluation.dimensions.insight.score,
+        communicationScore: input.evaluation.dimensions.communication.score,
+        leadershipScore: input.evaluation.dimensions.leadership.score,
+        overallScore:
+          input.evaluation.overallScore === null
+            ? null
+            : input.evaluation.overallScore.toString(),
+        strengths: null,
+        improvements: null,
+        drills: [],
+        summary: input.evaluation.summary,
+        rubricVersion: input.evaluation.rubricVersion,
+        schemaVersion: input.evaluation.schemaVersion,
+        promptVersion: input.evaluation.promptVersion,
+        modelVersion: input.evaluation.modelVersion,
+        evaluationState: input.evaluation.evaluationState,
+        feedbackMode: input.evaluation.mode,
+        feedbackRoundType: input.evaluation.roundType,
+        dimensionCoverage: input.evaluation.dimensions,
+      };
+    } else if (
+      "strengths" in input.evaluation &&
+      !("scores" in input.evaluation)
+    ) {
       this.persisted = {
         structureScore: null,
         clarityScore: null,
@@ -910,6 +878,9 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
         promptVersion: input.evaluation.promptVersion,
         modelVersion: input.evaluation.modelVersion,
         evaluationState: input.evaluation.evaluationState,
+        feedbackMode: null,
+        feedbackRoundType: null,
+        dimensionCoverage: null,
       };
     } else {
       this.persisted = {
@@ -928,6 +899,9 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
         promptVersion: input.evaluation.promptVersion,
         modelVersion: input.evaluation.modelVersion,
         evaluationState: input.evaluation.evaluationState,
+        feedbackMode: null,
+        feedbackRoundType: null,
+        dimensionCoverage: null,
       };
     }
     this.current = {

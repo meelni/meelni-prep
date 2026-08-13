@@ -13,14 +13,21 @@ import {
   getFeedbackBySessionId,
   hasValidFeedbackLifecycleFields,
 } from "@/lib/db/feedback";
-import { getFeedbackEvidenceTurns } from "@/lib/db/transcripts";
+import {
+  getFeedbackEvidenceTurns,
+  getFrozenFeedbackEvaluationEvidence,
+} from "@/lib/db/transcripts";
 import { isFeedbackDispatchRetryable } from "@/lib/db/feedback-dispatch";
 import {
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
 } from "@/lib/db/feedback-generation-state";
-import { isInterviewTerminalState } from "@meelni/core";
+import {
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  isInterviewTerminalState,
+} from "@meelni/core";
+import { prepareCandidateAnswerBlockEvidenceFromTurns } from "@/lib/evaluation/session-validator";
 import {
   buildCompletedFeedbackLifecycleResponse,
   buildDispatchFailedFeedbackLifecycleResponse,
@@ -311,6 +318,26 @@ export async function GET(
             const evidenceTurns = hasVersionedFeedback
               ? await getFeedbackEvidenceTurns(sessionId, database)
               : [];
+            const answerBlocks =
+              feedbackRecord.schemaVersion ===
+              FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+                ? await getFrozenFeedbackEvaluationEvidence(
+                    sessionId,
+                    database
+                  ).then(
+                    (evidence) =>
+                      prepareCandidateAnswerBlockEvidenceFromTurns(
+                        evidence.turns,
+                        {
+                          interruptions: evidence.interruptions,
+                          ...(evidence.sessionEndAt
+                            ? { sessionEndAt: evidence.sessionEndAt }
+                            : {}),
+                          sourceOverflow: evidence.sourceOverflow,
+                        }
+                      ).blocks
+                  )
+                : [];
             const completedResponse = buildCompletedFeedbackLifecycleResponse(
               {
                 id: feedbackRecord.id,
@@ -330,9 +357,13 @@ export async function GET(
                 promptVersion: feedbackRecord.promptVersion,
                 modelVersion: feedbackRecord.modelVersion,
                 evaluationState: feedbackRecord.evaluationState,
+                feedbackMode: feedbackRecord.feedbackMode,
+                feedbackRoundType: feedbackRecord.feedbackRoundType,
+                dimensionCoverage: feedbackRecord.dimensionCoverage,
                 createdAt: feedbackRecord.createdAt,
               },
-              evidenceTurns
+              evidenceTurns,
+              answerBlocks
             );
             if (completedResponse.feedback.kind === "invalid") {
               reportOperationalFailure({

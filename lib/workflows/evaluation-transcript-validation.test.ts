@@ -521,7 +521,7 @@ test("ordinary prefer handle and review answers qualify end to end", () => {
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("malformed English clause matrices cannot qualify end to end", () => {
+test("surface grammar does not block otherwise usable answer blocks", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "What is the first problem?", 0),
     turn(
@@ -553,12 +553,12 @@ test("malformed English clause matrices cannot qualify end to end", () => {
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 4);
 });
 
-test("novel malformed agreement coordination and adjective order cannot qualify end to end", () => {
+test("agreement and adjective order do not decide reviewability", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "What happens during onboarding?", 0),
     turn(
@@ -583,9 +583,9 @@ test("novel malformed agreement coordination and adjective order cannot qualify 
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 1);
 });
 
 test("ordinary unseen direct-object verbs qualify end to end", () => {
@@ -650,7 +650,7 @@ test("ordinary direct-object answers qualify end to end without per-sentence fun
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("base verbs ending in ed or ing cannot bypass agreement end to end", () => {
+test("verb agreement cannot suppress usable evidence", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "What happens during onboarding?", 0),
     turn(
@@ -675,12 +675,12 @@ test("base verbs ending in ed or ing cannot bypass agreement end to end", () => 
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("mixed multilingual markers cannot bypass malformed English clauses end to end", () => {
+test("mixed-language surface grammar cannot suppress usable evidence", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "What happens during onboarding?", 0),
     turn(
@@ -705,9 +705,9 @@ test("mixed multilingual markers cannot bypass malformed English clauses end to 
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 1);
 });
 
 test("common irregular past-tense answers qualify end to end", () => {
@@ -770,7 +770,7 @@ test("first-person singular and it-subject answers qualify end to end", () => {
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("first-person singular and it-subject agreement failures remain insufficient", () => {
+test("first-person and it-subject agreement do not decide reviewability", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "What happens during checkout?", 0),
     turn(
@@ -795,9 +795,9 @@ test("first-person singular and it-subject agreement failures remain insufficien
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 2);
 });
 
 test("coherent Spanish and French sentence ownership qualifies end to end", () => {
@@ -890,7 +890,7 @@ test("behavioral prepositional predicates qualify end to end", () => {
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("incorrect behavioral predicate prepositions remain insufficient", () => {
+test("behavioral predicate prepositions do not decide reviewability", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "How did you work cross-functionally?", 0),
     turn(
@@ -915,12 +915,12 @@ test("incorrect behavioral predicate prepositions remain insufficient", () => {
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("malformed behavioral predicate complements remain insufficient", () => {
+test("behavioral predicate complements do not decide reviewability", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "How did you work cross-functionally?", 0),
     turn(
@@ -945,9 +945,9 @@ test("malformed behavioral predicate complements remain insufficient", () => {
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 3);
 });
 
 test("additional common irregular past-tense answers qualify end to end", () => {
@@ -980,7 +980,7 @@ test("additional common irregular past-tense answers qualify end to end", () => 
   assert.equal(validation.stats.substantiveResponses, 3);
 });
 
-test("singular-subject base forms remain insufficient end to end", () => {
+test("singular-subject base forms do not decide reviewability", () => {
   const validation = calculateValidatedSessionFromTurns([
     turn(1, "interviewer", "How did the team prepare?", 0),
     turn(
@@ -1005,9 +1005,9 @@ test("singular-subject base forms remain insufficient end to end", () => {
     ),
   ]);
 
-  assert.equal(validation.tier, SessionTier.INSUFFICIENT);
-  assert.equal(validation.isValid, false);
-  assert.equal(validation.stats.substantiveResponses, 0);
+  assert.equal(validation.tier, SessionTier.PARTIAL);
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.stats.substantiveResponses, 1);
 });
 
 test("malformed expanded English ownership clauses remain insufficient", () => {

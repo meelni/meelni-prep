@@ -24,6 +24,9 @@ type FeedbackNonCompletedState = Exclude<
   | { kind: "completed-full" }
   | { kind: "completed-partial" }
   | { kind: "completed-evidence-limited" }
+  | { kind: "completed-full-scorecard" }
+  | { kind: "completed-partial-scorecard" }
+  | { kind: "completed-coaching-review" }
   | { kind: "completed-legacy" }
 >;
 

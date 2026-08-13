@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Date: 2026-08-10; amended 2026-08-12 by SAV-411
+Date: 2026-08-10; amended 2026-08-12 by SAV-411 and SAV-421
 
 ## Decision
 
@@ -25,6 +25,12 @@ duration, answer-length, or answer-quality blame.
 Transcript turns and integrity markers from one runtime writer share one
 monotonic replay-stable sequence namespace because persistence, settlement,
 and frozen watermarks treat them as one ordered stream.
+
+For new `feedback.dimension-coverage.v1` evaluations, the numerical breadth
+rule below is superseded by
+[Round-Specific Dimension Evidence Coverage](2026-08-12-round-specific-dimension-evidence-coverage.md).
+Its lexical/surface classifications remain historical compatibility and
+minimum-usable-signal inputs; they do not select scores or scorecard mode.
 
 Qualitative reviewability and numerical precision are separate evidence
 levels. After canonical/security preparation and the existing quantitative
@@ -63,9 +69,9 @@ otherwise scoreable answers still cannot receive numerical feedback.
   the same frozen transcript trust boundary. Signal codes are unique within
   their category and action codes are unique across the result, regardless of
   which frozen turn is cited.
-- Full depth requires five strict scoreable responses and numerical scores
-  require four. Any number of qualitative-only fallback responses remains
-  partial and scoreless.
+- Historical v2 generation used strict scoreable-response breadth. New v3
+  generation derives numerical support only from sufficient round-specific
+  rubric-dimension coverage over answer blocks.
 - Deterministic evidence recognition is not semantic proof. Engineered
   low-density prose with several distinct PM anchors can satisfy the lexical
   boundary; it remains qualitative-only. The provider may choose only closed

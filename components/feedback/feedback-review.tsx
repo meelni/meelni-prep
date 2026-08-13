@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 
 import {
+  CompletedDimensionCoverageReview,
   CompletedLegacyReview,
   CompletedEvidenceLimitedReview,
   CompletedV2Review,
@@ -287,6 +288,13 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
   }
   if (viewState.kind === "completed-evidence-limited") {
     return <CompletedEvidenceLimitedReview feedback={viewState.feedback} />;
+  }
+  if (
+    viewState.kind === "completed-full-scorecard" ||
+    viewState.kind === "completed-partial-scorecard" ||
+    viewState.kind === "completed-coaching-review"
+  ) {
+    return <CompletedDimensionCoverageReview feedback={viewState.feedback} />;
   }
   return (
     <FeedbackLifecycleStatus

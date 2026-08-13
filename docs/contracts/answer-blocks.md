@@ -25,10 +25,10 @@ Every source turn in a block preserves the exact canonical:
 - section and delivery state.
 
 The joined `promptText` and `responseText` trim edge whitespace and join
-fragments with one space for deterministic reviewability only. They are not
-citation text. Feedback provider input and frozen citation validation continue
-to use the individually prepared canonical turns, their original event IDs,
-and their exact text.
+fragments with one space. They are the segmentation-invariant evaluation and
+presentation projection. Canonical turns and event IDs remain the immutable
+integrity provenance used to reconstruct and verify that projection; source
+event IDs do not enter provider selections or dimension-coverage persistence.
 
 ## Coalescing rule
 
@@ -106,7 +106,8 @@ candidate finals, the session validator produces the same:
 - answer-block reviewability projection;
 - completion statistics;
 - completion tier; and
-- feedback provider mode.
+- provider input, dimension coverage, scores, and mode;
+- exact answer-block citations and persisted evaluation content.
 
 Canonical completion statistics count unique bound prompt groups plus answer
 blocks as logical turns. Candidate turn count is answer-block count. Word count
@@ -114,10 +115,9 @@ uses joined logical prompt/response text, and duration uses the outer measured
 extent. Evidence classification runs once per prepared answer block. It does
 not infer support from punctuation, surface grammar, or transcript row count.
 
-The feedback workflow still passes the exact prepared canonical event set to
-the evaluator. Consequently different segmentation has different source event
-IDs where the ledger differs, and citations always resolve to the exact
-original IDs/text for that session rather than an answer-block alias.
+The feedback workflow passes the answer-block projection to the evaluator.
+Different ledger segmentations may have different server-only source event IDs,
+but the accepted answer-block alias and joined candidate evidence are identical.
 
 ## Integrity and compatibility
 
@@ -138,7 +138,6 @@ legacy row-based statistics path. A mixed or malformed canonical shape does not
 fall back to legacy; it fails closed. No migration or citation rewrite is
 required.
 
-SAV-369 does not replace scoring policy. Unsupported rubric dimensions and
-overall scores remain governed by the existing feedback contracts and must
-never be fabricated. SAV-421 may consume only the small public reviewability
-projection in its separately reviewed change.
+The scoring policy is defined by the separately versioned
+[dimension evidence coverage contract](./dimension-evidence-coverage.md).
+Unsupported rubric dimensions and overall scores must never be fabricated.

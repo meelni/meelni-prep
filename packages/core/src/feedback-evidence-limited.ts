@@ -227,7 +227,8 @@ export interface EvidenceLimitedFeedbackResult {
 
 export type FeedbackEvaluationResult =
   | import("./feedback-v2").FeedbackV2Result
-  | EvidenceLimitedFeedbackResult;
+  | EvidenceLimitedFeedbackResult
+  | import("./feedback-dimension-coverage").DimensionCoverageFeedbackResult;
 
 export function isEvidenceLimitedFeedbackResult(
   value: FeedbackEvaluationResult
