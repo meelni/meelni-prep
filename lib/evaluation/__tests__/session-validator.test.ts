@@ -9,6 +9,8 @@ import {
   calculateSessionStats,
   isSessionValid,
   getValidationSummary,
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
   SessionTier,
 } from "../session-validator";
 import { db } from "@/lib/db";
@@ -108,6 +110,63 @@ describe("Session Validator", () => {
 
       expect(stats.substantiveResponses).toBe(1);
     });
+
+    it("keeps a concise grounded PM answer reviewable", async () => {
+      vi.mocked(db.query.transcriptTurn.findMany).mockResolvedValue([
+        {
+          speaker: "user",
+          text: "Prioritize nurses because delayed handoffs create patient risk.",
+          startedAt: new Date("2024-01-01T10:00:00Z"),
+          endedAt: new Date("2024-01-01T10:00:04Z"),
+        },
+      ] as any);
+
+      const stats = await calculateSessionStats("concise-session");
+
+      expect(stats.substantiveResponses).toBe(1);
+    });
+  });
+
+  it("fails closed when a frozen evidence reader reports bounded-source overflow", () => {
+    const evidence = prepareCandidateAnswerBlockEvidenceFromTurns([], {
+      sourceOverflow: true,
+    });
+
+    expect(evidence.eligible).toBe(false);
+    expect(evidence.evidenceFailureReason).toBe(
+      "transcript_integrity_degraded"
+    );
+  });
+
+  it("fails closed when otherwise usable turns come from an invalid frozen snapshot", () => {
+    const evidence = prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot({
+      snapshotValid: false,
+      snapshotState: null,
+      turns: [
+        {
+          contractVersion: 2,
+          eventId: "synthetic-writer:1",
+          writerId: "synthetic-writer",
+          writerGeneration: 1,
+          sequence: 1,
+          speaker: "user",
+          text: "I would prioritize caregivers because repeated handoffs create measurable coordination risk.",
+          startedAt: new Date("2026-08-12T20:00:00.000Z"),
+          endedAt: new Date("2026-08-12T20:00:02.000Z"),
+          audioMs: 2_000,
+          section: "synthetic-freeze-regression",
+          deliveryState: "delivered",
+        },
+      ],
+      interruptions: [],
+      sessionEndAt: new Date("2026-08-12T20:00:03.000Z"),
+      sourceOverflow: false,
+    });
+
+    expect(evidence.eligible).toBe(false);
+    expect(evidence.evidenceFailureReason).toBe(
+      "transcript_integrity_degraded"
+    );
   });
 
   describe("validateSessionCompleteness", () => {

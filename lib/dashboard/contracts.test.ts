@@ -339,6 +339,78 @@ test("a scoreless-only history keeps feedback reachable without inventing patter
   );
 });
 
+test("dimension-coverage reviews stay reachable while only full scorecards enter progress", () => {
+  const sessions = [
+    {
+      ...baseSession,
+      id: "coaching-review",
+      startedAt: "2026-07-12T12:00:00.000Z",
+      feedback: {
+        status: "completed",
+        presentationKind: "coaching_review" as const,
+        overallScore: null,
+      },
+    },
+    {
+      ...baseSession,
+      id: "partial-scorecard",
+      startedAt: "2026-07-11T12:00:00.000Z",
+      feedback: {
+        status: "completed",
+        presentationKind: "partial_scorecard" as const,
+        overallScore: null,
+        structureScore: 8,
+      },
+    },
+    {
+      ...baseSession,
+      id: "full-scorecard",
+      startedAt: "2026-07-10T12:00:00.000Z",
+      feedback: {
+        status: "completed",
+        presentationKind: "full_scorecard" as const,
+        overallScore: "8.0",
+        structureScore: 8,
+        clarityScore: 8,
+        insightScore: 8,
+        communicationScore: 8,
+        leadershipScore: 8,
+      },
+    },
+  ];
+
+  const practice = buildDashboardPracticeSummary(sessions);
+  const history = buildHistorySummary(sessions);
+  const rows = new Map(history.rows.map((row) => [row.id, row]));
+
+  assert.equal(practice.progress.scoredInterviewCount, 1);
+  assert.equal(practice.progress.score, 8);
+  assert.deepEqual(
+    practice.progressSignal.bars.map((bar) => bar.score),
+    [8]
+  );
+  assert.equal(history.patterns[0]?.count, 1);
+  assert.equal(practice.lastFeedback?.href, "/feedback/coaching-review");
+  assert.match(practice.lastFeedback?.summary ?? "", /No numerical score/);
+  assert.equal(history.nextReview.feedbackHref, "/feedback/full-scorecard");
+  assert.equal(
+    rows.get("partial-scorecard")?.statusLabel,
+    "Feedback ready — partial scorecard"
+  );
+  assert.equal(
+    rows.get("partial-scorecard")?.feedbackHref,
+    "/feedback/partial-scorecard"
+  );
+  assert.equal(
+    rows.get("coaching-review")?.feedbackHref,
+    "/feedback/coaching-review"
+  );
+  assert.equal(
+    rows.get("full-scorecard")?.feedbackHref,
+    "/feedback/full-scorecard"
+  );
+});
+
 test("completed null-score rows require the server-owned presentation kind", () => {
   const history = buildHistorySummary([
     {

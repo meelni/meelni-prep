@@ -171,6 +171,14 @@ describe("GET /api/sessions pagination", () => {
     const dashboard = buildDashboardPracticeSummary(body.sessions);
 
     expect(body.sessions[0].feedback.presentationKind).toBe("unavailable");
+    expect(body.sessions[0].feedback).toMatchObject({
+      overallScore: null,
+      structureScore: null,
+      clarityScore: null,
+      insightScore: null,
+      communicationScore: null,
+      leadershipScore: null,
+    });
     expect(history.rows[0].feedbackHref).toBeNull();
     expect(history.rows[0].statusLabel).toBe("Feedback unavailable");
     expect(dashboard.progress.scoredInterviewCount).toBe(0);

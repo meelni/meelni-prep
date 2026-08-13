@@ -1211,6 +1211,346 @@ export async function getFrozenFeedbackTranscriptTurns(
   });
 }
 
+/**
+ * Read the complete frozen ledger projection needed to reconstruct SAV-369
+ * answer blocks. The snapshot remains server-only; callers must not log it or
+ * expose source writer metadata to clients.
+ */
+export async function getFrozenFeedbackEvaluationEvidence(
+  sessionId: string,
+  database: TranscriptPersistenceDatabase | Pick<typeof db, "select"> = db
+) {
+  const readFrozenEvidence = async (tx: Pick<typeof db, "select">) => {
+    const sessions = await tx
+      .select({
+        evidenceVersion: interviewSession.transcriptEvidenceVersion,
+        evidenceState: interviewSession.transcriptEvidenceState,
+        cutoffAt: interviewSession.transcriptCutoffAt,
+        frozenAt: interviewSession.transcriptEvidenceFrozenAt,
+        lifecycleState: interviewSession.lifecycleState,
+      })
+      .from(interviewSession)
+      .where(eq(interviewSession.id, sessionId))
+      .limit(1);
+    const session = sessions[0];
+    if (!session) {
+      return {
+        snapshotValid: false,
+        snapshotState: null,
+        turns: [],
+        interruptions: [],
+        sessionEndAt: null,
+        sourceOverflow: false,
+      };
+    }
+
+    if (!hasValidFrozenFeedbackEvaluationSnapshot(session)) {
+      return {
+        snapshotValid: false,
+        snapshotState: null,
+        turns: [],
+        interruptions: [],
+        sessionEndAt: null,
+        sourceOverflow: false,
+      };
+    }
+
+    const rows = await buildBoundedFeedbackTranscriptQuery(
+      tx,
+      sessionId,
+      session.cutoffAt
+    );
+    const markers = await tx
+      .select({
+        eventId: transcriptInterruptionMarker.eventId,
+        writerId: transcriptInterruptionMarker.writerId,
+        writerGeneration: transcriptInterruptionMarker.writerGeneration,
+        sequence: transcriptInterruptionMarker.sequence,
+        speaker: transcriptInterruptionMarker.speaker,
+        occurredAt: transcriptInterruptionMarker.occurredAt,
+        reason: transcriptInterruptionMarker.reason,
+      })
+      .from(transcriptInterruptionMarker)
+      .where(
+        and(
+          eq(transcriptInterruptionMarker.sessionId, sessionId),
+          lte(transcriptInterruptionMarker.occurredAt, session.cutoffAt)
+        )
+      )
+      .limit(MAX_INTERRUPTION_MARKERS_PER_SESSION + 1);
+    const sourceOverflow =
+      rows.length > MAX_CANONICAL_TURNS_PER_SESSION ||
+      markers.length > MAX_INTERRUPTION_MARKERS_PER_SESSION;
+    const boundedRows = rows.slice(0, MAX_CANONICAL_TURNS_PER_SESSION);
+    const boundedMarkers = markers.slice(
+      0,
+      MAX_INTERRUPTION_MARKERS_PER_SESSION
+    );
+
+    const registeredWriters = await tx
+      .select({
+        generation: transcriptRuntimeWriter.generation,
+        contractVersion: transcriptRuntimeWriter.contractVersion,
+        writerId: transcriptRuntimeWriter.writerId,
+      })
+      .from(transcriptRuntimeWriter)
+      .where(eq(transcriptRuntimeWriter.sessionId, sessionId));
+    const cutoffs = await tx
+      .select({
+        writerGeneration: transcriptEvidenceWriterCutoff.writerGeneration,
+        contractVersion: transcriptEvidenceWriterCutoff.contractVersion,
+        writerId: transcriptEvidenceWriterCutoff.writerId,
+        committedSequence: transcriptEvidenceWriterCutoff.committedSequence,
+        lastObservedSequence:
+          transcriptEvidenceWriterCutoff.lastObservedSequence,
+        committedEventId: transcriptEvidenceWriterCutoff.committedEventId,
+        committedThroughAt: transcriptEvidenceWriterCutoff.committedThroughAt,
+        integrityState: transcriptEvidenceWriterCutoff.integrityState,
+        settlementState: transcriptEvidenceWriterCutoff.settlementState,
+        frozenAt: transcriptEvidenceWriterCutoff.frozenAt,
+      })
+      .from(transcriptEvidenceWriterCutoff)
+      .where(eq(transcriptEvidenceWriterCutoff.sessionId, sessionId));
+    const committedByGeneration = new Map(
+      cutoffs.map((cutoff) => [
+        cutoff.writerGeneration,
+        cutoff.committedSequence,
+      ])
+    );
+    if (
+      !hasCanonicalFrozenWriterCutoffCoverage({
+        registeredWriters,
+        cutoffs,
+        rows: boundedRows,
+        markers: boundedMarkers,
+        snapshotState: session.evidenceState,
+        cutoffAt: session.cutoffAt,
+        frozenAt: session.frozenAt,
+      })
+    ) {
+      return {
+        snapshotValid: false,
+        snapshotState: null,
+        turns: [],
+        interruptions: [],
+        sessionEndAt: session.cutoffAt,
+        sourceOverflow,
+      };
+    }
+    return {
+      snapshotValid: true,
+      snapshotState: session.evidenceState,
+      turns: boundedRows.filter((row) => {
+        if (row.writerGeneration === null || row.sequence === null)
+          return false;
+        const committed = committedByGeneration.get(row.writerGeneration);
+        return committed !== undefined && row.sequence <= committed;
+      }),
+      interruptions: boundedMarkers.filter((marker) => {
+        const committed = committedByGeneration.get(marker.writerGeneration);
+        return committed !== undefined && marker.sequence <= committed;
+      }),
+      sessionEndAt: session.cutoffAt,
+      sourceOverflow,
+    };
+  };
+  return "transaction" in database
+    ? database.transaction(readFrozenEvidence)
+    : readFrozenEvidence(database);
+}
+
+export function hasCanonicalFrozenWriterCutoffCoverage(input: {
+  registeredWriters: readonly {
+    generation: number;
+    contractVersion: number;
+    writerId: string;
+  }[];
+  cutoffs: readonly {
+    writerGeneration: number;
+    contractVersion: number;
+    writerId: string;
+    committedSequence: number;
+    lastObservedSequence: number;
+    committedEventId: string | null;
+    committedThroughAt: Date | null;
+    integrityState: "healthy" | "degraded";
+    settlementState: "settled" | "missing" | "degraded";
+    frozenAt: Date;
+  }[];
+  rows: readonly {
+    writerGeneration: number | null;
+    sequence: number | null;
+    eventId: string | null;
+    endedAt: Date | null;
+  }[];
+  markers: readonly {
+    writerGeneration: number;
+    sequence: number;
+    eventId: string;
+    occurredAt: Date;
+    speaker: "user" | "interviewer";
+    reason: "no_provider_confirmed_prefix" | "canonicalization_failed";
+  }[];
+  snapshotState: "complete" | "partial";
+  cutoffAt: Date;
+  frozenAt: Date;
+}): boolean {
+  if (
+    input.registeredWriters.length === 0 ||
+    input.cutoffs.length !== input.registeredWriters.length ||
+    !Number.isFinite(input.cutoffAt.getTime())
+  ) {
+    return false;
+  }
+  const registeredByGeneration = new Map<
+    number,
+    { contractVersion: number; writerId: string }
+  >();
+  for (const writer of input.registeredWriters) {
+    if (
+      !Number.isSafeInteger(writer.generation) ||
+      writer.generation <= 0 ||
+      writer.contractVersion !== 1 ||
+      writer.writerId.length === 0 ||
+      registeredByGeneration.has(writer.generation)
+    ) {
+      return false;
+    }
+    registeredByGeneration.set(writer.generation, {
+      contractVersion: writer.contractVersion,
+      writerId: writer.writerId,
+    });
+  }
+  const committedByGeneration = new Map<number, number>();
+  for (const cutoff of input.cutoffs) {
+    const registered = registeredByGeneration.get(cutoff.writerGeneration);
+    const validBoundary =
+      (cutoff.committedSequence === 0 &&
+        cutoff.committedEventId === null &&
+        cutoff.committedThroughAt === null) ||
+      (cutoff.committedSequence > 0 &&
+        Boolean(cutoff.committedEventId) &&
+        cutoff.committedThroughAt instanceof Date &&
+        Number.isFinite(cutoff.committedThroughAt.getTime()) &&
+        cutoff.committedThroughAt.getTime() <= input.cutoffAt.getTime());
+    if (
+      !Number.isSafeInteger(cutoff.writerGeneration) ||
+      cutoff.writerGeneration <= 0 ||
+      cutoff.contractVersion !== 1 ||
+      cutoff.writerId.length === 0 ||
+      registered?.contractVersion !== cutoff.contractVersion ||
+      registered.writerId !== cutoff.writerId ||
+      !Number.isSafeInteger(cutoff.committedSequence) ||
+      cutoff.committedSequence < 0 ||
+      !Number.isSafeInteger(cutoff.lastObservedSequence) ||
+      cutoff.lastObservedSequence !== cutoff.committedSequence ||
+      !validBoundary ||
+      cutoff.integrityState !== "healthy" ||
+      cutoff.settlementState === "degraded" ||
+      !Number.isFinite(cutoff.frozenAt.getTime()) ||
+      cutoff.frozenAt.getTime() !== input.frozenAt.getTime() ||
+      committedByGeneration.has(cutoff.writerGeneration)
+    ) {
+      return false;
+    }
+    committedByGeneration.set(
+      cutoff.writerGeneration,
+      cutoff.committedSequence
+    );
+  }
+  if (
+    input.rows.some(
+      (row) =>
+        row.writerGeneration === null ||
+        row.sequence === null ||
+        !Number.isSafeInteger(row.writerGeneration) ||
+        row.writerGeneration <= 0 ||
+        !Number.isSafeInteger(row.sequence) ||
+        row.sequence <= 0 ||
+        !committedByGeneration.has(row.writerGeneration)
+    ) ||
+    input.markers.some(
+      (marker) =>
+        !Number.isSafeInteger(marker.writerGeneration) ||
+        marker.writerGeneration <= 0 ||
+        !Number.isSafeInteger(marker.sequence) ||
+        marker.sequence <= 0 ||
+        !committedByGeneration.has(marker.writerGeneration)
+    )
+  ) {
+    return false;
+  }
+  for (const cutoff of input.cutoffs) {
+    if (cutoff.committedSequence === 0) continue;
+    const boundaryEvidence = [
+      ...input.rows.flatMap((row) =>
+        row.writerGeneration === cutoff.writerGeneration &&
+        row.sequence === cutoff.committedSequence &&
+        row.endedAt
+          ? [{ eventId: row.eventId, evidenceAt: row.endedAt }]
+          : []
+      ),
+      ...input.markers.flatMap((marker) =>
+        marker.writerGeneration === cutoff.writerGeneration &&
+        marker.sequence === cutoff.committedSequence
+          ? [{ eventId: marker.eventId, evidenceAt: marker.occurredAt }]
+          : []
+      ),
+    ];
+    if (
+      boundaryEvidence.length !== 1 ||
+      boundaryEvidence[0]?.eventId !== cutoff.committedEventId ||
+      boundaryEvidence[0]?.evidenceAt.getTime() !==
+        cutoff.committedThroughAt?.getTime()
+    ) {
+      return false;
+    }
+  }
+  const hasPreservingMarker = input.markers.some((marker) => {
+    const committed = committedByGeneration.get(marker.writerGeneration)!;
+    return (
+      marker.sequence <= committed &&
+      classifyTranscriptInterruptionIntegrity({
+        speaker: marker.speaker,
+        reason: marker.reason,
+      }) === "preserve"
+    );
+  });
+  const allSettled = input.cutoffs.every(
+    (cutoff) => cutoff.settlementState === "settled"
+  );
+  return input.snapshotState === "complete"
+    ? allSettled && !hasPreservingMarker
+    : !allSettled || hasPreservingMarker;
+}
+
+export function hasValidFrozenFeedbackEvaluationSnapshot(input: {
+  evidenceVersion: unknown;
+  evidenceState: unknown;
+  cutoffAt: unknown;
+  frozenAt: unknown;
+  lifecycleState: unknown;
+}): input is {
+  evidenceVersion: 1;
+  evidenceState: "complete" | "partial";
+  cutoffAt: Date;
+  frozenAt: Date;
+  lifecycleState: "completed" | "abandoned" | "failed";
+} {
+  return (
+    input.evidenceVersion === 1 &&
+    input.cutoffAt instanceof Date &&
+    Number.isFinite(input.cutoffAt.getTime()) &&
+    input.frozenAt instanceof Date &&
+    Number.isFinite(input.frozenAt.getTime()) &&
+    input.frozenAt.getTime() >= input.cutoffAt.getTime() &&
+    (input.evidenceState === "complete" || input.evidenceState === "partial") &&
+    (input.lifecycleState === "completed" ||
+      input.lifecycleState === "abandoned" ||
+      input.lifecycleState === "failed")
+  );
+}
+
 function buildBoundedFeedbackTranscriptQuery(
   database: Pick<typeof db, "select">,
   sessionId: string,
@@ -1219,12 +1559,17 @@ function buildBoundedFeedbackTranscriptQuery(
   return database
     .select({
       eventId: transcriptTurn.eventId,
+      writerId: transcriptTurn.writerId,
       speaker: transcriptTurn.speaker,
       text: transcriptTurn.text,
       contractVersion: transcriptTurn.contractVersion,
       deliveryState: transcriptTurn.deliveryState,
       writerGeneration: transcriptTurn.writerGeneration,
       sequence: transcriptTurn.sequence,
+      startedAt: transcriptTurn.startedAt,
+      endedAt: transcriptTurn.endedAt,
+      audioMs: transcriptTurn.audioMs,
+      section: transcriptTurn.section,
     })
     .from(transcriptTurn)
     .where(

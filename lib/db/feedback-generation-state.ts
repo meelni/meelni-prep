@@ -1,6 +1,7 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
   hasServerOwnedEvidenceLimitedContent,
+  isDimensionCoverageFeedbackResult,
   isEvidenceLimitedFeedbackResult,
   type FeedbackEvaluationResult,
   type FeedbackOutcomeReason,
@@ -157,6 +158,7 @@ export function createDrizzleFeedbackGenerationStore(
 
     async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
       const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
+      const dimensionCoverage = isDimensionCoverageFeedbackResult(evaluation);
       if (
         evidenceLimited &&
         !hasServerOwnedEvidenceLimitedContent({
@@ -173,21 +175,38 @@ export function createDrizzleFeedbackGenerationStore(
           status: "completed",
           statusReason: null,
           outcomeReason: "feedback_generated",
-          overallScore: evidenceLimited
-            ? null
-            : evaluation.overallScore.toString(),
-          structureScore: evidenceLimited ? null : evaluation.scores.structure,
-          clarityScore: evidenceLimited ? null : evaluation.scores.clarity,
-          insightScore: evidenceLimited ? null : evaluation.scores.insight,
-          communicationScore: evidenceLimited
-            ? null
-            : evaluation.scores.communication,
-          leadershipScore: evidenceLimited
-            ? null
-            : evaluation.scores.leadership,
-          strengths: evaluation.strengths,
-          improvements: evaluation.improvements,
-          drills: evidenceLimited ? [] : evaluation.drills,
+          overallScore:
+            evidenceLimited || evaluation.overallScore === null
+              ? null
+              : evaluation.overallScore.toString(),
+          structureScore: dimensionCoverage
+            ? evaluation.dimensions.structure.score
+            : evidenceLimited
+              ? null
+              : evaluation.scores.structure,
+          clarityScore: dimensionCoverage
+            ? evaluation.dimensions.clarity.score
+            : evidenceLimited
+              ? null
+              : evaluation.scores.clarity,
+          insightScore: dimensionCoverage
+            ? evaluation.dimensions.insight.score
+            : evidenceLimited
+              ? null
+              : evaluation.scores.insight,
+          communicationScore: dimensionCoverage
+            ? evaluation.dimensions.communication.score
+            : evidenceLimited
+              ? null
+              : evaluation.scores.communication,
+          leadershipScore: dimensionCoverage
+            ? evaluation.dimensions.leadership.score
+            : evidenceLimited
+              ? null
+              : evaluation.scores.leadership,
+          strengths: dimensionCoverage ? null : evaluation.strengths,
+          improvements: dimensionCoverage ? null : evaluation.improvements,
+          drills: dimensionCoverage || evidenceLimited ? [] : evaluation.drills,
           summary: evaluation.summary,
           processingDurationMs,
           schemaVersion: evaluation.schemaVersion,
@@ -195,6 +214,9 @@ export function createDrizzleFeedbackGenerationStore(
           modelVersion: evaluation.modelVersion,
           rubricVersion: evaluation.rubricVersion,
           evaluationState: evaluation.evaluationState,
+          feedbackMode: dimensionCoverage ? evaluation.mode : null,
+          feedbackRoundType: dimensionCoverage ? evaluation.roundType : null,
+          dimensionCoverage: dimensionCoverage ? evaluation.dimensions : null,
         })
         .where(activeClaim(sessionId, eventId))
         .returning({ id: feedback.id });
@@ -224,6 +246,9 @@ export function createDrizzleFeedbackGenerationStore(
           promptVersion: null,
           modelVersion: null,
           evaluationState: null,
+          feedbackMode: null,
+          feedbackRoundType: null,
+          dimensionCoverage: null,
         })
         .where(activeClaim(sessionId, eventId))
         .returning({ id: feedback.id });

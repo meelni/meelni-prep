@@ -7,10 +7,18 @@ import {
   EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
   EVIDENCE_LIMITED_STRENGTH_SIGNALS,
   EVIDENCE_LIMITED_SUMMARY,
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FeedbackV2ParseError,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  deriveCandidateAnswerBlocks,
   prepareFeedbackTranscript,
+  parseDimensionCoverageProviderSelection,
+  type DimensionCoverageProviderSelection,
   type FeedbackEvaluationResult,
   type FeedbackEvaluationState,
   type FeedbackV2Result,
@@ -24,6 +32,8 @@ import {
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import {
   calculateValidatedSessionFromTurns,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
+  type PreparedCandidateAnswerBlockEvidence,
   type SessionValidationTurnInput,
   type SessionStats,
 } from "@/lib/evaluation/session-validator";
@@ -261,7 +271,7 @@ test("untrusted transcript is skipped without provider or insight work", async (
   assert.equal(insights.length, 0);
 });
 
-test("unknown evidence-limited selection remains generation failure, not insufficiency", async () => {
+test("malformed dimension selection remains generation failure, not insufficiency", async () => {
   const store = new MemoryGenerationStore(
     record({
       completionTier: "partial",
@@ -279,10 +289,10 @@ test("unknown evidence-limited selection remains generation failure, not insuffi
     "finding_text_invalid",
     "unknown evidence-limited strength signal code"
   );
-  let observedMode: "scored" | "evidence_limited" | undefined;
+  let observedNumericalPolicy: boolean | undefined;
   const deps = dependencies(store, {
     async evaluate(input) {
-      observedMode = input.mode;
+      observedNumericalPolicy = input.allowNumericalScores;
       throw rejection;
     },
   });
@@ -291,7 +301,7 @@ test("unknown evidence-limited selection remains generation failure, not insuffi
     generateFeedbackWorkflow(input(EVENT_1), deps),
     /unknown evidence-limited strength signal code/
   );
-  assert.equal(observedMode, "evidence_limited");
+  assert.equal(observedNumericalPolicy, true);
   assert.equal(store.current.status, "processing");
   assert.notEqual(store.current.status, "skipped");
 
@@ -315,7 +325,7 @@ test("unknown evidence-limited selection remains generation failure, not insuffi
   assert.equal(store.current.statusReason, failureReason);
 });
 
-test("five long-form fallback responses never unlock scored mode", async () => {
+test("legacy row scoreability counts do not select the new result mode", async () => {
   const store = new MemoryGenerationStore(
     record({
       completionTier: "partial",
@@ -329,10 +339,10 @@ test("five long-form fallback responses never unlock scored mode", async () => {
       },
     })
   );
-  let observedMode: "scored" | "evidence_limited" | undefined;
+  let observedNumericalPolicy: boolean | undefined;
   const deps = dependencies(store, {
     async evaluate(input) {
-      observedMode = input.mode;
+      observedNumericalPolicy = input.allowNumericalScores;
       throw new FeedbackV2ParseError(
         "finding_text_invalid",
         "provider supplied no valid closed selection"
@@ -344,7 +354,7 @@ test("five long-form fallback responses never unlock scored mode", async () => {
     generateFeedbackWorkflow(input(EVENT_1), deps),
     /provider supplied no valid closed selection/
   );
-  assert.equal(observedMode, "evidence_limited");
+  assert.equal(observedNumericalPolicy, true);
   assert.notEqual(store.current.status, "skipped");
 });
 
@@ -363,12 +373,10 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
       },
     })
   );
-  let observed:
-    | { mode: "scored" | "evidence_limited"; state: FeedbackEvaluationState }
-    | undefined;
+  let observedNumericalPolicy: boolean | undefined;
   const deps = dependencies(store, {
     async evaluate(input) {
-      observed = { mode: input.mode, state: input.evaluationState };
+      observedNumericalPolicy = input.allowNumericalScores;
       throw new FeedbackV2ParseError(
         "finding_text_invalid",
         "provider supplied no valid closed selection"
@@ -380,18 +388,38 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
     generateFeedbackWorkflow(input(EVENT_1), deps),
     /provider supplied no valid closed selection/
   );
-  assert.deepEqual(observed, {
-    mode: "evidence_limited",
-    state: "partial",
-  });
+  assert.equal(observedNumericalPolicy, false);
   assert.notEqual(store.current.status, "skipped");
 });
 
-test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, and exact citations", async () => {
+test("a partial frozen snapshot permits only qualitative coaching", async () => {
+  const store = new MemoryGenerationStore(record());
+  let observedNumericalPolicy: boolean | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observedNumericalPolicy = input.allowNumericalScores;
+      throw new Error("synthetic_stop_after_snapshot_policy");
+    },
+  });
+  const defaultEvidence = await deps.getAnswerBlockEvidence(SESSION_ID);
+  deps.getAnswerBlockEvidence = async () => ({
+    ...defaultEvidence,
+    snapshotState: "partial",
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /synthetic_stop_after_snapshot_policy/
+  );
+  assert.equal(observedNumericalPolicy, false);
+  assert.notEqual(store.current.status, "skipped");
+});
+
+test("1, 2, 5, or 10 STT finals preserve completion stats and answer-block evaluator input", async () => {
   const observations: Array<{
     stats: SessionStats;
     tier: string;
-    mode: "scored" | "evidence_limited";
+    allowNumericalScores: boolean;
   }> = [];
 
   for (const segmentCount of ANSWER_BLOCK_SEGMENT_COUNTS) {
@@ -422,19 +450,13 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
     const validation = calculateValidatedSessionFromTurns(sourceTurns, {
       sessionEndAt,
     });
-    const prepared = prepareFeedbackTranscript(
-      sourceTurns.map((turn) => ({
-        eventId: turn.eventId,
-        contractVersion: turn.contractVersion,
-        speaker: turn.speaker,
-        text: turn.text,
-        deliveryState: turn.deliveryState,
-      })),
-      { requireContractV2: true }
+    const answerBlockEvidence = prepareCandidateAnswerBlockEvidenceFromTurns(
+      sourceTurns,
+      { sessionEndAt }
     );
-    const expectedCitations = prepared.transcript.map(({ eventId, text }) => ({
-      eventId,
-      text,
+    const expectedCitations = answerBlockEvidence.blocks.map((block) => ({
+      answerBlockRef: block.answerBlockId,
+      evidenceText: block.responseText,
     }));
     const store = new MemoryGenerationStore(
       record({
@@ -442,13 +464,16 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
         completionStats: validation.stats,
       })
     );
-    let observedMode: "scored" | "evidence_limited" | undefined;
+    let observedNumericalPolicy: boolean | undefined;
     const deps = dependencies(store, {
-      transcript: prepared,
+      answerBlockEvidence,
       async evaluate(input) {
-        observedMode = input.mode;
+        observedNumericalPolicy = input.allowNumericalScores;
         assert.deepEqual(
-          input.transcript.map(({ eventId, text }) => ({ eventId, text })),
+          input.answerBlocks.map((block) => ({
+            answerBlockRef: block.answerBlockId,
+            evidenceText: block.responseText,
+          })),
           expectedCitations,
           String(segmentCount)
         );
@@ -460,11 +485,11 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
       generateFeedbackWorkflow(input(EVENT_1), deps),
       /synthetic_stop_after_observation/
     );
-    assert.ok(observedMode);
+    assert.equal(observedNumericalPolicy, true);
     observations.push({
       stats: validation.stats,
       tier: validation.tier,
-      mode: observedMode,
+      allowNumericalScores: observedNumericalPolicy,
     });
   }
 
@@ -481,7 +506,7 @@ test("1, 2, 5, or 10 STT finals preserve completion stats, tier, provider mode, 
       scoreableResponses: 2,
     },
     tier: "partial",
-    mode: "evidence_limited",
+    allowNumericalScores: true,
   });
 });
 
@@ -490,8 +515,8 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
     variant: "none" | "literal" | "normalized";
     stats: SessionStats;
     tier: string;
-    mode: "scored" | "evidence_limited";
-    providerInput: Array<{ eventId: string; text: string }>;
+    allowNumericalScores: boolean;
+    providerInput: Array<{ answerBlockRef: string; evidenceText: string }>;
   }> = [];
 
   for (const variant of ["none", "literal", "normalized"] as const) {
@@ -509,6 +534,10 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       })),
       { requireContractV2: true }
     );
+    const answerBlockEvidence = prepareCandidateAnswerBlockEvidenceFromTurns(
+      turns,
+      { sessionEndAt: turns.at(-1)!.endedAt! }
+    );
     if (variant !== "none") {
       assert.equal(prepared.duplicateTurnsRemoved, 4);
       assert.equal(
@@ -524,19 +553,24 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
         completionStats: validation.stats,
       })
     );
-    let observedMode: "scored" | "evidence_limited" | undefined;
-    let providerInput: Array<{ eventId: string; text: string }> | undefined;
+    let observedNumericalPolicy: boolean | undefined;
+    let providerInput:
+      | Array<{ answerBlockRef: string; evidenceText: string }>
+      | undefined;
     const deps = dependencies(store, {
-      transcript: prepared,
+      answerBlockEvidence,
       async evaluate(input) {
-        observedMode = input.mode;
-        providerInput = input.transcript.map(({ eventId, text }) => ({
-          eventId,
-          text,
+        observedNumericalPolicy = input.allowNumericalScores;
+        providerInput = input.answerBlocks.map((block) => ({
+          answerBlockRef: block.answerBlockId,
+          evidenceText: block.responseText,
         }));
         assert.deepEqual(
           providerInput,
-          prepared.transcript.map(({ eventId, text }) => ({ eventId, text }))
+          answerBlockEvidence.blocks.map((block) => ({
+            answerBlockRef: block.answerBlockId,
+            evidenceText: block.responseText,
+          }))
         );
         throw new Error("synthetic_stop_after_replay_observation");
       },
@@ -546,13 +580,13 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       generateFeedbackWorkflow(input(EVENT_1), deps),
       /synthetic_stop_after_replay_observation/
     );
-    assert.ok(observedMode);
+    assert.equal(observedNumericalPolicy, true);
     assert.ok(providerInput);
     observations.push({
       variant,
       stats: validation.stats,
       tier: validation.tier,
-      mode: observedMode,
+      allowNumericalScores: observedNumericalPolicy,
       providerInput,
     });
   }
@@ -562,12 +596,12 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
       {
         stats: observation.stats,
         tier: observation.tier,
-        mode: observation.mode,
+        allowNumericalScores: observation.allowNumericalScores,
       },
       {
         stats: observations[0]!.stats,
         tier: observations[0]!.tier,
-        mode: observations[0]!.mode,
+        allowNumericalScores: observations[0]!.allowNumericalScores,
       }
     );
   }
@@ -578,7 +612,7 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
   assert.equal(observations[0]!.stats.userTurns, 1);
   assert.equal(observations[0]!.stats.scoreableResponses, 1);
   assert.equal(observations[0]!.tier, "partial");
-  assert.equal(observations[0]!.mode, "evidence_limited");
+  assert.equal(observations[0]!.allowNumericalScores, true);
 });
 
 test("authenticated exact replay cannot bridge long-silence blocks or change evaluator input", async () => {
@@ -586,8 +620,8 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
     variant: "none" | "literal" | "normalized";
     stats: SessionStats;
     tier: string;
-    mode: "scored" | "evidence_limited";
-    providerInput: Array<{ eventId: string; text: string }>;
+    allowNumericalScores: boolean;
+    providerInput: Array<{ answerBlockRef: string; evidenceText: string }>;
   }> = [];
 
   for (const variant of ["none", "literal", "normalized"] as const) {
@@ -605,9 +639,13 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
       })),
       { requireContractV2: true }
     );
-    const expectedCitations = prepared.transcript.map(({ eventId, text }) => ({
-      eventId,
-      text,
+    const answerBlockEvidence = prepareCandidateAnswerBlockEvidenceFromTurns(
+      turns,
+      { sessionEndAt: turns.at(-1)!.endedAt! }
+    );
+    const expectedCitations = answerBlockEvidence.blocks.map((block) => ({
+      answerBlockRef: block.answerBlockId,
+      evidenceText: block.responseText,
     }));
     if (variant !== "none") {
       assert.equal(prepared.duplicateTurnsRemoved, 1);
@@ -625,15 +663,17 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
         completionStats: validation.stats,
       })
     );
-    let observedMode: "scored" | "evidence_limited" | undefined;
-    let providerInput: Array<{ eventId: string; text: string }> | undefined;
+    let observedNumericalPolicy: boolean | undefined;
+    let providerInput:
+      | Array<{ answerBlockRef: string; evidenceText: string }>
+      | undefined;
     const deps = dependencies(store, {
-      transcript: prepared,
+      answerBlockEvidence,
       async evaluate(input) {
-        observedMode = input.mode;
-        providerInput = input.transcript.map(({ eventId, text }) => ({
-          eventId,
-          text,
+        observedNumericalPolicy = input.allowNumericalScores;
+        providerInput = input.answerBlocks.map((block) => ({
+          answerBlockRef: block.answerBlockId,
+          evidenceText: block.responseText,
         }));
         assert.deepEqual(providerInput, expectedCitations);
         throw new Error("synthetic_stop_after_silence_replay_observation");
@@ -644,13 +684,13 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
       generateFeedbackWorkflow(input(EVENT_1), deps),
       /synthetic_stop_after_silence_replay_observation/
     );
-    assert.ok(observedMode);
+    assert.equal(observedNumericalPolicy, true);
     assert.ok(providerInput);
     observations.push({
       variant,
       stats: validation.stats,
       tier: validation.tier,
-      mode: observedMode,
+      allowNumericalScores: observedNumericalPolicy,
       providerInput,
     });
   }
@@ -660,14 +700,18 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
       {
         stats: observation.stats,
         tier: observation.tier,
-        mode: observation.mode,
-        providerText: observation.providerInput.map(({ text }) => text),
+        allowNumericalScores: observation.allowNumericalScores,
+        providerText: observation.providerInput.map(
+          ({ evidenceText }) => evidenceText
+        ),
       },
       {
         stats: observations[0]!.stats,
         tier: observations[0]!.tier,
-        mode: observations[0]!.mode,
-        providerText: observations[0]!.providerInput.map(({ text }) => text),
+        allowNumericalScores: observations[0]!.allowNumericalScores,
+        providerText: observations[0]!.providerInput.map(
+          ({ evidenceText }) => evidenceText
+        ),
       }
     );
   }
@@ -680,11 +724,11 @@ test("authenticated exact replay cannot bridge long-silence blocks or change eva
     userTurns: 2,
     totalWords: 42,
     durationSeconds: 11,
-    substantiveResponses: 1,
+    substantiveResponses: 2,
     scoreableResponses: 1,
   });
   assert.equal(observations[0]!.tier, "partial");
-  assert.equal(observations[0]!.mode, "evidence_limited");
+  assert.equal(observations[0]!.allowNumericalScores, true);
 });
 
 test("conflicting exact replay identity or timing and a true missing sequence fail closed before provider work", async () => {
@@ -932,7 +976,7 @@ test("excluded replay families with identical accepted citations fail closed wit
   );
 });
 
-test("duplicate evidence-limited selection identities fail before persistence as provider-neutral generation failure", async () => {
+test("legacy evidence-limited output fails before persistence on the new workflow", async () => {
   const turns = [
     {
       eventId: "turn-1",
@@ -1012,6 +1056,7 @@ test("duplicate evidence-limited selection identities fail before persistence as
     async evaluate() {
       return invalidEvaluation;
     },
+    requireDimensionCoverage: true,
   });
 
   let rejection: unknown;
@@ -1020,8 +1065,8 @@ test("duplicate evidence-limited selection identities fail before persistence as
   } catch (error) {
     rejection = error;
   }
-  assert.ok(rejection instanceof FeedbackV2ParseError);
-  assert.match(rejection.message, /selections must be unique/);
+  assert.ok(rejection instanceof Error);
+  assert.match(rejection.message, /dimension_coverage_required/);
   assert.equal(store.current.status, "processing");
   assert.equal(store.completedScore, null);
 
@@ -1043,6 +1088,66 @@ test("duplicate evidence-limited selection identities fail before persistence as
   );
   assert.equal(store.current.status, "failed");
   assert.notEqual(store.current.status, "skipped");
+});
+
+test("persists an exact-grounded sparse dimension scorecard through the production workflow contract", async () => {
+  const store = new MemoryGenerationStore(record());
+  const blocks = deriveCandidateAnswerBlocks(
+    createAnswerBlockSegmentationFixture(2).events
+  ).blocks;
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const facetCount =
+      dimension === "structure" ? 2 : dimension === "insight" ? 1 : 0;
+    dimensions[dimension] = {
+      score: dimension === "structure" ? 7 : null,
+      evidence: ROUND_DIMENSION_COVERAGE_CONFIG.strategy[dimension].facets
+        .slice(0, facetCount)
+        .map((facet) => ({
+          facetCode: facet.code,
+          answerBlockRef: blocks[0]!.answerBlockId,
+        })),
+    };
+  }
+  const expected = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "strategy",
+      dimensions,
+    },
+    {
+      roundType: "strategy",
+      answerBlocks: blocks,
+      modelVersion: "synthetic-workflow-v1",
+      allowNumericalScores: true,
+    }
+  );
+  const deps = dependencies(store, {
+    answerBlockEvidence: {
+      blocks,
+      eligible: true,
+      evidenceFailureReason: null,
+    },
+    requireDimensionCoverage: true,
+    async evaluate(input) {
+      assert.equal(input.roundType, "strategy");
+      assert.deepEqual(input.answerBlocks, blocks);
+      assert.equal(input.allowNumericalScores, true);
+      return expected;
+    },
+  });
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.deepEqual(result, {
+    status: "completed",
+    disposition: "applied",
+    sessionId: SESSION_ID,
+  });
+  assert.deepEqual(store.completedEvaluation, expected);
+  assert.equal(store.completedScore, null);
 });
 
 test("durable replay closes the completion-to-insights crash window exactly once", async () => {
@@ -1330,9 +1435,14 @@ function dependencies(
   overrides: {
     insights?: string[];
     transcript?: PreparedFeedbackTranscript;
+    answerBlockEvidence?: PreparedCandidateAnswerBlockEvidence;
     evaluate?: GenerateFeedbackWorkflowDeps["evaluate"];
+    requireDimensionCoverage?: boolean;
   } = {}
 ): GenerateFeedbackWorkflowDeps {
+  const defaultBlocks = deriveCandidateAnswerBlocks(
+    createAnswerBlockSegmentationFixture(1).events
+  ).blocks;
   return {
     store,
     now: () => NOW,
@@ -1346,23 +1456,27 @@ function dependencies(
     getSession: async () => ({ userId: USER_ID, roundType: "strategy" }),
     validateLegacy: async () =>
       ({ isValid: true, tier: "full", reasons: [] }) as never,
-    getTranscript: async () =>
-      overrides.transcript ?? {
-        eligible: true,
-        transcript: [
-          {
-            eventId: "turn-1",
-            speaker: "user",
-            text: "I would focus on new parents and measure retained use.",
-          },
-        ],
-        reasons: [],
-        issues: [],
-        duplicateTurnsRemoved: 0,
-      },
-    evaluate:
-      overrides.evaluate ??
-      (async ({ evaluationState }) => evaluation(evaluationState)),
+    getAnswerBlockEvidence: async () =>
+      overrides.answerBlockEvidence ??
+      (overrides.transcript?.eligible === false
+        ? {
+            blocks: [],
+            eligible: false,
+            evidenceFailureReason: overrides.transcript.issues.some(
+              (issue) => issue.code === "prompt_injection"
+            )
+              ? "transcript_integrity_degraded"
+              : "no_reviewable_answer",
+          }
+        : {
+            blocks: defaultBlocks,
+            eligible: true,
+            evidenceFailureReason: null,
+          }),
+    evaluate: overrides.evaluate ?? (async () => evaluation("full")),
+    ...(overrides.requireDimensionCoverage
+      ? {}
+      : { allowLegacyEvaluationForSyntheticCalibration: true as const }),
   };
 }
 
@@ -1423,6 +1537,7 @@ function evaluation(
 
 class MemoryGenerationStore implements FeedbackGenerationStore {
   completedScore: number | null = null;
+  completedEvaluation: FeedbackEvaluationResult | null = null;
 
   constructor(public current: FeedbackGenerationRecord) {}
 
@@ -1458,6 +1573,7 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
   }) {
     if (!this.isActive(input.sessionId, input.eventId)) return false;
     this.current = { ...this.current, status: "completed" };
+    this.completedEvaluation = input.evaluation;
     this.completedScore =
       "overallScore" in input.evaluation ? input.evaluation.overallScore : null;
     return true;

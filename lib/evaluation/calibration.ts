@@ -4,7 +4,6 @@ import {
   FEEDBACK_SCHEMA_VERSION,
   isFeedbackV2RejectionCode,
   parseFeedbackV2,
-  prepareFeedbackTranscript,
   isEvidenceLimitedFeedbackResult,
   type FeedbackEvaluationResult,
   type FeedbackDimension,
@@ -31,6 +30,7 @@ import type {
 } from "@/lib/db/feedback-generation-state";
 import {
   calculateValidatedSessionFromTurns,
+  prepareCandidateAnswerBlockEvidenceFromTurns,
   SessionTier,
 } from "@/lib/evaluation/session-validator";
 import {
@@ -277,7 +277,9 @@ export async function runEvaluationCalibration(
   let invalidEvidenceAnchors = 0;
 
   for (const fixture of evaluationCalibrationCases) {
-    const validation = calculateValidatedSessionFromTurns(fixture.transcript);
+    const validation = calculateValidatedSessionFromTurns(fixture.transcript, {
+      legacySurfaceEligibilityForSyntheticCalibration: true,
+    });
     const actualState = calibrationState(validation.tier);
     if (actualState !== fixture.expectedCompletionState) {
       failures.push({ caseId: fixture.id, code: "expected_state_mismatch" });
@@ -1008,9 +1010,9 @@ async function runCaseThroughGenerationWorkflow(input: {
     dispatchClaimedAt: input.now,
     dispatchedAt: input.now,
   });
-  const prepared = prepareFeedbackTranscript(input.fixture.transcript, {
-    requireContractV2: true,
-  });
+  const prepared = prepareCandidateAnswerBlockEvidenceFromTurns(
+    input.fixture.transcript
+  );
   const deps: GenerateFeedbackWorkflowDeps = {
     store,
     now: () => input.now,
@@ -1026,17 +1028,18 @@ async function runCaseThroughGenerationWorkflow(input: {
     validateLegacy: async () => {
       throw new Error("calibration_never_uses_legacy_validation");
     },
-    getTranscript: async () => prepared,
-    evaluate: async ({ evaluationState }) => {
-      if (!input.evaluationState || evaluationState !== input.evaluationState) {
+    getAnswerBlockEvidence: async () => prepared,
+    evaluate: async () => {
+      if (!input.evaluationState) {
         throw new Error("calibration_evaluation_state_mismatch");
       }
       return input.evaluator({
         fixture: input.fixture,
-        evaluationState,
+        evaluationState: input.evaluationState,
         runIndex: input.runIndex,
       });
     },
+    allowLegacyEvaluationForSyntheticCalibration: true,
   };
   const result = await generateFeedbackWorkflow(
     {
@@ -1084,7 +1087,12 @@ class CalibrationGenerationStore implements FeedbackGenerationStore {
     evaluation: FeedbackEvaluationResult;
   }): Promise<boolean> {
     if (!this.ownsActiveClaim(input)) return false;
-    if (isEvidenceLimitedFeedbackResult(input.evaluation)) return false;
+    if (
+      isEvidenceLimitedFeedbackResult(input.evaluation) ||
+      !("scores" in input.evaluation)
+    ) {
+      return false;
+    }
     this.completedEvaluation = input.evaluation;
     this.current = { ...this.current, status: "completed" };
     return true;
