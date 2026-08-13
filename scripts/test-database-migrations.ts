@@ -4845,7 +4845,8 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     if (deadlineCompletion.ok) {
       assert.equal(deadlineCompletion.lifecycle.state, "completed");
       assert.equal(deadlineCompletion.lifecycle.terminalReason, "time_limit");
-      assert.equal(deadlineCompletion.stats.totalTurns, 6);
+      assert.equal(deadlineCompletion.stats.totalTurns, 5);
+      assert.equal(deadlineCompletion.stats.userTurns, 3);
       assert.equal(deadlineCompletion.tier, "partial");
       assert.equal(deadlineCompletion.feedback.status, "pending");
       const replay = await stores[7]!.persist({
