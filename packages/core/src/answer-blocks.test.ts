@@ -364,6 +364,85 @@ test("semantic replay turns advance continuity without becoming evidence or cita
   );
 });
 
+test("an exact replay advances sequence without bridging accepted-evidence silence", () => {
+  const first = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    text: "I would prioritize working parents because coordination breaks down each week.",
+    startedAtMs: 0,
+    endedAtMs: 1_000,
+    audioDurationMs: 1_000,
+  });
+  const secondStartMs =
+    first.endedAtMs + ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS + 2_001;
+  const withoutReplaySecond = createAnswerBlockTurn({
+    sequence: 2,
+    eventId: "synthetic-writer:2",
+    text: "I would validate severity with interviews and task diaries before building.",
+    startedAtMs: secondStartMs,
+    endedAtMs: secondStartMs + 1_000,
+  });
+  const replay = {
+    ...createAnswerBlockTurn({
+      sequence: 2,
+      eventId: "synthetic-writer:2",
+      text: first.text,
+      startedAtMs: first.endedAtMs + ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS + 500,
+      endedAtMs: first.endedAtMs + ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS + 1_000,
+      audioDurationMs: 500,
+    }),
+    kind: "semantic_replay" as const,
+    replayOfEventId: first.eventId,
+  };
+  const withReplaySecond = {
+    ...withoutReplaySecond,
+    sequence: 3,
+    eventId: "synthetic-writer:3",
+  };
+
+  const withoutReplay = deriveCandidateAnswerBlocks([
+    first,
+    withoutReplaySecond,
+  ]);
+  const withReplay = deriveCandidateAnswerBlocks([
+    first,
+    replay,
+    withReplaySecond,
+  ]);
+
+  for (const derived of [withoutReplay, withReplay]) {
+    assert.equal(derived.eligible, true);
+    assert.equal(derived.blocks.length, 2);
+    assert.ok(
+      derived.boundaries.some(
+        (boundary) =>
+          boundary.kind === "long_silence" &&
+          boundary.afterEventId === first.eventId
+      )
+    );
+  }
+  assert.deepEqual(
+    projectAnswerBlocksForReviewability(withReplay.blocks),
+    projectAnswerBlocksForReviewability(withoutReplay.blocks)
+  );
+  assert.deepEqual(
+    withReplay.blocks.flatMap((block) =>
+      block.response.map(({ eventId }) => eventId)
+    ),
+    [first.eventId, withReplaySecond.eventId]
+  );
+  assert.deepEqual(
+    withReplay.blocks.map(({ startedAtMs, endedAtMs }) => ({
+      startedAtMs,
+      endedAtMs,
+    })),
+    withoutReplay.blocks.map(({ startedAtMs, endedAtMs }) => ({
+      startedAtMs,
+      endedAtMs,
+    }))
+  );
+});
+
 test("replay continuity rejects missing anchors, sequence gaps, timing conflicts, and cross-generation duplicates", () => {
   const first = createAnswerBlockTurn({
     sequence: 1,

@@ -176,7 +176,8 @@ export function deriveCandidateAnswerBlocks(
   const acceptedTurnsByEventId = new Map<string, CanonicalAnswerBlockTurn>();
   let currentPrompt: AnswerBlockSourceTurn[] = [];
   let current: PendingAnswerBlock | null = null;
-  let previousTurn: AnswerBlockCanonicalSpeechEvent | null = null;
+  let previousLedgerTurn: AnswerBlockCanonicalSpeechEvent | null = null;
+  let previousEvidenceTurn: CanonicalAnswerBlockTurn | null = null;
   let pendingReplayFamilyPromptEventId: string | null = null;
   let sessionEnded = false;
 
@@ -229,54 +230,63 @@ export function deriveCandidateAnswerBlocks(
       });
       issues.push({ code: "duplicate_event_id", eventId });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (eventId) eventIds.add(eventId);
 
     if (event.kind === "session_end") {
-      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+      if (
+        previousLedgerTurn &&
+        previousLedgerTurn.endedAtMs > event.occurredAtMs
+      ) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousTurn.eventId,
+          afterEventId: previousLedgerTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null,
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousTurn.eventId,
+          eventId: previousLedgerTurn.eventId,
         });
       }
       closeOrRecordBoundary("session_end", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: null,
         boundaryEventId: null,
       });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
     if (event.kind === "cutoff") {
-      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+      if (
+        previousLedgerTurn &&
+        previousLedgerTurn.endedAtMs > event.occurredAtMs
+      ) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousTurn.eventId,
+          afterEventId: previousLedgerTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null,
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousTurn.eventId,
+          eventId: previousLedgerTurn.eventId,
         });
       }
       closeOrRecordBoundary("session_cutoff", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: null,
         boundaryEventId: null,
       });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
@@ -286,14 +296,15 @@ export function deriveCandidateAnswerBlocks(
     const sequenceIssue = recordWriterSequence(event, lastSequenceByWriter);
     if (sequenceIssue) {
       closeOrRecordBoundary(sequenceIssue.boundary, {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: event.eventId,
         boundaryEventId: null,
       });
       if (sequenceIssue.fatal) {
         issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
         currentPrompt = [];
-        previousTurn = null;
+        previousLedgerTurn = null;
+        previousEvidenceTurn = null;
         pendingReplayFamilyPromptEventId = null;
       }
     }
@@ -315,30 +326,39 @@ export function deriveCandidateAnswerBlocks(
         issues.push({ code: "integrity_boundary", eventId: event.eventId });
       }
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
 
     if (!isCanonicalAnswerBlockSpeechEvent(event)) {
       closeOrRecordBoundary("canonicalization_failure", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: event.eventId || null,
         boundaryEventId: event.eventId || null,
       });
       issues.push({ code: "invalid_turn", eventId: event.eventId || null });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
 
-    const transition = previousTurn
-      ? classifyTurnTransition(previousTurn, event, maxContinuationGapMs)
+    const transitionCursor =
+      event.kind === "turn" ? previousEvidenceTurn : previousLedgerTurn;
+    const transition = transitionCursor
+      ? classifyTurnTransition(
+          transitionCursor,
+          event,
+          maxContinuationGapMs,
+          event.kind === "turn"
+        )
       : null;
     if (transition && transition !== sequenceIssue?.boundary) {
       closeOrRecordBoundary(transition, {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: transitionCursor?.eventId ?? null,
         beforeEventId: event.eventId,
         boundaryEventId: null,
       });
@@ -360,10 +380,10 @@ export function deriveCandidateAnswerBlocks(
         isExactFeedbackTranscriptReplayText(event.text, anchor.text);
       const validCandidateContinuity =
         !attemptedCandidateBridge ||
-        (previousTurn?.speaker === "user" &&
-          anchor?.eventId === previousTurn.eventId &&
-          previousTurn.writerId === event.writerId &&
-          previousTurn.writerGeneration === event.writerGeneration &&
+        (previousLedgerTurn?.speaker === "user" &&
+          anchor?.eventId === previousLedgerTurn.eventId &&
+          previousLedgerTurn.writerId === event.writerId &&
+          previousLedgerTurn.writerGeneration === event.writerGeneration &&
           sequenceIssue === null &&
           transition === null);
       if (!validAnchor || !validCandidateContinuity) {
@@ -372,16 +392,17 @@ export function deriveCandidateAnswerBlocks(
           eventId: event.eventId,
         });
         currentPrompt = [];
-        previousTurn = null;
+        previousLedgerTurn = null;
+        previousEvidenceTurn = null;
         continue;
       }
       if (
         event.speaker === "interviewer" &&
-        previousTurn?.speaker !== "interviewer"
+        previousLedgerTurn?.speaker !== "interviewer"
       ) {
         currentPrompt = [];
       }
-      previousTurn = event;
+      previousLedgerTurn = event;
       continue;
     }
     if (event.kind === "semantic_replay_boundary") {
@@ -400,7 +421,8 @@ export function deriveCandidateAnswerBlocks(
         pendingReplayFamilyPromptEventId = event.eventId;
       }
       if (event.speaker === "interviewer") currentPrompt = [];
-      previousTurn = event;
+      previousLedgerTurn = event;
+      previousEvidenceTurn = null;
       continue;
     }
 
@@ -409,7 +431,7 @@ export function deriveCandidateAnswerBlocks(
     if (event.speaker === "interviewer") {
       pendingReplayFamilyPromptEventId = null;
       currentPrompt =
-        previousTurn?.speaker === "interviewer" && transition === null
+        previousLedgerTurn?.speaker === "interviewer" && transition === null
           ? [...currentPrompt, source]
           : [source];
     } else {
@@ -423,7 +445,8 @@ export function deriveCandidateAnswerBlocks(
       if (current) current.response.push(source);
       else current = { prompt: [...currentPrompt], response: [source] };
     }
-    previousTurn = event;
+    previousLedgerTurn = event;
+    previousEvidenceTurn = event;
   }
 
   if (current) closeCurrent("input_exhausted");
@@ -471,7 +494,8 @@ function recordWriterSequence(
 function classifyTurnTransition(
   previous: AnswerBlockCanonicalSpeechEvent,
   current: AnswerBlockCanonicalSpeechEvent,
-  maxContinuationGapMs: number
+  maxContinuationGapMs: number,
+  includeContinuationGap: boolean
 ): AnswerBlockBoundaryKind | null {
   if (current.endedAtMs < previous.startedAtMs) return "invalid_timing";
   if (previous.speaker !== current.speaker) {
@@ -487,7 +511,10 @@ function classifyTurnTransition(
     return "writer_generation";
   }
   if (previous.section !== current.section) return "section_change";
-  if (current.startedAtMs - previous.endedAtMs > maxContinuationGapMs) {
+  if (
+    includeContinuationGap &&
+    current.startedAtMs - previous.endedAtMs > maxContinuationGapMs
+  ) {
     return "long_silence";
   }
   return null;

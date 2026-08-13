@@ -581,6 +581,112 @@ test("authenticated exact replay insertion preserves completion stats, tier, pro
   assert.equal(observations[0]!.mode, "evidence_limited");
 });
 
+test("authenticated exact replay cannot bridge long-silence blocks or change evaluator input", async () => {
+  const observations: Array<{
+    variant: "none" | "literal" | "normalized";
+    stats: SessionStats;
+    tier: string;
+    mode: "scored" | "evidence_limited";
+    providerInput: Array<{ eventId: string; text: string }>;
+  }> = [];
+
+  for (const variant of ["none", "literal", "normalized"] as const) {
+    const turns = createLongSilenceReplayWorkflowTurns(variant);
+    const validation = calculateValidatedSessionFromTurns(turns, {
+      sessionEndAt: turns.at(-1)!.endedAt!,
+    });
+    const prepared = prepareFeedbackTranscript(
+      turns.map((turn) => ({
+        eventId: turn.eventId ?? null,
+        contractVersion: turn.contractVersion,
+        speaker: turn.speaker,
+        text: turn.text,
+        deliveryState: turn.deliveryState,
+      })),
+      { requireContractV2: true }
+    );
+    const expectedCitations = prepared.transcript.map(({ eventId, text }) => ({
+      eventId,
+      text,
+    }));
+    if (variant !== "none") {
+      assert.equal(prepared.duplicateTurnsRemoved, 1);
+      assert.equal(
+        prepared.issues.filter(
+          (issue) => issue.replayKind === "authenticated_exact"
+        ).length,
+        1
+      );
+    }
+
+    const store = new MemoryGenerationStore(
+      record({
+        completionTier: validation.tier,
+        completionStats: validation.stats,
+      })
+    );
+    let observedMode: "scored" | "evidence_limited" | undefined;
+    let providerInput: Array<{ eventId: string; text: string }> | undefined;
+    const deps = dependencies(store, {
+      transcript: prepared,
+      async evaluate(input) {
+        observedMode = input.mode;
+        providerInput = input.transcript.map(({ eventId, text }) => ({
+          eventId,
+          text,
+        }));
+        assert.deepEqual(providerInput, expectedCitations);
+        throw new Error("synthetic_stop_after_silence_replay_observation");
+      },
+    });
+
+    await assert.rejects(
+      generateFeedbackWorkflow(input(EVENT_1), deps),
+      /synthetic_stop_after_silence_replay_observation/
+    );
+    assert.ok(observedMode);
+    assert.ok(providerInput);
+    observations.push({
+      variant,
+      stats: validation.stats,
+      tier: validation.tier,
+      mode: observedMode,
+      providerInput,
+    });
+  }
+
+  for (const observation of observations.slice(1)) {
+    assert.deepEqual(
+      {
+        stats: observation.stats,
+        tier: observation.tier,
+        mode: observation.mode,
+        providerText: observation.providerInput.map(({ text }) => text),
+      },
+      {
+        stats: observations[0]!.stats,
+        tier: observations[0]!.tier,
+        mode: observations[0]!.mode,
+        providerText: observations[0]!.providerInput.map(({ text }) => text),
+      }
+    );
+  }
+  assert.deepEqual(
+    observations[2]!.providerInput,
+    observations[1]!.providerInput
+  );
+  assert.deepEqual(observations[0]!.stats, {
+    totalTurns: 3,
+    userTurns: 2,
+    totalWords: 42,
+    durationSeconds: 11,
+    substantiveResponses: 1,
+    scoreableResponses: 1,
+  });
+  assert.equal(observations[0]!.tier, "partial");
+  assert.equal(observations[0]!.mode, "evidence_limited");
+});
+
 test("conflicting exact replay identity or timing and a true missing sequence fail closed before provider work", async () => {
   const conflictingReplay = createReplayContinuityWorkflowTurns("literal");
   const replayIndex = conflictingReplay.findIndex(
@@ -995,6 +1101,81 @@ function createReplayContinuityWorkflowTurns(
       sequence += 1;
     }
   }
+  return turns;
+}
+
+function createLongSilenceReplayWorkflowTurns(
+  replayVariant: "none" | "literal" | "normalized"
+): SessionValidationTurnInput[] {
+  const baseMs = Date.parse("2026-07-10T12:30:00.000Z");
+  const firstAnswer =
+    "I would prioritize working parents because weekly coordination pain is frequent severe and poorly served.";
+  const secondAnswer =
+    "I would validate that segment through interviews task diaries and recurring handoff completion before building.";
+  const hasReplay = replayVariant !== "none";
+  const turns: SessionValidationTurnInput[] = [
+    {
+      contractVersion: 2,
+      eventId: "silence-writer:1",
+      writerId: "silence-writer",
+      writerGeneration: 1,
+      sequence: 1,
+      speaker: "interviewer",
+      text: "Which customer problem would you prioritize and how would you validate it?",
+      startedAt: new Date(baseMs),
+      endedAt: new Date(baseMs + 1_000),
+      audioMs: 1_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+    {
+      contractVersion: 2,
+      eventId: "silence-writer:2",
+      writerId: "silence-writer",
+      writerGeneration: 1,
+      sequence: 2,
+      speaker: "user",
+      text: firstAnswer,
+      startedAt: new Date(baseMs + 2_000),
+      endedAt: new Date(baseMs + 3_000),
+      audioMs: 1_000,
+      section: "product_sense",
+      deliveryState: "delivered",
+    },
+  ];
+  if (hasReplay) {
+    turns.push({
+      contractVersion: 2,
+      eventId: "silence-writer:3",
+      writerId: "silence-writer",
+      writerGeneration: 1,
+      sequence: 3,
+      speaker: "user",
+      text:
+        replayVariant === "normalized"
+          ? firstAnswer.toUpperCase()
+          : firstAnswer,
+      startedAt: new Date(baseMs + 8_500),
+      endedAt: new Date(baseMs + 9_000),
+      audioMs: 500,
+      section: "product_sense",
+      deliveryState: "delivered",
+    });
+  }
+  turns.push({
+    contractVersion: 2,
+    eventId: `silence-writer:${hasReplay ? 4 : 3}`,
+    writerId: "silence-writer",
+    writerGeneration: 1,
+    sequence: hasReplay ? 4 : 3,
+    speaker: "user",
+    text: secondAnswer,
+    startedAt: new Date(baseMs + 10_001),
+    endedAt: new Date(baseMs + 11_001),
+    audioMs: 1_000,
+    section: "product_sense",
+    deliveryState: "delivered",
+  });
   return turns;
 }
 

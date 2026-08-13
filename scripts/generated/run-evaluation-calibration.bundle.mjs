@@ -6469,7 +6469,8 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
   const acceptedTurnsByEventId = /* @__PURE__ */ new Map();
   let currentPrompt = [];
   let current = null;
-  let previousTurn = null;
+  let previousLedgerTurn = null;
+  let previousEvidenceTurn = null;
   let pendingReplayFamilyPromptEventId = null;
   let sessionEnded = false;
   const closeCurrent = (closedBy, boundary = {
@@ -6513,53 +6514,56 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       });
       issues.push({ code: "duplicate_event_id", eventId });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (eventId) eventIds.add(eventId);
     if (event.kind === "session_end") {
-      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+      if (previousLedgerTurn && previousLedgerTurn.endedAtMs > event.occurredAtMs) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousTurn.eventId,
+          afterEventId: previousLedgerTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousTurn.eventId
+          eventId: previousLedgerTurn.eventId
         });
       }
       closeOrRecordBoundary("session_end", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: null,
         boundaryEventId: null
       });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
     if (event.kind === "cutoff") {
-      if (previousTurn && previousTurn.endedAtMs > event.occurredAtMs) {
+      if (previousLedgerTurn && previousLedgerTurn.endedAtMs > event.occurredAtMs) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousTurn.eventId,
+          afterEventId: previousLedgerTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousTurn.eventId
+          eventId: previousLedgerTurn.eventId
         });
       }
       closeOrRecordBoundary("session_cutoff", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: null,
         boundaryEventId: null
       });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
@@ -6568,14 +6572,15 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
     const sequenceIssue = recordWriterSequence(event, lastSequenceByWriter);
     if (sequenceIssue) {
       closeOrRecordBoundary(sequenceIssue.boundary, {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: event.eventId,
         boundaryEventId: null
       });
       if (sequenceIssue.fatal) {
         issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
         currentPrompt = [];
-        previousTurn = null;
+        previousLedgerTurn = null;
+        previousEvidenceTurn = null;
         pendingReplayFamilyPromptEventId = null;
       }
     }
@@ -6590,26 +6595,34 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         issues.push({ code: "integrity_boundary", eventId: event.eventId });
       }
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (!isCanonicalAnswerBlockSpeechEvent(event)) {
       closeOrRecordBoundary("canonicalization_failure", {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: previousLedgerTurn?.eventId ?? null,
         beforeEventId: event.eventId || null,
         boundaryEventId: event.eventId || null
       });
       issues.push({ code: "invalid_turn", eventId: event.eventId || null });
       currentPrompt = [];
-      previousTurn = null;
+      previousLedgerTurn = null;
+      previousEvidenceTurn = null;
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
-    const transition2 = previousTurn ? classifyTurnTransition(previousTurn, event, maxContinuationGapMs) : null;
+    const transitionCursor = event.kind === "turn" ? previousEvidenceTurn : previousLedgerTurn;
+    const transition2 = transitionCursor ? classifyTurnTransition(
+      transitionCursor,
+      event,
+      maxContinuationGapMs,
+      event.kind === "turn"
+    ) : null;
     if (transition2 && transition2 !== sequenceIssue?.boundary) {
       closeOrRecordBoundary(transition2, {
-        afterEventId: previousTurn?.eventId ?? null,
+        afterEventId: transitionCursor?.eventId ?? null,
         beforeEventId: event.eventId,
         boundaryEventId: null
       });
@@ -6622,20 +6635,21 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       const anchor = acceptedTurnsByEventId.get(event.replayOfEventId);
       const attemptedCandidateBridge = hadOpenCandidateBlock && event.speaker === "user";
       const validAnchor = anchor !== void 0 && anchor.speaker === event.speaker && anchor.writerId === event.writerId && anchor.writerGeneration === event.writerGeneration && isExactFeedbackTranscriptReplayText(event.text, anchor.text);
-      const validCandidateContinuity = !attemptedCandidateBridge || previousTurn?.speaker === "user" && anchor?.eventId === previousTurn.eventId && previousTurn.writerId === event.writerId && previousTurn.writerGeneration === event.writerGeneration && sequenceIssue === null && transition2 === null;
+      const validCandidateContinuity = !attemptedCandidateBridge || previousLedgerTurn?.speaker === "user" && anchor?.eventId === previousLedgerTurn.eventId && previousLedgerTurn.writerId === event.writerId && previousLedgerTurn.writerGeneration === event.writerGeneration && sequenceIssue === null && transition2 === null;
       if (!validAnchor || !validCandidateContinuity) {
         issues.push({
           code: "invalid_replay_continuity",
           eventId: event.eventId
         });
         currentPrompt = [];
-        previousTurn = null;
+        previousLedgerTurn = null;
+        previousEvidenceTurn = null;
         continue;
       }
-      if (event.speaker === "interviewer" && previousTurn?.speaker !== "interviewer") {
+      if (event.speaker === "interviewer" && previousLedgerTurn?.speaker !== "interviewer") {
         currentPrompt = [];
       }
-      previousTurn = event;
+      previousLedgerTurn = event;
       continue;
     }
     if (event.kind === "semantic_replay_boundary") {
@@ -6654,14 +6668,15 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         pendingReplayFamilyPromptEventId = event.eventId;
       }
       if (event.speaker === "interviewer") currentPrompt = [];
-      previousTurn = event;
+      previousLedgerTurn = event;
+      previousEvidenceTurn = null;
       continue;
     }
     const source = toSourceTurn(event);
     acceptedTurnsByEventId.set(event.eventId, event);
     if (event.speaker === "interviewer") {
       pendingReplayFamilyPromptEventId = null;
-      currentPrompt = previousTurn?.speaker === "interviewer" && transition2 === null ? [...currentPrompt, source] : [source];
+      currentPrompt = previousLedgerTurn?.speaker === "interviewer" && transition2 === null ? [...currentPrompt, source] : [source];
     } else {
       if (pendingReplayFamilyPromptEventId) {
         issues.push({
@@ -6673,7 +6688,8 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       if (current) current.response.push(source);
       else current = { prompt: [...currentPrompt], response: [source] };
     }
-    previousTurn = event;
+    previousLedgerTurn = event;
+    previousEvidenceTurn = event;
   }
   if (current) closeCurrent("input_exhausted");
   return {
@@ -6695,7 +6711,7 @@ function recordWriterSequence(event, lastSequenceByWriter) {
     fatal: true
   };
 }
-function classifyTurnTransition(previous, current, maxContinuationGapMs) {
+function classifyTurnTransition(previous, current, maxContinuationGapMs, includeContinuationGap) {
   if (current.endedAtMs < previous.startedAtMs) return "invalid_timing";
   if (previous.speaker !== current.speaker) {
     return current.speaker === "interviewer" ? "interviewer_follow_up" : "speaker_change";
@@ -6705,7 +6721,7 @@ function classifyTurnTransition(previous, current, maxContinuationGapMs) {
     return "writer_generation";
   }
   if (previous.section !== current.section) return "section_change";
-  if (current.startedAtMs - previous.endedAtMs > maxContinuationGapMs) {
+  if (includeContinuationGap && current.startedAtMs - previous.endedAtMs > maxContinuationGapMs) {
     return "long_silence";
   }
   return null;

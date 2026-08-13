@@ -116,7 +116,9 @@ than finalized transcript-row count. The provider-free derivation preserves
 exact source references and makes equivalent 1/2/5/10 STT segmentation produce
 the same completion statistics and feedback tier. Historical sessions without
 canonical identity retain the legacy row-based calculation.
-Authenticated exact replay rows advance continuity without evidence, while a
+Authenticated exact replay rows advance sequence continuity without evidence.
+They do not advance accepted-evidence timing or bridge a long-silence boundary.
+A
 non-exact replay-family omission that can affect candidate evidence or prompt
 binding, or conflicting replay continuity, makes the snapshot ineligible with
 `transcript_integrity_degraded` and no evaluator call.
