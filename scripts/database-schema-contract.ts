@@ -61,6 +61,10 @@ export const FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT =
   "b4ae3d866bb1c0f21f7a796848d5515012b31769c5ad12d9e95632ce6e2ac029";
 export const DIMENSION_COVERAGE_SCHEMA_FINGERPRINT =
   "d6b725447d079a953d4b688adcc1dc921d6f661dec30cf8026779d87fe152f6b";
+// Refreshed by the clean PostgreSQL migration acceptance test whenever the
+// canonical focused-practice contract changes.
+export const FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT =
+  "cabe0c6d65698adce1ca47b84ac13633239c897a1ff4ab6da82f777a1177a5fb";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

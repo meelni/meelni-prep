@@ -381,6 +381,62 @@ export interface DimensionCoverageFeedbackResult {
   summary: string;
 }
 
+export interface DimensionCoveragePracticeFocusSource {
+  dimension: FeedbackDimension;
+  coverage: Exclude<DimensionCoverageState, "absent">;
+  facetCode: string;
+  facetLabel: string;
+  answerBlockRef: string;
+  evidenceText: string;
+}
+
+/**
+ * Select one grounded SAV-420 practice focus without consulting scores.
+ * Partial scorecards prefer a grounded incomplete dimension; coaching keeps
+ * the canonical dimension/facet/answer-block order used by presentation.
+ */
+export function selectDimensionCoveragePracticeFocus(
+  feedback: DimensionCoverageFeedbackResult
+): DimensionCoveragePracticeFocusSource | null {
+  if (
+    feedback.mode !== "partial_scorecard" &&
+    feedback.mode !== "coaching_review"
+  ) {
+    return null;
+  }
+  const candidates = FEEDBACK_DIMENSIONS.flatMap((dimension) => {
+    const source = feedback.dimensions[dimension];
+    if (source.coverage === "absent") return [];
+    const coverage: Exclude<DimensionCoverageState, "absent"> = source.coverage;
+    return source.evidence.map((evidence) => ({
+      dimension,
+      coverage,
+      facetCode: evidence.facetCode,
+      facetLabel: evidence.facetLabel,
+      answerBlockRef: evidence.answerBlockRef,
+      evidenceText: evidence.evidenceText,
+    }));
+  });
+  candidates.sort(
+    (left, right) =>
+      (feedback.mode === "partial_scorecard"
+        ? coveragePracticePriority(left.coverage) -
+          coveragePracticePriority(right.coverage)
+        : 0) ||
+      FEEDBACK_DIMENSIONS.indexOf(left.dimension) -
+        FEEDBACK_DIMENSIONS.indexOf(right.dimension) ||
+      left.facetCode.localeCompare(right.facetCode) ||
+      left.answerBlockRef.localeCompare(right.answerBlockRef)
+  );
+  return candidates[0] ?? null;
+}
+
+function coveragePracticePriority(
+  coverage: Exclude<DimensionCoverageState, "absent">
+): number {
+  return coverage === "partial" ? 0 : 1;
+}
+
 export type DimensionCoverageParseErrorCode =
   | "invalid_shape"
   | "version_mismatch"

@@ -1,6 +1,6 @@
 # Focused-Practice Plan Contract
 
-Status: provider-neutral Phase 1 core contract implemented for SAV-202; Phase 2a attempt lifecycle and workflow seam implemented in SAV-269; no database, API, or product-surface integration yet
+Status: provider-neutral v1 scored and additive v2 scoreless contracts implemented
 
 ## Purpose
 
@@ -97,16 +97,33 @@ The closed v1 reasons are:
 
 Unavailable results contain no synthesized fallback plan.
 
-## Scope and follow-up
+## Scope
 
-Phase 1 adds only the provider-free core catalog, resolver, package exports,
-fixtures, tests, and this contract. It does not create an attempt record, API,
-page, interview session, model call, LiveKit room, background job, credit-ledger
-entry, analytics event, or feature-flag change.
+The plan contracts are consumed by the durable focused-practice attempt,
+authenticated API, and feedback workspace. They never create an interview
+session, call a model, start a LiveKit room, enqueue a background job, mutate a
+credit ledger, emit analytics, or change a feature flag.
 
-SAV-269 Phase 2a now defines the versioned attempt snapshot, idempotent start
-and completion behavior, authenticated workflow/repository seam, candidate
-revision-or-reflection requirement, and non-scored self-review comparison. It
-does not persist an attempt or expose an API or UI. A later SAV-202 slice must
-implement the durable adapter and database contract before the feedback
-workspace consumes it.
+## Additive scoreless v2
+
+SAV-418 adds `focused-practice-plan.v2` with template catalog
+`focused-practice-templates.v2`. V1 remains unchanged for accepted scored
+Feedback v2 sources. V2 accepts exactly one trusted closed identity from the
+canonical review result:
+
+- evidence-limited improvement: PM dimension, signal code, and matching action
+  code; or
+- dimension-coverage focus: PM dimension, round-specific facet code, and the
+  fixed server action `reinforce_grounded_rubric_move`.
+
+The plan contains no score, overall score, weakest dimension, confidence,
+transcript reference, citation, evidence quote, provider text, or arbitrary
+exercise copy. Its versioned template identity is derived only from the PM
+round and validated closed focus identity. Customer copy is selected from the
+server catalog; provider ordering and transcript segmentation cannot author or
+change it.
+
+V2 is available only after strict evidence validation has selected a grounded
+partial-scorecard or coaching-review focus. Unknown identities, mismatched
+signal/action dimensions, unsupported round facets, missing questions, and
+unregistered templates fail closed with no synthesized fallback plan.
