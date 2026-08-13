@@ -290,6 +290,7 @@ test("durable turns do not synthesize canonical activation during terminalizatio
   const validTurns = Array.from({ length: 20 }, (_, index) => ({
     contractVersion: 2,
     eventId: `writer-1:${index + 1}`,
+    writerId: "writer-1",
     writerGeneration: 1,
     sequence: index + 1,
     speaker: index % 2 === 0 ? "user" : "interviewer",
@@ -299,6 +300,9 @@ test("durable turns do not synthesize canonical activation during terminalizatio
         : "Tell me more about the evidence and tradeoffs behind that decision.",
     startedAt: new Date(Date.UTC(2026, 6, 10, 7, index)),
     endedAt: new Date(Date.UTC(2026, 6, 10, 7, index, 30)),
+    audioMs: 30_000,
+    section: "product_sense",
+    deliveryState: "delivered" as const,
   }));
   let lifecycle = {
     state: "connecting",

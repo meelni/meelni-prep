@@ -4845,7 +4845,8 @@ async function verifyTranscriptIngest(sql: postgres.Sql, databaseUrl: string) {
     if (deadlineCompletion.ok) {
       assert.equal(deadlineCompletion.lifecycle.state, "completed");
       assert.equal(deadlineCompletion.lifecycle.terminalReason, "time_limit");
-      assert.equal(deadlineCompletion.stats.totalTurns, 6);
+      assert.equal(deadlineCompletion.stats.totalTurns, 5);
+      assert.equal(deadlineCompletion.stats.userTurns, 3);
       assert.equal(deadlineCompletion.tier, "partial");
       assert.equal(deadlineCompletion.feedback.status, "pending");
       const replay = await stores[7]!.persist({
@@ -5229,7 +5230,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
           ${`reconnect-integrity-marker-${caseIndex}`},
           ${`reconnect-integrity-writer-${caseIndex}`},
           1,
-          99,
+          6,
           ${roomName},
           ${testCase.interruption.speaker},
           '2026-07-10T08:00:00.000Z'::timestamptz,

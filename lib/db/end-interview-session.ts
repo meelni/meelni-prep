@@ -144,19 +144,28 @@ export async function finalizeInterviewSession(
           .select({
             contractVersion: transcriptTurn.contractVersion,
             eventId: transcriptTurn.eventId,
+            writerId: transcriptTurn.writerId,
             writerGeneration: transcriptTurn.writerGeneration,
             sequence: transcriptTurn.sequence,
             speaker: transcriptTurn.speaker,
             text: transcriptTurn.text,
             startedAt: transcriptTurn.startedAt,
             endedAt: transcriptTurn.endedAt,
+            audioMs: transcriptTurn.audioMs,
+            section: transcriptTurn.section,
+            deliveryState: transcriptTurn.deliveryState,
           })
           .from(transcriptTurn)
           .where(eq(transcriptTurn.sessionId, input.sessionId))
           .orderBy(...transcriptChronologicalOrder()),
         tx
           .select({
+            eventId: transcriptInterruptionMarker.eventId,
+            writerId: transcriptInterruptionMarker.writerId,
+            writerGeneration: transcriptInterruptionMarker.writerGeneration,
+            sequence: transcriptInterruptionMarker.sequence,
             speaker: transcriptInterruptionMarker.speaker,
+            occurredAt: transcriptInterruptionMarker.occurredAt,
             reason: transcriptInterruptionMarker.reason,
           })
           .from(transcriptInterruptionMarker)
@@ -246,7 +255,10 @@ export async function finalizeInterviewSession(
         committedSequence !== undefined && turn.sequence <= committedSequence
       );
     });
-    const baseValidation = calculateValidatedSessionFromTurns(turns);
+    const baseValidation = calculateValidatedSessionFromTurns(turns, {
+      interruptions,
+      sessionEndAt: cutoffAt,
+    });
     const degradingInterruptionCount = interruptions.filter(
       transcriptInterruptionDegradesCandidateEvidence
     ).length;

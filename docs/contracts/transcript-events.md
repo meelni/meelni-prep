@@ -258,6 +258,10 @@ feedback transcript preparation boundary. Malformed events fail closed,
 semantic replays are counted once, and sessions without usable user speech or
 with high-confidence instruction-injection content become insufficient. The
 same prepared event set feeds evaluation so counting and evidence cannot drift.
+The validator then derives [candidate answer blocks](./answer-blocks.md) as the
+stable reviewability unit without rewriting the ledger. Exact canonical event
+IDs and text remain citation authority, while equivalent candidate speech split
+across adjacent finalized rows produces invariant completion inputs.
 Any bounded one-to-three-token structural prefix before a supported delimiter
 shares the exact normalized answer-suffix family without interpreting the
 prefix vocabulary. A prefix-only family contributes at most two turns—even for

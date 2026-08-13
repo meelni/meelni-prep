@@ -205,10 +205,16 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
     turns.map((turn) => ({
       eventId: turn.event_id,
       contractVersion: turn.contract_version,
+      writerId: turn.writer_id,
+      writerGeneration: turn.writer_generation,
+      sequence: turn.sequence,
       speaker: turn.speaker,
       text: turn.text,
       startedAt: new Date(turn.started_at),
       endedAt: new Date(turn.ended_at),
+      audioMs: turn.audio_duration_ms,
+      section: turn.section,
+      deliveryState: turn.delivery_state,
     }))
   );
   if (fixture.id === "spoken-evidence-limited") {

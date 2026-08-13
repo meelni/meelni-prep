@@ -9,6 +9,7 @@ Good candidates:
 - [interview credit recovery](./interview-credit-recovery.md);
 - [LiveKit room metadata](./livekit-room-metadata.md);
 - [versioned transcript events](./transcript-events.md);
+- [derived candidate answer blocks](./answer-blocks.md);
 - [feedback v2 evidence and response shape](./feedback-v2.md);
 - [deterministic drill recommendations from validated Feedback v2](./drill-recommendations.md);
 - [deterministic focused-practice plans from accepted recommendations](./focused-practice-plans.md);
