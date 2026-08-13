@@ -5230,7 +5230,7 @@ async function verifyReconnectTimeoutRuntimeIntegrity(
           ${`reconnect-integrity-marker-${caseIndex}`},
           ${`reconnect-integrity-writer-${caseIndex}`},
           1,
-          99,
+          6,
           ${roomName},
           ${testCase.interruption.speaker},
           '2026-07-10T08:00:00.000Z'::timestamptz,
