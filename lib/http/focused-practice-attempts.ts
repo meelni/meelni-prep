@@ -6,6 +6,7 @@ import {
 } from "@meelni/core";
 import { NextResponse } from "next/server";
 
+import { trackFocusedPracticeStarted } from "@/lib/analytics/feedback-quality";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { drizzleFocusedPracticeAttemptRepository } from "@/lib/db/focused-practice-attempts";
 import { FEATURE_GATES } from "@/lib/feature-flags/gates";
@@ -37,6 +38,10 @@ export interface FocusedPracticeRouteDependencies
   extends FocusedPracticeAttemptWorkflowDependencies {
   authenticate(): Promise<AuthenticationResult>;
   resolveRelaunchAccess(request: Request): Promise<boolean>;
+  trackPracticeStarted?(input: {
+    userId: string;
+    attempt: AnyFocusedPracticeAttempt;
+  }): Promise<void>;
 }
 
 export const focusedPracticeRouteDependencies: FocusedPracticeRouteDependencies =
@@ -47,6 +52,7 @@ export const focusedPracticeRouteDependencies: FocusedPracticeRouteDependencies 
     createAttemptId: randomUUID,
     authenticate: authenticateRequest,
     resolveRelaunchAccess: resolveRequestRelaunchAccess,
+    trackPracticeStarted: trackFocusedPracticeStarted,
   };
 
 export async function handleStartFocusedPracticeAttempt(
@@ -69,6 +75,16 @@ export async function handleStartFocusedPracticeAttempt(
     },
     deps
   );
+  if (result.ok && result.disposition === "created") {
+    try {
+      await deps.trackPracticeStarted?.({
+        userId: authentication.userId,
+        attempt: result.attempt,
+      });
+    } catch {
+      // Optional analytics cannot change durable focused-practice semantics.
+    }
+  }
   return startResultResponse(result);
 }
 

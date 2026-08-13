@@ -6365,6 +6365,38 @@ var FEEDBACK_OUTCOME_REASONS = [
 ];
 var FEEDBACK_OUTCOME_REASON_SET = new Set(FEEDBACK_OUTCOME_REASONS);
 
+// packages/core/src/feedback-quality.ts
+var FEEDBACK_QUALITY_SIGNAL_RATE_WINDOW_SECONDS = 60 * 60;
+var FEEDBACK_QUALITY_OUTCOMES = [
+  "full_scorecard",
+  "partial_scorecard",
+  "coaching_review"
+];
+var FEEDBACK_QUALITY_RESPONSES = ["helpful", "not_helpful"];
+var FEEDBACK_QUALITY_COMMON_REASONS = [
+  "not_specific_enough",
+  "evidence_did_not_match",
+  "next_step_unclear",
+  "too_much_to_use"
+];
+var FEEDBACK_QUALITY_SCORE_REASONS = [
+  "score_explanation_unclear"
+];
+var FEEDBACK_QUALITY_COACHING_REASONS = [
+  "score_withholding_unclear"
+];
+var FEEDBACK_QUALITY_REASONS = [
+  ...FEEDBACK_QUALITY_COMMON_REASONS,
+  ...FEEDBACK_QUALITY_SCORE_REASONS,
+  ...FEEDBACK_QUALITY_COACHING_REASONS
+];
+var OUTCOME_SET = new Set(FEEDBACK_QUALITY_OUTCOMES);
+var RESPONSE_SET = new Set(FEEDBACK_QUALITY_RESPONSES);
+var REASON_SET = new Set(FEEDBACK_QUALITY_REASONS);
+var COMMON_REASON_SET = new Set(FEEDBACK_QUALITY_COMMON_REASONS);
+var SCORE_REASON_SET = new Set(FEEDBACK_QUALITY_SCORE_REASONS);
+var COACHING_REASON_SET = new Set(FEEDBACK_QUALITY_COACHING_REASONS);
+
 // packages/core/src/feedback-eligibility.ts
 var FEEDBACK_ELIGIBILITY_POLICY = {
   partial: {
@@ -18163,6 +18195,9 @@ __export(schema_exports, {
   creditTransaction: () => creditTransaction,
   creditTransactionRelations: () => creditTransactionRelations,
   feedback: () => feedback,
+  feedbackQualitySignal: () => feedbackQualitySignal,
+  feedbackQualitySignalRateLimit: () => feedbackQualitySignalRateLimit,
+  feedbackQualitySignalRelations: () => feedbackQualitySignalRelations,
   feedbackRelations: () => feedbackRelations,
   focusedPracticeAttempt: () => focusedPracticeAttempt,
   focusedPracticeAttemptRelations: () => focusedPracticeAttemptRelations,
@@ -19980,6 +20015,88 @@ var feedback = pgTable(
     )
   })
 );
+var feedbackQualitySignal = pgTable(
+  "feedback_quality_signal",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => appUser.id, { onDelete: "cascade" }).notNull(),
+    sessionId: uuid("session_id").references(() => interviewSession.id, { onDelete: "cascade" }).notNull(),
+    feedbackId: uuid("feedback_id").references(() => feedback.id, { onDelete: "cascade" }).notNull(),
+    contractVersion: text("contract_version").notNull(),
+    reviewOutcome: text("review_outcome").$type().notNull(),
+    response: text("response").$type().notNull(),
+    reason: text("reason").$type(),
+    revision: integer("revision").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    ownerFeedbackUnique: uniqueIndex(
+      "feedback_quality_signal_owner_feedback_idx"
+    ).on(table.userId, table.feedbackId),
+    sessionOwnerForeignKey: foreignKey({
+      name: "feedback_quality_signal_session_owner_fk",
+      columns: [table.sessionId, table.userId],
+      foreignColumns: [interviewSession.id, interviewSession.userId]
+    }).onDelete("cascade"),
+    feedbackSessionForeignKey: foreignKey({
+      name: "feedback_quality_signal_feedback_session_fk",
+      columns: [table.feedbackId, table.sessionId],
+      foreignColumns: [feedback.id, feedback.sessionId]
+    }).onDelete("cascade"),
+    contractCheck: check(
+      "feedback_quality_signal_contract_check",
+      sql`${table.contractVersion} = 'feedback-quality-signal.v1'`
+    ),
+    outcomeCheck: check(
+      "feedback_quality_signal_outcome_check",
+      sql`${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')`
+    ),
+    responseCheck: check(
+      "feedback_quality_signal_response_check",
+      sql`${table.response} IN ('helpful', 'not_helpful')`
+    ),
+    selectionCheck: check(
+      "feedback_quality_signal_selection_check",
+      sql`(
+        ${table.response} = 'helpful' AND ${table.reason} IS NULL
+      ) OR (
+        ${table.response} = 'not_helpful' AND (
+          ${table.reason} IS NULL OR
+          ${table.reason} IN ('not_specific_enough', 'evidence_did_not_match', 'next_step_unclear', 'too_much_to_use') OR
+          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
+          (${table.reviewOutcome} = 'coaching_review' AND ${table.reason} = 'score_withholding_unclear')
+        )
+      )`
+    ),
+    revisionCheck: check(
+      "feedback_quality_signal_revision_check",
+      sql`${table.revision} >= 1`
+    ),
+    timestampCheck: check(
+      "feedback_quality_signal_timestamp_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`
+    ),
+    ownerUpdatedIdx: index("feedback_quality_signal_owner_updated_idx").on(
+      table.userId,
+      table.updatedAt
+    )
+  })
+);
+var feedbackQualitySignalRateLimit = pgTable(
+  "feedback_quality_signal_rate_limit",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).array().default(sql`ARRAY[]::timestamptz[]`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    capacityCheck: check(
+      "feedback_quality_signal_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 20`
+    )
+  })
+);
 var focusedPracticeAttempt = pgTable(
   "focused_practice_attempt",
   {
@@ -20453,6 +20570,23 @@ var focusedPracticeAttemptRelations = relations(
     })
   })
 );
+var feedbackQualitySignalRelations = relations(
+  feedbackQualitySignal,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [feedbackQualitySignal.userId],
+      references: [appUser.id]
+    }),
+    session: one(interviewSession, {
+      fields: [feedbackQualitySignal.sessionId],
+      references: [interviewSession.id]
+    }),
+    sourceFeedback: one(feedback, {
+      fields: [feedbackQualitySignal.feedbackId],
+      references: [feedback.id]
+    })
+  })
+);
 var transcriptTurnRelations = relations(transcriptTurn, ({ one }) => ({
   session: one(interviewSession, {
     fields: [transcriptTurn.sessionId],
@@ -20519,6 +20653,7 @@ var transcriptEvidenceWriterCutoffRelations = relations(
 );
 var appUserRelations = relations(appUser, ({ many, one }) => ({
   sessions: many(interviewSession),
+  feedbackQualitySignals: many(feedbackQualitySignal),
   focusedPracticeAttempts: many(focusedPracticeAttempt),
   settings: one(userSettings, {
     fields: [appUser.id],
@@ -21185,7 +21320,9 @@ var ALLOWED_PROPERTIES = {
     "session_age_days",
     "has_feedback"
   ],
-  feedback_viewed: ["feedback_available", "overall_score"],
+  feedback_viewed: ["outcome"],
+  feedback_helpfulness_responded: ["outcome", "response", "reason"],
+  feedback_practice_started: ["outcome", "practice_kind"],
   chart_interacted: ["chart_type", "interaction_type", "time_spent_seconds"],
   competency_radar_viewed: [
     "competencies_count",

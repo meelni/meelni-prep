@@ -3,7 +3,7 @@
 ## Account export
 
 `GET /api/user/export` requires a server-verified authenticated user and returns
-one JSON attachment scoped to that user. The payload version is `1.3.0` and is
+one JSON attachment scoped to that user. The payload version is `1.4.0` and is
 defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
@@ -13,6 +13,8 @@ The export includes:
 - bookmarks, practice sets, frozen legacy achievement records, and saved progress insights;
 - durable focused-practice attempts, including their versioned plan, grounded
   source finding, and candidate-authored completion when present;
+- current feedback-quality responses using only contract version, server-derived
+  outcome, closed response/reason, revision, and timestamps;
 - account-linked contact submissions with explicit content, receipt, persistence,
   triage, and created-time fields;
 - subscription, usage, payment summaries, and credit-ledger summaries.
@@ -51,7 +53,7 @@ Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
 
 Meelni no longer writes or derives streaks and achievements in active product
-workflows. Export schema `1.3.0` continues to return any historical values so a
+workflows. Export schema `1.4.0` continues to return any historical values so a
 product retirement does not silently discard user data. The legacy columns and
 table also remain covered by account deletion. Physical removal requires a
 separate retention decision, a versioned export-contract change, and a
@@ -101,8 +103,10 @@ The unconfirmed `DELETE` method returns `405`. Provider/admin error details are
 never returned to the client or stored in the tombstone; only stable categories
 are persisted.
 
-Application cleanup removes focused-practice attempts before their referenced
-feedback/session graph and removes `user_insights` before its referenced interview
+Application cleanup removes feedback-quality signals and their operational
+rate rows, then focused-practice attempts, before the referenced feedback/session
+graph. A durable deletion tombstone prevents a late quality mutation from
+recreating either state. Cleanup also removes `user_insights` before its referenced interview
 session because `user_insights.last_session_id` is a `NO ACTION` foreign key.
 The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter

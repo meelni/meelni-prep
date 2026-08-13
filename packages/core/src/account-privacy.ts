@@ -1,4 +1,4 @@
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = "1.3.0" as const;
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = "1.4.0" as const;
 export const ACCOUNT_DELETION_RECENT_AUTH_WINDOW_MS = 10 * 60 * 1000;
 
 export type AccountDeletionAuthDecision =
@@ -80,6 +80,7 @@ export interface AccountDataExportV1 {
     bookmarks: Array<Record<string, unknown>>;
     practiceSets: Array<Record<string, unknown>>;
     focusedPracticeAttempts: Array<Record<string, unknown>>;
+    feedbackQualitySignals: Array<Record<string, unknown>>;
     /** Frozen legacy rows retained for export-schema 1.0.0 compatibility. */
     achievements: Array<Record<string, unknown>>;
     insights: Array<Record<string, unknown>>;

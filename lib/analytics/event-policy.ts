@@ -98,7 +98,9 @@ const ALLOWED_PROPERTIES: Record<string, readonly string[]> = {
     "session_age_days",
     "has_feedback",
   ],
-  feedback_viewed: ["feedback_available", "overall_score"],
+  feedback_viewed: ["outcome"],
+  feedback_helpfulness_responded: ["outcome", "response", "reason"],
+  feedback_practice_started: ["outcome", "practice_kind"],
   chart_interacted: ["chart_type", "interaction_type", "time_spent_seconds"],
   competency_radar_viewed: [
     "competencies_count",
@@ -149,6 +151,36 @@ const EVENT_POLICY_ALIASES: Record<string, string> = Object.fromEntries(
 
 const PATH_KEYS = new Set(["destination", "page"]);
 const ERROR_KEYS = new Set(["error_code"]);
+const CLOSED_VALUES: Record<string, ReadonlySet<string>> = {
+  "feedback_viewed.outcome": new Set([
+    "full_scorecard",
+    "partial_scorecard",
+    "coaching_review",
+  ]),
+  "feedback_helpfulness_responded.outcome": new Set([
+    "full_scorecard",
+    "partial_scorecard",
+    "coaching_review",
+  ]),
+  "feedback_helpfulness_responded.response": new Set([
+    "helpful",
+    "not_helpful",
+  ]),
+  "feedback_helpfulness_responded.reason": new Set([
+    "not_provided",
+    "not_specific_enough",
+    "evidence_did_not_match",
+    "next_step_unclear",
+    "too_much_to_use",
+    "score_explanation_unclear",
+    "score_withholding_unclear",
+  ]),
+  "feedback_practice_started.outcome": new Set([
+    "partial_scorecard",
+    "coaching_review",
+  ]),
+  "feedback_practice_started.practice_kind": new Set(["focused_practice"]),
+};
 
 export function sanitizeAnalyticsEventProperties(
   event: string,
@@ -159,7 +191,7 @@ export function sanitizeAnalyticsEventProperties(
   for (const key of ALLOWED_PROPERTIES[policyEvent] ?? []) {
     const value = properties[key];
     if (value === undefined || value === null) continue;
-    const normalized = normalizeValue(key, value);
+    const normalized = normalizeValue(policyEvent, key, value);
     if (normalized !== null) output[key] = normalized;
   }
   return output;
@@ -188,6 +220,7 @@ export function sanitizeAnalyticsTraits(
 }
 
 function normalizeValue(
+  event: string,
   key: string,
   value: unknown
 ): string | number | boolean | null {
@@ -199,6 +232,10 @@ function normalizeValue(
   }
   if (PATH_KEYS.has(key)) return sanitizeAnalyticsPath(String(value)) ?? null;
   if (ERROR_KEYS.has(key)) return toSafeAnalyticsErrorCode(value);
+  const closedValues = CLOSED_VALUES[`${event}.${key}`];
+  if (closedValues) {
+    return typeof value === "string" && closedValues.has(value) ? value : null;
+  }
   return normalizeToken(value);
 }
 

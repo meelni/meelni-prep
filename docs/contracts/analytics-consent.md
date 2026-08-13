@@ -46,6 +46,16 @@ Every event uses an explicit property allowlist. Authenticated identities use an
 
 Lifecycle-owned server workflows await consent lookup and optional PostHog delivery after their durable billing mutation commits. Provider failure remains non-fatal, but delivery is not abandoned as an unobserved background promise when a serverless request returns.
 
+Feedback quality uses three content-free event contracts. `feedback_viewed`
+contains only the canonical actionable review outcome and emits once only when
+consent predates that mounted presentation; a later opt-in is not retroactive.
+`feedback_helpfulness_responded` contains only outcome, closed response, and
+closed reason (or `not_provided`) after a durable created/updated transition.
+`feedback_practice_started` contains only partial/coaching outcome and the
+closed `focused_practice` kind after a newly created v2 attempt. Replays,
+resumes, conflicts, unavailable reviews, and provider failures emit nothing.
+First-party current rows—not PostHog events—remain the helpfulness-rate source.
+
 ## Versioning
 
 Increasing `ANALYTICS_CONSENT_POLICY_VERSION` invalidates prior acceptance and re-prompts. A prior decline remains effective until explicitly changed.

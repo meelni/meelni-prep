@@ -11,6 +11,27 @@ const nativeFetch = window.fetch.bind(window);
 let comparisonRequests = 0;
 let focusedPracticeCompleted = false;
 const bookmarkedQuestionIds = new Set<string>();
+type SyntheticQualityOutcome =
+  | "full_scorecard"
+  | "partial_scorecard"
+  | "coaching_review";
+type SyntheticQualitySignal = {
+  contractVersion: "feedback-quality-signal.v1";
+  outcome: SyntheticQualityOutcome;
+  response: "helpful" | "not_helpful";
+  reason:
+    | "not_specific_enough"
+    | "evidence_did_not_match"
+    | "next_step_unclear"
+    | "too_much_to_use"
+    | "score_explanation_unclear"
+    | "score_withholding_unclear"
+    | null;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+const qualitySignals = new Map<string, SyntheticQualitySignal>();
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -21,6 +42,7 @@ function json(body: unknown, status = 200): Response {
 
 export function installSyntheticFetch() {
   focusedPracticeCompleted = false;
+  qualitySignals.clear();
   window.fetch = async (input, init) => {
     const href =
       typeof input === "string"
@@ -121,6 +143,71 @@ export function installSyntheticFetch() {
         comparison: comparisonFor(body.sessionId1 ?? ""),
       });
     }
+    const qualityMatch = url.pathname.match(
+      /^\/api\/feedback\/([^/]+)\/quality-signal$/
+    );
+    if (qualityMatch) {
+      const sessionId = decodeURIComponent(qualityMatch[1] ?? "");
+      const outcome = qualityOutcomeForSession(sessionId);
+      if (!outcome) return json({ error: "not_found" }, 404);
+      const current = qualitySignals.get(sessionId) ?? null;
+      if (!init?.method || init.method === "GET") {
+        return json({ outcome, signal: current });
+      }
+      if (init.method === "PUT") {
+        const body =
+          typeof init.body === "string"
+            ? (JSON.parse(init.body) as {
+                contractVersion?: string;
+                response?: string;
+                reason?: SyntheticQualitySignal["reason"];
+                expectedRevision?: number | null;
+              })
+            : {};
+        if (
+          body.contractVersion !== "feedback-quality-signal.v1" ||
+          (body.response !== "helpful" && body.response !== "not_helpful")
+        ) {
+          return json({ error: "invalid_request" }, 400);
+        }
+        if (
+          current &&
+          current.response === body.response &&
+          current.reason === body.reason
+        ) {
+          return json({ disposition: "unchanged", outcome, signal: current });
+        }
+        if (
+          (current && body.expectedRevision !== current.revision) ||
+          (!current && body.expectedRevision !== null)
+        ) {
+          return json(
+            { error: "feedback_quality_conflict", outcome, signal: current },
+            409
+          );
+        }
+        const saved: SyntheticQualitySignal = {
+          contractVersion: "feedback-quality-signal.v1",
+          outcome,
+          response: body.response,
+          reason: body.reason ?? null,
+          revision: current ? current.revision + 1 : 1,
+          createdAt: current?.createdAt ?? "2026-08-13T12:00:00.000Z",
+          updatedAt: current
+            ? "2026-08-13T12:01:00.000Z"
+            : "2026-08-13T12:00:00.000Z",
+        };
+        qualitySignals.set(sessionId, saved);
+        return json(
+          {
+            disposition: current ? "updated" : "created",
+            outcome,
+            signal: saved,
+          },
+          current ? 200 : 201
+        );
+      }
+    }
     if (url.pathname.endsWith("/transcript")) {
       return json({ turns: transcriptTurns });
     }
@@ -173,6 +260,15 @@ export function installSyntheticFetch() {
       `Browser QA fixture blocked external request to ${url.origin}`
     );
   };
+}
+
+function qualityOutcomeForSession(
+  sessionId: string
+): SyntheticQualityOutcome | null {
+  if (sessionId === "browser-qa-full") return "full_scorecard";
+  if (sessionId === "browser-qa-partial") return "partial_scorecard";
+  if (sessionId === "browser-qa-coaching") return "coaching_review";
+  return null;
 }
 
 function focusedPracticeAttempt(state: "in_progress" | "completed") {
