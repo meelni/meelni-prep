@@ -7136,6 +7136,37 @@ async function verifyFocusedPracticePersistence(
     `,
     /focused_practice_attempt_snapshot_version_check/
   );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO focused_practice_attempt (
+        id, user_id, source_session_id, source_feedback_id,
+        contract_version, lifecycle_version, state, feedback_version,
+        plan_contract_version, plan_template_version, plan_template_id,
+        plan, source_finding, started_at
+      ) VALUES (
+        ${FOCUSED_PRACTICE_SCORELESS_ATTEMPT}::uuid,
+        ${FOCUSED_PRACTICE_USER}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_SESSION}::uuid,
+        ${FOCUSED_PRACTICE_SCORELESS_FEEDBACK}::uuid,
+        'focused-practice-attempt.v2', 0, 'in_progress',
+        ${JSON.stringify({
+          schemaVersion: "feedback.evidence-limited.v2",
+          promptVersion: "feedback.prompt.evidence-limited.v2",
+          rubricVersion: "pm-feedback-rubric.v2",
+          modelVersion: "synthetic-migration-test",
+          evaluationState: "partial",
+          reviewOutcome: "coaching_review",
+          scoreWithheldReason: "rubric_coverage",
+          sourceFingerprint: "a".repeat(64),
+        })}::jsonb,
+        'focused-practice-plan.v2', 'focused-practice-templates.v2',
+        ${scorelessPlan.templateId}, ${JSON.stringify(scorelessPlan)}::jsonb,
+        ${JSON.stringify(scorelessFinding)}::jsonb,
+        '2026-08-13T12:00:00.000Z'::timestamptz
+      )
+    `,
+    /focused_practice_attempt_snapshot_version_check/
+  );
   await sql`
     INSERT INTO focused_practice_attempt (
       id, user_id, source_session_id, source_feedback_id,

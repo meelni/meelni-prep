@@ -146,19 +146,24 @@ export function FocusedPracticeWorkspace({
       icon={<Target className="h-5 w-5" aria-hidden="true" />}
       tone="info"
       action={
-        <Button
-          type="button"
-          variant={attempt ? "outline" : "default"}
-          size="sm"
-          className="h-auto min-h-11 max-w-full whitespace-normal"
-          onClick={start}
-          disabled={loading || submitting}
-        >
-          {loading && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-          )}
-          {startLabel}
-        </Button>
+        error && !error.retryable ? undefined : (
+          <Button
+            type="button"
+            variant={attempt ? "outline" : "default"}
+            size="sm"
+            className="h-auto min-h-11 max-w-full whitespace-normal"
+            onClick={start}
+            disabled={loading || submitting}
+          >
+            {loading && (
+              <Loader2
+                className="mr-2 h-4 w-4 animate-spin"
+                aria-hidden="true"
+              />
+            )}
+            {startLabel}
+          </Button>
+        )
       }
       contentClassName="space-y-6"
     >

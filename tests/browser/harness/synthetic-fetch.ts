@@ -186,15 +186,15 @@ function focusedPracticeAttempt(state: "in_progress" | "completed") {
       durationMinutes: 5,
       title: "Deepen the user insight",
       objective:
-        "Connect a specific supported user need to the product decision it changes.",
+        "Connect a specific user behavior or unmet need to the product decision it changes.",
       instructions: [
-        "Use only the grounded focus selected by Meelni.",
-        "Practice the decision aloud before saving your self-review.",
+        "Use only the grounded focus and exact interview evidence selected by Meelni; do not fill in missing context.",
+        "Revise the part that connects the chosen user and problem to a clear product decision.",
       ],
       successCriterion:
-        "The revision names the user need and the product decision it changes.",
+        "The revision names one specific user insight, explains why it matters, and shows how it changes the product choice.",
       selfReviewPrompt:
-        "Does the supported user need clearly change the product decision?",
+        "Does the user insight change the product decision rather than merely describe the audience?",
       source: {
         questionId: "browser-qa-question",
         questionText:
@@ -226,9 +226,9 @@ function focusedPracticeAttempt(state: "in_progress" | "completed") {
             kind: "self_review",
             focusDimension: "insight",
             sourceObservation:
-              "The recorded answer included a supported user need.",
+              "The recorded answer showed grounded evidence of Specific user need.",
             sourceNextStep:
-              "Make the connection from that need to the product decision explicit.",
+              "In focused practice, make Specific user need explicit and connect it to the next PM decision.",
             successCriterion: base.plan.successCriterion,
             prompt: base.plan.selfReviewPrompt,
             response: {

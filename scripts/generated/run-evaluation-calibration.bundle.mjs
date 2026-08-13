@@ -20075,7 +20075,11 @@ var focusedPracticeAttempt = pgTable(
         (
           ${table.contractVersion} = 'focused-practice-attempt.v1' OR (
             ${table.sourceFinding}->>'kind' IN ('evidence_limited_improvement', 'dimension_coverage_focus') AND
-            ${table.plan}#>>'{source,focusIdentity,kind}' = ${table.sourceFinding}->>'kind'
+            ${table.plan}#>>'{source,focusIdentity,kind}' = ${table.sourceFinding}->>'kind' AND
+            (
+              (${table.feedbackVersion}->>'schemaVersion' = 'feedback.evidence-limited.v2' AND ${table.sourceFinding}->>'kind' = 'evidence_limited_improvement') OR
+              (${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND ${table.sourceFinding}->>'kind' = 'dimension_coverage_focus')
+            )
           )
         ) AND
         octet_length(${table.feedbackVersion}::text) <= 65536 AND
