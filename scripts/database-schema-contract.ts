@@ -65,6 +65,10 @@ export const DIMENSION_COVERAGE_SCHEMA_FINGERPRINT =
 // canonical focused-practice contract changes.
 export const FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT =
   "cabe0c6d65698adce1ca47b84ac13633239c897a1ff4ab6da82f777a1177a5fb";
+// Refreshed by the clean PostgreSQL migration acceptance test whenever the
+// canonical feedback-quality persistence contract changes.
+export const FEEDBACK_QUALITY_SCHEMA_FINGERPRINT =
+  "4cccbc121f14e6787ccd3c768b8da904188f9f89caf2c67120c6bb18692e292d";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =
@@ -165,7 +169,9 @@ export async function getDatabaseSchemaContract(sql: Queryable) {
             'finalize_public_demo_recovery_token',
             'rollback_public_demo_recovery_token',
             'fail_public_demo_recovery_session',
-            'prune_public_demo_abuse_data'
+            'prune_public_demo_abuse_data',
+            'can_read_owned_feedback_quality_signal',
+            'consume_feedback_quality_signal_rate_limit'
           )
         ORDER BY p.proname, arguments
       `,

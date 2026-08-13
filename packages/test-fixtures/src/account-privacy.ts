@@ -51,6 +51,7 @@ export function createAccountDataExportFixture(): AccountDataExportV1 {
       bookmarks: [],
       practiceSets: [],
       focusedPracticeAttempts: [],
+      feedbackQualitySignals: [],
       achievements: [],
       insights: [],
     },

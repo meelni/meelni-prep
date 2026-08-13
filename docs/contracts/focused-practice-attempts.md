@@ -126,12 +126,14 @@ content.
 
 Every mutation takes the account-identity lock, locks the local account row,
 and checks the deletion tombstone in the same transaction. Account export
-schema `1.3.0` includes the user's persisted attempts using an explicit safe
+schema `1.4.0` includes the user's persisted attempts using an explicit safe
 field projection. Irreversible account deletion removes attempts before the
 feedback/session graph.
 
 This integration adds no model call, LiveKit room, Inngest job, credit mutation,
-analytics event, provider/environment action, or relaunch-flag change. The
+provider/environment action, or relaunch-flag change. SAV-415 adds one optional,
+consent-bound, content-free `feedback_practice_started` event only after a v2
+attempt durably returns `created`; resume and completion emit nothing. The
 feedback workspace offers exactly one path for every valid partial scorecard
 or coaching review, with retryable transport/conflict states and a clear
 permanent unavailable fallback. Completion offers a question-bound return to

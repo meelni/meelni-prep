@@ -40,10 +40,11 @@
 |    31 | `0031_sav_397_feedback_outcomes`         |
 |    32 | `0032_dimension_evidence_coverage`       |
 |    33 | `0033_scoreless_focused_practice`        |
+|    34 | `0034_feedback_quality_signals`          |
 
 <!-- migration-journal:end -->
 
-This thirty-four-entry inventory is generated from the same ordered contract as
+This thirty-five-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -368,3 +369,13 @@ owner/source review to one attempt across contract versions, and requires the
 v2 immutable source fingerprint and closed grounded-focus snapshot. The
 migration does not create attempts, rewrite feedback or transcript evidence,
 or invoke any provider.
+
+## Feedback quality signals
+
+Migration `0034_feedback_quality_signals` adds separate owner-authored closed
+quality-signal persistence and a durable per-owner mutation budget. Composite
+foreign keys bind the immutable source feedback/session ownership graph; forced
+RLS permits owner reads only, while writes and limiter execution remain
+service-owned. The limiter fails closed against durable deletion intent, and
+account cleanup explicitly removes both tables. The migration does not rewrite
+evaluator feedback, transcript evidence, or existing account data.

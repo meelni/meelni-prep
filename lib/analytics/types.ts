@@ -79,6 +79,8 @@ export type AnalyticsEvent =
   | "session_history_viewed"
   | "session_details_clicked"
   | "feedback_viewed"
+  | "feedback_helpfulness_responded"
+  | "feedback_practice_started"
   | "chart_interacted"
   | "competency_radar_viewed"
   | "score_trend_analyzed"
@@ -344,9 +346,23 @@ interface DashboardProperties {
     has_feedback: boolean;
   };
   feedback_viewed: {
-    session_id: string;
-    feedback_available: boolean;
-    overall_score?: number;
+    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+  };
+  feedback_helpfulness_responded: {
+    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+    response: "helpful" | "not_helpful";
+    reason:
+      | "not_provided"
+      | "not_specific_enough"
+      | "evidence_did_not_match"
+      | "next_step_unclear"
+      | "too_much_to_use"
+      | "score_explanation_unclear"
+      | "score_withholding_unclear";
+  };
+  feedback_practice_started: {
+    outcome: "partial_scorecard" | "coaching_review";
+    practice_kind: "focused_practice";
   };
   chart_interacted: {
     chart_type:

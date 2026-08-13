@@ -13,6 +13,7 @@ export * from "./feedback-evidence-limited";
 export * from "./feedback-dimension-coverage";
 export * from "./feedback-dimension-coverage";
 export * from "./feedback-outcome";
+export * from "./feedback-quality";
 export * from "./feedback-view-model";
 export * from "./feedback-transcript";
 export * from "./feedback-eligibility";

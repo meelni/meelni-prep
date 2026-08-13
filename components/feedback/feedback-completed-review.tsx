@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 
 import { FocusedPracticeWorkspace } from "./focused-practice-workspace";
+import { FeedbackQualityControl } from "./feedback-quality-control";
+import { FeedbackReviewAnalytics } from "./feedback-review-analytics";
 import { FeedbackFindingCard } from "./feedback-finding-card";
 import { FeedbackDashboardLink } from "./feedback-navigation";
 import { FeedbackScoreSummary } from "./feedback-score-summary";
@@ -62,6 +64,7 @@ export function CompletedDimensionCoverageReview({
         description="Grounded PM coaching from the verified evidence in this interview."
         action={<FeedbackDashboardLink />}
       >
+        <FeedbackReviewAnalytics outcome="coaching_review" />
         <div className="space-y-8">
           <StatusPill tone="warning">Coaching review</StatusPill>
           <FeedbackSectionCard title="Why there are no scores" tone="warning">
@@ -144,6 +147,11 @@ export function CompletedDimensionCoverageReview({
 
           <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
 
+          <FeedbackQualityControl
+            sessionId={feedback.sessionId}
+            outcome="coaching_review"
+          />
+
           <FeedbackTranscriptSection
             expanded={transcript.expanded}
             onExpandedChange={transcript.setExpanded}
@@ -164,6 +172,7 @@ export function CompletedDimensionCoverageReview({
       description="Observed practice scores grounded in verified PM-rubric evidence from this interview."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome={feedback.mode} />
       <div className="space-y-8">
         <StatusPill
           tone={isFull ? "success" : isPartial ? "warning" : "muted"}
@@ -226,10 +235,7 @@ export function CompletedDimensionCoverageReview({
                   </dt>
                   <dd>
                     {supported ? (
-                      <span
-                        className="font-mono font-semibold"
-                        aria-label={`${DIMENSION_LABELS[dimension]} score ${result.score} out of 10`}
-                      >
+                      <span className="font-mono font-semibold">
                         {result.score}/10
                       </span>
                     ) : (
@@ -278,6 +284,11 @@ export function CompletedDimensionCoverageReview({
         {isPartial && (
           <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
         )}
+
+        <FeedbackQualityControl
+          sessionId={feedback.sessionId}
+          outcome={feedback.mode}
+        />
 
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
@@ -370,7 +381,6 @@ export function CompletedV2Review({
         </FeedbackSectionCard>
 
         <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
-
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
           onExpandedChange={transcript.setExpanded}
@@ -397,6 +407,7 @@ export function CompletedEvidenceLimitedReview({
       description="Grounded PM coaching from the verified evidence in this interview."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome="coaching_review" />
       <div className="space-y-8">
         <StatusPill tone="warning">Coaching review</StatusPill>
         <FeedbackSectionCard title="Why there are no scores" tone="warning">
@@ -473,6 +484,10 @@ export function CompletedEvidenceLimitedReview({
           />
         </FeedbackSectionCard>
         <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
+        <FeedbackQualityControl
+          sessionId={feedback.sessionId}
+          outcome="coaching_review"
+        />
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
           onExpandedChange={transcript.setExpanded}

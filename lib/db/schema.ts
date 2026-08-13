@@ -28,6 +28,9 @@ import type {
   DimensionCoverageFeedbackMode,
   DimensionCoverageResultDimensions,
   FeedbackOutcomeReason,
+  FeedbackQualityOutcome,
+  FeedbackQualityReason,
+  FeedbackQualityResponse,
   RoundType,
 } from "@meelni/core";
 import type {
@@ -946,6 +949,113 @@ export const feedback = pgTable(
   })
 );
 
+// One mutable, owner-authored quality signal for an immutable actionable
+// review. The source review remains unchanged; this table owns only the
+// candidate's current closed response and CAS revision.
+export const feedbackQualitySignal = pgTable(
+  "feedback_quality_signal",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id, { onDelete: "cascade" })
+      .notNull(),
+    feedbackId: uuid("feedback_id")
+      .references(() => feedback.id, { onDelete: "cascade" })
+      .notNull(),
+    contractVersion: text("contract_version").notNull(),
+    reviewOutcome: text("review_outcome")
+      .$type<FeedbackQualityOutcome>()
+      .notNull(),
+    response: text("response").$type<FeedbackQualityResponse>().notNull(),
+    reason: text("reason").$type<FeedbackQualityReason>(),
+    revision: integer("revision").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    ownerFeedbackUnique: uniqueIndex(
+      "feedback_quality_signal_owner_feedback_idx"
+    ).on(table.userId, table.feedbackId),
+    sessionOwnerForeignKey: foreignKey({
+      name: "feedback_quality_signal_session_owner_fk",
+      columns: [table.sessionId, table.userId],
+      foreignColumns: [interviewSession.id, interviewSession.userId],
+    }).onDelete("cascade"),
+    feedbackSessionForeignKey: foreignKey({
+      name: "feedback_quality_signal_feedback_session_fk",
+      columns: [table.feedbackId, table.sessionId],
+      foreignColumns: [feedback.id, feedback.sessionId],
+    }).onDelete("cascade"),
+    contractCheck: check(
+      "feedback_quality_signal_contract_check",
+      sql`${table.contractVersion} = 'feedback-quality-signal.v1'`
+    ),
+    outcomeCheck: check(
+      "feedback_quality_signal_outcome_check",
+      sql`${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')`
+    ),
+    responseCheck: check(
+      "feedback_quality_signal_response_check",
+      sql`${table.response} IN ('helpful', 'not_helpful')`
+    ),
+    selectionCheck: check(
+      "feedback_quality_signal_selection_check",
+      sql`(
+        ${table.response} = 'helpful' AND ${table.reason} IS NULL
+      ) OR (
+        ${table.response} = 'not_helpful' AND (
+          ${table.reason} IS NULL OR
+          ${table.reason} IN ('not_specific_enough', 'evidence_did_not_match', 'next_step_unclear', 'too_much_to_use') OR
+          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
+          (${table.reviewOutcome} = 'coaching_review' AND ${table.reason} = 'score_withholding_unclear')
+        )
+      )`
+    ),
+    revisionCheck: check(
+      "feedback_quality_signal_revision_check",
+      sql`${table.revision} >= 1`
+    ),
+    timestampCheck: check(
+      "feedback_quality_signal_timestamp_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`
+    ),
+    ownerUpdatedIdx: index("feedback_quality_signal_owner_updated_idx").on(
+      table.userId,
+      table.updatedAt
+    ),
+  })
+);
+
+// A durable rolling-hour mutation budget. It intentionally has no app_user
+// foreign key so an authenticated subject can consume an attempt before the
+// target lookup without turning account-row existence into an oracle.
+export const feedbackQualitySignalRateLimit = pgTable(
+  "feedback_quality_signal_rate_limit",
+  {
+    userId: uuid("user_id").primaryKey().notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true })
+      .array()
+      .default(sql`ARRAY[]::timestamptz[]`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    capacityCheck: check(
+      "feedback_quality_signal_rate_limit_capacity_check",
+      sql`cardinality(${table.acceptedAt}) <= 20`
+    ),
+  })
+);
+
 // A provider-neutral, candidate-authored practice attempt derived from one
 // owned completed feedback record. The immutable source snapshot is stored in
 // full so later feedback/question changes cannot rewrite an in-flight attempt.
@@ -1565,6 +1675,24 @@ export const focusedPracticeAttemptRelations = relations(
   })
 );
 
+export const feedbackQualitySignalRelations = relations(
+  feedbackQualitySignal,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [feedbackQualitySignal.userId],
+      references: [appUser.id],
+    }),
+    session: one(interviewSession, {
+      fields: [feedbackQualitySignal.sessionId],
+      references: [interviewSession.id],
+    }),
+    sourceFeedback: one(feedback, {
+      fields: [feedbackQualitySignal.feedbackId],
+      references: [feedback.id],
+    }),
+  })
+);
+
 export const transcriptTurnRelations = relations(transcriptTurn, ({ one }) => ({
   session: one(interviewSession, {
     fields: [transcriptTurn.sessionId],
@@ -1636,6 +1764,7 @@ export const transcriptEvidenceWriterCutoffRelations = relations(
 
 export const appUserRelations = relations(appUser, ({ many, one }) => ({
   sessions: many(interviewSession),
+  feedbackQualitySignals: many(feedbackQualitySignal),
   focusedPracticeAttempts: many(focusedPracticeAttempt),
   settings: one(userSettings, {
     fields: [appUser.id],

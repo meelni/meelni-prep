@@ -86,6 +86,28 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
           response: { text: "Do not export this attempt" },
         },
       ],
+      feedbackQualitySignals: [
+        {
+          userId: "user-one",
+          contractVersion: "feedback-quality-signal.v1",
+          outcome: "partial_scorecard",
+          response: "not_helpful",
+          reason: "next_step_unclear",
+          revision: 2,
+          createdAt: new Date("2026-07-10T15:30:00.000Z"),
+          updatedAt: new Date("2026-07-10T15:45:00.000Z"),
+        },
+        {
+          userId: "user-two",
+          contractVersion: "feedback-quality-signal.v1",
+          outcome: "full_scorecard",
+          response: "helpful",
+          reason: null,
+          revision: 1,
+          createdAt: new Date("2026-07-10T15:31:00.000Z"),
+          updatedAt: new Date("2026-07-10T15:31:00.000Z"),
+        },
+      ],
       contactSubmissions: [
         {
           userId: "user-one",
@@ -123,7 +145,7 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
   });
 
-  assert.equal(result.schemaVersion, "1.3.0");
+  assert.equal(result.schemaVersion, "1.4.0");
   assert.equal(result.account.id, "user-one");
   assert.deepEqual(result.account.streak, {
     current: 4,
@@ -153,6 +175,17 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
       sourceFeedbackId: "feedback-one",
       state: "completed",
       response: { kind: "reflection", text: "I changed the tradeoff." },
+    },
+  ]);
+  assert.deepEqual(result.practice.feedbackQualitySignals, [
+    {
+      contractVersion: "feedback-quality-signal.v1",
+      outcome: "partial_scorecard",
+      response: "not_helpful",
+      reason: "next_step_unclear",
+      revision: 2,
+      createdAt: "2026-07-10T15:30:00.000Z",
+      updatedAt: "2026-07-10T15:45:00.000Z",
     },
   ]);
   assert.deepEqual(result.communications.contactSubmissions, [
