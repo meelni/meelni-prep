@@ -142,6 +142,8 @@ export function CompletedDimensionCoverageReview({
             </FeedbackSectionCard>
           )}
 
+          <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
+
           <FeedbackTranscriptSection
             expanded={transcript.expanded}
             onExpandedChange={transcript.setExpanded}
@@ -272,6 +274,10 @@ export function CompletedDimensionCoverageReview({
             })}
           </dl>
         </FeedbackSectionCard>
+
+        {isPartial && (
+          <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
+        )}
 
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
@@ -466,6 +472,7 @@ export function CompletedEvidenceLimitedReview({
             }
           />
         </FeedbackSectionCard>
+        <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
           onExpandedChange={transcript.setExpanded}

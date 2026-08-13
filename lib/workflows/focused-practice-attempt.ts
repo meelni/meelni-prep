@@ -1,17 +1,28 @@
 import {
   DRILL_TEMPLATE_VERSION,
-  FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  FEEDBACK_SCHEMA_VERSION,
   buildFocusedPracticePlan,
-  completeFocusedPracticeAttempt,
+  buildFocusedPracticeGroundedPlan,
+  completeAnyFocusedPracticeAttempt,
   createFocusedPracticeAttempt,
-  parseFocusedPracticeAttempt,
+  createFocusedPracticeGroundedAttempt,
+  isValidRoundType,
+  parseAnyFocusedPracticeAttempt,
   parseFocusedPracticeCompletionInput,
+  parsePersistedDimensionCoverageFeedback,
+  parsePersistedEvidenceLimitedFeedback,
   parsePersistedFeedbackV2,
+  presentCompletedFeedback,
+  resolveDimensionCoverageFocusedPracticeSource,
   resolveDrillRecommendation,
-  type FocusedPracticeAttempt,
-  type CompletedFocusedPracticeAttempt,
+  resolveEvidenceLimitedFocusedPracticeSource,
+  type AnyCompletedFocusedPracticeAttempt,
+  type AnyFocusedPracticeAttempt,
+  type AnyInProgressFocusedPracticeAttempt,
+  type CandidateAnswerBlock,
   type FocusedPracticeCompletionInput,
-  type InProgressFocusedPracticeAttempt,
   type FocusedPracticeSourceQuestion,
   type PersistedCompletedFeedback,
   type PersistedFeedbackEvidenceTurn,
@@ -27,14 +38,17 @@ export interface BoundedFocusedPracticeSource {
   question: FocusedPracticeSourceQuestion | null;
   feedback: PersistedCompletedFeedback;
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[];
+  answerBlocks: readonly CandidateAnswerBlock[];
+  frozenEvidenceState: "complete" | "partial" | null;
+  sourceFingerprint: string;
+  completionStats?: unknown;
 }
 
 export interface FocusedPracticeAttemptRepository {
   findOwnedBySource(input: {
     userId: string;
     sourceSessionId: string;
-    contractVersion: typeof FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION;
-  }): Promise<FocusedPracticeAttempt | null>;
+  }): Promise<AnyFocusedPracticeAttempt | null>;
   loadOwnedSource(input: {
     userId: string;
     sourceSessionId: string;
@@ -42,15 +56,15 @@ export interface FocusedPracticeAttemptRepository {
   createOrLoadOwned(input: {
     userId: string;
     sourceSessionId: string;
-    attempt: InProgressFocusedPracticeAttempt;
+    attempt: AnyInProgressFocusedPracticeAttempt;
   }): Promise<
     | {
         disposition: "created" | "resumed";
-        attempt: InProgressFocusedPracticeAttempt;
+        attempt: AnyInProgressFocusedPracticeAttempt;
       }
     | {
         disposition: "already_completed";
-        attempt: CompletedFocusedPracticeAttempt;
+        attempt: AnyCompletedFocusedPracticeAttempt;
       }
     | {
         disposition:
@@ -62,7 +76,7 @@ export interface FocusedPracticeAttemptRepository {
   getOwned(input: {
     userId: string;
     attemptId: string;
-  }): Promise<FocusedPracticeAttempt | null>;
+  }): Promise<AnyFocusedPracticeAttempt | null>;
   completeOwned(input: {
     userId: string;
     attemptId: string;
@@ -72,7 +86,7 @@ export interface FocusedPracticeAttemptRepository {
   }): Promise<
     | {
         disposition: "completed" | "already_completed";
-        attempt: CompletedFocusedPracticeAttempt;
+        attempt: AnyCompletedFocusedPracticeAttempt;
       }
     | {
         disposition: "account_deletion_pending" | "not_found" | "conflict";
@@ -91,7 +105,7 @@ export type StartFocusedPracticeAttemptResult =
   | {
       ok: true;
       disposition: "created" | "resumed" | "already_completed";
-      attempt: FocusedPracticeAttempt;
+      attempt: AnyFocusedPracticeAttempt;
     }
   | {
       ok: false;
@@ -111,7 +125,7 @@ export type CompleteFocusedPracticeAttemptWorkflowResult =
   | {
       ok: true;
       disposition: "completed" | "already_completed";
-      attempt: FocusedPracticeAttempt;
+      attempt: AnyFocusedPracticeAttempt;
     }
   | {
       ok: false;
@@ -125,7 +139,7 @@ export type CompleteFocusedPracticeAttemptWorkflowResult =
     };
 
 export type ReadFocusedPracticeAttemptResult =
-  | { ok: true; attempt: FocusedPracticeAttempt }
+  | { ok: true; attempt: AnyFocusedPracticeAttempt }
   | {
       ok: false;
       reason:
@@ -153,7 +167,6 @@ export async function startFocusedPracticeAttemptWorkflow(
   const existing = await deps.repository.findOwnedBySource({
     userId: parsed.userId,
     sourceSessionId: parsed.sourceSessionId,
-    contractVersion: FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
   });
   // A deletion request can be accepted while the owner-scoped snapshot is
   // loading. Never return it after that boundary moves.
@@ -161,7 +174,7 @@ export async function startFocusedPracticeAttemptWorkflow(
     return { ok: false, reason: "account_deletion_pending" };
   }
   if (existing) {
-    const decoded = parseFocusedPracticeAttempt(existing);
+    const decoded = parseAnyFocusedPracticeAttempt(existing);
     if (decoded.state === "invalid") {
       return { ok: false, reason: "attempt_invalid" };
     }
@@ -194,55 +207,8 @@ export async function startFocusedPracticeAttemptWorkflow(
     return { ok: false, reason: "source_integrity_invalid" };
   }
 
-  let feedback;
-  try {
-    feedback = parsePersistedFeedbackV2(source.feedback, {
-      evidenceTurns: source.evidenceTurns,
-    });
-  } catch {
-    return { ok: false, reason: "source_integrity_invalid" };
-  }
-
-  const resolution = resolveDrillRecommendation({
-    roundType: source.roundType,
-    sourceState: "completed",
-    templateVersion: DRILL_TEMPLATE_VERSION,
-    feedback,
-  });
-  if (
-    resolution.recommendation.state !== "recommended" ||
-    !resolution.sourceFinding
-  ) {
-    return { ok: false, reason: "recommendation_unavailable" };
-  }
-
-  const plan = buildFocusedPracticePlan({
-    recommendation: resolution.recommendation,
-    sourceQuestion: source.question,
-  });
-  if (plan.state !== "available") {
-    return { ok: false, reason: "plan_unavailable" };
-  }
-
-  const created = createFocusedPracticeAttempt({
-    attemptId: deps.createAttemptId(),
-    userId: parsed.userId,
-    sourceSessionId: source.sessionId,
-    sourceFeedbackId: source.feedbackId,
-    feedbackVersion: {
-      schemaVersion: feedback.schemaVersion,
-      promptVersion: feedback.promptVersion,
-      rubricVersion: feedback.rubricVersion,
-      modelVersion: feedback.modelVersion,
-      evaluationState: feedback.evaluationState,
-    },
-    plan,
-    sourceFinding: resolution.sourceFinding,
-    startedAt: deps.now(),
-  });
-  if (created.state === "invalid") {
-    return { ok: false, reason: "attempt_invalid" };
-  }
+  const created = constructFocusedPracticeAttempt(source, parsed.userId, deps);
+  if (!created.ok) return created;
 
   // Account deletion can begin during source reconstruction. Fence again
   // before the atomic source-owner check and attempt write.
@@ -268,7 +234,7 @@ export async function startFocusedPracticeAttemptWorkflow(
   if (!("attempt" in stored)) {
     return { ok: false, reason: "source_conflict" };
   }
-  const decodedStored = parseFocusedPracticeAttempt(stored.attempt);
+  const decodedStored = parseAnyFocusedPracticeAttempt(stored.attempt);
   if (decodedStored.state === "invalid") {
     return { ok: false, reason: "attempt_invalid" };
   }
@@ -298,6 +264,223 @@ export async function startFocusedPracticeAttemptWorkflow(
   };
 }
 
+function constructFocusedPracticeAttempt(
+  source: BoundedFocusedPracticeSource,
+  userId: string,
+  deps: FocusedPracticeAttemptWorkflowDependencies
+):
+  | { ok: true; attempt: AnyInProgressFocusedPracticeAttempt }
+  | Extract<StartFocusedPracticeAttemptResult, { ok: false }> {
+  if (source.feedback.schemaVersion === FEEDBACK_SCHEMA_VERSION) {
+    return constructLegacyScoredAttempt(source, userId, deps);
+  }
+  if (
+    source.feedback.schemaVersion !==
+      FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
+    source.feedback.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+  ) {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+  if (!source.question || !isValidRoundType(source.roundType)) {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+
+  const evidenceLimitedReason = hasEvidenceLimitedOnlyConstraint(
+    source.completionStats
+  )
+    ? "verified_evidence_integrity"
+    : "rubric_coverage";
+  let presentation;
+  try {
+    presentation = presentCompletedFeedback(source.feedback, {
+      evidenceTurns: source.evidenceTurns,
+      answerBlocks: source.answerBlocks,
+      expectedRoundType: source.roundType,
+      frozenEvidenceState: source.frozenEvidenceState ?? undefined,
+      scoreWithheldReason: evidenceLimitedReason,
+    });
+  } catch {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+  if (presentation.kind === "invalid") {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+
+  let resolved;
+  let feedbackVersion;
+  try {
+    if (
+      source.feedback.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION
+    ) {
+      if (presentation.kind !== "evidence-limited") {
+        return { ok: false, reason: "source_integrity_invalid" };
+      }
+      const feedback = parsePersistedEvidenceLimitedFeedback(
+        {
+          schemaVersion: source.feedback.schemaVersion,
+          promptVersion: source.feedback.promptVersion,
+          rubricVersion: source.feedback.rubricVersion,
+          evaluationState: source.feedback.evaluationState,
+          strengths: source.feedback.strengths,
+          improvements: source.feedback.improvements,
+          summary: source.feedback.summary,
+        },
+        {
+          transcript: source.evidenceTurns.map((turn) => ({
+            eventId: turn.eventId as string,
+            speaker: turn.speaker as "user" | "interviewer",
+            text: turn.text as string,
+          })),
+          modelVersion: source.feedback.modelVersion as string,
+        }
+      );
+      resolved = resolveEvidenceLimitedFocusedPracticeSource(feedback);
+      feedbackVersion = {
+        schemaVersion: feedback.schemaVersion,
+        promptVersion: feedback.promptVersion,
+        rubricVersion: feedback.rubricVersion,
+        modelVersion: feedback.modelVersion,
+        evaluationState: "partial" as const,
+        reviewOutcome: "coaching_review" as const,
+        scoreWithheldReason: presentation.scoreWithheldReason,
+        sourceFingerprint: source.sourceFingerprint,
+      };
+    } else {
+      if (
+        presentation.kind !== "dimension-coverage" ||
+        (presentation.mode !== "partial_scorecard" &&
+          presentation.mode !== "coaching_review") ||
+        !presentation.scoreWithheldReason ||
+        !source.frozenEvidenceState
+      ) {
+        return { ok: false, reason: "recommendation_unavailable" };
+      }
+      const feedback = parsePersistedDimensionCoverageFeedback(
+        {
+          schemaVersion: source.feedback.schemaVersion,
+          promptVersion: source.feedback.promptVersion,
+          rubricVersion: source.feedback.rubricVersion,
+          modelVersion: source.feedback.modelVersion,
+          roundType: source.feedback.feedbackRoundType,
+          evaluationState: source.feedback.evaluationState,
+          mode: source.feedback.feedbackMode,
+          dimensions: source.feedback.dimensionCoverage,
+          overallScore: source.feedback.overallScore,
+          summary: source.feedback.summary,
+        },
+        {
+          answerBlocks: source.answerBlocks,
+          allowNumericalScores: source.frozenEvidenceState === "complete",
+        }
+      );
+      if (feedback.mode !== presentation.mode) {
+        return { ok: false, reason: "source_integrity_invalid" };
+      }
+      resolved = resolveDimensionCoverageFocusedPracticeSource(
+        feedback,
+        source.answerBlocks
+      );
+      feedbackVersion = {
+        schemaVersion: feedback.schemaVersion,
+        promptVersion: feedback.promptVersion,
+        rubricVersion: feedback.rubricVersion,
+        modelVersion: feedback.modelVersion,
+        evaluationState: "partial" as const,
+        reviewOutcome: feedback.mode,
+        scoreWithheldReason: presentation.scoreWithheldReason,
+        sourceFingerprint: source.sourceFingerprint,
+      };
+    }
+  } catch {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+  if (!resolved) {
+    return { ok: false, reason: "recommendation_unavailable" };
+  }
+  const plan = buildFocusedPracticeGroundedPlan({
+    sourceQuestion: source.question,
+    roundType: source.roundType,
+    focusIdentity: resolved.focusIdentity,
+  });
+  if (plan.state !== "available") {
+    return { ok: false, reason: "plan_unavailable" };
+  }
+  const created = createFocusedPracticeGroundedAttempt({
+    attemptId: deps.createAttemptId(),
+    userId,
+    sourceSessionId: source.sessionId,
+    sourceFeedbackId: source.feedbackId,
+    feedbackVersion,
+    plan: plan.plan,
+    sourceFinding: resolved.sourceFinding,
+    startedAt: deps.now(),
+  });
+  return created.state === "created"
+    ? { ok: true, attempt: created.attempt }
+    : { ok: false, reason: "attempt_invalid" };
+}
+
+function constructLegacyScoredAttempt(
+  source: BoundedFocusedPracticeSource,
+  userId: string,
+  deps: FocusedPracticeAttemptWorkflowDependencies
+):
+  | { ok: true; attempt: AnyInProgressFocusedPracticeAttempt }
+  | Extract<StartFocusedPracticeAttemptResult, { ok: false }> {
+  let feedback;
+  try {
+    feedback = parsePersistedFeedbackV2(source.feedback, {
+      evidenceTurns: source.evidenceTurns,
+    });
+  } catch {
+    return { ok: false, reason: "source_integrity_invalid" };
+  }
+  const resolution = resolveDrillRecommendation({
+    roundType: source.roundType,
+    sourceState: "completed",
+    templateVersion: DRILL_TEMPLATE_VERSION,
+    feedback,
+  });
+  if (
+    resolution.recommendation.state !== "recommended" ||
+    !resolution.sourceFinding
+  ) {
+    return { ok: false, reason: "recommendation_unavailable" };
+  }
+  const plan = buildFocusedPracticePlan({
+    recommendation: resolution.recommendation,
+    sourceQuestion: source.question!,
+  });
+  if (plan.state !== "available") {
+    return { ok: false, reason: "plan_unavailable" };
+  }
+  const created = createFocusedPracticeAttempt({
+    attemptId: deps.createAttemptId(),
+    userId,
+    sourceSessionId: source.sessionId,
+    sourceFeedbackId: source.feedbackId,
+    feedbackVersion: {
+      schemaVersion: feedback.schemaVersion,
+      promptVersion: feedback.promptVersion,
+      rubricVersion: feedback.rubricVersion,
+      modelVersion: feedback.modelVersion,
+      evaluationState: feedback.evaluationState,
+    },
+    plan,
+    sourceFinding: resolution.sourceFinding,
+    startedAt: deps.now(),
+  });
+  return created.state === "created"
+    ? { ok: true, attempt: created.attempt }
+    : { ok: false, reason: "attempt_invalid" };
+}
+
+function hasEvidenceLimitedOnlyConstraint(value: unknown): boolean {
+  return (
+    isRecord(value) && value.feedbackModeConstraint === "evidence_limited_only"
+  );
+}
+
 export async function completeFocusedPracticeAttemptWorkflow(
   input: unknown,
   deps: FocusedPracticeAttemptWorkflowDependencies
@@ -319,7 +502,7 @@ export async function completeFocusedPracticeAttemptWorkflow(
   if (!existing) {
     return { ok: false, reason: "not_found" };
   }
-  const decodedExisting = parseFocusedPracticeAttempt(existing);
+  const decodedExisting = parseAnyFocusedPracticeAttempt(existing);
   if (decodedExisting.state === "invalid") {
     return { ok: false, reason: "attempt_invalid" };
   }
@@ -354,7 +537,7 @@ export async function completeFocusedPracticeAttemptWorkflow(
   if (!("attempt" in stored)) {
     return { ok: false, reason: "conflict" };
   }
-  const decodedStored = parseFocusedPracticeAttempt(stored.attempt);
+  const decodedStored = parseAnyFocusedPracticeAttempt(stored.attempt);
   if (
     decodedStored.state === "invalid" ||
     decodedStored.attempt.state !== "completed"
@@ -406,7 +589,7 @@ export async function readFocusedPracticeAttemptWorkflow(
   }
   if (!existing) return { ok: false, reason: "not_found" };
 
-  const decoded = parseFocusedPracticeAttempt(existing);
+  const decoded = parseAnyFocusedPracticeAttempt(existing);
   if (decoded.state === "invalid") {
     return { ok: false, reason: "attempt_invalid" };
   }
@@ -421,11 +604,11 @@ export async function readFocusedPracticeAttemptWorkflow(
 
 /** Pure helper for repository fakes and future compare-and-set adapters. */
 export function transitionFocusedPracticeAttemptCompletion(input: {
-  attempt: FocusedPracticeAttempt;
+  attempt: AnyFocusedPracticeAttempt;
   completion: FocusedPracticeCompletionInput;
   completedAt: Date;
 }) {
-  return completeFocusedPracticeAttempt(input);
+  return completeAnyFocusedPracticeAttempt(input);
 }
 
 function parseStartInput(
@@ -471,75 +654,42 @@ function matchesSourceRecord(
 }
 
 function matchesOwnedSource(
-  attempt: FocusedPracticeAttempt,
+  attempt: AnyFocusedPracticeAttempt,
   input: { userId: string; sourceSessionId: string }
 ): boolean {
   return (
     attempt.userId === input.userId &&
-    attempt.sourceSessionId === input.sourceSessionId &&
-    attempt.contractVersion === FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION
+    attempt.sourceSessionId === input.sourceSessionId
   );
 }
 
 function matchesImmutableSource(
-  left: FocusedPracticeAttempt,
-  right: FocusedPracticeAttempt
+  left: AnyFocusedPracticeAttempt,
+  right: AnyFocusedPracticeAttempt
 ): boolean {
-  const leftPlan = left.plan;
-  const rightPlan = right.plan;
-  const leftPlanSource = leftPlan.source;
-  const rightPlanSource = rightPlan.source;
-  const leftFinding = left.sourceFinding;
-  const rightFinding = right.sourceFinding;
   return (
     left.userId === right.userId &&
     left.sourceSessionId === right.sourceSessionId &&
     left.sourceFeedbackId === right.sourceFeedbackId &&
-    left.feedbackVersion.schemaVersion ===
-      right.feedbackVersion.schemaVersion &&
-    left.feedbackVersion.promptVersion ===
-      right.feedbackVersion.promptVersion &&
-    left.feedbackVersion.rubricVersion ===
-      right.feedbackVersion.rubricVersion &&
-    left.feedbackVersion.modelVersion === right.feedbackVersion.modelVersion &&
-    left.feedbackVersion.evaluationState ===
-      right.feedbackVersion.evaluationState &&
-    leftPlan.state === rightPlan.state &&
-    leftPlan.contractVersion === rightPlan.contractVersion &&
-    leftPlan.templateVersion === rightPlan.templateVersion &&
-    leftPlan.durationMinutes === rightPlan.durationMinutes &&
-    leftPlan.templateId === rightPlan.templateId &&
-    leftPlan.title === rightPlan.title &&
-    leftPlan.objective === rightPlan.objective &&
-    sameStrings(leftPlan.instructions, rightPlan.instructions) &&
-    leftPlan.successCriterion === rightPlan.successCriterion &&
-    leftPlan.selfReviewPrompt === rightPlan.selfReviewPrompt &&
-    leftPlanSource.questionId === rightPlanSource.questionId &&
-    leftPlanSource.questionText === rightPlanSource.questionText &&
-    leftPlanSource.recommendationId === rightPlanSource.recommendationId &&
-    leftPlanSource.roundType === rightPlanSource.roundType &&
-    leftPlanSource.focusDimension === rightPlanSource.focusDimension &&
-    leftPlanSource.evidenceGap === rightPlanSource.evidenceGap &&
-    sameStrings(
-      leftPlanSource.transcriptRefs,
-      rightPlanSource.transcriptRefs
-    ) &&
-    leftPlanSource.confidence === rightPlanSource.confidence &&
-    leftFinding.dimension === rightFinding.dimension &&
-    leftFinding.observation === rightFinding.observation &&
-    leftFinding.nextStep === rightFinding.nextStep &&
-    sameStrings(leftFinding.transcriptRefs, rightFinding.transcriptRefs) &&
-    leftFinding.confidence === rightFinding.confidence
+    left.contractVersion === right.contractVersion &&
+    canonicalJson(left.feedbackVersion) ===
+      canonicalJson(right.feedbackVersion) &&
+    canonicalJson(left.plan) === canonicalJson(right.plan) &&
+    canonicalJson(left.sourceFinding) === canonicalJson(right.sourceFinding)
   );
 }
 
-function sameStrings(
-  left: readonly string[],
-  right: readonly string[]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortJson(value[key])])
   );
 }
 

@@ -1,8 +1,9 @@
 import {
-  FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION,
-  parseFocusedPracticeAttempt,
-  type FocusedPracticeAttempt,
-  type InProgressFocusedPracticeAttempt,
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FOCUSED_PRACTICE_GROUNDED_ATTEMPT_CONTRACT_VERSION,
+  parseAnyFocusedPracticeAttempt,
+  type AnyFocusedPracticeAttempt,
+  type AnyInProgressFocusedPracticeAttempt,
 } from "@meelni/core";
 import { and, eq } from "drizzle-orm";
 
@@ -11,7 +12,12 @@ import {
   buildFeedbackReadQuery,
   decodeBoundedFeedbackReadRow,
 } from "@/lib/db/feedback";
-import { buildFeedbackEvidenceTurnsQuery } from "@/lib/db/transcripts";
+import {
+  buildFeedbackEvidenceTurnsQuery,
+  getFrozenFeedbackEvaluationEvidence,
+} from "@/lib/db/transcripts";
+import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
+import { createFocusedPracticeSourceFingerprint } from "@/lib/focused-practice/source-fingerprint";
 import {
   transitionFocusedPracticeAttemptCompletion,
   type BoundedFocusedPracticeSource,
@@ -43,8 +49,7 @@ export function createDrizzleFocusedPracticeAttemptRepository(
         .where(
           and(
             eq(focusedPracticeAttempt.userId, input.userId),
-            eq(focusedPracticeAttempt.sourceSessionId, input.sourceSessionId),
-            eq(focusedPracticeAttempt.contractVersion, input.contractVersion)
+            eq(focusedPracticeAttempt.sourceSessionId, input.sourceSessionId)
           )
         )
         .limit(1);
@@ -52,146 +57,118 @@ export function createDrizzleFocusedPracticeAttemptRepository(
     },
 
     async loadOwnedSource(input) {
-      return database.transaction(async (tx) => {
-        const rows = await tx
-          .select({
-            userId: interviewSession.userId,
-            sessionId: interviewSession.id,
-            roundType: interviewSession.roundType,
-            feedbackId: feedback.id,
-            feedbackStatus: feedback.status,
-            questionId: interviewQuestion.id,
-            questionText: interviewQuestion.questionText,
-          })
-          .from(interviewSession)
-          .innerJoin(feedback, eq(feedback.sessionId, interviewSession.id))
-          .leftJoin(
-            sessionQuestion,
-            eq(sessionQuestion.sessionId, interviewSession.id)
-          )
-          .leftJoin(
-            interviewQuestion,
-            eq(interviewQuestion.id, sessionQuestion.questionId)
-          )
-          .where(
-            and(
-              eq(interviewSession.id, input.sourceSessionId),
-              eq(interviewSession.userId, input.userId)
-            )
-          )
-          .limit(2);
-        const source = rows[0];
-        if (!source || rows.length !== 1) return null;
-
-        const feedbackRows = await buildFeedbackReadQuery(
-          tx,
-          input.sourceSessionId
-        );
-        const evidenceTurns = await buildFeedbackEvidenceTurnsQuery(
-          tx,
-          input.sourceSessionId
-        );
-        const boundedFeedback = feedbackRows[0];
-        if (!boundedFeedback || boundedFeedback.id !== source.feedbackId) {
-          return null;
-        }
-
-        return {
-          userId: source.userId,
-          sessionId: source.sessionId,
-          feedbackId: source.feedbackId,
-          roundType: source.roundType,
-          feedbackStatus: source.feedbackStatus,
-          question:
-            source.questionId && source.questionText
-              ? {
-                  questionId: source.questionId,
-                  questionText: source.questionText,
-                }
-              : null,
-          feedback: decodeBoundedFeedbackReadRow(boundedFeedback),
-          evidenceTurns,
-        } satisfies BoundedFocusedPracticeSource;
-      });
+      return database.transaction((tx) => loadOwnedSourceSnapshot(tx, input));
     },
 
     async createOrLoadOwned(input) {
-      return database.transaction(async (tx) => {
-        await lockAccountIdentity(tx, input.userId);
-        const users = await tx
-          .select({ id: appUser.id })
-          .from(appUser)
-          .where(eq(appUser.id, input.userId))
-          .limit(1)
-          .for("update");
-        const tombstones = await tx
-          .select({ userId: accountDeletionRequest.userId })
-          .from(accountDeletionRequest)
-          .where(eq(accountDeletionRequest.userId, input.userId))
-          .limit(1);
-        if (tombstones[0]) {
-          return { disposition: "account_deletion_pending" } as const;
-        }
-        if (!users[0]) return { disposition: "not_found" } as const;
+      return database.transaction(
+        async (tx) => {
+          await lockAccountIdentity(tx, input.userId);
+          const users = await tx
+            .select({ id: appUser.id })
+            .from(appUser)
+            .where(eq(appUser.id, input.userId))
+            .limit(1)
+            .for("update");
+          const tombstones = await tx
+            .select({ userId: accountDeletionRequest.userId })
+            .from(accountDeletionRequest)
+            .where(eq(accountDeletionRequest.userId, input.userId))
+            .limit(1);
+          if (tombstones[0]) {
+            return { disposition: "account_deletion_pending" } as const;
+          }
+          if (!users[0]) return { disposition: "not_found" } as const;
 
-        const sources = await tx
-          .select({
-            sessionId: interviewSession.id,
-            feedbackId: feedback.id,
-            feedbackStatus: feedback.status,
-          })
-          .from(interviewSession)
-          .innerJoin(feedback, eq(feedback.sessionId, interviewSession.id))
-          .where(
-            and(
-              eq(interviewSession.id, input.sourceSessionId),
-              eq(interviewSession.userId, input.userId),
-              eq(feedback.id, input.attempt.sourceFeedbackId)
-            )
-          )
-          .limit(1)
-          .for("update");
-        if (!sources[0]) return { disposition: "not_found" } as const;
-        if (sources[0].feedbackStatus !== "completed") {
-          return { disposition: "source_conflict" } as const;
-        }
-
-        const existingRows = await tx
-          .select()
-          .from(focusedPracticeAttempt)
-          .where(
-            and(
-              eq(focusedPracticeAttempt.userId, input.userId),
-              eq(focusedPracticeAttempt.sourceSessionId, input.sourceSessionId),
-              eq(
-                focusedPracticeAttempt.contractVersion,
-                FOCUSED_PRACTICE_ATTEMPT_CONTRACT_VERSION
+          const sources = await tx
+            .select({
+              sessionId: interviewSession.id,
+              feedbackId: feedback.id,
+              feedbackStatus: feedback.status,
+            })
+            .from(interviewSession)
+            .innerJoin(feedback, eq(feedback.sessionId, interviewSession.id))
+            .where(
+              and(
+                eq(interviewSession.id, input.sourceSessionId),
+                eq(interviewSession.userId, input.userId),
+                eq(feedback.id, input.attempt.sourceFeedbackId)
               )
             )
-          )
-          .limit(1)
-          .for("update");
-        const existing = hydrateAttempt(existingRows[0]);
-        if (existingRows[0] && !existing) {
-          return { disposition: "source_conflict" } as const;
-        }
-        if (existing) {
-          return existing.state === "completed"
-            ? { disposition: "already_completed", attempt: existing }
-            : { disposition: "resumed", attempt: existing };
-        }
+            .limit(1)
+            .for("update");
+          if (!sources[0]) return { disposition: "not_found" } as const;
+          if (sources[0].feedbackStatus !== "completed") {
+            return { disposition: "source_conflict" } as const;
+          }
 
-        const insertedRows = await tx
-          .insert(focusedPracticeAttempt)
-          .values(toInsertValues(input.attempt))
-          .onConflictDoNothing()
-          .returning();
-        const inserted = hydrateAttempt(insertedRows[0]);
-        if (!inserted || inserted.state !== "in_progress") {
-          return { disposition: "source_conflict" } as const;
-        }
-        return { disposition: "created", attempt: inserted } as const;
-      });
+          const currentSource = await loadOwnedSourceSnapshot(tx, input);
+          if (
+            !currentSource ||
+            currentSource.feedbackId !== input.attempt.sourceFeedbackId ||
+            (input.attempt.contractVersion ===
+              FOCUSED_PRACTICE_GROUNDED_ATTEMPT_CONTRACT_VERSION &&
+              currentSource.sourceFingerprint !==
+                input.attempt.feedbackVersion.sourceFingerprint)
+          ) {
+            return { disposition: "source_conflict" } as const;
+          }
+
+          const existingRows = await tx
+            .select()
+            .from(focusedPracticeAttempt)
+            .where(
+              and(
+                eq(focusedPracticeAttempt.userId, input.userId),
+                eq(
+                  focusedPracticeAttempt.sourceSessionId,
+                  input.sourceSessionId
+                )
+              )
+            )
+            .limit(1)
+            .for("update");
+          const existing = hydrateAttempt(existingRows[0]);
+          if (existingRows[0] && !existing) {
+            return { disposition: "source_conflict" } as const;
+          }
+          if (existing) {
+            return existing.state === "completed"
+              ? { disposition: "already_completed", attempt: existing }
+              : { disposition: "resumed", attempt: existing };
+          }
+
+          const insertedRows = await tx
+            .insert(focusedPracticeAttempt)
+            .values(toInsertValues(input.attempt))
+            .onConflictDoNothing()
+            .returning();
+          const inserted = hydrateAttempt(insertedRows[0]);
+          if (inserted?.state === "in_progress") {
+            return { disposition: "created", attempt: inserted } as const;
+          }
+          const winnerRows = await tx
+            .select()
+            .from(focusedPracticeAttempt)
+            .where(
+              and(
+                eq(focusedPracticeAttempt.userId, input.userId),
+                eq(
+                  focusedPracticeAttempt.sourceSessionId,
+                  input.sourceSessionId
+                )
+              )
+            )
+            .limit(1)
+            .for("update");
+          const winner = hydrateAttempt(winnerRows[0]);
+          if (!winner) return { disposition: "source_conflict" } as const;
+          return winner.state === "completed"
+            ? { disposition: "already_completed", attempt: winner }
+            : { disposition: "resumed", attempt: winner };
+        },
+        { isolationLevel: "serializable" }
+      );
     },
 
     async getOwned(input) {
@@ -291,13 +268,13 @@ export const drizzleFocusedPracticeAttemptRepository =
 
 export function hydrateFocusedPracticeAttemptRow(
   row: FocusedPracticeAttemptRow | undefined
-): FocusedPracticeAttempt | null {
+): AnyFocusedPracticeAttempt | null {
   return hydrateAttempt(row);
 }
 
 function hydrateAttempt(
   row: FocusedPracticeAttemptRow | undefined
-): FocusedPracticeAttempt | null {
+): AnyFocusedPracticeAttempt | null {
   if (!row) return null;
   if (
     !isRecord(row.plan) ||
@@ -307,7 +284,7 @@ function hydrateAttempt(
   ) {
     return null;
   }
-  const decoded = parseFocusedPracticeAttempt({
+  const decoded = parseAnyFocusedPracticeAttempt({
     attemptId: row.id,
     userId: row.userId,
     sourceSessionId: row.sourceSessionId,
@@ -329,7 +306,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toInsertValues(attempt: InProgressFocusedPracticeAttempt) {
+function toInsertValues(attempt: AnyInProgressFocusedPracticeAttempt) {
   return {
     id: attempt.attemptId,
     userId: attempt.userId,
@@ -347,5 +324,111 @@ function toInsertValues(attempt: InProgressFocusedPracticeAttempt) {
     startedAt: new Date(attempt.startedAt),
     completedAt: null,
     completion: null,
+  };
+}
+
+type FocusedPracticeReadDatabase = Pick<FocusedPracticeDatabase, "select">;
+
+async function loadOwnedSourceSnapshot(
+  database: FocusedPracticeReadDatabase,
+  input: { userId: string; sourceSessionId: string }
+): Promise<BoundedFocusedPracticeSource | null> {
+  const rows = await database
+    .select({
+      userId: interviewSession.userId,
+      sessionId: interviewSession.id,
+      roundType: interviewSession.roundType,
+      feedbackId: feedback.id,
+      feedbackStatus: feedback.status,
+      questionId: interviewQuestion.id,
+      questionText: interviewQuestion.questionText,
+    })
+    .from(interviewSession)
+    .innerJoin(feedback, eq(feedback.sessionId, interviewSession.id))
+    .leftJoin(
+      sessionQuestion,
+      eq(sessionQuestion.sessionId, interviewSession.id)
+    )
+    .leftJoin(
+      interviewQuestion,
+      eq(interviewQuestion.id, sessionQuestion.questionId)
+    )
+    .where(
+      and(
+        eq(interviewSession.id, input.sourceSessionId),
+        eq(interviewSession.userId, input.userId)
+      )
+    )
+    .limit(2);
+  const source = rows[0];
+  if (!source || rows.length !== 1) return null;
+
+  const feedbackRows = await buildFeedbackReadQuery(
+    database,
+    input.sourceSessionId
+  );
+  const boundedFeedbackRow = feedbackRows[0];
+  if (!boundedFeedbackRow || boundedFeedbackRow.id !== source.feedbackId) {
+    return null;
+  }
+  const boundedFeedback = decodeBoundedFeedbackReadRow(boundedFeedbackRow);
+  const evidenceTurns = await buildFeedbackEvidenceTurnsQuery(
+    database,
+    input.sourceSessionId
+  );
+  let frozenEvidenceState: "complete" | "partial" | null = null;
+  let answerBlocks: BoundedFocusedPracticeSource["answerBlocks"] = [];
+  let frozenEvidence: Awaited<
+    ReturnType<typeof getFrozenFeedbackEvaluationEvidence>
+  > | null = null;
+  if (
+    boundedFeedback.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+  ) {
+    frozenEvidence = await getFrozenFeedbackEvaluationEvidence(
+      input.sourceSessionId,
+      database
+    );
+    const prepared =
+      prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(frozenEvidence);
+    if (
+      frozenEvidence.snapshotValid &&
+      (frozenEvidence.snapshotState === "complete" ||
+        frozenEvidence.snapshotState === "partial")
+    ) {
+      frozenEvidenceState = frozenEvidence.snapshotState;
+    }
+    answerBlocks = prepared.eligible ? prepared.blocks : [];
+  }
+  const question =
+    source.questionId && source.questionText
+      ? {
+          questionId: source.questionId,
+          questionText: source.questionText,
+        }
+      : null;
+  const sourceFingerprint = createFocusedPracticeSourceFingerprint({
+    userId: source.userId,
+    sessionId: source.sessionId,
+    feedbackId: source.feedbackId,
+    roundType: source.roundType,
+    feedbackStatus: source.feedbackStatus,
+    question,
+    feedback: boundedFeedback,
+    evidenceTurns,
+    frozenEvidence,
+  });
+  return {
+    userId: source.userId,
+    sessionId: source.sessionId,
+    feedbackId: source.feedbackId,
+    roundType: source.roundType,
+    feedbackStatus: source.feedbackStatus,
+    question,
+    feedback: boundedFeedback,
+    evidenceTurns,
+    answerBlocks,
+    frozenEvidenceState,
+    sourceFingerprint,
+    completionStats: boundedFeedback.completionStats,
   };
 }

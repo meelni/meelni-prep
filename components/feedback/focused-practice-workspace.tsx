@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Mic2, RefreshCw, Target } from "lucide-react";
 
@@ -7,17 +8,14 @@ import { FeedbackSectionCard } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/app-surface";
 import { Textarea } from "@/components/ui/textarea";
+import { buildQuestionInterviewHref } from "@/lib/navigation/interview-launch";
 import { cn } from "@/lib/utils";
-import type {
-  FocusedPracticeAttempt,
+import {
+  parseFocusedPracticeAttemptView,
+  type FeedbackDimension,
+  type FocusedPracticeAttemptView,
   FocusedPracticeResponse,
 } from "@meelni/core";
-
-type FocusedPracticeAttemptView = FocusedPracticeAttempt extends infer Attempt
-  ? Attempt extends unknown
-    ? Omit<Attempt, "userId" | "sourceFeedbackId">
-    : never
-  : never;
 
 type ResponseKind = FocusedPracticeResponse["kind"];
 
@@ -32,10 +30,7 @@ const responseKindLabels: Record<ResponseKind, string> = {
   reflection: "Reflection",
 };
 
-const dimensionLabels: Record<
-  FocusedPracticeAttemptView["sourceFinding"]["dimension"],
-  string
-> = {
+const dimensionLabels: Record<FeedbackDimension, string> = {
   structure: "Structure",
   clarity: "Clarity",
   insight: "Insight",
@@ -47,6 +42,11 @@ interface FocusedPracticeWorkspaceProps {
   sourceSessionId: string;
 }
 
+interface FocusedPracticeErrorState {
+  message: string;
+  retryable: boolean;
+}
+
 export function FocusedPracticeWorkspace({
   sourceSessionId,
 }: FocusedPracticeWorkspaceProps) {
@@ -55,7 +55,7 @@ export function FocusedPracticeWorkspace({
   );
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FocusedPracticeErrorState | null>(null);
   const [responseKind, setResponseKind] =
     useState<ResponseKind>("revised_answer");
   const [responseText, setResponseText] = useState("");
@@ -81,13 +81,14 @@ export function FocusedPracticeWorkspace({
     setLoading(true);
     setError(null);
     try {
-      const result = await requestJson<{ attempt: FocusedPracticeAttemptView }>(
+      const result = await requestAttempt(
         "/api/focused-practice/attempts/start",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sourceSessionId }),
-        }
+        },
+        ["created", "resumed", "already_completed"]
       );
       setAttempt(result.attempt);
       if (result.attempt.state === "completed") {
@@ -96,7 +97,7 @@ export function FocusedPracticeWorkspace({
         setPracticedAloud(true);
       }
     } catch (cause) {
-      setError(getFocusedPracticeErrorMessage(cause));
+      setError(getFocusedPracticeError(cause));
     } finally {
       setLoading(false);
     }
@@ -107,7 +108,7 @@ export function FocusedPracticeWorkspace({
     setSubmitting(true);
     setError(null);
     try {
-      const result = await requestJson<{ attempt: FocusedPracticeAttemptView }>(
+      const result = await requestAttempt(
         `/api/focused-practice/attempts/${encodeURIComponent(
           attempt.attemptId
         )}/complete`,
@@ -122,7 +123,8 @@ export function FocusedPracticeWorkspace({
               text: trimmedResponse,
             },
           }),
-        }
+        },
+        ["completed", "already_completed"]
       );
       setAttempt(result.attempt);
       if (result.attempt.state === "completed") {
@@ -131,7 +133,7 @@ export function FocusedPracticeWorkspace({
         setPracticedAloud(true);
       }
     } catch (cause) {
-      setError(getFocusedPracticeErrorMessage(cause));
+      setError(getFocusedPracticeError(cause));
     } finally {
       setSubmitting(false);
     }
@@ -160,23 +162,34 @@ export function FocusedPracticeWorkspace({
       }
       contentClassName="space-y-6"
     >
+      <div aria-live="polite" aria-busy={loading || submitting}>
+        <span className="sr-only">
+          {loading
+            ? "Preparing focused practice"
+            : submitting
+              ? "Saving focused practice"
+              : "Focused practice ready"}
+        </span>
+      </div>
       {error && (
         <div
           role="alert"
           className="border-warning/20 bg-warning/5 text-foreground rounded-lg border p-4 text-sm leading-6"
         >
-          <p>{error}</p>
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="mt-2 h-auto min-h-11 px-0"
-            onClick={start}
-            disabled={loading || submitting}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-            Try again
-          </Button>
+          <p>{error.message}</p>
+          {error.retryable && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-2 h-auto min-h-11 px-0"
+              onClick={start}
+              disabled={loading || submitting}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Try again
+            </Button>
+          )}
         </div>
       )}
 
@@ -185,7 +198,7 @@ export function FocusedPracticeWorkspace({
           {[
             [
               "Use the feedback",
-              "Pick the most actionable feedback point from this interview.",
+              "Meelni selects one supported feedback point and keeps that focus fixed for this practice.",
             ],
             [
               "Practice aloud",
@@ -406,6 +419,11 @@ function CompletedAttempt({
           </blockquote>
         </div>
       </div>
+      <Button asChild className="h-auto min-h-11 max-w-full whitespace-normal">
+        <Link href={buildQuestionInterviewHref(attempt.plan.source.questionId)}>
+          Practice this question in another mock interview
+        </Link>
+      </Button>
     </div>
   );
 }
@@ -468,16 +486,41 @@ function AttemptPlan({ attempt }: { attempt: FocusedPracticeAttemptView }) {
   );
 }
 
-async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+async function requestAttempt(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  dispositions: readonly string[]
+) {
   const response = await fetch(input, init);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new FocusedPracticeRequestError(response.status, readError(payload));
   }
-  if (!payload || typeof payload !== "object") {
+  const result = parseFocusedPracticeAttemptResponse(payload, dispositions);
+  if (!result) {
     throw new FocusedPracticeRequestError(response.status, "invalid_response");
   }
-  return payload as T;
+  return result;
+}
+
+export function parseFocusedPracticeAttemptResponse(
+  payload: unknown,
+  dispositions: readonly string[]
+): { disposition: string; attempt: FocusedPracticeAttemptView } | null {
+  if (
+    !isRecord(payload) ||
+    !hasExactKeys(payload, ["disposition", "attempt"])
+  ) {
+    return null;
+  }
+  if (
+    typeof payload.disposition !== "string" ||
+    !dispositions.includes(payload.disposition)
+  ) {
+    return null;
+  }
+  const attempt = parseFocusedPracticeAttemptView(payload.attempt);
+  return attempt ? { disposition: payload.disposition, attempt } : null;
 }
 
 function readError(payload: unknown) {
@@ -498,24 +541,74 @@ class FocusedPracticeRequestError extends Error {
   }
 }
 
-function getFocusedPracticeErrorMessage(cause: unknown) {
+function getFocusedPracticeError(cause: unknown): FocusedPracticeErrorState {
   if (!(cause instanceof FocusedPracticeRequestError)) {
-    return "Focused practice could not be loaded. Please try again.";
+    return {
+      message: "Focused practice could not be loaded. Please try again.",
+      retryable: true,
+    };
   }
   if (cause.status === 401) {
-    return "Sign in again to continue focused practice.";
+    return {
+      message: "Sign in again to continue focused practice.",
+      retryable: false,
+    };
   }
   if (cause.status === 403) {
-    return "Focused practice is not available for this feedback yet.";
+    return {
+      message: "Focused practice is not available for this review.",
+      retryable: false,
+    };
   }
   if (cause.status === 404) {
-    return "This feedback is no longer available for focused practice.";
+    return {
+      message: "This feedback is no longer available for focused practice.",
+      retryable: false,
+    };
   }
   if (cause.status === 409) {
-    return "This practice attempt changed in another tab. Reload the feedback page and try again.";
+    if (cause.message === "focused_practice_unavailable") {
+      return {
+        message:
+          "Focused practice is not available for this review. Your feedback is still available.",
+        retryable: false,
+      };
+    }
+    return {
+      message:
+        "This practice attempt changed in another tab. Reload the feedback page and try again.",
+      retryable: true,
+    };
   }
   if (cause.status >= 500) {
-    return "Focused practice is temporarily unavailable. Your interview feedback is still saved.";
+    return {
+      message:
+        cause.message === "focused_practice_integrity_error" ||
+        cause.message === "invalid_response"
+          ? "Focused practice could not be verified and is unavailable. Your interview feedback is still saved."
+          : "Focused practice is temporarily unavailable. Your interview feedback is still saved.",
+      retryable:
+        cause.message !== "focused_practice_integrity_error" &&
+        cause.message !== "invalid_response",
+    };
   }
-  return "Check the practice response and try again.";
+  return {
+    message: "Check the practice response and try again.",
+    retryable: true,
+  };
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[]
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === expected.length &&
+    keys.every((key) => expected.includes(key))
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

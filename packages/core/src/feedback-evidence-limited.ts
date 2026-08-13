@@ -7,6 +7,7 @@ import {
   prepareFeedbackTranscript,
   type FeedbackTranscriptTurn,
 } from "./feedback-transcript";
+import { FEEDBACK_DIMENSIONS } from "./feedback-dimension-coverage";
 
 export const FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION =
   "feedback.evidence-limited.v2" as const;
@@ -234,6 +235,35 @@ export function isEvidenceLimitedFeedbackResult(
   value: FeedbackEvaluationResult
 ): value is EvidenceLimitedFeedbackResult {
   return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
+}
+
+/**
+ * SAV-420's server-owned evidence-limited practice focus. Provider array order
+ * and transcript segmentation are not selection signals.
+ */
+export function selectEvidenceLimitedPracticeFocus(
+  improvements: readonly EvidenceLimitedImprovementItem[]
+): EvidenceLimitedImprovementItem {
+  const dimensionOrder = new Map(
+    FEEDBACK_DIMENSIONS.map((dimension, index) => [dimension, index])
+  );
+  const selected = [...improvements].sort(
+    (left, right) =>
+      (dimensionOrder.get(left.dimension) ?? Number.MAX_SAFE_INTEGER) -
+        (dimensionOrder.get(right.dimension) ?? Number.MAX_SAFE_INTEGER) ||
+      left.actionCode.localeCompare(right.actionCode) ||
+      left.signalCode.localeCompare(right.signalCode) ||
+      left.transcriptRefs
+        .join(":")
+        .localeCompare(right.transcriptRefs.join(":"))
+  )[0];
+  if (!selected) {
+    throw new FeedbackV2ParseError(
+      "findings_count_invalid",
+      "coaching review requires a practice focus"
+    );
+  }
+  return selected;
 }
 
 export function parseEvidenceLimitedFeedback(

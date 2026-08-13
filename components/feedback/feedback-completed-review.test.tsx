@@ -9,6 +9,7 @@ import {
   CompletedLegacyReview,
   CompletedV2Review,
 } from "./feedback-completed-review";
+import { parseFocusedPracticeAttemptResponse } from "./focused-practice-workspace";
 import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
 import {
   FEEDBACK_DIMENSIONS,
@@ -53,6 +54,63 @@ const finding = {
   rubricVersion: "pm-feedback-rubric.v2" as const,
   confidence: 0.9,
 };
+
+test("focused-practice responses require the strict privacy-safe attempt view", () => {
+  const attempt = {
+    attemptId: "synthetic-focused-practice-attempt",
+    sourceSessionId: "synthetic-focused-practice-session",
+    contractVersion: "focused-practice-attempt.v2",
+    state: "in_progress",
+    lifecycleVersion: 0,
+    plan: {
+      state: "available",
+      contractVersion: "focused-practice-plan.v2",
+      durationMinutes: 5,
+      title: "Make the product decision clearer",
+      objective: "State the decision and connect it to the supported evidence.",
+      instructions: [
+        "Use only the grounded focus selected by Meelni.",
+        "Practice the decision aloud before saving your self-review.",
+      ],
+      successCriterion: "The decision and supporting reason are explicit.",
+      selfReviewPrompt: "Did the evidence directly support the decision?",
+      source: {
+        questionId: "synthetic-question",
+        questionText: "How would you improve a planning product?",
+        roundType: "product_sense",
+        focusDimension: "clarity",
+      },
+    },
+    startedAt: "2026-08-13T12:00:00.000Z",
+    completedAt: null,
+    completion: null,
+  };
+  const parsed = parseFocusedPracticeAttemptResponse(
+    { disposition: "created", attempt },
+    ["created", "resumed", "already_completed"]
+  );
+  assert.equal(parsed?.attempt.contractVersion, "focused-practice-attempt.v2");
+  assert.equal(
+    parseFocusedPracticeAttemptResponse(
+      { disposition: "created", attempt, extra: true },
+      ["created"]
+    ),
+    null
+  );
+  assert.equal(
+    parseFocusedPracticeAttemptResponse(
+      {
+        disposition: "created",
+        attempt: {
+          ...attempt,
+          sourceFinding: { evidence: { quote: "private synthetic quote" } },
+        },
+      },
+      ["created"]
+    ),
+    null
+  );
+});
 
 test("completed v2 review hides technical version metadata", () => {
   const feedback: FeedbackV2View = {
@@ -151,6 +209,8 @@ test("evidence-limited review renders server templates and exact quantitative ci
   assert.match(html, /Why there are no scores/);
   assert.match(html, /Evidence support/);
   assert.match(html, /Prioritized practice focus/);
+  assert.match(html, /Focused practice/);
+  assert.match(html, /Meelni selects one supported feedback point/);
   assert.match(html, /View Leadership practice-focus citation in transcript/);
   assert.doesNotMatch(html, /customer_problem_connection/);
   assert.doesNotMatch(html, /fixture-model|feedback\.evidence-limited/);
@@ -221,13 +281,12 @@ test("dimension coverage review renders a full scorecard only with complete supp
   assert.match(html, />8</);
   assert.match(html, /Supported/);
   assert.match(html, /working parents because schedule changes/);
+  assert.doesNotMatch(html, /Start focused practice/);
   for (const evidence of feedback.dimensions.structure.evidence) {
     assert.match(
       html,
       new RegExp(
-        escapeRegExp(
-          `View Structure ${evidence.label} citation in transcript`
-        )
+        escapeRegExp(`View Structure ${evidence.label} citation in transcript`)
       )
     );
   }
@@ -244,6 +303,8 @@ test("dimension coverage review withholds unsupported and overall scores in a pa
   assert.match(html, /8\/10/);
   assert.match(html, /Not enough evidence/);
   assert.match(html, /because this interview did not cover enough evidence/);
+  assert.match(html, /Start focused practice/);
+  assert.match(html, /Meelni selects one supported feedback point/);
   assert.doesNotMatch(html, /Overall score/);
   assert.doesNotMatch(html, /Clarity score/);
   assert.doesNotMatch(html, /answer-block:0001/);
@@ -260,6 +321,8 @@ test("dimension coverage coaching review never renders numerical scores", () => 
   assert.match(html, /Prioritized practice focus/);
   assert.match(html, /not enough PM-rubric coverage/);
   assert.match(html, /working parents because schedule changes/);
+  assert.match(html, /Start focused practice/);
+  assert.match(html, /Meelni selects one supported feedback point/);
   assert.doesNotMatch(html, /Overall score/);
   assert.doesNotMatch(html, />\d+\/10</);
 });
@@ -273,6 +336,7 @@ test("integrity-limited coaching explains system confidence without judging perf
   assert.match(html, /complete saved interview evidence could not be verified/);
   assert.match(html, /does not reflect poor performance/i);
   assert.match(html, /Evidence support/);
+  assert.match(html, /Start focused practice/);
   assert.doesNotMatch(html, />\d+\/10</);
   assert.doesNotMatch(html, /answer-block:|facet|schema|model/i);
 });

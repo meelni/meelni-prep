@@ -3,8 +3,8 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains thirty-three entries, from
-`0000_many_nocturne` through `0032_dimension_evidence_coverage`. The migration-history
+The current committed journal contains thirty-four entries, from
+`0000_many_nocturne` through `0033_scoreless_focused_practice`. The migration-history
 inventory is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -91,7 +91,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirty-three
+six ledger entries. Expected post-migration status is `reconciled` with thirty-four
 ledger entries, 37 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
@@ -101,7 +101,8 @@ subscription-resource-convergence, durable LiveKit deletion, feedback-v2,
 server-owned billing privilege, explicit-analytics-consent,
 runtime-settlement-reconciliation, public-demo-limit, question-provenance, and
 focused-practice-attempt, durable-contact-submission, transcript-watermark,
-feedback-outcome, and dimension-coverage contract fingerprints.
+feedback-outcome, dimension-coverage, and scoreless-focused-practice contract
+fingerprints.
 The durable-contact contract includes the non-login contact-triage group role,
 denial of triage RPCs to Supabase shared roles, separate runtime limiter access,
 and zero direct group privileges on contact tables.
@@ -200,8 +201,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 33`, and dimension-coverage schema fingerprint
-   `d6b725447d079a953d4b688adcc1dc921d6f661dec30cf8026779d87fe152f6b`.
+   `migrationCount: 34`, and scoreless-focused-practice schema fingerprint
+   `e99f1f0fca542a38d0d50dc6a1aef13b0eea16bda2692619d49577be75bca545`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.
