@@ -17,6 +17,10 @@ Edit `.agents/skills/*` first. Do not hand-edit symlinked copies.
 
 ## Current Skills
 
+- `meelni-start`: front door for any Meelni task, question, investigation,
+  recommendation, implementation, operation, or cross-cutting request. It
+  establishes current product/repository truth, chooses the lightest valid
+  lane, and hands off to the smallest relevant set of specialist skills.
 - `meelni-codebase-architecture`: package migration, module boundaries, adapter shape, and agent-friendly refactors.
 - `meelni-livekit-interview-runtime`: LiveKit interview sessions, room metadata, transcripts, turn-taking, runtime config, and agent prompts.
 - `meelni-feedback-evaluation`: scoring, rubrics, feedback generation, practice exercises, insights, and evaluation reliability.
