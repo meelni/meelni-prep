@@ -6,12 +6,12 @@ SAV-421 owns the canonical coverage and scoring result. SAV-420 consumes one
 closed server-owned presentation outcome instead of reconstructing it in React
 or Dashboard code:
 
-| Outcome           | Evidence state                                                                   | Scores                    | Overall                                                     | Primary next action                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Full scorecard    | Verified evidence supports every weighted rubric dimension                       | Every dimension           | Allowed, displayed only at supported whole-number precision | Review findings or continue practice                                                                    |
-| Partial scorecard | Verified evidence supports some, but not all, rubric dimensions                  | Supported dimensions only | Never                                                       | Review supported dimensions and the uncovered evidence needs                                            |
-| Coaching review   | Verified evidence supports grounded coaching but no reliable numerical dimension | None                      | Never                                                       | Use one prioritized practice focus                                                                      |
-| Unable to review  | No grounded review can safely cross the read boundary                            | None                      | Never                                                       | Retry, confirm credit recovery, or start another interview according to the server-owned recovery state |
+| Outcome           | Evidence state                                                                   | Scores                    | Overall                                                     | Primary next action                                                                             |
+| ----------------- | -------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Full scorecard    | Verified evidence supports every weighted rubric dimension                       | Every dimension           | Allowed, displayed only at supported whole-number precision | Review findings or continue practice                                                            |
+| Partial scorecard | Verified evidence supports some, but not all, rubric dimensions                  | Supported dimensions only | Never                                                       | Review supported dimensions and the uncovered evidence needs                                    |
+| Coaching review   | Verified evidence supports grounded coaching but no reliable numerical dimension | None                      | Never                                                       | Use one prioritized practice focus                                                              |
+| Unable to review  | No grounded review can safely cross the read boundary                            | None                      | Never                                                       | Confirm credit recovery or start another interview according to the server-owned recovery state |
 
 Coverage insufficiency and integrity failure remain different reason families.
 The first describes what verified interview evidence covered; the second
@@ -49,8 +49,7 @@ across every weighted dimension.`
 not enough rubric coverage for reliable numerical scores. This describes
 what the recorded interview covered, not a poor-performance judgment.`
 - Signal section: `Observed PM signals`.
-- Confidence label: `Evidence support: Strong`, `Evidence support: Moderate`,
-  or `Evidence support: Limited`.
+- Evidence-support label: `Exact cited evidence`.
 - Confidence help: `Evidence support describes how closely this observation is
 supported by the cited parts of this interview. It is not a skill rating,
 probability, or progress measure.`
@@ -69,9 +68,12 @@ performance conclusion was created.` The next action is another mock
   interview; no credit promise is invented.
 - Integrity: `We couldn’t verify the saved interview evidence, so we did not
 create scores or coaching. This does not reflect your performance.` The
-  server-owned recovery state adds exactly one truthful status such as
-  `Try review again`, `Your interview credit was returned`, or `Credit recovery
-is in progress`, with the matching action.
+  server-owned recovery state adds exactly one truthful status:
+  `Your interview credit was returned` or `Credit recovery is in progress`,
+  with a path to another interview. Because immutable evidence cannot be
+  repaired in place, this terminal outcome does not invent a retry action.
+  Retry remains available only for separately modeled transient dispatch or
+  generation failures.
 
 Dashboard and History use outcome labels directly: `Full scorecard ready`,
 `Partial scorecard ready`, `Coaching review ready`, and `Unable to review`.
@@ -107,8 +109,9 @@ Unknown values fail closed to Unable to review.
 
 Overall averages, overall trends, comparisons, and progress claims require a
 valid overall score. Coaching and Unable outcomes contribute no numbers.
-Partial dimension scores may be counted only by a dimension-specific metric
-that preserves a supported-score denominator; missing dimensions are never
+Partial dimension scores may be counted only by a future dimension-specific
+metric that preserves a supported-score denominator; current Dashboard trends
+and focus metrics remain full-overall-score-only. Missing dimensions are never
 zero-filled.
 
 ## Compatibility and coordination
@@ -118,6 +121,6 @@ zero-filled.
   does not create, resume, complete, or store a focused-practice attempt.
 - SAV-415 may later attach helpfulness controls and feedback-view events, but
   this change does not store or emit them.
-- The final implementation must be rebased onto the exact coordinator-supplied
-  merged SAV-421 `main` SHA and adopt its public names rather than creating a
-  competing coverage contract.
+- The implementation is rebased onto exact merged SAV-421 `main` SHA
+  `7db50229bf9a9fbeacbc8275071598f34407ccb0` and adopts its public coverage
+  result without creating a competing scoring contract.

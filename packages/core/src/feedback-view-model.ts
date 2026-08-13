@@ -10,9 +10,10 @@ import {
   type FeedbackV2Scores,
 } from "./feedback-v2";
 import {
-  FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  EVIDENCE_LIMITED_ACTIONS,
+  EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
+  EVIDENCE_LIMITED_STRENGTH_SIGNALS,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-  hasServerOwnedEvidenceLimitedContent,
   parsePersistedEvidenceLimitedFeedback,
   type EvidenceLimitedImprovementItem,
   type EvidenceLimitedStrengthItem,
@@ -20,10 +21,7 @@ import {
 } from "./feedback-evidence-limited";
 import {
   FEEDBACK_DIMENSIONS,
-  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
-  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
-  ROUND_DIMENSION_COVERAGE_CONFIG,
   parsePersistedDimensionCoverageFeedback,
   type DimensionCoverageFeedbackMode,
   type DimensionCoverageResultDimensions,
@@ -40,6 +38,8 @@ import {
 } from "./feedback-transcript";
 
 export const LEGACY_FEEDBACK_RUBRIC_VERSION = "1.0.0" as const;
+export const FEEDBACK_REVIEW_PRESENTATION_VERSION =
+  "feedback.review-outcome.v1" as const;
 
 export interface PersistedCompletedFeedback {
   id: unknown;
@@ -77,6 +77,62 @@ export interface PresentCompletedFeedbackOptions {
   answerBlocks?: readonly CandidateAnswerBlock[];
   expectedRoundType?: RoundType;
   frozenEvidenceState?: "complete" | "partial";
+  scoreWithheldReason?: FeedbackScoreWithheldReason;
+}
+
+export type FeedbackScoreWithheldReason =
+  | "rubric_coverage"
+  | "verified_evidence_integrity";
+
+export interface FeedbackCoachingSignalView {
+  dimension: FeedbackDimension;
+  label: string;
+  citation: string;
+  transcriptRef: string;
+  evidenceSupport: "exact_candidate_citation";
+}
+
+export interface FeedbackPracticeFocusView {
+  dimension: FeedbackDimension;
+  title: string;
+  guidance: string;
+  rationale: string;
+  citation: string;
+  transcriptRef: string;
+}
+
+export interface FeedbackEvidenceLimitedFindingView {
+  dimension: FeedbackDimension;
+  observation: string;
+  citation: string;
+  transcriptRef: string;
+  nextStep: string;
+  evidenceSupport: "exact_candidate_citation";
+}
+
+export interface FeedbackDimensionEvidenceView {
+  label: string;
+  citation: string;
+  transcriptRef: string;
+}
+
+export interface FeedbackDimensionResultView {
+  coverage: "sufficient" | "partial" | "absent";
+  score: number | null;
+  evidence: FeedbackDimensionEvidenceView[];
+}
+
+export type FeedbackDimensionResultsView = Record<
+  FeedbackDimension,
+  FeedbackDimensionResultView
+>;
+
+export interface FeedbackEvidenceLimitedPracticeFocusView {
+  dimension: FeedbackDimension;
+  title: string;
+  guidance: string;
+  citation: string;
+  transcriptRef: string;
 }
 
 export interface FeedbackScoreView {
@@ -130,27 +186,23 @@ export interface FeedbackLegacyView extends CompletedFeedbackBase {
 export interface FeedbackEvidenceLimitedView
   extends CompletedFeedbackIdentityBase {
   kind: "evidence-limited";
-  evaluationState: "partial";
-  schemaVersion: typeof FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
-  promptVersion: typeof FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION;
-  modelVersion: string;
-  rubricVersion: typeof FEEDBACK_RUBRIC_VERSION;
-  strengths: EvidenceLimitedStrengthItem[];
-  improvements: EvidenceLimitedImprovementItem[];
+  presentationVersion: typeof FEEDBACK_REVIEW_PRESENTATION_VERSION;
+  strengths: FeedbackEvidenceLimitedFindingView[];
+  improvements: FeedbackEvidenceLimitedFindingView[];
+  scoreWithheldReason: FeedbackScoreWithheldReason;
+  prioritizedPracticeFocus: FeedbackEvidenceLimitedPracticeFocusView;
 }
 
 export interface FeedbackDimensionCoverageView
   extends CompletedFeedbackIdentityBase {
   kind: "dimension-coverage";
-  schemaVersion: typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
-  promptVersion: typeof FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION;
-  modelVersion: string;
-  rubricVersion: typeof FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION;
-  roundType: RoundType;
-  evaluationState: "full" | "partial";
+  presentationVersion: typeof FEEDBACK_REVIEW_PRESENTATION_VERSION;
   mode: DimensionCoverageFeedbackMode;
-  dimensions: DimensionCoverageResultDimensions;
+  dimensions: FeedbackDimensionResultsView;
   overallScore: number | null;
+  scoreWithheldReason: FeedbackScoreWithheldReason | null;
+  coachingSignals: FeedbackCoachingSignalView[];
+  prioritizedPracticeFocus: FeedbackPracticeFocusView | null;
 }
 
 export interface FeedbackInvalidView {
@@ -168,6 +220,10 @@ export type CompletedFeedbackView =
 export interface SkippedFeedbackDetails {
   outcomeReason: SkippedFeedbackOutcomeReason;
   tier: "insufficient" | "abandoned";
+  recovery:
+    | "start_another_interview"
+    | "credit_returned"
+    | "credit_recovery_in_progress";
   reasons: string[];
   recommendations: string[];
   stats?: {
@@ -322,7 +378,11 @@ export function presentCompletedFeedback(
       );
     }
     if (input.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION) {
-      return parseEvidenceLimitedFeedbackView(input, options.evidenceTurns);
+      return parseEvidenceLimitedFeedbackView(
+        input,
+        options.evidenceTurns,
+        options.scoreWithheldReason ?? "rubric_coverage"
+      );
     }
     return parseV2Feedback(input, options.evidenceTurns);
   } catch {
@@ -584,6 +644,12 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
   ) {
     return null;
   }
+  const expectedRecovery =
+    value.outcomeReason === "no_reviewable_answer"
+      ? value.recovery === "start_another_interview"
+      : value.recovery === "credit_returned" ||
+        value.recovery === "credit_recovery_in_progress";
+  if (!expectedRecovery) return null;
   if (!isBoundedStringArray(value.reasons, 20, FEEDBACK_READ_LIMITS.summary)) {
     return null;
   }
@@ -597,9 +663,11 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
     return null;
   }
   if (value.stats !== undefined && !isSkippedStats(value.stats)) return null;
+  const recovery = value.recovery as SkippedFeedbackDetails["recovery"];
   return {
     outcomeReason: value.outcomeReason,
     tier: value.tier,
+    recovery,
     reasons: value.reasons,
     recommendations: value.recommendations,
     ...(value.stats !== undefined ? { stats: value.stats } : {}),
@@ -616,17 +684,28 @@ function decodeCompletedFeedbackView(
       : null;
   }
   if (value.kind === "evidence-limited") {
-    return isCompletedFeedbackIdentityBase(value) &&
-      value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
-      value.promptVersion === FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION &&
-      value.rubricVersion === FEEDBACK_RUBRIC_VERSION &&
-      value.evaluationState === "partial" &&
-      isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) &&
-      hasServerOwnedEvidenceLimitedContent({
-        strengths: value.strengths,
-        improvements: value.improvements,
-        summary: value.summary,
-      })
+    const valid =
+      isCompletedFeedbackIdentityBase(value) &&
+      value.presentationVersion === FEEDBACK_REVIEW_PRESENTATION_VERSION &&
+      isFeedbackScoreWithheldReason(value.scoreWithheldReason) &&
+      isEvidenceLimitedFindingViewArray(value.strengths, "strength") &&
+      isEvidenceLimitedFindingViewArray(value.improvements, "improvement", 1) &&
+      hasUniqueEvidenceLimitedFindingIdentities(
+        value.strengths,
+        value.improvements
+      ) &&
+      isEvidenceLimitedPracticeFocusView(value.prioritizedPracticeFocus);
+    if (!valid) return null;
+    const focus = value.prioritizedPracticeFocus as Record<string, unknown>;
+    return (value.improvements as unknown[]).some(
+      (improvement) =>
+        isRecord(improvement) &&
+        improvement.dimension === focus.dimension &&
+        improvement.observation === focus.title &&
+        improvement.nextStep === focus.guidance &&
+        improvement.citation === focus.citation &&
+        improvement.transcriptRef === focus.transcriptRef
+    )
       ? (value as unknown as FeedbackEvidenceLimitedView)
       : null;
   }
@@ -674,14 +753,7 @@ function isDimensionCoverageFeedbackView(
   value: Record<string, unknown>
 ): boolean {
   if (
-    value.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
-    value.promptVersion !== FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION ||
-    value.rubricVersion !== FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION ||
-    !isBoundedString(value.modelVersion, FEEDBACK_READ_LIMITS.modelVersion) ||
-    (value.roundType !== "product_sense" &&
-      value.roundType !== "execution" &&
-      value.roundType !== "behavioral" &&
-      value.roundType !== "strategy") ||
+    value.presentationVersion !== FEEDBACK_REVIEW_PRESENTATION_VERSION ||
     (value.mode !== "full_scorecard" &&
       value.mode !== "partial_scorecard" &&
       value.mode !== "coaching_review") ||
@@ -690,7 +762,6 @@ function isDimensionCoverageFeedbackView(
     return false;
   }
   const dimensions = value.dimensions;
-  const roundType = value.roundType;
   if (
     Object.keys(dimensions).length !== FEEDBACK_DIMENSIONS.length ||
     FEEDBACK_DIMENSIONS.some((dimension) => !(dimension in dimensions))
@@ -716,20 +787,17 @@ function isDimensionCoverageFeedbackView(
     for (const item of candidate.evidence) {
       if (
         !isRecord(item) ||
-        !isBoundedString(item.facetCode, 128) ||
-        !isBoundedString(item.facetLabel, 256) ||
-        !isBoundedString(item.answerBlockRef, 128) ||
-        !/^answer-block:\d{4}$/.test(item.answerBlockRef) ||
-        !isBoundedString(item.evidenceText, 32_000) ||
-        facets.has(item.facetCode)
+        !isBoundedString(item.label, 256) ||
+        !isBoundedString(item.citation, 32_000) ||
+        !isBoundedString(
+          item.transcriptRef,
+          FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
+        ) ||
+        facets.has(item.label)
       ) {
         return false;
       }
-      const definition = ROUND_DIMENSION_COVERAGE_CONFIG[roundType][
-        dimension
-      ].facets.find((facet) => facet.code === item.facetCode);
-      if (!definition || definition.label !== item.facetLabel) return false;
-      facets.add(item.facetCode);
+      facets.add(item.label);
     }
     if (candidate.coverage === "sufficient") sufficientCount += 1;
     if (candidate.score !== null) {
@@ -747,21 +815,46 @@ function isDimensionCoverageFeedbackView(
     }
   }
   if (value.mode === "full_scorecard") {
-    return (
-      value.evaluationState === "full" &&
-      sufficientCount === FEEDBACK_DIMENSIONS.length &&
-      isScore(value.overallScore) &&
-      calculateOverallScore(
-        numericScores as Record<FeedbackDimension, number>
-      ) === (value.overallScore as number)
-    );
+    if (
+      !(
+        sufficientCount === FEEDBACK_DIMENSIONS.length &&
+        isScore(value.overallScore) &&
+        calculateOverallScore(
+          numericScores as Record<FeedbackDimension, number>
+        ) === (value.overallScore as number)
+      ) ||
+      value.scoreWithheldReason !== null
+    ) {
+      return false;
+    }
+  } else {
+    if (value.overallScore !== null) {
+      return false;
+    }
+    if (
+      value.mode === "partial_scorecard" &&
+      (sufficientCount === 0 ||
+        sufficientCount === FEEDBACK_DIMENSIONS.length ||
+        value.scoreWithheldReason !== "rubric_coverage")
+    ) {
+      return false;
+    }
+    if (
+      value.mode === "coaching_review" &&
+      !isFeedbackScoreWithheldReason(value.scoreWithheldReason)
+    ) {
+      return false;
+    }
   }
-  if (value.overallScore !== null || value.evaluationState !== "partial") {
-    return false;
-  }
-  return value.mode === "coaching_review"
-    ? true
-    : sufficientCount > 0 && sufficientCount < FEEDBACK_DIMENSIONS.length;
+
+  const expectedCoaching = buildDimensionCoverageCoachingPresentation(
+    dimensions as FeedbackDimensionResultsView,
+    value.mode as DimensionCoverageFeedbackMode
+  );
+  return (
+    sameJson(value.coachingSignals, expectedCoaching.signals) &&
+    sameJson(value.prioritizedPracticeFocus, expectedCoaching.practiceFocus)
+  );
 }
 
 function isCompletedFeedbackIdentityBase(
@@ -1005,6 +1098,19 @@ function parseDimensionCoverageFeedbackView(
       throw new Error("dimension score mismatch");
     }
   }
+  const scoreWithheldReason: FeedbackScoreWithheldReason | null =
+    feedback.mode === "full_scorecard"
+      ? null
+      : feedback.mode === "partial_scorecard"
+        ? "rubric_coverage"
+        : frozenEvidenceState === "partial"
+          ? "verified_evidence_integrity"
+          : "rubric_coverage";
+  const dimensions = toDimensionResultsView(feedback.dimensions, answerBlocks);
+  const coaching = buildDimensionCoverageCoachingPresentation(
+    dimensions,
+    feedback.mode
+  );
   return {
     kind: "dimension-coverage",
     id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
@@ -1013,15 +1119,13 @@ function parseDimensionCoverageFeedbackView(
       FEEDBACK_READ_LIMITS.identifier
     ),
     summary: feedback.summary,
-    schemaVersion: feedback.schemaVersion,
-    promptVersion: feedback.promptVersion,
-    modelVersion: feedback.modelVersion,
-    rubricVersion: feedback.rubricVersion,
-    roundType: feedback.roundType,
-    evaluationState: feedback.evaluationState,
+    presentationVersion: FEEDBACK_REVIEW_PRESENTATION_VERSION,
     mode: feedback.mode,
-    dimensions: feedback.dimensions,
+    dimensions,
     overallScore: feedback.overallScore,
+    scoreWithheldReason,
+    coachingSignals: coaching.signals,
+    prioritizedPracticeFocus: coaching.practiceFocus,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
@@ -1029,7 +1133,8 @@ function parseDimensionCoverageFeedbackView(
 
 function parseEvidenceLimitedFeedbackView(
   input: PersistedCompletedFeedback,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
+  scoreWithheldReason: FeedbackScoreWithheldReason
 ): FeedbackEvidenceLimitedView {
   const transcript = [...parseCanonicalEvidenceTurns(evidenceTurns)].map(
     ([eventId, text]) => ({ eventId, speaker: "user" as const, text })
@@ -1061,16 +1166,246 @@ function parseEvidenceLimitedFeedbackView(
       FEEDBACK_READ_LIMITS.identifier
     ),
     summary: feedback.summary,
-    strengths: feedback.strengths,
-    improvements: feedback.improvements,
-    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-    modelVersion: feedback.modelVersion,
-    rubricVersion: FEEDBACK_RUBRIC_VERSION,
-    evaluationState: "partial",
+    strengths: feedback.strengths.map(toEvidenceLimitedFindingView),
+    improvements: feedback.improvements.map(toEvidenceLimitedFindingView),
+    scoreWithheldReason:
+      requireFeedbackScoreWithheldReason(scoreWithheldReason),
+    prioritizedPracticeFocus: toEvidenceLimitedPracticeFocusView(
+      selectEvidenceLimitedPracticeFocus(feedback.improvements)
+    ),
+    presentationVersion: FEEDBACK_REVIEW_PRESENTATION_VERSION,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };
+}
+
+function toDimensionResultsView(
+  dimensions: DimensionCoverageResultDimensions,
+  answerBlocks: readonly CandidateAnswerBlock[]
+): FeedbackDimensionResultsView {
+  const blockById = new Map(
+    answerBlocks.map((block) => [block.answerBlockId, block])
+  );
+  const result = {} as FeedbackDimensionResultsView;
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const source = dimensions[dimension];
+    result[dimension] = {
+      coverage: source.coverage,
+      score: source.score,
+      evidence: source.evidence.map((evidence) => {
+        const block = blockById.get(evidence.answerBlockRef);
+        const transcriptRef = block?.response[0]?.eventId;
+        if (!transcriptRef || block.responseText !== evidence.evidenceText) {
+          throw new Error("dimension evidence presentation mismatch");
+        }
+        return {
+          label: evidence.facetLabel,
+          citation: evidence.evidenceText,
+          transcriptRef,
+        };
+      }),
+    };
+  }
+  return result;
+}
+
+function buildDimensionCoverageCoachingPresentation(
+  dimensions: FeedbackDimensionResultsView,
+  mode: DimensionCoverageFeedbackMode
+): {
+  signals: FeedbackCoachingSignalView[];
+  practiceFocus: FeedbackPracticeFocusView | null;
+} {
+  if (mode !== "coaching_review") {
+    return { signals: [], practiceFocus: null };
+  }
+
+  const signals = FEEDBACK_DIMENSIONS.flatMap((dimension) =>
+    dimensions[dimension].evidence.map((evidence) => ({
+      dimension,
+      label: evidence.label,
+      citation: evidence.citation,
+      transcriptRef: evidence.transcriptRef,
+      evidenceSupport: "exact_candidate_citation" as const,
+    }))
+  ).slice(0, 3);
+  const selected = signals[0];
+  if (!selected) {
+    throw new Error("coaching presentation requires grounded evidence");
+  }
+
+  return {
+    signals,
+    practiceFocus: {
+      dimension: selected.dimension,
+      title: selected.label,
+      guidance:
+        "Practice stating this PM-rubric move in one clear sentence, then connect it to your next decision.",
+      rationale:
+        "This focus comes from one exact citation in this interview. It was not selected from a weakest score.",
+      citation: selected.citation,
+      transcriptRef: selected.transcriptRef,
+    },
+  };
+}
+
+function toEvidenceLimitedFindingView(
+  finding: EvidenceLimitedStrengthItem | EvidenceLimitedImprovementItem
+): FeedbackEvidenceLimitedFindingView {
+  const evidence = finding.evidence[0];
+  if (!evidence || finding.evidence.length !== 1) {
+    throw new Error("coaching finding requires one exact citation");
+  }
+  return {
+    dimension: finding.dimension,
+    observation: finding.observation,
+    citation: evidence.quote,
+    transcriptRef: evidence.turnRef,
+    nextStep: finding.nextStep,
+    evidenceSupport: "exact_candidate_citation",
+  };
+}
+
+function toEvidenceLimitedPracticeFocusView(
+  finding: EvidenceLimitedImprovementItem
+): FeedbackEvidenceLimitedPracticeFocusView {
+  const view = toEvidenceLimitedFindingView(finding);
+  return {
+    dimension: view.dimension,
+    title: view.observation,
+    guidance: view.nextStep,
+    citation: view.citation,
+    transcriptRef: view.transcriptRef,
+  };
+}
+
+function selectEvidenceLimitedPracticeFocus(
+  improvements: readonly EvidenceLimitedImprovementItem[]
+): EvidenceLimitedImprovementItem {
+  const dimensionOrder = new Map(
+    FEEDBACK_DIMENSIONS.map((dimension, index) => [dimension, index])
+  );
+  const selected = [...improvements].sort(
+    (left, right) =>
+      (dimensionOrder.get(left.dimension) ?? Number.MAX_SAFE_INTEGER) -
+        (dimensionOrder.get(right.dimension) ?? Number.MAX_SAFE_INTEGER) ||
+      left.actionCode.localeCompare(right.actionCode) ||
+      left.signalCode.localeCompare(right.signalCode) ||
+      left.transcriptRefs
+        .join(":")
+        .localeCompare(right.transcriptRefs.join(":"))
+  )[0];
+  if (!selected) throw new Error("coaching review requires a practice focus");
+  return selected;
+}
+
+function isEvidenceLimitedFindingViewArray(
+  value: unknown,
+  kind: "strength" | "improvement",
+  min = 0
+): value is FeedbackEvidenceLimitedFindingView[] {
+  const signals =
+    kind === "strength"
+      ? Object.values(EVIDENCE_LIMITED_STRENGTH_SIGNALS)
+      : Object.values(EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS);
+  const actions = Object.values(EVIDENCE_LIMITED_ACTIONS);
+  const transcriptRefs = new Set<string>();
+  return (
+    Array.isArray(value) &&
+    value.length >= min &&
+    value.length <= 3 &&
+    value.every((finding) => {
+      if (
+        !isRecord(finding) ||
+        !DIMENSIONS.has(finding.dimension as FeedbackDimension) ||
+        !isBoundedString(
+          finding.observation,
+          FEEDBACK_READ_LIMITS.findingText
+        ) ||
+        !isBoundedString(
+          finding.citation,
+          FEEDBACK_READ_LIMITS.evidenceQuote
+        ) ||
+        !isBoundedString(
+          finding.transcriptRef,
+          FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
+        ) ||
+        !isBoundedString(finding.nextStep, FEEDBACK_READ_LIMITS.findingText) ||
+        finding.evidenceSupport !== "exact_candidate_citation"
+      ) {
+        return false;
+      }
+      const signal = signals.find(
+        (candidate) =>
+          candidate.dimension === finding.dimension &&
+          candidate.observation === finding.observation
+      );
+      const action = actions.find(
+        (candidate) =>
+          candidate.dimension === finding.dimension &&
+          candidate.nextStep === finding.nextStep
+      );
+      if (transcriptRefs.has(finding.transcriptRef)) return false;
+      transcriptRefs.add(finding.transcriptRef);
+      return signal !== undefined && action !== undefined;
+    })
+  );
+}
+
+function hasUniqueEvidenceLimitedFindingIdentities(
+  strengths: unknown,
+  improvements: unknown
+): boolean {
+  if (!Array.isArray(strengths) || !Array.isArray(improvements)) return false;
+  const findings = [...strengths, ...improvements];
+  const observations = new Set<string>();
+  const nextSteps = new Set<string>();
+  for (const finding of findings) {
+    if (!isRecord(finding)) return false;
+    const observation = finding.observation as string;
+    const nextStep = finding.nextStep as string;
+    if (observations.has(observation) || nextSteps.has(nextStep)) {
+      return false;
+    }
+    observations.add(observation);
+    nextSteps.add(nextStep);
+  }
+  return true;
+}
+
+function isEvidenceLimitedPracticeFocusView(
+  value: unknown
+): value is FeedbackEvidenceLimitedPracticeFocusView {
+  return (
+    isRecord(value) &&
+    DIMENSIONS.has(value.dimension as FeedbackDimension) &&
+    isBoundedString(value.title, FEEDBACK_READ_LIMITS.findingText) &&
+    isBoundedString(value.guidance, FEEDBACK_READ_LIMITS.findingText) &&
+    isBoundedString(value.citation, FEEDBACK_READ_LIMITS.evidenceQuote) &&
+    isBoundedString(
+      value.transcriptRef,
+      FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
+    )
+  );
+}
+
+function isFeedbackScoreWithheldReason(
+  value: unknown
+): value is FeedbackScoreWithheldReason {
+  return value === "rubric_coverage" || value === "verified_evidence_integrity";
+}
+
+function requireFeedbackScoreWithheldReason(
+  value: unknown
+): FeedbackScoreWithheldReason {
+  if (!isFeedbackScoreWithheldReason(value)) {
+    throw new Error("invalid score-withheld reason");
+  }
+  return value;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function parseLegacyFeedback(

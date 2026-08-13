@@ -492,8 +492,9 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
       grounded.every((item) =>
         answerBlockEvidence.blocks.some(
           (block) =>
-            block.answerBlockId === item.answerBlockRef &&
-            block.responseText === item.evidenceText
+            block.response.some(
+              (turn) => turn.eventId === item.transcriptRef
+            ) && block.responseText === item.citation
         )
       ),
       fixture.id
@@ -682,6 +683,10 @@ function skippedResponse(
     details: {
       outcomeReason,
       tier: tier === SessionTier.ABANDONED ? "abandoned" : "insufficient",
+      recovery:
+        outcomeReason === "transcript_integrity_degraded"
+          ? "credit_recovery_in_progress"
+          : "start_another_interview",
       reasons: [],
       recommendations: [],
     },

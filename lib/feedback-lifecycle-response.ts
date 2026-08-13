@@ -27,7 +27,8 @@ export function buildCompletedFeedbackLifecycleResponse(
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
   answerBlocks: readonly CandidateAnswerBlock[] = [],
   expectedRoundType?: RoundType,
-  frozenEvidenceState?: "complete" | "partial"
+  frozenEvidenceState?: "complete" | "partial",
+  scoreWithheldReason?: "rubric_coverage" | "verified_evidence_integrity"
 ): Extract<FeedbackLifecycleResponse, { status: "completed" }> {
   return {
     status: "completed",
@@ -37,6 +38,7 @@ export function buildCompletedFeedbackLifecycleResponse(
       answerBlocks,
       expectedRoundType,
       frozenEvidenceState,
+      scoreWithheldReason,
     }),
   };
 }
@@ -45,6 +47,8 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
   outcomeReason: unknown;
   completionTier: unknown;
   completionStats: unknown;
+  creditSettlementAction?: unknown;
+  creditSettledAt?: unknown;
 }): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
   const candidate = {
     status: "skipped",
@@ -56,6 +60,15 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
           : "no_reviewable_answer",
       tier:
         record.completionTier === "abandoned" ? "abandoned" : "insufficient",
+      recovery:
+        record.outcomeReason === "transcript_integrity_degraded"
+          ? (record.creditSettlementAction === "refund" ||
+              record.creditSettlementAction === "release") &&
+            record.creditSettledAt !== null &&
+            record.creditSettledAt !== undefined
+            ? "credit_returned"
+            : "credit_recovery_in_progress"
+          : "start_another_interview",
       ...(record.completionStats !== null
         ? { stats: record.completionStats }
         : {}),

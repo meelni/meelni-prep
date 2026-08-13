@@ -8678,7 +8678,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(view.feedback.dimensions.structure.score, 7);
   assert.equal(view.feedback.dimensions.structure.evidence.length, 2);
   assert.equal(
-    view.feedback.dimensions.structure.evidence[0]?.evidenceText,
+    view.feedback.dimensions.structure.evidence[0]?.citation,
     persistedAnswerBlocks[0]?.responseText
   );
 

@@ -1,6 +1,12 @@
 "use client";
 
-import { CheckCircle2, ClipboardCheck, TrendingUp } from "lucide-react";
+import {
+  CheckCircle2,
+  ClipboardCheck,
+  Quote,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 
 import { FocusedPracticeWorkspace } from "./focused-practice-workspace";
 import { FeedbackFindingCard } from "./feedback-finding-card";
@@ -16,11 +22,13 @@ import {
   useEvidenceTranscript,
 } from "./feedback-transcript";
 import { StatusPill } from "@/components/ui/app-surface";
+import { Button } from "@/components/ui/button";
 import { FEEDBACK_DIMENSIONS } from "@meelni/core";
 import type {
   FeedbackDimension,
   FeedbackDimensionCoverageView,
   FeedbackEvidenceLimitedView,
+  FeedbackScoreWithheldReason,
   FeedbackLegacyView,
   FeedbackV2View,
 } from "@meelni/core";
@@ -41,11 +49,117 @@ export function CompletedDimensionCoverageReview({
   const transcript = useEvidenceTranscript(feedback.sessionId);
   const isFull = feedback.mode === "full_scorecard";
   const isPartial = feedback.mode === "partial_scorecard";
+  const outcomeLabel = isFull
+    ? "Full scorecard"
+    : isPartial
+      ? "Partial scorecard"
+      : "Coaching review";
+
+  if (feedback.mode === "coaching_review") {
+    return (
+      <FeedbackReviewShell
+        title="Coaching review"
+        description="Grounded PM coaching from the verified evidence in this interview."
+        action={<FeedbackDashboardLink />}
+      >
+        <div className="space-y-8">
+          <StatusPill tone="warning">Coaching review</StatusPill>
+          <FeedbackSectionCard title="Why there are no scores" tone="warning">
+            <p className="text-muted-foreground leading-6">
+              {scoreWithheldExplanation(feedback.scoreWithheldReason)}
+            </p>
+          </FeedbackSectionCard>
+
+          <FeedbackSectionCard
+            title="Observed PM signals"
+            description="Each signal is tied to an exact citation from this interview."
+            icon={<Quote className="h-5 w-5" aria-hidden="true" />}
+            contentClassName="space-y-6"
+          >
+            <EvidenceSupportExplanation />
+            <ul className="space-y-5">
+              {feedback.coachingSignals.map((signal) => (
+                <li
+                  key={`${signal.dimension}:${signal.label}:${signal.transcriptRef}`}
+                  className="border-border/70 min-w-0 space-y-3 border-b pb-5 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill>
+                      {DIMENSION_LABELS[signal.dimension]}
+                    </StatusPill>
+                    <StatusPill tone="success">Exact cited evidence</StatusPill>
+                  </div>
+                  <p className="text-foreground font-medium wrap-anywhere">
+                    {signal.label}
+                  </p>
+                  <CitationBlock
+                    citation={signal.citation}
+                    actionLabel={`View ${signal.label} citation in transcript`}
+                    onSelect={() =>
+                      transcript.selectTranscriptRef(signal.transcriptRef)
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </FeedbackSectionCard>
+
+          {feedback.prioritizedPracticeFocus && (
+            <FeedbackSectionCard
+              title="Prioritized practice focus"
+              description="One grounded move to make more deliberate in your next answer."
+              icon={<Target className="h-5 w-5" aria-hidden="true" />}
+              tone="info"
+              contentClassName="space-y-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusPill>
+                  {
+                    DIMENSION_LABELS[
+                      feedback.prioritizedPracticeFocus.dimension
+                    ]
+                  }
+                </StatusPill>
+                <p className="text-foreground font-semibold wrap-anywhere">
+                  {feedback.prioritizedPracticeFocus.title}
+                </p>
+              </div>
+              <p className="text-foreground/90 leading-6 wrap-anywhere">
+                {feedback.prioritizedPracticeFocus.guidance}
+              </p>
+              <p className="text-muted-foreground text-sm leading-6 wrap-anywhere">
+                {feedback.prioritizedPracticeFocus.rationale}
+              </p>
+              <CitationBlock
+                citation={feedback.prioritizedPracticeFocus.citation}
+                actionLabel={`View ${DIMENSION_LABELS[feedback.prioritizedPracticeFocus.dimension]} practice-focus citation in transcript`}
+                onSelect={() =>
+                  transcript.selectTranscriptRef(
+                    feedback.prioritizedPracticeFocus!.transcriptRef
+                  )
+                }
+              />
+            </FeedbackSectionCard>
+          )}
+
+          <FeedbackTranscriptSection
+            expanded={transcript.expanded}
+            onExpandedChange={transcript.setExpanded}
+            loading={transcript.loading}
+            error={transcript.error}
+            navigationError={transcript.navigationError}
+            turns={transcript.turns}
+            onRetry={transcript.retry}
+          />
+        </div>
+      </FeedbackReviewShell>
+    );
+  }
 
   return (
     <FeedbackReviewShell
-      title={isFull ? "Interview scorecard" : "Interview feedback"}
-      description="A round-specific review grounded in the answers that were recorded."
+      title={outcomeLabel}
+      description="Observed practice scores grounded in verified PM-rubric evidence from this interview."
       action={<FeedbackDashboardLink />}
     >
       <div className="space-y-8">
@@ -53,36 +167,38 @@ export function CompletedDimensionCoverageReview({
           tone={isFull ? "success" : isPartial ? "warning" : "muted"}
           className={isFull ? "text-foreground" : undefined}
         >
-          {isFull
-            ? "Full scorecard"
-            : isPartial
-              ? "Partial scorecard"
-              : "Coaching review"}
+          {outcomeLabel}
         </StatusPill>
 
         <FeedbackSectionCard
           title={
             isFull
-              ? "Complete dimension coverage"
-              : isPartial
-                ? "Scores limited to supported dimensions"
-                : "Grounded coaching without scores"
+              ? "What this scorecard means"
+              : "Why some scores are withheld"
           }
           tone={isFull ? "success" : "warning"}
         >
-          <p className="text-muted-foreground leading-6">{feedback.summary}</p>
+          <p className="text-muted-foreground leading-6">
+            {isFull
+              ? "Every PM rubric dimension had enough verified evidence for an observed practice score. These scores describe this interview, not a hiring decision."
+              : "Some PM rubric dimensions had enough verified evidence for an observed practice score. Other dimensions are unscored because this interview did not cover enough evidence for them—not because the performance was poor."}
+          </p>
         </FeedbackSectionCard>
 
         <FeedbackSectionCard
-          title={isFull ? "Interview score" : "Rubric-dimension coverage"}
-          description="Coverage reflects exact candidate evidence for this interview round."
+          title="Observed practice scores"
+          description={
+            isFull
+              ? "Scores are shown only where verified evidence supports the PM rubric."
+              : "An overall score needs supported evidence across every PM rubric dimension."
+          }
           icon={<ClipboardCheck className="h-5 w-5" aria-hidden="true" />}
           contentClassName="space-y-5"
         >
           {isFull && feedback.overallScore !== null && (
             <div className="border-border mb-2 border-b pb-5">
               <p className="text-primary font-mono text-5xl leading-none font-bold sm:text-6xl">
-                {feedback.overallScore.toFixed(1)}
+                {Math.round(feedback.overallScore)}
               </p>
               <p className="text-foreground mt-2 text-sm font-semibold">
                 Overall score
@@ -91,69 +207,70 @@ export function CompletedDimensionCoverageReview({
             </div>
           )}
 
-          {FEEDBACK_DIMENSIONS.map((dimension) => {
-            const result = feedback.dimensions[dimension];
-            return (
-              <section
-                key={dimension}
-                aria-labelledby={`coverage-${dimension}`}
-                className="border-border/50 bg-background/50 space-y-4 rounded-lg border p-4"
-              >
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <h2
-                      id={`coverage-${dimension}`}
-                      className="text-foreground font-medium"
-                    >
-                      {DIMENSION_LABELS[dimension]}
-                    </h2>
-                    <StatusPill
-                      tone={
-                        result.coverage === "sufficient"
-                          ? "success"
-                          : result.coverage === "partial"
-                            ? "warning"
-                            : "muted"
-                      }
-                    >
-                      {coverageLabel(result.coverage)}
+          <dl className="space-y-4">
+            {FEEDBACK_DIMENSIONS.map((dimension) => {
+              const result = feedback.dimensions[dimension];
+              const supported = result.score !== null;
+              return (
+                <div
+                  key={dimension}
+                  className="border-border/50 bg-background/50 space-y-4 rounded-lg border p-4"
+                >
+                  <dt className="text-foreground flex min-w-0 flex-wrap items-center gap-2 font-medium">
+                    {DIMENSION_LABELS[dimension]}
+                    <StatusPill tone={supported ? "success" : "muted"}>
+                      {supported ? "Supported" : "Not enough evidence"}
                     </StatusPill>
-                  </div>
-                  {result.score !== null && (
-                    <span
-                      className="font-mono font-semibold"
-                      aria-label={`${DIMENSION_LABELS[dimension]} score ${result.score} out of 10`}
-                    >
-                      {result.score}/10
-                    </span>
+                  </dt>
+                  <dd>
+                    {supported ? (
+                      <span
+                        className="font-mono font-semibold"
+                        aria-label={`${DIMENSION_LABELS[dimension]} score ${result.score} out of 10`}
+                      >
+                        {result.score}/10
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">
+                        Not enough evidence
+                      </span>
+                    )}
+                  </dd>
+
+                  {result.evidence.length > 0 ? (
+                    <dd>
+                      <ul className="space-y-3">
+                        {result.evidence.map((evidence) => (
+                          <li
+                            key={`${evidence.label}:${evidence.transcriptRef}`}
+                            className="border-border/50 bg-muted/30 rounded-md border p-3"
+                          >
+                            <p className="text-muted-foreground text-sm font-medium">
+                              {evidence.label}
+                            </p>
+                            <CitationBlock
+                              citation={evidence.citation}
+                              actionLabel={`View ${DIMENSION_LABELS[dimension]} citation in transcript`}
+                              onSelect={() =>
+                                transcript.selectTranscriptRef(
+                                  evidence.transcriptRef
+                                )
+                              }
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
+                  ) : (
+                    <dd className="text-muted-foreground text-sm leading-6">
+                      Not enough verified evidence was available for a score in
+                      this dimension.
+                    </dd>
                   )}
                 </div>
-
-                {result.evidence.length > 0 ? (
-                  <ul className="space-y-3">
-                    {result.evidence.map((evidence) => (
-                      <li
-                        key={`${evidence.facetCode}:${evidence.answerBlockRef}`}
-                        className="border-border/50 bg-muted/30 rounded-md border p-3"
-                      >
-                        <p className="text-muted-foreground text-sm font-medium">
-                          {evidence.facetLabel}
-                        </p>
-                        <blockquote className="border-primary/40 text-foreground mt-2 border-l-2 pl-3 text-sm leading-6 wrap-anywhere">
-                          “{evidence.evidenceText}”
-                        </blockquote>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-sm leading-6">
-                    No exact candidate evidence supported this dimension, so no
-                    score was inferred.
-                  </p>
-                )}
-              </section>
-            );
-          })}
+              );
+            })}
+          </dl>
         </FeedbackSectionCard>
 
         <FeedbackTranscriptSection
@@ -168,14 +285,6 @@ export function CompletedDimensionCoverageReview({
       </div>
     </FeedbackReviewShell>
   );
-}
-
-function coverageLabel(
-  coverage: FeedbackDimensionCoverageView["dimensions"][FeedbackDimension]["coverage"]
-): string {
-  if (coverage === "sufficient") return "Sufficient evidence";
-  if (coverage === "partial") return "Partial evidence";
-  return "No evidence";
 }
 
 export function CompletedV2Review({
@@ -278,54 +387,85 @@ export function CompletedEvidenceLimitedReview({
   const transcript = useEvidenceTranscript(feedback.sessionId);
   return (
     <FeedbackReviewShell
-      title="Interview feedback"
-      description="Useful observations grounded in the answer that was recorded."
+      title="Coaching review"
+      description="Grounded PM coaching from the verified evidence in this interview."
       action={<FeedbackDashboardLink />}
     >
       <div className="space-y-8">
-        <FeedbackSectionCard title="Evidence-limited review" tone="warning">
+        <StatusPill tone="warning">Coaching review</StatusPill>
+        <FeedbackSectionCard title="Why there are no scores" tone="warning">
           <p className="text-muted-foreground leading-6">
-            The recorded answer supports grounded coaching, but not honest
-            numerical scores. No score has been inferred.
-          </p>
-        </FeedbackSectionCard>
-        <FeedbackSectionCard title="Summary">
-          <p className="text-foreground text-base leading-7 wrap-anywhere">
-            {feedback.summary}
+            {scoreWithheldExplanation(feedback.scoreWithheldReason)}
           </p>
         </FeedbackSectionCard>
         {feedback.strengths.length > 0 && (
           <FeedbackSectionCard
-            title="What worked"
+            title="Observed PM signals"
+            description="Each signal is tied to an exact citation from this interview."
             icon={<CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
             tone="success"
             contentClassName="space-y-6"
           >
-            {feedback.strengths.map((finding, index) => (
-              <FeedbackFindingCard
-                key={`strength:${index}`}
-                finding={finding}
-                onEvidenceSelect={transcript.selectEvidence}
-              />
-            ))}
+            <EvidenceSupportExplanation />
+            <ul className="space-y-5">
+              {feedback.strengths.map((finding, index) => (
+                <li
+                  key={`${finding.dimension}:${finding.transcriptRef}:${index}`}
+                  className="border-border/70 min-w-0 space-y-3 border-b pb-5 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill>
+                      {DIMENSION_LABELS[finding.dimension]}
+                    </StatusPill>
+                    <StatusPill tone="success">Exact cited evidence</StatusPill>
+                  </div>
+                  <p className="text-foreground leading-7 wrap-anywhere">
+                    {finding.observation}
+                  </p>
+                  <CitationBlock
+                    citation={finding.citation}
+                    actionLabel={`View ${DIMENSION_LABELS[finding.dimension]} signal citation in transcript`}
+                    onSelect={() =>
+                      transcript.selectTranscriptRef(finding.transcriptRef)
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
           </FeedbackSectionCard>
         )}
-        {feedback.improvements.length > 0 && (
-          <FeedbackSectionCard
-            title="What to try next"
-            icon={<TrendingUp className="h-5 w-5" aria-hidden="true" />}
-            tone="warning"
-            contentClassName="space-y-6"
-          >
-            {feedback.improvements.map((finding, index) => (
-              <FeedbackFindingCard
-                key={`improvement:${index}`}
-                finding={finding}
-                onEvidenceSelect={transcript.selectEvidence}
-              />
-            ))}
-          </FeedbackSectionCard>
-        )}
+        <FeedbackSectionCard
+          title="Prioritized practice focus"
+          description="One grounded move to make more deliberate in your next answer."
+          icon={<Target className="h-5 w-5" aria-hidden="true" />}
+          tone="info"
+          contentClassName="space-y-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill>
+              {DIMENSION_LABELS[feedback.prioritizedPracticeFocus.dimension]}
+            </StatusPill>
+            <p className="text-foreground font-semibold wrap-anywhere">
+              {feedback.prioritizedPracticeFocus.title}
+            </p>
+          </div>
+          <p className="text-foreground/90 leading-6 wrap-anywhere">
+            {feedback.prioritizedPracticeFocus.guidance}
+          </p>
+          <p className="text-muted-foreground text-sm leading-6">
+            This focus comes from one exact citation in this interview. It was
+            not selected from a weakest score.
+          </p>
+          <CitationBlock
+            citation={feedback.prioritizedPracticeFocus.citation}
+            actionLabel={`View ${DIMENSION_LABELS[feedback.prioritizedPracticeFocus.dimension]} practice-focus citation in transcript`}
+            onSelect={() =>
+              transcript.selectTranscriptRef(
+                feedback.prioritizedPracticeFocus.transcriptRef
+              )
+            }
+          />
+        </FeedbackSectionCard>
         <FeedbackTranscriptSection
           expanded={transcript.expanded}
           onExpandedChange={transcript.setExpanded}
@@ -337,6 +477,57 @@ export function CompletedEvidenceLimitedReview({
         />
       </div>
     </FeedbackReviewShell>
+  );
+}
+
+function scoreWithheldExplanation(
+  reason: FeedbackScoreWithheldReason | null
+): string {
+  return reason === "verified_evidence_integrity"
+    ? "The cited answers support useful coaching, but the complete saved interview evidence could not be verified strongly enough for reliable scores. This does not reflect poor performance."
+    : "The verified interview evidence supports useful coaching, but not enough PM-rubric coverage for reliable numerical scores. This describes what this interview covered, not poor performance.";
+}
+
+function EvidenceSupportExplanation() {
+  return (
+    <p className="border-info/20 bg-info/5 text-muted-foreground rounded-lg border p-4 text-sm leading-6">
+      <span className="text-foreground font-semibold">Evidence support</span>{" "}
+      describes how directly a signal is tied to the cited part of this
+      interview. It is not a skill rating, probability, or progress measure.
+    </p>
+  );
+}
+
+function CitationBlock({
+  citation,
+  actionLabel,
+  onSelect,
+}: {
+  citation: string;
+  actionLabel: string;
+  onSelect: () => void;
+}) {
+  return (
+    <figure className="border-primary/30 bg-muted/40 min-w-0 border-l-2 px-4 py-3">
+      <blockquote className="text-foreground text-sm leading-6 wrap-anywhere">
+        “{citation}”
+      </blockquote>
+      <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-foreground/75 text-xs">
+          Exact excerpt from your interview
+        </span>
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto min-h-11 max-w-full px-0 [overflow-wrap:anywhere] whitespace-normal"
+          aria-label={actionLabel}
+          onClick={onSelect}
+        >
+          View in transcript
+        </Button>
+      </figcaption>
+    </figure>
   );
 }
 

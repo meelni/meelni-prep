@@ -257,8 +257,8 @@ export function FeedbackLifecycleStatus({
       <FeedbackStatusPage
         tone="warning"
         icon={<AlertTriangle className="h-8 w-8" aria-hidden="true" />}
-        title="No reviewable answer available"
-        description="The saved interview does not contain a reviewable candidate answer, so no score was inferred."
+        title="Unable to review"
+        description="The saved interview did not contain enough verified candidate-answer evidence for a grounded review. No score or performance conclusion was created."
         actions={
           <Button asChild>
             <Link href="/dashboard/new-interview">
@@ -271,15 +271,42 @@ export function FeedbackLifecycleStatus({
   }
 
   if (state.kind === "transcript-integrity-degraded") {
+    const creditReturned = state.details.recovery === "credit_returned";
     return (
       <FeedbackStatusPage
         role="alert"
         tone="danger"
         icon={<FileWarning className="h-8 w-8" aria-hidden="true" />}
-        title="Interview feedback unavailable"
-        description="The saved transcript could not be verified, so we won’t infer scores or feedback from it."
-        actions={<FeedbackDashboardLink />}
-      />
+        title="Unable to review"
+        description="We could not verify the saved interview evidence, so we did not create scores or coaching. This does not reflect your performance."
+        actions={
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            <Button asChild className="min-h-11">
+              <Link href="/dashboard/new-interview">
+                Start another mock interview
+              </Link>
+            </Button>
+            <FeedbackDashboardLink />
+          </div>
+        }
+      >
+        <div
+          role={creditReturned ? undefined : "status"}
+          aria-live={creditReturned ? undefined : "polite"}
+          className="border-border bg-background/50 rounded-lg border p-4 text-center"
+        >
+          <p className="text-foreground font-semibold">
+            {creditReturned
+              ? "Your interview credit was returned."
+              : "Credit recovery is in progress."}
+          </p>
+          <p className="text-muted-foreground mt-1 text-sm leading-6">
+            {creditReturned
+              ? "You can use it for another mock interview."
+              : "You do not need to retry the review while the saved credit record finishes updating."}
+          </p>
+        </div>
+      </FeedbackStatusPage>
     );
   }
 
@@ -289,8 +316,8 @@ export function FeedbackLifecycleStatus({
         role="alert"
         tone="danger"
         icon={<FileWarning className="h-8 w-8" aria-hidden="true" />}
-        title="Feedback cannot be displayed"
-        description="This saved feedback is incomplete or uses an unsupported format. No score has been inferred from it."
+        title="Unable to review"
+        description="We could not verify this saved review, so no scores, coaching, or performance conclusion are shown. This does not reflect your performance."
         actions={<FeedbackDashboardLink />}
       />
     );

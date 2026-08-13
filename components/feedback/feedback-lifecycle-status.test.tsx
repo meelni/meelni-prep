@@ -164,7 +164,8 @@ test("invalid completed feedback exposes no inferred score", () => {
       onRecover() {},
     })
   );
-  assert.match(html, /No score has been inferred/);
+  assert.match(html, /Unable to review/);
+  assert.match(html, /no scores, coaching, or performance conclusion/i);
   assert.doesNotMatch(html, /0\.0/);
   assert.doesNotMatch(html, /Transcript evidence/);
   assert.doesNotMatch(html, /invented quote/);
@@ -202,6 +203,10 @@ for (const outcomeReason of [
           details: {
             outcomeReason,
             tier: "insufficient",
+            recovery:
+              outcomeReason === "transcript_integrity_degraded"
+                ? "credit_recovery_in_progress"
+                : "start_another_interview",
             reasons: [],
             recommendations: [],
           },
@@ -215,9 +220,41 @@ for (const outcomeReason of [
     assert.match(
       html,
       outcomeReason === "transcript_integrity_degraded"
-        ? /saved transcript could not be verified/i
-        : /saved interview does not contain a reviewable candidate answer/i
+        ? /could not verify the saved interview evidence/i
+        : /saved interview did not contain enough verified candidate-answer evidence/i
     );
+    assert.match(html, /Unable to review/);
+    if (outcomeReason === "transcript_integrity_degraded") {
+      assert.match(html, /does not reflect your performance/i);
+      assert.match(html, /Credit recovery is in progress/);
+      assert.match(html, /Start another mock interview/);
+    } else {
+      assert.match(html, /Start a new mock interview/);
+    }
     assert.doesNotMatch(html, /duration|microphone|try harder|answer length/i);
   });
 }
+
+test("integrity failure confirms a returned credit without exposing internals", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "transcript-integrity-degraded",
+        details: {
+          outcomeReason: "transcript_integrity_degraded",
+          tier: "abandoned",
+          recovery: "credit_returned",
+          reasons: [],
+          recommendations: [],
+        },
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Your interview credit was returned/);
+  assert.match(html, /use it for another mock interview/);
+  assert.doesNotMatch(html, /provider|model|settlement|refund_action|code/i);
+});

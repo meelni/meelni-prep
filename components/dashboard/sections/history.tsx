@@ -180,8 +180,8 @@ export const HistorySection = memo(function HistorySection({
                 className={cn(
                   "border-dashboard-panel-border text-dashboard-muted grid gap-4 border-b py-3 text-xs font-bold tracking-[0.2em] uppercase",
                   showQuestionColumn
-                    ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_120px]"
-                    : "grid-cols-[76px_140px_minmax(240px,1fr)_120px]"
+                    ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_160px]"
+                    : "grid-cols-[76px_140px_minmax(0,1fr)_160px]"
                 )}
               >
                 <span>Date</span>
@@ -197,8 +197,8 @@ export const HistorySection = memo(function HistorySection({
                     className={cn(
                       "grid min-w-0 items-center gap-4 py-5 text-sm",
                       showQuestionColumn
-                        ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_120px]"
-                        : "grid-cols-[76px_140px_minmax(240px,1fr)_120px]"
+                        ? "grid-cols-[76px_124px_minmax(220px,1fr)_minmax(190px,0.8fr)_160px]"
+                        : "grid-cols-[76px_140px_minmax(0,1fr)_160px]"
                     )}
                   >
                     <span className="text-dashboard-muted">
@@ -233,7 +233,7 @@ export const HistorySection = memo(function HistorySection({
                     </span>
                     <span className="min-w-0 text-right">
                       {row.feedbackHref ? (
-                        <span className="inline-flex items-center gap-3">
+                        <span className="inline-flex min-w-0 flex-wrap items-center justify-end gap-3">
                           <span className="text-dashboard-foreground font-mono font-semibold">
                             {row.scoreLabel}
                           </span>

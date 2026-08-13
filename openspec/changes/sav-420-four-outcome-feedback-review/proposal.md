@@ -15,7 +15,8 @@ Every terminal review surface presents exactly one customer outcome: Full
 scorecard, Partial scorecard, Coaching review, or Unable to review. Numbers
 come only from server-validated rubric-dimension coverage. Coaching remains
 grounded and actionable without pseudo-scores. Integrity failures stay
-system-owned and expose a truthful retry, credit, or recovery path.
+system-owned and expose truthful credit recovery and next-interview paths;
+existing transient dispatch/generation failures retain their retry actions.
 
 ## Boundaries
 

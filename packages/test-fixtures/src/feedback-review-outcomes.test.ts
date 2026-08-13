@@ -7,59 +7,56 @@ import {
   createSyntheticFeedbackReviewOutcomeFixtures,
 } from "./feedback-review-outcomes";
 
-test("synthetic review fixtures cover the four customer outcomes", () => {
+test("synthetic fixtures cover all four customer outcomes and both withheld-reason families", () => {
   const fixtures = createSyntheticFeedbackReviewOutcomeFixtures();
   assert.deepEqual(
     [...new Set(fixtures.map((fixture) => fixture.expected.outcome))].sort(),
     [...SYNTHETIC_FEEDBACK_REVIEW_OUTCOMES].sort()
+  );
+  assert.deepEqual(
+    new Set(
+      fixtures.flatMap((fixture) =>
+        fixture.expected.withheldReason ? [fixture.expected.withheldReason] : []
+      )
+    ),
+    new Set(["rubric_coverage", "verified_evidence_integrity"])
   );
   assert.ok(
     fixtures.every((fixture) => fixture.provenance === "fully_synthetic")
   );
 });
 
-test("equivalent transcript segmentation preserves derived answer blocks and exact citations", () => {
+test("SAV-369 equivalent transcript segmentation preserves SAV-421 coverage and scores", () => {
   for (const fixture of createSyntheticFeedbackReviewOutcomeFixtures()) {
-    assert.deepEqual(
-      fixture.sourceVariants.map((variant) => variant.id),
-      ["segmented", "merged"]
+    const results = fixture.sourceVariants.flatMap((variant) =>
+      variant.coverageResult ? [variant.coverageResult] : []
     );
-    const answerBlockSets = fixture.sourceVariants.map((variant) =>
-      [
-        ...new Set(
-          variant.events.flatMap((event) =>
-            event.answerBlockId ? [event.answerBlockId] : []
-          )
+    if (results.length === 0) continue;
+    const canonical = results[0]!;
+    for (const result of results.slice(1)) {
+      assert.deepEqual(result, canonical, `${fixture.id}:coverage-result`);
+    }
+    for (const variant of fixture.sourceVariants) {
+      assert.equal(variant.answerBlocks.length, 2, fixture.id);
+      assert.deepEqual(
+        variant.answerBlocks.map((block) => block.responseText),
+        fixture.sourceVariants[0]!.answerBlocks.map(
+          (block) => block.responseText
         ),
-      ].sort()
-    );
-    assert.deepEqual(answerBlockSets[0], answerBlockSets[1], fixture.id);
-
-    for (const signal of fixture.expected.signals) {
-      for (const variant of fixture.sourceVariants) {
-        assert.ok(
-          variant.events.some(
-            (event) =>
-              event.speaker === "candidate" &&
-              event.text.includes(signal.citation)
-          ),
-          `${fixture.id}:${variant.id}:${signal.citation}`
-        );
-      }
+        `${fixture.id}:${variant.segmentCount}:answer-blocks`
+      );
     }
   }
 });
 
-test("full and partial scorecards expose only supported numerical evidence", () => {
+test("full and partial scorecards show only supported numerical results", () => {
   const fixtures = createSyntheticFeedbackReviewOutcomeFixtures();
   const full = fixtures.find(
     (fixture) => fixture.expected.outcome === "full_scorecard"
-  );
+  )!;
   const partial = fixtures.find(
     (fixture) => fixture.expected.outcome === "partial_scorecard"
-  );
-  assert.ok(full);
-  assert.ok(partial);
+  )!;
 
   assert.deepEqual(
     full.expected.dimensions.map((entry) => entry.dimension),
@@ -70,75 +67,81 @@ test("full and partial scorecards expose only supported numerical evidence", () 
       (entry) => entry.state === "scored" && entry.score !== null
     )
   );
+  assert.equal(full.sourceVariants[0]!.coverageResult?.mode, "full_scorecard");
+  assert.equal(full.expected.displayOverallScore, 8);
   assert.equal(full.expected.numericMetricContribution.overall, true);
-  assert.notEqual(full.expected.displayOverallScore, null);
 
+  assert.equal(
+    partial.sourceVariants[0]!.coverageResult?.mode,
+    "partial_scorecard"
+  );
   assert.equal(partial.expected.displayOverallScore, null);
   assert.equal(partial.expected.numericMetricContribution.overall, false);
+  assert.deepEqual(partial.expected.numericMetricContribution.dimensions, []);
   assert.ok(
     partial.expected.dimensions.some(
       (entry) => entry.state === "not_enough_evidence" && entry.score === null
     )
   );
-  assert.deepEqual(
-    partial.expected.numericMetricContribution.dimensions.sort(),
-    partial.expected.dimensions
-      .filter((entry) => entry.state === "scored")
-      .map((entry) => entry.dimension)
-      .sort()
-  );
 });
 
-test("scoreless outcomes never contribute numbers and coaching has one focus", () => {
-  for (const fixture of createSyntheticFeedbackReviewOutcomeFixtures()) {
-    if (
-      fixture.expected.outcome !== "coaching_review" &&
-      fixture.expected.outcome !== "unable_to_review"
-    ) {
-      continue;
-    }
-    assert.equal(fixture.expected.displayOverallScore, null, fixture.id);
-    assert.deepEqual(
-      fixture.expected.numericMetricContribution,
-      { overall: false, dimensions: [] },
-      fixture.id
+test("coaching fixtures are grounded, scoreless, and reason-specific", () => {
+  const coaching = createSyntheticFeedbackReviewOutcomeFixtures().filter(
+    (fixture) => fixture.expected.outcome === "coaching_review"
+  );
+  assert.equal(coaching.length, 2);
+  for (const fixture of coaching) {
+    assert.equal(
+      fixture.sourceVariants[0]!.coverageResult?.mode,
+      "coaching_review"
     );
+    assert.equal(fixture.expected.displayOverallScore, null);
+    assert.deepEqual(fixture.expected.numericMetricContribution, {
+      overall: false,
+      dimensions: [],
+    });
+    assert.equal(fixture.expected.prioritizedPracticeFocus, true);
+    assert.ok(fixture.expected.exactCandidateCitation);
     assert.ok(
-      fixture.expected.dimensions.every((entry) => entry.score === null),
-      fixture.id
+      fixture.sourceVariants[0]!.answerBlocks.some(
+        (block) =>
+          block.responseText === fixture.expected.exactCandidateCitation
+      )
     );
-    if (fixture.expected.outcome === "coaching_review") {
-      assert.ok(fixture.expected.signals.length > 0);
-      assert.ok(fixture.expected.prioritizedPracticeFocus);
-    } else {
-      assert.deepEqual(fixture.expected.signals, []);
-      assert.equal(fixture.expected.prioritizedPracticeFocus, null);
-    }
   }
 });
 
-test("unable fixtures distinguish rubric coverage from system integrity recovery", () => {
+test("unable outcomes never fabricate scores, coaching, retry, or credit state", () => {
   const unable = createSyntheticFeedbackReviewOutcomeFixtures().filter(
     (fixture) => fixture.expected.outcome === "unable_to_review"
   );
-  const coverage = unable.filter(
+  for (const fixture of unable) {
+    assert.equal(fixture.expected.displayOverallScore, null);
+    assert.equal(fixture.expected.exactCandidateCitation, null);
+    assert.equal(fixture.expected.prioritizedPracticeFocus, false);
+    assert.deepEqual(fixture.expected.numericMetricContribution, {
+      overall: false,
+      dimensions: [],
+    });
+  }
+  const coverage = unable.find(
     (fixture) => fixture.expected.withheldReason === "rubric_coverage"
+  )!;
+  assert.equal(coverage.sourceIntegrity, "verified");
+  assert.equal(coverage.expected.recovery, "start_another_interview");
+  assert.ok(
+    coverage.sourceVariants.every(
+      (variant) => variant.answerBlocks.length === 0
+    )
   );
+
   const integrity = unable.filter(
     (fixture) =>
       fixture.expected.withheldReason === "verified_evidence_integrity"
   );
-
-  assert.ok(
-    coverage.every(
-      (fixture) =>
-        fixture.sourceIntegrity === "verified" &&
-        fixture.expected.recovery === "start_another_interview"
-    )
-  );
   assert.deepEqual(
     new Set(integrity.map((fixture) => fixture.expected.recovery)),
-    new Set(["retry_review", "credit_returned", "credit_recovery_in_progress"])
+    new Set(["credit_returned", "credit_recovery_in_progress"])
   );
   assert.ok(integrity.every((fixture) => fixture.sourceIntegrity === "failed"));
 });

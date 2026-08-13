@@ -234,14 +234,18 @@ test("only completed, valid scores contribute to progress and weaknesses", () =>
     rowsById.get("dashboard-failed")?.statusLabel,
     "Feedback failed"
   );
-  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "Not scored");
+  assert.equal(rowsById.get("dashboard-skipped")?.scoreLabel, "No score");
+  assert.equal(
+    rowsById.get("dashboard-skipped")?.statusLabel,
+    "Unable to review"
+  );
   assert.equal(
     rowsById.get("dashboard-evidence-limited")?.scoreLabel,
-    "No score"
+    "Coaching review"
   );
   assert.equal(
     rowsById.get("dashboard-evidence-limited")?.statusLabel,
-    "Feedback ready — no score"
+    "Coaching review ready"
   );
   assert.equal(
     rowsById.get("dashboard-evidence-limited")?.feedbackHref,
@@ -313,7 +317,7 @@ test("scoreless reviewability stays separate from scored progress evidence", () 
   );
   assert.equal(
     practice.recentInterviews[0]?.statusLabel,
-    "Feedback ready — no score"
+    "Coaching review ready"
   );
   assert.equal(history.patterns.length, 1);
   assert.equal(history.nextReview.feedbackHref, `/feedback/${scored.id}`);
@@ -395,7 +399,7 @@ test("dimension-coverage reviews stay reachable while only full scorecards enter
   assert.equal(history.nextReview.feedbackHref, "/feedback/full-scorecard");
   assert.equal(
     rows.get("partial-scorecard")?.statusLabel,
-    "Feedback ready — partial scorecard"
+    "Partial scorecard ready"
   );
   assert.equal(
     rows.get("partial-scorecard")?.feedbackHref,

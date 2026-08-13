@@ -294,11 +294,15 @@ export function buildDashboardPracticeSummary(
             latestReviewable === latestScored && bestSignal && focusArea
               ? `Highest scored dimension: ${bestSignal}. Lowest scored dimension: ${focusArea.label}.`
               : getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
-                    "evidence_limited" ||
-                  getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
-                    "coaching_review"
-                ? `Open the grounded observations from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No numerical score was inferred.`
-                : `Open the completed feedback from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview.`,
+                  "unable_to_review"
+                ? `Open the saved result for your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No performance conclusion was created.`
+                : getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
+                      "evidence_limited" ||
+                    getDashboardFeedbackReviewKind(
+                      latestReviewable.feedback
+                    ) === "coaching_review"
+                  ? `Open the grounded observations from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No numerical score was inferred.`
+                  : `Open the completed feedback from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview.`,
           href: `/feedback/${latestReviewable.id}`,
         }
       : null,
@@ -572,25 +576,34 @@ function getFeedbackDisplay(
   if (reviewKind === "full_scorecard") {
     return {
       focusLabel: focusArea?.label || "Complete scorecard",
-      scoreLabel: "Scored",
-      statusLabel: "Feedback ready",
+      scoreLabel: "Full scorecard",
+      statusLabel: "Full scorecard ready",
       feedbackState: "ready" as const,
     };
   }
   if (reviewKind === "partial_scorecard") {
     return {
       focusLabel: "Scores for supported PM dimensions",
-      scoreLabel: "Partial scores",
-      statusLabel: "Feedback ready — partial scorecard",
+      scoreLabel: "Partial scorecard",
+      statusLabel: "Partial scorecard ready",
       feedbackState: "ready" as const,
     };
   }
   if (reviewKind === "evidence_limited" || reviewKind === "coaching_review") {
     return {
       focusLabel: "Grounded observations from your recorded answers",
-      scoreLabel: "No score",
-      statusLabel: "Feedback ready — no score",
+      scoreLabel: "Coaching review",
+      statusLabel: "Coaching review ready",
       feedbackState: "ready" as const,
+    };
+  }
+  if (reviewKind === "unable_to_review") {
+    return {
+      focusLabel:
+        "No score or performance conclusion was created for this interview.",
+      scoreLabel: "No score",
+      statusLabel: "Unable to review",
+      feedbackState: "not-generated" as const,
     };
   }
 
@@ -651,7 +664,8 @@ function getDashboardFeedbackReviewKind(
   return score === null &&
     (feedback?.presentationKind === "evidence_limited" ||
       feedback?.presentationKind === "partial_scorecard" ||
-      feedback?.presentationKind === "coaching_review")
+      feedback?.presentationKind === "coaching_review" ||
+      feedback?.presentationKind === "unable_to_review")
     ? feedback.presentationKind
     : null;
 }
@@ -663,6 +677,7 @@ function getDashboardScoredFeedbackScore(
     feedback?.presentationKind === "evidence_limited" ||
     feedback?.presentationKind === "partial_scorecard" ||
     feedback?.presentationKind === "coaching_review" ||
+    feedback?.presentationKind === "unable_to_review" ||
     feedback?.presentationKind === "unavailable"
   ) {
     return null;

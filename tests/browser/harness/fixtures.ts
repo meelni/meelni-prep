@@ -2,6 +2,8 @@ import {
   FEEDBACK_PROMPT_VERSION,
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
+  FEEDBACK_DIMENSIONS,
+  type FeedbackDimensionCoverageView,
   type FeedbackV2View,
 } from "@meelni/core";
 import type {
@@ -11,6 +13,14 @@ import type {
 } from "@/lib/types/comparison";
 
 export const BROWSER_QA_SESSION_ID = "7b464305-948d-42c5-889f-f030c7db33bd";
+
+const BROWSER_QA_CITATION =
+  "I would prioritize caregivers because repeated handoffs create weekly coordination risk.";
+const evidenceTurn = "browser-qa-turn-1";
+
+export const fullScorecardFeedback = browserDimensionCoverageView("full");
+export const partialScorecardFeedback = browserDimensionCoverageView("partial");
+export const coachingReviewFeedback = browserDimensionCoverageView("coaching");
 
 export const dashboardSessions = [
   {
@@ -146,7 +156,89 @@ export const analyticsInsights = {
   },
 };
 
-const evidenceTurn = "browser-qa-turn-1";
+function browserDimensionCoverageView(
+  kind: "full" | "partial" | "coaching"
+): FeedbackDimensionCoverageView {
+  const dimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => {
+      const supported =
+        kind === "full" || (kind === "partial" && dimension === "structure");
+      const hasPartialEvidence = kind === "coaching" && dimension === "insight";
+      return [
+        dimension,
+        {
+          coverage: supported
+            ? "sufficient"
+            : hasPartialEvidence
+              ? "partial"
+              : "absent",
+          score: kind !== "coaching" && supported ? 8 : null,
+          evidence:
+            supported || hasPartialEvidence
+              ? [
+                  {
+                    label:
+                      dimension === "structure"
+                        ? "Problem progression"
+                        : "Specific user need",
+                    citation: BROWSER_QA_CITATION,
+                    transcriptRef: evidenceTurn,
+                  },
+                  ...(supported
+                    ? [
+                        {
+                          label: "Decision support",
+                          citation: BROWSER_QA_CITATION,
+                          transcriptRef: evidenceTurn,
+                        },
+                      ]
+                    : []),
+                ]
+              : [],
+        },
+      ];
+    })
+  ) as FeedbackDimensionCoverageView["dimensions"];
+  const coachingSignal = {
+    dimension: "insight" as const,
+    label: "Specific user need",
+    citation: BROWSER_QA_CITATION,
+    transcriptRef: evidenceTurn,
+    evidenceSupport: "exact_candidate_citation" as const,
+  };
+  return {
+    kind: "dimension-coverage",
+    id: `browser-qa-${kind}`,
+    sessionId: `browser-qa-${kind}`,
+    summary: "Synthetic browser QA review.",
+    presentationVersion: "feedback.review-outcome.v1",
+    mode:
+      kind === "full"
+        ? "full_scorecard"
+        : kind === "partial"
+          ? "partial_scorecard"
+          : "coaching_review",
+    dimensions,
+    overallScore: kind === "full" ? 8 : null,
+    scoreWithheldReason: kind === "full" ? null : "rubric_coverage",
+    coachingSignals: kind === "coaching" ? [coachingSignal] : [],
+    prioritizedPracticeFocus:
+      kind === "coaching"
+        ? {
+            dimension: "insight",
+            title: "Specific user need",
+            guidance:
+              "Practice stating the user need in one clear sentence, then connect it to the next decision.",
+            rationale:
+              "This focus comes from one exact citation in this interview. It was not selected from a weakest score.",
+            citation: BROWSER_QA_CITATION,
+            transcriptRef: evidenceTurn,
+          }
+        : null,
+    createdAt: "2026-08-13T12:00:00.000Z",
+    nextPracticeRecommendation: null,
+  };
+}
 
 export const completedFeedback: FeedbackV2View = {
   id: "browser-qa-feedback",
