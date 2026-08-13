@@ -302,7 +302,7 @@ test("replacement writers cannot hide same-speaker overlap or reversed timing", 
   }
 });
 
-test("a forward sequence gap is an explicit non-coalescing boundary", () => {
+test("a forward sequence gap is an explicit fail-closed non-coalescing boundary", () => {
   const first = createAnswerBlockTurn({ sequence: 1, startedAtMs: 0 });
   const afterGap = createAnswerBlockTurn({
     sequence: 3,
@@ -312,11 +312,159 @@ test("a forward sequence gap is an explicit non-coalescing boundary", () => {
   });
   const derived = deriveCandidateAnswerBlocks([first, afterGap]);
 
+  assert.equal(derived.eligible, false);
   assert.ok(derived.boundaries.some(({ kind }) => kind === "sequence_gap"));
   assert.deepEqual(
     derived.blocks.map((block) => block.response.length),
     [1, 1]
   );
+});
+
+test("semantic replay turns advance continuity without becoming evidence or citations", () => {
+  const first = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    text: "I would begin with working parents who coordinate recurring tasks.",
+    startedAtMs: 0,
+    endedAtMs: 800,
+    audioDurationMs: 800,
+  });
+  const replay = {
+    ...createAnswerBlockTurn({
+      sequence: 2,
+      eventId: "synthetic-writer:2",
+      text: first.text,
+      startedAtMs: 900,
+      endedAtMs: 1_200,
+      audioDurationMs: 300,
+    }),
+    kind: "semantic_replay" as const,
+    replayOfEventId: first.eventId,
+  };
+  const second = createAnswerBlockTurn({
+    sequence: 3,
+    eventId: "synthetic-writer:3",
+    text: "Then I would validate frequency and severity before prioritizing.",
+    startedAtMs: 1_300,
+    endedAtMs: 2_100,
+    audioDurationMs: 800,
+  });
+  const derived = deriveCandidateAnswerBlocks([first, replay, second]);
+
+  assert.equal(derived.eligible, true);
+  assert.equal(derived.blocks.length, 1);
+  assert.deepEqual(
+    derived.blocks[0]!.response.map((turn) => turn.eventId),
+    [first.eventId, second.eventId]
+  );
+  assert.equal(derived.blocks[0]!.responseText, `${first.text} ${second.text}`);
+  assert.equal(
+    derived.boundaries.some(({ kind }) => kind === "sequence_gap"),
+    false
+  );
+});
+
+test("replay continuity rejects missing anchors, sequence gaps, timing conflicts, and cross-generation duplicates", () => {
+  const first = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    startedAtMs: 1_000,
+    endedAtMs: 2_000,
+  });
+  const replayBase = {
+    ...createAnswerBlockTurn({
+      sequence: 2,
+      eventId: "synthetic-writer:2",
+      text: first.text,
+      startedAtMs: 2_100,
+      endedAtMs: 2_500,
+      audioDurationMs: 400,
+    }),
+    kind: "semantic_replay" as const,
+    replayOfEventId: first.eventId,
+  };
+  const cases: AnswerBlockLedgerEvent[][] = [
+    [first, { ...replayBase, replayOfEventId: "missing-anchor" }],
+    [first, { ...replayBase, text: `${first.text} conflicting correction` }],
+    [
+      first,
+      {
+        ...replayBase,
+        sequence: 3,
+        eventId: "synthetic-writer:3",
+      },
+    ],
+    [
+      first,
+      {
+        ...replayBase,
+        startedAtMs: 1_900,
+        endedAtMs: 2_300,
+      },
+    ],
+    [
+      first,
+      {
+        ...replayBase,
+        writerId: "replacement-writer",
+        writerGeneration: 2,
+        sequence: 1,
+        eventId: "replacement-writer:1",
+      },
+    ],
+  ];
+
+  for (const [index, events] of cases.entries()) {
+    const derived = deriveCandidateAnswerBlocks(events);
+    assert.equal(derived.eligible, false, `case ${index}`);
+    assert.ok(
+      derived.issues.some(
+        ({ code }) =>
+          code === "invalid_replay_continuity" ||
+          code === "invalid_ledger_order"
+      )
+    );
+  }
+});
+
+test("a non-exact replay-family omission remains an explicit non-bridging boundary", () => {
+  const first = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    startedAtMs: 0,
+    endedAtMs: 800,
+    audioDurationMs: 800,
+  });
+  const conflictingReplay = {
+    ...createAnswerBlockTurn({
+      sequence: 2,
+      eventId: "synthetic-writer:2",
+      text: `${first.text} option two`,
+      startedAtMs: 900,
+      endedAtMs: 1_200,
+      audioDurationMs: 300,
+    }),
+    kind: "semantic_replay_boundary" as const,
+  };
+  const second = createAnswerBlockTurn({
+    sequence: 3,
+    eventId: "synthetic-writer:3",
+    startedAtMs: 1_300,
+    endedAtMs: 2_100,
+    audioDurationMs: 800,
+  });
+  const derived = deriveCandidateAnswerBlocks([
+    first,
+    conflictingReplay,
+    second,
+  ]);
+
+  assert.equal(derived.eligible, true);
+  assert.deepEqual(
+    derived.blocks.map((block) => block.response.map(({ eventId }) => eventId)),
+    [[first.eventId], [second.eventId]]
+  );
+  assert.ok(derived.boundaries.some(({ kind }) => kind === "semantic_replay"));
 });
 
 test("duplicate identities, reversed writer order, malformed timing, and post-end events fail closed", () => {

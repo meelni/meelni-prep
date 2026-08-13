@@ -8,6 +8,6 @@
 - [x] Preserve security/replay handling and legacy persisted-session behavior.
 - [x] Update task intake, accepted decision, contracts, and OpenSpec.
 - [x] Run final broad local validation at the exact clean head.
-- [x] Repair independent-review overlap and calibration-runtime findings.
+- [x] Repair independent-review overlap, calibration-runtime, legacy, and replay-continuity findings.
 - [ ] Obtain fresh exact-head independent adversarial approval.
 - [ ] Publish a ready PR, monitor hosted checks, and hand off without merge.

@@ -319,17 +319,43 @@ export function calculateValidatedSessionFromTurns(
     })),
     { requireContractV2: true }
   );
-  const byEventId = new Map(
-    turns.flatMap((turn) =>
-      turn.eventId ? [[turn.eventId, turn] as const] : []
+  const acceptedEventIds = new Set(
+    prepared.transcript.map((turn) => turn.eventId)
+  );
+  const semanticReplayAnchors = new Map(
+    prepared.issues.flatMap((issue) =>
+      issue.code === "repeated_turn" &&
+      issue.replayKind === "authenticated_exact" &&
+      issue.eventId &&
+      issue.replayOfEventId
+        ? [[issue.eventId, issue.replayOfEventId] as const]
+        : []
+    )
+  );
+  const semanticReplayBoundaryEventIds = new Set(
+    prepared.issues.flatMap((issue) =>
+      issue.code === "repeated_turn" &&
+      issue.replayKind === "semantic_family" &&
+      issue.eventId
+        ? [issue.eventId]
+        : []
     )
   );
   const answerBlockDerivation = deriveCandidateAnswerBlocks(
     orderAnswerBlockLedgerEvents([
-      ...prepared.transcript.flatMap((turn) => {
-        const source = byEventId.get(turn.eventId);
-        return source ? toAnswerBlockTurn(source) : [];
-      }),
+      ...turns.flatMap((turn) =>
+        turn.eventId && acceptedEventIds.has(turn.eventId)
+          ? toAnswerBlockTurn(turn)
+          : turn.eventId && semanticReplayAnchors.has(turn.eventId)
+            ? toAnswerBlockTurn(
+                turn,
+                "semantic_replay",
+                semanticReplayAnchors.get(turn.eventId)
+              )
+            : turn.eventId && semanticReplayBoundaryEventIds.has(turn.eventId)
+              ? toAnswerBlockTurn(turn, "semantic_replay_boundary")
+              : []
+      ),
       ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
       ...(options.sessionEndAt &&
       Number.isFinite(options.sessionEndAt.getTime())
@@ -454,7 +480,9 @@ function calculateAnswerBlockSessionStats(
 }
 
 function toAnswerBlockTurn(
-  turn: SessionValidationTurnInput
+  turn: SessionValidationTurnInput,
+  kind: "turn" | "semantic_replay" | "semantic_replay_boundary" = "turn",
+  replayOfEventId?: string
 ): AnswerBlockLedgerEvent[] {
   if (
     turn.contractVersion !== 2 ||
@@ -474,46 +502,57 @@ function toAnswerBlockTurn(
     (turn.deliveryState !== "delivered" &&
       turn.deliveryState !== "partially_delivered")
   ) {
-    return [
-      {
-        kind: "turn",
-        contractVersion: 2,
-        eventId: turn.eventId ?? "",
-        writerId: turn.writerId ?? "",
-        writerGeneration: turn.writerGeneration ?? 0,
-        sequence: turn.sequence ?? 0,
-        speaker: turn.speaker === "interviewer" ? "interviewer" : "user",
-        text: turn.text ?? "",
-        isFinal: true,
-        startedAtMs: turn.startedAt?.getTime() ?? Number.NaN,
-        endedAtMs: turn.endedAt?.getTime() ?? Number.NaN,
-        audioDurationMs: turn.audioMs ?? 0,
-        section: turn.section ?? "",
-        deliveryState:
-          turn.deliveryState === "partially_delivered"
-            ? "partially_delivered"
-            : "delivered",
-      },
-    ];
+    const projected = {
+      contractVersion: 2 as const,
+      eventId: turn.eventId ?? "",
+      writerId: turn.writerId ?? "",
+      writerGeneration: turn.writerGeneration ?? 0,
+      sequence: turn.sequence ?? 0,
+      speaker:
+        turn.speaker === "interviewer"
+          ? ("interviewer" as const)
+          : ("user" as const),
+      text: turn.text ?? "",
+      isFinal: true as const,
+      startedAtMs: turn.startedAt?.getTime() ?? Number.NaN,
+      endedAtMs: turn.endedAt?.getTime() ?? Number.NaN,
+      audioDurationMs: turn.audioMs ?? 0,
+      section: turn.section ?? "",
+      deliveryState:
+        turn.deliveryState === "partially_delivered"
+          ? ("partially_delivered" as const)
+          : ("delivered" as const),
+    };
+    if (kind === "semantic_replay") {
+      return [{ kind, replayOfEventId: replayOfEventId ?? "", ...projected }];
+    }
+    return [{ kind, ...projected }];
   }
-  return [
-    {
-      kind: "turn",
-      contractVersion: 2,
-      eventId: turn.eventId,
-      writerId: turn.writerId,
-      writerGeneration: turn.writerGeneration!,
-      sequence: turn.sequence!,
-      speaker: turn.speaker,
-      text: turn.text,
-      isFinal: true,
-      startedAtMs: turn.startedAt.getTime(),
-      endedAtMs: turn.endedAt.getTime(),
-      audioDurationMs: turn.audioMs!,
-      section: turn.section,
-      deliveryState: turn.deliveryState,
-    },
-  ];
+  const projected = {
+    contractVersion: 2 as const,
+    eventId: turn.eventId,
+    writerId: turn.writerId,
+    writerGeneration: turn.writerGeneration!,
+    sequence: turn.sequence!,
+    speaker:
+      turn.speaker === "interviewer"
+        ? ("interviewer" as const)
+        : ("user" as const),
+    text: turn.text,
+    isFinal: true as const,
+    startedAtMs: turn.startedAt.getTime(),
+    endedAtMs: turn.endedAt.getTime(),
+    audioDurationMs: turn.audioMs!,
+    section: turn.section,
+    deliveryState:
+      turn.deliveryState === "partially_delivered"
+        ? ("partially_delivered" as const)
+        : ("delivered" as const),
+  };
+  if (kind === "semantic_replay") {
+    return [{ kind, replayOfEventId: replayOfEventId ?? "", ...projected }];
+  }
+  return [{ kind, ...projected }];
 }
 
 function toAnswerBlockInterruption(
@@ -558,11 +597,17 @@ function orderAnswerBlockLedgerEvents(
 }
 
 function answerBlockEventTime(event: AnswerBlockLedgerEvent): number {
-  return event.kind === "turn" ? event.startedAtMs : event.occurredAtMs;
+  return "startedAtMs" in event ? event.startedAtMs : event.occurredAtMs;
 }
 
 function answerBlockEventRank(event: AnswerBlockLedgerEvent): number {
-  if (event.kind === "turn") return 0;
+  if (
+    event.kind === "turn" ||
+    event.kind === "semantic_replay" ||
+    event.kind === "semantic_replay_boundary"
+  ) {
+    return 0;
+  }
   if (event.kind === "integrity_boundary") return 1;
   return 2;
 }

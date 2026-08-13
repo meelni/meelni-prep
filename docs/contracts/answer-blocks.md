@@ -13,7 +13,7 @@ rewrite, or persist over canonical events.
 The public core entrypoint is `deriveCandidateAnswerBlocks`. It performs no
 model or provider call, emits no telemetry, and accepts no provider-specific
 payload. Callers pass the already ordered, canonical/security-prepared ledger
-projection.
+projection, including typed continuity-only projections for semantic replays.
 
 ## Source provenance
 
@@ -41,6 +41,20 @@ Consecutive candidate finals coalesce only while all of these remain true:
 5. silence from the preceding end to the next start is at most 5,000 ms;
 6. no integrity marker, cutoff, or end boundary intervenes.
 
+Only a canonical turn that the existing trust boundary classifies as an exact
+semantic replay of a previously accepted event is represented as a typed
+`semantic_replay` continuity event. Its anchor is explicit. It may advance a
+candidate block only with the same speaker, writer identity/generation,
+contiguous sequence, and valid non-overlapping timing. It never enters block
+text, evidence breadth, source provenance, or citations. Consequently inserting
+authenticated exact replay rows cannot turn one answer into several blocks.
+
+A non-exact replay-family omission is a typed `semantic_replay_boundary`: it
+consumes its known ledger sequence but cannot bridge blocks. A missing anchor,
+identity/generation conflict, unknown sequence gap, overlap/reversal, or other
+invalid continuity fails closed. Replay projections still preserve structural
+role, marker, cutoff, and end boundaries from the immutable ledger.
+
 The derivation creates numbered, invocation-local identities such as
 `answer-block:0001`. These identify a derived projection only; canonical event
 IDs remain the durable evidence identities. The algorithm can form several
@@ -53,7 +67,7 @@ The following close or separate blocks explicitly:
 - interviewer follow-up and any speaker change;
 - `no_provider_confirmed_prefix` interruption marker;
 - canonicalization-failure marker or malformed canonical turn;
-- writer identity/generation change or sequence gap;
+- writer identity/generation change, replay-family boundary, or sequence gap;
 - section change;
 - silence longer than 5,000 ms;
 - invalid same-speaker overlap or disjoint reversed timing;
@@ -62,8 +76,8 @@ The following close or separate blocks explicitly:
 User/interviewer speech may overlap in measured time under the transcript event
 contract. That overlap is accepted but still forms a role boundary. Same-
 speaker overlap cannot prove logically continuous finalized speech and fails
-closed. Duplicate event IDs, reversed writer sequence, malformed turns, and
-events after cutoff/end make the derivation ineligible.
+closed. Duplicate event IDs, any unknown writer-sequence gap or reversal,
+malformed turns, and events after cutoff/end make the derivation ineligible.
 
 ## Observable workflow invariant
 
@@ -91,7 +105,10 @@ original IDs/text for that session rather than an answer-block alias.
 The existing canonical preparation boundary still owns malformed-event,
 semantic-replay, trust, and prompt-injection handling. Joined block text crosses
 that preparation boundary again so an unsafe instruction split across multiple
-STT finals cannot bypass it. Replay-equivalent evidence cannot inflate breadth.
+STT finals cannot bypass it. Only authenticated exact replay rows may advance
+continuity without becoming evidence; non-exact replay families remain explicit
+boundaries and unknown gaps fail closed. Exact replays therefore cannot
+manufacture block boundaries or inflate breadth, tier, or provider mode.
 
 Historical persisted sessions with no canonical identity fields keep the
 legacy row-based statistics path. A mixed or malformed canonical shape does not
