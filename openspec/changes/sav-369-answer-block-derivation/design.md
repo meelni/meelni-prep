@@ -27,6 +27,9 @@ speaker/writer/generation, contiguous sequence, and valid non-overlapping
 ledger timing. The replay advances the sequence cursor only; accepted-evidence
 silence, overlap, block timing, text, and citation cursors stay anchored to the
 last accepted canonical event, so a replay cannot bridge a long silence.
+Same-speaker ledger timing is checked independently of intervening role turns,
+so a cross-role event cannot hide replay overlap with its authenticated anchor
+or nearest same-speaker ledger event.
 Non-exact replay-family omissions that can affect candidate evidence or prompt binding
 make the evaluation snapshot ineligible and degraded rather than producing
 countable boundaries; an interviewer-only transcript remains no-reviewable.

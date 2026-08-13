@@ -54,8 +54,10 @@ authenticated exact replay rows cannot join or split answers.
 
 Replay timing is still checked as ledger integrity: a replay that overlaps or
 reverses against either adjacent same-speaker event makes the snapshot
-ineligible. Ignoring replay timing for answer continuity never permits a timing
-conflict to pass.
+ineligible. The same-speaker timing check is independent of intervening role
+turns, so an interviewer event cannot mask candidate overlap with an
+authenticated replay anchor. Ignoring replay timing for answer continuity never
+permits a timing conflict to pass.
 
 A non-exact replay-family omission is a typed `semantic_replay_boundary`: it
 consumes its known ledger sequence but cannot bridge blocks. Because omitted

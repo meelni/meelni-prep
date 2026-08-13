@@ -24,7 +24,9 @@ may advance sequence continuity only when its accepted anchor, speaker, writer
 identity/generation, and timing are coherent. It never becomes evidence. A
 replay does not advance accepted-evidence timing: silence, overlap, block
 duration, text, and citations remain anchored to accepted canonical events, so
-it cannot bridge a long-silence boundary. A
+it cannot bridge a long-silence boundary. Same-speaker ledger timing remains
+independent of intervening role turns, so a cross-role event cannot mask replay
+overlap with candidate evidence. A
 non-exact replay-family omission that can affect candidate evidence or prompt
 binding makes the evaluation snapshot ineligible and degraded rather than
 creating countable answer breadth. An interviewer-only transcript remains
