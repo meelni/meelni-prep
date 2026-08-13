@@ -46,8 +46,11 @@ semantic replay of a previously accepted event is represented as a typed
 `semantic_replay` continuity event. Its anchor is explicit. It may advance a
 candidate block only with the same speaker, writer identity/generation,
 contiguous sequence, and valid non-overlapping timing. It never enters block
-text, evidence breadth, source provenance, or citations. Consequently inserting
-authenticated exact replay rows cannot turn one answer into several blocks.
+text, evidence breadth, source provenance, citations, or the accepted-evidence
+timing cursor. Silence, overlap, and answer-block duration continue to use the
+last accepted canonical evidence turn, so an authenticated replay cannot bridge
+an otherwise disqualifying long pause. Consequently inserting or removing
+authenticated exact replay rows cannot join or split answers.
 
 A non-exact replay-family omission is a typed `semantic_replay_boundary`: it
 consumes its known ledger sequence but cannot bridge blocks. Because omitted

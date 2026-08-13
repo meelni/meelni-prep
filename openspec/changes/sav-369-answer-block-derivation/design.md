@@ -23,8 +23,11 @@ semantic-replay, malformed-event, and injection boundary. The session validator
 derives answer blocks from that accepted projection plus typed projections for
 replay-elided canonical rows. Only an exact semantic replay anchored to a
 previously accepted event may advance continuity, and only across matching
-speaker/writer/generation, contiguous sequence, and valid timing. Non-exact
-replay-family omissions that can affect candidate evidence or prompt binding
+speaker/writer/generation, contiguous sequence, and valid non-overlapping
+ledger timing. The replay advances the sequence cursor only; accepted-evidence
+silence, overlap, block timing, text, and citation cursors stay anchored to the
+last accepted canonical event, so a replay cannot bridge a long silence.
+Non-exact replay-family omissions that can affect candidate evidence or prompt binding
 make the evaluation snapshot ineligible and degraded rather than producing
 countable boundaries; an interviewer-only transcript remains no-reviewable.
 Unknown sequence gaps and conflicting replay identity/timing fail closed too.
@@ -59,6 +62,6 @@ The observable feedback workflow compares full completion statistics, tier,
 provider mode, and exact canonical citation inputs. Adversarial coverage includes
 follow-up, interruption/canonicalization marker, writer generation, sequence
 gap/reversal, section, long silence, same- and cross-role overlap, cutoff/end,
-exact-replay provider-input invariance, non-exact/conflicting replay continuity
-and replay-inflation attempts, injection, malformed timing, and legacy persisted
-rows.
+exact-replay provider-input and long-silence invariance, non-exact/conflicting
+replay continuity and replay-inflation attempts, injection, malformed timing,
+and legacy persisted rows.
