@@ -1,5 +1,6 @@
 import {
   calculateOverallScore,
+  FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_PROMPT_VERSION,
@@ -9,12 +10,16 @@ import {
   LEGACY_FEEDBACK_RUBRIC_VERSION,
   parseRubricScore,
   presentCompletedFeedback,
+  type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
 } from "@meelni/core";
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
   "scored",
   "evidence_limited",
+  "full_scorecard",
+  "partial_scorecard",
+  "coaching_review",
   "unavailable",
 ] as const;
 
@@ -25,6 +30,7 @@ export const DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
   // Match the canonical feedback read boundary. Dashboard reads still cap the
   // value one character beyond each limit so corrupt rows fail closed.
   findingsJson: 1_000_000,
+  dimensionCoverageJson: 1_000_000,
   drillsJson: 64_000,
   summary: 4_000,
   version: 256,
@@ -47,6 +53,9 @@ export interface DashboardFeedbackPresentationCandidate {
   modelVersion: unknown;
   rubricVersion: unknown;
   evaluationState: unknown;
+  feedbackMode: unknown;
+  feedbackRoundType: unknown;
+  dimensionCoverageJson: unknown;
   strengthsJson: unknown;
   improvementsJson: unknown;
   drillsJson: unknown;
@@ -62,7 +71,8 @@ export interface DashboardFeedbackPresentationCandidate {
  */
 export function classifyDashboardFeedbackPresentation(
   candidate: DashboardFeedbackPresentationCandidate,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[]
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
+  answerBlocks: readonly CandidateAnswerBlock[] = []
 ): DashboardFeedbackPresentationKind {
   const strengths = decodeBoundedJson(
     candidate.strengthsJson,
@@ -75,6 +85,10 @@ export function classifyDashboardFeedbackPresentation(
   const drills = decodeBoundedJson(
     candidate.drillsJson,
     DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson
+  );
+  const dimensionCoverage = decodeBoundedJson(
+    candidate.dimensionCoverageJson,
+    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson
   );
   const presented = presentCompletedFeedback(
     {
@@ -95,10 +109,24 @@ export function classifyDashboardFeedbackPresentation(
       promptVersion: candidate.promptVersion,
       modelVersion: candidate.modelVersion,
       evaluationState: candidate.evaluationState,
+      feedbackMode: candidate.feedbackMode,
+      feedbackRoundType: candidate.feedbackRoundType,
+      dimensionCoverage,
       createdAt: candidate.createdAt,
     },
-    { evidenceTurns }
+    { evidenceTurns, answerBlocks }
   );
+
+  if (
+    candidate.status === "completed" &&
+    candidate.outcomeReason === "feedback_generated" &&
+    (candidate.completionTier === "full" ||
+      candidate.completionTier === "partial") &&
+    candidate.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    presented.kind === "dimension-coverage"
+  ) {
+    return presented.mode;
+  }
 
   if (
     hasSupportedScoredMetadata(candidate) &&

@@ -8712,6 +8712,30 @@ var DIMENSION_COVERAGE_CALIBRATION_CASES = [
     null
   ),
   calibrationCase(
+    "repeated-metric-stuffing",
+    "repeated_token_stuffing",
+    "execution",
+    "metric metric metric because metric metric metric metric metric metric",
+    "unable_to_review_no_usable_answer",
+    null
+  ),
+  calibrationCase(
+    "engineered-anchor-density",
+    "low_density_engineered_anchors",
+    "product_sense",
+    "customer metric roadmap because flarn quorv zint plesh wonda glint fexor bavin",
+    "coaching_review",
+    absent
+  ),
+  calibrationCase(
+    "causal-semantic-absurdity",
+    "semantic_absurdity",
+    "strategy",
+    "I prioritized the moon because quarterly umbrellas negotiated with the calendar, then I measured purple gravity.",
+    "coaching_review",
+    absent
+  ),
+  calibrationCase(
     "embedded-instruction",
     "prompt_injection",
     "execution",
@@ -20961,62 +20985,10 @@ var DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
   // Match the canonical feedback read boundary. Dashboard reads still cap the
   // value one character beyond each limit so corrupt rows fail closed.
   findingsJson: 1e6,
+  dimensionCoverageJson: 1e6,
   drillsJson: 64e3,
   summary: 4e3,
   version: 256
-};
-
-// lib/db/sessions.ts
-var dashboardSessionSelection = {
-  id: interviewSession.id,
-  userId: interviewSession.userId,
-  role: interviewSession.role,
-  roundType: interviewSession.roundType,
-  mode: interviewSession.mode,
-  persona: interviewSession.persona,
-  livekitRoomName: interviewSession.livekitRoomName,
-  config: interviewSession.config,
-  startedAt: interviewSession.startedAt,
-  endedAt: interviewSession.endedAt,
-  lifecycleState: interviewSession.lifecycleState,
-  status: interviewSession.status,
-  lifecycleVersion: interviewSession.lifecycleVersion,
-  terminalReason: interviewSession.terminalReason,
-  activatedAt: interviewSession.activatedAt,
-  endingAt: interviewSession.endingAt,
-  lastTransitionAt: interviewSession.lastTransitionAt,
-  feedback: {
-    status: feedback.status,
-    overallScore: feedback.overallScore,
-    structureScore: feedback.structureScore,
-    clarityScore: feedback.clarityScore,
-    insightScore: feedback.insightScore,
-    communicationScore: feedback.communicationScore,
-    leadershipScore: feedback.leadershipScore
-  },
-  feedbackPresentationCandidate: {
-    id: feedback.id,
-    sessionId: feedback.sessionId,
-    status: feedback.status,
-    outcomeReason: feedback.outcomeReason,
-    completionTier: feedback.completionTier,
-    overallScore: feedback.overallScore,
-    structureScore: feedback.structureScore,
-    clarityScore: feedback.clarityScore,
-    insightScore: feedback.insightScore,
-    communicationScore: feedback.communicationScore,
-    leadershipScore: feedback.leadershipScore,
-    schemaVersion: sql`left(${feedback.schemaVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
-    promptVersion: sql`left(${feedback.promptVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
-    modelVersion: sql`left(${feedback.modelVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
-    rubricVersion: sql`left(${feedback.rubricVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
-    evaluationState: sql`left(${feedback.evaluationState}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
-    strengthsJson: sql`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
-    improvementsJson: sql`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
-    drillsJson: sql`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
-    summary: sql`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`,
-    createdAt: feedback.createdAt
-  }
 };
 
 // packages/agent/src/room-metadata.ts
@@ -22494,6 +22466,62 @@ ErrorTracking.errorPropertiesBuilder = new error_tracking_exports.ErrorPropertie
 
 // lib/analytics/consent-contract.ts
 var ANALYTICS_CONSENT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
+
+// lib/db/sessions.ts
+var dashboardSessionSelection = {
+  id: interviewSession.id,
+  userId: interviewSession.userId,
+  role: interviewSession.role,
+  roundType: interviewSession.roundType,
+  mode: interviewSession.mode,
+  persona: interviewSession.persona,
+  livekitRoomName: interviewSession.livekitRoomName,
+  config: interviewSession.config,
+  startedAt: interviewSession.startedAt,
+  endedAt: interviewSession.endedAt,
+  lifecycleState: interviewSession.lifecycleState,
+  status: interviewSession.status,
+  lifecycleVersion: interviewSession.lifecycleVersion,
+  terminalReason: interviewSession.terminalReason,
+  activatedAt: interviewSession.activatedAt,
+  endingAt: interviewSession.endingAt,
+  lastTransitionAt: interviewSession.lastTransitionAt,
+  feedback: {
+    status: feedback.status,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore
+  },
+  feedbackPresentationCandidate: {
+    id: feedback.id,
+    sessionId: feedback.sessionId,
+    status: feedback.status,
+    outcomeReason: feedback.outcomeReason,
+    completionTier: feedback.completionTier,
+    overallScore: feedback.overallScore,
+    structureScore: feedback.structureScore,
+    clarityScore: feedback.clarityScore,
+    insightScore: feedback.insightScore,
+    communicationScore: feedback.communicationScore,
+    leadershipScore: feedback.leadershipScore,
+    schemaVersion: sql`left(${feedback.schemaVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    promptVersion: sql`left(${feedback.promptVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    modelVersion: sql`left(${feedback.modelVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    rubricVersion: sql`left(${feedback.rubricVersion}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    evaluationState: sql`left(${feedback.evaluationState}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    feedbackMode: sql`left(${feedback.feedbackMode}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    feedbackRoundType: sql`left(${feedback.feedbackRoundType}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
+    dimensionCoverageJson: sql`left(${feedback.dimensionCoverage}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson + 1})`,
+    strengthsJson: sql`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    improvementsJson: sql`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
+    drillsJson: sql`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
+    summary: sql`left(${feedback.summary}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.summary + 1})`,
+    createdAt: feedback.createdAt
+  }
+};
 
 // lib/evaluation/model-config.ts
 var ACCEPTED_FEEDBACK_MODEL = "gpt-5.1";

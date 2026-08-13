@@ -40,3 +40,5 @@ Legacy, scored v2, and evidence-limited v2 completed rows keep their current par
 ## Privacy and operational boundaries
 
 Only frozen, owner-authorized evidence reaches evaluation and authenticated presentation. No raw transcript, provider response, prompt, event IDs, session IDs, or customer content is added to logs, analytics, Linear, fixtures, or calibration artifacts. Calibration uses synthetic inputs only. This change ships migration source but does not run Production migrations or mutate providers.
+
+The canonical provider-free calibration command executes the v3 outcome matrix and verifies an exact checked-in SHA-256 binding for its synthetic fixture corpus; the attested runtime bundle also inventories that fixture source.
