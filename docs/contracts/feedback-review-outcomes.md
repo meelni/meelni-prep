@@ -33,6 +33,11 @@ Coverage and integrity are different customer-safe reason families:
 Unknown or malformed outcomes, reasons, dimensions, citations, or recovery
 states fail closed. They do not cross the authenticated customer read boundary.
 
+A skipped persisted row is validated against its internal status, reason, and
+completion tier before presentation, but those fields are not serialized. Its
+authenticated response contains only `outcome: unable_to_review`, the
+customer-safe `scoreWithheldReason`, and the customer-safe `recovery` state.
+
 ## Customer read boundary
 
 The completed-feedback presenter may expose only:
@@ -77,6 +82,8 @@ retain any validated completion tier or have no tier when it terminalizes
 before answer validation; that exact null remains compatible for
 `transcript_integrity_degraded` only. Unknown or incoherent status, reason, and
 tier combinations fail closed instead of being coerced into a customer reason.
+The persisted tuple remains server-side validation evidence and never becomes
+part of the customer response.
 
 ## History, Dashboard, and metrics
 

@@ -114,6 +114,12 @@ candidate coverage, so its row may retain any validated tier or a null tier
 when terminalization preceded answer validation; other unknown or incoherent
 tuples fail closed rather than being assigned a fallback reason.
 
+After validation, the feedback route discards the persisted status reason,
+completion tier, completion statistics, and legacy recommendation fields. The
+skipped customer DTO contains only `unable_to_review`, the safe reason family,
+and the safe recovery state. Dashboard consumes the classification locally and
+does not expose the persisted tuple through its customer contract.
+
 Overall averages, overall trends, comparisons, and progress claims require a
 valid overall score. Coaching and Unable outcomes contribute no numbers.
 Partial dimension scores may be counted only by a future dimension-specific

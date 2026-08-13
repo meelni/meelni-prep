@@ -366,13 +366,9 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
           state={{
             kind: "no-reviewable-answer",
             details: {
-              outcomeReason: "no_reviewable_answer",
-              tier: "insufficient",
+              outcome: "unable_to_review",
+              scoreWithheldReason: "rubric_coverage",
               recovery: "start_another_interview",
-              reasons: [longLifecycleMessage],
-              recommendations: [
-                "Start another mock interview and answer at least one complete prompt before ending the session.",
-              ],
             },
           }}
         />
@@ -383,11 +379,9 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
           state={{
             kind: "transcript-integrity-degraded",
             details: {
-              outcomeReason: "transcript_integrity_degraded",
-              tier: "abandoned",
+              outcome: "unable_to_review",
+              scoreWithheldReason: "verified_evidence_integrity",
               recovery: "credit_returned",
-              reasons: [],
-              recommendations: [],
             },
           }}
         />

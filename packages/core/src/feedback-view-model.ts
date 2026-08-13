@@ -28,10 +28,7 @@ import {
 } from "./feedback-dimension-coverage";
 import type { CandidateAnswerBlock } from "./answer-blocks";
 import type { RoundType } from "./interview";
-import type {
-  FeedbackOutcomeReason,
-  SkippedFeedbackOutcomeReason,
-} from "./feedback-outcome";
+import type { FeedbackOutcomeReason } from "./feedback-outcome";
 import {
   MAX_CANONICAL_EVENT_ID_LENGTH,
   prepareFeedbackTranscript,
@@ -218,21 +215,12 @@ export type CompletedFeedbackView =
   | FeedbackInvalidView;
 
 export interface SkippedFeedbackDetails {
-  outcomeReason: SkippedFeedbackOutcomeReason;
-  tier: "full" | "partial" | "insufficient" | "abandoned" | null;
+  outcome: "unable_to_review";
+  scoreWithheldReason: FeedbackScoreWithheldReason;
   recovery:
     | "start_another_interview"
     | "credit_returned"
     | "credit_recovery_in_progress";
-  reasons: string[];
-  recommendations: string[];
-  stats?: {
-    totalTurns: number;
-    userTurns: number;
-    totalWords: number;
-    durationSeconds: number;
-    substantiveResponses: number;
-  };
 }
 
 export type FeedbackLifecycleResponse =
@@ -504,7 +492,8 @@ export function toFeedbackViewState(
             outcomeReason: response.outcomeReason,
           };
     case "skipped":
-      return response.details.outcomeReason === "transcript_integrity_degraded"
+      return response.details.scoreWithheldReason ===
+        "verified_evidence_integrity"
         ? { kind: "transcript-integrity-degraded", details: response.details }
         : { kind: "no-reviewable-answer", details: response.details };
     case "completed":
@@ -637,49 +626,26 @@ export function decodeFeedbackLifecycleResponse(
 
 function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
   if (!isRecord(value)) return null;
-  if (
-    value.outcomeReason !== "no_reviewable_answer" &&
-    value.outcomeReason !== "transcript_integrity_degraded"
-  ) {
-    return null;
-  }
-  const validTier =
-    value.outcomeReason === "no_reviewable_answer"
-      ? value.tier === "insufficient" || value.tier === "abandoned"
-      : value.tier === null ||
-        value.tier === "full" ||
-        value.tier === "partial" ||
-        value.tier === "insufficient" ||
-        value.tier === "abandoned";
-  if (!validTier) return null;
+  if (value.outcome !== "unable_to_review") return null;
+  if (!isFeedbackScoreWithheldReason(value.scoreWithheldReason)) return null;
   const expectedRecovery =
-    value.outcomeReason === "no_reviewable_answer"
+    value.scoreWithheldReason === "rubric_coverage"
       ? value.recovery === "start_another_interview"
       : value.recovery === "credit_returned" ||
         value.recovery === "credit_recovery_in_progress";
   if (!expectedRecovery) return null;
-  if (!isBoundedStringArray(value.reasons, 20, FEEDBACK_READ_LIMITS.summary)) {
-    return null;
-  }
   if (
-    !isBoundedStringArray(
-      value.recommendations,
-      20,
-      FEEDBACK_READ_LIMITS.summary
+    Object.keys(value).some(
+      (key) => !["outcome", "scoreWithheldReason", "recovery"].includes(key)
     )
   ) {
     return null;
   }
-  if (value.stats !== undefined && !isSkippedStats(value.stats)) return null;
-  const tier = value.tier as SkippedFeedbackDetails["tier"];
   const recovery = value.recovery as SkippedFeedbackDetails["recovery"];
   return {
-    outcomeReason: value.outcomeReason,
-    tier,
+    outcome: "unable_to_review",
+    scoreWithheldReason: value.scoreWithheldReason,
     recovery,
-    reasons: value.reasons,
-    recommendations: value.recommendations,
-    ...(value.stats !== undefined ? { stats: value.stats } : {}),
   };
 }
 
@@ -955,19 +921,6 @@ function isFeedbackFindingArray(
       );
     })
   );
-}
-
-function isSkippedStats(
-  value: unknown
-): value is NonNullable<SkippedFeedbackDetails["stats"]> {
-  if (!isRecord(value)) return false;
-  return [
-    value.totalTurns,
-    value.userTurns,
-    value.totalWords,
-    value.durationSeconds,
-    value.substantiveResponses,
-  ].every(isNonNegativeFiniteNumber);
 }
 
 function isOptionalString(value: unknown): value is string | undefined {

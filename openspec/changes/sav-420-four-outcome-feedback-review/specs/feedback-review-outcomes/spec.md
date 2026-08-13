@@ -51,6 +51,10 @@
   its row MAY retain any validated tier, and a null tier MAY be accepted only
   when integrity recovery terminalized before answer validation. Incoherent
   tuples SHALL fail closed.
+- The authenticated skipped-feedback response SHALL serialize only the closed
+  `unable_to_review` outcome, customer-safe reason family, and customer-safe
+  recovery state. Persisted reason/tier/statistics/recommendation fields SHALL
+  remain server-side validation evidence.
 - Neither path SHALL expose provider, parser, settlement, transcript-integrity,
   or other internal diagnostic codes.
 

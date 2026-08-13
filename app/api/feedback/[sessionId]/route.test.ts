@@ -390,7 +390,15 @@ describe("/api/feedback/[sessionId]", () => {
     );
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ status: "skipped" });
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "start_another_interview",
+      },
+    });
   });
 
   it("shows acknowledged hard-deadline dispatch failure as directly retryable", async () => {
@@ -976,11 +984,12 @@ describe("/api/feedback/[sessionId]", () => {
       expect(response.headers.get("cache-control")).toBe(
         "private, max-age=300"
       );
-      await expect(response.json()).resolves.toMatchObject({
+      await expect(response.json()).resolves.toEqual({
         status: "skipped",
         retryable: false,
         details: {
-          outcomeReason: "transcript_integrity_degraded",
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
           recovery: "credit_returned",
         },
       });
@@ -1008,9 +1017,14 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
 
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       status: "skipped",
-      details: { recovery: "credit_recovery_in_progress" },
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_recovery_in_progress",
+      },
     });
   });
 
@@ -1035,11 +1049,12 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       status: "skipped",
+      retryable: false,
       details: {
-        outcomeReason: "transcript_integrity_degraded",
-        tier: null,
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
         recovery: "credit_returned",
       },
     });
@@ -1066,14 +1081,19 @@ describe("/api/feedback/[sessionId]", () => {
     const response = await GET(request(), PARAMS);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toEqual({
       status: "skipped",
+      retryable: false,
       details: {
-        outcomeReason: "transcript_integrity_degraded",
-        tier: "partial",
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
         recovery: "credit_returned",
       },
     });
+    expect(JSON.stringify(payload)).not.toMatch(
+      /transcript_integrity|completion|tier|turns|words|recommendations|reasons/
+    );
   });
 
   it("fails closed for an incoherent skipped outcome tuple", async () => {
