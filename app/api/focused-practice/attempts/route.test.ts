@@ -235,6 +235,22 @@ describe("focused-practice attempt APIs", () => {
     expect(deps.trackPracticeStarted).toHaveBeenCalledTimes(1);
   });
 
+  it("does not emit after deletion wins between creation and delivery", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.isDeletionPending).mockResolvedValue(true);
+    vi.mocked(startFocusedPracticeAttemptWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "created",
+      attempt: createGroundedAttempt(),
+    });
+    const response = await handleStartFocusedPracticeAttempt(
+      jsonRequest({ sourceSessionId: ATTEMPT.sourceSessionId }),
+      deps
+    );
+    expect(response.status).toBe(201);
+    expect(deps.trackPracticeStarted).not.toHaveBeenCalled();
+  });
+
   it("keeps read and completion responses private and non-enumerating", async () => {
     vi.mocked(readFocusedPracticeAttemptWorkflow)
       .mockResolvedValueOnce({ ok: false, reason: "not_found" })

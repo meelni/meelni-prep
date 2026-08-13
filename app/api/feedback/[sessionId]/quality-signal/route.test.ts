@@ -86,6 +86,40 @@ describe("feedback quality owner route", () => {
     expect(oversized.status).toBe(413);
   });
 
+  it("cancels a lengthless request stream as soon as it exceeds the bound", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const chunks = [
+      new Uint8Array(800).fill(32),
+      new Uint8Array(300).fill(32),
+      new Uint8Array(300).fill(32),
+    ];
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          const chunk = chunks[pulls];
+          pulls += 1;
+          if (chunk) controller.enqueue(chunk);
+          else controller.close();
+        },
+        cancel() {
+          cancelled = true;
+          return Promise.reject(new Error("synthetic cancellation failure"));
+        },
+      },
+      { highWaterMark: 0 }
+    );
+    const response = await handleWriteFeedbackQualitySignal(
+      streamingRequest(stream),
+      SESSION_ID,
+      deps
+    );
+    expect(response.status).toBe(413);
+    expect(cancelled).toBe(true);
+    expect(pulls).toBe(2);
+    expect(deps.repository.readOwned).not.toHaveBeenCalled();
+  });
+
   it("returns owner-safe no-store state and non-enumerating absence", async () => {
     const read = await handleReadFeedbackQualitySignal(SESSION_ID, deps);
     expect(read.status).toBe(200);
@@ -206,6 +240,24 @@ describe("feedback quality owner route", () => {
     );
     expect(response.status).toBe(201);
   });
+
+  it("does not emit after deletion wins between commit and delivery", async () => {
+    vi.mocked(deps.repository.writeOwned).mockResolvedValue({
+      disposition: "created",
+      state: { outcome: "partial_scorecard", signal },
+    });
+    vi.mocked(deps.isDeletionPending)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const response = await handleWriteFeedbackQualitySignal(
+      request(JSON.stringify(command(null))),
+      SESSION_ID,
+      deps
+    );
+    expect(response.status).toBe(201);
+    expect(deps.trackResponse).not.toHaveBeenCalled();
+  });
 });
 
 function dependencies(): FeedbackQualityRouteDependencies {
@@ -242,6 +294,22 @@ function request(body: string, headers?: Record<string, string>) {
       },
       body,
     }
+  );
+}
+
+function streamingRequest(stream: ReadableStream<Uint8Array>) {
+  return new NextRequest(
+    "https://meelni.test/api/feedback/session/quality-signal",
+    {
+      method: "PUT",
+      headers: {
+        origin: "https://meelni.test",
+        "content-type": "application/json",
+        "sec-fetch-site": "same-origin",
+      },
+      body: stream,
+      duplex: "half",
+    } as never
   );
 }
 

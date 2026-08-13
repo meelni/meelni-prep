@@ -7648,10 +7648,11 @@ async function verifyFeedbackQualityPersistence(
           'completed'
         )
       `;
-      await sql`
-        INSERT INTO account_deletion_request (user_id)
-        VALUES (${FEEDBACK_QUALITY_DELETION_USER}::uuid)
-      `;
+      await verifyFeedbackQualityDeletionWinsRateLimit(
+        sql,
+        databaseUrl,
+        FEEDBACK_QUALITY_DELETION_USER
+      );
       const [lateRateDecision] = await sql<
         { allowed: boolean; retry_after_seconds: number }[]
       >`
@@ -7722,6 +7723,88 @@ async function verifyFeedbackQualityPersistence(
         ${FEEDBACK_QUALITY_OTHER_USER}::uuid
       )
     `;
+  }
+}
+
+async function verifyFeedbackQualityDeletionWinsRateLimit(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  userId: string
+) {
+  const deletionClient = postgres(databaseUrl, { max: 1, prepare: false });
+  const limiterClient = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseDeletion!: () => void;
+  let signalDeletionReady!: () => void;
+  let released = false;
+  const release = new Promise<void>((resolve) => {
+    releaseDeletion = () => {
+      released = true;
+      resolve();
+    };
+  });
+  const deletionReady = new Promise<void>((resolve) => {
+    signalDeletionReady = resolve;
+  });
+  const deletionTransaction = deletionClient.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(
+          ${userId},
+          ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+        )
+      )
+    `;
+    await tx`
+      INSERT INTO account_deletion_request (user_id)
+      VALUES (${userId}::uuid)
+    `;
+    await tx`
+      DELETE FROM feedback_quality_signal_rate_limit
+      WHERE user_id = ${userId}::uuid
+    `;
+    signalDeletionReady();
+    await release;
+  });
+
+  let limiterAttempt: Promise<
+    { allowed: boolean; retry_after_seconds: number }[]
+  > | null = null;
+  try {
+    await deletionReady;
+    const [backend] = await limiterClient<{ pid: number }[]>`
+      SELECT pg_backend_pid() AS pid
+    `;
+    assert.ok(backend?.pid);
+    let limiterSettled = false;
+    limiterAttempt = limiterClient<
+      { allowed: boolean; retry_after_seconds: number }[]
+    >`
+      SELECT allowed, retry_after_seconds
+      FROM consume_feedback_quality_signal_rate_limit(${userId}::uuid, 20)
+    `.finally(() => {
+      limiterSettled = true;
+    });
+
+    await waitForDatabaseLock(sql, backend.pid);
+    assert.equal(limiterSettled, false);
+    releaseDeletion();
+    await deletionTransaction;
+
+    const [decision] = await limiterAttempt;
+    assert.deepEqual(decision, { allowed: true, retry_after_seconds: 0 });
+    const [remaining] = await sql<{ rows: number }[]>`
+      SELECT count(*)::int AS rows
+      FROM feedback_quality_signal_rate_limit
+      WHERE user_id = ${userId}::uuid
+    `;
+    assert.equal(remaining?.rows, 0);
+  } finally {
+    if (!released) releaseDeletion();
+    await Promise.allSettled([
+      deletionTransaction,
+      ...(limiterAttempt ? [limiterAttempt] : []),
+    ]);
+    await Promise.all([deletionClient.end(), limiterClient.end()]);
   }
 }
 

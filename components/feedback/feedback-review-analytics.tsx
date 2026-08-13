@@ -12,55 +12,39 @@ export function FeedbackReviewAnalytics({
 }: {
   outcome: FeedbackQualityOutcome;
 }) {
-  const presentedAtRef = useRef(Date.now());
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  return mounted ? (
-    <FeedbackReviewAnalyticsTracker
-      outcome={outcome}
-      presentedAt={presentedAtRef.current}
-    />
-  ) : null;
+  return mounted ? <FeedbackReviewAnalyticsTracker outcome={outcome} /> : null;
 }
 
 function FeedbackReviewAnalyticsTracker({
   outcome,
-  presentedAt,
 }: {
   outcome: FeedbackQualityOutcome;
-  presentedAt: number;
 }) {
-  const { consent, decision, resolved, resolvedForUserId } =
-    useAnalyticsConsent();
+  const { decision, resolved, resolvedForUserId } = useAnalyticsConsent();
   const runtimeReady = usePostHogRuntimeReady();
-  const subjectRef = useRef<string | null>(null);
+  const eligibilityRef = useRef({
+    subject: resolvedForUserId,
+    eligible: resolved && resolvedForUserId !== null && decision === "accepted",
+  });
   const emittedRef = useRef(false);
 
   useEffect(() => {
-    if (!resolved || !resolvedForUserId || emittedRef.current) return;
-    subjectRef.current ??= resolvedForUserId;
-    if (subjectRef.current !== resolvedForUserId || decision !== "accepted") {
-      return;
-    }
-    const decidedAt = new Date(consent.decidedAt ?? "").getTime();
     if (
-      !Number.isFinite(decidedAt) ||
-      decidedAt >= presentedAt ||
+      !resolved ||
+      !resolvedForUserId ||
+      emittedRef.current ||
+      !eligibilityRef.current.eligible ||
+      eligibilityRef.current.subject !== resolvedForUserId ||
+      decision !== "accepted" ||
       !runtimeReady
     ) {
       return;
     }
     emittedRef.current = true;
     analytics.track("feedback_viewed", { outcome });
-  }, [
-    consent.decidedAt,
-    decision,
-    outcome,
-    presentedAt,
-    resolved,
-    resolvedForUserId,
-    runtimeReady,
-  ]);
+  }, [decision, outcome, resolved, resolvedForUserId, runtimeReady]);
 
   return null;
 }

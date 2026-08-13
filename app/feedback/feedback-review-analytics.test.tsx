@@ -64,16 +64,21 @@ describe("FeedbackReviewAnalytics", () => {
     const view = render(<FeedbackReviewAnalytics outcome="full_scorecard" />);
 
     mocks.consent.decision = "accepted";
-    mocks.consent.consent.decidedAt = "2026-08-13T12:00:01.000Z";
+    mocks.consent.consent.decidedAt = "2020-01-01T00:00:00.000Z";
     mocks.runtimeReady = true;
     view.rerender(<FeedbackReviewAnalytics outcome="full_scorecard" />);
     expect(mocks.track).not.toHaveBeenCalled();
   });
 
-  it("requires consent to predate the presented review", () => {
-    mocks.consent.consent.decidedAt = "2026-08-13T12:00:00.000Z";
+  it("does not replay a view after initially unresolved consent resolves", () => {
+    mocks.consent.resolved = false;
+    mocks.consent.resolvedForUserId = null;
+    const view = render(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+
+    mocks.consent.resolved = true;
+    mocks.consent.resolvedForUserId = "synthetic-user-a";
     mocks.runtimeReady = true;
-    render(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+    view.rerender(<FeedbackReviewAnalytics outcome="full_scorecard" />);
     expect(mocks.track).not.toHaveBeenCalled();
   });
 

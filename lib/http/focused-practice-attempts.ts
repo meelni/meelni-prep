@@ -77,6 +77,9 @@ export async function handleStartFocusedPracticeAttempt(
   );
   if (result.ok && result.disposition === "created") {
     try {
+      if (await deps.isDeletionPending(authentication.userId)) {
+        return startResultResponse(result);
+      }
       await deps.trackPracticeStarted?.({
         userId: authentication.userId,
         attempt: result.attempt,

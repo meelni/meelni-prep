@@ -195,12 +195,9 @@ export interface FeedbackQualityAggregate {
  * reveal the complementary cell by subtraction.
  */
 export function aggregateFeedbackQualitySignals(
-  rows: readonly FeedbackQualityAggregateInput[],
-  minimumDistinctUsers = FEEDBACK_QUALITY_MINIMUM_DISTINCT_USERS
+  rows: readonly FeedbackQualityAggregateInput[]
 ): FeedbackQualityAggregate {
-  if (!Number.isSafeInteger(minimumDistinctUsers) || minimumDistinctUsers < 2) {
-    throw new Error("feedback quality cohort minimum is invalid");
-  }
+  const minimumDistinctUsers = FEEDBACK_QUALITY_MINIMUM_DISTINCT_USERS;
   const byOutcome = new Map<
     FeedbackQualityOutcome,
     Map<string, { rows: number; users: Set<string> }>

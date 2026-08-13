@@ -185,9 +185,12 @@ const CLOSED_VALUES: Record<string, ReadonlySet<string>> = {
 export function sanitizeAnalyticsEventProperties(
   event: string,
   properties: Record<string, unknown>
-): Record<string, string | number | boolean> {
+): Record<string, string | number | boolean> | null {
   const output: Record<string, string | number | boolean> = {};
   const policyEvent = EVENT_POLICY_ALIASES[event] ?? event;
+  if (!isAtomicFeedbackQualityEventValid(policyEvent, properties)) {
+    return null;
+  }
   for (const key of ALLOWED_PROPERTIES[policyEvent] ?? []) {
     const value = properties[key];
     if (value === undefined || value === null) continue;
@@ -195,6 +198,50 @@ export function sanitizeAnalyticsEventProperties(
     if (normalized !== null) output[key] = normalized;
   }
   return output;
+}
+
+function isAtomicFeedbackQualityEventValid(
+  event: string,
+  properties: Record<string, unknown>
+): boolean {
+  if (event === "feedback_viewed") {
+    return CLOSED_VALUES["feedback_viewed.outcome"]!.has(
+      stringValue(properties.outcome)
+    );
+  }
+  if (event === "feedback_practice_started") {
+    return (
+      CLOSED_VALUES["feedback_practice_started.outcome"]!.has(
+        stringValue(properties.outcome)
+      ) &&
+      CLOSED_VALUES["feedback_practice_started.practice_kind"]!.has(
+        stringValue(properties.practice_kind)
+      )
+    );
+  }
+  if (event !== "feedback_helpfulness_responded") return true;
+  const outcome = stringValue(properties.outcome);
+  const response = stringValue(properties.response);
+  const reason = stringValue(properties.reason);
+  if (
+    !CLOSED_VALUES["feedback_helpfulness_responded.outcome"]!.has(outcome) ||
+    !CLOSED_VALUES["feedback_helpfulness_responded.response"]!.has(response) ||
+    !CLOSED_VALUES["feedback_helpfulness_responded.reason"]!.has(reason)
+  ) {
+    return false;
+  }
+  if (response === "helpful") return reason === "not_provided";
+  if (reason === "score_withholding_unclear") {
+    return outcome === "coaching_review";
+  }
+  if (reason === "score_explanation_unclear") {
+    return outcome === "full_scorecard" || outcome === "partial_scorecard";
+  }
+  return true;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 export function hasAnalyticsEventPolicy(event: string): boolean {

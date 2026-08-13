@@ -27,13 +27,12 @@ export class AnalyticsService {
     if (!this.canCapture()) return;
 
     try {
-      posthog.capture(
+      const safeProperties = sanitizeAnalyticsEventProperties(
         event,
-        sanitizeAnalyticsEventProperties(
-          event,
-          properties as Record<string, unknown>
-        )
+        properties as Record<string, unknown>
       );
+      if (!safeProperties) return;
+      posthog.capture(event, safeProperties);
     } catch (error) {
       console.error("[Analytics] Event delivery failed", {
         ...toSafeErrorLog(error),

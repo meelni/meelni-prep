@@ -78,6 +78,13 @@ BEGIN
 		RAISE EXCEPTION 'invalid_feedback_quality_rate_limit_input';
 	END IF;
 
+	-- Account deletion uses this same transaction-scoped namespace. Lock before
+	-- the tombstone check so deletion-first cleanup cannot be followed by a
+	-- late insert into this intentionally FK-less operational table.
+	PERFORM pg_advisory_xact_lock(
+		hashtextextended(candidate_user_id::text, 181::bigint)
+	);
+
 	-- Deletion intent is durable before application cleanup. A late request may
 	-- still authenticate, but it must not recreate operational state after the
 	-- cleanup transaction has removed the owner's limiter row.
