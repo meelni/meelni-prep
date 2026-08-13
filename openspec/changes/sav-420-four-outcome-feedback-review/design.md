@@ -107,6 +107,12 @@ dimension data, customer-safe reason family, and customer-safe recovery state
 needed by the view. It does not return internal diagnostics or provider codes.
 Unknown values fail closed to Unable to review.
 
+The feedback route and Dashboard reuse one strict classifier for persisted
+skipped tuples. Candidate-evidence insufficiency requires its committed
+`insufficient` or `abandoned` tier. Integrity recovery may retain a null tier
+when terminalization preceded answer validation; other unknown or incoherent
+tuples fail closed rather than being assigned a fallback reason.
+
 Overall averages, overall trends, comparisons, and progress claims require a
 valid overall score. Coaching and Unable outcomes contribute no numbers.
 Partial dimension scores may be counted only by a future dimension-specific

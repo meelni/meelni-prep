@@ -219,7 +219,7 @@ export type CompletedFeedbackView =
 
 export interface SkippedFeedbackDetails {
   outcomeReason: SkippedFeedbackOutcomeReason;
-  tier: "insufficient" | "abandoned";
+  tier: "insufficient" | "abandoned" | null;
   recovery:
     | "start_another_interview"
     | "credit_returned"
@@ -637,13 +637,19 @@ export function decodeFeedbackLifecycleResponse(
 
 function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
   if (!isRecord(value)) return null;
-  if (value.tier !== "insufficient" && value.tier !== "abandoned") return null;
   if (
     value.outcomeReason !== "no_reviewable_answer" &&
     value.outcomeReason !== "transcript_integrity_degraded"
   ) {
     return null;
   }
+  const validTier =
+    value.outcomeReason === "no_reviewable_answer"
+      ? value.tier === "insufficient" || value.tier === "abandoned"
+      : value.tier === null ||
+        value.tier === "insufficient" ||
+        value.tier === "abandoned";
+  if (!validTier) return null;
   const expectedRecovery =
     value.outcomeReason === "no_reviewable_answer"
       ? value.recovery === "start_another_interview"
@@ -663,10 +669,11 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
     return null;
   }
   if (value.stats !== undefined && !isSkippedStats(value.stats)) return null;
+  const tier = value.tier as SkippedFeedbackDetails["tier"];
   const recovery = value.recovery as SkippedFeedbackDetails["recovery"];
   return {
     outcomeReason: value.outcomeReason,
-    tier: value.tier,
+    tier,
     recovery,
     reasons: value.reasons,
     recommendations: value.recommendations,

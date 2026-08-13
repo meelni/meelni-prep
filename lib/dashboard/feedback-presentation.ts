@@ -1,5 +1,6 @@
 import {
   calculateOverallScore,
+  classifySkippedFeedbackLifecycle,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
@@ -126,13 +127,7 @@ export function classifyDashboardFeedbackPresentation(
     }
   );
 
-  if (
-    candidate.status === "skipped" &&
-    (candidate.outcomeReason === "no_reviewable_answer" ||
-      candidate.outcomeReason === "transcript_integrity_degraded") &&
-    (candidate.completionTier === "insufficient" ||
-      candidate.completionTier === "abandoned")
-  ) {
+  if (classifySkippedFeedbackLifecycle(candidate)) {
     return "unable_to_review";
   }
 

@@ -388,6 +388,44 @@ test("terminal scoreless outcomes are presented as unable to review", () => {
       "unable_to_review"
     );
   }
+
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      candidate({
+        status: "skipped",
+        outcomeReason: "transcript_integrity_degraded",
+        completionTier: null,
+      }),
+      transcript
+    ),
+    "unable_to_review"
+  );
+
+  for (const overrides of [
+    {
+      status: "skipped",
+      outcomeReason: "no_reviewable_answer",
+      completionTier: null,
+    },
+    {
+      status: "skipped",
+      outcomeReason: "feedback_generated",
+      completionTier: "full",
+    },
+    {
+      status: "skipped",
+      outcomeReason: "transcript_integrity_degraded",
+      completionTier: "full",
+    },
+  ]) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(
+        candidate(overrides),
+        transcript
+      ),
+      "unavailable"
+    );
+  }
 });
 
 test("malformed, oversized, unknown, and tampered content fails closed", () => {

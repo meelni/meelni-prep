@@ -699,6 +699,17 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
         recommendations: [],
       },
     },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcomeReason: "transcript_integrity_degraded",
+        tier: null,
+        recovery: "credit_recovery_in_progress",
+        reasons: [],
+        recommendations: [],
+      },
+    },
     { status: "completed", retryable: false, feedback: validCompleted },
   ];
   for (const payload of valid) {
@@ -731,6 +742,17 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
       details: {
         outcomeReason: "transcript_integrity_degraded",
         tier: "insufficient",
+        recovery: "start_another_interview",
+        reasons: [],
+        recommendations: [],
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcomeReason: "no_reviewable_answer",
+        tier: null,
         recovery: "start_another_interview",
         reasons: [],
         recommendations: [],

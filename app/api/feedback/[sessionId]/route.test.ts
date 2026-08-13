@@ -361,6 +361,8 @@ describe("/api/feedback/[sessionId]", () => {
       feedbackRecord({
         status: "skipped",
         dispatchStatus: "not_required",
+        completionTier: "insufficient",
+        outcomeReason: "no_reviewable_answer",
       }) as never
     );
 
@@ -382,6 +384,8 @@ describe("/api/feedback/[sessionId]", () => {
       feedbackRecord({
         status: "skipped",
         dispatchStatus: "not_required",
+        completionTier: "insufficient",
+        outcomeReason: "no_reviewable_answer",
       }) as never
     );
     const response = await GET(request(), PARAMS);
@@ -1007,6 +1011,56 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "skipped",
       details: { recovery: "credit_recovery_in_progress" },
+    });
+  });
+
+  it("supports a recovery-created integrity row without inventing a completion tier", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "failed",
+      terminalReason: "provider_failure",
+      creditSettlementAction: "release",
+      creditSettledAt: new Date("2026-08-13T12:00:00.000Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: null,
+        outcomeReason: "transcript_integrity_degraded",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "skipped",
+      details: {
+        outcomeReason: "transcript_integrity_degraded",
+        tier: null,
+        recovery: "credit_returned",
+      },
+    });
+  });
+
+  it("fails closed for an incoherent skipped outcome tuple", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: "full",
+        outcomeReason: "feedback_generated",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid feedback state",
     });
   });
 

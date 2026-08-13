@@ -1,4 +1,5 @@
 import {
+  classifySkippedFeedbackLifecycle,
   decodeFeedbackLifecycleResponse,
   presentCompletedFeedback,
   type FeedbackLifecycleResponse,
@@ -44,24 +45,24 @@ export function buildCompletedFeedbackLifecycleResponse(
 }
 
 export function buildSkippedFeedbackLifecycleResponse(record: {
+  status: unknown;
   outcomeReason: unknown;
   completionTier: unknown;
   completionStats: unknown;
   creditSettlementAction?: unknown;
   creditSettledAt?: unknown;
 }): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
+  const classification = classifySkippedFeedbackLifecycle(record);
+  if (!classification) return null;
+
   const candidate = {
     status: "skipped",
     retryable: false,
     details: {
-      outcomeReason:
-        record.outcomeReason === "transcript_integrity_degraded"
-          ? "transcript_integrity_degraded"
-          : "no_reviewable_answer",
-      tier:
-        record.completionTier === "abandoned" ? "abandoned" : "insufficient",
+      outcomeReason: classification.outcomeReason,
+      tier: classification.completionTier,
       recovery:
-        record.outcomeReason === "transcript_integrity_degraded"
+        classification.outcomeReason === "transcript_integrity_degraded"
           ? (record.creditSettlementAction === "refund" ||
               record.creditSettlementAction === "release") &&
             record.creditSettledAt !== null &&

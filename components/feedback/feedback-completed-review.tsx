@@ -250,7 +250,7 @@ export function CompletedDimensionCoverageReview({
                             </p>
                             <CitationBlock
                               citation={evidence.citation}
-                              actionLabel={`View ${DIMENSION_LABELS[dimension]} citation in transcript`}
+                              actionLabel={`View ${DIMENSION_LABELS[dimension]} ${evidence.label} citation in transcript`}
                               onSelect={() =>
                                 transcript.selectTranscriptRef(
                                   evidence.transcriptRef
@@ -424,7 +424,7 @@ export function CompletedEvidenceLimitedReview({
                   </p>
                   <CitationBlock
                     citation={finding.citation}
-                    actionLabel={`View ${DIMENSION_LABELS[finding.dimension]} signal citation in transcript`}
+                    actionLabel={`View ${DIMENSION_LABELS[finding.dimension]} ${finding.observation} signal citation in transcript`}
                     onSelect={() =>
                       transcript.selectTranscriptRef(finding.transcriptRef)
                     }

@@ -221,6 +221,16 @@ test("dimension coverage review renders a full scorecard only with complete supp
   assert.match(html, />8</);
   assert.match(html, /Supported/);
   assert.match(html, /working parents because schedule changes/);
+  for (const evidence of feedback.dimensions.structure.evidence) {
+    assert.match(
+      html,
+      new RegExp(
+        escapeRegExp(
+          `View Structure ${evidence.label} citation in transcript`
+        )
+      )
+    );
+  }
   assert.doesNotMatch(html, /answer-block:|facet|schema|model/i);
 });
 

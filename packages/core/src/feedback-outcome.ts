@@ -20,3 +20,49 @@ export type SkippedFeedbackOutcomeReason = Extract<
   FeedbackOutcomeReason,
   "no_reviewable_answer" | "transcript_integrity_degraded"
 >;
+
+export type SkippedFeedbackCompletionTier =
+  | "insufficient"
+  | "abandoned"
+  | null;
+
+export interface SkippedFeedbackLifecycleClassification {
+  outcomeReason: SkippedFeedbackOutcomeReason;
+  completionTier: SkippedFeedbackCompletionTier;
+}
+
+/**
+ * Classify only coherent persisted skipped tuples. Integrity recovery may have
+ * no completion tier because it can terminalize before answer validation; a
+ * missing tier is not valid for candidate-evidence insufficiency.
+ */
+export function classifySkippedFeedbackLifecycle(value: {
+  status: unknown;
+  outcomeReason: unknown;
+  completionTier: unknown;
+}): SkippedFeedbackLifecycleClassification | null {
+  if (value.status !== "skipped") return null;
+
+  if (value.outcomeReason === "no_reviewable_answer") {
+    return value.completionTier === "insufficient" ||
+      value.completionTier === "abandoned"
+      ? {
+          outcomeReason: value.outcomeReason,
+          completionTier: value.completionTier,
+        }
+      : null;
+  }
+
+  if (value.outcomeReason === "transcript_integrity_degraded") {
+    return value.completionTier === null ||
+      value.completionTier === "insufficient" ||
+      value.completionTier === "abandoned"
+      ? {
+          outcomeReason: value.outcomeReason,
+          completionTier: value.completionTier,
+        }
+      : null;
+  }
+
+  return null;
+}

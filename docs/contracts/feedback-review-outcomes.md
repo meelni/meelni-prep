@@ -70,6 +70,13 @@ and offers another interview. An immutable terminal evidence failure does not
 invent a retry action. Separately modeled transient dispatch and generation
 failures retain their existing retry controls.
 
+Feedback-route and Dashboard reads share one strict skipped-tuple classifier.
+`no_reviewable_answer` requires an `insufficient` or `abandoned` completion
+tier. Integrity recovery may legitimately have no completion tier when it
+terminalizes before answer validation; that exact null remains compatible for
+`transcript_integrity_degraded` only. Unknown or incoherent status, reason, and
+tier combinations fail closed instead of being coerced into a customer reason.
+
 ## History, Dashboard, and metrics
 
 History and Dashboard use `Full scorecard ready`, `Partial scorecard ready`,
