@@ -109,7 +109,8 @@ Unknown values fail closed to Unable to review.
 
 The feedback route and Dashboard reuse one strict classifier for persisted
 skipped tuples. Candidate-evidence insufficiency requires its committed
-`insufficient` or `abandoned` tier. Integrity recovery may retain a null tier
+`insufficient` or `abandoned` tier. Integrity failure is independent of
+candidate coverage, so its row may retain any validated tier or a null tier
 when terminalization preceded answer validation; other unknown or incoherent
 tuples fail closed rather than being assigned a fallback reason.
 

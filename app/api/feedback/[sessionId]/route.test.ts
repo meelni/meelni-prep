@@ -1045,6 +1045,37 @@ describe("/api/feedback/[sessionId]", () => {
     });
   });
 
+  it("keeps candidate coverage separate from a verified-evidence integrity failure", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "failed",
+      terminalReason: "transcript_integrity_unavailable",
+      creditSettlementAction: "release",
+      creditSettledAt: new Date("2026-08-13T12:00:00.000Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: "partial",
+        outcomeReason: "transcript_integrity_degraded",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "skipped",
+      details: {
+        outcomeReason: "transcript_integrity_degraded",
+        tier: "partial",
+        recovery: "credit_returned",
+      },
+    });
+  });
+
   it("fails closed for an incoherent skipped outcome tuple", async () => {
     vi.mocked(getFeedbackBySessionId).mockResolvedValue(
       feedbackRecord({

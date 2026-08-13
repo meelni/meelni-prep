@@ -8890,6 +8890,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     database
   );
   assert.ok(collisionRecord);
+  assert.notEqual(collisionRecord.completionTier, null);
   const skippedPayload = buildSkippedFeedbackLifecycleResponse(collisionRecord);
   assert.ok(skippedPayload);
   const skippedDecoded = core.decodeFeedbackLifecycleResponse(skippedPayload);

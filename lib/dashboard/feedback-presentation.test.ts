@@ -401,6 +401,20 @@ test("terminal scoreless outcomes are presented as unable to review", () => {
     "unable_to_review"
   );
 
+  for (const completionTier of ["full", "partial"] as const) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(
+        candidate({
+          status: "skipped",
+          outcomeReason: "transcript_integrity_degraded",
+          completionTier,
+        }),
+        transcript
+      ),
+      "unable_to_review"
+    );
+  }
+
   for (const overrides of [
     {
       status: "skipped",
@@ -414,7 +428,7 @@ test("terminal scoreless outcomes are presented as unable to review", () => {
     },
     {
       status: "skipped",
-      outcomeReason: "transcript_integrity_degraded",
+      outcomeReason: "no_reviewable_answer",
       completionTier: "full",
     },
   ]) {

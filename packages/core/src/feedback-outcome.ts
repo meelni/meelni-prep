@@ -22,6 +22,8 @@ export type SkippedFeedbackOutcomeReason = Extract<
 >;
 
 export type SkippedFeedbackCompletionTier =
+  | "full"
+  | "partial"
   | "insufficient"
   | "abandoned"
   | null;
@@ -32,9 +34,10 @@ export interface SkippedFeedbackLifecycleClassification {
 }
 
 /**
- * Classify only coherent persisted skipped tuples. Integrity recovery may have
- * no completion tier because it can terminalize before answer validation; a
- * missing tier is not valid for candidate-evidence insufficiency.
+ * Classify only coherent persisted skipped tuples. Integrity recovery is
+ * independent of candidate coverage, so it may retain any validated coverage
+ * tier or have no tier when terminalization precedes answer validation. A
+ * missing or scoreable tier is not valid for candidate-evidence insufficiency.
  */
 export function classifySkippedFeedbackLifecycle(value: {
   status: unknown;
@@ -55,6 +58,8 @@ export function classifySkippedFeedbackLifecycle(value: {
 
   if (value.outcomeReason === "transcript_integrity_degraded") {
     return value.completionTier === null ||
+      value.completionTier === "full" ||
+      value.completionTier === "partial" ||
       value.completionTier === "insufficient" ||
       value.completionTier === "abandoned"
       ? {

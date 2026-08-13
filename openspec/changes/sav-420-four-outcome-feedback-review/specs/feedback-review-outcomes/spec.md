@@ -47,9 +47,10 @@
 - Coverage copy SHALL NOT promise a returned credit unless server-owned credit
   evidence proves it.
 - Feedback and Dashboard reads SHALL share one strict skipped status/reason/tier
-  classifier. A null completion tier MAY be accepted only for an integrity
-  recovery row that terminalized before answer validation; incoherent tuples
-  SHALL fail closed.
+  classifier. Integrity failure SHALL remain independent of candidate coverage:
+  its row MAY retain any validated tier, and a null tier MAY be accepted only
+  when integrity recovery terminalized before answer validation. Incoherent
+  tuples SHALL fail closed.
 - Neither path SHALL expose provider, parser, settlement, transcript-integrity,
   or other internal diagnostic codes.
 
