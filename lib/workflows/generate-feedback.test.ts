@@ -392,6 +392,29 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
   assert.notEqual(store.current.status, "skipped");
 });
 
+test("a partial frozen snapshot permits only qualitative coaching", async () => {
+  const store = new MemoryGenerationStore(record());
+  let observedNumericalPolicy: boolean | undefined;
+  const deps = dependencies(store, {
+    async evaluate(input) {
+      observedNumericalPolicy = input.allowNumericalScores;
+      throw new Error("synthetic_stop_after_snapshot_policy");
+    },
+  });
+  const defaultEvidence = await deps.getAnswerBlockEvidence(SESSION_ID);
+  deps.getAnswerBlockEvidence = async () => ({
+    ...defaultEvidence,
+    snapshotState: "partial",
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    /synthetic_stop_after_snapshot_policy/
+  );
+  assert.equal(observedNumericalPolicy, false);
+  assert.notEqual(store.current.status, "skipped");
+});
+
 test("1, 2, 5, or 10 STT finals preserve completion stats and answer-block evaluator input", async () => {
   const observations: Array<{
     stats: SessionStats;

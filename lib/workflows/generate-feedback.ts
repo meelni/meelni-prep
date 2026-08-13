@@ -20,7 +20,7 @@ import { type StartFeedbackObservabilityTrace } from "@/lib/evaluation/scorer";
 import { generateDimensionCoverageFeedback } from "@/lib/evaluation/dimension-coverage-scorer";
 import {
   SessionTier,
-  prepareCandidateAnswerBlockEvidenceFromTurns,
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
   validateSessionCompleteness,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
@@ -58,6 +58,7 @@ export interface GenerateFeedbackWorkflowDeps {
     blocks: CandidateAnswerBlock[];
     eligible: boolean;
     evidenceFailureReason: SkippedFeedbackOutcomeReason | null;
+    snapshotState?: "complete" | "partial" | null;
   }>;
   evaluate(input: {
     roundType: RoundType;
@@ -202,8 +203,9 @@ export async function generateFeedbackWorkflow(
 
     const startedAt = deps.now();
     const allowNumericalScores =
+      evidence.snapshotState !== "partial" &&
       claimed.completionStats?.feedbackModeConstraint !==
-      "evidence_limited_only";
+        "evidence_limited_only";
     const evaluation = await deps.evaluate({
       roundType,
       answerBlocks: evidence.blocks,
@@ -344,13 +346,10 @@ export function createGenerateFeedbackWorkflowDeps(
     validateLegacy: validateSessionCompleteness,
     async getAnswerBlockEvidence(sessionId) {
       const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
-      return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
-        interruptions: evidence.interruptions,
-        ...(evidence.sessionEndAt
-          ? { sessionEndAt: evidence.sessionEndAt }
-          : {}),
-        sourceOverflow: evidence.sourceOverflow,
-      });
+      return {
+        ...prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence),
+        snapshotState: evidence.snapshotState,
+      };
     },
     evaluate: ({ roundType, answerBlocks, allowNumericalScores }) =>
       generateDimensionCoverageFeedback(

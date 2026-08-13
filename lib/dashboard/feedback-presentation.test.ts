@@ -231,7 +231,9 @@ test("keeps full, partial, and coaching dimension-coverage reviews reachable", (
       classifyDashboardFeedbackPresentation(
         dimensionCoverageCandidate(mode),
         [],
-        answerBlocks
+        answerBlocks,
+        "product_sense",
+        "complete"
       ),
       mode
     );
@@ -243,9 +245,44 @@ test("dimension-coverage dashboard reads fail closed without eligible frozen ans
     classifyDashboardFeedbackPresentation(
       dimensionCoverageCandidate("full_scorecard"),
       [],
-      []
+      [],
+      "product_sense",
+      "complete"
     ),
     "unavailable"
+  );
+});
+
+test("dimension-coverage dashboard binds the owning round and snapshot score policy", () => {
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("full_scorecard"),
+      [],
+      answerBlocks,
+      "strategy",
+      "complete"
+    ),
+    "unavailable"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("partial_scorecard"),
+      [],
+      answerBlocks,
+      "product_sense",
+      "partial"
+    ),
+    "unavailable"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      dimensionCoverageCandidate("coaching_review"),
+      [],
+      answerBlocks,
+      "product_sense",
+      "partial"
+    ),
+    "coaching_review"
   );
 });
 

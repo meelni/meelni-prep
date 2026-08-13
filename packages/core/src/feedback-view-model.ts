@@ -75,6 +75,8 @@ export interface PersistedFeedbackEvidenceTurn {
 export interface PresentCompletedFeedbackOptions {
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[];
   answerBlocks?: readonly CandidateAnswerBlock[];
+  expectedRoundType?: RoundType;
+  frozenEvidenceState?: "complete" | "partial";
 }
 
 export interface FeedbackScoreView {
@@ -304,9 +306,19 @@ export function presentCompletedFeedback(
   try {
     if (hasLegacyVersionTuple(input)) return parseLegacyFeedback(input);
     if (input.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION) {
+      if (
+        options.expectedRoundType === undefined ||
+        options.frozenEvidenceState === undefined
+      ) {
+        throw new Error("verified v3 presentation context required");
+      }
+      if (input.feedbackRoundType !== options.expectedRoundType) {
+        throw new Error("feedback round mismatch");
+      }
       return parseDimensionCoverageFeedbackView(
         input,
-        options.answerBlocks ?? []
+        options.answerBlocks ?? [],
+        options.frozenEvidenceState
       );
     }
     if (input.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION) {
@@ -952,7 +964,8 @@ function parseV2Feedback(
 
 function parseDimensionCoverageFeedbackView(
   input: PersistedCompletedFeedback,
-  answerBlocks: readonly CandidateAnswerBlock[]
+  answerBlocks: readonly CandidateAnswerBlock[],
+  frozenEvidenceState: "complete" | "partial"
 ): FeedbackDimensionCoverageView {
   const overallScore =
     input.overallScore === null
@@ -971,7 +984,10 @@ function parseDimensionCoverageFeedbackView(
       overallScore,
       summary: input.summary,
     },
-    { answerBlocks }
+    {
+      answerBlocks,
+      allowNumericalScores: frozenEvidenceState === "complete",
+    }
   );
   const persistedScores: Record<FeedbackDimension, unknown> = {
     structure: input.structureScore,

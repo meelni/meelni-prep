@@ -415,6 +415,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
         store: generationStore,
         steps: handlerSteps,
         answerBlocks: answerBlockEvidence.blocks,
+        snapshotState: snapshot.state === "complete" ? "complete" : "partial",
         stages,
         rubricRoutes,
         evaluatorModes,
@@ -458,6 +459,9 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
           contractVersion: turn.contract_version,
         })),
       answerBlocks: answerBlockEvidence.blocks,
+      expectedRoundType: fixture.roundType,
+      frozenEvidenceState:
+        snapshot.state === "complete" ? "complete" : "partial",
     }
   );
   assert.notEqual(feedbackView.kind, "invalid", fixture.id);
@@ -593,6 +597,7 @@ function createGenerationDeps(input: {
   store: MemoryGenerationStore;
   steps: FeedbackGenerationSteps;
   answerBlocks: CandidateAnswerBlock[];
+  snapshotState: "complete" | "partial";
   stages: string[];
   rubricRoutes: Set<string>;
   evaluatorModes: Set<string>;
@@ -615,6 +620,7 @@ function createGenerationDeps(input: {
       eligible: input.answerBlocks.length > 0,
       evidenceFailureReason:
         input.answerBlocks.length > 0 ? null : "no_reviewable_answer",
+      snapshotState: input.snapshotState,
     }),
     evaluate: async ({ roundType, answerBlocks, allowNumericalScores }) => {
       input.stages.push("evaluator");

@@ -11,10 +11,12 @@ import {
 import { eq, desc, and, asc, inArray, sql } from "drizzle-orm";
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  ALL_INTERVIEW_TYPES,
   isInterviewSessionCompletedForRead,
   MAX_CANONICAL_EVENT_ID_LENGTH,
   type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
+  type RoundType,
 } from "@/lib/internal/core";
 import {
   classifyDashboardFeedbackPresentation,
@@ -23,7 +25,7 @@ import {
   type DashboardFeedbackPresentationKind,
 } from "@/lib/dashboard/feedback-presentation";
 import { getFrozenFeedbackEvaluationEvidence } from "./transcripts";
-import { prepareCandidateAnswerBlockEvidenceFromTurns } from "@/lib/evaluation/session-validator";
+import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
 import { lockAccountIdentity } from "./account-identity-lock";
 import { AccountDeletionPendingError } from "./users";
 
@@ -269,7 +271,7 @@ export async function getUserSessionsPaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const [evidenceBySession, answerBlocksBySession] = await Promise.all([
+  const [evidenceBySession, answerEvidenceBySession] = await Promise.all([
     loadDashboardFeedbackEvidenceTurns(rows),
     loadDashboardDimensionCoverageAnswerBlocks(rows),
   ]);
@@ -277,7 +279,7 @@ export async function getUserSessionsPaginated(
     toDashboardSession(
       row,
       evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS,
-      answerBlocksBySession.get(String(row.id)) ?? EMPTY_CANDIDATE_ANSWER_BLOCKS
+      answerEvidenceBySession.get(String(row.id)) ?? EMPTY_V3_ANSWER_EVIDENCE
     )
   );
 
@@ -290,6 +292,49 @@ export async function getUserSessionsPaginated(
   const total = Number(countResult[0]?.count || 0);
 
   return { sessions, total };
+}
+
+/** Strict, owner-scoped feedback projections for numeric analytics consumers. */
+export interface FeedbackAnalyticsSession {
+  id: string;
+  userId: string;
+  roundType: string;
+  mode: string;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  config: unknown;
+  feedback: {
+    status: string;
+    presentationKind: DashboardFeedbackPresentationKind;
+    overallScore: string | null;
+    structureScore: number | null;
+    clarityScore: number | null;
+    insightScore: number | null;
+    communicationScore: number | null;
+    leadershipScore: number | null;
+  } | null;
+}
+
+export async function getUserSessionsForFeedbackAnalytics(
+  userId: string
+): Promise<FeedbackAnalyticsSession[]> {
+  const rows = await db
+    .select(dashboardSessionSelection)
+    .from(interviewSession)
+    .leftJoin(feedback, eq(feedback.sessionId, interviewSession.id))
+    .where(eq(interviewSession.userId, userId))
+    .orderBy(desc(interviewSession.startedAt));
+  const [evidenceBySession, answerEvidenceBySession] = await Promise.all([
+    loadDashboardFeedbackEvidenceTurns(rows),
+    loadDashboardDimensionCoverageAnswerBlocks(rows),
+  ]);
+  return rows.map((row) =>
+    toDashboardSession(
+      row,
+      evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS,
+      answerEvidenceBySession.get(String(row.id)) ?? EMPTY_V3_ANSWER_EVIDENCE
+    )
+  );
 }
 
 /**
@@ -339,7 +384,7 @@ export async function getUserSessionsByRoundTypePaginated(
     .orderBy(desc(interviewSession.startedAt))
     .limit(limit)
     .offset(offset);
-  const [evidenceBySession, answerBlocksBySession] = await Promise.all([
+  const [evidenceBySession, answerEvidenceBySession] = await Promise.all([
     loadDashboardFeedbackEvidenceTurns(rows),
     loadDashboardDimensionCoverageAnswerBlocks(rows),
   ]);
@@ -347,7 +392,7 @@ export async function getUserSessionsByRoundTypePaginated(
     toDashboardSession(
       row,
       evidenceBySession.get(String(row.id)) ?? EMPTY_FEEDBACK_EVIDENCE_TURNS,
-      answerBlocksBySession.get(String(row.id)) ?? EMPTY_CANDIDATE_ANSWER_BLOCKS
+      answerEvidenceBySession.get(String(row.id)) ?? EMPTY_V3_ANSWER_EVIDENCE
     )
   );
 
@@ -449,6 +494,14 @@ export const dashboardSessionSelection = {
 const EMPTY_FEEDBACK_EVIDENCE_TURNS: readonly PersistedFeedbackEvidenceTurn[] =
   [];
 const EMPTY_CANDIDATE_ANSWER_BLOCKS: readonly CandidateAnswerBlock[] = [];
+interface DashboardV3AnswerEvidence {
+  blocks: readonly CandidateAnswerBlock[];
+  state: "complete" | "partial" | undefined;
+}
+const EMPTY_V3_ANSWER_EVIDENCE: DashboardV3AnswerEvidence = {
+  blocks: EMPTY_CANDIDATE_ANSWER_BLOCKS,
+  state: undefined,
+};
 const MAX_DASHBOARD_FEEDBACK_EVIDENCE_ROWS_PER_PAGE = 2_000;
 const MAX_DASHBOARD_FEEDBACK_EVIDENCE_TEXT_LENGTH = 20_000;
 
@@ -465,6 +518,8 @@ async function loadDashboardFeedbackEvidenceTurns(
     row.feedbackPresentationCandidate &&
     row.feedbackPresentationCandidate.status === "completed" &&
     row.feedbackPresentationCandidate.schemaVersion !== null &&
+    row.feedbackPresentationCandidate.schemaVersion !==
+      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
     typeof row.id === "string"
       ? [row.id]
       : []
@@ -490,7 +545,7 @@ async function loadDashboardFeedbackEvidenceTurns(
 
 async function loadDashboardDimensionCoverageAnswerBlocks(
   rows: readonly DashboardSessionRow[]
-): Promise<ReadonlyMap<string, readonly CandidateAnswerBlock[]>> {
+): Promise<ReadonlyMap<string, DashboardV3AnswerEvidence>> {
   const sessionIds = rows.flatMap((row) =>
     row.feedbackPresentationCandidate?.status === "completed" &&
     row.feedbackPresentationCandidate.schemaVersion ===
@@ -502,19 +557,19 @@ async function loadDashboardDimensionCoverageAnswerBlocks(
   const entries = await Promise.all(
     sessionIds.map(async (sessionId) => {
       const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
-      const prepared = prepareCandidateAnswerBlockEvidenceFromTurns(
-        evidence.turns,
-        {
-          interruptions: evidence.interruptions,
-          ...(evidence.sessionEndAt
-            ? { sessionEndAt: evidence.sessionEndAt }
-            : {}),
-          sourceOverflow: evidence.sourceOverflow,
-        }
-      );
+      const prepared =
+        prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence);
       return [
         sessionId,
-        prepared.eligible ? prepared.blocks : EMPTY_CANDIDATE_ANSWER_BLOCKS,
+        {
+          blocks: prepared.eligible
+            ? prepared.blocks
+            : EMPTY_CANDIDATE_ANSWER_BLOCKS,
+          state:
+            prepared.eligible && evidence.snapshotValid
+              ? (evidence.snapshotState ?? undefined)
+              : undefined,
+        },
       ] as const;
     })
   );
@@ -556,6 +611,8 @@ export function buildDashboardFeedbackEvidenceTurnsQuery(
 }
 
 type DashboardSessionRow = {
+  id: unknown;
+  roundType?: unknown;
   feedback: {
     status: string;
     overallScore: string | null;
@@ -566,35 +623,78 @@ type DashboardSessionRow = {
     leadershipScore: number | null;
   } | null;
   feedbackPresentationCandidate: DashboardFeedbackPresentationCandidate | null;
-} & Record<string, unknown>;
+};
 
-export function toDashboardSession(
-  row: DashboardSessionRow,
-  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = [],
-  answerBlocks: readonly CandidateAnswerBlock[] = []
-): Omit<DashboardSessionRow, "feedbackPresentationCandidate" | "feedback"> & {
+type PresentedDashboardSession<T extends DashboardSessionRow> = Omit<
+  T,
+  "feedbackPresentationCandidate" | "feedback"
+> & {
   feedback:
-    | (NonNullable<DashboardSessionRow["feedback"]> & {
+    | (NonNullable<T["feedback"]> & {
         presentationKind: DashboardFeedbackPresentationKind;
       })
     | null;
-} {
-  const { feedbackPresentationCandidate, ...session } = row;
-  if (!session.feedback) return { ...session, feedback: null };
+};
+
+export function toDashboardSession<T extends DashboardSessionRow>(
+  row: T,
+  evidenceTurns: readonly PersistedFeedbackEvidenceTurn[] = [],
+  answerEvidence: DashboardV3AnswerEvidence = EMPTY_V3_ANSWER_EVIDENCE
+): PresentedDashboardSession<T> {
+  const {
+    feedbackPresentationCandidate,
+    feedback: persistedFeedback,
+    ...session
+  } = row;
+  if (!persistedFeedback) {
+    return { ...session, feedback: null } as PresentedDashboardSession<T>;
+  }
+  const presentationKind = feedbackPresentationCandidate
+    ? classifyDashboardFeedbackPresentation(
+        feedbackPresentationCandidate,
+        evidenceTurns,
+        answerEvidence.blocks,
+        parseDashboardRoundType(row.roundType),
+        answerEvidence.state
+      )
+    : "unavailable";
+  const exposesDimensionScores =
+    presentationKind === "scored" ||
+    presentationKind === "full_scorecard" ||
+    presentationKind === "partial_scorecard";
+  const exposesOverallScore =
+    presentationKind === "scored" || presentationKind === "full_scorecard";
 
   return {
     ...session,
     feedback: {
-      ...session.feedback,
-      presentationKind: feedbackPresentationCandidate
-        ? classifyDashboardFeedbackPresentation(
-            feedbackPresentationCandidate,
-            evidenceTurns,
-            answerBlocks
-          )
-        : "unavailable",
+      ...persistedFeedback,
+      overallScore: exposesOverallScore ? persistedFeedback.overallScore : null,
+      structureScore: exposesDimensionScores
+        ? persistedFeedback.structureScore
+        : null,
+      clarityScore: exposesDimensionScores
+        ? persistedFeedback.clarityScore
+        : null,
+      insightScore: exposesDimensionScores
+        ? persistedFeedback.insightScore
+        : null,
+      communicationScore: exposesDimensionScores
+        ? persistedFeedback.communicationScore
+        : null,
+      leadershipScore: exposesDimensionScores
+        ? persistedFeedback.leadershipScore
+        : null,
+      presentationKind,
     },
-  };
+  } as PresentedDashboardSession<T>;
+}
+
+function parseDashboardRoundType(value: unknown): RoundType | undefined {
+  return typeof value === "string" &&
+    ALL_INTERVIEW_TYPES.some((roundType) => roundType === value)
+    ? (value as RoundType)
+    : undefined;
 }
 
 /**

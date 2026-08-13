@@ -457,6 +457,26 @@ export function prepareCandidateAnswerBlockEvidenceFromTurns(
   };
 }
 
+export interface FrozenCandidateAnswerBlockEvidenceSnapshot {
+  snapshotValid: boolean;
+  snapshotState: "complete" | "partial" | null;
+  turns: SessionValidationTurnInput[];
+  interruptions: SessionValidationInterruptionInput[];
+  sessionEndAt: Date | null;
+  sourceOverflow: boolean;
+}
+
+/** Invalid freeze metadata is an integrity failure, never a v3 fallback. */
+export function prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+  evidence: FrozenCandidateAnswerBlockEvidenceSnapshot
+): PreparedCandidateAnswerBlockEvidence {
+  return prepareCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
+    interruptions: evidence.interruptions,
+    ...(evidence.sessionEndAt ? { sessionEndAt: evidence.sessionEndAt } : {}),
+    sourceOverflow: evidence.sourceOverflow || !evidence.snapshotValid,
+  });
+}
+
 function deriveCandidateAnswerBlockEvidenceFromTurns(
   turns: SessionValidationTurnInput[],
   options: CalculateValidatedSessionOptions

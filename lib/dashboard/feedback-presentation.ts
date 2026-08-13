@@ -12,6 +12,7 @@ import {
   presentCompletedFeedback,
   type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
+  type RoundType,
 } from "@meelni/core";
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
@@ -72,7 +73,9 @@ export interface DashboardFeedbackPresentationCandidate {
 export function classifyDashboardFeedbackPresentation(
   candidate: DashboardFeedbackPresentationCandidate,
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
-  answerBlocks: readonly CandidateAnswerBlock[] = []
+  answerBlocks: readonly CandidateAnswerBlock[] = [],
+  expectedRoundType?: RoundType,
+  frozenEvidenceState?: "complete" | "partial"
 ): DashboardFeedbackPresentationKind {
   const strengths = decodeBoundedJson(
     candidate.strengthsJson,
@@ -114,7 +117,12 @@ export function classifyDashboardFeedbackPresentation(
       dimensionCoverage,
       createdAt: candidate.createdAt,
     },
-    { evidenceTurns, answerBlocks }
+    {
+      evidenceTurns,
+      answerBlocks,
+      expectedRoundType,
+      frozenEvidenceState,
+    }
   );
 
   if (

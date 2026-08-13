@@ -30944,7 +30944,7 @@ async function generateFeedbackWorkflow(input, deps) {
       return { disposition: "fenced" };
     }
     const startedAt = deps.now();
-    const allowNumericalScores = claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+    const allowNumericalScores = evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
     const evaluation = await deps.evaluate({
       roundType,
       answerBlocks: evidence.blocks,
