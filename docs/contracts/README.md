@@ -17,6 +17,7 @@ Good candidates:
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
 - [round-specific rubric-dimension evidence coverage and scorecard modes](./dimension-evidence-coverage.md);
 - [four-outcome customer feedback presentation and recovery](./feedback-review-outcomes.md);
+- [privacy-safe owner feedback-quality signals](./feedback-quality-signals.md);
 - [LLM observability and transcript-capture boundaries](./llm-observability.md);
 - [evaluation calibration gold set and report](./evaluation-calibration.md);
 - [synthetic calibration output semantic adjudication](./evaluation-output-semantic-adjudication.md);

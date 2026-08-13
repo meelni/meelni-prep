@@ -46,6 +46,7 @@ import {
   FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
+  FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -142,6 +143,15 @@ const CONTACT_DELETE_USER = "12121212-1212-4212-8212-121212121212";
 const CONTACT_DELETE_SESSION = "15151515-1515-4515-8515-151515151515";
 const CONTACT_WINS_RACE_USER = "16161616-1616-4616-8616-161616161616";
 const DELETION_WINS_RACE_USER = "17171717-1717-4717-8717-171717171717";
+const FEEDBACK_QUALITY_USER = "18181818-1818-4818-8818-181818181818";
+const FEEDBACK_QUALITY_OTHER_USER = "19191919-1919-4919-8919-191919191919";
+const FEEDBACK_QUALITY_SESSION = "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a";
+const FEEDBACK_QUALITY_FEEDBACK = "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b";
+const FEEDBACK_QUALITY_DELETION_USER = "1c1c1c1c-1c1c-4c1c-8c1c-1c1c1c1c1c1c";
+const FEEDBACK_QUALITY_DELETION_SESSION =
+  "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d";
+const FEEDBACK_QUALITY_DELETION_FEEDBACK =
+  "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e";
 const CONTACT_TRIAGE_ROLE = "meelni_contact_triage";
 const CONTACT_OPERATOR_ONE = `meelni_contact_operator_one_${process.pid}`;
 const CONTACT_OPERATOR_TWO = `meelni_contact_operator_two_${process.pid}`;
@@ -268,6 +278,7 @@ async function run() {
     await verifyDatabase(clean);
     await verifyQuestionProvenance(clean, false);
     await verifyFocusedPracticePersistence(clean, cleanUrl, true);
+    await verifyFeedbackQualityPersistence(clean, cleanUrl, true);
     await verifyQuestionSyncTransactionAdapter(cleanUrl);
     await verifyQuestionLookupAdapters(cleanUrl);
     runAnalyticsConsentAdapterVerification(cleanUrl);
@@ -304,10 +315,7 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, FEEDBACK_QUALITY_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -502,9 +510,10 @@ async function run() {
         FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT,
         DIMENSION_COVERAGE_SCHEMA_FINGERPRINT,
         FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
+        FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 33; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 34; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -524,7 +533,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 34; found 22/
+            /Strict launch preflight requires the exact latest migration count 35; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -556,6 +565,7 @@ async function run() {
       await verifyDatabase(upgrade);
       await verifyQuestionProvenance(upgrade, true);
       await verifyFocusedPracticePersistence(upgrade, upgradeUrl, false);
+      await verifyFeedbackQualityPersistence(upgrade, upgradeUrl, false);
       await verifyLifecycleBackfill(upgrade);
       await verifyAtomicSessionCompletion(upgrade, upgradeUrl, false);
       await verifyTranscriptIngest(upgrade, upgradeUrl);
@@ -832,7 +842,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 34);
+      assert.equal(await migrationCount(sql), 35);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -896,7 +906,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
+      FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1141,7 +1151,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 34; found 25/
+      /exact latest migration count 35; found 25/
     );
 
     const genericRows = await sql<
@@ -1240,18 +1250,18 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 34);
+    assert.equal(await migrationCount(sql), 35);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "scoreless_focused_practice");
+    assert.equal(finalPreflight.startingContract, "feedback_quality_signals");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 37);
-    assert.equal(finalPreflight.rls_tables, 37);
+    assert.equal(finalPreflight.tables, 39);
+    assert.equal(finalPreflight.rls_tables, 39);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
+      FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6418,7 +6428,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "scoreless_focused_practice"
+      "feedback_quality_signals"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7376,8 +7386,430 @@ async function verifyFocusedPracticePersistence(
   }
 }
 
+async function verifyFeedbackQualityPersistence(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  verifyApplicationLifecycle: boolean
+) {
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES
+      (${FEEDBACK_QUALITY_USER}::uuid, 'feedback-quality@example.invalid'),
+      (${FEEDBACK_QUALITY_OTHER_USER}::uuid, 'feedback-quality-other@example.invalid')
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO interview_session (id, user_id, round_type, mode)
+    VALUES (
+      ${FEEDBACK_QUALITY_SESSION}::uuid,
+      ${FEEDBACK_QUALITY_USER}::uuid,
+      'product_sense',
+      'voice_video'
+    )
+  `;
+  await sql`
+    INSERT INTO feedback (id, session_id, status)
+    VALUES (
+      ${FEEDBACK_QUALITY_FEEDBACK}::uuid,
+      ${FEEDBACK_QUALITY_SESSION}::uuid,
+      'completed'
+    )
+  `;
+  await sql`
+    INSERT INTO feedback_quality_signal (
+      user_id, session_id, feedback_id, contract_version,
+      review_outcome, response, reason
+    ) VALUES (
+      ${FEEDBACK_QUALITY_USER}::uuid,
+      ${FEEDBACK_QUALITY_SESSION}::uuid,
+      ${FEEDBACK_QUALITY_FEEDBACK}::uuid,
+      'feedback-quality-signal.v1',
+      'partial_scorecard',
+      'not_helpful',
+      'next_step_unclear'
+    )
+  `;
+
+  await assert.rejects(
+    () => sql`
+      UPDATE feedback_quality_signal
+      SET response = 'helpful', reason = 'next_step_unclear'
+      WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+    `,
+    /feedback_quality_signal_selection_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_quality_signal (
+        user_id, session_id, feedback_id, contract_version,
+        review_outcome, response, reason
+      ) VALUES (
+        ${FEEDBACK_QUALITY_OTHER_USER}::uuid,
+        ${FEEDBACK_QUALITY_SESSION}::uuid,
+        ${FEEDBACK_QUALITY_FEEDBACK}::uuid,
+        'feedback-quality-signal.v1',
+        'coaching_review',
+        'not_helpful',
+        'score_withholding_unclear'
+      )
+    `,
+    /feedback_quality_signal_session_owner_fk/
+  );
+
+  await assert.rejects(
+    () =>
+      sql.begin(async (tx) => {
+        await tx.unsafe("SET LOCAL ROLE authenticated");
+        await tx`SELECT set_config('request.jwt.claim.sub', ${FEEDBACK_QUALITY_USER}, true)`;
+        await tx`SELECT count(*) FROM feedback_quality_signal`;
+      }),
+    /permission denied/
+  );
+  const directPrivileges = await sql<
+    { authenticated_select: boolean; authenticated_update: boolean }[]
+  >`
+    SELECT
+      has_table_privilege(
+        'authenticated', 'public.feedback_quality_signal', 'SELECT'
+      ) AS authenticated_select,
+      has_table_privilege(
+        'authenticated', 'public.feedback_quality_signal', 'UPDATE'
+      ) AS authenticated_update
+  `;
+  assert.deepEqual(directPrivileges[0], {
+    authenticated_select: false,
+    authenticated_update: false,
+  });
+
+  const functionPrivileges = await sql<
+    {
+      proname: string;
+      authenticated_execute: boolean;
+      service_execute: boolean;
+    }[]
+  >`
+    SELECT p.proname,
+      has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_execute,
+      has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_execute
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'can_read_owned_feedback_quality_signal',
+        'consume_feedback_quality_signal_rate_limit'
+      )
+    ORDER BY p.proname
+  `;
+  assert.deepEqual(Array.from(functionPrivileges), [
+    {
+      proname: "can_read_owned_feedback_quality_signal",
+      authenticated_execute: true,
+      service_execute: true,
+    },
+    {
+      proname: "consume_feedback_quality_signal_rate_limit",
+      authenticated_execute: false,
+      service_execute: true,
+    },
+  ]);
+
+  const limiterResults = await Promise.all(
+    Array.from(
+      { length: 25 },
+      () =>
+        sql<{ allowed: boolean; retry_after_seconds: number }[]>`
+        SELECT allowed, retry_after_seconds
+        FROM consume_feedback_quality_signal_rate_limit(
+          ${FEEDBACK_QUALITY_USER}::uuid,
+          20
+        )
+      `
+    )
+  );
+  assert.equal(limiterResults.filter(([row]) => row?.allowed).length, 20);
+  const denied = limiterResults.filter(([row]) => !row?.allowed);
+  assert.equal(denied.length, 5);
+  assert.ok(
+    denied.every(
+      ([row]) =>
+        (row?.retry_after_seconds ?? 0) >= 1 &&
+        (row?.retry_after_seconds ?? 0) <= 3_600
+    )
+  );
+
+  const writers = [
+    postgres(databaseUrl, { max: 1, prepare: false }),
+    postgres(databaseUrl, { max: 1, prepare: false }),
+  ];
+  try {
+    const updates = await Promise.all([
+      writers[0]!<{ revision: number }[]>`
+        UPDATE feedback_quality_signal
+        SET response = 'helpful', reason = NULL,
+          revision = revision + 1, updated_at = clock_timestamp()
+        WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid AND revision = 1
+        RETURNING revision
+      `,
+      writers[1]!<{ revision: number }[]>`
+        UPDATE feedback_quality_signal
+        SET response = 'not_helpful', reason = 'too_much_to_use',
+          revision = revision + 1, updated_at = clock_timestamp()
+        WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid AND revision = 1
+        RETURNING revision
+      `,
+    ]);
+    assert.equal(updates.flat().length, 1);
+    assert.equal(updates.flat()[0]?.revision, 2);
+  } finally {
+    await Promise.all(writers.map((writer) => writer.end()));
+  }
+
+  await sql`
+    INSERT INTO account_deletion_request (user_id)
+    VALUES (${FEEDBACK_QUALITY_USER}::uuid)
+  `;
+  const readableAfterDeletionIntent = await sql.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE authenticated");
+    await tx`SELECT set_config('request.jwt.claim.sub', ${FEEDBACK_QUALITY_USER}, true)`;
+    return tx<{ readable: boolean }[]>`
+      SELECT can_read_owned_feedback_quality_signal(
+        ${FEEDBACK_QUALITY_USER}::uuid
+      ) AS readable
+    `;
+  });
+  assert.equal(readableAfterDeletionIntent[0]?.readable, false);
+  await sql`
+    DELETE FROM account_deletion_request
+    WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+  `;
+
+  if (verifyApplicationLifecycle) {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = databaseUrl;
+    try {
+      const { loadAccountExportSource } = await import(
+        "../lib/db/account-export"
+      );
+      const { createAccountDataExport } = await import(
+        "../lib/workflows/export-account-data"
+      );
+      const source = await loadAccountExportSource(FEEDBACK_QUALITY_USER);
+      assert.equal(source.feedbackQualitySignals.length, 1);
+      const exported = createAccountDataExport({
+        authenticatedUser: { id: FEEDBACK_QUALITY_USER },
+        source,
+        exportedAt: new Date("2026-08-13T12:00:00.000Z"),
+      });
+      assert.equal(exported.schemaVersion, "1.4.0");
+      assert.equal(exported.practice.feedbackQualitySignals.length, 1);
+      assert.equal(
+        JSON.stringify(exported.practice.feedbackQualitySignals).includes(
+          FEEDBACK_QUALITY_SESSION
+        ),
+        false
+      );
+
+      const { deleteUserApplicationData } = await import(
+        "../lib/db/account-deletions"
+      );
+      await deleteUserApplicationData(FEEDBACK_QUALITY_USER);
+      const [writeWinsCleanup] = await sql<
+        { signals: number; limiter: number }[]
+      >`
+        SELECT
+          (SELECT count(*)::int FROM feedback_quality_signal
+            WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid) AS signals,
+          (SELECT count(*)::int FROM feedback_quality_signal_rate_limit
+            WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid) AS limiter
+      `;
+      assert.deepEqual(writeWinsCleanup, { signals: 0, limiter: 0 });
+
+      await sql`
+        INSERT INTO app_user (id, email)
+        VALUES (
+          ${FEEDBACK_QUALITY_DELETION_USER}::uuid,
+          'feedback-quality-deletion@example.invalid'
+        )
+      `;
+      await sql`
+        INSERT INTO interview_session (id, user_id, round_type, mode)
+        VALUES (
+          ${FEEDBACK_QUALITY_DELETION_SESSION}::uuid,
+          ${FEEDBACK_QUALITY_DELETION_USER}::uuid,
+          'product_sense',
+          'voice_video'
+        )
+      `;
+      await sql`
+        INSERT INTO feedback (id, session_id, status)
+        VALUES (
+          ${FEEDBACK_QUALITY_DELETION_FEEDBACK}::uuid,
+          ${FEEDBACK_QUALITY_DELETION_SESSION}::uuid,
+          'completed'
+        )
+      `;
+      await verifyFeedbackQualityDeletionWinsRateLimit(
+        sql,
+        databaseUrl,
+        FEEDBACK_QUALITY_DELETION_USER
+      );
+      const [lateRateDecision] = await sql<
+        { allowed: boolean; retry_after_seconds: number }[]
+      >`
+        SELECT allowed, retry_after_seconds
+        FROM consume_feedback_quality_signal_rate_limit(
+          ${FEEDBACK_QUALITY_DELETION_USER}::uuid,
+          20
+        )
+      `;
+      assert.deepEqual(lateRateDecision, {
+        allowed: true,
+        retry_after_seconds: 0,
+      });
+      const [lateRateRows] = await sql<{ rows: number }[]>`
+        SELECT count(*)::int AS rows
+        FROM feedback_quality_signal_rate_limit
+        WHERE user_id = ${FEEDBACK_QUALITY_DELETION_USER}::uuid
+      `;
+      assert.equal(lateRateRows?.rows, 0);
+      const { createDrizzleFeedbackQualitySignalRepository } = await import(
+        "../lib/db/feedback-quality-signals"
+      );
+      const deletionFirst =
+        await createDrizzleFeedbackQualitySignalRepository().writeOwned({
+          userId: FEEDBACK_QUALITY_DELETION_USER,
+          sessionId: FEEDBACK_QUALITY_DELETION_SESSION,
+          outcome: "full_scorecard",
+          command: {
+            contractVersion: "feedback-quality-signal.v1",
+            response: "helpful",
+            reason: null,
+            expectedRevision: null,
+          },
+        });
+      assert.equal(deletionFirst.disposition, "account_deletion_pending");
+      await deleteUserApplicationData(FEEDBACK_QUALITY_DELETION_USER);
+      const [notRecreated] = await sql<{ rows: number }[]>`
+        SELECT count(*)::int AS rows FROM feedback_quality_signal
+        WHERE user_id = ${FEEDBACK_QUALITY_DELETION_USER}::uuid
+      `;
+      assert.equal(notRecreated?.rows, 0);
+      await sql`
+        DELETE FROM app_user WHERE id = ${FEEDBACK_QUALITY_OTHER_USER}::uuid
+      `;
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  } else {
+    await sql`
+      DELETE FROM feedback_quality_signal
+      WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+    `;
+    await sql`
+      DELETE FROM feedback_quality_signal_rate_limit
+      WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+    `;
+    await sql`
+      DELETE FROM feedback WHERE id = ${FEEDBACK_QUALITY_FEEDBACK}::uuid
+    `;
+    await sql`
+      DELETE FROM interview_session WHERE id = ${FEEDBACK_QUALITY_SESSION}::uuid
+    `;
+    await sql`
+      DELETE FROM app_user
+      WHERE id IN (
+        ${FEEDBACK_QUALITY_USER}::uuid,
+        ${FEEDBACK_QUALITY_OTHER_USER}::uuid
+      )
+    `;
+  }
+}
+
+async function verifyFeedbackQualityDeletionWinsRateLimit(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  userId: string
+) {
+  const deletionClient = postgres(databaseUrl, { max: 1, prepare: false });
+  const limiterClient = postgres(databaseUrl, { max: 1, prepare: false });
+  let releaseDeletion!: () => void;
+  let signalDeletionReady!: () => void;
+  let released = false;
+  const release = new Promise<void>((resolve) => {
+    releaseDeletion = () => {
+      released = true;
+      resolve();
+    };
+  });
+  const deletionReady = new Promise<void>((resolve) => {
+    signalDeletionReady = resolve;
+  });
+  const deletionTransaction = deletionClient.begin(async (tx) => {
+    await tx`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(
+          ${userId},
+          ${ACCOUNT_IDENTITY_LOCK_NAMESPACE}::bigint
+        )
+      )
+    `;
+    await tx`
+      INSERT INTO account_deletion_request (user_id)
+      VALUES (${userId}::uuid)
+    `;
+    await tx`
+      DELETE FROM feedback_quality_signal_rate_limit
+      WHERE user_id = ${userId}::uuid
+    `;
+    signalDeletionReady();
+    await release;
+  });
+
+  let limiterAttempt: Promise<
+    { allowed: boolean; retry_after_seconds: number }[]
+  > | null = null;
+  try {
+    await deletionReady;
+    const [backend] = await limiterClient<{ pid: number }[]>`
+      SELECT pg_backend_pid() AS pid
+    `;
+    assert.ok(backend?.pid);
+    let limiterSettled = false;
+    limiterAttempt = limiterClient<
+      { allowed: boolean; retry_after_seconds: number }[]
+    >`
+      SELECT allowed, retry_after_seconds
+      FROM consume_feedback_quality_signal_rate_limit(${userId}::uuid, 20)
+    `.finally(() => {
+      limiterSettled = true;
+    });
+
+    await waitForDatabaseLock(sql, backend.pid);
+    assert.equal(limiterSettled, false);
+    releaseDeletion();
+    await deletionTransaction;
+
+    const [decision] = await limiterAttempt;
+    assert.deepEqual(decision, { allowed: true, retry_after_seconds: 0 });
+    const [remaining] = await sql<{ rows: number }[]>`
+      SELECT count(*)::int AS rows
+      FROM feedback_quality_signal_rate_limit
+      WHERE user_id = ${userId}::uuid
+    `;
+    assert.equal(remaining?.rows, 0);
+  } finally {
+    if (!released) releaseDeletion();
+    await Promise.allSettled([
+      deletionTransaction,
+      ...(limiterAttempt ? [limiterAttempt] : []),
+    ]);
+    await Promise.all([deletionClient.end(), limiterClient.end()]);
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 34);
+  assert.equal(await migrationCount(sql), 35);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -7385,7 +7817,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 37);
+  assert.equal(tables.length, 39);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -7428,6 +7860,14 @@ async function verifyDatabase(sql: postgres.Sql) {
   );
   assert.ok(
     tables.some(({ table_name }) => table_name === "focused_practice_attempt")
+  );
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "feedback_quality_signal")
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "feedback_quality_signal_rate_limit"
+    )
   );
   for (const table of [
     "contact_submission",
@@ -7842,7 +8282,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 37);
+  assert.equal(rls.length, 39);
   assert.ok(rls.every((table) => table.enabled));
 
   const contactRls = await sql<

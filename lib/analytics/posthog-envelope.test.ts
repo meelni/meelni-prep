@@ -106,3 +106,19 @@ test("identify preserves only minimized traits and unknown SDK events are reject
     null
   );
 });
+
+test("feedback quality events fail atomically at the final provider envelope", () => {
+  assert.equal(
+    sanitizePostHogCaptureEnvelope({
+      ...base,
+      event: "feedback_helpfulness_responded",
+      properties: {
+        ...base.properties,
+        outcome: "coaching_review",
+        response: "not_helpful",
+        reason: "arbitrary sentence",
+      },
+    }),
+    null
+  );
+});

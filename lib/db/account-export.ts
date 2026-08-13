@@ -11,6 +11,7 @@ import {
   creditTransaction,
   contactSubmission,
   feedback,
+  feedbackQualitySignal,
   focusedPracticeAttempt,
   interviewQuestion,
   interviewSession,
@@ -244,6 +245,21 @@ export async function loadAccountExportSource(
     .where(eq(focusedPracticeAttempt.userId, userId))
     .orderBy(asc(focusedPracticeAttempt.startedAt));
 
+  const feedbackQualitySignals = await db
+    .select({
+      userId: feedbackQualitySignal.userId,
+      contractVersion: feedbackQualitySignal.contractVersion,
+      outcome: feedbackQualitySignal.reviewOutcome,
+      response: feedbackQualitySignal.response,
+      reason: feedbackQualitySignal.reason,
+      revision: feedbackQualitySignal.revision,
+      createdAt: feedbackQualitySignal.createdAt,
+      updatedAt: feedbackQualitySignal.updatedAt,
+    })
+    .from(feedbackQualitySignal)
+    .where(eq(feedbackQualitySignal.userId, userId))
+    .orderBy(asc(feedbackQualitySignal.createdAt));
+
   const contactSubmissions = await db
     .select({
       userId: contactSubmission.userId,
@@ -394,6 +410,7 @@ export async function loadAccountExportSource(
       ),
     })),
     focusedPracticeAttempts,
+    feedbackQualitySignals,
     contactSubmissions: contactSubmissions.map((row) => ({
       ...row,
       userId: row.userId!,

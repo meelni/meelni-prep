@@ -17,6 +17,8 @@ import {
   contactSubmission,
   creditReservation,
   feedback,
+  feedbackQualitySignal,
+  feedbackQualitySignalRateLimit,
   focusedPracticeAttempt,
   interviewSession,
   livekitReconnectRateLimit,
@@ -801,6 +803,15 @@ export async function deleteUserApplicationData(userId: string) {
     await tx
       .delete(creditReservation)
       .where(eq(creditReservation.userId, userId));
+    // Quality responses are mutable owner-authored state, and rate rows are
+    // operational state without an app_user foreign key. Remove both before
+    // deleting the immutable source feedback/session graph.
+    await tx
+      .delete(feedbackQualitySignal)
+      .where(eq(feedbackQualitySignal.userId, userId));
+    await tx
+      .delete(feedbackQualitySignalRateLimit)
+      .where(eq(feedbackQualitySignalRateLimit.userId, userId));
     // Attempts contain candidate-authored revisions plus immutable feedback
     // snapshots. Remove them before their source feedback/session graph.
     await tx

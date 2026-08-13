@@ -433,10 +433,7 @@ test("terminal scoreless outcomes are presented as unable to review", () => {
     },
   ]) {
     assert.equal(
-      classifyDashboardFeedbackPresentation(
-        candidate(overrides),
-        transcript
-      ),
+      classifyDashboardFeedbackPresentation(candidate(overrides), transcript),
       "unavailable"
     );
   }
