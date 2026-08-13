@@ -25,6 +25,7 @@ import {
 } from "@/lib/db/feedback-generation-state";
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   isInterviewTerminalState,
   isValidRoundType,
 } from "@meelni/core";
@@ -371,7 +372,12 @@ export async function GET(
               evidenceTurns,
               answerBlocks,
               expectedRoundType,
-              frozenEvidenceState
+              frozenEvidenceState,
+              feedbackRecord.schemaVersion ===
+                FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
+                hasEvidenceLimitedOnlyConstraint(feedbackRecord.completionStats)
+                ? "verified_evidence_integrity"
+                : "rubric_coverage"
             );
             if (completedResponse.feedback.kind === "invalid") {
               reportOperationalFailure({
@@ -396,8 +402,11 @@ export async function GET(
           // validator after terminalization because late transcript writes or a new
           // validator deployment cannot redefine the committed outcome.
           if (status === "skipped") {
-            const skippedResponse =
-              buildSkippedFeedbackLifecycleResponse(feedbackRecord);
+            const skippedResponse = buildSkippedFeedbackLifecycleResponse({
+              ...feedbackRecord,
+              creditSettlementAction: session?.creditSettlementAction,
+              creditSettledAt: session?.creditSettledAt,
+            });
             if (!skippedResponse) {
               reportOperationalFailure({
                 operation: "feedback_dispatch",
@@ -416,7 +425,11 @@ export async function GET(
             }
             return NextResponse.json(skippedResponse, {
               headers: {
-                "Cache-Control": "private, max-age=300",
+                "Cache-Control":
+                  skippedResponse.details.recovery ===
+                  "credit_recovery_in_progress"
+                    ? "private, no-store"
+                    : "private, max-age=300",
               },
             });
           }
@@ -508,6 +521,16 @@ export async function GET(
       }
     );
   }
+}
+
+function hasEvidenceLimitedOnlyConstraint(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "feedbackModeConstraint" in value &&
+    value.feedbackModeConstraint === "evidence_limited_only"
+  );
 }
 
 export async function POST(

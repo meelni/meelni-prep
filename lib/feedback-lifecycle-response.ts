@@ -1,4 +1,5 @@
 import {
+  classifySkippedFeedbackLifecycle,
   decodeFeedbackLifecycleResponse,
   presentCompletedFeedback,
   type FeedbackLifecycleResponse,
@@ -27,7 +28,8 @@ export function buildCompletedFeedbackLifecycleResponse(
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
   answerBlocks: readonly CandidateAnswerBlock[] = [],
   expectedRoundType?: RoundType,
-  frozenEvidenceState?: "complete" | "partial"
+  frozenEvidenceState?: "complete" | "partial",
+  scoreWithheldReason?: "rubric_coverage" | "verified_evidence_integrity"
 ): Extract<FeedbackLifecycleResponse, { status: "completed" }> {
   return {
     status: "completed",
@@ -37,30 +39,39 @@ export function buildCompletedFeedbackLifecycleResponse(
       answerBlocks,
       expectedRoundType,
       frozenEvidenceState,
+      scoreWithheldReason,
     }),
   };
 }
 
 export function buildSkippedFeedbackLifecycleResponse(record: {
+  status: unknown;
   outcomeReason: unknown;
   completionTier: unknown;
-  completionStats: unknown;
+  creditSettlementAction?: unknown;
+  creditSettledAt?: unknown;
 }): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
+  const classification = classifySkippedFeedbackLifecycle(record);
+  if (!classification) return null;
+
   const candidate = {
     status: "skipped",
     retryable: false,
     details: {
-      outcomeReason:
-        record.outcomeReason === "transcript_integrity_degraded"
-          ? "transcript_integrity_degraded"
-          : "no_reviewable_answer",
-      tier:
-        record.completionTier === "abandoned" ? "abandoned" : "insufficient",
-      ...(record.completionStats !== null
-        ? { stats: record.completionStats }
-        : {}),
-      reasons: [],
-      recommendations: [],
+      outcome: "unable_to_review",
+      scoreWithheldReason:
+        classification.outcomeReason === "transcript_integrity_degraded"
+          ? "verified_evidence_integrity"
+          : "rubric_coverage",
+      recovery:
+        classification.outcomeReason === "transcript_integrity_degraded"
+          ? (record.creditSettlementAction === "refund" ||
+              record.creditSettlementAction === "release") &&
+            record.creditSettledAt !== null &&
+            record.creditSettledAt !== undefined
+            ? "credit_returned"
+            : "credit_recovery_in_progress"
+          : "start_another_interview",
     },
   };
   const decoded = decodeFeedbackLifecycleResponse(candidate);

@@ -492,8 +492,9 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
       grounded.every((item) =>
         answerBlockEvidence.blocks.some(
           (block) =>
-            block.answerBlockId === item.answerBlockRef &&
-            block.responseText === item.evidenceText
+            block.response.some(
+              (turn) => turn.eventId === item.transcriptRef
+            ) && block.responseText === item.citation
         )
       ),
       fixture.id
@@ -674,16 +675,21 @@ function dimensionCoverageEvaluation(
 
 function skippedResponse(
   outcomeReason: SkippedFeedbackOutcomeReason,
-  tier: SessionTier
+  _tier: SessionTier
 ): FeedbackLifecycleResponse {
   return {
     status: "skipped",
     retryable: false,
     details: {
-      outcomeReason,
-      tier: tier === SessionTier.ABANDONED ? "abandoned" : "insufficient",
-      reasons: [],
-      recommendations: [],
+      outcome: "unable_to_review",
+      scoreWithheldReason:
+        outcomeReason === "transcript_integrity_degraded"
+          ? "verified_evidence_integrity"
+          : "rubric_coverage",
+      recovery:
+        outcomeReason === "transcript_integrity_degraded"
+          ? "credit_recovery_in_progress"
+          : "start_another_interview",
     },
   };
 }

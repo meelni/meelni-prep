@@ -1,5 +1,6 @@
 import {
   calculateOverallScore,
+  classifySkippedFeedbackLifecycle,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
@@ -21,6 +22,7 @@ export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
   "full_scorecard",
   "partial_scorecard",
   "coaching_review",
+  "unable_to_review",
   "unavailable",
 ] as const;
 
@@ -124,6 +126,10 @@ export function classifyDashboardFeedbackPresentation(
       frozenEvidenceState,
     }
   );
+
+  if (classifySkippedFeedbackLifecycle(candidate)) {
+    return "unable_to_review";
+  }
 
   if (
     candidate.status === "completed" &&

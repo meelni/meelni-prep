@@ -9,15 +9,16 @@ improvement.
 
 A feedback record contributes to progress only when all conditions are true:
 
-1. The server-owned presentation kind is `scored`, proving a supported scored
-   provenance tuple with complete scores.
+1. The server-owned presentation kind is `scored` or `full_scorecard`, proving
+   a supported complete score tuple with a valid overall.
 2. `feedback.status` is exactly `completed`.
 3. `feedback.overallScore` is a finite number from 0 through 10.
 
-Pending, processing, failed, skipped, missing, malformed, out-of-range, and
-unscored feedback never contributes to score averages, trend bars, focus areas,
-weakness patterns, or analytics evidence. A score-like value stored on any of
-those records remains ineligible.
+Partial scorecards, coaching reviews, unable outcomes, pending, processing,
+failed, missing, malformed, out-of-range, and otherwise unscored feedback never
+contribute to score averages, trend bars, focus areas, weakness patterns, or
+analytics evidence. A score-like value stored on any ineligible record remains
+ineligible.
 
 Dimension-level focus areas require the same eligible completed feedback plus
 at least one finite 0–10 dimension score. When no dimension score exists, the
@@ -38,34 +39,38 @@ score labels keep the source 0–10 rubric scale.
 
 ## Feedback Reviewability And State Labels
 
-- `pending` or `processing`: Feedback pending / Pending / Processing.
-- `failed`: Feedback failed / Unavailable.
-- `skipped`: Feedback skipped / Skipped.
-- valid completed evidence-limited feedback: Feedback ready — no score / No score,
-  with a feedback-review link.
+- `pending` or `processing`: Feedback processing / Not scored yet.
+- `failed`: Feedback failed / Not scored.
+- Full scorecard: Full scorecard ready / Full scorecard, with a review link.
+- Partial scorecard: Partial scorecard ready / Partial scorecard, with a review
+  link and no overall-score substitution.
+- Coaching review, including supported historical evidence-limited rows:
+  Coaching review ready / Coaching review, with a review link.
+- no-reviewable-answer or integrity terminal result: Unable to review / No
+  score, with a result link and no performance conclusion.
 - incompatible or corrupt `completed` feedback without a valid score: Feedback
   unavailable / Not scored, without a dashboard/history review link.
 - missing feedback: Not scored.
 - eligible completed scored feedback: exact score and feedback-review link.
 
 The sessions persistence adapter owns a closed presentation discriminator:
-`scored`, `evidence_limited`, or `unavailable`. Evidence-limited reviewability
-requires the exact accepted provenance tuple and completion facts, all score
-columns null, empty drills, bounded JSON, server-owned closed-template content,
-and exact persisted quote/reference support in canonical user evidence. Scored
-reviewability requires either the exact supported v2 provenance tuple with
-complete, coherent scores, valid findings and practice suggestions, and exact
-persisted quote/reference support, or the exact supported legacy tuple with
-complete in-range historical scores and valid historical findings and practice
-suggestions. The bounded sessions adapter reuses the canonical completed
-feedback parser after one capped page-level evidence read, so it cannot label a
-row reviewable when the destination route would reject its stored content. The
-API does not expose the version tuple, findings, summary, model identity, or
-transcript references. A score, null score, or `completed` status alone is never
-enough.
+`scored`, `evidence_limited`, `full_scorecard`, `partial_scorecard`,
+`coaching_review`, `unable_to_review`, or `unavailable`. New scorecard modes
+require the exact accepted dimension-coverage provenance and eligible frozen
+answer blocks. Historical evidence-limited reviewability still requires its
+exact accepted provenance, all score columns null, empty drills, bounded
+server-owned content, and exact canonical quote/reference support. Scored
+historical reviewability requires a supported tuple with complete coherent
+scores and valid grounded content. Terminal `unable_to_review` requires the
+closed no-reviewable or integrity outcome/tier facts; a generic skipped row does
+not qualify. The bounded adapter reuses the canonical completed presenter after
+one capped evidence read, so Dashboard cannot label a completed review reachable
+when the destination route rejects it. A score, null score, status, or raw
+provider/version field alone is never enough.
 
-Overview and History may link both scored and valid evidence-limited reviews.
-The latest-feedback action selects the newest reviewable result; practice
+Overview and History may link every valid customer outcome and supported
+historical review. The latest-feedback action selects the newest reviewable
+result; practice
 recommendations, score averages, progress bars, focus dimensions, trends, and
 weakness patterns continue to use scored feedback only. When a scored pattern
 exists, its review action targets scored feedback rather than a newer
@@ -95,8 +100,9 @@ fallback, not a personalized fit claim.
 - `@meelni/test-fixtures` supplies zero, one, many, and every-feedback-status
   regression scenarios.
 - Behavior tests must prove that score-ineligible records cannot affect scores,
-  progress bars, focus areas, or patterns, while valid evidence-limited reviews
-  remain linked and invalid/corrupt completed rows do not.
+  progress bars, focus areas, or patterns, while valid partial/coaching/unable
+  outcomes remain honestly labeled and invalid/corrupt completed rows do not
+  become reachable.
 
 `session_history_viewed.has_feedback` reports only whether at least one
 reviewable link is present. It includes valid scoreless reviews without adding

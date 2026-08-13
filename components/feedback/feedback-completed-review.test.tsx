@@ -22,6 +22,7 @@ import {
   type FeedbackDimension,
   type FeedbackDimensionCoverageView,
   decodeFeedbackLifecycleResponse,
+  presentCompletedFeedback,
   EVIDENCE_LIMITED_ACTIONS,
   EVIDENCE_LIMITED_CONFIDENCE,
   EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS,
@@ -29,8 +30,8 @@ import {
   EVIDENCE_LIMITED_SUMMARY,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-  type FeedbackEvidenceLimitedView,
   type FeedbackLegacyView,
+  type PersistedCompletedFeedback,
   type FeedbackV2View,
 } from "@meelni/core";
 import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
@@ -86,11 +87,7 @@ test("completed v2 review hides technical version metadata", () => {
 test("evidence-limited review renders server templates and exact quantitative citations without a score", () => {
   const quantitativeCitation =
     "We saw 40% activation after 8 customer interviews and an 8/10 task-success ratio.";
-  const feedback: FeedbackEvidenceLimitedView = {
-    kind: "evidence-limited",
-    id: "feedback-limited",
-    sessionId: "session-limited",
-    summary: EVIDENCE_LIMITED_SUMMARY,
+  const persisted = persistedFeedback({
     strengths: [
       {
         signalCode: "customer_problem_connection",
@@ -99,8 +96,8 @@ test("evidence-limited review renders server templates and exact quantitative ci
         observation:
           EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection
             .observation,
-        transcriptRefs: ["writer:1"],
-        evidence: [{ turnRef: "writer:1", quote: quantitativeCitation }],
+        transcriptRefs: ["synthetic:1"],
+        evidence: [{ turnRef: "synthetic:1", quote: quantitativeCitation }],
         nextStep:
           EVIDENCE_LIMITED_ACTIONS.connect_customer_to_decision.nextStep,
         rubricVersion: "pm-feedback-rubric.v2",
@@ -114,27 +111,32 @@ test("evidence-limited review renders server templates and exact quantitative ci
         dimension: "leadership",
         observation:
           EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS.tradeoff_decision.observation,
-        transcriptRefs: ["writer:1"],
-        evidence: [{ turnRef: "writer:1", quote: quantitativeCitation }],
+        transcriptRefs: ["synthetic:1"],
+        evidence: [{ turnRef: "synthetic:1", quote: quantitativeCitation }],
         nextStep:
           EVIDENCE_LIMITED_ACTIONS.compare_tradeoffs_and_choose.nextStep,
         rubricVersion: "pm-feedback-rubric.v2",
         confidence: EVIDENCE_LIMITED_CONFIDENCE,
       },
     ],
-    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-    modelVersion: "fixture-model-v2",
-    rubricVersion: "pm-feedback-rubric.v2",
-    evaluationState: "partial",
-    createdAt: "2026-08-10T12:00:00.000Z",
-    nextPracticeRecommendation: null,
-  };
+  });
+  const feedback = presentCompletedFeedback(persisted, {
+    evidenceTurns: [
+      {
+        eventId: "synthetic:1",
+        speaker: "user",
+        text: quantitativeCitation,
+        contractVersion: 2,
+      },
+    ],
+    scoreWithheldReason: "rubric_coverage",
+  });
+  assert.equal(feedback.kind, "evidence-limited");
+  if (feedback.kind !== "evidence-limited") return;
 
   const html = renderToStaticMarkup(
     React.createElement(CompletedEvidenceLimitedReview, { feedback })
   );
-  assert.match(html, new RegExp(escapeRegExp(EVIDENCE_LIMITED_SUMMARY)));
   assert.match(
     html,
     new RegExp(
@@ -146,19 +148,18 @@ test("evidence-limited review renders server templates and exact quantitative ci
   );
   assert.match(html, /40% activation after 8 customer interviews/);
   assert.match(html, /8\/10 task-success ratio/);
-  assert.match(html, /No score has been inferred/);
+  assert.match(html, /Why there are no scores/);
+  assert.match(html, /Evidence support/);
+  assert.match(html, /Prioritized practice focus/);
+  assert.match(html, /View Leadership practice-focus citation in transcript/);
   assert.doesNotMatch(html, /customer_problem_connection/);
+  assert.doesNotMatch(html, /fixture-model|feedback\.evidence-limited/);
 
   const duplicateIdentity = structuredClone(feedback);
   duplicateIdentity.strengths.push({
     ...structuredClone(duplicateIdentity.strengths[0]!),
-    transcriptRefs: ["writer:2"],
-    evidence: [
-      {
-        turnRef: "writer:2",
-        quote: "A second individually valid frozen candidate turn.",
-      },
-    ],
+    transcriptRef: "synthetic:2",
+    citation: "A second individually valid frozen candidate turn.",
   });
   const decoded = decodeFeedbackLifecycleResponse({
     status: "completed",
@@ -217,9 +218,20 @@ test("dimension coverage review renders a full scorecard only with complete supp
 
   assert.match(html, /Full scorecard/);
   assert.match(html, /Overall score/);
-  assert.match(html, /8\.0/);
-  assert.match(html, /Sufficient evidence/);
+  assert.match(html, />8</);
+  assert.match(html, /Supported/);
   assert.match(html, /working parents because schedule changes/);
+  for (const evidence of feedback.dimensions.structure.evidence) {
+    assert.match(
+      html,
+      new RegExp(
+        escapeRegExp(
+          `View Structure ${evidence.label} citation in transcript`
+        )
+      )
+    );
+  }
+  assert.doesNotMatch(html, /answer-block:|facet|schema|model/i);
 });
 
 test("dimension coverage review withholds unsupported and overall scores in a partial scorecard", () => {
@@ -230,28 +242,43 @@ test("dimension coverage review withholds unsupported and overall scores in a pa
 
   assert.match(html, /Partial scorecard/);
   assert.match(html, /8\/10/);
-  assert.match(html, /Partial evidence/);
-  assert.match(html, /No evidence/);
+  assert.match(html, /Not enough evidence/);
+  assert.match(html, /because this interview did not cover enough evidence/);
   assert.doesNotMatch(html, /Overall score/);
   assert.doesNotMatch(html, /Clarity score/);
   assert.doesNotMatch(html, /answer-block:0001/);
 });
 
 test("dimension coverage coaching review never renders numerical scores", () => {
-  const feedback = dimensionCoverageView("coaching");
+  const feedback = dimensionCoverageView("coaching-coverage");
   const html = renderToStaticMarkup(
     React.createElement(CompletedDimensionCoverageReview, { feedback })
   );
 
   assert.match(html, /Coaching review/);
-  assert.match(html, /Grounded coaching without scores/);
+  assert.match(html, /Evidence support/);
+  assert.match(html, /Prioritized practice focus/);
+  assert.match(html, /not enough PM-rubric coverage/);
   assert.match(html, /working parents because schedule changes/);
   assert.doesNotMatch(html, /Overall score/);
   assert.doesNotMatch(html, />\d+\/10</);
 });
 
+test("integrity-limited coaching explains system confidence without judging performance", () => {
+  const feedback = dimensionCoverageView("coaching-integrity");
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /complete saved interview evidence could not be verified/);
+  assert.match(html, /does not reflect poor performance/i);
+  assert.match(html, /Evidence support/);
+  assert.doesNotMatch(html, />\d+\/10</);
+  assert.doesNotMatch(html, /answer-block:|facet|schema|model/i);
+});
+
 function dimensionCoverageView(
-  kind: "full" | "partial" | "coaching"
+  kind: "full" | "partial" | "coaching-coverage" | "coaching-integrity"
 ): FeedbackDimensionCoverageView {
   const blocks = deriveCandidateAnswerBlocks(
     createAnswerBlockSegmentationFixture(2).events
@@ -261,34 +288,68 @@ function dimensionCoverageView(
     roundType: "product_sense",
     answerBlocks: blocks,
     modelVersion: "synthetic-ui-fixture-v1",
-    allowNumericalScores: kind !== "coaching",
+    allowNumericalScores: kind !== "coaching-integrity",
   });
-  return {
-    kind: "dimension-coverage",
-    id: `feedback-${kind}`,
-    sessionId: `session-${kind}`,
-    ...result,
-    createdAt: "2026-08-12T12:00:00.000Z",
-    nextPracticeRecommendation: null,
-  };
+  const feedback = presentCompletedFeedback(
+    persistedFeedback({
+      id: `feedback-${kind}`,
+      sessionId: `session-${kind}`,
+      structureScore: result.dimensions.structure.score,
+      clarityScore: result.dimensions.clarity.score,
+      insightScore: result.dimensions.insight.score,
+      communicationScore: result.dimensions.communication.score,
+      leadershipScore: result.dimensions.leadership.score,
+      overallScore: result.overallScore,
+      strengths: null,
+      improvements: null,
+      summary: result.summary,
+      rubricVersion: result.rubricVersion,
+      schemaVersion: result.schemaVersion,
+      promptVersion: result.promptVersion,
+      modelVersion: result.modelVersion,
+      evaluationState: result.evaluationState,
+      feedbackMode: result.mode,
+      feedbackRoundType: result.roundType,
+      dimensionCoverage: result.dimensions,
+    }),
+    {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "product_sense",
+      frozenEvidenceState:
+        kind === "coaching-integrity" ? "partial" : "complete",
+    }
+  );
+  assert.equal(feedback.kind, "dimension-coverage");
+  if (feedback.kind !== "dimension-coverage") {
+    throw new Error("synthetic dimension-coverage fixture was rejected");
+  }
+  return feedback;
 }
 
 function createCoverageSelection(
   answerBlockRef: string,
-  kind: "full" | "partial" | "coaching"
+  kind: "full" | "partial" | "coaching-coverage" | "coaching-integrity"
 ): DimensionCoverageProviderSelection {
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     const facetCount =
-      kind === "full" || kind === "coaching"
+      kind === "full" || kind === "coaching-integrity"
         ? 2
         : dimension === "structure"
-          ? 2
+          ? kind === "partial"
+            ? 2
+            : 1
           : dimension === "insight"
             ? 1
             : 0;
     dimensions[dimension] = {
-      score: facetCount === 2 && kind !== "coaching" ? 8 : null,
+      score:
+        facetCount === 2 &&
+        kind !== "coaching-coverage" &&
+        kind !== "coaching-integrity"
+          ? 8
+          : null,
       evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[
         dimension as FeedbackDimension
       ].facets
@@ -302,6 +363,32 @@ function createCoverageSelection(
     rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
     roundType: "product_sense",
     dimensions,
+  };
+}
+
+function persistedFeedback(
+  overrides: Partial<PersistedCompletedFeedback> = {}
+): PersistedCompletedFeedback {
+  return {
+    id: "feedback-limited",
+    sessionId: "session-limited",
+    structureScore: null,
+    clarityScore: null,
+    insightScore: null,
+    communicationScore: null,
+    leadershipScore: null,
+    overallScore: null,
+    strengths: [],
+    improvements: [],
+    drills: [],
+    summary: EVIDENCE_LIMITED_SUMMARY,
+    rubricVersion: "pm-feedback-rubric.v2",
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    modelVersion: "synthetic-ui-fixture-v1",
+    evaluationState: "partial",
+    createdAt: new Date("2026-08-12T12:00:00.000Z"),
+    ...overrides,
   };
 }
 
