@@ -792,17 +792,26 @@ test("conflicting exact replay identity or timing and a true missing sequence fa
     },
   ];
 
-  for (const turns of [
+  const invalidCases = [
     conflictingReplay,
     conflictingTiming,
     conflictingSuccessorTiming,
     interleavedReplayOverlap,
     missingSequence,
-  ]) {
+  ].map((turns) => ({
+    turns,
+    sessionEndAt: new Date(
+      Math.max(...turns.map((turn) => turn.endedAt!.getTime())) + 1_000
+    ),
+  }));
+  invalidCases.push({
+    turns: interleavedReplayOverlap.slice(0, 2),
+    sessionEndAt: new Date(baseMs + 5_000),
+  });
+
+  for (const { turns, sessionEndAt } of invalidCases) {
     const validation = calculateValidatedSessionFromTurns(turns, {
-      sessionEndAt: new Date(
-        Math.max(...turns.map((turn) => turn.endedAt!.getTime())) + 1_000
-      ),
+      sessionEndAt,
     });
     assert.equal(validation.isValid, false);
     assert.equal(

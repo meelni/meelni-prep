@@ -575,6 +575,52 @@ test("an intervening role turn cannot hide same-speaker replay overlap", () => {
   );
 });
 
+test("session end and cutoff validate every interleaved role cursor", () => {
+  const candidate = createAnswerBlockTurn({
+    sequence: 1,
+    eventId: "synthetic-writer:1",
+    startedAtMs: 0,
+    endedAtMs: 10_000,
+    audioDurationMs: 10_000,
+  });
+  const interviewer = createAnswerBlockTurn({
+    sequence: 2,
+    eventId: "synthetic-writer:2",
+    speaker: "interviewer",
+    text: "Which assumption would you validate first?",
+    startedAtMs: 2_000,
+    endedAtMs: 3_000,
+    audioDurationMs: 1_000,
+  });
+  const terminals: AnswerBlockLedgerEvent[] = [
+    { kind: "session_end", occurredAtMs: 5_000 },
+    { kind: "cutoff", reason: "session_cutoff", occurredAtMs: 5_000 },
+  ];
+
+  for (const terminal of terminals) {
+    const derived = deriveCandidateAnswerBlocks([
+      candidate,
+      interviewer,
+      terminal,
+    ]);
+    assert.equal(derived.eligible, false, terminal.kind);
+    assert.ok(
+      derived.issues.some(
+        ({ code, eventId }) =>
+          code === "invalid_ledger_order" && eventId === candidate.eventId
+      ),
+      terminal.kind
+    );
+    assert.ok(
+      derived.boundaries.some(
+        ({ kind, afterEventId }) =>
+          kind === "invalid_timing" && afterEventId === candidate.eventId
+      ),
+      terminal.kind
+    );
+  }
+});
+
 test("a non-exact replay-family omission fails closed as an explicit non-bridging boundary", () => {
   const first = createAnswerBlockTurn({
     sequence: 1,

@@ -41,6 +41,10 @@ Consecutive candidate finals coalesce only while all of these remain true:
 5. silence from the preceding end to the next start is at most 5,000 ms;
 6. no integrity marker, cutoff, or end boundary intervenes.
 
+A terminal cutoff or session end must occur after every canonical speech event,
+not only the most recent role. Cross-role overlap remains a valid role boundary,
+but an intervening role cannot hide speech extending past termination.
+
 Only a canonical turn that the existing trust boundary classifies as an exact
 semantic replay of a previously accepted event is represented as a typed
 `semantic_replay` continuity event. Its anchor is explicit. It may advance a

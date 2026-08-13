@@ -178,6 +178,7 @@ export function deriveCandidateAnswerBlocks(
     AnswerBlockSpeaker,
     AnswerBlockCanonicalSpeechEvent
   >();
+  let latestLedgerEndTurn: AnswerBlockCanonicalSpeechEvent | null = null;
   let currentPrompt: AnswerBlockSourceTurn[] = [];
   let current: PendingAnswerBlock | null = null;
   let previousLedgerTurn:
@@ -247,17 +248,17 @@ export function deriveCandidateAnswerBlocks(
 
     if (event.kind === "session_end") {
       if (
-        previousLedgerTurn &&
-        previousLedgerTurn.endedAtMs > event.occurredAtMs
+        latestLedgerEndTurn &&
+        latestLedgerEndTurn.endedAtMs > event.occurredAtMs
       ) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousLedgerTurn.eventId,
+          afterEventId: latestLedgerEndTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null,
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousLedgerTurn.eventId,
+          eventId: latestLedgerEndTurn.eventId,
         });
       }
       closeOrRecordBoundary("session_end", {
@@ -274,17 +275,17 @@ export function deriveCandidateAnswerBlocks(
     }
     if (event.kind === "cutoff") {
       if (
-        previousLedgerTurn &&
-        previousLedgerTurn.endedAtMs > event.occurredAtMs
+        latestLedgerEndTurn &&
+        latestLedgerEndTurn.endedAtMs > event.occurredAtMs
       ) {
         closeOrRecordBoundary("invalid_timing", {
-          afterEventId: previousLedgerTurn.eventId,
+          afterEventId: latestLedgerEndTurn.eventId,
           beforeEventId: null,
           boundaryEventId: null,
         });
         issues.push({
           code: "invalid_ledger_order",
-          eventId: previousLedgerTurn.eventId,
+          eventId: latestLedgerEndTurn.eventId,
         });
       }
       closeOrRecordBoundary("session_cutoff", {
@@ -353,6 +354,12 @@ export function deriveCandidateAnswerBlocks(
       pendingReplayFamilyPromptEventId = null;
       continue;
     }
+    if (
+      latestLedgerEndTurn === null ||
+      event.endedAtMs > latestLedgerEndTurn.endedAtMs
+    ) {
+      latestLedgerEndTurn = event;
+    }
 
     const transitionCursor =
       event.kind === "turn" ? previousEvidenceTurn : previousLedgerTurn;
@@ -390,6 +397,7 @@ export function deriveCandidateAnswerBlocks(
       issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
       currentPrompt = [];
     }
+    previousLedgerTurnBySpeaker.set(event.speaker, event);
 
     if (event.kind === "semantic_replay") {
       const anchor = acceptedTurnsByEventId.get(event.replayOfEventId);
@@ -425,7 +433,6 @@ export function deriveCandidateAnswerBlocks(
       ) {
         currentPrompt = [];
       }
-      previousLedgerTurnBySpeaker.set(event.speaker, event);
       previousLedgerTurn = event;
       continue;
     }
@@ -445,7 +452,6 @@ export function deriveCandidateAnswerBlocks(
         pendingReplayFamilyPromptEventId = event.eventId;
       }
       if (event.speaker === "interviewer") currentPrompt = [];
-      previousLedgerTurnBySpeaker.set(event.speaker, event);
       previousLedgerTurn = event;
       previousEvidenceTurn = null;
       continue;
@@ -470,7 +476,6 @@ export function deriveCandidateAnswerBlocks(
       if (current) current.response.push(source);
       else current = { prompt: [...currentPrompt], response: [source] };
     }
-    previousLedgerTurnBySpeaker.set(event.speaker, event);
     previousLedgerTurn = event;
     previousEvidenceTurn = event;
   }
