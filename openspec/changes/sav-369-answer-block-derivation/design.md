@@ -24,11 +24,14 @@ derives answer blocks from that accepted projection plus typed projections for
 replay-elided canonical rows. Only an exact semantic replay anchored to a
 previously accepted event may advance continuity, and only across matching
 speaker/writer/generation, contiguous sequence, and valid timing. Non-exact
-replay families remain explicit boundaries; unknown sequence gaps and
-conflicting replay identity/timing fail closed. Replay projections never become
-block sources or evidence. Each joined candidate response is prepared again so
-controls split across adjacent finals remain rejectable. Evidence classification
-and completion breadth run once per answer block.
+replay-family omissions that can affect candidate evidence or prompt binding
+make the evaluation snapshot ineligible and degraded rather than producing
+countable boundaries; an interviewer-only transcript remains no-reviewable.
+Unknown sequence gaps and conflicting replay identity/timing fail closed too.
+Replay projections never
+become block sources or evidence. Each joined candidate response is prepared
+again so controls split across adjacent finals remain rejectable. Evidence
+classification and completion breadth run once per answer block.
 
 Canonical completion statistics use unique prompt groups and answer blocks as
 logical turns. This makes the entire persisted `completionStats` shape stable
@@ -56,5 +59,6 @@ The observable feedback workflow compares full completion statistics, tier,
 provider mode, and exact canonical citation inputs. Adversarial coverage includes
 follow-up, interruption/canonicalization marker, writer generation, sequence
 gap/reversal, section, long silence, same- and cross-role overlap, cutoff/end,
-replay continuity and replay-inflation attempts, injection, malformed timing,
-and legacy persisted rows.
+exact-replay provider-input invariance, non-exact/conflicting replay continuity
+and replay-inflation attempts, injection, malformed timing, and legacy persisted
+rows.

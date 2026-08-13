@@ -6470,6 +6470,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
   let currentPrompt = [];
   let current = null;
   let previousTurn = null;
+  let pendingReplayFamilyPromptEventId = null;
   let sessionEnded = false;
   const closeCurrent = (closedBy, boundary = {
     afterEventId: current?.response.at(-1)?.eventId ?? null,
@@ -6513,6 +6514,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       issues.push({ code: "duplicate_event_id", eventId });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (eventId) eventIds.add(eventId);
@@ -6535,6 +6537,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
@@ -6557,6 +6560,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       sessionEnded = true;
       continue;
     }
@@ -6572,6 +6576,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
         currentPrompt = [];
         previousTurn = null;
+        pendingReplayFamilyPromptEventId = null;
       }
     }
     if (event.kind === "integrity_boundary") {
@@ -6586,6 +6591,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       }
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
     if (!isCanonicalAnswerBlockSpeechEvent(event)) {
@@ -6597,6 +6603,7 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       issues.push({ code: "invalid_turn", eventId: event.eventId || null });
       currentPrompt = [];
       previousTurn = null;
+      pendingReplayFamilyPromptEventId = null;
       continue;
     }
     const transition2 = previousTurn ? classifyTurnTransition(previousTurn, event, maxContinuationGapMs) : null;
@@ -6637,6 +6644,15 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
         beforeEventId: event.eventId,
         boundaryEventId: event.eventId
       });
+      if (event.speaker === "user" || hadOpenCandidateBlock) {
+        issues.push({
+          code: "invalid_replay_continuity",
+          eventId: event.eventId
+        });
+        pendingReplayFamilyPromptEventId = null;
+      } else {
+        pendingReplayFamilyPromptEventId = event.eventId;
+      }
       if (event.speaker === "interviewer") currentPrompt = [];
       previousTurn = event;
       continue;
@@ -6644,11 +6660,18 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
     const source = toSourceTurn(event);
     acceptedTurnsByEventId.set(event.eventId, event);
     if (event.speaker === "interviewer") {
+      pendingReplayFamilyPromptEventId = null;
       currentPrompt = previousTurn?.speaker === "interviewer" && transition2 === null ? [...currentPrompt, source] : [source];
-    } else if (current) {
-      current.response.push(source);
     } else {
-      current = { prompt: [...currentPrompt], response: [source] };
+      if (pendingReplayFamilyPromptEventId) {
+        issues.push({
+          code: "invalid_replay_continuity",
+          eventId: pendingReplayFamilyPromptEventId
+        });
+        pendingReplayFamilyPromptEventId = null;
+      }
+      if (current) current.response.push(source);
+      else current = { prompt: [...currentPrompt], response: [source] };
     }
     previousTurn = event;
   }
@@ -20569,12 +20592,24 @@ function calculateValidatedSessionFromTurns(turns, options = {}) {
       (turn) => classifyUserResponseEvidence(turn.text)
     )
   );
-  const stats = {
+  const hasInvalidReplayContinuity = answerBlockDerivation.issues.some(
+    (issue) => issue.code === "invalid_replay_continuity"
+  );
+  const stats = hasInvalidReplayContinuity ? {
+    totalTurns: 0,
+    userTurns: 0,
+    totalWords: 0,
+    durationSeconds: 0,
+    substantiveResponses: 0,
+    scoreableResponses: 0
+  } : {
     ...calculateAnswerBlockSessionStats(answerBlockDerivation.blocks),
     substantiveResponses: evidenceLevels.filter(
       (level) => level !== "insufficient"
     ).length,
-    scoreableResponses: evidenceLevels.filter((level) => level === "scoreable").length
+    scoreableResponses: evidenceLevels.filter(
+      (level) => level === "scoreable"
+    ).length
   };
   const thresholdValidation = validateSessionStats(stats);
   if (prepared.eligible && answerBlockDerivation.eligible && preparedAnswerBlocks.every((preparedBlock) => preparedBlock.eligible) && !hasInvalidTiming) {

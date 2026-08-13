@@ -22,8 +22,11 @@ citation authority.
 An exact semantic replay authenticated by the transcript preparation boundary
 may advance sequence continuity only when its accepted anchor, speaker, writer
 identity/generation, and timing are coherent. It never becomes evidence. A
-non-exact replay family remains a boundary, and an unknown sequence gap or
-conflicting replay continuity fails closed.
+non-exact replay-family omission that can affect candidate evidence or prompt
+binding makes the evaluation snapshot ineligible and degraded rather than
+creating countable answer breadth. An interviewer-only transcript remains
+no-reviewable. An unknown sequence gap or conflicting replay continuity fails
+closed too.
 
 ## Consequences
 
@@ -36,6 +39,8 @@ conflicting replay continuity fails closed.
 - Corrupt, overlapping same-speaker, replay-conflicting, post-cutoff, or
   otherwise unverifiable canonical input fails closed at existing integrity
   boundaries.
+- Exact replay variants preserve accepted canonical citations and provider
+  input; non-exact or conflicting replay input never invokes the evaluator.
 - Historical rows without canonical identity keep their compatibility path;
   mixed malformed canonical rows never downgrade to legacy treatment.
 - SAV-421 may consume the public answer-block projection, but scoring-policy
