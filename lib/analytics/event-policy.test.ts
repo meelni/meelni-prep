@@ -24,7 +24,7 @@ test("feedback quality analytics admits only closed content-free fields", () => 
       reason: "arbitrary user sentence",
       email: "candidate@example.test",
     }),
-    { outcome: "coaching_review", response: "not_helpful" }
+    null
   );
   assert.deepEqual(
     sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
@@ -44,7 +44,29 @@ test("feedback quality analytics admits only closed content-free fields", () => 
       practice_kind: "focused_practice",
       feedback_id: "00000000-0000-4000-8000-000000000002",
     }),
-    { practice_kind: "focused_practice" }
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "coaching_review",
+      response: "not_helpful",
+      reason: "score_explanation_unclear",
+    }),
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "full_scorecard",
+      response: "helpful",
+      reason: "not_specific_enough",
+    }),
+    null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_practice_started", {
+      outcome: "partial_scorecard",
+    }),
+    null
   );
 });
 

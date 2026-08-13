@@ -66,12 +66,14 @@ export async function trackServerEvent(
 
   const client = getServerPostHog();
   if (!client) return;
+  const safeProperties = sanitizeAnalyticsEventProperties(event, properties);
+  if (!safeProperties) return;
 
   try {
     await deliverPostHogCapture(client, {
       distinctId,
       event,
-      properties: sanitizeAnalyticsEventProperties(event, properties),
+      properties: safeProperties,
     });
   } catch {
     console.error("analytics_server_event_tracking_failed");

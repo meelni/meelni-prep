@@ -126,6 +126,7 @@ export async function handleWriteFeedbackQualitySignal(
     result.state.signal
   ) {
     try {
+      if (await deps.isDeletionPending(auth.userId)) return response;
       await deps.trackResponse({
         userId: auth.userId,
         outcome: result.state.outcome,
@@ -225,17 +226,35 @@ async function readBoundedJson(
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     return { state: "too_large" };
   }
+  if (!request.body) return { state: "invalid" };
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytesRead = 0;
+  let text = "";
   try {
-    const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > maxBytes) {
-      return { state: "too_large" };
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
+      if (bytesRead > maxBytes) {
+        try {
+          await reader.cancel("feedback_quality_request_too_large");
+        } catch {
+          // Rejection cannot change the already-established request bound.
+        }
+        return { state: "too_large" };
+      }
+      text += decoder.decode(chunk.value, { stream: true });
     }
+    text += decoder.decode();
     const parsed: unknown = JSON.parse(text);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? { state: "valid", value: parsed as Record<string, unknown> }
       : { state: "invalid" };
   } catch {
     return { state: "invalid" };
+  } finally {
+    reader.releaseLock();
   }
 }
 

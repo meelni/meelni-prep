@@ -67,7 +67,7 @@ export function sanitizePostHogCaptureEnvelope(
     envelope.event,
     envelope.properties
   );
-  if (!hasAnalyticsEventPolicy(envelope.event)) {
+  if (!hasAnalyticsEventPolicy(envelope.event) || !safeProperties) {
     return null;
   }
   return {

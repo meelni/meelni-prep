@@ -68,7 +68,7 @@ export const FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT =
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical feedback-quality persistence contract changes.
 export const FEEDBACK_QUALITY_SCHEMA_FINGERPRINT =
-  "4cccbc121f14e6787ccd3c768b8da904188f9f89caf2c67120c6bb18692e292d";
+  "39d1950225d3939d19c65e386e514ee59528a4fdf9af135dc4a46f6736b5f11f";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

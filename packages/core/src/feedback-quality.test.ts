@@ -181,6 +181,27 @@ test("repeated reviews count once for the privacy threshold", () => {
   assert.deepEqual(aggregateFeedbackQualitySignals(rows).outcomes, []);
 });
 
+test("the aggregate privacy threshold cannot be weakened by a caller", () => {
+  const sparseRows = Array.from({ length: 9 }, (_, index) => ({
+    userKey: `owner-${index}`,
+    outcome: "partial_scorecard" as const,
+    response: "helpful" as const,
+    reason: null,
+  }));
+  const legacyCaller = aggregateFeedbackQualitySignals as unknown as (
+    rows: readonly FeedbackQualityAggregateInput[],
+    minimumDistinctUsers: number
+  ) => ReturnType<typeof aggregateFeedbackQualitySignals>;
+
+  for (let requestedMinimum = 2; requestedMinimum < 10; requestedMinimum += 1) {
+    assert.deepEqual(
+      legacyCaller(sparseRows, requestedMinimum).outcomes,
+      [],
+      `runtime override ${requestedMinimum} must be ignored`
+    );
+  }
+});
+
 test("aggregate input fails closed on invalid reason combinations", () => {
   assert.throws(
     () =>
