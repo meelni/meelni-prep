@@ -176,7 +176,11 @@ export function deriveCandidateAnswerBlocks(
   const acceptedTurnsByEventId = new Map<string, CanonicalAnswerBlockTurn>();
   let currentPrompt: AnswerBlockSourceTurn[] = [];
   let current: PendingAnswerBlock | null = null;
-  let previousLedgerTurn: AnswerBlockCanonicalSpeechEvent | null = null;
+  let previousLedgerTurn:
+    | CanonicalAnswerBlockTurn
+    | AnswerBlockSemanticReplayTurn
+    | AnswerBlockSemanticReplayBoundaryTurn
+    | null = null;
   let previousEvidenceTurn: CanonicalAnswerBlockTurn | null = null;
   let pendingReplayFamilyPromptEventId: string | null = null;
   let sessionEnded = false;
@@ -356,6 +360,15 @@ export function deriveCandidateAnswerBlocks(
           event.kind === "turn"
         )
       : null;
+    const replaySuccessorTimingConflict =
+      event.kind === "turn" &&
+      previousLedgerTurn?.kind === "semantic_replay" &&
+      classifyTurnTransition(
+        previousLedgerTurn,
+        event,
+        maxContinuationGapMs,
+        false
+      ) === "invalid_timing";
     if (transition && transition !== sequenceIssue?.boundary) {
       closeOrRecordBoundary(transition, {
         afterEventId: transitionCursor?.eventId ?? null,
@@ -366,6 +379,15 @@ export function deriveCandidateAnswerBlocks(
         issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
         currentPrompt = [];
       }
+    }
+    if (replaySuccessorTimingConflict && transition !== "invalid_timing") {
+      closeOrRecordBoundary("invalid_timing", {
+        afterEventId: previousLedgerTurn?.eventId ?? null,
+        beforeEventId: event.eventId,
+        boundaryEventId: null,
+      });
+      issues.push({ code: "invalid_ledger_order", eventId: event.eventId });
+      currentPrompt = [];
     }
 
     if (event.kind === "semantic_replay") {
@@ -381,7 +403,7 @@ export function deriveCandidateAnswerBlocks(
       const validCandidateContinuity =
         !attemptedCandidateBridge ||
         (previousLedgerTurn?.speaker === "user" &&
-          anchor?.eventId === previousLedgerTurn.eventId &&
+          anchor?.eventId === previousEvidenceTurn?.eventId &&
           previousLedgerTurn.writerId === event.writerId &&
           previousLedgerTurn.writerGeneration === event.writerGeneration &&
           sequenceIssue === null &&

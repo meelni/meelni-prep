@@ -52,6 +52,11 @@ last accepted canonical evidence turn, so an authenticated replay cannot bridge
 an otherwise disqualifying long pause. Consequently inserting or removing
 authenticated exact replay rows cannot join or split answers.
 
+Replay timing is still checked as ledger integrity: a replay that overlaps or
+reverses against either adjacent same-speaker event makes the snapshot
+ineligible. Ignoring replay timing for answer continuity never permits a timing
+conflict to pass.
+
 A non-exact replay-family omission is a typed `semantic_replay_boundary`: it
 consumes its known ledger sequence but cannot bridge blocks. Because omitted
 candidate speech, or an omitted prompt to which later candidate evidence could

@@ -341,15 +341,27 @@ test("semantic replay turns advance continuity without becoming evidence or cita
     kind: "semantic_replay" as const,
     replayOfEventId: first.eventId,
   };
-  const second = createAnswerBlockTurn({
+  const secondReplay = {
+    ...replay,
     sequence: 3,
     eventId: "synthetic-writer:3",
-    text: "Then I would validate frequency and severity before prioritizing.",
     startedAtMs: 1_300,
-    endedAtMs: 2_100,
+    endedAtMs: 1_600,
+  };
+  const second = createAnswerBlockTurn({
+    sequence: 4,
+    eventId: "synthetic-writer:4",
+    text: "Then I would validate frequency and severity before prioritizing.",
+    startedAtMs: 1_700,
+    endedAtMs: 2_500,
     audioDurationMs: 800,
   });
-  const derived = deriveCandidateAnswerBlocks([first, replay, second]);
+  const derived = deriveCandidateAnswerBlocks([
+    first,
+    replay,
+    secondReplay,
+    second,
+  ]);
 
   assert.equal(derived.eligible, true);
   assert.equal(derived.blocks.length, 1);
@@ -462,6 +474,13 @@ test("replay continuity rejects missing anchors, sequence gaps, timing conflicts
     kind: "semantic_replay" as const,
     replayOfEventId: first.eventId,
   };
+  const replaySuccessor = createAnswerBlockTurn({
+    sequence: 3,
+    eventId: "synthetic-writer:3",
+    text: "Then I would validate the riskiest assumption with a small cohort.",
+    startedAtMs: 2_400,
+    endedAtMs: 3_400,
+  });
   const cases: AnswerBlockLedgerEvent[][] = [
     [first, { ...replayBase, replayOfEventId: "missing-anchor" }],
     [first, { ...replayBase, text: `${first.text} conflicting correction` }],
@@ -491,6 +510,7 @@ test("replay continuity rejects missing anchors, sequence gaps, timing conflicts
         eventId: "replacement-writer:1",
       },
     ],
+    [first, replayBase, replaySuccessor],
   ];
 
   for (const [index, events] of cases.entries()) {
