@@ -21,6 +21,7 @@ export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
   "full_scorecard",
   "partial_scorecard",
   "coaching_review",
+  "unable_to_review",
   "unavailable",
 ] as const;
 
@@ -124,6 +125,16 @@ export function classifyDashboardFeedbackPresentation(
       frozenEvidenceState,
     }
   );
+
+  if (
+    candidate.status === "skipped" &&
+    (candidate.outcomeReason === "no_reviewable_answer" ||
+      candidate.outcomeReason === "transcript_integrity_degraded") &&
+    (candidate.completionTier === "insufficient" ||
+      candidate.completionTier === "abandoned")
+  ) {
+    return "unable_to_review";
+  }
 
   if (
     candidate.status === "completed" &&

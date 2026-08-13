@@ -35,7 +35,7 @@ for (const viewport of [
       "/feedback/browser-qa-evidence-limited"
     );
     await expect(
-      page.getByText("Feedback ready — no score", { exact: true }).first()
+      page.getByText("Coaching review ready", { exact: true }).first()
     ).toBeVisible();
     await expect(
       page.getByText("No feedback result is available for this interview.")
@@ -55,7 +55,7 @@ for (const viewport of [
     ).toBeVisible();
     await expect(
       history
-        .getByText("Feedback ready — no score", { exact: true })
+        .getByText("Coaching review ready", { exact: true })
         .filter({ visible: true })
     ).toBeVisible();
     await expect(

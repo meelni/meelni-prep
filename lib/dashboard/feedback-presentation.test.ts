@@ -371,6 +371,25 @@ test("pending, processing, failed, skipped, and missing rows remain unavailable"
   }
 });
 
+test("terminal scoreless outcomes are presented as unable to review", () => {
+  for (const outcomeReason of [
+    "no_reviewable_answer",
+    "transcript_integrity_degraded",
+  ] as const) {
+    assert.equal(
+      classifyDashboardFeedbackPresentation(
+        candidate({
+          status: "skipped",
+          outcomeReason,
+          completionTier: "insufficient",
+        }),
+        transcript
+      ),
+      "unable_to_review"
+    );
+  }
+});
+
 test("malformed, oversized, unknown, and tampered content fails closed", () => {
   const unknownSignal = structuredClone(evidenceLimited.strengths);
   unknownSignal[0]!.signalCode = "unknown_signal" as never;

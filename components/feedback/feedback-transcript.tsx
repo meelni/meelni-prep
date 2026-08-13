@@ -118,6 +118,12 @@ export function useEvidenceTranscript(sessionId: string) {
     setPendingTurnRef(null);
   }, [error, loaded, loading, pendingTurnRef, turns]);
 
+  const selectTranscriptRef = (reference: string) => {
+    setNavigationError(null);
+    setExpanded(true);
+    setPendingTurnRef(reference);
+  };
+
   return {
     expanded,
     setExpanded,
@@ -126,10 +132,9 @@ export function useEvidenceTranscript(sessionId: string) {
     error,
     navigationError,
     selectEvidence(evidence: FeedbackEvidence) {
-      setNavigationError(null);
-      setExpanded(true);
-      setPendingTurnRef(evidence.turnRef);
+      selectTranscriptRef(evidence.turnRef);
     },
+    selectTranscriptRef,
     retry() {
       setError(null);
       setNavigationError(null);

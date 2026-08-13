@@ -40,8 +40,10 @@
 - Unable to review SHALL distinguish insufficient candidate-answer evidence
   from verified-evidence integrity failure.
 - Integrity-failure copy SHALL state that the outcome does not reflect candidate
-  performance and SHALL expose a server-owned retry, returned-credit, or
-  credit-recovery-in-progress path when applicable.
+  performance and SHALL expose server-owned returned-credit or
+  credit-recovery-in-progress truth plus a next-interview path.
+- Retry actions SHALL remain attached to transient dispatch/generation
+  lifecycle states and SHALL NOT be fabricated for immutable terminal evidence.
 - Coverage copy SHALL NOT promise a returned credit unless server-owned credit
   evidence proves it.
 - Neither path SHALL expose provider, parser, settlement, transcript-integrity,

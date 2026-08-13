@@ -195,10 +195,12 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
     presented.strengths[0]?.observation,
     EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
   );
-  assert.equal(
-    presented.strengths[0]?.evidence[0]?.quote,
-    evidenceTurns[0]!.text
-  );
+  assert.equal(presented.strengths[0]?.citation, evidenceTurns[0]!.text);
+  assert.equal(presented.scoreWithheldReason, "rubric_coverage");
+  assert.equal(presented.prioritizedPracticeFocus.dimension, "structure");
+  assert.equal("signalCode" in presented.strengths[0]!, false);
+  assert.equal("actionCode" in presented.strengths[0]!, false);
+  assert.equal("modelVersion" in presented, false);
 
   const decoded = decodeFeedbackLifecycleResponse({
     status: "completed",
@@ -230,8 +232,8 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
   const duplicateIdentity = structuredClone(presented);
   duplicateIdentity.strengths.push({
     ...structuredClone(duplicateIdentity.strengths[0]!),
-    transcriptRefs: ["writer:2"],
-    evidence: [{ turnRef: "writer:2", quote: evidenceTurns[1]!.text }],
+    transcriptRef: "writer:2",
+    citation: evidenceTurns[1]!.text,
   });
   assert.equal(
     decodeFeedbackLifecycleResponse({
@@ -579,6 +581,7 @@ test("keeps recovery attached to the authoritative lifecycle status", () => {
       details: {
         outcomeReason: "no_reviewable_answer",
         tier: "abandoned",
+        recovery: "start_another_interview",
         reasons: [],
         recommendations: [],
       },
@@ -628,6 +631,7 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
         details: {
           outcomeReason: "no_reviewable_answer",
           tier: "insufficient",
+          recovery: "start_another_interview",
           reasons: [],
           recommendations: [],
         },
@@ -641,6 +645,7 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
         details: {
           outcomeReason: "transcript_integrity_degraded",
           tier: "abandoned",
+          recovery: "credit_recovery_in_progress",
           reasons: [],
           recommendations: [],
         },
@@ -689,6 +694,7 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
       details: {
         outcomeReason: "no_reviewable_answer",
         tier: "insufficient",
+        recovery: "start_another_interview",
         reasons: [],
         recommendations: [],
       },
@@ -718,6 +724,17 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
       status: "skipped",
       retryable: false,
       details: { tier: "invented", reasons: [], recommendations: [] },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcomeReason: "transcript_integrity_degraded",
+        tier: "insufficient",
+        recovery: "start_another_interview",
+        reasons: [],
+        recommendations: [],
+      },
     },
     { status: "completed", retryable: false, feedback: { kind: "v2" } },
   ];
@@ -797,6 +814,18 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
   assert.equal(view.overallScore, null);
   assert.equal(view.dimensions.structure.score, 7);
   assert.equal(view.dimensions.insight.score, null);
+  assert.equal(view.scoreWithheldReason, "rubric_coverage");
+  assert.equal(view.coachingSignals.length, 0);
+  assert.equal(view.prioritizedPracticeFocus, null);
+  assert.equal("facetCode" in view.dimensions.structure.evidence[0]!, false);
+  assert.equal(
+    "answerBlockRef" in view.dimensions.structure.evidence[0]!,
+    false
+  );
+  assert.match(
+    view.dimensions.structure.evidence[0]!.citation,
+    /working parents/
+  );
   assert.equal(
     presentCompletedFeedback(persisted, {
       evidenceTurns: [],
