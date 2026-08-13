@@ -71,6 +71,9 @@ packages/
 - Canonical Meelni skills live in `.agents/skills/`.
 - `.codex/skills/meelni-*` and `.claude/skills/meelni-*` should be symlinks to `.agents/skills/meelni-*`.
 - Edit `.agents/skills/*` first; do not hand-edit symlinked copies.
+- Use `meelni-start` as the front door when beginning an ambiguous,
+  cross-cutting, or explicitly start-routed Meelni task; let it orient the
+  request and hand off to the smallest relevant specialist skill set.
 - Use `meelni-codebase-architecture` for module boundaries, package migration, adapter shape, and agent-friendly refactors.
 - Use `meelni-livekit-interview-runtime` for LiveKit, voice interviews, turn-taking, transcript events, room metadata, and runtime config.
 - Use `meelni-feedback-evaluation` for scoring, rubrics, feedback generation, insights, practice exercises, and transcript evaluation.

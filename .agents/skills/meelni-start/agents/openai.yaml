@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meelni Start"
+  short_description: "Start any Meelni task with evidence"
+  default_prompt: "Use $meelni-start to orient this request, investigate the right evidence, and choose the safest useful next action."
