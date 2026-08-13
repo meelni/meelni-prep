@@ -13,7 +13,10 @@ import { HistorySection } from "@/components/dashboard/sections/history";
 import { OverviewSection } from "@/components/dashboard/sections/overview";
 import { QuestionsSection } from "@/components/dashboard/sections/questions";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
-import { CompletedV2Review } from "@/components/feedback/feedback-completed-review";
+import {
+  CompletedDimensionCoverageReview,
+  CompletedV2Review,
+} from "@/components/feedback/feedback-completed-review";
 import { FeedbackComparisonReview } from "@/components/feedback/feedback-comparison-review";
 import {
   FeedbackLifecycleStatus,
@@ -25,9 +28,12 @@ import type { FeedbackViewState } from "@meelni/core";
 
 import {
   completedFeedback,
+  coachingReviewFeedback,
   dashboardSessions,
   dashboardStatusSessions,
+  fullScorecardFeedback,
   partialFeedback,
+  partialScorecardFeedback,
   publicQuestions,
   transcriptTurns,
 } from "./fixtures";
@@ -43,7 +49,11 @@ export const HARNESS_SCENARIOS = [
   "interview",
   "feedback",
   "feedback-partial",
+  "feedback-full-scorecard",
+  "feedback-partial-scorecard",
+  "feedback-coaching-review",
   "feedback-insufficient",
+  "feedback-integrity",
   "feedback-loading",
   "feedback-pending",
   "feedback-processing",
@@ -338,18 +348,40 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return <FeedbackScenario />;
     case "feedback-partial":
       return <FeedbackPartialScenario />;
+    case "feedback-full-scorecard":
+      return (
+        <CompletedDimensionCoverageReview feedback={fullScorecardFeedback} />
+      );
+    case "feedback-partial-scorecard":
+      return (
+        <CompletedDimensionCoverageReview feedback={partialScorecardFeedback} />
+      );
+    case "feedback-coaching-review":
+      return (
+        <CompletedDimensionCoverageReview feedback={coachingReviewFeedback} />
+      );
     case "feedback-insufficient":
       return (
         <FeedbackLifecycleScenario
           state={{
             kind: "no-reviewable-answer",
             details: {
-              outcomeReason: "no_reviewable_answer",
-              tier: "insufficient",
-              reasons: [longLifecycleMessage],
-              recommendations: [
-                "Start another mock interview and answer at least one complete prompt before ending the session.",
-              ],
+              outcome: "unable_to_review",
+              scoreWithheldReason: "rubric_coverage",
+              recovery: "start_another_interview",
+            },
+          }}
+        />
+      );
+    case "feedback-integrity":
+      return (
+        <FeedbackLifecycleScenario
+          state={{
+            kind: "transcript-integrity-degraded",
+            details: {
+              outcome: "unable_to_review",
+              scoreWithheldReason: "verified_evidence_integrity",
+              recovery: "credit_returned",
             },
           }}
         />

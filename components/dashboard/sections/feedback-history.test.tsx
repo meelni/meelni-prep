@@ -61,7 +61,7 @@ describe("scoreless feedback history", () => {
     expect(
       screen.getByRole("link", { name: "Review latest feedback" })
     ).toHaveAttribute("href", "/feedback/evidence-limited-session");
-    expect(screen.getByText("Feedback ready — no score")).toBeVisible();
+    expect(screen.getByText("Coaching review ready")).toBeVisible();
     expect(screen.queryByText("0.0")).not.toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("scoreless feedback history", () => {
         "/feedback/evidence-limited-session"
       );
     }
-    expect(screen.getAllByText("Feedback ready — no score")).toHaveLength(2);
+    expect(screen.getAllByText("Coaching review ready")).toHaveLength(2);
     expect(
       screen.getAllByText("Grounded observations from your recorded answers")
     ).toHaveLength(2);
@@ -112,9 +112,7 @@ describe("scoreless feedback history", () => {
     expect(
       screen.queryByRole("link", { name: "Review" })
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Feedback ready — no score")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Coaching review ready")).not.toBeInTheDocument();
     expect(screen.getAllByText("Feedback unavailable")).toHaveLength(2);
   });
 });

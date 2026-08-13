@@ -195,10 +195,12 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
     presented.strengths[0]?.observation,
     EVIDENCE_LIMITED_STRENGTH_SIGNALS.customer_problem_connection.observation
   );
-  assert.equal(
-    presented.strengths[0]?.evidence[0]?.quote,
-    evidenceTurns[0]!.text
-  );
+  assert.equal(presented.strengths[0]?.citation, evidenceTurns[0]!.text);
+  assert.equal(presented.scoreWithheldReason, "rubric_coverage");
+  assert.equal(presented.prioritizedPracticeFocus.dimension, "structure");
+  assert.equal("signalCode" in presented.strengths[0]!, false);
+  assert.equal("actionCode" in presented.strengths[0]!, false);
+  assert.equal("modelVersion" in presented, false);
 
   const decoded = decodeFeedbackLifecycleResponse({
     status: "completed",
@@ -230,8 +232,8 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
   const duplicateIdentity = structuredClone(presented);
   duplicateIdentity.strengths.push({
     ...structuredClone(duplicateIdentity.strengths[0]!),
-    transcriptRefs: ["writer:2"],
-    evidence: [{ turnRef: "writer:2", quote: evidenceTurns[1]!.text }],
+    transcriptRef: "writer:2",
+    citation: evidenceTurns[1]!.text,
   });
   assert.equal(
     decodeFeedbackLifecycleResponse({
@@ -577,10 +579,9 @@ test("keeps recovery attached to the authoritative lifecycle status", () => {
       status: "skipped",
       retryable: false,
       details: {
-        outcomeReason: "no_reviewable_answer",
-        tier: "abandoned",
-        reasons: [],
-        recommendations: [],
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "start_another_interview",
       },
     }).kind,
     "no-reviewable-answer"
@@ -626,10 +627,9 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
         status: "skipped",
         retryable: false,
         details: {
-          outcomeReason: "no_reviewable_answer",
-          tier: "insufficient",
-          reasons: [],
-          recommendations: [],
+          outcome: "unable_to_review",
+          scoreWithheldReason: "rubric_coverage",
+          recovery: "start_another_interview",
         },
       },
       "no-reviewable-answer",
@@ -639,10 +639,9 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
         status: "skipped",
         retryable: false,
         details: {
-          outcomeReason: "transcript_integrity_degraded",
-          tier: "abandoned",
-          reasons: [],
-          recommendations: [],
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
+          recovery: "credit_recovery_in_progress",
         },
       },
       "transcript-integrity-degraded",
@@ -687,10 +686,27 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
       status: "skipped",
       retryable: false,
       details: {
-        outcomeReason: "no_reviewable_answer",
-        tier: "insufficient",
-        reasons: [],
-        recommendations: [],
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "start_another_interview",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_returned",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_recovery_in_progress",
       },
     },
     { status: "completed", retryable: false, feedback: validCompleted },
@@ -717,7 +733,39 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
     {
       status: "skipped",
       retryable: false,
-      details: { tier: "invented", reasons: [], recommendations: [] },
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "invented",
+        recovery: "start_another_interview",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "start_another_interview",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "credit_returned",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "start_another_interview",
+        outcomeReason: "no_reviewable_answer",
+      },
     },
     { status: "completed", retryable: false, feedback: { kind: "v2" } },
   ];
@@ -797,6 +845,18 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
   assert.equal(view.overallScore, null);
   assert.equal(view.dimensions.structure.score, 7);
   assert.equal(view.dimensions.insight.score, null);
+  assert.equal(view.scoreWithheldReason, "rubric_coverage");
+  assert.equal(view.coachingSignals.length, 0);
+  assert.equal(view.prioritizedPracticeFocus, null);
+  assert.equal("facetCode" in view.dimensions.structure.evidence[0]!, false);
+  assert.equal(
+    "answerBlockRef" in view.dimensions.structure.evidence[0]!,
+    false
+  );
+  assert.match(
+    view.dimensions.structure.evidence[0]!.citation,
+    /working parents/
+  );
   assert.equal(
     presentCompletedFeedback(persisted, {
       evidenceTurns: [],

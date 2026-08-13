@@ -6051,6 +6051,13 @@ function isEvidenceLimitedFeedbackResult(value) {
 
 // packages/core/src/feedback-dimension-coverage.ts
 var FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION = "feedback.dimension-coverage.v1";
+var FEEDBACK_DIMENSIONS = [
+  "structure",
+  "clarity",
+  "insight",
+  "communication",
+  "leadership"
+];
 function facet(code, label, evaluatorGuidance) {
   return { code, label, evaluatorGuidance };
 }
@@ -8797,6 +8804,18 @@ function completeAnswer(roundType) {
   };
   return answers[roundType];
 }
+
+// packages/test-fixtures/src/feedback-review-outcomes.ts
+var FULL_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
+  dimension,
+  state: "scored",
+  score: 8
+}));
+var PARTIAL_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
+  dimension,
+  state: dimension === "structure" ? "scored" : "not_enough_evidence",
+  score: dimension === "structure" ? 8 : null
+}));
 
 // packages/test-fixtures/src/index.ts
 var FIXTURE_CLOCK = {

@@ -25,7 +25,7 @@ export const SAV_211_BROWSER_SCENARIOS: Sav211BrowserScenario[] = [
   },
   {
     id: "feedback-insufficient",
-    expectedText: "No reviewable answer available",
+    expectedText: "Unable to review",
   },
   { id: "feedback-loading", expectedText: "Loading feedback" },
   { id: "feedback-pending", expectedText: "Feedback queue is delayed" },

@@ -67,6 +67,7 @@ import {
   FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
   parseDimensionCoverageProviderSelection,
 } from "@meelni/core";
 
@@ -360,6 +361,8 @@ describe("/api/feedback/[sessionId]", () => {
       feedbackRecord({
         status: "skipped",
         dispatchStatus: "not_required",
+        completionTier: "insufficient",
+        outcomeReason: "no_reviewable_answer",
       }) as never
     );
 
@@ -381,11 +384,21 @@ describe("/api/feedback/[sessionId]", () => {
       feedbackRecord({
         status: "skipped",
         dispatchStatus: "not_required",
+        completionTier: "insufficient",
+        outcomeReason: "no_reviewable_answer",
       }) as never
     );
     const response = await GET(request(), PARAMS);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ status: "skipped" });
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "rubric_coverage",
+        recovery: "start_another_interview",
+      },
+    });
   });
 
   it("shows acknowledged hard-deadline dispatch failure as directly retryable", async () => {
@@ -884,18 +897,41 @@ describe("/api/feedback/[sessionId]", () => {
     );
 
     const response = await GET(request(), PARAMS);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       status: "completed",
       feedback: {
         kind: "evidence-limited",
         summary: EVIDENCE_LIMITED_SUMMARY,
-        strengths: [strength],
-        improvements: [improvement],
-        schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
-        promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
-        evaluationState: "partial",
+        scoreWithheldReason: "rubric_coverage",
+        strengths: [
+          {
+            dimension: "insight",
+            observation: strength.observation,
+            citation: strength.evidence[0]!.quote,
+            transcriptRef: "writer:1",
+            evidenceSupport: "exact_candidate_citation",
+          },
+        ],
+        improvements: [
+          {
+            dimension: "structure",
+            observation: improvement.observation,
+            citation: improvement.evidence[0]!.quote,
+            transcriptRef: "writer:2",
+            evidenceSupport: "exact_candidate_citation",
+          },
+        ],
+        prioritizedPracticeFocus: {
+          dimension: "structure",
+          citation: improvement.evidence[0]!.quote,
+          transcriptRef: "writer:2",
+        },
       },
     });
+    expect(JSON.stringify(payload)).not.toMatch(
+      /signalCode|actionCode|schemaVersion|promptVersion|modelVersion|rubricVersion|feedback\.evidence-limited/
+    );
   });
 
   it("returns a grounded coaching review from a valid partial frozen snapshot", async () => {
@@ -918,7 +954,164 @@ describe("/api/feedback/[sessionId]", () => {
         kind: "dimension-coverage",
         mode: "coaching_review",
         overallScore: null,
+        scoreWithheldReason: "verified_evidence_integrity",
       },
+    });
+  });
+
+  it.each(["refund", "release"] as const)(
+    "returns customer-safe %s credit truth for a terminal integrity failure",
+    async (creditSettlementAction) => {
+      vi.mocked(getSessionById).mockResolvedValue({
+        userId: "user-1",
+        roundType: "product_sense",
+        lifecycleState: "abandoned",
+        terminalReason: "integrity_failure",
+        creditSettlementAction,
+        creditSettledAt: new Date("2026-08-13T12:00:00.000Z"),
+      } as never);
+      vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+        feedbackRecord({
+          status: "skipped",
+          dispatchStatus: "not_required",
+          completionTier: "abandoned",
+          outcomeReason: "transcript_integrity_degraded",
+        }) as never
+      );
+
+      const response = await GET(request(), PARAMS);
+
+      expect(response.headers.get("cache-control")).toBe(
+        "private, max-age=300"
+      );
+      await expect(response.json()).resolves.toEqual({
+        status: "skipped",
+        retryable: false,
+        details: {
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
+          recovery: "credit_returned",
+        },
+      });
+    }
+  );
+
+  it("keeps pending integrity credit recovery uncached", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "abandoned",
+      terminalReason: "integrity_failure",
+      creditSettlementAction: null,
+      creditSettledAt: null,
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: "abandoned",
+        outcomeReason: "transcript_integrity_degraded",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_recovery_in_progress",
+      },
+    });
+  });
+
+  it("supports a recovery-created integrity row without inventing a completion tier", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "failed",
+      terminalReason: "provider_failure",
+      creditSettlementAction: "release",
+      creditSettledAt: new Date("2026-08-13T12:00:00.000Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: null,
+        outcomeReason: "transcript_integrity_degraded",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_returned",
+      },
+    });
+  });
+
+  it("keeps candidate coverage separate from a verified-evidence integrity failure", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "failed",
+      terminalReason: "transcript_integrity_unavailable",
+      creditSettlementAction: "release",
+      creditSettledAt: new Date("2026-08-13T12:00:00.000Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: "partial",
+        outcomeReason: "transcript_integrity_degraded",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_returned",
+      },
+    });
+    expect(JSON.stringify(payload)).not.toMatch(
+      /transcript_integrity|completion|tier|turns|words|recommendations|reasons/
+    );
+  });
+
+  it("fails closed for an incoherent skipped outcome tuple", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        dispatchStatus: "not_required",
+        completionTier: "full",
+        outcomeReason: "feedback_generated",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid feedback state",
     });
   });
 
@@ -1198,7 +1391,20 @@ function syntheticDimensionCoverageResult() {
   const dimensions = Object.fromEntries(
     FEEDBACK_DIMENSIONS.map((dimension) => [
       dimension,
-      { score: null, evidence: [] },
+      {
+        score: null,
+        evidence:
+          dimension === "insight"
+            ? [
+                {
+                  facetCode:
+                    ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.insight
+                      .facets[0]!.code,
+                  answerBlockRef: prepared.blocks[0]!.answerBlockId,
+                },
+              ]
+            : [],
+      },
     ])
   );
   return parseDimensionCoverageProviderSelection(
