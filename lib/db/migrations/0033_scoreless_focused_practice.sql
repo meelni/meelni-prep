@@ -50,7 +50,11 @@ ALTER TABLE "focused_practice_attempt" ADD CONSTRAINT "focused_practice_attempt_
         (
           "focused_practice_attempt"."contract_version" = 'focused-practice-attempt.v1' OR (
             "focused_practice_attempt"."source_finding"->>'kind' IN ('evidence_limited_improvement', 'dimension_coverage_focus') AND
-            "focused_practice_attempt"."plan"#>>'{source,focusIdentity,kind}' = "focused_practice_attempt"."source_finding"->>'kind'
+            "focused_practice_attempt"."plan"#>>'{source,focusIdentity,kind}' = "focused_practice_attempt"."source_finding"->>'kind' AND
+            (
+              ("focused_practice_attempt"."feedback_version"->>'schemaVersion' = 'feedback.evidence-limited.v2' AND "focused_practice_attempt"."source_finding"->>'kind' = 'evidence_limited_improvement') OR
+              ("focused_practice_attempt"."feedback_version"->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND "focused_practice_attempt"."source_finding"->>'kind' = 'dimension_coverage_focus')
+            )
           )
         ) AND
         octet_length("focused_practice_attempt"."feedback_version"::text) <= 65536 AND

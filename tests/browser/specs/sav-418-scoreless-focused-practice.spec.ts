@@ -34,7 +34,9 @@ for (const viewport of [
     ).toBeVisible();
     await expect(page.getByText("5 minutes", { exact: true })).toBeVisible();
     await expect(
-      page.getByText(/Use only the grounded focus selected by Meelni/)
+      page.getByText(
+        /Use only the grounded focus and exact interview evidence selected by Meelni/
+      )
     ).toBeVisible();
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
       0
@@ -86,6 +88,9 @@ test("SAV-418 shows a stable unavailable fallback and reflows at 200%", async ({
     "Focused practice is not available for this review"
   );
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Start focused practice" })
+  ).toHaveCount(0);
   await expectNoHorizontalScroll(page);
 
   // A 195 CSS-pixel layout viewport exercises the same reflow pressure as a

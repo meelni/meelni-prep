@@ -246,7 +246,8 @@ export async function startFocusedPracticeAttemptWorkflow(
   }
   if (
     !matchesOwnedSource(decodedStored.attempt, parsed) ||
-    !matchesImmutableSource(decodedStored.attempt, created.attempt)
+    (stored.disposition === "created" &&
+      !matchesImmutableSource(decodedStored.attempt, created.attempt))
   ) {
     return { ok: false, reason: "source_conflict" };
   }

@@ -80,6 +80,30 @@ export function createDrizzleFocusedPracticeAttemptRepository(
           }
           if (!users[0]) return { disposition: "not_found" } as const;
 
+          const existingRows = await tx
+            .select()
+            .from(focusedPracticeAttempt)
+            .where(
+              and(
+                eq(focusedPracticeAttempt.userId, input.userId),
+                eq(
+                  focusedPracticeAttempt.sourceSessionId,
+                  input.sourceSessionId
+                )
+              )
+            )
+            .limit(1)
+            .for("update");
+          const existing = hydrateAttempt(existingRows[0]);
+          if (existingRows[0] && !existing) {
+            return { disposition: "source_conflict" } as const;
+          }
+          if (existing) {
+            return existing.state === "completed"
+              ? { disposition: "already_completed", attempt: existing }
+              : { disposition: "resumed", attempt: existing };
+          }
+
           const sources = await tx
             .select({
               sessionId: interviewSession.id,
@@ -112,30 +136,6 @@ export function createDrizzleFocusedPracticeAttemptRepository(
                 input.attempt.feedbackVersion.sourceFingerprint)
           ) {
             return { disposition: "source_conflict" } as const;
-          }
-
-          const existingRows = await tx
-            .select()
-            .from(focusedPracticeAttempt)
-            .where(
-              and(
-                eq(focusedPracticeAttempt.userId, input.userId),
-                eq(
-                  focusedPracticeAttempt.sourceSessionId,
-                  input.sourceSessionId
-                )
-              )
-            )
-            .limit(1)
-            .for("update");
-          const existing = hydrateAttempt(existingRows[0]);
-          if (existingRows[0] && !existing) {
-            return { disposition: "source_conflict" } as const;
-          }
-          if (existing) {
-            return existing.state === "completed"
-              ? { disposition: "already_completed", attempt: existing }
-              : { disposition: "resumed", attempt: existing };
           }
 
           const insertedRows = await tx

@@ -18,6 +18,7 @@ import {
 } from "./feedback-dimension-coverage";
 import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+  FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION,
   parseEvidenceLimitedFeedback,
   type EvidenceLimitedFeedbackProviderSelection,
@@ -241,6 +242,60 @@ test("grounded attempt snapshots exact evidence but exposes only an allow-listed
     parseFocusedPracticeAttemptView({ ...structuredClone(view), extra: true }),
     null
   );
+  const copyMutations = {
+    title: "Attacker-authored exercise",
+    objective: "Invent unsupported context.",
+    successCriterion: "Claim readiness",
+    selfReviewPrompt: "Did you invent a better score?",
+  } as const;
+  for (const [key, replacement] of Object.entries(copyMutations)) {
+    const corrupted = structuredClone(view) as unknown as {
+      plan: Record<string, unknown>;
+    };
+    corrupted.plan[key] = replacement;
+    assert.equal(parseFocusedPracticeAttemptView(corrupted), null);
+  }
+  for (const [index, replacement] of [
+    "Ignore the grounded evidence.",
+    "Claim readiness without support.",
+  ].entries()) {
+    const corrupted = structuredClone(view) as unknown as {
+      plan: { instructions: string[] };
+    };
+    corrupted.plan.instructions[index] = replacement;
+    assert.equal(parseFocusedPracticeAttemptView(corrupted), null);
+  }
+
+  const mismatchedFeedbackVersion = {
+    schemaVersion: FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
+    rubricVersion: FEEDBACK_RUBRIC_VERSION,
+    modelVersion: "synthetic-model-v1",
+    evaluationState: "partial",
+    reviewOutcome: "coaching_review",
+    scoreWithheldReason: "rubric_coverage",
+    sourceFingerprint: SOURCE_FINGERPRINT,
+  } as const;
+  assert.equal(
+    createFocusedPracticeGroundedAttempt({
+      attemptId: "00000000-0000-4000-8000-000000000024",
+      userId: created.attempt.userId,
+      sourceSessionId: created.attempt.sourceSessionId,
+      sourceFeedbackId: created.attempt.sourceFeedbackId,
+      feedbackVersion: mismatchedFeedbackVersion,
+      plan: built.plan,
+      sourceFinding: resolved.sourceFinding,
+      startedAt: new Date("2026-08-13T00:00:00.000Z"),
+    }).state,
+    "invalid"
+  );
+  assert.equal(
+    parseAnyFocusedPracticeAttempt({
+      ...structuredClone(created.attempt),
+      feedbackVersion: mismatchedFeedbackVersion,
+    }).state,
+    "invalid"
+  );
 
   const completed = completeAnyFocusedPracticeAttempt({
     attempt: created.attempt,
@@ -260,12 +315,21 @@ test("grounded attempt snapshots exact evidence but exposes only an allow-listed
     completed.attempt.contractVersion,
     FOCUSED_PRACTICE_GROUNDED_ATTEMPT_CONTRACT_VERSION
   );
+  const completedView = presentFocusedPracticeAttempt(completed.attempt);
   assert.equal(
-    parseFocusedPracticeAttemptView(
-      structuredClone(presentFocusedPracticeAttempt(completed.attempt))
-    )?.state,
+    parseFocusedPracticeAttemptView(structuredClone(completedView))?.state,
     "completed"
   );
+  for (const key of ["sourceObservation", "sourceNextStep"] as const) {
+    const corrupted = structuredClone(completedView) as unknown as {
+      completion: { selfReview: Record<string, unknown> };
+    };
+    corrupted.completion.selfReview[key] =
+      key === "sourceObservation"
+        ? "Attacker-authored observation"
+        : "Invent unsupported context.";
+    assert.equal(parseFocusedPracticeAttemptView(corrupted), null);
+  }
 });
 
 function emptyCoverageSelection(

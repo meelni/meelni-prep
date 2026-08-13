@@ -64,7 +64,7 @@ export const DIMENSION_COVERAGE_SCHEMA_FINGERPRINT =
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical focused-practice contract changes.
 export const FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT =
-  "e99f1f0fca542a38d0d50dc6a1aef13b0eea16bda2692619d49577be75bca545";
+  "cabe0c6d65698adce1ca47b84ac13633239c897a1ff4ab6da82f777a1177a5fb";
 export const CLEAN_0001_SCHEMA_FINGERPRINT =
   "6fc56e7c409481ed74bc7307dd3eab7ab5313f7bf7a0146d9a64b83b145faff0";
 export const LEGACY_RELAUNCH_SCHEMA_FINGERPRINT =

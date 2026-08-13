@@ -67,13 +67,16 @@ test("focused-practice responses require the strict privacy-safe attempt view", 
       contractVersion: "focused-practice-plan.v2",
       durationMinutes: 5,
       title: "Make the product decision clearer",
-      objective: "State the decision and connect it to the supported evidence.",
+      objective:
+        "State one target user, one core problem, and the product choice that addresses it.",
       instructions: [
-        "Use only the grounded focus selected by Meelni.",
-        "Practice the decision aloud before saving your self-review.",
+        "Use only the grounded focus and exact interview evidence selected by Meelni; do not fill in missing context.",
+        "Revise the part that connects the chosen user and problem to a clear product decision.",
       ],
-      successCriterion: "The decision and supporting reason are explicit.",
-      selfReviewPrompt: "Did the evidence directly support the decision?",
+      successCriterion:
+        "The revision names the target user, defines the core problem precisely, and commits to one product choice.",
+      selfReviewPrompt:
+        "Are the target user, core problem, and product choice each explicit and consistent?",
       source: {
         questionId: "synthetic-question",
         questionText: "How would you improve a planning product?",

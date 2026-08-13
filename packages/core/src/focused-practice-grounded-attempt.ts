@@ -32,6 +32,7 @@ import {
 import {
   FOCUSED_PRACTICE_DIMENSION_ACTION_CODE,
   FOCUSED_PRACTICE_GROUNDED_PLAN_CONTRACT_VERSION,
+  buildFocusedPracticeGroundedPlan,
   parseAvailableFocusedPracticeGroundedPlan,
   type AvailableFocusedPracticeGroundedPlan,
 } from "./focused-practice-grounded-plan";
@@ -207,6 +208,7 @@ export function createFocusedPracticeGroundedAttempt(input: {
     !feedbackVersion ||
     !plan ||
     !sourceFinding ||
+    !feedbackMatchesFocusKind(feedbackVersion, sourceFinding) ||
     !isValidDate(input.startedAt)
   ) {
     return { state: "invalid", reason: "invalid_attempt" };
@@ -269,6 +271,7 @@ export function parseFocusedPracticeGroundedAttempt(
     !feedbackVersion ||
     !plan ||
     !sourceFinding ||
+    !feedbackMatchesFocusKind(feedbackVersion, sourceFinding) ||
     !startedAt
   ) {
     return invalidAttempt();
@@ -758,21 +761,54 @@ function parseGroundedPlanView(
   ) {
     return null;
   }
+  const roundType = value.source
+    .roundType as FocusedPracticeGroundedPlanView["source"]["roundType"];
+  const focusDimension = value.source.focusDimension as FeedbackDimension;
+  const canonicalFacet =
+    ROUND_DIMENSION_COVERAGE_CONFIG[roundType][focusDimension].facets[0];
+  if (!canonicalFacet) return null;
+  const rebuilt = buildFocusedPracticeGroundedPlan({
+    sourceQuestion: {
+      questionId: value.source.questionId,
+      questionText: value.source.questionText,
+    },
+    roundType,
+    focusIdentity: {
+      kind: "dimension_coverage_focus",
+      dimension: focusDimension,
+      facetCode: canonicalFacet.code,
+      actionCode: FOCUSED_PRACTICE_DIMENSION_ACTION_CODE,
+    },
+  });
+  if (rebuilt.state !== "available") return null;
+  const canonical = rebuilt.plan;
+  if (
+    value.title !== canonical.title ||
+    value.objective !== canonical.objective ||
+    value.instructions[0] !== canonical.instructions[0] ||
+    value.instructions[1] !== canonical.instructions[1] ||
+    value.successCriterion !== canonical.successCriterion ||
+    value.selfReviewPrompt !== canonical.selfReviewPrompt
+  ) {
+    return null;
+  }
   return Object.freeze({
     state: "available",
     contractVersion: FOCUSED_PRACTICE_GROUNDED_PLAN_CONTRACT_VERSION,
     durationMinutes: 5,
-    title: value.title,
-    objective: value.objective,
-    instructions: Object.freeze([...value.instructions] as [string, string]),
-    successCriterion: value.successCriterion,
-    selfReviewPrompt: value.selfReviewPrompt,
+    title: canonical.title,
+    objective: canonical.objective,
+    instructions: Object.freeze([...canonical.instructions] as [
+      string,
+      string,
+    ]),
+    successCriterion: canonical.successCriterion,
+    selfReviewPrompt: canonical.selfReviewPrompt,
     source: Object.freeze({
       questionId: value.source.questionId,
       questionText: value.source.questionText,
-      roundType: value.source
-        .roundType as FocusedPracticeGroundedPlanView["source"]["roundType"],
-      focusDimension: value.source.focusDimension as FeedbackDimension,
+      roundType,
+      focusDimension,
     }),
   });
 }
@@ -798,13 +834,17 @@ function parsePublicCompletion(
   }
   const review = value.selfReview;
   const response = parseResponse(review.response);
+  const focusCopy = parseCanonicalPublicFocusCopy(
+    plan,
+    review.sourceObservation,
+    review.sourceNextStep
+  );
   if (
     !response ||
+    !focusCopy ||
     review.version !== FOCUSED_PRACTICE_SELF_REVIEW_VERSION ||
     review.kind !== "self_review" ||
     review.focusDimension !== plan.source.focusDimension ||
-    !isBoundedText(review.sourceObservation, 2_000) ||
-    !isBoundedText(review.sourceNextStep, 2_000) ||
     review.successCriterion !== plan.successCriterion ||
     review.prompt !== plan.selfReviewPrompt
   ) {
@@ -815,15 +855,57 @@ function parsePublicCompletion(
     practicedAloud: true,
     selfReview: Object.freeze({
       version: FOCUSED_PRACTICE_SELF_REVIEW_VERSION,
-      kind: "self_review",
+      kind: "self_review" as const,
       focusDimension: plan.source.focusDimension,
-      sourceObservation: review.sourceObservation,
-      sourceNextStep: review.sourceNextStep,
+      sourceObservation: focusCopy.observation,
+      sourceNextStep: focusCopy.nextStep,
       successCriterion: plan.successCriterion,
       prompt: plan.selfReviewPrompt,
       response,
     }),
   });
+}
+
+function feedbackMatchesFocusKind(
+  feedbackVersion: FocusedPracticeGroundedFeedbackVersionSnapshot,
+  sourceFinding: FocusedPracticeGroundedSourceFindingSnapshot
+): boolean {
+  return feedbackVersion.schemaVersion ===
+    FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION
+    ? sourceFinding.kind === "evidence_limited_improvement"
+    : sourceFinding.kind === "dimension_coverage_focus";
+}
+
+function parseCanonicalPublicFocusCopy(
+  plan: FocusedPracticeGroundedPlanView,
+  observation: unknown,
+  nextStep: unknown
+): { observation: string; nextStep: string } | null {
+  if (typeof observation !== "string" || typeof nextStep !== "string") {
+    return null;
+  }
+  const dimension = plan.source.focusDimension;
+  const evidenceLimitedObservation = Object.values(
+    EVIDENCE_LIMITED_IMPROVEMENT_SIGNALS
+  ).some(
+    (signal) =>
+      signal.dimension === dimension && signal.observation === observation
+  );
+  const evidenceLimitedNextStep = Object.values(EVIDENCE_LIMITED_ACTIONS).some(
+    (action) => action.dimension === dimension && action.nextStep === nextStep
+  );
+  if (evidenceLimitedObservation && evidenceLimitedNextStep) {
+    return { observation, nextStep };
+  }
+
+  const dimensionCoverageMatch = ROUND_DIMENSION_COVERAGE_CONFIG[
+    plan.source.roundType
+  ][dimension].facets.some(
+    (facet) =>
+      dimensionCoverageSourceObservation(facet.label) === observation &&
+      dimensionCoverageSourceNextStep(facet.label) === nextStep
+  );
+  return dimensionCoverageMatch ? { observation, nextStep } : null;
 }
 
 function parseResponse(value: unknown): FocusedPracticeResponse | null {

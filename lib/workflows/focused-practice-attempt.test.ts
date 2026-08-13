@@ -42,7 +42,7 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
   forcedCreateDisposition: "not_found" | "source_conflict" | null = null;
   atomicDeletionPending = false;
   afterFindOwnedBySource: (() => void) | null = null;
-  beforeCreateOrLoad: (() => void) | null = null;
+  beforeCreateOrLoad: (() => void | Promise<void>) | null = null;
   beforeComplete: (() => void) | null = null;
   forcedCreateAttempt: AnyInProgressFocusedPracticeAttempt | null = null;
   forcedGetAttempt: AnyFocusedPracticeAttempt | null = null;
@@ -74,7 +74,7 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
     sourceSessionId: string;
     attempt: AnyInProgressFocusedPracticeAttempt;
   }) {
-    this.beforeCreateOrLoad?.();
+    await this.beforeCreateOrLoad?.();
     if (this.atomicDeletionPending) {
       return { disposition: "account_deletion_pending" } as const;
     }
@@ -87,26 +87,12 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
         attempt: this.forcedCreateAttempt,
       } as const;
     }
-    const source = this.sources.get(input.sourceSessionId);
-    if (!source || source.userId !== input.userId) {
-      return { disposition: "not_found" } as const;
-    }
-    if (
-      input.attempt.contractVersion === "focused-practice-attempt.v2" &&
-      input.attempt.feedbackVersion.sourceFingerprint !==
-        source.sourceFingerprint
-    ) {
-      return { disposition: "source_conflict" } as const;
-    }
     const existing = [...this.attempts.values()].find(
       (attempt) =>
         attempt.userId === input.userId &&
         attempt.sourceSessionId === input.sourceSessionId
     );
     if (existing) {
-      if (!sameImmutableSource(existing, input.attempt)) {
-        return { disposition: "source_conflict" } as const;
-      }
       if (existing.state === "completed") {
         return {
           disposition: "already_completed",
@@ -117,6 +103,17 @@ class InMemoryAttemptRepository implements FocusedPracticeAttemptRepository {
         disposition: "resumed",
         attempt: existing,
       } as const;
+    }
+    const source = this.sources.get(input.sourceSessionId);
+    if (!source || source.userId !== input.userId) {
+      return { disposition: "not_found" } as const;
+    }
+    if (
+      input.attempt.contractVersion === "focused-practice-attempt.v2" &&
+      input.attempt.feedbackVersion.sourceFingerprint !==
+        source.sourceFingerprint
+    ) {
+      return { disposition: "source_conflict" } as const;
     }
     this.attempts.set(input.attempt.attemptId, input.attempt);
     this.attemptWrites += 1;
@@ -621,6 +618,116 @@ test("twenty concurrent starts converge on one immutable attempt", async () => {
       .length,
     1
   );
+});
+
+test("an in-flight source-drift loser resumes the immutable concurrent winner", async () => {
+  const sourceFixture = dimensionCoverageSource("partial_scorecard");
+  const harness = createHarness(sourceFixture);
+  let createCalls = 0;
+  let releaseLoser!: () => void;
+  const loserRelease = new Promise<void>((resolve) => {
+    releaseLoser = resolve;
+  });
+  let markLoserBlocked!: () => void;
+  const loserBlocked = new Promise<void>((resolve) => {
+    markLoserBlocked = resolve;
+  });
+  harness.repository.beforeCreateOrLoad = async () => {
+    createCalls += 1;
+    if (createCalls === 1) {
+      markLoserBlocked();
+      await loserRelease;
+    }
+  };
+
+  const losingRequest = startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    harness.deps
+  );
+  await loserBlocked;
+  const winningRequest = await startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    harness.deps
+  );
+  assert.equal(winningRequest.ok, true);
+  if (!winningRequest.ok) return;
+  assert.equal(winningRequest.disposition, "created");
+  const currentSource = harness.repository.sources.get(
+    sourceFixture.sessionId
+  )!;
+  currentSource.sourceFingerprint = "0".repeat(64);
+  currentSource.question = {
+    ...currentSource.question!,
+    questionText: "Synthetic source text changed after the winner committed.",
+  };
+  releaseLoser();
+
+  const losingResult = await losingRequest;
+  assert.equal(losingResult.ok, true);
+  if (!losingResult.ok) return;
+  assert.equal(losingResult.disposition, "resumed");
+  assert.equal(
+    losingResult.attempt.attemptId,
+    winningRequest.attempt.attemptId
+  );
+  assert.deepEqual(losingResult.attempt, winningRequest.attempt);
+  assert.equal(harness.repository.attemptWrites, 1);
+});
+
+test("an in-flight v2 request resumes a v1 rollout winner before source revalidation", async () => {
+  const legacySource = source();
+  const legacyHarness = createHarness(legacySource);
+  const legacyResult = await startFocusedPracticeAttemptWorkflow(
+    startInput(legacySource),
+    legacyHarness.deps
+  );
+  assert.equal(legacyResult.ok, true);
+  if (
+    !legacyResult.ok ||
+    legacyResult.attempt.state !== "in_progress" ||
+    legacyResult.attempt.contractVersion !== "focused-practice-attempt.v1"
+  ) {
+    return;
+  }
+
+  const sourceFixture = evidenceLimitedSource();
+  const harness = createHarness(sourceFixture);
+  let releaseRequest!: () => void;
+  const requestRelease = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+  let markRequestBlocked!: () => void;
+  const requestBlocked = new Promise<void>((resolve) => {
+    markRequestBlocked = resolve;
+  });
+  harness.repository.beforeCreateOrLoad = async () => {
+    markRequestBlocked();
+    await requestRelease;
+  };
+
+  const inFlight = startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    harness.deps
+  );
+  await requestBlocked;
+  const legacyWinner: AnyInProgressFocusedPracticeAttempt = {
+    ...structuredClone(legacyResult.attempt),
+    attemptId: "focused-practice-rollout-winner",
+    userId: sourceFixture.userId,
+    sourceSessionId: sourceFixture.sessionId,
+  };
+  harness.repository.attempts.set(legacyWinner.attemptId, legacyWinner);
+  harness.repository.sources.get(sourceFixture.sessionId)!.sourceFingerprint =
+    "0".repeat(64);
+  releaseRequest();
+
+  const result = await inFlight;
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.disposition, "resumed");
+  assert.equal(result.attempt.contractVersion, "focused-practice-attempt.v1");
+  assert.equal(result.attempt.attemptId, legacyWinner.attemptId);
+  assert.equal(harness.repository.attemptWrites, 0);
 });
 
 test("atomic source loss and immutable-source drift fail closed", async () => {
@@ -1217,35 +1324,4 @@ function evidenceLimitedSource(): BoundedFocusedPracticeSource {
     sourceFingerprint: "b".repeat(64),
     completionStats: { feedbackModeConstraint: "evidence_limited_only" },
   };
-}
-
-function sameImmutableSource(
-  left: AnyFocusedPracticeAttempt,
-  right: AnyFocusedPracticeAttempt
-): boolean {
-  return (
-    canonicalJson({
-      feedbackVersion: left.feedbackVersion,
-      plan: left.plan,
-      sourceFinding: left.sourceFinding,
-    }) ===
-    canonicalJson({
-      feedbackVersion: right.feedbackVersion,
-      plan: right.plan,
-      sourceFinding: right.sourceFinding,
-    })
-  );
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }

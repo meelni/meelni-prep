@@ -104,6 +104,22 @@ test("repository hydration rebuilds a strict scoreless attempt without weakening
     }),
     null
   );
+  assert.equal(
+    hydrateFocusedPracticeAttemptRow({
+      ...grounded,
+      feedbackVersion: {
+        schemaVersion: "feedback.dimension-coverage.v1",
+        promptVersion: "feedback.prompt.dimension-coverage.v1",
+        rubricVersion: "pm-feedback-rubric.v3",
+        modelVersion: "synthetic-model-v1",
+        evaluationState: "partial",
+        reviewOutcome: "coaching_review",
+        scoreWithheldReason: "rubric_coverage",
+        sourceFingerprint: "c".repeat(64),
+      },
+    }),
+    null
+  );
 });
 
 test("repository hydration fails closed for denormalized version drift and invalid lifecycle", () => {
