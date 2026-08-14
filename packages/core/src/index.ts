@@ -22,6 +22,7 @@ export * from "./feedback-eligibility";
 export * from "./answer-blocks";
 export * from "./trusted-answer-block-authority";
 export * from "./shadow-feedback-artifact";
+export * from "./shadow-feedback-comparison";
 export * from "./transcript-integrity";
 export * from "./question";
 export * from "./question-taxonomy";

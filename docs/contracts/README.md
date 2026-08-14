@@ -16,6 +16,7 @@ Good candidates:
 - [focused-practice attempt lifecycle and authenticated workflow boundary](./focused-practice-attempts.md);
 - [feedback generation state, event fencing, and retry recovery](./feedback-generation.md);
 - [round-specific rubric-dimension evidence coverage and scorecard modes](./dimension-evidence-coverage.md);
+- [default-off shadow feedback execution and content-free batch comparison](./shadow-feedback-comparison.md);
 - [four-outcome customer feedback presentation and recovery](./feedback-review-outcomes.md);
 - [privacy-safe owner feedback-quality signals](./feedback-quality-signals.md);
 - [LLM observability and transcript-capture boundaries](./llm-observability.md);
