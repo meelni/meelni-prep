@@ -11,23 +11,21 @@ import {
 
 import { FeedbackSectionCard } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
-import type { FeedbackEvidence } from "@meelni/core";
+import {
+  decodeFrozenFeedbackTranscriptDisplayResponse,
+  type FeedbackEvidence,
+  type FrozenFeedbackTranscriptDisplayTurn,
+} from "@meelni/core";
 import { fetchWithDeadline } from "@/lib/http/deadline";
 
-export interface FeedbackTranscriptTurn {
-  id: string;
-  speaker: "user" | "interviewer";
-  startedAt: string | null;
-  text: string | null;
-  eventId?: string | null;
-}
+export type FeedbackTranscriptTurn = FrozenFeedbackTranscriptDisplayTurn;
 
 type CanonicalFeedbackTranscriptTurn = FeedbackTranscriptTurn & {
   eventId: string;
 };
 
-interface TranscriptResponse {
-  turns: FeedbackTranscriptTurn[];
+export function buildFrozenFeedbackTranscriptUrl(sessionId: string): string {
+  return `/api/session/${encodeURIComponent(sessionId)}/transcript?scope=frozen`;
 }
 
 export function useEvidenceTranscript(sessionId: string) {
@@ -61,12 +59,15 @@ export function useEvidenceTranscript(sessionId: string) {
     setLoading(true);
     setLoaded(false);
     setError(null);
-    fetchWithDeadline(`/api/session/${sessionId}/transcript`, {
+    fetchWithDeadline(buildFrozenFeedbackTranscriptUrl(sessionId), {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("Transcript could not be loaded.");
-        return (await response.json()) as TranscriptResponse;
+        const payload: unknown = await response.json();
+        const decoded = decodeFrozenFeedbackTranscriptDisplayResponse(payload);
+        if (!decoded) throw new Error("Transcript could not be loaded.");
+        return decoded;
       })
       .then((response) => {
         if (active) {
@@ -152,6 +153,8 @@ export function FeedbackTranscriptSection({
   navigationError,
   turns,
   onRetry,
+  title = "Interview transcript",
+  description,
 }: {
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -160,11 +163,14 @@ export function FeedbackTranscriptSection({
   navigationError: string | null;
   turns: FeedbackTranscriptTurn[];
   onRetry: () => void;
+  title?: string;
+  description?: string;
 }) {
   const contentId = "feedback-transcript-content";
   return (
     <FeedbackSectionCard
-      title="Interview transcript"
+      title={title}
+      description={description}
       icon={<MessageSquare className="h-5 w-5" aria-hidden="true" />}
       action={
         <Button

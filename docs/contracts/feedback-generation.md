@@ -233,6 +233,46 @@ render an explicit unavailable state.
 
 Deadline-ended interviews whose room cleanup has not been acknowledged return `settling` with `retryable: false`. Clients poll that state only with `GET`; neither automatic nor manual recovery can dispatch feedback until cleanup settles.
 
+### Saved-interview processing workspace
+
+Transient `settling`, `pending`, and `processing` GET responses may include the
+optional closed projection `saved-interview.workspace.v1`. The projection is
+built from the same single owner-scoped historical session/question read used
+by the lifecycle request; a retired question remains valid context for its
+saved session. Its complete shape is:
+
+| Field              | Contract                                                                 |
+| ------------------ | ------------------------------------------------------------------------ |
+| `version`          | Exact `saved-interview.workspace.v1`.                                    |
+| `saved`            | Exact `true`; it does not imply that feedback is terminal.               |
+| `roundType`        | One canonical interview round type.                                      |
+| `question`         | Bounded historical question text and nullable company, or `null`.        |
+| `frozenTranscript` | Exact `pending`, `ready`, or `unavailable` availability, never row data. |
+
+The projection contains no user, session, room, transcript turn, answer,
+feedback result, generation event, provider field, raw error, or internal
+failure code. It is customer context, not score or processing authority. The
+browser continues to derive recovery only from the top-level lifecycle
+contract and never infers a score, completion tier, or provider state from the
+workspace.
+
+`frozenTranscript` is `pending` while the session is `ending`. A version-1
+terminal snapshot is `ready` only when its immutable cutoff and frozen time are
+finite, ordered (`frozen time >= cutoff`), and its evidence state is `complete`
+or `partial`; other version-1 terminal evidence is `unavailable`. A terminal
+legacy session retains the existing bounded legacy frozen-read behavior. No
+active or ending session may use that legacy fallback. The client retains the last strictly decoded
+workspace while later rolling-compatible lifecycle responses omit the optional
+field, and clears it when the route changes to another session.
+
+The processing UI shows the saved question and round, one textual durable-stage
+progress list, explicit delayed/retryable/paused copy, Interview History, and
+frozen transcript availability. Automatic polling keeps its existing bounded
+budget. Poll exhaustion removes active-work animation and exposes a read-only
+`Check again` action. Only the stage title and description form a polite,
+atomic live region; question context, actions, progress history, and transcript
+content remain outside it so repeated polls do not announce the full workspace.
+
 Eligible user-ended feedback is dispatched before room cleanup and credit
 convergence. Production evaluation requests cap output at 2,000 completion
 tokens, cap one request at 75 seconds, and disable SDK-level retries. The typed

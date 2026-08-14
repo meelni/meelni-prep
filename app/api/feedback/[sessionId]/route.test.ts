@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/db/sessions", () => ({
   getSessionById: vi.fn(),
+  getSessionWithSelectedQuestionById: vi.fn(),
   isSessionOwnedByUser: vi.fn(),
 }));
 vi.mock("@/lib/db/feedback", () => ({
@@ -72,7 +73,11 @@ import {
 } from "@meelni/core";
 
 import { getFeedbackBySessionId } from "@/lib/db/feedback";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import {
+  getSessionById,
+  getSessionWithSelectedQuestionById,
+  isSessionOwnedByUser,
+} from "@/lib/db/sessions";
 import {
   getFeedbackEvidenceTurns,
   getFrozenFeedbackEvaluationEvidence,
@@ -96,7 +101,26 @@ describe("/api/feedback/[sessionId]", () => {
       roundType: "product_sense",
       lifecycleState: "completed",
       terminalReason: "user_end",
+      transcriptEvidenceVersion: 1,
+      transcriptEvidenceState: "complete",
+      transcriptCutoffAt: new Date("2026-08-14T12:00:00.000Z"),
+      transcriptEvidenceFrozenAt: new Date("2026-08-14T12:00:01.000Z"),
     } as never);
+    vi.mocked(getSessionWithSelectedQuestionById).mockImplementation(
+      async (sessionId, database) => {
+        const session = await getSessionById(sessionId, database);
+        return session
+          ? ({
+              session,
+              question: {
+                id: "synthetic-question",
+                text: "How would you improve a synthetic planning product?",
+                company: "Synthetic Co",
+              },
+            } as never)
+          : null;
+      }
+    );
     vi.mocked(getFeedbackEvidenceTurns).mockResolvedValue([
       {
         eventId: "writer:1",
@@ -173,6 +197,58 @@ describe("/api/feedback/[sessionId]", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "settling",
       retryable: false,
+    });
+  });
+
+  it("projects saved context without transcript, identity, or provider internals", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({ status: "processing" }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      status: "processing",
+      workspace: {
+        version: "saved-interview.workspace.v1",
+        saved: true,
+        roundType: "product_sense",
+        question: {
+          text: "How would you improve a synthetic planning product?",
+          company: "Synthetic Co",
+        },
+        frozenTranscript: "ready",
+      },
+    });
+    const serializedWorkspace = JSON.stringify(payload.workspace);
+    expect(serializedWorkspace).not.toContain(SESSION_ID);
+    expect(serializedWorkspace).not.toContain("feedback/generate.requested");
+    expect(serializedWorkspace).not.toContain("synthetic-writer");
+    expect(serializedWorkspace).not.toContain("provider");
+    expect(Object.keys(payload.workspace).sort()).toEqual(
+      ["frozenTranscript", "question", "roundType", "saved", "version"].sort()
+    );
+  });
+
+  it("marks ending transcript access pending without exposing a legacy tail", async () => {
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(undefined as never);
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "ending",
+      terminalReason: "user_end",
+      transcriptEvidenceVersion: null,
+      transcriptEvidenceState: null,
+      transcriptCutoffAt: null,
+      transcriptEvidenceFrozenAt: null,
+    } as never);
+
+    const response = await GET(request(), PARAMS);
+
+    await expect(response.json()).resolves.toMatchObject({
+      status: "settling",
+      workspace: { frozenTranscript: "pending" },
     });
   });
 

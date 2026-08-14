@@ -8,7 +8,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
-import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
+import {
+  getSessionById,
+  getSessionWithSelectedQuestionById,
+  isSessionOwnedByUser,
+} from "@/lib/db/sessions";
 import {
   getFeedbackBySessionId,
   hasValidFeedbackLifecycleFields,
@@ -33,6 +37,7 @@ import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/eva
 import {
   buildCompletedFeedbackLifecycleResponse,
   buildDispatchFailedFeedbackLifecycleResponse,
+  buildSavedInterviewWorkspace,
   buildSkippedFeedbackLifecycleResponse,
 } from "@/lib/feedback-lifecycle-response";
 import {
@@ -107,7 +112,23 @@ export async function GET(
             );
           }
 
-          const session = await getSessionById(sessionId, database);
+          const sessionContext = await getSessionWithSelectedQuestionById(
+            sessionId,
+            database
+          );
+          const session = sessionContext?.session ?? null;
+          const selectedQuestion = sessionContext?.question ?? null;
+          const workspace = session
+            ? buildSavedInterviewWorkspace({
+                roundType: session.roundType,
+                lifecycleState: session.lifecycleState,
+                transcriptEvidenceVersion: session.transcriptEvidenceVersion,
+                transcriptEvidenceState: session.transcriptEvidenceState,
+                transcriptCutoffAt: session.transcriptCutoffAt,
+                transcriptEvidenceFrozenAt: session.transcriptEvidenceFrozenAt,
+                question: selectedQuestion,
+              })
+            : null;
           if (session) {
             correlationId = readOwnedInterviewSessionCorrelationId({
               kind: "owned_interview_session",
@@ -142,6 +163,7 @@ export async function GET(
                     ? "Your interview is saved, but final processing is delayed. Retry the handoff to continue."
                     : "Your interview is saved, but final processing is taking longer. Recovery will continue automatically."
                   : "Your interview is saved. We’re finishing the transcript and will begin feedback automatically.",
+                ...(workspace ? { workspace } : {}),
               },
               { headers: { "Cache-Control": "private, no-store" } }
             );
@@ -167,6 +189,7 @@ export async function GET(
                 delayed,
                 message:
                   "The interview is saved and its room is still being closed safely.",
+                ...(workspace ? { workspace } : {}),
               },
               { headers: { "Cache-Control": "private, no-store" } }
             );
@@ -256,6 +279,7 @@ export async function GET(
                   status: feedbackRecord.dispatchStatus,
                   retryable,
                 },
+                ...(workspace ? { workspace } : {}),
               },
               {
                 headers: {
@@ -300,6 +324,7 @@ export async function GET(
                     new Date(feedbackRecord.processingStartedAt).getTime() >=
                     INTERVIEW_LIFECYCLE_SLOS.feedback_completion.targetMs,
                 estimatedTimeRemaining,
+                ...(workspace ? { workspace } : {}),
               },
               {
                 headers: {
