@@ -35,6 +35,16 @@ Loopback HTTP is accepted only for local development.
   and uses the returned `writer_generation` on all turns, markers, and its
   writer-scoped settlement. A replacement generation fences older writers but
   does not remove their settlement obligations.
+- Writer-registration timeout, rejection, or missing signing configuration is
+  a pre-output fatal boundary. The runtime disables input, closes any local
+  session, deletes the room, and shuts down before attempting a bounded direct
+  signed `runtime_writer_registration_failed` lifecycle report that does not
+  require a registered writer. The web transaction terminalizes the session,
+  preserves cleanup intent, and releases an active reservation or refunds a
+  consumed provider-fault reservation idempotently. If no signing authority is
+  available, room deletion still completes first; the one-minute authoritative
+  presence scan observes the absent startup room and performs the same terminal
+  credit convergence without treating a transient younger absence as failure.
 - The outbox is process-local, memory-only, and bounded at 1,000 identities.
   It reserves one control slot for mandatory settlement; transcript data cannot
   consume that capacity.
@@ -187,7 +197,9 @@ keep the relaunch gate off until both sides converge.
 Rollback may leave the additive marker table and policies in place. Do not
 restore browser transcript-write endpoints, browser raw persistence, public
 transcript writes, or unmasked session replay. If the runtime writer is
-unavailable, pause new interviews and keep relaunch disabled.
+unavailable, pause new interviews and keep relaunch disabled. A failed
+pre-output registration must leave no room accepting media and no active
+reservation past the missing-room recovery window.
 
 Deploy the transcript chain from `0011_transcript_ingest` through
 `0013_runtime_settlement`, the web ingest/finalization code, and the voice

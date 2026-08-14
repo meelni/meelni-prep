@@ -61,7 +61,7 @@ test("atomic timeout claim prevents a concurrent restore before room deletion", 
   assert.deepEqual(fixture.calls, ["claim", "terminate", "end"]);
 });
 
-test("due enforcement recovers authoritative presence joined before the cutoff", async () => {
+test("due enforcement recovers dual presence joined before the cutoff", async () => {
   const cases = [
     {
       label: "JOINED at cutoff minus 1ms",
@@ -82,7 +82,12 @@ test("due enforcement recovers authoritative presence joined before the cutoff",
         present: true,
         joined: true,
         joinedAt,
-        agent: null,
+        agent: {
+          identity: "agent-worker",
+          joinedAt: new Date(joinedAt.getTime() - 1),
+        },
+        targetSource: "participant",
+        targetReason: "participant_exact",
       });
 
     const result = await run(fixture.deps);
@@ -101,6 +106,26 @@ test("due enforcement recovers authoritative presence joined before the cutoff",
     assert.equal(fixture.current.version, 5, label);
     assert.deepEqual(fixture.calls, [], label);
   }
+});
+
+test("due reconnect enforcement refuses candidate-only recovery", async () => {
+  const fixture = createFixture(new Date(DEADLINE));
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", {
+      present: true,
+      joined: true,
+      joinedAt: new Date("2026-07-10T08:00:29.999Z"),
+      agent: null,
+      targetSource: "none",
+      targetReason: "agent_absent",
+    });
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.disposition, "enforced");
+  assert.equal(fixture.current.state, "completed");
+  assert.equal(fixture.calls.includes("claim"), true);
 });
 
 test("due presence recovery requires the exact grace generation and cutoff", async () => {

@@ -29,6 +29,7 @@ ALLOWED_PROVIDER_FAILURE_CODES = set(PROVIDER_FAILURE_CODES.values()) | {
     DEFAULT_PROVIDER_FAILURE_CODE,
     "voice_session_construction_failed",
     "voice_session_start_failed",
+    "runtime_writer_registration_failed",
     "deadline_enforcement_failed",
     "initial_greeting_failed",
 }

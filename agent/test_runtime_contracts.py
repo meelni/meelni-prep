@@ -87,6 +87,7 @@ from shared.transcript_ingest import (
     is_runtime_writer_registration,
     is_retryable_status,
     parse_runtime_settlement_request,
+    persist_runtime_failure_event,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
@@ -635,11 +636,16 @@ class RuntimeContractTests(unittest.TestCase):
         )
         self.assertEqual(DEFAULT_PROVIDER_FAILURE_CODE, fixture["fallback_code"])
         self.assertEqual(fixture["reserved_codes"], [])
+        pre_writer_codes = set(fixture["pre_writer_codes"])
+        self.assertEqual(pre_writer_codes, {"runtime_writer_registration_failed"})
+        for code in pre_writer_codes:
+            self.assertIn(f'"code": "{code}"', source)
         deployed_codes = (
             set(PROVIDER_FAILURE_CODES.values())
             | {DEFAULT_PROVIDER_FAILURE_CODE}
             | literal_codes["stop_runtime_and_report"]
             | literal_codes["schedule_provider_failure_report"]
+            | pre_writer_codes
         )
         self.assertEqual(deployed_codes, set(fixture["deployed_codes"]))
         self.assertEqual(ALLOWED_PROVIDER_FAILURE_CODES, deployed_codes)
@@ -678,6 +684,20 @@ class RuntimeContractTests(unittest.TestCase):
         greeting = source.index("await speak_mock_interview_opening(")
         self.assertLess(registration, session_start)
         self.assertLess(registration, greeting)
+
+    def test_writer_registration_failure_stops_first_and_uses_the_pre_writer_reporter(self):
+        source = (Path(__file__).parent / "interview" / "agent.py").read_text()
+
+        registration = source.index("transcript_ingest_secret: str | None = None")
+        resolution = source.index("resolve_transcript_ingest_secret", registration)
+        cleanup = source.index("stop_provider_runtime_then_report(", resolution)
+        reporter = source.index("persist_runtime_failure_event(", resolution)
+        session_start = source.index("await session.start(")
+
+        self.assertLess(registration, resolution)
+        self.assertLess(resolution, cleanup)
+        self.assertLess(reporter, session_start)
+        self.assertIn('"runtime_writer_registration_failed"', source)
 
     def test_server_settlement_packet_uses_the_rtc_reliable_enum(self):
         source = (Path(__file__).parent / "interview" / "agent.py").read_text()
@@ -2310,6 +2330,77 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
                 transport=invalid_disposition,
                 now=lambda: 1783650000,
             )
+
+    async def test_pre_writer_runtime_failure_retries_one_signed_lifecycle_identity(self):
+        event = create_runtime_event(
+            event_id="provider-failure:session-1:runtime-writer-registration",
+            session_id="session-1",
+            event_type="provider_failed",
+            occurred_at="2026-07-10T08:30:00.000Z",
+            runtime_ref={"provider": "livekit", "id": "room-1"},
+            failure={
+                "reason": "provider_failure",
+                "code": "runtime_writer_registration_failed",
+                "retryable": True,
+            },
+        )
+        requests = []
+        outcomes = [IngestResponse(503), IngestResponse(200)]
+
+        async def transport(_url, body, headers):
+            requests.append((body, headers))
+            return outcomes.pop(0)
+
+        async def sleep(_delay):
+            return None
+
+        persisted = await persist_runtime_failure_event(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            event=event,
+            transport=transport,
+            sleep=sleep,
+            now=lambda: 1783650000,
+        )
+
+        self.assertTrue(persisted)
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(requests[0][0], requests[1][0])
+        self.assertEqual(
+            json.loads(requests[0][0]),
+            {"sessionId": "session-1", "runtimeEvent": event},
+        )
+        self.assertEqual(
+            requests[0][1][SIGNATURE_HEADER],
+            requests[1][1][SIGNATURE_HEADER],
+        )
+
+    async def test_pre_writer_failure_without_a_signer_still_stops_runtime_boundaries(self):
+        calls = []
+
+        async def close_session():
+            calls.append("close")
+
+        async def terminate_room():
+            calls.append("terminate")
+
+        async def report_failure():
+            calls.append("report")
+            return False
+
+        persisted = await stop_provider_runtime_then_report(
+            disable_input=lambda: calls.append("disable"),
+            close_session=close_session,
+            terminate_room=terminate_room,
+            shutdown=lambda: calls.append("shutdown"),
+            report_failure=report_failure,
+        )
+
+        self.assertFalse(persisted)
+        self.assertEqual(
+            calls,
+            ["disable", "close", "terminate", "shutdown", "report"],
+        )
 
     async def test_exact_settlement_request_retries_after_first_operation_failure(self):
         dispatcher = RuntimeSettlementRequestDispatcher()

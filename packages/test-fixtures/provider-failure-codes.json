@@ -8,6 +8,7 @@
     "voice_runtime_provider_failed",
     "voice_session_construction_failed",
     "voice_session_start_failed",
+    "runtime_writer_registration_failed",
     "deadline_enforcement_failed",
     "initial_greeting_failed"
   ],
@@ -16,6 +17,7 @@
     "voice_session_start_failed",
     "initial_greeting_failed"
   ],
+  "pre_writer_codes": ["runtime_writer_registration_failed"],
   "scheduled_report_codes": ["deadline_enforcement_failed"],
   "mapper_codes": [
     "stt_provider_failed",

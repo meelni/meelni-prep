@@ -678,7 +678,11 @@ async def register_runtime_writer(
     """Register a stable writer identity before output and return its generation."""
     if not is_runtime_writer_registration(registration):
         raise TranscriptIngestError("invalid runtime writer registration")
-    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
+    if (
+        isinstance(attempts, bool)
+        or not isinstance(attempts, int)
+        or attempts <= 0
+    ):
         raise TranscriptIngestError("registration attempts must be positive")
     if (
         isinstance(retry_delay_seconds, bool)
@@ -750,6 +754,66 @@ async def register_runtime_writer(
         return generation
 
     raise TranscriptIngestError("runtime writer registration unavailable")
+
+
+async def persist_runtime_failure_event(
+    *,
+    ingest_url: str,
+    livekit_api_secret: str | bytes,
+    event: Dict[str, object],
+    transport: Transport,
+    attempts: int = 5,
+    retry_delay_seconds: float = 0.25,
+    sleep: Sleep = asyncio.sleep,
+    now: Now = time.time,
+) -> bool:
+    """Persist a signed provider failure before a transcript writer exists."""
+    if not is_runtime_event(event) or event.get("type") != "provider_failed":
+        raise TranscriptIngestError("invalid runtime lifecycle event")
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
+        raise TranscriptIngestError("runtime failure attempts must be positive")
+    if (
+        isinstance(retry_delay_seconds, bool)
+        or not isinstance(retry_delay_seconds, (int, float))
+        or retry_delay_seconds < 0
+    ):
+        raise TranscriptIngestError(
+            "runtime failure retry delay must be non-negative"
+        )
+    if not callable(transport) or not callable(sleep) or not callable(now):
+        raise TranscriptIngestError("runtime failure adapters must be callable")
+
+    validated_url = validate_internal_ingest_url(ingest_url)
+    signing_key = derive_ingest_signing_key(livekit_api_secret)
+    body = canonical_json_bytes(
+        {"sessionId": str(event["session_id"]), "runtimeEvent": event}
+    )
+
+    for attempt in range(attempts):
+        timestamp = int(now())
+        if timestamp <= 0:
+            raise TranscriptIngestError("request clock returned an invalid timestamp")
+        headers = {
+            "content-type": "application/json",
+            TIMESTAMP_HEADER: str(timestamp),
+            SIGNATURE_HEADER: sign_ingest_body(signing_key, timestamp, body),
+        }
+        try:
+            response = await transport(validated_url, body, headers)
+        except Exception:
+            if attempt + 1 >= attempts:
+                return False
+            await sleep(float(retry_delay_seconds))
+            continue
+        if not isinstance(response, IngestResponse):
+            raise TranscriptIngestError("transport returned an invalid response")
+        if 200 <= response.status <= 299:
+            return True
+        if not is_retryable_status(response.status) or attempt + 1 >= attempts:
+            return False
+        await sleep(float(retry_delay_seconds))
+
+    return False
 
 
 class TranscriptIngestQueue:

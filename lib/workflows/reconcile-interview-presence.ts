@@ -1,7 +1,13 @@
 import {
+  createInterviewRuntimeEvent,
+  type InterviewRuntimeEvent,
+} from "@meelni/agent";
+import {
   createDrizzleInterviewReconnectStore,
+  type InterviewReconnectSession,
   type InterviewReconnectStore,
 } from "@/lib/db/session-reconnects";
+import { createDrizzleInterviewRuntimeFailureStore } from "@/lib/db/interview-runtime-events";
 import {
   inspectInterviewParticipantPresence,
   type InterviewParticipantPresence,
@@ -14,6 +20,12 @@ import {
 } from "./handle-livekit-interview-event";
 import { scheduleInterviewReconnect } from "./schedule-interview-reconnect";
 import { convergeDrizzleInterviewCreditSettlement } from "@/lib/db/interview-credit-settlement";
+import {
+  ingestInterviewRuntimeEvent,
+  type IngestInterviewRuntimeEventResult,
+} from "./ingest-interview-runtime-event";
+
+export const INTERVIEW_MISSING_RUNTIME_FAILURE_GRACE_MS = 60_000;
 
 export interface ReconcileInterviewPresenceInput {
   sessionId: string;
@@ -36,6 +48,10 @@ export interface ReconcileInterviewPresenceDeps {
     participantKind: number;
     occurredAt: Date;
   }): Promise<HandleLiveKitInterviewEventResult>;
+  failMissingRuntime(input: {
+    requestSessionId: string;
+    event: InterviewRuntimeEvent;
+  }): Promise<IngestInterviewRuntimeEventResult>;
 }
 
 export type ReconcileInterviewPresenceResult =
@@ -49,6 +65,8 @@ export type ReconcileInterviewPresenceResult =
         | "present"
         | "connecting"
         | "activated"
+        | "agent_absent"
+        | "failed"
         | "absence_observed"
         | "reconnecting"
         | "recovered"
@@ -99,9 +117,43 @@ export async function reconcileInterviewPresenceWorkflow(
 
   if (current.state === "connecting") {
     if (
+      current.startContractVersion === 1 &&
+      inspected.data.roomPresent === false &&
+      missingRuntimeFailureIsDue(current, checkedAt)
+    ) {
+      const failed = await deps.failMissingRuntime({
+        requestSessionId: current.sessionId,
+        event: createInterviewRuntimeEvent({
+          event_id: `presence-room-absent:${current.sessionId}:${current.version}:${checkedAt.getTime()}`,
+          session_id: current.sessionId,
+          type: "provider_failed",
+          occurred_at: checkedAt.toISOString(),
+          runtime_ref: { provider: "livekit", id: current.roomName },
+          failure: {
+            reason: "provider_failure",
+            code: "voice_runtime_provider_failed",
+            retryable: true,
+          },
+        }),
+      });
+      if (failed.ok) return { ok: true, disposition: "failed" };
+      if (failed.reason === "not_found") {
+        return { ok: false, disposition: "not_found" };
+      }
+      if (failed.reason === "session_closed") {
+        return { ok: true, disposition: "terminal" };
+      }
+      return { ok: false, disposition: "stale_event" };
+    }
+
+    const activeInterviewer =
+      inspected.data.targetSource === "participant"
+        ? inspected.data.agent
+        : null;
+    if (
       !inspected.data.present ||
       !inspected.data.joined ||
-      !inspected.data.agent
+      !activeInterviewer
     ) {
       return { ok: true, disposition: "connecting" };
     }
@@ -126,9 +178,9 @@ export async function reconcileInterviewPresenceWorkflow(
         eventId: `presence:agent:${current.sessionId}:${input.deliveryId}`,
         eventName: "participant_joined",
         roomName: current.roomName,
-        participantIdentity: inspected.data.agent.identity,
+        participantIdentity: activeInterviewer.identity,
         participantKind: 4,
-        occurredAt: inspected.data.agent.joinedAt ?? checkedAt,
+        occurredAt: activeInterviewer.joinedAt ?? checkedAt,
       });
       if (!agent.ok) return failedTransportReconciliation(agent);
     } else {
@@ -158,6 +210,7 @@ export async function reconcileInterviewPresenceWorkflow(
       !inspected.data.joined ||
       !inspected.data.joinedAt ||
       !Number.isFinite(inspected.data.joinedAt.getTime()) ||
+      !hasActiveInterviewerPresence(inspected.data) ||
       !current.reconnectDeadlineAt ||
       recoveryObservedAt.getTime() >= current.reconnectDeadlineAt.getTime()
     ) {
@@ -186,7 +239,12 @@ export async function reconcileInterviewPresenceWorkflow(
   }
 
   if (inspected.data.present) {
-    return { ok: true, disposition: "present" };
+    return {
+      ok: true,
+      disposition: hasActiveInterviewerPresence(inspected.data)
+        ? "present"
+        : "agent_absent",
+    };
   }
 
   const loss = await deps.handleTransportEvent({
@@ -207,8 +265,25 @@ export async function reconcileInterviewPresenceWorkflow(
   return { ok: true, disposition: "absence_observed" };
 }
 
+function hasActiveInterviewerPresence(
+  presence: InterviewParticipantPresence
+): boolean {
+  return presence.agent !== null && presence.targetSource === "participant";
+}
+
+function missingRuntimeFailureIsDue(
+  session: InterviewReconnectSession,
+  checkedAt: Date
+): boolean {
+  return (
+    checkedAt.getTime() - session.lastTransitionAt.getTime() >=
+    INTERVIEW_MISSING_RUNTIME_FAILURE_GRACE_MS
+  );
+}
+
 export function createReconcileInterviewPresenceDeps(): ReconcileInterviewPresenceDeps {
   const store = createDrizzleInterviewReconnectStore();
+  const runtimeFailureStore = createDrizzleInterviewRuntimeFailureStore();
   return {
     store,
     inspectPresence: inspectInterviewParticipantPresence,
@@ -217,6 +292,11 @@ export function createReconcileInterviewPresenceDeps(): ReconcileInterviewPresen
         store,
         scheduleReconnect: scheduleInterviewReconnect,
         settleCredit: convergeDrizzleInterviewCreditSettlement,
+      }),
+    failMissingRuntime: (input) =>
+      ingestInterviewRuntimeEvent({
+        ...input,
+        store: runtimeFailureStore,
       }),
   };
 }

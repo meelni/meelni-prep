@@ -125,6 +125,7 @@ export interface SentInterviewRoomData {
 }
 
 export interface InterviewParticipantPresence {
+  roomPresent?: boolean;
   present: boolean;
   joined: boolean;
   joinedAt: Date | null;
@@ -1223,6 +1224,7 @@ export async function inspectInterviewParticipantPresence(
       }
     }
     return providerSuccess("livekit", {
+      roomPresent: true,
       present,
       joined,
       joinedAt:
@@ -1236,6 +1238,7 @@ export async function inspectInterviewParticipantPresence(
   } catch (error) {
     if (isLiveKitNotFoundError(error)) {
       return providerSuccess("livekit", {
+        roomPresent: false,
         present: false,
         joined: false,
         joinedAt: null,
