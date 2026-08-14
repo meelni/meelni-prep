@@ -283,6 +283,13 @@ PR-sized children:
 - SAV-445 — versioned shadow artifact and default-off storage contract;
 - SAV-447 — shadow evaluator and comparison with batch authority.
 
+Implementation status (2026-08-14): the artifact/storage slice adds a strict
+content-minimized key/value/set contract and a separate immutable service-only
+table behind an opaque default-off write context. It does not schedule work,
+invoke a provider, participate in feedback lifecycle reads, or affect customer
+feedback, progress, insights, or billing. Account export/deletion cover the
+artifact; no shorter retention period is inferred.
+
 ## Merge train and task ownership
 
 SAV-434, this documentation slice, merges first. The following lanes may then

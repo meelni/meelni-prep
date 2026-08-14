@@ -24,6 +24,7 @@ import {
   interviewSession,
   livekitReconnectRateLimit,
   sessionQuestion,
+  shadowFeedbackArtifact,
   stripeEventLog,
   stripeCustomerMapping,
   transcriptEvidenceWriterCutoff,
@@ -843,6 +844,12 @@ export async function deleteUserApplicationData(
     await tx
       .delete(focusedPracticeAttempt)
       .where(eq(focusedPracticeAttempt.userId, userId));
+    // Shadow artifacts are non-authoritative but remain account data. Remove
+    // them explicitly before the session graph; the composite FK also cascades
+    // as a defense for any future deletion path.
+    await tx
+      .delete(shadowFeedbackArtifact)
+      .where(eq(shadowFeedbackArtifact.userId, userId));
 
     for (const { id: sessionId } of sessions) {
       await tx.delete(feedback).where(eq(feedback.sessionId, sessionId));

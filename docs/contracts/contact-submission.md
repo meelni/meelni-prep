@@ -68,7 +68,7 @@ Operational logs may contain only fixed event and result codes. They must not co
 
 Contact-content retention is intentionally not encoded by SAV-182. The public policy precisely distinguishes account-linked deletion from separately verified communication deletion. Product/Legal must still accept a maximum ordinary retention period before launch; an arbitrary expiry timestamp would not itself delete data and must not be presented as policy.
 
-Account export schema `1.4.0` continues to include explicit safe fields for the signed-in
+Account export schema `1.5.0` continues to include explicit safe fields for the signed-in
 user's linked contact submissions. It excludes idempotency keys, limiter state,
 operator audit rows, and other users' or anonymous submissions. Account
 deletion removes linked submissions and their cascading access audits; it does

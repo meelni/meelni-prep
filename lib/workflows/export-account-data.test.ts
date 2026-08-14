@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createShadowFeedbackArtifactKey,
+  SHADOW_FEEDBACK_ARTIFACT_VERSION,
+} from "@meelni/core";
+
+import {
   createAccountDataExport,
   sanitizeUserValue,
 } from "./export-account-data";
@@ -108,6 +113,10 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
           updatedAt: new Date("2026-07-10T15:31:00.000Z"),
         },
       ],
+      shadowFeedbackArtifacts: [
+        { userId: "user-one", artifact: shadowArtifact("session-one") },
+        { userId: "user-two", artifact: shadowArtifact("session-other") },
+      ],
       contactSubmissions: [
         {
           userId: "user-one",
@@ -145,7 +154,7 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
     },
   });
 
-  assert.equal(result.schemaVersion, "1.4.0");
+  assert.equal(result.schemaVersion, "1.5.0");
   assert.equal(result.account.id, "user-one");
   assert.deepEqual(result.account.streak, {
     current: 4,
@@ -188,6 +197,9 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
       updatedAt: "2026-07-10T15:45:00.000Z",
     },
   ]);
+  assert.deepEqual(result.practice.shadowFeedbackArtifacts, [
+    shadowArtifact("session-one"),
+  ]);
   assert.deepEqual(result.communications.contactSubmissions, [
     {
       receiptId: "contact-one",
@@ -226,6 +238,44 @@ test("account export is versioned, user-scoped, and uses explicit safe practice 
   assert.equal("shareAnonymousData" in (result.settings ?? {}), false);
 });
 
+test("account export fails closed on unknown shadow artifact versions", () => {
+  const artifact = shadowArtifact("session-one");
+  assert.throws(
+    () =>
+      createAccountDataExport({
+        authenticatedUser: { id: "user-one" },
+        source: {
+          account: null,
+          settings: null,
+          interviews: [],
+          bookmarks: [],
+          practiceSets: [],
+          focusedPracticeAttempts: [],
+          feedbackQualitySignals: [],
+          shadowFeedbackArtifacts: [
+            {
+              userId: "user-one",
+              artifact: {
+                ...artifact,
+                contractVersion: "feedback.shadow-artifact.v0",
+              },
+            },
+          ],
+          contactSubmissions: [],
+          achievements: [],
+          insights: [],
+          subscription: null,
+          usage: [],
+          payments: [],
+          creditGrants: [],
+          creditReservations: [],
+          creditTransactions: [],
+        },
+      }),
+    /version_unsupported/
+  );
+});
+
 test("nested user content is recursively stripped of secrets and provider operations", () => {
   const sanitized = sanitizeUserValue({
     text: "User-authored answer",
@@ -242,3 +292,45 @@ test("nested user content is recursively stripped of secrets and provider operat
     nested: { evidence: [{ quote: "safe" }] },
   });
 });
+
+function shadowArtifact(sessionLabel: string) {
+  const sessionId =
+    sessionLabel === "session-one"
+      ? "44500000-0000-4000-8000-000000000445"
+      : "44500000-0000-4000-8000-000000000446";
+  return {
+    contractVersion: SHADOW_FEEDBACK_ARTIFACT_VERSION,
+    key: createShadowFeedbackArtifactKey({
+      sessionId,
+      trustedBlockIdentity: {
+        contractVersion: "trusted-answer-block-identity.v1",
+        answerBlockId: "answer-block:0001",
+        identity: `trusted-answer-block.v1:${"a".repeat(64)}`,
+      },
+      rubricVersion: "pm-feedback-rubric.v3",
+      promptVersion: "feedback.prompt.dimension-coverage.v1",
+      selectionSchemaVersion: "feedback.dimension-coverage.selection.v1",
+      modelVersion: "synthetic-shadow-model.v1",
+    }),
+    outcome: {
+      state: "completed" as const,
+      roundType: "product_sense" as const,
+      mode: "coaching_review" as const,
+      dimensions: {
+        structure: { score: null, facetCodes: [] },
+        clarity: { score: null, facetCodes: [] },
+        insight: { score: null, facetCodes: [] },
+        communication: { score: null, facetCodes: [] },
+        leadership: { score: null, facetCodes: [] },
+      },
+    },
+    metrics: {
+      durationMs: 500,
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    },
+    completedAt: "2026-08-14T10:00:00.000Z",
+  };
+}
