@@ -60,18 +60,21 @@ export interface FeedbackGenerationStore {
     sessionId: string;
     eventId: string;
     now: Date;
+    deadlineAt?: Date;
   }): Promise<FeedbackGenerationRecord | null>;
   complete(input: {
     sessionId: string;
     eventId: string;
     evaluation: FeedbackEvaluationResult;
     processingDurationMs: number;
+    deadlineAt?: Date;
   }): Promise<boolean>;
   skip(input: {
     sessionId: string;
     eventId: string;
     reason: SkippedFeedbackOutcomeReason;
     completionTier?: "insufficient";
+    deadlineAt?: Date;
   }): Promise<boolean>;
   fail(input: {
     sessionId: string;
@@ -135,7 +138,7 @@ export function createDrizzleFeedbackGenerationStore(
       return row ? mapRecord(row) : null;
     },
 
-    async claim({ sessionId, eventId, now }) {
+    async claim({ sessionId, eventId, now, deadlineAt }) {
       const rows = await database
         .update(feedback)
         .set({
@@ -149,14 +152,21 @@ export function createDrizzleFeedbackGenerationStore(
             eq(feedback.sessionId, sessionId),
             inArray(feedback.status, ["pending", "failed"]),
             eq(feedback.dispatchEventId, eventId),
-            sql`${feedback.dispatchStatus} <> 'not_required'`
+            sql`${feedback.dispatchStatus} <> 'not_required'`,
+            ...(deadlineAt ? [sql`CURRENT_TIMESTAMP < ${deadlineAt}`] : [])
           )
         )
         .returning();
       return rows[0] ? mapRecord(rows[0]) : null;
     },
 
-    async complete({ sessionId, eventId, evaluation, processingDurationMs }) {
+    async complete({
+      sessionId,
+      eventId,
+      evaluation,
+      processingDurationMs,
+      deadlineAt,
+    }) {
       const evidenceLimited = isEvidenceLimitedFeedbackResult(evaluation);
       const dimensionCoverage = isDimensionCoverageFeedbackResult(evaluation);
       if (
@@ -218,12 +228,12 @@ export function createDrizzleFeedbackGenerationStore(
           feedbackRoundType: dimensionCoverage ? evaluation.roundType : null,
           dimensionCoverage: dimensionCoverage ? evaluation.dimensions : null,
         })
-        .where(activeClaim(sessionId, eventId))
+        .where(activeClaim(sessionId, eventId, deadlineAt))
         .returning({ id: feedback.id });
       return rows.length === 1;
     },
 
-    async skip({ sessionId, eventId, reason, completionTier }) {
+    async skip({ sessionId, eventId, reason, completionTier, deadlineAt }) {
       const rows = await database
         .update(feedback)
         .set({
@@ -250,7 +260,7 @@ export function createDrizzleFeedbackGenerationStore(
           feedbackRoundType: null,
           dimensionCoverage: null,
         })
-        .where(activeClaim(sessionId, eventId))
+        .where(activeClaim(sessionId, eventId, deadlineAt))
         .returning({ id: feedback.id });
       return rows.length === 1;
     },
@@ -323,11 +333,12 @@ export function createDrizzleFeedbackGenerationStore(
   };
 }
 
-function activeClaim(sessionId: string, eventId: string) {
+function activeClaim(sessionId: string, eventId: string, deadlineAt?: Date) {
   return and(
     eq(feedback.sessionId, sessionId),
     eq(feedback.status, "processing"),
-    eq(feedback.dispatchEventId, eventId)
+    eq(feedback.dispatchEventId, eventId),
+    ...(deadlineAt ? [sql`CURRENT_TIMESTAMP < ${deadlineAt}`] : [])
   );
 }
 

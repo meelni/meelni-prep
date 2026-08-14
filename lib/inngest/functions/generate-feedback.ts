@@ -1,6 +1,11 @@
 import { startOpikFeedbackEvaluationTrace } from "@meelni/integrations/opik";
+import { NonRetriableError } from "inngest";
 
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
+import {
+  FeedbackGenerationPolicyError,
+  isDurableFeedbackGenerationRetry,
+} from "@/lib/evaluation/feedback-generation-policy";
 import {
   createFeedbackGenerationFailureDeps,
   createGenerateFeedbackWorkflowDeps,
@@ -35,6 +40,8 @@ export interface FeedbackGenerationRequestedHandlerDeps {
 
 export async function runFeedbackGenerationRequested(input: {
   eventId: string;
+  requestedAtMs?: number;
+  executionAttempt?: number;
   data: FeedbackGenerationEventData;
   steps: FeedbackGenerationSteps;
   deps: FeedbackGenerationRequestedHandlerDeps;
@@ -46,6 +53,8 @@ export async function runFeedbackGenerationRequested(input: {
       sessionId: input.data.sessionId,
       userId: input.data.userId,
       eventId: input.eventId,
+      requestedAtMs: input.requestedAtMs,
+      executionAttempt: input.executionAttempt,
     },
     input.deps.createWorkflowDeps(input.steps)
   );
@@ -133,13 +142,16 @@ export const generateFeedback = inngest.createFunction(
     },
   },
   { event: "feedback/generate.requested" },
-  async ({ event, step }) => {
+  async ({ event, step, attempt }) => {
     const { sessionId, userId } = event.data as FeedbackGenerationEventData;
     const eventId = event.id;
     if (!eventId) throw new Error("feedback_generation_event_id_missing");
     const steps: FeedbackGenerationSteps = {
       run<T>(name: string, work: () => Promise<T>): Promise<T> {
         return step.run(name, work) as unknown as Promise<T>;
+      },
+      async sleep(name, durationMs) {
+        await step.sleep(name, durationMs);
       },
       async sendInsights(insightsEvent) {
         await step.sendEvent("trigger-insights-update", insightsEvent);
@@ -151,6 +163,8 @@ export const generateFeedback = inngest.createFunction(
     try {
       return await runFeedbackGenerationRequested({
         eventId,
+        requestedAtMs: event.ts,
+        executionAttempt: attempt,
         data: { sessionId, userId },
         steps,
         deps: handlerDeps,
@@ -162,6 +176,12 @@ export const generateFeedback = inngest.createFunction(
         durationMs: handlerDeps.now() - startedAt,
         sessionId,
       });
+      if (
+        !isDurableFeedbackGenerationRetry(error) &&
+        error instanceof FeedbackGenerationPolicyError
+      ) {
+        throw new NonRetriableError(error.message, { cause: error });
+      }
       throw error;
     }
   }

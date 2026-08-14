@@ -30,6 +30,7 @@ import {
 } from "@meelni/test-fixtures";
 
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
+import { FeedbackProviderInvocationError } from "@/lib/evaluation/scorer";
 import {
   calculateValidatedSessionFromTurns,
   prepareCandidateAnswerBlockEvidenceFromTurns,
@@ -182,6 +183,7 @@ test("a superseded durable retry is fenced before repeating provider work", asyn
       cachedSteps.set(name, result);
       return result;
     },
+    async sleep() {},
     async sendInsights() {},
   };
 
@@ -197,7 +199,10 @@ test("a superseded durable retry is fenced before repeating provider work", asyn
     })
   );
 
-  const replay = await generateFeedbackWorkflow(input(EVENT_1), deps);
+  const replay = await generateFeedbackWorkflow(
+    { ...input(EVENT_1), executionAttempt: 1 },
+    deps
+  );
 
   assert.equal(replay.disposition, "fenced");
   assert.equal(evaluations, 1);
@@ -237,6 +242,131 @@ test("stale failure callbacks and terminal replays are immutable", async () => {
   assert.equal(store.current.status, "completed");
   assert.equal(evaluations, 0);
   assert.equal(insights.length, 0);
+});
+
+test("a transient persistence replay reuses provider evaluation and converges", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  const complete = store.complete.bind(store);
+  let completionAttempts = 0;
+  let evaluations = 0;
+  const persistenceAttempts: Array<{ attempt: number; outcome: string }> = [];
+  store.complete = async (completionInput) => {
+    completionAttempts += 1;
+    if (completionAttempts === 1) {
+      throw new Error("transient_database_unavailable");
+    }
+    return complete(completionInput);
+  };
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+  });
+  deps.reportAttempt = (attempt) => {
+    if (attempt.stage === "persistence") {
+      persistenceAttempts.push({
+        attempt: attempt.attempt,
+        outcome: attempt.outcome,
+      });
+    }
+  };
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = await work();
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+      deps
+    ),
+    /transient_database_unavailable/
+  );
+  const replay = await generateFeedbackWorkflow(
+    {
+      ...input(EVENT_1),
+      requestedAtMs: NOW.getTime(),
+      executionAttempt: 1,
+    },
+    deps
+  );
+
+  assert.equal(replay.status, "completed");
+  assert.equal(replay.disposition, "applied");
+  assert.equal(completionAttempts, 2);
+  assert.equal(evaluations, 1);
+  assert.equal(store.current.status, "completed");
+  assert.deepEqual(persistenceAttempts, [
+    { attempt: 1, outcome: "retrying" },
+    { attempt: 2, outcome: "succeeded" },
+  ]);
+});
+
+test("provider retry policy honors Retry-After inside the shared deadline", async () => {
+  const store = new MemoryGenerationStore(record());
+  const sleeps: number[] = [];
+  const timeouts: number[] = [];
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate({ requestTimeoutMs }) {
+      evaluations += 1;
+      timeouts.push(requestTimeoutMs);
+      if (evaluations === 1) {
+        throw new FeedbackProviderInvocationError(
+          "evaluation_provider_invocation_failed",
+          undefined,
+          undefined,
+          undefined,
+          {
+            diagnostic: {
+              kind: "provider_rate_limited",
+              httpStatus: 429,
+              retryAfterMs: 2_500,
+            },
+          }
+        );
+      }
+      return evaluation("full");
+    },
+  });
+  deps.steps.sleep = async (_name, durationMs) => {
+    sleeps.push(durationMs);
+  };
+
+  const result = await generateFeedbackWorkflow(
+    { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+    deps
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(evaluations, 2);
+  assert.deepEqual(sleeps, [2_500]);
+  assert.deepEqual(timeouts, [75_000, 75_000]);
+});
+
+test("one event deadline bounds pre-provider infrastructure work", async () => {
+  const store = new MemoryGenerationStore(record());
+  const deps = dependencies(store);
+  deps.now = () => new Date();
+  deps.getSession = async () => new Promise(() => undefined);
+  const requestedAtMs = Date.now() - 89_980;
+  const startedAtMs = Date.now();
+
+  await assert.rejects(
+    generateFeedbackWorkflow({ ...input(EVENT_1), requestedAtMs }, deps),
+    /feedback_generation_deadline_exceeded/
+  );
+
+  assert.ok(Date.now() - startedAtMs < 500);
+  assert.equal(store.current.status, "pending");
 });
 
 test("untrusted transcript is skipped without provider or insight work", async () => {
@@ -1163,6 +1293,7 @@ test("durable replay closes the completion-to-insights crash window exactly once
       cachedSteps.set(name, result);
       return result;
     },
+    async sleep() {},
     async sendInsights(event) {
       sendAttempts += 1;
       acceptedInsights.add(event.id);
@@ -1174,10 +1305,13 @@ test("durable replay closes the completion-to-insights crash window exactly once
     generateFeedbackWorkflow(input(EVENT_1), deps),
     /crash_after_event_acceptance/
   );
-  const replay = await generateFeedbackWorkflow(input(EVENT_1), deps);
+  const replay = await generateFeedbackWorkflow(
+    { ...input(EVENT_1), executionAttempt: 1 },
+    deps
+  );
 
   assert.equal(replay.status, "completed");
-  assert.equal(replay.disposition, "applied");
+  assert.equal(replay.disposition, "already_terminal");
   assert.equal(sendAttempts, 2);
   assert.deepEqual(
     [...acceptedInsights],
@@ -1449,10 +1583,12 @@ function dependencies(
     isDeletionPending: async () => false,
     steps: {
       run: (_name, work) => work(),
+      sleep: async () => undefined,
       async sendInsights(event) {
         overrides.insights?.push(event.id);
       },
     },
+    reportAttempt: () => undefined,
     getSession: async () => ({ userId: USER_ID, roundType: "strategy" }),
     validateLegacy: async () =>
       ({ isValid: true, tier: "full", reasons: [] }) as never,

@@ -9072,6 +9072,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     run<T>(_name: string, work: () => Promise<T>): Promise<T> {
       return work();
     },
+    async sleep() {},
     async sendInsights(event: unknown) {
       insightsEvents.push(event);
     },
@@ -9083,6 +9084,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
       steps: handlerSteps,
       now: () => new Date(finalizedAt.getTime() + 3_000),
       isDeletionPending: async () => false,
+      reportAttempt: () => undefined,
       async getSession(sessionId: string) {
         const session = await getSessionById(sessionId, database);
         return session
