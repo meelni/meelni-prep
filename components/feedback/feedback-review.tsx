@@ -31,6 +31,7 @@ import {
   type FeedbackViewState,
 } from "@meelni/core";
 import { fetchWithDeadline } from "@/lib/http/deadline";
+import { buildFeedbackReauthenticationHref } from "./feedback-auth-navigation";
 
 const FEEDBACK_POLL_INTERVAL_MS = 3000;
 const MAX_FEEDBACK_POLLS = 30;
@@ -39,6 +40,7 @@ type FeedbackPollingPhase = "automatic" | "paused";
 
 export function FeedbackReview({ sessionId }: { sessionId: string }) {
   const router = useRouter();
+  const reauthenticationHref = buildFeedbackReauthenticationHref(sessionId);
   const [viewState, setViewState] = useState<FeedbackViewState | null>(null);
   const [transportError, setTransportError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
@@ -87,7 +89,11 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
 
     const requestRecovery = () => {
       if (recoveryInFlight) return recoveryInFlight;
-      const request = requestFeedbackRecovery(sessionId, controller.signal);
+      const request = requestFeedbackRecovery(
+        sessionId,
+        controller.signal,
+        () => router.replace(reauthenticationHref)
+      );
       recoveryInFlight = request;
       void request.then(
         () => {
@@ -136,6 +142,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
           }
         } catch (error) {
           if (!active) return;
+          if (error instanceof FeedbackReauthenticationRequiredError) return;
           setRecoveryError(getErrorMessage(error));
         } finally {
           if (active) setRecovering(false);
@@ -174,7 +181,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
           );
           const payload: unknown = await response.json().catch(() => null);
           if (response.status === 401) {
-            router.replace("/auth/signin");
+            router.replace(reauthenticationHref);
             return;
           }
           const body = decodeFeedbackHttpResponseOrThrow(response, payload);
@@ -236,6 +243,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
         await applyResponse(response, { allowAutomaticRecovery: false });
       } catch (error) {
         if (!active) return;
+        if (error instanceof FeedbackReauthenticationRequiredError) return;
         setRecoveryError(getErrorMessage(error));
         setPollingPhase("paused");
       } finally {
@@ -251,7 +259,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
       checkAgainRef.current = async () => undefined;
       recoverRef.current = async () => undefined;
     };
-  }, [router, sessionId]);
+  }, [reauthenticationHref, router, sessionId]);
 
   const checkAgain = () => checkAgainRef.current();
   const recover = () => recoverRef.current();
@@ -317,13 +325,18 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
 
 async function requestFeedbackRecovery(
   sessionId: string,
-  signal?: AbortSignal
+  signal: AbortSignal | undefined,
+  onUnauthorized: () => void
 ): Promise<FeedbackLifecycleResponse> {
   const response = await fetchWithDeadline(`/api/feedback/${sessionId}`, {
     method: "POST",
     signal,
   });
   const payload: unknown = await response.json().catch(() => null);
+  if (response.status === 401) {
+    onUnauthorized();
+    throw new FeedbackReauthenticationRequiredError();
+  }
   const errorMessage =
     typeof payload === "object" &&
     payload !== null &&
@@ -348,12 +361,23 @@ async function requestFeedbackRecovery(
       signal,
     });
     const refreshedPayload: unknown = await refreshed.json().catch(() => null);
+    if (refreshed.status === 401) {
+      onUnauthorized();
+      throw new FeedbackReauthenticationRequiredError();
+    }
     if (!refreshed.ok) {
       throw new Error("Feedback status could not be refreshed.");
     }
     return decodeFeedbackResponseOrThrow(refreshedPayload);
   }
   return decodeFeedbackResponseOrThrow(payload);
+}
+
+class FeedbackReauthenticationRequiredError extends Error {
+  constructor() {
+    super("feedback_reauthentication_required");
+    this.name = "FeedbackReauthenticationRequiredError";
+  }
 }
 
 function getErrorMessage(error: unknown): string {
