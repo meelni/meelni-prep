@@ -8,6 +8,11 @@ import {
   type TranscriptRuntimeSettlementReadiness,
 } from "@/lib/db/transcripts";
 import {
+  expireRuntimeSettlementCommand,
+  getRuntimeSettlementCommandForUserEnd,
+  type PersistedRuntimeSettlementCommand,
+} from "@/lib/db/runtime-settlement-commands";
+import {
   inspectInterviewParticipantPresence,
   sendReliableInterviewRoomData,
   type InterviewParticipantPresence,
@@ -54,6 +59,10 @@ export interface RequestUserEndRuntimeSettlementDeps {
   getSettlementReadiness(
     sessionId: string
   ): Promise<TranscriptRuntimeSettlementReadiness>;
+  getCommand?(
+    sessionId: string,
+    userId: string
+  ): Promise<PersistedRuntimeSettlementCommand | undefined>;
   inspectPresence(input: {
     roomName: string;
     participantIdentity: string;
@@ -70,6 +79,13 @@ export interface RequestUserEndRuntimeSettlementDeps {
     writerGeneration: number;
     timeoutMs: number;
   }): Promise<TranscriptRuntimeSettlementReadiness>;
+  waitForCommand?(input: {
+    sessionId: string;
+    userId: string;
+    commandId: string;
+    timeoutMs: number;
+  }): Promise<PersistedRuntimeSettlementCommand | undefined>;
+  expireCommand?(commandId: string): Promise<void>;
   now?(): number;
   onStage?(event: {
     stage: RuntimeSettlementStage;
@@ -97,7 +113,7 @@ export async function requestUserEndRuntimeSettlementWorkflow(
   input: {
     sessionId: string;
     userId: string;
-    env: LiveKitEnvironment;
+    env: LiveKitEnvironment | null;
     timeoutMs?: number;
   },
   deps: RequestUserEndRuntimeSettlementDeps = createRequestUserEndRuntimeSettlementDeps()
@@ -118,6 +134,11 @@ export async function requestUserEndRuntimeSettlementWorkflow(
         integrityUnavailable: false,
       },
     };
+  }
+
+  const durableCommand = await deps.getCommand?.(input.sessionId, input.userId);
+  if (durableCommand) {
+    return settleFromDurableCommand(input, durableCommand, deps);
   }
 
   if (
@@ -151,6 +172,9 @@ export async function requestUserEndRuntimeSettlementWorkflow(
   }
 
   const targetResolutionStartedAt = runtimeNow(deps);
+  if (!input.env) {
+    return { ok: false, reason: "provider_unavailable", retryable: true };
+  }
   const presence = await withinDeadline(
     deps.inspectPresence({
       roomName: session.roomName,
@@ -392,6 +416,8 @@ export function createRequestUserEndRuntimeSettlementDeps(): RequestUserEndRunti
       };
     },
     getSettlementReadiness: getTranscriptRuntimeSettlementReadiness,
+    getCommand: (sessionId, userId) =>
+      getRuntimeSettlementCommandForUserEnd({ sessionId, userId }),
     inspectPresence: inspectInterviewParticipantPresence,
     requestRuntimeSettlement: ({ roomName, agentIdentity, request, env }) =>
       sendReliableInterviewRoomData({
@@ -402,8 +428,189 @@ export function createRequestUserEndRuntimeSettlementDeps(): RequestUserEndRunti
         env,
       }),
     waitForRuntimeSettlement,
+    waitForCommand: waitForRuntimeSettlementCommand,
+    expireCommand: expireRuntimeSettlementCommand,
     now: () => performance.now(),
   };
+}
+
+async function settleFromDurableCommand(
+  input: {
+    sessionId: string;
+    userId: string;
+    env: LiveKitEnvironment | null;
+    timeoutMs?: number;
+  },
+  initial: PersistedRuntimeSettlementCommand,
+  deps: RequestUserEndRuntimeSettlementDeps
+): Promise<RequestUserEndRuntimeSettlementResult> {
+  if (initial.state === "acknowledged") {
+    return {
+      ok: true,
+      settlement: settlementFromCommandReason(initial.terminalReason),
+    };
+  }
+  if (initial.state === "terminal") {
+    return { ok: false, reason: "runtime_not_ready", retryable: false };
+  }
+
+  const timeoutMs = normalizeSettlementTimeout(input.timeoutMs);
+  const deadline = Math.min(
+    Date.now() + timeoutMs,
+    initial.expiresAt.getTime()
+  );
+  let targetSource: LiveKitInterviewTargetSource = "none";
+  let agentIdentity: string | null = null;
+
+  if (input.env) {
+    const resolutionStartedAt = runtimeNow(deps);
+    const hintDeadline = Math.min(deadline, Date.now() + 2_000);
+    const presence = await withinDeadline(
+      deps.inspectPresence({
+        roomName: initial.roomName,
+        participantIdentity: input.userId,
+        env: input.env,
+      }),
+      hintDeadline
+    );
+    if (presence?.ok) {
+      targetSource =
+        presence.data.targetSource ??
+        (presence.data.agent ? "participant" : "none");
+      agentIdentity = presence.data.agent?.identity ?? null;
+      observeStage(deps, {
+        stage: "target_resolution",
+        targetSource,
+        outcome: agentIdentity ? "succeeded" : "deferred",
+        reason:
+          presence.data.targetReason ??
+          (agentIdentity ? "participant_exact" : "agent_absent"),
+        durationMs: elapsedRuntime(deps, resolutionStartedAt),
+      });
+    } else {
+      observeStage(deps, {
+        stage: "target_resolution",
+        targetSource: "none",
+        outcome: "failed",
+        reason: "provider_unavailable",
+        durationMs: elapsedRuntime(deps, resolutionStartedAt),
+      });
+    }
+  } else {
+    observeStage(deps, {
+      stage: "target_resolution",
+      targetSource: "none",
+      outcome: "deferred",
+      reason: "provider_unavailable",
+      durationMs: 0,
+    });
+  }
+
+  observeStage(deps, {
+    stage: "generation_recheck",
+    targetSource,
+    outcome: "succeeded",
+    reason: "generation_current",
+    durationMs: 0,
+  });
+
+  if (agentIdentity && input.env && Date.now() < deadline) {
+    const packetStartedAt = runtimeNow(deps);
+    const requested = await withinDeadline(
+      deps.requestRuntimeSettlement({
+        roomName: initial.roomName,
+        agentIdentity,
+        request: buildRuntimeSettlementRequestFromCommand(initial),
+        env: input.env,
+      }),
+      Math.min(deadline, Date.now() + 2_000)
+    );
+    observeStage(deps, {
+      stage: "packet_send",
+      targetSource,
+      outcome: requested?.ok ? "succeeded" : "failed",
+      reason: requested?.ok ? "packet_sent" : "packet_send_failed",
+      durationMs: elapsedRuntime(deps, packetStartedAt),
+    });
+  }
+
+  const ackStartedAt = runtimeNow(deps);
+  const waited = await deps.waitForCommand?.({
+    sessionId: input.sessionId,
+    userId: input.userId,
+    commandId: initial.commandId,
+    timeoutMs: Math.max(1, deadline - Date.now()),
+  });
+  if (waited?.state === "acknowledged") {
+    observeStage(deps, {
+      stage: "durable_ack",
+      targetSource,
+      outcome: "succeeded",
+      reason:
+        waited.terminalReason === "settled" ? "ack_settled" : "ack_degraded",
+      durationMs: elapsedRuntime(deps, ackStartedAt),
+    });
+    return {
+      ok: true,
+      settlement: settlementFromCommandReason(waited.terminalReason),
+    };
+  }
+
+  await deps.expireCommand?.(initial.commandId);
+  observeStage(deps, {
+    stage: "durable_ack",
+    targetSource,
+    outcome: "deferred",
+    reason: "ack_missing",
+    durationMs: elapsedRuntime(deps, ackStartedAt),
+  });
+  return { ok: false, reason: "runtime_not_ready", retryable: false };
+}
+
+function buildRuntimeSettlementRequestFromCommand(
+  command: PersistedRuntimeSettlementCommand
+): TranscriptRuntimeSettlementRequest {
+  return {
+    contract_version: TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION,
+    event_type: "runtime_settlement_request",
+    request_id: command.commandId,
+    session_id: command.sessionId,
+    room_name: command.roomName,
+    writer_generation: command.writerGeneration,
+    cutoff_at: serializeInterviewDeadlineAt(command.cutoffAt),
+  };
+}
+
+function settlementFromCommandReason(
+  reason: PersistedRuntimeSettlementCommand["terminalReason"]
+): UserEndRuntimeSettlement {
+  const degraded = reason === "degraded";
+  return {
+    settled: reason === "settled" || degraded,
+    pending: 0,
+    failed: degraded ? 1 : 0,
+    overflowed: false,
+    integrityUnavailable: degraded,
+  };
+}
+
+async function waitForRuntimeSettlementCommand(input: {
+  sessionId: string;
+  userId: string;
+  commandId: string;
+  timeoutMs: number;
+}): Promise<PersistedRuntimeSettlementCommand | undefined> {
+  const deadline = Date.now() + input.timeoutMs;
+  let command = await getRuntimeSettlementCommandForUserEnd(input);
+  while (
+    command?.commandId === input.commandId &&
+    command.state === "pending" &&
+    Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    command = await getRuntimeSettlementCommandForUserEnd(input);
+  }
+  return command;
 }
 
 function observeStage(

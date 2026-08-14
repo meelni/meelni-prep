@@ -75,6 +75,7 @@ from shared.transcript_ingest import (
     TranscriptIngestQueueFull,
     TranscriptIngestQueueSealed,
     WriterSequenceAllocator,
+    acknowledge_runtime_settlement_command,
     canonical_json_bytes,
     create_interruption_marker,
     create_runtime_settlement,
@@ -84,10 +85,12 @@ from shared.transcript_ingest import (
     interruption_marker_degrades_candidate_evidence,
     is_interruption_marker,
     is_runtime_settlement,
+    is_runtime_settlement_command,
     is_runtime_writer_registration,
     is_retryable_status,
     parse_runtime_settlement_request,
     persist_runtime_failure_event,
+    pull_runtime_settlement_command,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
@@ -2381,6 +2384,136 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
                 transport=invalid_disposition,
                 now=lambda: 1783650000,
             )
+
+    async def test_runtime_settlement_command_pull_and_ack_share_exact_writer_fence(self):
+        command = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_command",
+            "command_id": "runtime-settlement:session-1:4",
+            "session_id": "session-1",
+            "lifecycle_version": 4,
+            "room_name": "room-1",
+            "writer_id": "writer-1",
+            "writer_generation": 2,
+            "cutoff_at": "2026-07-10T08:30:00.000Z",
+            "expires_at": "2026-07-10T08:30:20.000Z",
+        }
+        requests = []
+
+        async def transport(_url, body, headers):
+            requests.append((json.loads(body), headers))
+            if "settlementCommandPull" in requests[-1][0]:
+                return IngestResponse(
+                    200,
+                    body=json.dumps(
+                        {
+                            "success": True,
+                            "kind": "settlement_command",
+                            "disposition": "pending",
+                            "command": command,
+                        }
+                    ).encode("utf-8"),
+                )
+            return IngestResponse(
+                200,
+                body=json.dumps(
+                    {
+                        "success": True,
+                        "kind": "settlement_command_ack",
+                        "disposition": "existing",
+                    }
+                ).encode("utf-8"),
+            )
+
+        pulled = await pull_runtime_settlement_command(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            writer_generation=2,
+            transport=transport,
+            now=lambda: 1783650000,
+        )
+        self.assertEqual(pulled, command)
+        self.assertTrue(
+            await acknowledge_runtime_settlement_command(
+                ingest_url="https://meelni.com/api/internal/transcript",
+                livekit_api_secret="livekit-secret",
+                command=command,
+                outcome="settled",
+                transport=transport,
+                now=lambda: 1783650000,
+            )
+        )
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(
+            requests[0][0]["settlementCommandPull"]["writer_generation"], 2
+        )
+        self.assertEqual(
+            requests[1][0]["settlementCommandAck"]["command_id"],
+            command["command_id"],
+        )
+        for body, headers in requests:
+            self.assertIn(SIGNATURE_HEADER, headers)
+            self.assertNotIn("text", json.dumps(body))
+
+    async def test_runtime_settlement_command_pull_fails_closed_for_stale_writer(self):
+        async def fenced_transport(_url, _body, _headers):
+            return IngestResponse(409)
+
+        with self.assertRaises(TranscriptIngestIdentityConflict):
+            await pull_runtime_settlement_command(
+                ingest_url="https://meelni.com/api/internal/transcript",
+                livekit_api_secret="livekit-secret",
+                session_id="session-1",
+                room_name="room-1",
+                writer_id="writer-old",
+                writer_generation=1,
+                transport=fenced_transport,
+                now=lambda: 1783650000,
+            )
+
+    def test_runtime_settlement_command_rejects_unknown_versions_and_identity_drift(self):
+        command = {
+            "contract_version": 1,
+            "event_type": "runtime_settlement_command",
+            "command_id": "runtime-settlement:session-1:4",
+            "session_id": "session-1",
+            "lifecycle_version": 4,
+            "room_name": "room-1",
+            "writer_id": "writer-1",
+            "writer_generation": 2,
+            "cutoff_at": "2026-07-10T08:30:00.000Z",
+            "expires_at": "2026-07-10T08:30:20.000Z",
+        }
+        self.assertTrue(
+            is_runtime_settlement_command(
+                command,
+                expected_session_id="session-1",
+                expected_room_name="room-1",
+                expected_writer_id="writer-1",
+                expected_writer_generation=2,
+            )
+        )
+        self.assertFalse(
+            is_runtime_settlement_command(
+                {**command, "contract_version": 2},
+                expected_session_id="session-1",
+                expected_room_name="room-1",
+                expected_writer_id="writer-1",
+                expected_writer_generation=2,
+            )
+        )
+        self.assertFalse(
+            is_runtime_settlement_command(
+                command,
+                expected_session_id="session-1",
+                expected_room_name="room-1",
+                expected_writer_id="writer-new",
+                expected_writer_generation=3,
+            )
+        )
 
     async def test_pre_writer_runtime_failure_retries_one_signed_lifecycle_identity(self):
         event = create_runtime_event(

@@ -136,9 +136,14 @@ The browser has no transcript persistence or retry queue. Confirming explicit
 end immediately closes display acceptance and mutes local input. The browser
 then sends one idempotent `user_end` command; it never calls runtime settlement
 as a prerequisite and does not require a mounted or connected room callback.
-The server attempts a short, bounded runtime settlement and then terminalizes
-from durable evidence regardless of acknowledgment. Missing or degraded writer
-proof fails closed and skips feedback, but cannot veto the user's exit.
+The acceptance transaction writes `ending_at`, the next lifecycle version, and
+one versioned settlement command bound to the current registered writer's
+room, ID, and generation. The server may send a LiveKit wake-up packet, waits
+only within the bounded settlement stage, and then terminalizes from durable
+evidence regardless of acknowledgment. The runtime can discover the same
+command after packet loss, exact candidate disconnect, or shutdown. Missing or
+degraded writer proof fails closed and skips feedback, but cannot veto the
+user's exit.
 
 A definitive storage failure keeps the interview frozen and permits retrying
 the same End command; it never resumes packet acceptance or microphone input.
