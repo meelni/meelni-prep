@@ -233,7 +233,11 @@ export function SetupContent({
 
     async function loadLauncherDefaults() {
       try {
-        const response = await fetch("/api/user/settings");
+        const response = await fetchWithDeadline(
+          "/api/user/settings",
+          {},
+          INTERVIEW_START_SLOS.customer_read.upperBoundMs
+        );
         if (!response.ok) return;
         const payload: unknown = await response.json();
         const settings =
@@ -715,6 +719,7 @@ export function SetupContent({
   );
   const startDisabled =
     isCreatingSession ||
+    !launcherDefaultsResolved ||
     voiceUnavailableInPreview ||
     !effectiveRoundType ||
     !difficulty ||
@@ -865,6 +870,14 @@ export function SetupContent({
               >
                 {voiceUnavailableInPreview ? (
                   "Voice unavailable in Preview"
+                ) : !launcherDefaultsResolved ? (
+                  <>
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Loading saved setup...
+                  </>
                 ) : isCreatingSession ? (
                   <>
                     <Loader2
