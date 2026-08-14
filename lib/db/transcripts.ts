@@ -1671,6 +1671,7 @@ function buildBoundedFeedbackTranscriptQuery(
 ) {
   return database
     .select({
+      id: transcriptTurn.id,
       eventId: transcriptTurn.eventId,
       writerId: transcriptTurn.writerId,
       speaker: transcriptTurn.speaker,

@@ -11,13 +11,14 @@ import {
 } from "lucide-react";
 
 import { FeedbackDashboardLink } from "./feedback-navigation";
+import { SavedInterviewProcessingWorkspace } from "./saved-interview-processing-workspace";
 import {
   FeedbackReviewShell,
   FeedbackSectionCard,
   FeedbackStatusPage,
 } from "./feedback-surface";
 import { Button } from "@/components/ui/button";
-import type { FeedbackViewState } from "@meelni/core";
+import type { FeedbackViewState, SavedInterviewWorkspace } from "@meelni/core";
 
 type FeedbackNonCompletedState = Exclude<
   FeedbackViewState,
@@ -32,6 +33,7 @@ type FeedbackNonCompletedState = Exclude<
 
 export function FeedbackLifecycleStatus({
   state,
+  workspace,
   recovering,
   recoveryError,
   checking = false,
@@ -42,6 +44,7 @@ export function FeedbackLifecycleStatus({
   onRecover,
 }: {
   state: FeedbackNonCompletedState;
+  workspace?: SavedInterviewWorkspace | null;
   recovering: boolean;
   recoveryError: string | null;
   checking?: boolean;
@@ -61,6 +64,34 @@ export function FeedbackLifecycleStatus({
       {recovering ? "Trying again" : label}
     </Button>
   );
+
+  if (
+    workspace &&
+    (state.kind === "settling" ||
+      state.kind === "pending" ||
+      state.kind === "processing")
+  ) {
+    return (
+      <SavedInterviewProcessingWorkspace
+        sessionId={sessionId}
+        workspace={workspace}
+        state={state.kind}
+        delayed={state.delayed}
+        retryable={state.retryable}
+        pollingPaused={pollingPaused}
+        checking={checking}
+        recovering={recovering}
+        statusMessage={
+          pollingPaused
+            ? pausedMessage
+            : recoveryError ||
+              (state.kind === "settling" ? (state.message ?? null) : null)
+        }
+        onCheckAgain={onCheckAgain}
+        onRecover={onRecover}
+      />
+    );
+  }
 
   if (
     pollingPaused &&

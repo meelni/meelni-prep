@@ -83,6 +83,51 @@ describe("feedback transcript read states", () => {
     expect(feedbackPostAttempts).toBe(0);
   });
 
+  it("retains the saved workspace across rolling-compatible poll responses", async () => {
+    vi.useFakeTimers();
+    let feedbackGetAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) !== `/api/feedback/${SESSION_ID}`) {
+          throw new Error(`Unexpected request: ${String(input)}`);
+        }
+        feedbackGetAttempts += 1;
+        return Response.json({
+          status: "processing",
+          retryable: false,
+          delayed: false,
+          ...(feedbackGetAttempts === 1
+            ? { workspace: savedInterviewWorkspace() }
+            : {}),
+        });
+      })
+    );
+
+    render(<FeedbackPage />);
+    await act(async () => undefined);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "How would you improve a synthetic planning product?",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Expand interview transcript" })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(feedbackGetAttempts).toBe(2);
+    expect(
+      screen.getByRole("heading", {
+        name: "How would you improve a synthetic planning product?",
+      })
+    ).toBeInTheDocument();
+  });
+
   it("reauthenticates a feedback GET 401 with the exact feedback deep link", async () => {
     vi.stubGlobal(
       "fetch",
@@ -435,14 +480,14 @@ describe("feedback transcript read states", () => {
       if (url === `/api/feedback/${SESSION_ID}`) {
         return completedFeedbackResponse();
       }
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
+      if (url === `/api/session/${SESSION_ID}/transcript?scope=frozen`) {
         transcriptAttempts += 1;
         return transcriptAttempts === 1
           ? Response.json(
               { error: "transcript_temporarily_unavailable" },
               { status: 503 }
             )
-          : Response.json({ turns: [] });
+          : Response.json({ scope: "frozen", turns: [] });
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -476,7 +521,7 @@ describe("feedback transcript read states", () => {
       if (url === `/api/feedback/${SESSION_ID}`) {
         return completedFeedbackResponse();
       }
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
+      if (url === `/api/session/${SESSION_ID}/transcript?scope=frozen`) {
         return new Promise<Response>((resolve) => {
           resolveTranscript = resolve;
         });
@@ -499,17 +544,14 @@ describe("feedback transcript read states", () => {
     await act(async () => {
       resolveTranscript?.(
         Response.json({
+          scope: "frozen",
           turns: [
             {
-              id: "turn-1",
-              sessionId: SESSION_ID,
+              id: "650e8400-e29b-41d4-a716-446655440001",
+              eventId: "turn-1",
               speaker: "user",
               startedAt: "2099-07-15T21:00:00.000Z",
-              endedAt: "2099-07-15T21:00:01.000Z",
               text: "Synthetic transcript fixture",
-              audioMs: 1000,
-              latencyMs: null,
-              section: "answer",
             },
           ],
         })
@@ -537,12 +579,12 @@ describe("feedback transcript read states", () => {
           "Second session summary"
         );
       }
-      if (url === `/api/session/${SESSION_ID}/transcript`) {
+      if (url === `/api/session/${SESSION_ID}/transcript?scope=frozen`) {
         return new Promise<Response>((resolve) => {
           resolveFirstTranscript = resolve;
         });
       }
-      if (url === `/api/session/${SECOND_SESSION_ID}/transcript`) {
+      if (url === `/api/session/${SECOND_SESSION_ID}/transcript?scope=frozen`) {
         return new Promise<Response>((resolve) => {
           resolveSecondTranscript = resolve;
         });
@@ -743,6 +785,19 @@ function processingFeedbackResponse() {
   });
 }
 
+function savedInterviewWorkspace() {
+  return {
+    version: "saved-interview.workspace.v1",
+    saved: true,
+    roundType: "product_sense",
+    question: {
+      text: "How would you improve a synthetic planning product?",
+      company: "Synthetic Co",
+    },
+    frozenTranscript: "ready",
+  };
+}
+
 async function exhaustAutomaticPollBudget() {
   await act(async () => undefined);
   await act(async () => {
@@ -767,17 +822,14 @@ function feedbackFinding(dimension: "insight" | "structure", turnRef: string) {
 
 function transcriptResponse(sessionId: string, text: string) {
   return Response.json({
+    scope: "frozen",
     turns: [
       {
-        id: `turn-${sessionId}`,
-        sessionId,
+        id: sessionId,
+        eventId: "turn-1",
         speaker: "user",
         startedAt: "2099-07-15T21:00:00.000Z",
-        endedAt: "2099-07-15T21:00:01.000Z",
         text,
-        audioMs: 1000,
-        latencyMs: null,
-        section: "answer",
       },
     ],
   });

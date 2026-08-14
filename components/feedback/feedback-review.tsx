@@ -29,6 +29,7 @@ import {
   toFeedbackViewState,
   type FeedbackLifecycleResponse,
   type FeedbackViewState,
+  type SavedInterviewWorkspace,
 } from "@meelni/core";
 import { fetchWithDeadline } from "@/lib/http/deadline";
 import { buildFeedbackReauthenticationHref } from "./feedback-auth-navigation";
@@ -42,6 +43,8 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const reauthenticationHref = buildFeedbackReauthenticationHref(sessionId);
   const [viewState, setViewState] = useState<FeedbackViewState | null>(null);
+  const [savedWorkspace, setSavedWorkspace] =
+    useState<SavedInterviewWorkspace | null>(null);
   const [transportError, setTransportError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
@@ -57,6 +60,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     recoveryCoordinator.current = createFeedbackRecoveryCoordinator();
     pollBudget.current = createFeedbackPollBudget(MAX_FEEDBACK_POLLS);
     setViewState(null);
+    setSavedWorkspace(null);
     setTransportError(null);
     setRecoveryError(null);
     setChecking(false);
@@ -113,6 +117,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
       if (!active) return;
       latestResponse = response;
       setViewState(toFeedbackViewState(response));
+      if (response.workspace) setSavedWorkspace(response.workspace);
       setTransportError(null);
       setPollingPhase("automatic");
 
@@ -127,6 +132,9 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
           if (recovery.disposition === "recovered") {
             latestResponse = recovery.value;
             setViewState(toFeedbackViewState(recovery.value));
+            if (recovery.value.workspace) {
+              setSavedWorkspace(recovery.value.workspace);
+            }
             setRecoveryError(null);
             pollBudget.current.reset();
             if (
@@ -307,6 +315,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
   return (
     <FeedbackLifecycleStatus
       state={viewState}
+      workspace={savedWorkspace}
       recovering={recovering}
       recoveryError={recoveryError || transportError}
       checking={checking}

@@ -209,7 +209,16 @@ export function installSyntheticFetch() {
       }
     }
     if (url.pathname.endsWith("/transcript")) {
-      return json({ turns: transcriptTurns });
+      return json({
+        scope: "frozen",
+        turns: transcriptTurns.map((turn, index) => ({
+          id: `650e8400-e29b-41d4-a716-44665544000${index + 1}`,
+          eventId: turn.eventId,
+          speaker: turn.speaker,
+          text: turn.text,
+          startedAt: turn.timestamp.toISOString(),
+        })),
+      });
     }
     if (url.pathname === "/api/user/export") {
       return json({ status: "queued" }, 202);
