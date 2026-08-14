@@ -36,6 +36,10 @@ RUNTIME_WRITER_REGISTRATION_EVENT_TYPE = "runtime_writer_registration"
 RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION = 1
 RUNTIME_SETTLEMENT_REQUEST_EVENT_TYPE = "runtime_settlement_request"
 RUNTIME_SETTLEMENT_REQUEST_TOPIC = "meelni.transcript.settlement.request"
+RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION = 1
+RUNTIME_SETTLEMENT_COMMAND_EVENT_TYPE = "runtime_settlement_command"
+RUNTIME_SETTLEMENT_COMMAND_PULL_EVENT_TYPE = "runtime_settlement_command_pull"
+RUNTIME_SETTLEMENT_COMMAND_ACK_EVENT_TYPE = "runtime_settlement_command_ack"
 MAX_INGEST_RESPONSE_BYTES = 4_096
 CANONICAL_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
@@ -637,6 +641,219 @@ def parse_runtime_settlement_request(
     ):
         raise TranscriptIngestError("invalid runtime settlement request")
     return value
+
+
+def is_runtime_settlement_command(
+    value: object,
+    *,
+    expected_session_id: str,
+    expected_room_name: str,
+    expected_writer_id: str,
+    expected_writer_generation: int,
+) -> bool:
+    """Validate a content-free command bound to this exact runtime writer."""
+    if not isinstance(value, dict):
+        return False
+    generation = value.get("writer_generation")
+    lifecycle_version = value.get("lifecycle_version")
+    cutoff_at = _parse_canonical_timestamp(value.get("cutoff_at"))
+    expires_at = _parse_canonical_timestamp(value.get("expires_at"))
+    return (
+        set(value)
+        == {
+            "contract_version",
+            "event_type",
+            "command_id",
+            "session_id",
+            "lifecycle_version",
+            "room_name",
+            "writer_id",
+            "writer_generation",
+            "cutoff_at",
+            "expires_at",
+        }
+        and value.get("contract_version")
+        == RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION
+        and value.get("event_type") == RUNTIME_SETTLEMENT_COMMAND_EVENT_TYPE
+        and isinstance(value.get("command_id"), str)
+        and bool(value["command_id"].strip())
+        and value.get("session_id") == expected_session_id
+        and isinstance(lifecycle_version, int)
+        and not isinstance(lifecycle_version, bool)
+        and 0 < lifecycle_version <= MAX_SAFE_INTEGER
+        and value.get("room_name") == expected_room_name
+        and value.get("writer_id") == expected_writer_id
+        and isinstance(generation, int)
+        and not isinstance(generation, bool)
+        and generation == expected_writer_generation
+        and cutoff_at is not None
+        and expires_at is not None
+        and expires_at > cutoff_at
+    )
+
+
+async def pull_runtime_settlement_command(
+    *,
+    ingest_url: str,
+    livekit_api_secret: str | bytes,
+    session_id: str,
+    room_name: str,
+    writer_id: str,
+    writer_generation: int,
+    transport: Transport,
+    attempts: int = 3,
+    retry_delay_seconds: float = 0.1,
+    sleep: Sleep = asyncio.sleep,
+    now: Now = time.time,
+) -> Dict[str, object] | None:
+    """Pull the one durable command for this exact registered writer."""
+    pull = {
+        "contract_version": RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION,
+        "event_type": RUNTIME_SETTLEMENT_COMMAND_PULL_EVENT_TYPE,
+        "session_id": session_id,
+        "room_name": room_name,
+        "writer_id": writer_id,
+        "writer_generation": writer_generation,
+    }
+    response = await _post_signed_runtime_control(
+        ingest_url=ingest_url,
+        livekit_api_secret=livekit_api_secret,
+        body_value={"sessionId": session_id, "settlementCommandPull": pull},
+        transport=transport,
+        attempts=attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        sleep=sleep,
+        now=now,
+    )
+    if response.status == 404:
+        return None
+    if response.status == 409:
+        raise TranscriptIngestIdentityConflict(
+            "runtime settlement command writer was fenced"
+        )
+    if not 200 <= response.status <= 299 or response.body is None:
+        raise TranscriptIngestError("runtime settlement command pull unavailable")
+    try:
+        body = json.loads(response.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise TranscriptIngestError(
+            "runtime settlement command response was invalid"
+        ) from error
+    if (
+        not isinstance(body, dict)
+        or body.get("success") is not True
+        or body.get("kind") != "settlement_command"
+    ):
+        raise TranscriptIngestError("runtime settlement command response was invalid")
+    if body.get("disposition") != "pending":
+        return None
+    command = body.get("command")
+    if not is_runtime_settlement_command(
+        command,
+        expected_session_id=session_id,
+        expected_room_name=room_name,
+        expected_writer_id=writer_id,
+        expected_writer_generation=writer_generation,
+    ):
+        raise TranscriptIngestError("runtime settlement command response was invalid")
+    return command
+
+
+async def acknowledge_runtime_settlement_command(
+    *,
+    ingest_url: str,
+    livekit_api_secret: str | bytes,
+    command: Dict[str, object],
+    outcome: str,
+    transport: Transport,
+    attempts: int = 3,
+    retry_delay_seconds: float = 0.1,
+    sleep: Sleep = asyncio.sleep,
+    now: Now = time.time,
+) -> bool:
+    """Confirm the writer-scoped proof after its settlement row is durable."""
+    if outcome not in {"settled", "degraded"}:
+        raise TranscriptIngestError("runtime settlement command outcome is invalid")
+    ack = {
+        "contract_version": RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION,
+        "event_type": RUNTIME_SETTLEMENT_COMMAND_ACK_EVENT_TYPE,
+        "command_id": command.get("command_id"),
+        "session_id": command.get("session_id"),
+        "room_name": command.get("room_name"),
+        "writer_id": command.get("writer_id"),
+        "writer_generation": command.get("writer_generation"),
+        "outcome": outcome,
+    }
+    session_id = ack["session_id"]
+    if not isinstance(session_id, str) or not session_id:
+        raise TranscriptIngestError("runtime settlement command identity is invalid")
+    response = await _post_signed_runtime_control(
+        ingest_url=ingest_url,
+        livekit_api_secret=livekit_api_secret,
+        body_value={"sessionId": session_id, "settlementCommandAck": ack},
+        transport=transport,
+        attempts=attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        sleep=sleep,
+        now=now,
+    )
+    if response.status in {404, 409}:
+        return False
+    if not 200 <= response.status <= 299 or response.body is None:
+        raise TranscriptIngestError("runtime settlement command acknowledgement failed")
+    try:
+        body = json.loads(response.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise TranscriptIngestError(
+            "runtime settlement command acknowledgement was invalid"
+        ) from error
+    return bool(
+        isinstance(body, dict)
+        and body.get("success") is True
+        and body.get("kind") == "settlement_command_ack"
+        and body.get("disposition") in {"acknowledged", "existing"}
+    )
+
+
+async def _post_signed_runtime_control(
+    *,
+    ingest_url: str,
+    livekit_api_secret: str | bytes,
+    body_value: object,
+    transport: Transport,
+    attempts: int,
+    retry_delay_seconds: float,
+    sleep: Sleep,
+    now: Now,
+) -> IngestResponse:
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts <= 0:
+        raise TranscriptIngestError("runtime settlement command attempts are invalid")
+    validated_url = validate_internal_ingest_url(ingest_url)
+    signing_key = derive_ingest_signing_key(livekit_api_secret)
+    body = canonical_json_bytes(body_value)
+    for attempt in range(attempts):
+        timestamp = int(now())
+        headers = {
+            "content-type": "application/json",
+            TIMESTAMP_HEADER: str(timestamp),
+            SIGNATURE_HEADER: sign_ingest_body(signing_key, timestamp, body),
+        }
+        try:
+            response = await transport(validated_url, body, headers)
+        except Exception as error:
+            if attempt + 1 >= attempts:
+                raise TranscriptIngestError(
+                    "runtime settlement command request unavailable"
+                ) from error
+            await sleep(float(retry_delay_seconds))
+            continue
+        if not isinstance(response, IngestResponse):
+            raise TranscriptIngestError("transport returned an invalid response")
+        if is_retryable_status(response.status) and attempt + 1 < attempts:
+            await sleep(float(retry_delay_seconds))
+            continue
+        return response
+    raise TranscriptIngestError("runtime settlement command request unavailable")
 
 
 def is_retryable_status(status: int) -> bool:

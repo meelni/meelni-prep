@@ -10,6 +10,8 @@ export const TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_CONTRACT_VERSION =
   1 as const;
 export const TRANSCRIPT_RUNTIME_SETTLEMENT_REQUEST_TOPIC =
   "meelni.transcript.settlement.request";
+export const TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION =
+  1 as const;
 
 export type TranscriptDeliveryState = "delivered" | "partially_delivered";
 
@@ -74,6 +76,39 @@ export interface TranscriptRuntimeSettlementRequest {
   room_name: string;
   writer_generation: number;
   cutoff_at: string;
+}
+
+export interface TranscriptRuntimeSettlementCommand {
+  contract_version: typeof TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION;
+  event_type: "runtime_settlement_command";
+  command_id: string;
+  session_id: string;
+  lifecycle_version: number;
+  room_name: string;
+  writer_id: string;
+  writer_generation: number;
+  cutoff_at: string;
+  expires_at: string;
+}
+
+export interface TranscriptRuntimeSettlementCommandPull {
+  contract_version: typeof TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION;
+  event_type: "runtime_settlement_command_pull";
+  session_id: string;
+  room_name: string;
+  writer_id: string;
+  writer_generation: number;
+}
+
+export interface TranscriptRuntimeSettlementCommandAck {
+  contract_version: typeof TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION;
+  event_type: "runtime_settlement_command_ack";
+  command_id: string;
+  session_id: string;
+  room_name: string;
+  writer_id: string;
+  writer_generation: number;
+  outcome: "settled" | "degraded";
 }
 
 export interface LegacyTranscriptEvent {
@@ -236,6 +271,64 @@ export function isTranscriptRuntimeSettlement(
     (candidate.writer_generation ?? 0) > 0 &&
     (candidate.state === "settled" || candidate.state === "degraded") &&
     parseTimestamp(candidate.settled_at) !== null
+  );
+}
+
+export function isTranscriptRuntimeSettlementCommandPull(
+  value: unknown
+): value is TranscriptRuntimeSettlementCommandPull {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<TranscriptRuntimeSettlementCommandPull>;
+  const expectedKeys = new Set([
+    "contract_version",
+    "event_type",
+    "session_id",
+    "room_name",
+    "writer_id",
+    "writer_generation",
+  ]);
+  return (
+    Object.keys(value).length === expectedKeys.size &&
+    Object.keys(value).every((key) => expectedKeys.has(key)) &&
+    candidate.contract_version ===
+      TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION &&
+    candidate.event_type === "runtime_settlement_command_pull" &&
+    isNonEmptyString(candidate.session_id) &&
+    isNonEmptyString(candidate.room_name) &&
+    isNonEmptyString(candidate.writer_id) &&
+    Number.isSafeInteger(candidate.writer_generation) &&
+    (candidate.writer_generation ?? 0) > 0
+  );
+}
+
+export function isTranscriptRuntimeSettlementCommandAck(
+  value: unknown
+): value is TranscriptRuntimeSettlementCommandAck {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<TranscriptRuntimeSettlementCommandAck>;
+  const expectedKeys = new Set([
+    "contract_version",
+    "event_type",
+    "command_id",
+    "session_id",
+    "room_name",
+    "writer_id",
+    "writer_generation",
+    "outcome",
+  ]);
+  return (
+    Object.keys(value).length === expectedKeys.size &&
+    Object.keys(value).every((key) => expectedKeys.has(key)) &&
+    candidate.contract_version ===
+      TRANSCRIPT_RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION &&
+    candidate.event_type === "runtime_settlement_command_ack" &&
+    isNonEmptyString(candidate.command_id) &&
+    isNonEmptyString(candidate.session_id) &&
+    isNonEmptyString(candidate.room_name) &&
+    isNonEmptyString(candidate.writer_id) &&
+    Number.isSafeInteger(candidate.writer_generation) &&
+    (candidate.writer_generation ?? 0) > 0 &&
+    (candidate.outcome === "settled" || candidate.outcome === "degraded")
   );
 }
 

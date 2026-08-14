@@ -57,6 +57,7 @@ import {
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
   PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
+  RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
   QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
@@ -83,6 +84,8 @@ const SESSION_TOO_SHORT = "77777777-7777-4777-8777-777777777777";
 const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SESSION_DURABLE_COMMAND = "a4420000-0000-4000-8000-000000000442";
+const SESSION_EXPIRED_COMMAND = "a4430000-0000-4000-8000-000000000443";
 const SESSION_RETIRED_REWARD_GUARD = "abababab-abab-4bab-8bab-abababababab";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -318,7 +321,7 @@ async function run() {
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
     assert.equal(
       cleanFingerprint,
-      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
     );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
@@ -516,9 +519,10 @@ async function run() {
         FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
         FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
         PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
+        RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 35; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 36; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -538,7 +542,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 36; found 22/
+            /Strict launch preflight requires the exact latest migration count 37; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -847,7 +851,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 36);
+      assert.equal(await migrationCount(sql), 37);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -911,7 +915,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1156,7 +1160,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 36; found 25/
+      /exact latest migration count 37; found 25/
     );
 
     const genericRows = await sql<
@@ -1255,21 +1259,21 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 36);
+    assert.equal(await migrationCount(sql), 37);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       finalPreflight.startingContract,
-      "public_demo_preview_allowance"
+      "durable_runtime_settlement_command"
     );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 39);
-    assert.equal(finalPreflight.rls_tables, 39);
+    assert.equal(finalPreflight.tables, 40);
+    assert.equal(finalPreflight.rls_tables, 40);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -3518,6 +3522,7 @@ async function verifyAtomicSessionCompletion(
 ) {
   process.env.DATABASE_URL = databaseUrl;
   const [
+    { acceptUserInterviewEnd },
     { finalizeInterviewSession },
     { createDrizzleFeedbackDispatchStore },
     {
@@ -3527,15 +3532,23 @@ async function verifyAtomicSessionCompletion(
       listInterviewDeadlineSchedules,
     },
     { createDrizzleInterviewReconnectStore },
+    {
+      createDrizzleTranscriptRuntimeSettlementStore,
+      getTranscriptRuntimeSettlementReadiness,
+    },
+    { expireRuntimeSettlementCommand },
     { enforceInterviewDeadlineWorkflow },
     { dispatchFeedbackGenerationWorkflow },
     { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
     schema,
   ] = await Promise.all([
+    import("../lib/db/accept-user-interview-end"),
     import("../lib/db/end-interview-session"),
     import("../lib/db/feedback-dispatch"),
     import("../lib/db/session-deadlines"),
     import("../lib/db/session-reconnects"),
+    import("../lib/db/transcripts"),
+    import("../lib/db/runtime-settlement-commands"),
     import("../lib/workflows/enforce-interview-deadline"),
     import("../lib/workflows/dispatch-feedback-generation"),
     import("../lib/workflows/end-interview-session"),
@@ -3566,6 +3579,62 @@ async function verifyAtomicSessionCompletion(
     startedAt: "2026-07-10T05:00:00.000Z",
     settledAt: "2026-07-10T05:45:00.000Z",
   });
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at, started_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_DURABLE_COMMAND}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      3,
+      now(),
+      now() - interval '1 minute',
+      'durable-command-room'
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${SESSION_DURABLE_COMMAND}::uuid, 2, 1,
+      'durable-command-room', 'durable-command-writer',
+      now() - interval '59 seconds'
+    )
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at, started_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_EXPIRED_COMMAND}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      3,
+      now(),
+      now() - interval '1 minute',
+      'expired-command-room'
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${SESSION_EXPIRED_COMMAND}::uuid, 2, 1,
+      'expired-command-room', 'expired-command-writer',
+      now() - interval '59 seconds'
+    )
+  `;
   await sql`
     INSERT INTO interview_session (
       id, user_id, round_type, mode, status,
@@ -3728,6 +3797,149 @@ async function verifyAtomicSessionCompletion(
       writer_count: 1,
       committed_sequence: 5,
     });
+
+    const accepted = await acceptUserInterviewEnd(
+      { sessionId: SESSION_DURABLE_COMMAND, userId: USER_ONE },
+      databases[0]
+    );
+    assert.equal(accepted.ok && accepted.disposition, "accepted");
+    const replayed = await acceptUserInterviewEnd(
+      { sessionId: SESSION_DURABLE_COMMAND, userId: USER_ONE },
+      databases[1]
+    );
+    assert.equal(replayed.ok && replayed.disposition, "already_ending");
+    const [durableCommand] = await sql<
+      {
+        lifecycle_version: number;
+        command_id: string;
+        room_name: string;
+        writer_id: string;
+        writer_generation: number;
+        cutoff_at: Date;
+        expires_at: Date;
+      }[]
+    >`
+      SELECT lifecycle_version, command_id, room_name, writer_id,
+        writer_generation, cutoff_at, expires_at
+      FROM transcript_runtime_settlement_command
+      WHERE session_id = ${SESSION_DURABLE_COMMAND}::uuid
+    `;
+    assert.equal(durableCommand?.lifecycle_version, 4);
+    assert.equal(
+      durableCommand?.command_id,
+      `runtime-settlement:${SESSION_DURABLE_COMMAND}:4`
+    );
+    assert.equal(durableCommand?.room_name, "durable-command-room");
+    assert.equal(durableCommand?.writer_id, "durable-command-writer");
+    assert.equal(durableCommand?.writer_generation, 2);
+    assert.equal(
+      databaseTimestamp(durableCommand!.expires_at).getTime() -
+        databaseTimestamp(durableCommand!.cutoff_at).getTime(),
+      20_000
+    );
+
+    const settlementStore = createDrizzleTranscriptRuntimeSettlementStore(
+      databases[0]
+    );
+    const durableSettlement = {
+      contract_version: 1 as const,
+      event_type: "runtime_settlement" as const,
+      session_id: SESSION_DURABLE_COMMAND,
+      room_name: "durable-command-room",
+      writer_id: "durable-command-writer",
+      writer_generation: 2,
+      state: "settled" as const,
+      settled_at: databaseTimestamp(durableCommand!.cutoff_at).toISOString(),
+    };
+    const persistedSettlement =
+      await settlementStore.persist(durableSettlement);
+    assert.equal(
+      persistedSettlement.ok && persistedSettlement.disposition,
+      "created"
+    );
+    const replayedSettlement = await settlementStore.persist(durableSettlement);
+    assert.equal(
+      replayedSettlement.ok && replayedSettlement.disposition,
+      "existing"
+    );
+    const [acknowledgedCommand] = await sql<
+      { state: string; terminal_reason: string }[]
+    >`
+      SELECT state, terminal_reason
+      FROM transcript_runtime_settlement_command
+      WHERE session_id = ${SESSION_DURABLE_COMMAND}::uuid
+    `;
+    assert.deepEqual(acknowledgedCommand, {
+      state: "acknowledged",
+      terminal_reason: "settled",
+    });
+
+    const expiredAccepted = await acceptUserInterviewEnd(
+      { sessionId: SESSION_EXPIRED_COMMAND, userId: USER_ONE },
+      databases[0]
+    );
+    assert.equal(expiredAccepted.ok && expiredAccepted.disposition, "accepted");
+    const [expiredCommand] = await sql<
+      { command_id: string; cutoff_at: Date | string }[]
+    >`
+      SELECT command_id, cutoff_at
+      FROM transcript_runtime_settlement_command
+      WHERE session_id = ${SESSION_EXPIRED_COMMAND}::uuid
+    `;
+    await expireRuntimeSettlementCommand(
+      expiredCommand!.command_id,
+      databases[0]
+    );
+    assert.deepEqual(
+      await settlementStore.persist({
+        contract_version: 1,
+        event_type: "runtime_settlement",
+        session_id: SESSION_EXPIRED_COMMAND,
+        room_name: "expired-command-room",
+        writer_id: "expired-command-writer",
+        writer_generation: 2,
+        state: "settled",
+        settled_at: databaseTimestamp(expiredCommand!.cutoff_at).toISOString(),
+      }),
+      { ok: false, reason: "settlement_conflict" }
+    );
+    const [expiredProof] = await sql<
+      {
+        settlements: number;
+        evidence_version: number | null;
+        evidence_state: string | null;
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM transcript_runtime_settlement
+          WHERE session_id = ${SESSION_EXPIRED_COMMAND}::uuid) AS settlements,
+        transcript_evidence_version AS evidence_version,
+        transcript_evidence_state AS evidence_state
+      FROM interview_session
+      WHERE id = ${SESSION_EXPIRED_COMMAND}::uuid
+    `;
+    assert.deepEqual(expiredProof, {
+      settlements: 0,
+      evidence_version: null,
+      evidence_state: null,
+    });
+    assert.deepEqual(
+      await getTranscriptRuntimeSettlementReadiness(
+        SESSION_EXPIRED_COMMAND,
+        databases[0]
+      ),
+      {
+        writerCount: 1,
+        settledCount: 0,
+        degradedCount: 0,
+        missingCount: 1,
+        currentWriterGeneration: 2,
+        currentWriterState: null,
+        unhealthyWriterCount: 0,
+        gapWriterCount: 0,
+        ready: false,
+      }
+    );
 
     const stores = databases.map((database) =>
       createDrizzleFeedbackDispatchStore(database)
@@ -6436,7 +6648,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "public_demo_preview_allowance"
+      "durable_runtime_settlement_command"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7817,7 +8029,7 @@ async function verifyFeedbackQualityDeletionWinsRateLimit(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 36);
+  assert.equal(await migrationCount(sql), 37);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -7825,7 +8037,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 39);
+  assert.equal(tables.length, 40);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -7848,6 +8060,11 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "transcript_runtime_settlement"
+    )
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "transcript_runtime_settlement_command"
     )
   );
   assert.ok(
@@ -8210,6 +8427,44 @@ async function verifyDatabase(sql: postgres.Sql) {
   `;
   assert.equal(settlementIndexes.length, 1);
 
+  const settlementCommandColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'transcript_runtime_settlement_command'
+    ORDER BY ordinal_position
+  `;
+  assert.equal(settlementCommandColumns.length, 14);
+
+  const settlementCommandContracts = await sql<{ name: string }[]>`
+    SELECT conname AS name
+    FROM pg_constraint
+    WHERE conname IN (
+      'transcript_runtime_settlement_command_pkey',
+      'transcript_runtime_settlement_command_command_id_key',
+      'transcript_runtime_settlement_command_contract_check',
+      'transcript_runtime_settlement_command_lifecycle_version_check',
+      'transcript_runtime_settlement_command_writer_generation_check',
+      'transcript_runtime_settlement_command_expiry_check',
+      'transcript_runtime_settlement_command_state_check',
+      'transcript_runtime_settlement_command_terminal_reason_check',
+      'transcript_runtime_settlement_command_terminal_shape_check',
+      'transcript_runtime_settlement_command_writer_fk'
+    )
+  `;
+  assert.equal(settlementCommandContracts.length, 10);
+
+  const settlementCommandIndexes = await sql<{ indexname: string }[]>`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname IN (
+        'transcript_runtime_settlement_command_pending_expiry_idx',
+        'transcript_runtime_settlement_command_writer_idx'
+      )
+  `;
+  assert.equal(settlementCommandIndexes.length, 2);
+
   const writerColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
     FROM information_schema.columns
@@ -8290,7 +8545,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 39);
+  assert.equal(rls.length, 40);
   assert.ok(rls.every((table) => table.enabled));
 
   const contactRls = await sql<
@@ -8323,7 +8578,8 @@ async function verifyDatabase(sql: postgres.Sql) {
           AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
         OR (tablename IN (
               'transcript_runtime_writer',
-              'transcript_runtime_settlement'
+              'transcript_runtime_settlement',
+              'transcript_runtime_settlement_command'
             ) AND cmd IN ('SELECT', 'INSERT', 'UPDATE', 'ALL')
           AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
       )
@@ -8341,6 +8597,9 @@ async function verifyDatabase(sql: postgres.Sql) {
       auth_settlement_select: boolean;
       auth_settlement_insert: boolean;
       service_settlement_insert: boolean;
+      auth_settlement_command_select: boolean;
+      auth_settlement_command_insert: boolean;
+      service_settlement_command_insert: boolean;
       auth_writer_select: boolean;
       auth_writer_insert: boolean;
       service_writer_insert: boolean;
@@ -8389,6 +8648,21 @@ async function verifyDatabase(sql: postgres.Sql) {
         'public.transcript_runtime_settlement',
         'INSERT'
       ) AS service_settlement_insert,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_settlement_command',
+        'SELECT'
+      ) AS auth_settlement_command_select,
+      has_table_privilege(
+        'authenticated',
+        'public.transcript_runtime_settlement_command',
+        'INSERT'
+      ) AS auth_settlement_command_insert,
+      has_table_privilege(
+        'service_role',
+        'public.transcript_runtime_settlement_command',
+        'INSERT'
+      ) AS service_settlement_command_insert,
       has_table_privilege(
         'authenticated',
         'public.transcript_runtime_writer',
@@ -8445,6 +8719,9 @@ async function verifyDatabase(sql: postgres.Sql) {
     auth_settlement_select: false,
     auth_settlement_insert: false,
     service_settlement_insert: true,
+    auth_settlement_command_select: false,
+    auth_settlement_command_insert: false,
+    service_settlement_command_insert: true,
     auth_writer_select: false,
     auth_writer_insert: false,
     service_writer_insert: true,
@@ -12281,6 +12558,26 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     )
   `;
   await sql`
+    UPDATE interview_session
+    SET lifecycle_state = 'ending',
+      lifecycle_version = 2,
+      terminal_reason = 'user_end',
+      ending_at = date_trunc('milliseconds', clock_timestamp())
+    WHERE id = ${SESSION_DELETION_MARKER}::uuid
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_settlement_command (
+      session_id, lifecycle_version, contract_version, command_id,
+      room_name, writer_id, writer_generation, cutoff_at, expires_at
+    )
+    SELECT id, lifecycle_version, 1,
+      ${`runtime-settlement:${SESSION_DELETION_MARKER}:2`},
+      livekit_room_name, 'deletion-marker-writer', 1, ending_at,
+      ending_at + interval '20 seconds'
+    FROM interview_session
+    WHERE id = ${SESSION_DELETION_MARKER}::uuid
+  `;
+  await sql`
     INSERT INTO transcript_interruption_marker (
       session_id, contract_version, event_id, writer_id, writer_generation,
       sequence, room_name, speaker, occurred_at, reason
@@ -12478,6 +12775,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       redacted_error: string | null;
       interruption_markers: number;
       runtime_settlements: number;
+      runtime_settlement_commands: number;
       reservations: number;
       runtime_writers: number;
     }[]
@@ -12507,6 +12805,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT count(*)::int FROM transcript_runtime_settlement
         WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
         AS runtime_settlements,
+      (SELECT count(*)::int FROM transcript_runtime_settlement_command
+        WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
+        AS runtime_settlement_commands,
       (SELECT count(*)::int FROM credit_reservation
         WHERE user_id = ${USER_TWO}::uuid) AS reservations,
       (SELECT count(*)::int FROM transcript_runtime_writer
@@ -12534,6 +12835,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     tombstone_exists: true,
     interruption_markers: 0,
     runtime_settlements: 0,
+    runtime_settlement_commands: 0,
     reservations: 0,
     runtime_writers: 0,
     raw_provider_ids: 0,

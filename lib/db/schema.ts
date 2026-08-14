@@ -695,6 +695,105 @@ export const transcriptRuntimeSettlement = pgTable(
   })
 );
 
+// Durable End Interview intent. The command is created in the same transaction
+// as the semantic cutoff and stays bound to the writer that was current then.
+// LiveKit data packets may wake that writer, but never replace this authority.
+export const transcriptRuntimeSettlementCommand = pgTable(
+  "transcript_runtime_settlement_command",
+  {
+    sessionId: uuid("session_id")
+      .references(() => interviewSession.id)
+      .notNull(),
+    lifecycleVersion: integer("lifecycle_version").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    commandId: text("command_id").notNull(),
+    roomName: text("room_name").notNull(),
+    writerId: text("writer_id").notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
+    cutoffAt: timestamp("cutoff_at", { withTimezone: true }).notNull(),
+    state: text("state")
+      .$type<"pending" | "acknowledged" | "terminal">()
+      .default("pending")
+      .notNull(),
+    terminalReason: text("terminal_reason").$type<
+      "settled" | "degraded" | "expired" | "fenced" | "unavailable"
+    >(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    terminalAt: timestamp("terminal_at", { withTimezone: true }),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_runtime_settlement_command_pkey",
+      columns: [table.sessionId, table.lifecycleVersion],
+    }),
+    commandIdUnique: unique(
+      "transcript_runtime_settlement_command_command_id_key"
+    ).on(table.commandId),
+    contractCheck: check(
+      "transcript_runtime_settlement_command_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    lifecycleVersionCheck: check(
+      "transcript_runtime_settlement_command_lifecycle_version_check",
+      sql`${table.lifecycleVersion} > 0`
+    ),
+    writerGenerationCheck: check(
+      "transcript_runtime_settlement_command_writer_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
+    expiryCheck: check(
+      "transcript_runtime_settlement_command_expiry_check",
+      sql`${table.expiresAt} > ${table.cutoffAt}`
+    ),
+    stateCheck: check(
+      "transcript_runtime_settlement_command_state_check",
+      sql`${table.state} IN ('pending', 'acknowledged', 'terminal')`
+    ),
+    terminalReasonCheck: check(
+      "transcript_runtime_settlement_command_terminal_reason_check",
+      sql`${table.terminalReason} IS NULL OR ${table.terminalReason} IN ('settled', 'degraded', 'expired', 'fenced', 'unavailable')`
+    ),
+    terminalShapeCheck: check(
+      "transcript_runtime_settlement_command_terminal_shape_check",
+      sql`(
+        ${table.state} = 'pending' AND
+        ${table.terminalReason} IS NULL AND
+        ${table.acknowledgedAt} IS NULL AND
+        ${table.terminalAt} IS NULL
+      ) OR (
+        ${table.state} = 'acknowledged' AND
+        ${table.terminalReason} IN ('settled', 'degraded') AND
+        ${table.acknowledgedAt} IS NOT NULL AND
+        ${table.terminalAt} IS NOT NULL
+      ) OR (
+        ${table.state} = 'terminal' AND
+        ${table.terminalReason} IN ('expired', 'fenced', 'unavailable') AND
+        ${table.acknowledgedAt} IS NULL AND
+        ${table.terminalAt} IS NOT NULL
+      )`
+    ),
+    writerRegistrationForeignKey: foreignKey({
+      name: "transcript_runtime_settlement_command_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId,
+      ],
+    }),
+    pendingExpiryIdx: index(
+      "transcript_runtime_settlement_command_pending_expiry_idx"
+    ).on(table.state, table.expiresAt),
+    writerCommandIdx: index(
+      "transcript_runtime_settlement_command_writer_idx"
+    ).on(table.sessionId, table.writerGeneration, table.writerId),
+  })
+);
+
 // Immutable per-writer boundary copied when terminalization freezes the exact
 // transcript prefix that feedback is allowed to consume.
 export const transcriptEvidenceWriterCutoff = pgTable(

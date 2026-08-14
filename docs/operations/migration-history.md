@@ -42,10 +42,11 @@
 |    33 | `0033_scoreless_focused_practice`            |
 |    34 | `0034_feedback_quality_signals`              |
 |    35 | `0035_sav_431_public_demo_preview_allowance` |
+|    36 | `0036_sav_442_runtime_settlement_command`    |
 
 <!-- migration-journal:end -->
 
-This thirty-six-entry inventory is generated from the same ordered contract as
+This thirty-seven-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -398,3 +399,15 @@ counters under the same global lock order used for admission. Later client or
 runtime failures remain counted because the server cannot safely prove the
 preview was unused. The migration changes no customer, interview, transcript,
 feedback, billing, or provider state.
+
+## Durable runtime-settlement command
+
+Migration `0036_sav_442_runtime_settlement_command` adds the service-only
+`transcript_runtime_settlement_command` outbox. Its composite primary key
+permits one logical command per accepted session lifecycle version; a unique
+deterministic command ID, exact writer foreign key, immutable cutoff/expiry,
+and closed pending/acknowledged/terminal shape fence replay and replacement
+writers. RLS is enabled, direct access is revoked from `PUBLIC`, `anon`, and
+`authenticated`, and only `service_role` receives read/write privileges. The
+migration is additive and does not backfill, rewrite, or expose transcript
+content.
