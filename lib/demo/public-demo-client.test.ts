@@ -67,8 +67,8 @@ test("public demo client maps 429 to an explicit non-immediate cooldown", () => 
       now: 1_000,
     }),
     {
-      title: "The voice preview is at capacity for now",
-      message: "Availability resets automatically.",
+      title: "The voice preview is on cooldown",
+      message: "You can try again when the cooldown ends.",
       retryAt: 43_000,
     }
   );
