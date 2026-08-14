@@ -8849,6 +8849,43 @@ var PARTIAL_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
   score: dimension === "structure" ? 8 : null
 }));
 
+// packages/test-fixtures/src/runtime-settlement-command.ts
+var sessionId = "6c310000-0000-4000-8000-000000000442";
+var roomName = "interview-fixture-runtime-settlement";
+var writerId = "fixture-writer-generation-2";
+var RUNTIME_SETTLEMENT_COMMAND_FIXTURE = {
+  command: {
+    contract_version: 1,
+    event_type: "runtime_settlement_command",
+    command_id: `runtime-settlement:${sessionId}:4`,
+    session_id: sessionId,
+    lifecycle_version: 4,
+    room_name: roomName,
+    writer_id: writerId,
+    writer_generation: 2,
+    cutoff_at: "2026-08-14T05:00:00.000Z",
+    expires_at: "2026-08-14T05:00:20.000Z"
+  },
+  pull: {
+    contract_version: 1,
+    event_type: "runtime_settlement_command_pull",
+    session_id: sessionId,
+    room_name: roomName,
+    writer_id: writerId,
+    writer_generation: 2
+  },
+  acknowledgement: {
+    contract_version: 1,
+    event_type: "runtime_settlement_command_ack",
+    command_id: `runtime-settlement:${sessionId}:4`,
+    session_id: sessionId,
+    room_name: roomName,
+    writer_id: writerId,
+    writer_generation: 2,
+    outcome: "settled"
+  }
+};
+
 // packages/test-fixtures/src/index.ts
 var FIXTURE_CLOCK = {
   startedAt: /* @__PURE__ */ new Date("2026-06-27T17:30:00.000Z"),
@@ -18224,6 +18261,7 @@ __export(schema_exports, {
   transcriptInterruptionMarker: () => transcriptInterruptionMarker,
   transcriptInterruptionMarkerRelations: () => transcriptInterruptionMarkerRelations,
   transcriptRuntimeSettlement: () => transcriptRuntimeSettlement,
+  transcriptRuntimeSettlementCommand: () => transcriptRuntimeSettlementCommand,
   transcriptRuntimeSettlementRelations: () => transcriptRuntimeSettlementRelations,
   transcriptRuntimeWriter: () => transcriptRuntimeWriter,
   transcriptRuntimeWriterRelations: () => transcriptRuntimeWriterRelations,
@@ -19792,6 +19830,92 @@ var transcriptRuntimeSettlement = pgTable(
     roomSettledAtIdx: index(
       "transcript_runtime_settlement_room_settled_at_idx"
     ).on(table.roomName, table.settledAt)
+  })
+);
+var transcriptRuntimeSettlementCommand = pgTable(
+  "transcript_runtime_settlement_command",
+  {
+    sessionId: uuid("session_id").references(() => interviewSession.id).notNull(),
+    lifecycleVersion: integer("lifecycle_version").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    commandId: text("command_id").notNull(),
+    roomName: text("room_name").notNull(),
+    writerId: text("writer_id").notNull(),
+    writerGeneration: integer("writer_generation").notNull(),
+    cutoffAt: timestamp("cutoff_at", { withTimezone: true }).notNull(),
+    state: text("state").$type().default("pending").notNull(),
+    terminalReason: text("terminal_reason").$type(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    terminalAt: timestamp("terminal_at", { withTimezone: true })
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "transcript_runtime_settlement_command_pkey",
+      columns: [table.sessionId, table.lifecycleVersion]
+    }),
+    commandIdUnique: unique(
+      "transcript_runtime_settlement_command_command_id_key"
+    ).on(table.commandId),
+    contractCheck: check(
+      "transcript_runtime_settlement_command_contract_check",
+      sql`${table.contractVersion} = 1`
+    ),
+    lifecycleVersionCheck: check(
+      "transcript_runtime_settlement_command_lifecycle_version_check",
+      sql`${table.lifecycleVersion} > 0`
+    ),
+    writerGenerationCheck: check(
+      "transcript_runtime_settlement_command_writer_generation_check",
+      sql`${table.writerGeneration} > 0`
+    ),
+    expiryCheck: check(
+      "transcript_runtime_settlement_command_expiry_check",
+      sql`${table.expiresAt} > ${table.cutoffAt}`
+    ),
+    stateCheck: check(
+      "transcript_runtime_settlement_command_state_check",
+      sql`${table.state} IN ('pending', 'acknowledged', 'terminal')`
+    ),
+    terminalReasonCheck: check(
+      "transcript_runtime_settlement_command_terminal_reason_check",
+      sql`${table.terminalReason} IS NULL OR ${table.terminalReason} IN ('settled', 'degraded', 'expired', 'fenced', 'unavailable')`
+    ),
+    terminalShapeCheck: check(
+      "transcript_runtime_settlement_command_terminal_shape_check",
+      sql`(
+        ${table.state} = 'pending' AND
+        ${table.terminalReason} IS NULL AND
+        ${table.acknowledgedAt} IS NULL AND
+        ${table.terminalAt} IS NULL
+      ) OR (
+        ${table.state} = 'acknowledged' AND
+        ${table.terminalReason} IN ('settled', 'degraded') AND
+        ${table.acknowledgedAt} IS NOT NULL AND
+        ${table.terminalAt} IS NOT NULL
+      ) OR (
+        ${table.state} = 'terminal' AND
+        ${table.terminalReason} IN ('expired', 'fenced', 'unavailable') AND
+        ${table.acknowledgedAt} IS NULL AND
+        ${table.terminalAt} IS NOT NULL
+      )`
+    ),
+    writerRegistrationForeignKey: foreignKey({
+      name: "transcript_runtime_settlement_command_writer_fk",
+      columns: [table.sessionId, table.writerGeneration, table.writerId],
+      foreignColumns: [
+        transcriptRuntimeWriter.sessionId,
+        transcriptRuntimeWriter.generation,
+        transcriptRuntimeWriter.writerId
+      ]
+    }),
+    pendingExpiryIdx: index(
+      "transcript_runtime_settlement_command_pending_expiry_idx"
+    ).on(table.state, table.expiresAt),
+    writerCommandIdx: index(
+      "transcript_runtime_settlement_command_writer_idx"
+    ).on(table.sessionId, table.writerGeneration, table.writerId)
   })
 );
 var transcriptEvidenceWriterCutoff = pgTable(
@@ -31792,8 +31916,8 @@ function unclaimedResult(input, current) {
 function isTerminal(record) {
   return record.status === "completed" || record.status === "skipped";
 }
-function terminalResult(sessionId, record) {
-  return record.status === "completed" ? { status: "completed", disposition: "already_terminal", sessionId } : { status: "skipped", disposition: "already_terminal", sessionId };
+function terminalResult(sessionId2, record) {
+  return record.status === "completed" ? { status: "completed", disposition: "already_terminal", sessionId: sessionId2 } : { status: "skipped", disposition: "already_terminal", sessionId: sessionId2 };
 }
 function toEvaluationState(value) {
   if (value === "full" /* FULL */) return "full";
