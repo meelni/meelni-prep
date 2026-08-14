@@ -9,6 +9,7 @@ import {
   settleReservationInTransaction,
   type CreditLedgerStore,
 } from "./credits";
+import { resolveSubscriptionCreditPolicy } from "./subscription-credit-policy";
 
 test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", () => {
   const store = createDrizzleCreditLedgerStore();
@@ -2322,6 +2323,50 @@ test("period-end policy bounds only subscription-derived credits and reactivatio
       .find(({ id }) => id === renewal.rolloverGrant?.id)
       ?.expiresAt?.toISOString(),
     renewal.rolloverGrant?.expiresAt?.toISOString()
+  );
+});
+
+test("past-due subscription credits stop authorizing at the grace-period cutoff", async () => {
+  const gracePeriodEnd = new Date("2026-08-13T12:00:00.000Z");
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+
+  await ledger.grantCredits({
+    userId: "user-past-due-grace",
+    catalogId: "starter",
+    source: "subscription_renewal",
+    includedCredits: 1,
+    expiresAt: null,
+    idempotencyKey: "renewal:past-due-grace",
+  });
+  store.setSubscriptionCreditPolicy(
+    "user-past-due-grace",
+    resolveSubscriptionCreditPolicy({
+      status: "past_due",
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: new Date("2026-09-01T00:00:00.000Z"),
+      gracePeriodEnd,
+    })
+  );
+
+  store.setCurrentTime(new Date("2026-08-13T11:59:59.999Z"));
+  assert.equal(
+    (await ledger.getCreditBalance("user-past-due-grace")).availableCredits,
+    1
+  );
+
+  store.setCurrentTime(gracePeriodEnd);
+  assert.equal(
+    (await ledger.getCreditBalance("user-past-due-grace")).availableCredits,
+    0
+  );
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-past-due-grace",
+        reservationKey: "session:past-due-grace-ended",
+      }),
+    /insufficient_credits/
   );
 });
 

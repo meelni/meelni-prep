@@ -194,6 +194,72 @@ test("startInterviewSessionWorkflow falls back to an older active question when 
   assert.equal(h.store.current?.question.id, QUESTION_ID);
 });
 
+test("company launch context constrains recent and fallback question selection", async () => {
+  const selectionCalls: Array<{
+    source: "recent" | "all";
+    company?: string;
+  }> = [];
+  const h = harness({
+    getRandomRecentQuestion: async (_days, _questionTypes, company) => {
+      selectionCalls.push({ source: "recent", company });
+      return null;
+    },
+    getRandomQuestion: async (_questionTypes, company) => {
+      selectionCalls.push({ source: "all", company });
+      return question();
+    },
+  });
+
+  const result = await startInterviewSessionWorkflow(
+    request({
+      questionId: undefined,
+      company: "  Acme  ",
+      config: {
+        duration: 30,
+        questionPreference: { recency: "very_recent", recentDays: 365 },
+      },
+    }),
+    h.deps
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(selectionCalls, [
+    { source: "recent", company: "Acme" },
+    { source: "all", company: "Acme" },
+  ]);
+});
+
+test("company launch context returns a truthful no-match response without broadening selection", async () => {
+  const h = harness({
+    getRandomRecentQuestion: async () => null,
+    getRandomQuestion: async () => null,
+  });
+
+  const result = await startInterviewSessionWorkflow(
+    request({
+      questionId: undefined,
+      company: "Acme",
+      config: {
+        duration: 30,
+        questionPreference: { recency: "very_recent", recentDays: 365 },
+      },
+    }),
+    h.deps
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 404,
+    body: {
+      error: "no_company_questions_available",
+      message:
+        "We couldn't find an active Acme question for this interview type. Choose another company or interview type and try again.",
+      retryable: false,
+    },
+  });
+  assert.equal(h.calls.includes("prepare"), false);
+});
+
 test("startInterviewSessionWorkflow returns a recoverable message when a round has no active questions", async () => {
   const h = harness({
     getRandomRecentQuestion: async () => null,

@@ -33,6 +33,7 @@ import type {
   LedgerCreditTransaction,
   LedgerReservationAllocation,
 } from "./credit-ledger-contracts";
+import { resolveSubscriptionCreditPolicy } from "./subscription-credit-policy";
 
 export type CreditLedgerDatabase = typeof db;
 export type CreditLedgerTransactionDatabase = Parameters<
@@ -513,11 +514,12 @@ function createDrizzleCreditLedgerTransaction(
           status: subscription.status,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
           currentPeriodEnd: subscription.currentPeriodEnd,
+          gracePeriodEnd: subscription.gracePeriodEnd,
         })
         .from(subscription)
         .where(eq(subscription.userId, userId))
         .limit(1);
-      return subscriptionCreditPolicy(rows[0]);
+      return resolveSubscriptionCreditPolicy(rows[0]);
     },
 
     async getSubscriptionCreditPolicyForUpdate(userId) {
@@ -528,12 +530,13 @@ function createDrizzleCreditLedgerTransaction(
           status: subscription.status,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
           currentPeriodEnd: subscription.currentPeriodEnd,
+          gracePeriodEnd: subscription.gracePeriodEnd,
         })
         .from(subscription)
         .where(eq(subscription.userId, userId))
         .limit(1)
         .for("update");
-      return subscriptionCreditPolicy(rows[0]);
+      return resolveSubscriptionCreditPolicy(rows[0]);
     },
 
     async listUserReservationsForUpdate(userId) {
@@ -1046,6 +1049,7 @@ async function readCreditSnapshotWithUserFence(
         status: subscription.status,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         currentPeriodEnd: subscription.currentPeriodEnd,
+        gracePeriodEnd: subscription.gracePeriodEnd,
       })
       .from(subscription)
       .where(eq(subscription.userId, userId))
@@ -1057,7 +1061,7 @@ async function readCreditSnapshotWithUserFence(
     );
     const currentTime = await readDatabaseTime(transaction);
     const grants = await operations.listUserGrants(userId);
-    const subscriptionPolicy = subscriptionCreditPolicy(subscriptionRow);
+    const subscriptionPolicy = resolveSubscriptionCreditPolicy(subscriptionRow);
     return { currentTime, grants, subscriptionPolicy };
   });
 }
@@ -1223,24 +1227,6 @@ function mapTransaction(row: CreditTransactionRow): LedgerCreditTransaction {
     balanceAfter: row.balanceAfter,
     metadata: row.metadata ?? null,
     createdAt: row.createdAt,
-  };
-}
-
-function subscriptionCreditPolicy(
-  row:
-    | {
-        status: string;
-        cancelAtPeriodEnd: boolean;
-        currentPeriodEnd: Date | null;
-      }
-    | undefined
-) {
-  const restricted = Boolean(
-    row && (row.cancelAtPeriodEnd || row.status === "canceled")
-  );
-  return {
-    restricted,
-    availableThrough: restricted ? (row?.currentPeriodEnd ?? null) : null,
   };
 }
 

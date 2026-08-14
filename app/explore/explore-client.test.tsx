@@ -31,7 +31,9 @@ test("Explore server render exposes the initial corpus, count, and schema", () =
   const html = renderToStaticMarkup(
     <AppRouterContext.Provider value={router}>
       <PathnameContext.Provider value="/explore">
-        <SearchParamsContext.Provider value={new URLSearchParams()}>
+        <SearchParamsContext.Provider
+          value={new URLSearchParams("search=measure&type=execution&page=2")}
+        >
           <AuthProvider>
             <AnalyticsConsentProvider
               initialResolvedForSubject={ANONYMOUS_CONSENT_SUBJECT}
@@ -66,6 +68,8 @@ test("Explore server render exposes the initial corpus, count, and schema", () =
   );
 
   assert.match(html, /Browse 41 available practice questions/);
+  assert.match(html, /value="measure"/);
+  assert.match(html, /Page 2 of 3/);
   assert.match(html, /How would you measure success for a new PM product\?/);
   assert.match(html, /Practice currently paused/);
   assert.match(html, /disabled=""/);
