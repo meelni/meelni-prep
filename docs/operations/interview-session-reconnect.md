@@ -49,7 +49,11 @@ Never place an intermediary in front of the route that rewrites the body.
   checks authoritative participant presence for connecting, active, and
   reconnecting rooms. Connecting activation requires the exact standard
   candidate plus a distinct LiveKit agent-kind participant, both in
-  joined/active provider state. Provider read
+  joined/active provider state. Active readiness and both ordinary and due
+  reconnect recovery require the same actual interviewer-agent participant;
+  a dispatch-only fallback is a settlement target, not liveness. A missing
+  startup room older than the one-minute recovery window becomes a durable
+  provider failure and converges reserved credit. Provider read
   failure retries without creating a synthetic loss or readiness receipt.
 - A post-provision start failure atomically terminalizes with cleanup intent
   before immediate teardown. Partial agent dispatch, deadline scheduling, and

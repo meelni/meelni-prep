@@ -151,6 +151,8 @@ export async function enforceInterviewReconnectWorkflow(
       presence.data.joined &&
       presence.data.joinedAt &&
       Number.isFinite(presence.data.joinedAt.getTime()) &&
+      presence.data.agent !== null &&
+      presence.data.targetSource === "participant" &&
       presence.data.joinedAt.getTime() < deadlineAt.getTime()
     ) {
       const recovered = await deps.store.recoverFromDuePresence({

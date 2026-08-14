@@ -9,6 +9,7 @@ import { interviewSession } from "./schema";
 
 export interface InterviewReconnectSession {
   sessionId: string;
+  startContractVersion?: number;
   userId: string;
   roomName: string;
   state: InterviewLifecycleState;
@@ -716,6 +717,7 @@ function mapReconnectSession(
   }
   return {
     sessionId: row.id,
+    startContractVersion: row.startContractVersion,
     userId: row.userId,
     roomName: row.livekitRoomName,
     state: row.lifecycleState,

@@ -98,11 +98,41 @@ describe("POST /api/interview/presence", () => {
     });
   });
 
+  it("does not report an active candidate ready when the interviewer is absent", async () => {
+    mockAuth({ id: "user-a" });
+    vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "agent_absent",
+    });
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      ready: false,
+      disposition: "agent_absent",
+    });
+  });
+
   it("reports terminal lifecycle truth as no longer joinable", async () => {
     mockAuth({ id: "user-a" });
     vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockResolvedValue({
       ok: true,
       disposition: "terminal",
+    });
+
+    const response = await POST(request({ sessionId: SESSION_ID }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "session_not_joinable",
+    });
+  });
+
+  it("reports a reconciled missing runtime as no longer joinable", async () => {
+    mockAuth({ id: "user-a" });
+    vi.mocked(reconcileOwnedInterviewPresenceWorkflow).mockResolvedValue({
+      ok: true,
+      disposition: "failed",
     });
 
     const response = await POST(request({ sessionId: SESSION_ID }));

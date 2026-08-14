@@ -54,6 +54,84 @@ test("authoritative presence repairs a missed join exactly once", async () => {
   assert.equal(fixture.current.state, "active");
 });
 
+test("candidate-only reconnect presence never promotes the session to active", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "reconnecting",
+      version: 4,
+      reconnectDeadlineAt: new Date("2026-07-10T08:00:30.000Z"),
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", presence({ agent: false }));
+
+  const result = await run(fixture.deps, "candidate-only-reconnect");
+
+  assert.deepEqual(result, { ok: true, disposition: "reconnecting" });
+  assert.equal(fixture.recoveries, 0);
+  assert.equal(fixture.current.state, "reconnecting");
+});
+
+test("an active candidate is not reported ready after the interviewer disappears", async () => {
+  const fixture = createFixture(createSession());
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess("livekit", presence({ agent: false }));
+
+  const result = await run(fixture.deps, "agent-disappeared");
+
+  assert.deepEqual(result, { ok: true, disposition: "agent_absent" });
+  assert.equal(fixture.current.state, "active");
+  assert.equal(fixture.losses, 0);
+});
+
+test("an absent startup room terminalizes and releases reserved credit after the recovery grace", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransitionAt: new Date(NOW.getTime() - 60_000),
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess(
+      "livekit",
+      presence({ roomPresent: false, candidate: false, agent: false })
+    );
+
+  const result = await run(fixture.deps, "missing-startup-room");
+
+  assert.deepEqual(result, { ok: true, disposition: "failed" });
+  assert.equal(fixture.current.state, "failed");
+  assert.equal(fixture.current.roomCleanupPending, true);
+  assert.deepEqual(fixture.failureCodes, ["voice_runtime_provider_failed"]);
+  assert.equal(fixture.creditDisposition, "released");
+});
+
+test("a transient startup-room absence inside the recovery grace stays connecting", async () => {
+  const fixture = createFixture(
+    createSession({
+      state: "connecting",
+      version: 2,
+      activatedAt: null,
+      runtimeReadyAt: null,
+      lastTransitionAt: new Date(NOW.getTime() - 59_999),
+    })
+  );
+  fixture.deps.inspectPresence = async () =>
+    providerSuccess(
+      "livekit",
+      presence({ roomPresent: false, candidate: false, agent: false })
+    );
+
+  assert.deepEqual(await run(fixture.deps, "transient-missing-room"), {
+    ok: true,
+    disposition: "connecting",
+  });
+  assert.equal(fixture.failureCodes.length, 0);
+});
+
 test("reconnect reconciliation requires a valid join strictly before grace expiry", async () => {
   const deadlineAt = new Date("2026-07-10T08:00:30.000Z");
   const snapshots = [
@@ -297,14 +375,18 @@ function createFixture(
   recoveries: number;
   inspections: number;
   eventKinds: string[];
+  failureCodes: string[];
+  creditDisposition: string | null;
   conflictOnMark: boolean;
 } {
   let current = initial;
   let losses = 0;
   let recoveries = 0;
   let inspections = 0;
+  let creditDisposition: string | null = null;
   let conflictOnMark = false;
   const eventKinds: string[] = [];
+  const failureCodes: string[] = [];
   const store: InterviewReconnectStore = {
     getDatabaseTime: async () => new Date(databaseNow),
     getById: async () => current,
@@ -457,6 +539,23 @@ function createFixture(
         }
         return { ok: true, disposition: "ignored", lifecycle: current };
       },
+      failMissingRuntime: async (input) => {
+        failureCodes.push(input.event.failure?.code ?? "missing");
+        creditDisposition = "released";
+        current = {
+          ...current,
+          state: "failed",
+          version: current.version + 2,
+          terminalReason: "provider_failure",
+          roomCleanupPending: true,
+        };
+        return {
+          ok: true,
+          disposition: "created",
+          sessionId: input.requestSessionId,
+          creditDisposition,
+        };
+      },
     },
     get current() {
       return current;
@@ -473,6 +572,12 @@ function createFixture(
     get eventKinds() {
       return eventKinds;
     },
+    get failureCodes() {
+      return failureCodes;
+    },
+    get creditDisposition() {
+      return creditDisposition;
+    },
     get conflictOnMark() {
       return conflictOnMark;
     },
@@ -483,21 +588,28 @@ function createFixture(
 }
 
 function presence({
+  roomPresent = true,
   candidate = true,
   agent = true,
   joinedAt = NOW,
 }: {
+  roomPresent?: boolean;
   candidate?: boolean;
   agent?: boolean;
   joinedAt?: Date;
 } = {}) {
   return {
+    roomPresent,
     present: candidate,
     joined: candidate,
     joinedAt: candidate ? joinedAt : null,
     agent: agent
       ? { identity: "agent-worker", joinedAt: new Date(joinedAt.getTime() - 1) }
       : null,
+    targetSource: agent ? ("participant" as const) : ("none" as const),
+    targetReason: agent
+      ? ("participant_exact" as const)
+      : ("agent_absent" as const),
   };
 }
 
@@ -506,6 +618,7 @@ function createSession(
 ): InterviewReconnectSession {
   return {
     sessionId: SESSION_ID,
+    startContractVersion: 1,
     userId: USER_ID,
     roomName: "interview-presence-room",
     state: "active",

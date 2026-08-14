@@ -172,9 +172,10 @@ export function parseInterviewRoomCredentials(
 export function getCredentialRetryDelayMs(
   status: number,
   retryAfterHeader: string | null,
+  retryable = false,
   nowMs = Date.now()
 ): number | null {
-  if (status !== 429 && status !== 503) return null;
+  if (!retryable && status !== 429 && status !== 503) return null;
 
   return getInterviewRetryDelayMs(retryAfterHeader, nowMs);
 }
@@ -237,8 +238,16 @@ export function waitForInterviewRecoveryDelay(
   });
 }
 
-export function shouldDiscardInterviewRoomCredentials(status: number): boolean {
-  return status === 401 || status === 403 || status === 404 || status === 409;
+export function shouldDiscardInterviewRoomCredentials(
+  status: number,
+  retryable = false
+): boolean {
+  return (
+    status === 401 ||
+    status === 403 ||
+    status === 404 ||
+    (status === 409 && !retryable)
+  );
 }
 
 function createAbortError(): Error {
