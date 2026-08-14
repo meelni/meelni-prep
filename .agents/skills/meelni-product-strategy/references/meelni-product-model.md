@@ -6,6 +6,26 @@ Meelni is a live PM interview practice product for product managers who need rea
 
 The restart direction is not generic mock interviews. The wedge is PM-specific depth: Product Sense, Execution/Product Metrics, Strategy, and Behavioral practice with realistic questions, voice agents, transcripts, feedback, focused practice, and progress loops.
 
+## Long-Term Platform Thesis
+
+PM interview practice is the first vertical, not the permanent category
+boundary. Meelni's accepted long-term direction is a domain-specialized
+simulation and feedback system for high-stakes, dialogue-based professional
+practice.
+
+Future domains should be delivered as complete, expert-validated domain packs:
+competencies, scenarios, interviewer policy, evidence types, evaluation modes,
+next-practice progression, and any required tools. Likely expansion hypotheses
+include consulting cases, engineering judgment and system design, accounting
+and finance professional scenarios, and later higher-trust professional formats
+such as medical MMIs.
+
+The product should progress from candidate practice to interviewer calibration
+and then workplace skill simulations only when consumer learning, domain
+quality, distribution, and buyer evidence support each step. The current public
+category remains live PM interview practice until a separate accepted decision
+changes it.
+
 ## Current Structural Pillars
 
 - Public acquisition surfaces: marketing pages, pricing, blog, company pages, question bank, explore pages, and SEO content.
@@ -33,6 +53,7 @@ Strong areas versus generic interview prep:
 - focused practice tied to actual answers
 - future applied AI PM practice: agent product strategy, skill design, eval design, and AI product case practice
 - future enterprise use cases around hiring enablement, talent development, custom rubrics, and skill evaluation
+- long-term domain-pack expansion that preserves vertical evaluation depth instead of becoming a generic interview chatbot
 
 ## Primary Users
 
@@ -99,7 +120,7 @@ Prefer product work that makes the next practice action more obvious, personaliz
 - AI/agent product practice tracks for PMs
 - improved practice-progress signals
 - enterprise team practice, custom rubrics, and cohort reporting
-- broader professions only after the PM wedge is clearly working or a distribution reason appears
+- domain-pack prototypes for consulting, engineering judgment, accounting and finance, and later higher-trust professions only after the PM wedge is working or a concrete buyer or distribution reason appears
 
 Do not describe future direction as already shipped.
 
@@ -110,5 +131,7 @@ Do not describe future direction as already shipped.
 - Feedback should make the next action obvious.
 - Monetization should attach to serious preparation and visible improvement.
 - Enterprise optionality should not distort the consumer beachhead too early.
+- Domain depth and expert-calibrated evidence should precede professional breadth.
+- CLI, API, and MCP are delivery adapters; the durable product is the domain simulation, evidence, feedback, and progression contract.
 - AI features should deepen PM interview preparation, not become generic AI novelty.
 - Every major product bet should name the lever it improves: acquisition, activation, retention, monetization, enterprise validation, or product quality.
