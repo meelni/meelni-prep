@@ -135,7 +135,7 @@ Loopback HTTP is accepted only for local development.
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0034_feedback_quality_signals` and require the thirty-five-entry schema
+   `0035_sav_431_public_demo_preview_allowance` and require the thirty-six-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime through the guarded wrapper with an external,

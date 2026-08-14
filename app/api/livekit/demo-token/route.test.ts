@@ -263,6 +263,43 @@ describe("POST /api/livekit/demo-token", () => {
       retryAt: "2026-07-09T12:00:42.000Z",
     });
   });
+
+  it("rotates an expired preview session before the client retries", async () => {
+    mocks.resolvePublicDemoIdentity
+      .mockReturnValueOnce({
+        established: true,
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        participantIdentity: "demo-old",
+        deviceCookie: "signed-device",
+        sessionCookie: "signed-session-old",
+        identifiers: { ipHash: "a".repeat(64), deviceHash: "b".repeat(64) },
+      })
+      .mockReturnValueOnce({
+        established: false,
+        sessionId: "33333333-3333-4333-8333-333333333333",
+        participantIdentity: "demo-new",
+        deviceCookie: "signed-device",
+        sessionCookie: "signed-session-new",
+        identifiers: { ipHash: "a".repeat(64), deviceHash: "b".repeat(64) },
+      });
+    mocks.startPublicDemoWorkflow.mockResolvedValue({
+      ok: false,
+      status: 409,
+      body: { error: "demo_identity_initialized" },
+      rotateSessionCookie: true,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "demo_identity_initialized",
+    });
+    expect(response.headers.getSetCookie().join(";")).toContain(
+      "meelni_demo_session=signed-session-new"
+    );
+    expect(mocks.resolvePublicDemoIdentity).toHaveBeenCalledTimes(2);
+  });
 });
 
 function request(

@@ -398,7 +398,7 @@ paths:
       tags:
         - LiveKit
       summary: Start or recover the public voice preview
-      description: Authorizes a bounded two-minute voice preview and returns a LiveKit participant token. The body must be exactly an empty JSON object; signed HttpOnly cookies and shared server-side limits are authoritative.
+      description: Authorizes a bounded two-minute voice preview and returns a LiveKit participant token. A signed device may start up to 10 previews in a rolling 24-hour window with only one active at a time. The body must be exactly an empty JSON object; signed HttpOnly cookies and shared server-side limits are authoritative. Confirmed provider startup failures restore the associated allowance.
       requestBody:
         required: true
         content:
@@ -437,11 +437,11 @@ paths:
         "404":
           description: Public voice preview is disabled
         "409":
-          description: Signed identity was initialized without provider work, or a preview start is already in progress
+          description: Signed identity was initialized or rotated without provider work, a preview start is already in progress, or the device already has an active preview
         "415":
           description: Request must use application/json
         "429":
-          description: Shared preview limit exceeded; retry according to Retry-After
+          description: Rolling device allowance or shared preview safety limit exceeded; retry according to Retry-After
         "503":
           description: Preview authorization, configuration, or LiveKit is temporarily unavailable
 

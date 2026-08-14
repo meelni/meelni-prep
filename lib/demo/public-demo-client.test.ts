@@ -58,7 +58,7 @@ test("public demo client never loops a failed identity handshake", async () => {
   assert.equal(result.ok, false);
 });
 
-test("public demo client maps 429 to an explicit non-immediate cooldown", () => {
+test("public demo client explains the ten-preview daily allowance", () => {
   assert.deepEqual(
     interpretPublicDemoStartFailure({
       status: 429,
@@ -67,9 +67,26 @@ test("public demo client maps 429 to an explicit non-immediate cooldown", () => 
       now: 1_000,
     }),
     {
-      title: "The voice preview is on cooldown",
-      message: "You can try again when the cooldown ends.",
+      title: "You've reached the voice preview limit",
+      message:
+        "You can start up to 10 voice previews in 24 hours. Try again when your preview allowance resets.",
       retryAt: 43_000,
+    }
+  );
+});
+
+test("public demo client distinguishes an active preview from the daily limit", () => {
+  assert.deepEqual(
+    interpretPublicDemoStartFailure({
+      status: 409,
+      body: { error: "demo_preview_active", retryAfterSeconds: 75 },
+      retryAfterHeader: "30",
+      now: 1_000,
+    }),
+    {
+      title: "Your voice preview is still active",
+      message: "You can start another preview when this one ends.",
+      retryAt: 76_000,
     }
   );
 });
