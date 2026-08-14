@@ -20,11 +20,13 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   storeCredentials: vi.fn(),
   validateSessionStart: vi.fn(),
+  searchParams: new URLSearchParams(),
+  settings: null as Record<string, unknown> | null,
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mocks.searchParams,
 }));
 
 vi.mock("@/app/providers/auth-provider", () => ({
@@ -172,6 +174,8 @@ import { SetupContent } from "./setup-content";
 describe("interview setup microphone permission check", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    mocks.searchParams = new URLSearchParams();
+    mocks.settings = null;
     mocks.validateSessionStart.mockImplementation((data: unknown) => ({
       success: true,
       data,
@@ -189,6 +193,9 @@ describe("interview setup microphone permission check", () => {
             nextCreditExpiresAt: null,
             trialAvailable: false,
           });
+        }
+        if (String(input) === "/api/user/settings") {
+          return Response.json({ settings: mocks.settings });
         }
         throw new Error(`Unexpected request: ${String(input)}`);
       })
@@ -306,6 +313,54 @@ describe("interview setup microphone permission check", () => {
     for (const track of tracks) {
       expect(track.stop).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("loads saved launcher defaults and carries company context into the validated start", async () => {
+    mocks.searchParams = new URLSearchParams("company=Acme");
+    mocks.settings = {
+      defaultInterviewType: "analytical",
+      defaultDifficulty: "hard",
+      questionRecency: "recent",
+    };
+    installPermissionStream();
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+    await waitFor(() =>
+      expect(screen.getByText("Execution · Senior PM")).toBeInTheDocument()
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start mock interview" })
+    );
+
+    await waitFor(() => {
+      expect(mocks.validateSessionStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roundType: "execution",
+          company: "Acme",
+          config: expect.objectContaining({
+            difficulty: "advanced",
+            questionPreference: { recency: "recent", recentDays: 730 },
+          }),
+        })
+      );
+    });
+  });
+
+  it("keeps explicit URL round and difficulty ahead of saved defaults", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "interview_type=strategy&difficulty=beginner"
+    );
+    mocks.settings = {
+      defaultInterviewType: "analytical",
+      defaultDifficulty: "hard",
+      questionRecency: "all",
+    };
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Strategy · Junior/APM")).toBeInTheDocument()
+    );
   });
 
   it("preserves the actionable denial message without trying to clean an absent stream", async () => {
@@ -431,6 +486,8 @@ describe("setup interview start recovery", () => {
       success: true,
       data,
     }));
+    mocks.searchParams = new URLSearchParams();
+    mocks.settings = null;
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(ATTEMPT_ID);
     Object.defineProperty(globalThis.navigator, "mediaDevices", {
       configurable: true,
@@ -444,6 +501,9 @@ describe("setup interview start recovery", () => {
       "fetch",
       vi.fn<typeof fetch>(async (input) => {
         if (String(input) === "/api/billing/credits") return creditsResponse();
+        if (String(input) === "/api/user/settings") {
+          return jsonResponse(200, { settings: mocks.settings });
+        }
         throw new Error(`Unexpected request: ${String(input)}`);
       })
     );

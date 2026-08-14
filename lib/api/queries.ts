@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/app/providers/auth-provider";
 import type { DashboardFeedbackPresentationKind } from "@/lib/dashboard/feedback-presentation";
 
 // ============================================================================
@@ -51,11 +52,14 @@ export interface SessionsResponse {
 
 export const sessionKeys = {
   all: ["sessions"] as const,
-  lists: () => [...sessionKeys.all, "list"] as const,
-  list: (limit?: number, offset = 0) =>
-    [...sessionKeys.lists(), { limit, offset }] as const,
-  details: () => [...sessionKeys.all, "detail"] as const,
-  detail: (id: string) => [...sessionKeys.details(), id] as const,
+  subject: (userId: string) => [...sessionKeys.all, { userId }] as const,
+  lists: (userId: string) => [...sessionKeys.subject(userId), "list"] as const,
+  list: (userId: string, limit?: number, offset = 0) =>
+    [...sessionKeys.lists(userId), { limit, offset }] as const,
+  details: (userId: string) =>
+    [...sessionKeys.subject(userId), "detail"] as const,
+  detail: (userId: string, id: string) =>
+    [...sessionKeys.details(userId), id] as const,
 };
 
 // ============================================================================
@@ -89,9 +93,13 @@ async function fetchSessions(
 // ============================================================================
 
 export function useSessions(limit?: number, offset = 0) {
+  const { user, isLoading } = useAuth();
+  const userId = user?.id ?? "signed-out";
+
   return useQuery({
-    queryKey: sessionKeys.list(limit, offset),
+    queryKey: sessionKeys.list(userId, limit, offset),
     queryFn: () => fetchSessions(limit, offset),
+    enabled: !isLoading && Boolean(user),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: 3,
