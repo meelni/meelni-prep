@@ -46,6 +46,49 @@ authorization and score-band corpus below do not authorize a provider run for
 the new v3 prompt/rubric. Any future live v3 calibration remains separately
 owner-authorized.
 
+## Provider-free latency bakeoff
+
+`feedback-provider-free-bakeoff-report.v1` extends the existing deterministic
+Feedback v2 calibration replay; it does not introduce a second evaluator. Its
+closed input is `config/feedback-provider-free-bakeoff.json`, and its canonical
+content-free output is
+`docs/evidence/sav-446-provider-free-bakeoff.json`. Both abstract evaluator
+profiles execute the same synthetic 40-case corpus through
+`runEvaluationCalibration`, with 64 calibration evaluator calls per profile.
+The parser-measurement pass replays the 32 scored fixtures once more, so the
+report records 32 measurement replay calls and 96 total local evaluator calls
+per profile. Every pass remains deterministic and `providerCalls` remains zero.
+
+The report keeps two validation claims separate:
+
+- `evidenceValidityRate` is the existing calibration metric for grounded exact
+  transcript evidence.
+- `structuredOutputAcceptanceRate` counts scored deterministic outputs that
+  independently round-trip through the production `parseFeedbackV2` parser.
+
+Neither field is a general schema-validity claim. Only parser-accepted outputs
+enter the output-ceiling measurement. `utf8-byte-upper-bound.v1` treats every
+nonempty UTF-8 byte as one possible token, then applies the configured 25%
+headroom and rounds upward to 128 tokens. The resulting 1,792-token ceiling is
+an analysis candidate against the unchanged 2,000-token runtime ceiling; the
+report records `activated: false`.
+
+Latency and comparison-cost values are configured assumptions, not observed
+provider measurements or prices. Candidate IDs are deliberately provider- and
+model-neutral. The pure queue simulator applies those assumptions to a
+synthetic 24-job burst and separates throttle wait, concurrency wait, claim,
+provider, validation, persistence, and total time. It imports the durable
+90-second feedback-generation deadline and its 5-second persistence reserve;
+it does not mutate Inngest or application configuration.
+
+The report contains aggregate counts, distributions, version hashes, and
+reproducibility hashes only. It contains no interview text, customer identity,
+provider payload, credential, or price assertion. A passing result may nominate
+a queue policy for staging review, but it cannot select a provider/model/tier,
+authorize spend, alter a token ceiling or queue, activate a default, or
+authorize a Production or launch action. Live quality and latency evidence and
+the applicable owner-controlled authorization remain separate prerequisites.
+
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns
