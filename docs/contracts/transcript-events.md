@@ -115,6 +115,35 @@ degrading marker, degraded settlement, or malformed boundary fails closed.
 Settlement seals that generation: exact replays remain idempotent, but distinct
 new turns or markers from it are rejected.
 
+## Durable Runtime-Settlement Command
+
+Accepting explicit End atomically creates one
+`transcript_runtime_settlement_command` for the accepted lifecycle version when
+a registered writer exists. Contract version 1 copies the immutable cutoff,
+room, writer ID, and writer generation, assigns the deterministic identity
+`runtime-settlement:<session_id>:<lifecycle_version>`, and records a bounded
+expiry. The command is service-only state; the browser cannot read or mutate
+it.
+
+The runtime uses the existing timestamped HMAC `/api/internal/transcript`
+boundary for strict metadata-only `runtime_settlement_command_pull` and
+`runtime_settlement_command_ack` messages. Pull requires the exact session,
+room, writer ID, and generation. Ack additionally requires the command ID and
+`settled` or `degraded` outcome, and the database accepts it only after the
+matching `runtime_settlement` row exists with that outcome. Equivalent replays
+return the existing acknowledgement. Unknown versions, stale generations,
+identity drift, outcome conflicts, expiry, and late acknowledgements fail
+closed.
+
+The LiveKit `runtime_settlement_request` packet remains version-1 compatible,
+but its request identity and cutoff are derived from the durable command. It is
+only a wake-up hint. The Python writer pulls on that hint, exact candidate
+disconnect, and shutdown. A rolling-deployment writer that only persists the
+legacy settlement still converges because the matching settlement insert
+atomically acknowledges its pending command. A command left pending at the
+bounded finalizer deadline becomes terminal `expired`; frozen database
+watermarks then classify evidence without manufacturing settled proof.
+
 Consumers deduplicate globally by `event_id`. They order events from one writer
 generation by `sequence`; overlapping user and interviewer speech may have
 non-monotonic start times without violating that sequence. Disjoint reversed
@@ -207,9 +236,10 @@ identity.
 
 Transcript insert and terminalization transactions lock the same session row.
 Explicit browser end sends one authenticated terminal command. The server
-attempts a short, bounded reliable metadata-only settlement request before
-terminalization, but runtime timeout, absence, or provider failure cannot reject
-the user's end intent. The runtime interrupts active interviewer playout,
+commits durable writer-bound settlement intent and may send a short, bounded
+reliable metadata-only wake-up packet before terminalization, but runtime
+timeout, absence, or provider failure cannot reject the user's end intent. The
+runtime interrupts active interviewer playout,
 commits in-progress candidate speech when possible, and drains its bounded
 in-memory outbox. A trusted packet synchronously freezes the evidence cutoff,
 installs a cutoff-aware callback gate, disables input/output, and interrupts

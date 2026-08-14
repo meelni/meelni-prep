@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   isInterviewTerminalState,
   projectLegacyInterviewSessionStatus,
@@ -7,7 +7,16 @@ import {
 } from "@meelni/core";
 
 import { db } from "./index";
-import { interviewSession } from "./schema";
+import {
+  interviewSession,
+  transcriptRuntimeSettlementCommand,
+  transcriptRuntimeWriter,
+} from "./schema";
+import {
+  buildRuntimeSettlementCommandId,
+  RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION,
+  RUNTIME_SETTLEMENT_COMMAND_EXPIRY_MS,
+} from "./runtime-settlement-commands";
 
 export const USER_END_ACCEPTANCE_LOCK_TIMEOUT_MS = 1_500;
 export const USER_END_ACCEPTANCE_STATEMENT_TIMEOUT_MS = 2_500;
@@ -125,6 +134,37 @@ export async function acceptUserInterviewEnd(
 
     if (!updated[0]) {
       throw new Error("interview_end_acceptance_conflict");
+    }
+
+    const currentWriters = await tx
+      .select({
+        generation: transcriptRuntimeWriter.generation,
+        roomName: transcriptRuntimeWriter.roomName,
+        writerId: transcriptRuntimeWriter.writerId,
+      })
+      .from(transcriptRuntimeWriter)
+      .where(eq(transcriptRuntimeWriter.sessionId, input.sessionId))
+      .orderBy(desc(transcriptRuntimeWriter.generation))
+      .limit(1);
+    const currentWriter = currentWriters[0];
+    const semanticCutoff = updated[0].endingAt;
+    if (currentWriter && semanticCutoff) {
+      await tx.insert(transcriptRuntimeSettlementCommand).values({
+        sessionId: updated[0].sessionId,
+        lifecycleVersion: updated[0].lifecycleVersion,
+        contractVersion: RUNTIME_SETTLEMENT_COMMAND_CONTRACT_VERSION,
+        commandId: buildRuntimeSettlementCommandId({
+          sessionId: updated[0].sessionId,
+          lifecycleVersion: updated[0].lifecycleVersion,
+        }),
+        roomName: currentWriter.roomName,
+        writerId: currentWriter.writerId,
+        writerGeneration: currentWriter.generation,
+        cutoffAt: semanticCutoff,
+        expiresAt: new Date(
+          semanticCutoff.getTime() + RUNTIME_SETTLEMENT_COMMAND_EXPIRY_MS
+        ),
+      });
     }
     return {
       ok: true,

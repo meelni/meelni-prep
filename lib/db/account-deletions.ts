@@ -28,6 +28,7 @@ import {
   transcriptEvidenceWriterCutoff,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
+  transcriptRuntimeSettlementCommand,
   transcriptRuntimeWriter,
   subscription,
   transcriptTurn,
@@ -829,6 +830,12 @@ export async function deleteUserApplicationData(userId: string) {
       await tx
         .delete(transcriptRuntimeSettlement)
         .where(eq(transcriptRuntimeSettlement.sessionId, sessionId));
+      // Settlement commands hold NO ACTION references to both the session and
+      // its registered writer, so erase them while the session lock is held
+      // and before either referenced parent is removed.
+      await tx
+        .delete(transcriptRuntimeSettlementCommand)
+        .where(eq(transcriptRuntimeSettlementCommand.sessionId, sessionId));
       await tx
         .delete(transcriptEvidenceWriterCutoff)
         .where(eq(transcriptEvidenceWriterCutoff.sessionId, sessionId));

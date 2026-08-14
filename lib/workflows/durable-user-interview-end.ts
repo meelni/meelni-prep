@@ -51,7 +51,7 @@ export interface DurableUserInterviewEndDeps {
   requestRuntimeSettlement(input: {
     sessionId: string;
     userId: string;
-    env: LiveKitEnvironment;
+    env: LiveKitEnvironment | null;
     timeoutMs: number;
   }): Promise<RequestUserEndRuntimeSettlementResult>;
   finalizeSession(input: {
@@ -163,17 +163,6 @@ async function settleRuntime(
     );
     return "not_required";
   }
-  if (!input.env) {
-    reportStage(
-      input.sessionId,
-      "runtime_settlement",
-      "deferred",
-      0,
-      "runtime_unavailable"
-    );
-    return "provider_unavailable";
-  }
-
   const startedAt = deps.now();
   try {
     const result = await deps.requestRuntimeSettlement({
