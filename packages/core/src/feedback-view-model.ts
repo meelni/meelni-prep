@@ -23,6 +23,7 @@ import {
 import {
   FEEDBACK_DIMENSIONS,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   parsePersistedDimensionCoverageFeedback,
   selectDimensionCoveragePracticeFocus,
   type DimensionCoverageFeedbackMode,
@@ -30,6 +31,7 @@ import {
   type DimensionCoverageResultDimensions,
 } from "./feedback-dimension-coverage";
 import type { CandidateAnswerBlock } from "./answer-blocks";
+import type { TrustedAnswerBlockProjection } from "./trusted-answer-block-authority";
 import type { RoundType } from "./interview";
 import type { FeedbackOutcomeReason } from "./feedback-outcome";
 import {
@@ -66,6 +68,7 @@ export interface PersistedCompletedFeedback {
   feedbackMode?: unknown;
   feedbackRoundType?: unknown;
   dimensionCoverage?: unknown;
+  verifiedPrefixScope?: unknown;
   createdAt: unknown;
 }
 
@@ -81,6 +84,7 @@ export interface PresentCompletedFeedbackOptions {
   answerBlocks?: readonly CandidateAnswerBlock[];
   expectedRoundType?: RoundType;
   frozenEvidenceState?: "complete" | "partial";
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   scoreWithheldReason?: FeedbackScoreWithheldReason;
 }
 
@@ -207,6 +211,11 @@ export interface FeedbackDimensionCoverageView
   scoreWithheldReason: FeedbackScoreWithheldReason | null;
   coachingSignals: FeedbackCoachingSignalView[];
   prioritizedPracticeFocus: FeedbackPracticeFocusView | null;
+  verifiedScope: {
+    kind: "verified_prefix";
+    reviewedAnswerCount: number;
+    excludedTail: boolean;
+  } | null;
 }
 
 export interface FeedbackInvalidView {
@@ -357,7 +366,10 @@ export function presentCompletedFeedback(
 ): CompletedFeedbackView {
   try {
     if (hasLegacyVersionTuple(input)) return parseLegacyFeedback(input);
-    if (input.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION) {
+    if (
+      input.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+      input.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+    ) {
       if (
         options.expectedRoundType === undefined ||
         options.frozenEvidenceState === undefined
@@ -370,7 +382,8 @@ export function presentCompletedFeedback(
       return parseDimensionCoverageFeedbackView(
         input,
         options.answerBlocks ?? [],
-        options.frozenEvidenceState
+        options.frozenEvidenceState,
+        options.verifiedPrefixProjection
       );
     }
     if (input.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION) {
@@ -761,6 +774,19 @@ function isDimensionCoverageFeedbackView(
     return false;
   }
   const dimensions = value.dimensions;
+  const verifiedScope = value.verifiedScope;
+  if (
+    verifiedScope !== null &&
+    (!isRecord(verifiedScope) ||
+      verifiedScope.kind !== "verified_prefix" ||
+      !Number.isSafeInteger(verifiedScope.reviewedAnswerCount) ||
+      (verifiedScope.reviewedAnswerCount as number) <= 0 ||
+      (verifiedScope.reviewedAnswerCount as number) > 1_000 ||
+      typeof verifiedScope.excludedTail !== "boolean" ||
+      Object.keys(verifiedScope).length !== 3)
+  ) {
+    return false;
+  }
   if (
     Object.keys(dimensions).length !== FEEDBACK_DIMENSIONS.length ||
     FEEDBACK_DIMENSIONS.some((dimension) => !(dimension in dimensions))
@@ -822,7 +848,8 @@ function isDimensionCoverageFeedbackView(
           numericScores as Record<FeedbackDimension, number>
         ) === (value.overallScore as number)
       ) ||
-      value.scoreWithheldReason !== null
+      value.scoreWithheldReason !== null ||
+      verifiedScope !== null
     ) {
       return false;
     }
@@ -833,7 +860,8 @@ function isDimensionCoverageFeedbackView(
     if (
       value.mode === "partial_scorecard" &&
       (sufficientCount === 0 ||
-        sufficientCount === FEEDBACK_DIMENSIONS.length ||
+        (sufficientCount === FEEDBACK_DIMENSIONS.length &&
+          verifiedScope === null) ||
         value.scoreWithheldReason !== "rubric_coverage")
     ) {
       return false;
@@ -1044,7 +1072,8 @@ function parseV2Feedback(
 function parseDimensionCoverageFeedbackView(
   input: PersistedCompletedFeedback,
   answerBlocks: readonly CandidateAnswerBlock[],
-  frozenEvidenceState: "complete" | "partial"
+  frozenEvidenceState: "complete" | "partial",
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection
 ): FeedbackDimensionCoverageView {
   const overallScore =
     input.overallScore === null
@@ -1062,10 +1091,17 @@ function parseDimensionCoverageFeedbackView(
       dimensions: input.dimensionCoverage,
       overallScore,
       summary: input.summary,
+      ...(input.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+        ? { verifiedPrefixScope: input.verifiedPrefixScope }
+        : {}),
     },
     {
       answerBlocks,
-      allowNumericalScores: frozenEvidenceState === "complete",
+      allowNumericalScores:
+        input.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+          ? input.feedbackMode !== "coaching_review"
+          : frozenEvidenceState === "complete",
+      ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
     }
   );
   const persistedScores: Record<FeedbackDimension, unknown> = {
@@ -1084,14 +1120,18 @@ function parseDimensionCoverageFeedbackView(
       throw new Error("dimension score mismatch");
     }
   }
+  const isVerifiedPrefix =
+    feedback.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
   const scoreWithheldReason: FeedbackScoreWithheldReason | null =
     feedback.mode === "full_scorecard"
       ? null
       : feedback.mode === "partial_scorecard"
         ? "rubric_coverage"
-        : frozenEvidenceState === "partial"
-          ? "verified_evidence_integrity"
-          : "rubric_coverage";
+        : isVerifiedPrefix
+          ? "rubric_coverage"
+          : frozenEvidenceState === "partial"
+            ? "verified_evidence_integrity"
+            : "rubric_coverage";
   const dimensions = toDimensionResultsView(feedback.dimensions, answerBlocks);
   const coaching = buildDimensionCoverageCoachingPresentation(
     dimensions,
@@ -1114,6 +1154,14 @@ function parseDimensionCoverageFeedbackView(
     scoreWithheldReason,
     coachingSignals: coaching.signals,
     prioritizedPracticeFocus: coaching.practiceFocus,
+    verifiedScope: isVerifiedPrefix
+      ? {
+          kind: "verified_prefix",
+          reviewedAnswerCount:
+            feedback.verifiedPrefixScope.trustedBlockIdentities.length,
+          excludedTail: true,
+        }
+      : null,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
   };

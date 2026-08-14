@@ -2,6 +2,7 @@ import {
   calculateOverallScore,
   classifySkippedFeedbackLifecycle,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_PROMPT_VERSION,
@@ -14,6 +15,7 @@ import {
   type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
@@ -34,6 +36,7 @@ export const DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
   // value one character beyond each limit so corrupt rows fail closed.
   findingsJson: 1_000_000,
   dimensionCoverageJson: 1_000_000,
+  verifiedPrefixScopeJson: 128_000,
   drillsJson: 64_000,
   summary: 4_000,
   version: 256,
@@ -59,6 +62,7 @@ export interface DashboardFeedbackPresentationCandidate {
   feedbackMode: unknown;
   feedbackRoundType: unknown;
   dimensionCoverageJson: unknown;
+  verifiedPrefixScopeJson: unknown;
   strengthsJson: unknown;
   improvementsJson: unknown;
   drillsJson: unknown;
@@ -77,7 +81,8 @@ export function classifyDashboardFeedbackPresentation(
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[],
   answerBlocks: readonly CandidateAnswerBlock[] = [],
   expectedRoundType?: RoundType,
-  frozenEvidenceState?: "complete" | "partial"
+  frozenEvidenceState?: "complete" | "partial",
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection
 ): DashboardFeedbackPresentationKind {
   const strengths = decodeBoundedJson(
     candidate.strengthsJson,
@@ -94,6 +99,10 @@ export function classifyDashboardFeedbackPresentation(
   const dimensionCoverage = decodeBoundedJson(
     candidate.dimensionCoverageJson,
     DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson
+  );
+  const verifiedPrefixScope = decodeBoundedJson(
+    candidate.verifiedPrefixScopeJson,
+    DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.verifiedPrefixScopeJson
   );
   const presented = presentCompletedFeedback(
     {
@@ -117,6 +126,7 @@ export function classifyDashboardFeedbackPresentation(
       feedbackMode: candidate.feedbackMode,
       feedbackRoundType: candidate.feedbackRoundType,
       dimensionCoverage,
+      verifiedPrefixScope,
       createdAt: candidate.createdAt,
     },
     {
@@ -124,6 +134,7 @@ export function classifyDashboardFeedbackPresentation(
       answerBlocks,
       expectedRoundType,
       frozenEvidenceState,
+      verifiedPrefixProjection,
     }
   );
 
@@ -136,7 +147,8 @@ export function classifyDashboardFeedbackPresentation(
     candidate.outcomeReason === "feedback_generated" &&
     (candidate.completionTier === "full" ||
       candidate.completionTier === "partial") &&
-    candidate.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    (candidate.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+      candidate.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) &&
     presented.kind === "dimension-coverage"
   ) {
     return presented.mode;

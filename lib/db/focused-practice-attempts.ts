@@ -1,5 +1,6 @@
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   FOCUSED_PRACTICE_GROUNDED_ATTEMPT_CONTRACT_VERSION,
   parseAnyFocusedPracticeAttempt,
   type AnyFocusedPracticeAttempt,
@@ -16,8 +17,14 @@ import {
   buildFeedbackEvidenceTurnsQuery,
   getFrozenFeedbackEvaluationEvidence,
 } from "@/lib/db/transcripts";
-import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
-import { createFocusedPracticeSourceFingerprint } from "@/lib/focused-practice/source-fingerprint";
+import {
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+} from "@/lib/evaluation/session-validator";
+import {
+  createFocusedPracticeSourceFingerprint,
+  projectLegacyFocusedPracticeSourceFingerprintInput,
+} from "@/lib/focused-practice/source-fingerprint";
 import {
   transitionFocusedPracticeAttemptCompletion,
   type BoundedFocusedPracticeSource,
@@ -378,17 +385,29 @@ async function loadOwnedSourceSnapshot(
   );
   let frozenEvidenceState: "complete" | "partial" | null = null;
   let answerBlocks: BoundedFocusedPracticeSource["answerBlocks"] = [];
+  let verifiedPrefixProjection:
+    | BoundedFocusedPracticeSource["verifiedPrefixProjection"]
+    | undefined;
   let frozenEvidence: Awaited<
     ReturnType<typeof getFrozenFeedbackEvaluationEvidence>
   > | null = null;
   if (
-    boundedFeedback.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+    boundedFeedback.schemaVersion ===
+      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+    boundedFeedback.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
   ) {
     frozenEvidence = await getFrozenFeedbackEvaluationEvidence(
       input.sourceSessionId,
       database
     );
+    const preparedTrusted =
+      boundedFeedback.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+        ? prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+            frozenEvidence
+          )
+        : null;
     const prepared =
+      preparedTrusted ??
       prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(frozenEvidence);
     if (
       frozenEvidence.snapshotValid &&
@@ -398,6 +417,12 @@ async function loadOwnedSourceSnapshot(
       frozenEvidenceState = frozenEvidence.snapshotState;
     }
     answerBlocks = prepared.eligible ? prepared.blocks : [];
+    if (
+      preparedTrusted?.eligible &&
+      preparedTrusted.projection.status === "verified_prefix"
+    ) {
+      verifiedPrefixProjection = preparedTrusted.projection;
+    }
   }
   const question =
     source.questionId && source.questionText
@@ -406,7 +431,7 @@ async function loadOwnedSourceSnapshot(
           questionText: source.questionText,
         }
       : null;
-  const sourceFingerprint = createFocusedPracticeSourceFingerprint({
+  const sourceFingerprintInput = {
     userId: source.userId,
     sessionId: source.sessionId,
     feedbackId: source.feedbackId,
@@ -416,7 +441,14 @@ async function loadOwnedSourceSnapshot(
     feedback: boundedFeedback,
     evidenceTurns,
     frozenEvidence,
-  });
+  };
+  const sourceFingerprint = createFocusedPracticeSourceFingerprint(
+    boundedFeedback.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+      ? sourceFingerprintInput
+      : projectLegacyFocusedPracticeSourceFingerprintInput(
+          sourceFingerprintInput
+        )
+  );
   return {
     userId: source.userId,
     sessionId: source.sessionId,
@@ -428,6 +460,7 @@ async function loadOwnedSourceSnapshot(
     evidenceTurns,
     answerBlocks,
     frozenEvidenceState,
+    ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
     sourceFingerprint,
     completionStats: boundedFeedback.completionStats,
   };

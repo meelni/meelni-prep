@@ -297,7 +297,14 @@ test("dimension coverage review renders a full scorecard only with complete supp
 });
 
 test("dimension coverage review withholds unsupported and overall scores in a partial scorecard", () => {
-  const feedback = dimensionCoverageView("partial");
+  const feedback = {
+    ...dimensionCoverageView("partial"),
+    verifiedScope: {
+      kind: "verified_prefix" as const,
+      reviewedAnswerCount: 1,
+      excludedTail: true,
+    },
+  };
   const html = renderToStaticMarkup(
     React.createElement(CompletedDimensionCoverageReview, { feedback })
   );
@@ -305,7 +312,16 @@ test("dimension coverage review withholds unsupported and overall scores in a pa
   assert.match(html, /Partial scorecard/);
   assert.match(html, /8\/10/);
   assert.match(html, /Not enough evidence/);
-  assert.match(html, /because this interview did not cover enough evidence/);
+  assert.match(html, /Individual scores use only verified completed answers/);
+  assert.match(html, /complete saved interview was outside the verified scope/);
+  assert.match(html, /Verified interview scope/);
+  assert.match(html, /only the 1 completed answer it could verify/);
+  assert.match(html, /unfinished or unverified end of the interview/);
+  assert.match(html, /was not treated as negative evidence/);
+  assert.match(
+    html,
+    /only verified completed answers could support the scores or coaching shown/
+  );
   assert.match(html, /Start focused practice/);
   assert.match(html, /Meelni selects one supported feedback point/);
   assert.doesNotMatch(html, /Overall score/);
@@ -313,8 +329,56 @@ test("dimension coverage review withholds unsupported and overall scores in a pa
   assert.doesNotMatch(html, /answer-block:0001/);
 });
 
+test("verified-prefix partial review explains all supported dimensions without implying missing coverage", () => {
+  const feedback: FeedbackDimensionCoverageView = {
+    ...dimensionCoverageView("full"),
+    id: "feedback-verified-prefix-all-dimensions",
+    sessionId: "session-verified-prefix-all-dimensions",
+    mode: "partial_scorecard",
+    overallScore: null,
+    scoreWithheldReason: "rubric_coverage",
+    verifiedScope: {
+      kind: "verified_prefix",
+      reviewedAnswerCount: 2,
+      excludedTail: true,
+    },
+  };
+  assert.ok(
+    FEEDBACK_DIMENSIONS.every(
+      (dimension) => feedback.dimensions[dimension].score !== null
+    )
+  );
+
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /Individual scores use only verified completed answers/);
+  assert.match(
+    html,
+    /Any dimension without enough verified support remains unscored/
+  );
+  assert.match(
+    html,
+    /overall score is withheld because the complete saved interview was outside the verified scope/i
+  );
+  assert.doesNotMatch(html, /Other dimensions are unscored/);
+  assert.doesNotMatch(
+    html,
+    /overall score needs supported evidence across every PM rubric dimension/i
+  );
+  assert.doesNotMatch(html, /Overall score/);
+});
+
 test("dimension coverage coaching review never renders numerical scores", () => {
-  const feedback = dimensionCoverageView("coaching-coverage");
+  const feedback = {
+    ...dimensionCoverageView("coaching-coverage"),
+    verifiedScope: {
+      kind: "verified_prefix" as const,
+      reviewedAnswerCount: 2,
+      excludedTail: true,
+    },
+  };
   const html = renderToStaticMarkup(
     React.createElement(CompletedDimensionCoverageReview, { feedback })
   );
@@ -323,6 +387,12 @@ test("dimension coverage coaching review never renders numerical scores", () => 
   assert.match(html, /Evidence support/);
   assert.match(html, /Prioritized practice focus/);
   assert.match(html, /not enough PM-rubric coverage/);
+  assert.match(html, /only the 2 completed answers it could verify/);
+  assert.match(html, /was not treated as negative evidence/);
+  assert.match(
+    html,
+    /only verified completed answers could support the scores or coaching shown/
+  );
   assert.match(html, /working parents because schedule changes/);
   assert.match(html, /Start focused practice/);
   assert.match(html, /Meelni selects one supported feedback point/);
@@ -342,6 +412,25 @@ test("integrity-limited coaching explains system confidence without judging perf
   assert.match(html, /Start focused practice/);
   assert.doesNotMatch(html, />\d+\/10</);
   assert.doesNotMatch(html, /answer-block:|facet|schema|model/i);
+});
+
+test("historical dimension-coverage reviews stay readable without verified-prefix claims", () => {
+  const feedback = dimensionCoverageView("partial");
+  assert.equal(feedback.verifiedScope, null);
+
+  const html = renderToStaticMarkup(
+    React.createElement(CompletedDimensionCoverageReview, { feedback })
+  );
+
+  assert.match(html, /Partial scorecard/);
+  assert.match(html, /Not enough evidence/);
+  assert.match(html, /because this interview did not cover enough evidence/);
+  assert.match(
+    html,
+    /An overall score needs supported evidence across every PM rubric dimension/
+  );
+  assert.doesNotMatch(html, /Verified interview scope/);
+  assert.doesNotMatch(html, /unfinished or unverified end/);
 });
 
 function dimensionCoverageView(

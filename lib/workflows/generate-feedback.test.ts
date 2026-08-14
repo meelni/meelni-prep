@@ -18,6 +18,7 @@ import {
   deriveCandidateAnswerBlocks,
   prepareFeedbackTranscript,
   parseDimensionCoverageProviderSelection,
+  projectTrustedClosedAnswerBlocks,
   type DimensionCoverageProviderSelection,
   type FeedbackEvaluationResult,
   type FeedbackEvaluationState,
@@ -35,7 +36,6 @@ import { DeadlineExceededError } from "@/lib/http/deadline";
 import {
   calculateValidatedSessionFromTurns,
   prepareCandidateAnswerBlockEvidenceFromTurns,
-  type PreparedCandidateAnswerBlockEvidence,
   type SessionValidationTurnInput,
   type SessionStats,
 } from "@/lib/evaluation/session-validator";
@@ -958,8 +958,21 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
   assert.notEqual(store.current.status, "skipped");
 });
 
-test("a partial frozen snapshot permits only qualitative coaching", async () => {
-  const store = new MemoryGenerationStore(record());
+test("a partial frozen snapshot without a trusted prefix permits only qualitative coaching", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 100,
+        durationSeconds: 60,
+        substantiveResponses: 5,
+        scoreableResponses: 5,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
+    })
+  );
   let observedNumericalPolicy: boolean | undefined;
   const deps = dependencies(store, {
     async evaluate(input) {
@@ -1716,6 +1729,126 @@ test("persists an exact-grounded sparse dimension scorecard through the producti
   assert.equal(store.completedScore, null);
 });
 
+test("verified-prefix partial generation scores only trusted blocks and rejects forged scope", async () => {
+  const events = createAnswerBlockSegmentationFixture(1).events;
+  const projection = projectTrustedClosedAnswerBlocks(events, {
+    contractVersion: "frozen-answer-block-authority.v1",
+    snapshotState: "partial",
+    cutoffAtMs: (events.at(-1) as { occurredAtMs: number }).occurredAtMs,
+    writers: [
+      {
+        contractVersion: 1,
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        committedSequence: 4,
+        integrityState: "healthy",
+        settlementState: "missing",
+      },
+    ],
+  });
+  assert.equal(projection.status, "verified_prefix");
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    dimensions[dimension] = {
+      score: dimension === "structure" ? 7 : null,
+      evidence:
+        dimension === "structure"
+          ? ROUND_DIMENSION_COVERAGE_CONFIG.strategy.structure.facets.map(
+              (facet) => ({
+                facetCode: facet.code,
+                answerBlockRef: projection.trustedBlocks[0]!.answerBlockId,
+              })
+            )
+          : [],
+    };
+  }
+  const expected = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "strategy",
+      dimensions,
+    },
+    {
+      roundType: "strategy",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: "synthetic-workflow-verified-prefix",
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+  assert.equal(expected.schemaVersion, "feedback.dimension-coverage.v2");
+
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 100,
+        durationSeconds: 60,
+        substantiveResponses: 5,
+        scoreableResponses: 5,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
+    })
+  );
+  const deps = dependencies(store, {
+    answerBlockEvidence: {
+      blocks: projection.trustedBlocks,
+      eligible: true,
+      evidenceFailureReason: null,
+      snapshotState: "partial",
+      trustedProjection: projection,
+    },
+    requireDimensionCoverage: true,
+    async evaluate(input) {
+      assert.deepEqual(input.answerBlocks, projection.trustedBlocks);
+      assert.equal(input.allowNumericalScores, true);
+      assert.deepEqual(input.verifiedPrefixProjection, projection);
+      return expected;
+    },
+  });
+  assert.deepEqual(await generateFeedbackWorkflow(input(EVENT_1), deps), {
+    status: "completed",
+    disposition: "applied",
+    sessionId: SESSION_ID,
+  });
+  assert.deepEqual(store.completedEvaluation, expected);
+  assert.equal(store.completedScore, null);
+
+  const forgedStore = new MemoryGenerationStore(
+    record({ completionTier: "partial" })
+  );
+  const forgedDeps = dependencies(forgedStore, {
+    answerBlockEvidence: {
+      blocks: projection.trustedBlocks,
+      eligible: true,
+      evidenceFailureReason: null,
+      snapshotState: "partial",
+      trustedProjection: projection,
+    },
+    requireDimensionCoverage: true,
+    async evaluate() {
+      return {
+        ...expected,
+        verifiedPrefixScope: {
+          ...expected.verifiedPrefixScope,
+          excludedTailBlockCount: 999,
+        },
+      };
+    },
+  });
+  forgedDeps.preserveEvaluatorFailuresForSyntheticCalibration = true;
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), forgedDeps),
+    /persisted_result_mismatch/
+  );
+  assert.equal(forgedStore.completedEvaluation, null);
+  assert.equal(forgedStore.current.status, "processing");
+});
+
 test("durable replay closes the completion-to-insights crash window exactly once", async () => {
   const store = new MemoryGenerationStore(record());
   const cachedSteps = new Map<string, unknown>();
@@ -2035,7 +2168,9 @@ function dependencies(
   overrides: {
     insights?: string[];
     transcript?: PreparedFeedbackTranscript;
-    answerBlockEvidence?: PreparedCandidateAnswerBlockEvidence;
+    answerBlockEvidence?: Awaited<
+      ReturnType<GenerateFeedbackWorkflowDeps["getAnswerBlockEvidence"]>
+    >;
     evaluate?: GenerateFeedbackWorkflowDeps["evaluate"];
     requireDimensionCoverage?: boolean;
   } = {}

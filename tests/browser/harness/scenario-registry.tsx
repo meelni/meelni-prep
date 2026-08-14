@@ -36,6 +36,8 @@ import {
   partialScorecardFeedback,
   publicQuestions,
   transcriptTurns,
+  verifiedPrefixCoachingReviewFeedback,
+  verifiedPrefixPartialScorecardFeedback,
 } from "./fixtures";
 
 export const HARNESS_SCENARIOS = [
@@ -51,8 +53,10 @@ export const HARNESS_SCENARIOS = [
   "feedback-partial",
   "feedback-full-scorecard",
   "feedback-partial-scorecard",
+  "feedback-verified-prefix-partial-scorecard",
   "feedback-focused-practice-unavailable",
   "feedback-coaching-review",
+  "feedback-verified-prefix-coaching-review",
   "feedback-insufficient",
   "feedback-integrity",
   "feedback-loading",
@@ -377,6 +381,12 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return (
         <CompletedDimensionCoverageReview feedback={partialScorecardFeedback} />
       );
+    case "feedback-verified-prefix-partial-scorecard":
+      return (
+        <CompletedDimensionCoverageReview
+          feedback={verifiedPrefixPartialScorecardFeedback}
+        />
+      );
     case "feedback-focused-practice-unavailable":
       return (
         <CompletedDimensionCoverageReview feedback={partialScorecardFeedback} />
@@ -384,6 +394,12 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
     case "feedback-coaching-review":
       return (
         <CompletedDimensionCoverageReview feedback={coachingReviewFeedback} />
+      );
+    case "feedback-verified-prefix-coaching-review":
+      return (
+        <CompletedDimensionCoverageReview
+          feedback={verifiedPrefixCoachingReviewFeedback}
+        />
       );
     case "feedback-insufficient":
       return (

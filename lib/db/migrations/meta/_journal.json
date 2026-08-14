@@ -267,6 +267,13 @@
       "when": 1786692009250,
       "tag": "0037_sav_439_feedback_stage_attempt_history",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786697796976,
+      "tag": "0038_sav_440_verified_prefix_partial_scorecards",
+      "breakpoints": true
     }
   ]
 }

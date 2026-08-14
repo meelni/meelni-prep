@@ -1,9 +1,20 @@
 import type { CandidateAnswerBlock } from "./answer-blocks";
 import { calculateOverallScore, type FeedbackDimension } from "./evaluation";
 import type { RoundType } from "./interview";
+import {
+  TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
+  type TrustedAnswerBlockIdentity,
+  type TrustedAnswerBlockProjection,
+} from "./trusted-answer-block-authority";
 
 export const FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION =
   "feedback.dimension-coverage.v1" as const;
+export const FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION =
+  "feedback.dimension-coverage.v2" as const;
+export const FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION =
+  "feedback.verified-prefix-scope.v1" as const;
+const MAX_VERIFIED_PREFIX_IDENTITIES = 1_000;
+const MAX_VERIFIED_PREFIX_SCOPE_SERIALIZED_LENGTH = 128_000;
 export const FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION =
   "feedback.dimension-coverage.selection.v1" as const;
 export const FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION =
@@ -368,8 +379,7 @@ export type DimensionCoverageResultDimensions = Record<
   FeedbackDimension,
   DimensionCoverageResultDimension
 >;
-export interface DimensionCoverageFeedbackResult {
-  schemaVersion: typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+interface DimensionCoverageFeedbackResultBase {
   promptVersion: typeof FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION;
   rubricVersion: typeof FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION;
   modelVersion: string;
@@ -380,6 +390,31 @@ export interface DimensionCoverageFeedbackResult {
   overallScore: number | null;
   summary: string;
 }
+
+export interface CompleteSessionDimensionCoverageFeedbackResult
+  extends DimensionCoverageFeedbackResultBase {
+  schemaVersion: typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+}
+
+export interface VerifiedPrefixFeedbackScopeV1 {
+  contractVersion: typeof FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION;
+  projectionVersion: typeof TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION;
+  trustedBlockIdentities: TrustedAnswerBlockIdentity[];
+  excludedTailBlockCount: number;
+}
+
+export interface VerifiedPrefixDimensionCoverageFeedbackResult
+  extends DimensionCoverageFeedbackResultBase {
+  schemaVersion: typeof FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
+  evaluationState: "partial";
+  mode: Exclude<DimensionCoverageFeedbackMode, "full_scorecard">;
+  overallScore: null;
+  verifiedPrefixScope: VerifiedPrefixFeedbackScopeV1;
+}
+
+export type DimensionCoverageFeedbackResult =
+  | CompleteSessionDimensionCoverageFeedbackResult
+  | VerifiedPrefixDimensionCoverageFeedbackResult;
 
 export interface DimensionCoveragePracticeFocusSource {
   dimension: FeedbackDimension;
@@ -456,7 +491,10 @@ export class DimensionCoverageParseError extends Error {
 export function isDimensionCoverageFeedbackResult(value: {
   schemaVersion: string;
 }): value is DimensionCoverageFeedbackResult {
-  return value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+  return (
+    value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+    value.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+  );
 }
 
 export function parseDimensionCoverageProviderSelection(
@@ -466,8 +504,15 @@ export function parseDimensionCoverageProviderSelection(
     answerBlocks: readonly CandidateAnswerBlock[];
     modelVersion: string;
     allowNumericalScores: boolean;
+    verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   }
 ): DimensionCoverageFeedbackResult {
+  const verifiedPrefixScope = options.verifiedPrefixProjection
+    ? scopeFromVerifiedPrefixProjection(
+        options.verifiedPrefixProjection,
+        options.answerBlocks
+      )
+    : null;
   const root = requireRecord(value);
   requireKeys(root, [
     "schemaVersion",
@@ -559,13 +604,17 @@ export function parseDimensionCoverageProviderSelection(
   const sufficientCount = FEEDBACK_DIMENSIONS.filter(
     (dimension) => dimensions[dimension].coverage === "sufficient"
   ).length;
-  const mode: DimensionCoverageFeedbackMode = !options.allowNumericalScores
-    ? "coaching_review"
-    : sufficientCount === FEEDBACK_DIMENSIONS.length
-      ? "full_scorecard"
-      : sufficientCount > 0
-        ? "partial_scorecard"
-        : "coaching_review";
+  const mode: DimensionCoverageFeedbackMode = verifiedPrefixScope
+    ? options.allowNumericalScores && sufficientCount > 0
+      ? "partial_scorecard"
+      : "coaching_review"
+    : !options.allowNumericalScores
+      ? "coaching_review"
+      : sufficientCount === FEEDBACK_DIMENSIONS.length
+        ? "full_scorecard"
+        : sufficientCount > 0
+          ? "partial_scorecard"
+          : "coaching_review";
   const overallScore =
     mode === "full_scorecard"
       ? calculateOverallScore({
@@ -576,18 +625,32 @@ export function parseDimensionCoverageProviderSelection(
           leadership: dimensions.leadership.score!,
         })
       : null;
-  return {
-    schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
-    promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
-    rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
-    modelVersion,
-    roundType: options.roundType,
-    evaluationState: mode === "full_scorecard" ? "full" : "partial",
-    mode,
-    dimensions,
-    overallScore,
-    summary: summaryForMode(mode),
-  };
+  return verifiedPrefixScope
+    ? {
+        schemaVersion: FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+        rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+        modelVersion,
+        roundType: options.roundType,
+        evaluationState: "partial",
+        mode: mode as Exclude<DimensionCoverageFeedbackMode, "full_scorecard">,
+        dimensions,
+        overallScore: null,
+        summary: summaryForMode(mode, true),
+        verifiedPrefixScope,
+      }
+    : {
+        schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+        rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+        modelVersion,
+        roundType: options.roundType,
+        evaluationState: mode === "full_scorecard" ? "full" : "partial",
+        mode,
+        dimensions,
+        overallScore,
+        summary: summaryForMode(mode),
+      };
 }
 
 export function parsePersistedDimensionCoverageFeedback(
@@ -595,9 +658,12 @@ export function parsePersistedDimensionCoverageFeedback(
   options: {
     answerBlocks: readonly CandidateAnswerBlock[];
     allowNumericalScores?: boolean;
+    verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   }
 ): DimensionCoverageFeedbackResult {
   const root = requireRecord(value);
+  const verifiedPrefix =
+    root.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
   requireKeys(root, [
     "schemaVersion",
     "promptVersion",
@@ -609,8 +675,17 @@ export function parsePersistedDimensionCoverageFeedback(
     "dimensions",
     "overallScore",
     "summary",
+    ...(verifiedPrefix ? ["verifiedPrefixScope"] : []),
   ]);
-  requireExact(root.schemaVersion, FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION);
+  if (
+    root.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    !verifiedPrefix
+  ) {
+    throw new DimensionCoverageParseError("version_mismatch");
+  }
+  const persistedVerifiedPrefixScope = verifiedPrefix
+    ? parseVerifiedPrefixScope(root.verifiedPrefixScope)
+    : null;
   requireExact(root.promptVersion, FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION);
   requireExact(root.rubricVersion, FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION);
   const roundType = parseRoundType(root.roundType);
@@ -658,9 +733,15 @@ export function parsePersistedDimensionCoverageFeedback(
         typeof root.modelVersion === "string" ? root.modelVersion : "",
       allowNumericalScores:
         options.allowNumericalScores ?? mode !== "coaching_review",
+      ...(verifiedPrefix
+        ? { verifiedPrefixProjection: options.verifiedPrefixProjection }
+        : {}),
     }
   );
-  if (canonicalJson(derived) !== canonicalJson(root)) {
+  const boundedRoot = persistedVerifiedPrefixScope
+    ? { ...root, verifiedPrefixScope: persistedVerifiedPrefixScope }
+    : root;
+  if (canonicalJson(derived) !== canonicalJson(boundedRoot)) {
     throw new DimensionCoverageParseError("persisted_result_mismatch");
   }
   return derived;
@@ -681,11 +762,107 @@ function sortJsonValue(value: unknown): unknown {
   );
 }
 
-function summaryForMode(mode: DimensionCoverageFeedbackMode): string {
+function scopeFromVerifiedPrefixProjection(
+  projection: TrustedAnswerBlockProjection,
+  answerBlocks: readonly CandidateAnswerBlock[]
+): VerifiedPrefixFeedbackScopeV1 {
+  const aligned =
+    projection.contractVersion === TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION &&
+    projection.status === "verified_prefix" &&
+    projection.failureReason === null &&
+    projection.trustedBlocks.length > 0 &&
+    projection.trustedBlocks.length ===
+      projection.trustedBlockIdentities.length &&
+    projection.trustedBlocks.length === projection.closureAuthorities.length &&
+    canonicalJson(projection.trustedBlocks) === canonicalJson(answerBlocks) &&
+    projection.trustedBlocks.every(
+      (block, index) =>
+        block.answerBlockId ===
+          projection.trustedBlockIdentities[index]?.answerBlockId &&
+        block.answerBlockId ===
+          projection.closureAuthorities[index]?.answerBlockId
+    );
+  if (!aligned) throw new DimensionCoverageParseError("invalid_shape");
+  return {
+    contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+    projectionVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
+    trustedBlockIdentities: projection.trustedBlockIdentities.map(
+      (identity) => ({ ...identity })
+    ),
+    excludedTailBlockCount: projection.excludedBlocks.length,
+  };
+}
+
+function parseVerifiedPrefixScope(
+  value: unknown
+): VerifiedPrefixFeedbackScopeV1 {
+  const scope = requireRecord(value);
+  requireKeys(scope, [
+    "contractVersion",
+    "projectionVersion",
+    "trustedBlockIdentities",
+    "excludedTailBlockCount",
+  ]);
+  requireExact(scope.contractVersion, FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION);
+  requireExact(
+    scope.projectionVersion,
+    TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION
+  );
+  if (
+    !Array.isArray(scope.trustedBlockIdentities) ||
+    scope.trustedBlockIdentities.length === 0 ||
+    scope.trustedBlockIdentities.length > MAX_VERIFIED_PREFIX_IDENTITIES ||
+    !Number.isSafeInteger(scope.excludedTailBlockCount) ||
+    (scope.excludedTailBlockCount as number) < 0 ||
+    (scope.excludedTailBlockCount as number) > MAX_VERIFIED_PREFIX_IDENTITIES
+  ) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  const trustedBlockIdentities = scope.trustedBlockIdentities.map((value) => {
+    const identity = requireRecord(value);
+    requireKeys(identity, ["contractVersion", "answerBlockId", "identity"]);
+    requireExact(identity.contractVersion, "trusted-answer-block-identity.v1");
+    const answerBlockId = requireBoundedString(identity.answerBlockId, 17);
+    if (
+      !/^answer-block:[0-9]{4}$/u.test(answerBlockId) ||
+      typeof identity.identity !== "string" ||
+      !/^trusted-answer-block\.v1:[a-f0-9]{64}$/u.test(identity.identity)
+    ) {
+      throw new DimensionCoverageParseError("invalid_shape");
+    }
+    return {
+      contractVersion: "trusted-answer-block-identity.v1" as const,
+      answerBlockId,
+      identity: identity.identity as `trusted-answer-block.v1:${string}`,
+    };
+  });
+  const decoded: VerifiedPrefixFeedbackScopeV1 = {
+    contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+    projectionVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
+    trustedBlockIdentities,
+    excludedTailBlockCount: scope.excludedTailBlockCount as number,
+  };
+  if (
+    new TextEncoder().encode(JSON.stringify(decoded)).byteLength >
+    MAX_VERIFIED_PREFIX_SCOPE_SERIALIZED_LENGTH
+  ) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  return decoded;
+}
+
+function summaryForMode(
+  mode: DimensionCoverageFeedbackMode,
+  verifiedPrefix = false
+): string {
   if (mode === "full_scorecard")
     return "Every configured PM dimension had sufficient grounded evidence for a complete scorecard.";
   if (mode === "partial_scorecard")
-    return "Only PM dimensions with sufficient grounded evidence are scored; unsupported dimensions and the overall score are withheld.";
+    return verifiedPrefix
+      ? "Only PM dimensions supported by verified completed answers are scored; the unverified interview tail and overall score are excluded."
+      : "Only PM dimensions with sufficient grounded evidence are scored; unsupported dimensions and the overall score are withheld.";
+  if (verifiedPrefix)
+    return "Verified completed answers support grounded coaching, while the unverified interview tail is excluded from review.";
   return "The interview contains a reviewable candidate answer for coaching, but it does not support a fair numerical scorecard.";
 }
 function parseNullableScore(value: unknown): number | null {

@@ -1,11 +1,13 @@
 import {
   isDimensionCoverageFeedbackResult,
   isValidRoundType,
+  parsePersistedDimensionCoverageFeedback,
   type CandidateAnswerBlock,
   type FeedbackEvaluationState,
   type FeedbackEvaluationResult,
   type RoundType,
   type SkippedFeedbackOutcomeReason,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 import {
@@ -53,6 +55,7 @@ import {
 import {
   SessionTier,
   prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
   validateSessionCompleteness,
   type SessionValidation,
 } from "@/lib/evaluation/session-validator";
@@ -95,11 +98,13 @@ export interface GenerateFeedbackWorkflowDeps {
     eligible: boolean;
     evidenceFailureReason: SkippedFeedbackOutcomeReason | null;
     snapshotState?: "complete" | "partial" | null;
+    trustedProjection?: TrustedAnswerBlockProjection;
   }>;
   evaluate(input: {
     roundType: RoundType;
     answerBlocks: readonly CandidateAnswerBlock[];
     allowNumericalScores: boolean;
+    verifiedPrefixProjection?: TrustedAnswerBlockProjection;
     attempt: number;
     deadlineAtMs: number;
     requestTimeoutMs: number;
@@ -325,9 +330,16 @@ async function runGenerateFeedbackWorkflow(
 
   await assertAccountIsActive(input.userId, deps);
 
+  const verifiedPrefixProjection =
+    evidence.snapshotState === "partial" &&
+    evidence.trustedProjection?.status === "verified_prefix"
+      ? evidence.trustedProjection
+      : undefined;
   const allowNumericalScores =
-    evidence.snapshotState !== "partial" &&
-    claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+    verifiedPrefixProjection !== undefined ||
+    (evidence.snapshotState !== "partial" &&
+      claimed.completionStats?.feedbackModeConstraint !==
+        "evidence_limited_only");
   let evaluated: {
     evaluation: FeedbackEvaluationResult;
     processingDurationMs: number;
@@ -405,6 +417,7 @@ async function runGenerateFeedbackWorkflow(
               roundType,
               answerBlocks: evidence.blocks,
               allowNumericalScores,
+              ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
               attempt,
               deadlineAtMs,
               requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
@@ -442,6 +455,13 @@ async function runGenerateFeedbackWorkflow(
             throw new Error(
               "feedback_generation_qualitative_constraint_violated"
             );
+          }
+          if (isDimensionCoverageFeedbackResult(evaluation)) {
+            parsePersistedDimensionCoverageFeedback(evaluation, {
+              answerBlocks: evidence.blocks,
+              allowNumericalScores,
+              ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
+            });
           }
           return {
             disposition: "evaluated" as const,
@@ -672,6 +692,19 @@ export function createGenerateFeedbackWorkflowDeps(
     validateLegacy: validateSessionCompleteness,
     async getAnswerBlockEvidence(sessionId) {
       const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
+      if (evidence.snapshotState === "partial") {
+        const prepared =
+          prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+            evidence
+          );
+        return {
+          blocks: prepared.blocks,
+          eligible: prepared.eligible,
+          evidenceFailureReason: prepared.evidenceFailureReason,
+          snapshotState: evidence.snapshotState,
+          trustedProjection: prepared.projection,
+        };
+      }
       return {
         ...prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence),
         snapshotState: evidence.snapshotState,
@@ -681,6 +714,7 @@ export function createGenerateFeedbackWorkflowDeps(
       roundType,
       answerBlocks,
       allowNumericalScores,
+      verifiedPrefixProjection,
       attempt,
       deadlineAtMs,
       requestTimeoutMs,
@@ -692,6 +726,7 @@ export function createGenerateFeedbackWorkflowDeps(
         answerBlocks,
         allowNumericalScores,
         {
+          ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
           startObservabilityTrace: dependencies.startObservabilityTrace,
           attempt,
           deadlineAtMs,

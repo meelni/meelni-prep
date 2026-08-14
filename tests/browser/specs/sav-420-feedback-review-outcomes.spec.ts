@@ -42,6 +42,23 @@ for (const viewport of [
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
       0
     );
+    await expect(
+      page.getByRole("heading", { name: "Verified interview scope" })
+    ).toHaveCount(0);
+    await expectNoHorizontalScroll(page);
+
+    await page.goto(harness("feedback-verified-prefix-partial-scorecard"));
+    await expect(
+      page.getByRole("heading", { name: "Verified interview scope" })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/only the 1 completed answer it could verify/i)
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+      )
+    ).toBeVisible();
     await expectNoHorizontalScroll(page);
 
     await page.goto(harness("feedback-coaching-review"));
@@ -55,9 +72,29 @@ for (const viewport of [
       page.getByRole("heading", { name: "Prioritized practice focus" })
     ).toBeVisible();
     await expect(
+      page.getByRole("heading", { name: "Verified interview scope" })
+    ).toHaveCount(0);
+    await expect(
       page.getByRole("button", {
         name: "View Insight practice-focus citation in transcript",
       })
+    ).toBeVisible();
+    await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
+      0
+    );
+    await expectNoHorizontalScroll(page);
+
+    await page.goto(harness("feedback-verified-prefix-coaching-review"));
+    await expect(
+      page.getByRole("heading", { name: "Verified interview scope" })
+    ).toBeVisible();
+    await expect(
+      page.getByText(/only the 2 completed answers it could verify/i)
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+      )
     ).toBeVisible();
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
       0

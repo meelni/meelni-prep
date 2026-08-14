@@ -15,6 +15,7 @@ import {
   deriveCandidateAnswerBlocks,
   parseDimensionCoverageProviderSelection,
   parseEvidenceLimitedFeedback,
+  projectTrustedClosedAnswerBlocks,
 } from "@meelni/core";
 import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
 
@@ -112,6 +113,7 @@ function candidate(
     feedbackMode: null,
     feedbackRoundType: null,
     dimensionCoverageJson: null,
+    verifiedPrefixScopeJson: null,
     strengthsJson: JSON.stringify(evidenceLimited.strengths),
     improvementsJson: JSON.stringify(evidenceLimited.improvements),
     drillsJson: "[]",
@@ -210,6 +212,85 @@ function dimensionCoverageCandidate(
   });
 }
 
+function verifiedPrefixDashboardFixture() {
+  const events = createAnswerBlockSegmentationFixture(1).events;
+  const projection = projectTrustedClosedAnswerBlocks(events, {
+    contractVersion: "frozen-answer-block-authority.v1",
+    snapshotState: "partial",
+    cutoffAtMs: (events.at(-1) as { occurredAtMs: number }).occurredAtMs,
+    writers: [
+      {
+        contractVersion: 1,
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        committedSequence: 4,
+        integrityState: "healthy",
+        settlementState: "missing",
+      },
+    ],
+  });
+  assert.equal(projection.status, "verified_prefix");
+  const dimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => [
+      dimension,
+      {
+        score: dimension === "structure" ? 8 : null,
+        evidence:
+          dimension === "structure"
+            ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(
+                (facet) => ({
+                  facetCode: facet.code,
+                  answerBlockRef: projection.trustedBlocks[0]!.answerBlockId,
+                })
+              )
+            : [],
+      },
+    ])
+  );
+  const result = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: "synthetic-dashboard-verified-prefix",
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+  assert.equal(result.schemaVersion, "feedback.dimension-coverage.v2");
+  return {
+    projection,
+    candidate: candidate({
+      completionTier: "partial",
+      structureScore: result.dimensions.structure.score,
+      clarityScore: result.dimensions.clarity.score,
+      insightScore: result.dimensions.insight.score,
+      communicationScore: result.dimensions.communication.score,
+      leadershipScore: result.dimensions.leadership.score,
+      overallScore: null,
+      schemaVersion: result.schemaVersion,
+      promptVersion: result.promptVersion,
+      modelVersion: result.modelVersion,
+      rubricVersion: result.rubricVersion,
+      evaluationState: result.evaluationState,
+      feedbackMode: result.mode,
+      feedbackRoundType: result.roundType,
+      dimensionCoverageJson: JSON.stringify(result.dimensions),
+      verifiedPrefixScopeJson: JSON.stringify(result.verifiedPrefixScope),
+      strengthsJson: null,
+      improvementsJson: null,
+      drillsJson: "[]",
+      summary: result.summary,
+    }),
+  };
+}
+
 test("classifies valid completed scored and evidence-limited reviews", () => {
   assert.equal(
     classifyDashboardFeedbackPresentation(scoredCandidate(), transcript),
@@ -238,6 +319,50 @@ test("keeps full, partial, and coaching dimension-coverage reviews reachable", (
       mode
     );
   }
+});
+
+test("keeps verified-prefix history reachable only after exact projection revalidation", () => {
+  const fixture = verifiedPrefixDashboardFixture();
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      fixture.candidate,
+      [],
+      fixture.projection.trustedBlocks,
+      "product_sense",
+      "partial",
+      fixture.projection
+    ),
+    "partial_scorecard"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      {
+        ...fixture.candidate,
+        verifiedPrefixScopeJson: JSON.stringify({
+          contractVersion: "feedback.verified-prefix-scope.v1",
+          projectionVersion: "trusted-answer-block-projection.v1",
+          trustedBlockIdentities: [],
+          excludedTailBlockCount: 0,
+        }),
+      },
+      [],
+      fixture.projection.trustedBlocks,
+      "product_sense",
+      "partial",
+      fixture.projection
+    ),
+    "unavailable"
+  );
+  assert.equal(
+    classifyDashboardFeedbackPresentation(
+      fixture.candidate,
+      [],
+      fixture.projection.trustedBlocks,
+      "product_sense",
+      "partial"
+    ),
+    "unavailable"
+  );
 });
 
 test("dimension-coverage dashboard reads fail closed without eligible frozen answer blocks", () => {

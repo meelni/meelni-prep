@@ -11,8 +11,10 @@ import {
   getValidationSummary,
   prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
   prepareCandidateAnswerBlockEvidenceFromTurns,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
   SessionTier,
 } from "../session-validator";
+import { TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES } from "@meelni/test-fixtures";
 import { db } from "@/lib/db";
 
 // Mock the database
@@ -164,6 +166,86 @@ describe("Session Validator", () => {
     });
 
     expect(evidence.eligible).toBe(false);
+    expect(evidence.evidenceFailureReason).toBe(
+      "transcript_integrity_degraded"
+    );
+  });
+
+  it("prepares only the trusted closed prefix from a partial frozen snapshot", () => {
+    const fixture = TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES.find(
+      ({ id }) => id === "terminal-preserving-marker"
+    )!;
+    const terminal = fixture.events.at(-1)!;
+    const evidence =
+      prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot({
+        snapshotValid: true,
+        snapshotState: "partial",
+        turns: fixture.events.flatMap((event) =>
+          event.kind === "turn"
+            ? [
+                {
+                  contractVersion: event.contractVersion,
+                  eventId: event.eventId,
+                  writerId: event.writerId,
+                  writerGeneration: event.writerGeneration,
+                  sequence: event.sequence,
+                  speaker: event.speaker,
+                  text: event.text,
+                  startedAt: new Date(event.startedAtMs),
+                  endedAt: new Date(event.endedAtMs),
+                  audioMs: event.audioDurationMs,
+                  section: event.section,
+                  deliveryState: event.deliveryState,
+                },
+              ]
+            : []
+        ),
+        interruptions: fixture.events.flatMap((event) =>
+          event.kind === "integrity_boundary"
+            ? [
+                {
+                  eventId: event.eventId,
+                  writerId: event.writerId,
+                  writerGeneration: event.writerGeneration,
+                  sequence: event.sequence,
+                  speaker: event.speaker,
+                  occurredAt: new Date(event.occurredAtMs),
+                  reason: event.reason,
+                },
+              ]
+            : []
+        ),
+        sessionEndAt:
+          terminal.kind === "session_end"
+            ? new Date(terminal.occurredAtMs)
+            : null,
+        sourceOverflow: false,
+        authority: fixture.authority as never,
+      });
+
+    expect(evidence.eligible).toBe(true);
+    expect(evidence.projection.status).toBe("verified_prefix");
+    expect(evidence.blocks).toHaveLength(1);
+    expect(evidence.blocks[0]?.responseText).toContain("working caregivers");
+    expect(evidence.blocks[0]?.responseText).not.toContain(
+      "coordination failure remains severe"
+    );
+  });
+
+  it("does not authorize a partial snapshot without frozen writer authority", () => {
+    const evidence =
+      prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot({
+        snapshotValid: true,
+        snapshotState: "partial",
+        turns: [],
+        interruptions: [],
+        sessionEndAt: new Date("2026-08-12T20:00:03.000Z"),
+        sourceOverflow: false,
+        authority: null,
+      });
+
+    expect(evidence.eligible).toBe(false);
+    expect(evidence.projection.status).toBe("integrity_failure");
     expect(evidence.evidenceFailureReason).toBe(
       "transcript_integrity_degraded"
     );
