@@ -2,6 +2,7 @@
 
 import React from "react";
 import "@testing-library/jest-dom/vitest";
+import { useQueryClient } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -29,10 +30,23 @@ vi.mock("@/lib/privacy/transcript-browser-storage", () => ({
 }));
 
 import { AuthProvider, useAuth } from "@/app/providers/auth-provider";
+import { QueryProvider } from "@/app/providers/query-provider";
 
 function AuthStatus() {
   const { isLoading } = useAuth();
   return <span>{isLoading ? "loading" : "ready"}</span>;
+}
+
+function QueryClientCapture({
+  onReady,
+}: {
+  onReady: (client: ReturnType<typeof useQueryClient>) => void;
+}) {
+  const queryClient = useQueryClient();
+  React.useEffect(() => {
+    onReady(queryClient);
+  }, [onReady, queryClient]);
+  return null;
 }
 
 describe("AuthProvider client lifecycle", () => {
@@ -151,6 +165,52 @@ describe("AuthProvider client lifecycle", () => {
     authChange?.("SIGNED_IN", authSession("user-b"));
 
     expect(mocks.scrubRetiredTranscriptBrowserStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears private React Query data when the auth subject changes", async () => {
+    let authChange:
+      | ((event: string, session: ReturnType<typeof authSession>) => void)
+      | undefined;
+    mocks.createClient.mockImplementation(() => ({
+      auth: {
+        getSession: vi
+          .fn()
+          .mockResolvedValue({ data: { session: authSession("user-a") } }),
+        onAuthStateChange: vi.fn((listener) => {
+          authChange = listener;
+          return {
+            data: { subscription: { unsubscribe: mocks.unsubscribe } },
+          };
+        }),
+      },
+    }));
+    let queryClient: ReturnType<typeof useQueryClient> | undefined;
+
+    render(
+      <AuthProvider>
+        <QueryProvider>
+          <AuthStatus />
+          <QueryClientCapture
+            onReady={(client) => {
+              queryClient = client;
+            }}
+          />
+        </QueryProvider>
+      </AuthProvider>
+    );
+    expect(await screen.findByText("ready")).toBeInTheDocument();
+    await waitFor(() => expect(queryClient).toBeDefined());
+    queryClient?.setQueryData(["sessions", { userId: "user-a" }, "list"], {
+      sessions: [{ id: "private-session-a" }],
+    });
+
+    authChange?.("SIGNED_IN", authSession("user-b"));
+
+    await waitFor(() => {
+      expect(
+        queryClient?.getQueryData(["sessions", { userId: "user-a" }, "list"])
+      ).toBeUndefined();
+    });
   });
 });
 
