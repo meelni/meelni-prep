@@ -274,9 +274,10 @@ crashes, and equivalent transcript segmentation must not duplicate physical
 work or change authoritative batch feedback.
 
 When final batch feedback is available, a content-free comparison reports
-facet/mode/score agreement, missing artifacts, failure class, latency saved,
-token counts, and estimated cost. Disagreement has no candidate or insights
-side effect.
+facet/mode/score agreement, missing artifacts, failure class, post-freeze
+potential lead, token counts, and estimated cost. Timing is unavailable for
+missing/failed artifacts or mismatched terminal anchors. Disagreement has no
+candidate or insights side effect.
 
 PR-sized children:
 
@@ -289,6 +290,17 @@ table behind an opaque default-off write context. It does not schedule work,
 invoke a provider, participate in feedback lifecycle reads, or affect customer
 feedback, progress, insights, or billing. Account export/deletion cover the
 artifact; no shorter retention period is inferred.
+
+The execution/comparison slice composes that storage with a second opaque
+default-off capability and no registered evaluator/provider adapter. Only a
+recomputed terminal SAV-441 projection schedules content-free exact-key work.
+Evaluation uses SAV-444 deadlines, deterministic per-key concurrency, deletion
+fences, and immutable writes. Batch comparison waits at most the 90-second
+evaluation-policy horizon using bounded durable polls, then returns only a
+strict aggregate report. It does not persist through or emit to customer
+feedback, insights, progress, billing, UI, or interview ownership. Because no
+pre-terminal authority exists, this slice measures only post-freeze potential
+and cannot establish true during-interview savings.
 
 ## Merge train and task ownership
 
