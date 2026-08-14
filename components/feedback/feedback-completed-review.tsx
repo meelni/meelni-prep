@@ -51,6 +51,7 @@ export function CompletedDimensionCoverageReview({
   const transcript = useEvidenceTranscript(feedback.sessionId);
   const isFull = feedback.mode === "full_scorecard";
   const isPartial = feedback.mode === "partial_scorecard";
+  const isVerifiedPrefix = feedback.verifiedScope !== null;
   const outcomeLabel = isFull
     ? "Full scorecard"
     : isPartial
@@ -196,7 +197,9 @@ export function CompletedDimensionCoverageReview({
           <p className="text-muted-foreground leading-6">
             {isFull
               ? "Every PM rubric dimension had enough verified evidence for an observed practice score. These scores describe this interview, not a hiring decision."
-              : "Some PM rubric dimensions had enough verified evidence for an observed practice score. Other dimensions are unscored because this interview did not cover enough evidence for them—not because the performance was poor."}
+              : isVerifiedPrefix
+                ? "Individual scores use only verified completed answers. Any dimension without enough verified support remains unscored. An overall score is withheld because the complete saved interview was outside the verified scope."
+                : "Some PM rubric dimensions had enough verified evidence for an observed practice score. Other dimensions are unscored because this interview did not cover enough evidence for them—not because the performance was poor."}
           </p>
         </FeedbackSectionCard>
 
@@ -209,7 +212,9 @@ export function CompletedDimensionCoverageReview({
           description={
             isFull
               ? "Scores are shown only where verified evidence supports the PM rubric."
-              : "An overall score needs supported evidence across every PM rubric dimension."
+              : isVerifiedPrefix
+                ? "Only verified completed answers could support the individual scores shown. The complete saved interview was outside verified scope, so no overall score is shown."
+                : "An overall score needs supported evidence across every PM rubric dimension."
           }
           icon={<ClipboardCheck className="h-5 w-5" aria-hidden="true" />}
           contentClassName="space-y-5"
@@ -329,8 +334,8 @@ function VerifiedPrefixScopeCard({
         {scope.excludedTail && (
           <p className="text-muted-foreground leading-6">
             The unfinished or unverified end of the interview stayed outside
-            this review. It did not count as weaker evidence or affect the
-            review shown here.
+            this review. It was not treated as negative evidence; only verified
+            completed answers could support the scores or coaching shown.
           </p>
         )}
       </div>

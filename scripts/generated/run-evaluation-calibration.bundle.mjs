@@ -32686,7 +32686,7 @@ async function runGenerateFeedbackWorkflow(input, deps) {
   const roundType = authorization.session.roundType;
   await assertAccountIsActive(input.userId, deps);
   const verifiedPrefixProjection = evidence.snapshotState === "partial" && evidence.trustedProjection?.status === "verified_prefix" ? evidence.trustedProjection : void 0;
-  const allowNumericalScores = (evidence.snapshotState !== "partial" || verifiedPrefixProjection !== void 0) && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+  const allowNumericalScores = verifiedPrefixProjection !== void 0 || evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
   let evaluated = null;
   let attempt = 1;
   let plan = planFeedbackProviderAttempt({

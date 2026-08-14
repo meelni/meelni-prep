@@ -60,11 +60,16 @@ parser, settlement, or transcript-integrity codes. Historical supported review
 formats retain their explicit compatibility treatment.
 
 The verified-prefix explanation is visible text: Meelni reviewed only the
-completed answers it could verify, and the unfinished or unverified end did not
-count as weaker evidence or affect the review shown. It never exposes block
-identities, writer state, provider state, or a diagnostic excluded-block count.
-Historical v1 partial/coaching reviews have no verified-prefix claim and remain
-readable without this card.
+completed answers it could verify. The unfinished or unverified end was not
+treated as negative evidence; only verified completed answers could support the
+scores or coaching shown. The UI does not claim that exclusion had no effect on
+which dimensions were supportable. It never exposes block identities, writer
+state, provider state, or a diagnostic excluded-block count. Historical v1
+partial/coaching reviews have no verified-prefix claim and remain readable
+without this card. Even when every individual dimension is supported, verified-
+prefix copy says the overall score is withheld because the complete saved
+interview was outside verified scope; it does not imply that another dimension
+was necessarily unscored.
 
 ## Coaching and citations
 
