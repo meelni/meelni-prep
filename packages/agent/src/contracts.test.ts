@@ -21,6 +21,8 @@ import {
   isTranscriptEvent,
   isTranscriptInterruptionMarker,
   isTranscriptRuntimeSettlement,
+  isTranscriptRuntimeSettlementCommandAck,
+  isTranscriptRuntimeSettlementCommandPull,
   normalizeInterviewRuntimeConfig,
   normalizeInterviewClientPreferences,
   interviewRuntimeSettingsFromEnv,
@@ -544,6 +546,41 @@ test("runtime settlement is strict metadata-only evidence", () => {
   assert.equal(isTranscriptRuntimeSettlement(settlement), true);
   assert.equal(
     isTranscriptRuntimeSettlement({ ...settlement, text: "must be rejected" }),
+    false
+  );
+});
+
+test("runtime settlement command pull and acknowledgement are strict metadata-only controls", () => {
+  const identity = {
+    contract_version: 1,
+    session_id: "550e8400-e29b-41d4-a716-446655440000",
+    room_name: "interview-room",
+    writer_id: "writer-1",
+    writer_generation: 2,
+  };
+  const pull = {
+    ...identity,
+    event_type: "runtime_settlement_command_pull",
+  };
+  const ack = {
+    ...identity,
+    event_type: "runtime_settlement_command_ack",
+    command_id: "runtime-settlement:550e8400-e29b-41d4-a716-446655440000:4",
+    outcome: "settled",
+  };
+
+  assert.equal(isTranscriptRuntimeSettlementCommandPull(pull), true);
+  assert.equal(isTranscriptRuntimeSettlementCommandAck(ack), true);
+  assert.equal(
+    isTranscriptRuntimeSettlementCommandPull({ ...pull, text: "rejected" }),
+    false
+  );
+  assert.equal(
+    isTranscriptRuntimeSettlementCommandAck({
+      ...ack,
+      writer_generation: 3,
+      outcome: "complete",
+    }),
     false
   );
 });

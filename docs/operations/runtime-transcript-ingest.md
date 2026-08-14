@@ -98,6 +98,19 @@ Loopback HTTP is accepted only for local development.
   or emit that SHA. Never add room, session, user,
   writer, dispatch, job, participant, request, transcript, provider payload, or
   arbitrary exception fields.
+- Explicit End atomically records a version-1 service-only settlement command
+  with its lifecycle version, semantic cutoff, room, writer ID, writer
+  generation, deterministic command ID, and bounded expiry. The signed ingest
+  endpoint accepts strict content-free pull and acknowledgement envelopes. Pull
+  returns only an exact generation match; acknowledgement requires the matching
+  durable settlement row and outcome. Replays converge and stale, expired,
+  conflicting, or unknown-version messages fail closed.
+- The LiveKit packet is a wake-up hint derived from that command. Packet target
+  resolution or delivery failure does not end the durable wait. The Python
+  runtime also pulls on exact candidate disconnect and shutdown, then installs
+  the same immutable cutoff fence before draining. Legacy writers remain safe
+  during rollout because their matching `runtime_settlement` insert
+  acknowledges the command transactionally.
 - While `ending/user_end`, turns and interruption markers measured at or before
   `ending_at` remain admissible and the writer settlement must equal
   `ending_at` exactly. Later evidence is rejected. The session row is the
@@ -125,17 +138,17 @@ Loopback HTTP is accepted only for local development.
   metadata-only settlement item. This permits a durable degraded acknowledgement
   inside the control deadline without a duplicate evidence POST; later flushes
   may finish the retained request.
-- Shutdown first fences new settlement dispatch, gives active server settlement
-  tasks a 20-second join, then serializes through the same settlement lock and
-  performs the final queue drain. A hard process crash can still lose in-memory
-  pending work; feedback eligibility and the relaunch gate fail safe when
-  evidence cannot be proven.
+- Shutdown first pulls durable settlement work, then fences new dispatch, gives
+  active settlement tasks a 20-second join, serializes through the same lock,
+  and performs the final queue drain. A hard process crash can still lose
+  in-memory pending work; the command expires and feedback eligibility fails
+  safe when evidence cannot be proven.
 
 ## Deployment and rehearsal
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0035_sav_431_public_demo_preview_allowance` and require the thirty-six-entry schema
+   `0036_sav_442_runtime_settlement_command` and require the thirty-seven-entry schema
    preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime through the guarded wrapper with an external,
@@ -159,11 +172,13 @@ Loopback HTTP is accepted only for local development.
    writer A plus writer B: feedback remains ineligible when A is missing or
    degraded even if B is settled; it becomes eligible only when all registered
    generations are settled and no marker exists.
-10. Confirm explicit end reaches `/api/interview/runtime-settlement`, sends a
-    trusted server-authored packet while the participant grant keeps
-    `canPublishData=false`, disables audio input, commits active user speech,
-    drains the outbox, and persists writer-scoped `runtime_settlement` rows
-    before the browser calls the terminal API.
+10. Confirm explicit end atomically creates the writer-bound command, returns
+    without a mounted browser dependency, and treats a trusted server-authored
+    packet as a wake-up hint while the participant grant keeps
+    `canPublishData=false`. Drop that packet and confirm shutdown/disconnect
+    pull still disables audio input, commits active user speech, drains the
+    outbox, persists writer-scoped `runtime_settlement`, and acknowledges the
+    same command.
     Exercise RoomService projection absence plus real AgentDispatch protobuf
     history/current objects and confirm the exact current target succeeds. Then
     inject ambiguity and malformed defaults and confirm no packet is sent.

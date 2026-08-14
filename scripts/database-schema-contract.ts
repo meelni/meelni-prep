@@ -51,6 +51,8 @@ export const PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT =
 // public-demo function definitions without changing the table shape.
 export const PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT =
   "c6b818b528246faee01597450cff4a3b5d4ebca70c0738990a6e92f1a188634e";
+export const RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT =
+  "7b260723e163004467cf2913341d0fa5169ad8378b8e23c37f8a02e2ff54cb88";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =

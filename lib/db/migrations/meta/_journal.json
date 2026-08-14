@@ -253,6 +253,13 @@
       "when": 1786676236808,
       "tag": "0035_sav_431_public_demo_preview_allowance",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786685902906,
+      "tag": "0036_sav_442_runtime_settlement_command",
+      "breakpoints": true
     }
   ]
 }

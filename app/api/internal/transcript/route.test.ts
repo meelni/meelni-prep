@@ -21,6 +21,10 @@ vi.mock("@/lib/db/interview-runtime-events", () => ({
 vi.mock("@/lib/db/interview-credit-settlement", () => ({
   convergeDrizzleInterviewCreditSettlement: vi.fn(),
 }));
+vi.mock("@/lib/db/runtime-settlement-commands", () => ({
+  pullRuntimeSettlementCommand: vi.fn(),
+  acknowledgeRuntimeSettlementCommand: vi.fn(),
+}));
 vi.mock("@/lib/workflows/ingest-transcript-event", () => ({
   ingestTranscriptEvent: vi.fn(),
 }));
@@ -43,6 +47,10 @@ import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-trans
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
+import {
+  acknowledgeRuntimeSettlementCommand,
+  pullRuntimeSettlementCommand,
+} from "@/lib/db/runtime-settlement-commands";
 import { POST } from "./route";
 
 const SECRET = "livekit-secret-with-at-least-thirty-two-characters";
@@ -285,6 +293,103 @@ describe("POST /api/internal/transcript", () => {
       disposition: "created",
       kind: "settlement",
     });
+  });
+
+  it("pulls and acknowledges the exact signed durable settlement command", async () => {
+    const identity = {
+      contract_version: 1,
+      session_id: SESSION_ID,
+      room_name: "interview-room",
+      writer_id: "writer-2",
+      writer_generation: 2,
+    };
+    const command = {
+      contract_version: 1 as const,
+      event_type: "runtime_settlement_command" as const,
+      command_id: `runtime-settlement:${SESSION_ID}:4`,
+      session_id: SESSION_ID,
+      lifecycle_version: 4,
+      room_name: "interview-room",
+      writer_id: "writer-2",
+      writer_generation: 2,
+      cutoff_at: "2026-08-14T05:00:00.000Z",
+      expires_at: "2026-08-14T05:00:20.000Z",
+    };
+    vi.mocked(pullRuntimeSettlementCommand).mockResolvedValue({
+      ok: true,
+      disposition: "pending",
+      command,
+    });
+    const pull = {
+      ...identity,
+      event_type: "runtime_settlement_command_pull",
+    };
+    const pulled = await POST(
+      request({ sessionId: SESSION_ID, settlementCommandPull: pull })
+    );
+    expect(pulled.status).toBe(200);
+    expect(await pulled.json()).toEqual({
+      success: true,
+      kind: "settlement_command",
+      disposition: "pending",
+      command,
+    });
+
+    vi.mocked(acknowledgeRuntimeSettlementCommand).mockResolvedValue({
+      ok: true,
+      disposition: "existing",
+    });
+    const ack = {
+      ...identity,
+      event_type: "runtime_settlement_command_ack",
+      command_id: command.command_id,
+      outcome: "settled",
+    };
+    const acknowledged = await POST(
+      request({ sessionId: SESSION_ID, settlementCommandAck: ack })
+    );
+    expect(acknowledged.status).toBe(200);
+    expect(await acknowledged.json()).toEqual({
+      success: true,
+      kind: "settlement_command_ack",
+      disposition: "existing",
+    });
+  });
+
+  it("fails closed for stale command generations and unknown contracts", async () => {
+    const stale = {
+      contract_version: 1,
+      event_type: "runtime_settlement_command_pull",
+      session_id: SESSION_ID,
+      room_name: "interview-room",
+      writer_id: "writer-old",
+      writer_generation: 1,
+    };
+    vi.mocked(pullRuntimeSettlementCommand).mockResolvedValue({
+      ok: false,
+      reason: "fenced",
+    });
+    const fenced = await POST(
+      request({ sessionId: SESSION_ID, settlementCommandPull: stale })
+    );
+    expect(fenced.status).toBe(409);
+
+    const unknownVersion = await POST(
+      request({
+        sessionId: SESSION_ID,
+        settlementCommandPull: { ...stale, contract_version: 2 },
+      })
+    );
+    expect(unknownVersion.status).toBe(400);
+
+    const mismatchedEnvelope = await POST(
+      request({
+        sessionId: "00000000-0000-4000-8000-000000000002",
+        settlementCommandPull: stale,
+      })
+    );
+    expect(mismatchedEnvelope.status).toBe(400);
+    expect(pullRuntimeSettlementCommand).toHaveBeenCalledTimes(1);
   });
 
   it("routes provider-neutral runtime failure evidence", async () => {

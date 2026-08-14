@@ -16,6 +16,14 @@ import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-ru
 import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
 import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
+import {
+  acknowledgeRuntimeSettlementCommand,
+  pullRuntimeSettlementCommand,
+} from "@/lib/db/runtime-settlement-commands";
+import {
+  isTranscriptRuntimeSettlementCommandAck,
+  isTranscriptRuntimeSettlementCommandPull,
+} from "@meelni/agent";
 
 const RuntimeTranscriptRequestSchema = z
   .object({
@@ -25,6 +33,8 @@ const RuntimeTranscriptRequestSchema = z
     settlement: z.unknown().optional(),
     runtimeEvent: z.unknown().optional(),
     writerRegistration: z.unknown().optional(),
+    settlementCommandPull: z.unknown().optional(),
+    settlementCommandAck: z.unknown().optional(),
   })
   .refine(
     (body) =>
@@ -34,6 +44,8 @@ const RuntimeTranscriptRequestSchema = z
         body.settlement,
         body.runtimeEvent,
         body.writerRegistration,
+        body.settlementCommandPull,
+        body.settlementCommandAck,
       ].filter((value) => value !== undefined).length === 1,
     "exactly one runtime transcript payload is required"
   );
@@ -95,6 +107,78 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (parsed.data.settlementCommandPull !== undefined) {
+      if (
+        !isTranscriptRuntimeSettlementCommandPull(
+          parsed.data.settlementCommandPull
+        ) ||
+        parsed.data.settlementCommandPull.session_id !== parsed.data.sessionId
+      ) {
+        return response({ error: "invalid_runtime_transcript_payload" }, 400);
+      }
+      const result = await pullRuntimeSettlementCommand(
+        parsed.data.settlementCommandPull
+      );
+      if (!result.ok) {
+        return response(
+          {
+            error:
+              result.reason === "not_found"
+                ? "runtime_settlement_command_not_found"
+                : "runtime_settlement_command_fenced",
+          },
+          result.reason === "not_found" ? 404 : 409
+        );
+      }
+      return response(
+        {
+          success: true,
+          kind: "settlement_command",
+          disposition: result.disposition,
+          ...(result.disposition === "pending"
+            ? { command: result.command }
+            : { reason: result.reason }),
+        },
+        200
+      );
+    }
+
+    if (parsed.data.settlementCommandAck !== undefined) {
+      if (
+        !isTranscriptRuntimeSettlementCommandAck(
+          parsed.data.settlementCommandAck
+        ) ||
+        parsed.data.settlementCommandAck.session_id !== parsed.data.sessionId
+      ) {
+        return response({ error: "invalid_runtime_transcript_payload" }, 400);
+      }
+      const result = await acknowledgeRuntimeSettlementCommand(
+        parsed.data.settlementCommandAck
+      );
+      if (!result.ok) {
+        if (result.reason === "settlement_missing") {
+          return response({ error: "runtime_settlement_ack_too_early" }, 425);
+        }
+        return response(
+          {
+            error:
+              result.reason === "not_found"
+                ? "runtime_settlement_command_not_found"
+                : "runtime_settlement_command_fenced",
+          },
+          result.reason === "not_found" ? 404 : 409
+        );
+      }
+      return response(
+        {
+          success: true,
+          kind: "settlement_command_ack",
+          disposition: result.disposition,
+        },
+        200
+      );
+    }
+
     if (parsed.data.writerRegistration !== undefined) {
       const result = await ingestTranscriptRuntimeWriter({
         requestSessionId: parsed.data.sessionId,

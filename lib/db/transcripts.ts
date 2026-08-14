@@ -4,6 +4,7 @@ import {
   transcriptEvidenceWriterCutoff,
   transcriptInterruptionMarker,
   transcriptRuntimeSettlement,
+  transcriptRuntimeSettlementCommand,
   transcriptRuntimeWriter,
   transcriptTurn,
 } from "./schema";
@@ -285,13 +286,15 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
           )
           .limit(1);
         if (existingRows[0]) {
-          return storedSettlementMatches(existingRows[0], settlement)
-            ? {
-                ok: true,
-                disposition: "existing",
-                settlement: existingRows[0],
-              }
-            : { ok: false, reason: "settlement_conflict" };
+          if (!storedSettlementMatches(existingRows[0], settlement)) {
+            return { ok: false, reason: "settlement_conflict" } as const;
+          }
+          await acknowledgePendingSettlementCommand(tx, settlement);
+          return {
+            ok: true,
+            disposition: "existing",
+            settlement: existingRows[0],
+          } as const;
         }
         if (isInterviewTerminalState(session.lifecycleState)) {
           return { ok: false, reason: "session_closed" } as const;
@@ -339,6 +342,7 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
           .onConflictDoNothing()
           .returning();
         if (inserted[0]) {
+          await acknowledgePendingSettlementCommand(tx, settlement);
           return {
             ok: true,
             disposition: "created",
@@ -349,6 +353,33 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
       });
     },
   };
+}
+
+async function acknowledgePendingSettlementCommand(
+  tx: TranscriptPersistenceTransaction,
+  settlement: TranscriptRuntimeSettlement
+): Promise<void> {
+  await tx
+    .update(transcriptRuntimeSettlementCommand)
+    .set({
+      state: "acknowledged",
+      terminalReason: settlement.state,
+      acknowledgedAt: sql`date_trunc('milliseconds', clock_timestamp())`,
+      terminalAt: sql`date_trunc('milliseconds', clock_timestamp())`,
+    })
+    .where(
+      and(
+        eq(transcriptRuntimeSettlementCommand.sessionId, settlement.session_id),
+        eq(
+          transcriptRuntimeSettlementCommand.writerGeneration,
+          settlement.writer_generation
+        ),
+        eq(transcriptRuntimeSettlementCommand.writerId, settlement.writer_id),
+        eq(transcriptRuntimeSettlementCommand.roomName, settlement.room_name),
+        eq(transcriptRuntimeSettlementCommand.state, "pending"),
+        sql`${transcriptRuntimeSettlementCommand.expiresAt} > clock_timestamp()`
+      )
+    );
 }
 
 export function createDrizzleTranscriptInterruptionMarkerStore(

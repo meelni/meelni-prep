@@ -62,6 +62,89 @@ test("user end settles through trusted server data before terminalization", asyn
   });
 });
 
+test("a lost packet cannot suppress durable command acknowledgement", async () => {
+  const fixture = createFixture();
+  const command = settlementCommand();
+  fixture.deps.getCommand = async () => command;
+  fixture.deps.requestRuntimeSettlement = async () =>
+    providerFailure("livekit", {
+      code: "livekit_room_data_send_failed",
+      message: "synthetic packet loss",
+      retryable: true,
+    });
+  fixture.deps.waitForCommand = async ({ commandId }) => {
+    assert.equal(commandId, command.commandId);
+    return { ...command, state: "acknowledged", terminalReason: "settled" };
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.settlement.integrityUnavailable, false);
+});
+
+test("durable command discovery continues when provider configuration is absent", async () => {
+  const fixture = createFixture();
+  const command = settlementCommand();
+  fixture.deps.getCommand = async () => command;
+  fixture.deps.waitForCommand = async () => ({
+    ...command,
+    state: "acknowledged",
+    terminalReason: "degraded",
+  });
+
+  const result = await requestUserEndRuntimeSettlementWorkflow(
+    {
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      env: null,
+    },
+    fixture.deps
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    settlement: {
+      settled: true,
+      pending: 0,
+      failed: 1,
+      overflowed: false,
+      integrityUnavailable: true,
+    },
+  });
+  assert.deepEqual(fixture.calls, []);
+});
+
+test("an unacknowledged durable command is terminally classified at the bound", async () => {
+  const fixture = createFixture();
+  const expiresAt = Date.now() + 1_000;
+  const command = {
+    ...settlementCommand(),
+    cutoffAt: new Date(expiresAt - 20_000),
+    expiresAt: new Date(expiresAt),
+  };
+  let expired = "";
+  let waitBudgetMs = Number.POSITIVE_INFINITY;
+  fixture.deps.getCommand = async () => command;
+  fixture.deps.waitForCommand = async ({ timeoutMs }) => {
+    waitBudgetMs = timeoutMs;
+    return command;
+  };
+  fixture.deps.expireCommand = async (commandId) => {
+    expired = commandId;
+  };
+
+  const result = await run(fixture.deps);
+
+  assert.deepEqual(result, {
+    ok: false,
+    reason: "runtime_not_ready",
+    retryable: false,
+  });
+  assert.equal(expired, command.commandId);
+  assert.ok(waitBudgetMs >= 1 && waitBudgetMs <= 1_000);
+});
+
 test("cross-user sessions fail before provider inspection", async () => {
   const fixture = createFixture();
   fixture.deps.getSession = async (sessionId, userId) => {
@@ -359,5 +442,24 @@ function readiness(
     currentWriterGeneration: generation,
     currentWriterState: state,
     ready: state === "settled",
+  };
+}
+
+function settlementCommand() {
+  return {
+    sessionId: SESSION_ID,
+    lifecycleVersion: 4,
+    contractVersion: 1,
+    commandId: `runtime-settlement:${SESSION_ID}:4`,
+    roomName: "interview-room",
+    writerId: "writer-2",
+    writerGeneration: 2,
+    cutoffAt: new Date("2099-07-28T00:43:37.000Z"),
+    state: "pending" as const,
+    terminalReason: null,
+    createdAt: new Date("2099-07-28T00:43:37.000Z"),
+    expiresAt: new Date("2099-07-28T00:43:57.000Z"),
+    acknowledgedAt: null,
+    terminalAt: null,
   };
 }

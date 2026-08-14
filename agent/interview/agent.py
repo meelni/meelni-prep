@@ -71,6 +71,7 @@ from shared.transcript_ingest import (
     TranscriptIngestQueueSealed,
     RuntimeSettlementRequestDispatcher,
     WriterSequenceAllocator,
+    acknowledge_runtime_settlement_command,
     create_interruption_marker,
     create_runtime_settlement,
     create_runtime_writer_registration,
@@ -79,6 +80,7 @@ from shared.transcript_ingest import (
     parse_runtime_settlement_request,
     persist_runtime_failure_event,
     post_ingest_request,
+    pull_runtime_settlement_command,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
@@ -590,6 +592,18 @@ async def entrypoint(ctx: JobContext):
 
     async def drain_transcript_queue() -> None:
         nonlocal foreground_transcript_flush_active
+        try:
+            await asyncio.wait_for(
+                settle_discovered_runtime_command(),
+                timeout=SERVER_SETTLEMENT_SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        except (asyncio.TimeoutError, TranscriptIngestError) as error:
+            log_exception_class(
+                logger,
+                logging.WARNING,
+                "Runtime settlement shutdown discovery did not complete",
+                error,
+            )
         runtime_settlement_requests.close()
         active_settlements = tuple(
             task for task in server_settlement_tasks if not task.done()
@@ -817,50 +831,51 @@ async def entrypoint(ctx: JobContext):
         "meelni.transcript.flush", flush_transcript_rpc
     )
 
-    @ctx.room.on("data_received")
-    def on_runtime_settlement_request(packet) -> None:
+    async def settle_discovered_runtime_command(
+        *,
+        fallback_request: dict[str, object] | None = None,
+    ) -> None:
         nonlocal runtime_settlement_session_fenced
         nonlocal runtime_settlement_cutoff, transcript_integrity_unavailable
-        validation_started_at = time.monotonic()
+        command: dict[str, object] | None = None
         try:
-            request = parse_runtime_settlement_request(
-                data=packet.data,
-                topic=packet.topic,
-                sent_by_server=packet.participant is None,
-                reliable=packet.kind == DataPacketKind.KIND_RELIABLE,
-                expected_session_id=session_id,
-                expected_room_name=room_name,
-                expected_writer_generation=transcript_writer_generation,
-                hard_deadline_at=deadline_at,
+            command = await pull_runtime_settlement_command(
+                ingest_url=transcript_ingest_url,
+                livekit_api_secret=transcript_ingest_secret,
+                session_id=session_id,
+                room_name=room_name,
+                writer_id=transcript_writer_id,
+                writer_generation=transcript_writer_generation,
+                transport=post_ingest_request,
             )
         except TranscriptIngestError as error:
-            report_runtime_settlement_stage(
-                logger,
-                stage="packet_validation",
-                source="none",
-                outcome="failed",
-                reason="packet_invalid",
-                duration_ms=(time.monotonic() - validation_started_at) * 1000,
-            )
             log_exception_class(
                 logger,
                 logging.WARNING,
-                "Rejected runtime settlement data request",
+                "Durable runtime settlement command discovery failed",
                 error,
             )
             return
+        if command is None and fallback_request is None:
+            return
+
+        request = (
+            {
+                "contract_version": 1,
+                "event_type": "runtime_settlement_request",
+                "request_id": command["command_id"],
+                "session_id": command["session_id"],
+                "room_name": command["room_name"],
+                "writer_generation": command["writer_generation"],
+                "cutoff_at": command["cutoff_at"],
+            }
+            if command is not None
+            else fallback_request
+        )
         if request is None:
             return
         cutoff = parse_deadline_at(request["cutoff_at"])
         if cutoff is None:
-            report_runtime_settlement_stage(
-                logger,
-                stage="packet_validation",
-                source="none",
-                outcome="failed",
-                reason="packet_rejected",
-                duration_ms=(time.monotonic() - validation_started_at) * 1000,
-            )
             return
         cutoff_timestamp = cutoff.timestamp()
         if (
@@ -874,18 +889,10 @@ async def entrypoint(ctx: JobContext):
                 source="none",
                 outcome="failed",
                 reason="packet_rejected",
-                duration_ms=(time.monotonic() - validation_started_at) * 1000,
+                duration_ms=0,
             )
             logger.warning("Rejected conflicting runtime settlement cutoff")
             return
-        report_runtime_settlement_stage(
-            logger,
-            stage="packet_validation",
-            source="none",
-            outcome="succeeded",
-            reason="packet_valid",
-            duration_ms=(time.monotonic() - validation_started_at) * 1000,
-        )
 
         def apply_evidence_cutoff(value: float) -> None:
             nonlocal runtime_settlement_cutoff
@@ -921,10 +928,32 @@ async def entrypoint(ctx: JobContext):
                 duration_ms=(time.monotonic() - fence_started_at) * 1000,
             )
 
+        async def settle_and_acknowledge() -> dict[str, object]:
+            result = await settle_runtime(cutoff_timestamp)
+            if command is None or not result.get("settled"):
+                return result
+            outcome = (
+                runtime_settlement_payload.get("state")
+                if runtime_settlement_payload is not None
+                else None
+            )
+            if outcome not in {"settled", "degraded"}:
+                return result
+            acknowledged = await acknowledge_runtime_settlement_command(
+                ingest_url=transcript_ingest_url,
+                livekit_api_secret=transcript_ingest_secret,
+                command=command,
+                outcome=str(outcome),
+                transport=post_ingest_request,
+            )
+            if not acknowledged:
+                logger.warning("Runtime settlement command acknowledgement was fenced")
+            return result
+
         try:
             settlement_dispatch = runtime_settlement_requests.prepare(
                 request,
-                lambda: settle_runtime(cutoff_timestamp),
+                settle_and_acknowledge,
                 before_start=install_local_fence,
             )
         except Exception:
@@ -951,13 +980,18 @@ async def entrypoint(ctx: JobContext):
                     source="none",
                     outcome="failed",
                     reason="packet_rejected",
-                    duration_ms=(time.monotonic() - validation_started_at) * 1000,
+                    duration_ms=0,
                 )
                 logger.warning("Rejected runtime settlement request identity")
             return
-        if not settlement_dispatch.started:
-            return
-        task = settlement_dispatch.task
+        await settlement_dispatch.task
+
+    def schedule_runtime_settlement_discovery(
+        *, fallback_request: dict[str, object] | None = None
+    ) -> None:
+        task = asyncio.create_task(
+            settle_discovered_runtime_command(fallback_request=fallback_request)
+        )
         server_settlement_tasks.add(task)
 
         def on_server_settlement_done(done: asyncio.Task[object]) -> None:
@@ -969,11 +1003,61 @@ async def entrypoint(ctx: JobContext):
                 log_exception_class(
                     logger,
                     logging.ERROR,
-                    "Runtime settlement data request failed",
+                    "Runtime settlement command failed",
                     error,
                 )
 
         task.add_done_callback(on_server_settlement_done)
+
+    @ctx.room.on("data_received")
+    def on_runtime_settlement_request(packet) -> None:
+        validation_started_at = time.monotonic()
+        try:
+            request = parse_runtime_settlement_request(
+                data=packet.data,
+                topic=packet.topic,
+                sent_by_server=packet.participant is None,
+                reliable=packet.kind == DataPacketKind.KIND_RELIABLE,
+                expected_session_id=session_id,
+                expected_room_name=room_name,
+                expected_writer_generation=transcript_writer_generation,
+                hard_deadline_at=deadline_at,
+            )
+        except TranscriptIngestError as error:
+            report_runtime_settlement_stage(
+                logger,
+                stage="packet_validation",
+                source="none",
+                outcome="failed",
+                reason="packet_invalid",
+                duration_ms=(time.monotonic() - validation_started_at) * 1000,
+            )
+            log_exception_class(
+                logger,
+                logging.WARNING,
+                "Rejected runtime settlement data request",
+                error,
+            )
+            return
+        if request is None:
+            return
+        report_runtime_settlement_stage(
+            logger,
+            stage="packet_validation",
+            source="none",
+            outcome="succeeded",
+            reason="packet_valid",
+            duration_ms=(time.monotonic() - validation_started_at) * 1000,
+        )
+        # The packet carries no authority. It only wakes a signed database pull;
+        # the fallback preserves compatibility for commands accepted pre-rollout.
+        schedule_runtime_settlement_discovery(fallback_request=request)
+
+    @ctx.room.on("participant_disconnected")
+    def on_candidate_disconnected(participant) -> None:
+        if candidate_identity is None or participant.identity != candidate_identity:
+            return
+        schedule_runtime_settlement_discovery()
 
     def queue_integrity_marker(
         *, event_id: str, speaker: str, reason: str, occurred_at: float | None = None
