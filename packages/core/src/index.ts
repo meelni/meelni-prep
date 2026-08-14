@@ -18,6 +18,7 @@ export * from "./feedback-view-model";
 export * from "./feedback-transcript";
 export * from "./feedback-eligibility";
 export * from "./answer-blocks";
+export * from "./trusted-answer-block-authority";
 export * from "./transcript-integrity";
 export * from "./question";
 export * from "./question-taxonomy";

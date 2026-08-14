@@ -64,6 +64,17 @@ trusted closed blocks in a partial session. Unsupported dimensions remain
 scoreless and every partial scorecard has `overallScore = null`. The server may
 not extrapolate a whole-interview score from a verified prefix.
 
+SAV-441 makes the closure boundary exact. The frozen projection must contain
+one healthy writer identity/generation, its complete committed sequence, and an
+exact cutoff-matching terminal event. Interviewer follow-up and explicit
+section transition close the preceding prompt-bound answer. A terminal
+session boundary closes the final answer only with fully settled authority.
+The single exact terminal `interviewer/no_provider_confirmed_prefix` marker
+preserves earlier independently closed blocks but never closes the affected
+tail. Silence, input exhaustion, writer drift, and raw cutoff presence cannot
+manufacture closure. The versioned trusted identity is emitted only by that
+projection and remains invariant across equivalent transcript segmentation.
+
 ### Latency is one budget with observable stages
 
 Feedback generation must have one end-to-end deadline budget covering queue,
