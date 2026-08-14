@@ -1,6 +1,7 @@
 import {
   DRILL_TEMPLATE_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   buildFocusedPracticePlan,
@@ -27,6 +28,7 @@ import {
   type PersistedCompletedFeedback,
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 export interface BoundedFocusedPracticeSource {
@@ -40,6 +42,7 @@ export interface BoundedFocusedPracticeSource {
   evidenceTurns: readonly PersistedFeedbackEvidenceTurn[];
   answerBlocks: readonly CandidateAnswerBlock[];
   frozenEvidenceState: "complete" | "partial" | null;
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   sourceFingerprint: string;
   completionStats?: unknown;
 }
@@ -278,7 +281,9 @@ function constructFocusedPracticeAttempt(
   if (
     source.feedback.schemaVersion !==
       FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
-    source.feedback.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+    source.feedback.schemaVersion !==
+      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    source.feedback.schemaVersion !== FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
   ) {
     return { ok: false, reason: "source_integrity_invalid" };
   }
@@ -299,6 +304,7 @@ function constructFocusedPracticeAttempt(
       expectedRoundType: source.roundType,
       frozenEvidenceState: source.frozenEvidenceState ?? undefined,
       scoreWithheldReason: evidenceLimitedReason,
+      verifiedPrefixProjection: source.verifiedPrefixProjection,
     });
   } catch {
     return { ok: false, reason: "source_integrity_invalid" };
@@ -368,10 +374,20 @@ function constructFocusedPracticeAttempt(
           dimensions: source.feedback.dimensionCoverage,
           overallScore: source.feedback.overallScore,
           summary: source.feedback.summary,
+          ...(source.feedback.schemaVersion ===
+          FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+            ? { verifiedPrefixScope: source.feedback.verifiedPrefixScope }
+            : {}),
         },
         {
           answerBlocks: source.answerBlocks,
-          allowNumericalScores: source.frozenEvidenceState === "complete",
+          allowNumericalScores:
+            source.feedback.feedbackMode !== "coaching_review",
+          ...(source.verifiedPrefixProjection
+            ? {
+                verifiedPrefixProjection: source.verifiedPrefixProjection,
+              }
+            : {}),
         }
       );
       if (feedback.mode !== presentation.mode) {

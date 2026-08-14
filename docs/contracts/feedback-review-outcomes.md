@@ -10,9 +10,11 @@ event, derived answer-block, or rubric-dimension coverage contracts.
 - Derived candidate answer blocks are the evaluation and presentation unit.
 - Equivalent semantic answers under different event segmentation must produce
   the same coverage, scores, mode, and customer outcome.
-- `feedback.dimension-coverage.v1` remains the scoring authority. Presentation
-  code cannot derive coverage from punctuation, grammar, answer length,
-  transcript rows, null scores, or provider fields.
+- `feedback.dimension-coverage.v1` remains the complete/historical scoring
+  authority. The additive `feedback.dimension-coverage.v2` authority may score
+  a partial snapshot only from an exactly recomputed trusted closed-block
+  prefix. Presentation code cannot derive coverage from punctuation, grammar,
+  answer length, transcript rows, null scores, or provider fields.
 
 ## Closed customer outcomes
 
@@ -47,12 +49,27 @@ The completed-feedback presenter may expose only:
 - customer-facing facet labels, exact candidate citations, and opaque
   transcript navigation targets;
 - grounded coaching signals, visible evidence-support semantics, and exactly
-  one prioritized practice focus; and
+  one prioritized practice focus;
+- for verified-prefix v2 only, the count of verified completed answers and the
+  semantic fact that the unfinished or unverified terminal tail stayed outside
+  the review; and
 - customer-safe credit recovery state for terminal integrity failures.
 
 It does not expose model, schema, prompt, rubric, facet, answer-block, provider,
 parser, settlement, or transcript-integrity codes. Historical supported review
 formats retain their explicit compatibility treatment.
+
+The verified-prefix explanation is visible text: Meelni reviewed only the
+completed answers it could verify. The unfinished or unverified end was not
+treated as negative evidence; only verified completed answers could support the
+scores or coaching shown. The UI does not claim that exclusion had no effect on
+which dimensions were supportable. It never exposes block identities, writer
+state, provider state, or a diagnostic excluded-block count. Historical v1
+partial/coaching reviews have no verified-prefix claim and remain readable
+without this card. Even when every individual dimension is supported, verified-
+prefix copy says the overall score is withheld because the complete saved
+interview was outside verified scope; it does not imply that another dimension
+was necessarily unscored.
 
 ## Coaching and citations
 

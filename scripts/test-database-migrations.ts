@@ -48,6 +48,7 @@ import {
   FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
   FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
   FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
+  VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -328,7 +329,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -527,9 +531,10 @@ async function run() {
         PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
         RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
         FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
+        VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 37; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 38; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -549,7 +554,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 38; found 22/
+            /Strict launch preflight requires the exact latest migration count 39; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -859,7 +864,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 38);
+      assert.equal(await migrationCount(sql), 39);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -923,7 +928,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
+      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1168,7 +1173,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 38; found 25/
+      /exact latest migration count 39; found 25/
     );
 
     const genericRows = await sql<
@@ -1267,11 +1272,11 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 38);
+    assert.equal(await migrationCount(sql), 39);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       finalPreflight.startingContract,
-      "feedback_stage_attempt_history"
+      "verified_prefix_partial_scorecards"
     );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
@@ -1281,7 +1286,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
+      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6656,7 +6661,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "feedback_stage_attempt_history"
+      "verified_prefix_partial_scorecards"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -8300,7 +8305,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 38);
+  assert.equal(await migrationCount(sql), 39);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -9340,20 +9345,54 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       prompt_version: string | null;
       model_version: string | null;
       evaluation_state: string | null;
+      overall_score: string | null;
+      feedback_mode: string | null;
+      feedback_round_type: string | null;
+      dimension_coverage: unknown;
+      verified_prefix_scope: unknown;
     }[]
   >`
-    SELECT schema_version, prompt_version, model_version, evaluation_state
+    SELECT schema_version, prompt_version, model_version, evaluation_state,
+      overall_score, feedback_mode, feedback_round_type, dimension_coverage,
+      verified_prefix_scope
     FROM feedback
     WHERE id = ${legacy.id}::uuid
   `;
-  assert.deepEqual(legacyBefore, {
-    schema_version: null,
-    prompt_version: null,
-    model_version: null,
-    evaluation_state: null,
-  });
+  assert.equal(legacyBefore?.schema_version, null);
+  assert.equal(legacyBefore?.prompt_version, null);
+  assert.equal(legacyBefore?.model_version, null);
+  assert.equal(legacyBefore?.evaluation_state, null);
+  assert.equal(legacyBefore?.feedback_mode, null);
+  assert.equal(legacyBefore?.feedback_round_type, null);
+  assert.equal(legacyBefore?.dimension_coverage, null);
+  assert.equal(legacyBefore?.verified_prefix_scope, null);
+
+  const verifiedPrefixScope = {
+    contractVersion: "feedback.verified-prefix-scope.v1",
+    projectionVersion: "trusted-answer-block-projection.v1",
+    trustedBlockIdentities: [
+      {
+        contractVersion: "trusted-answer-block.v1",
+        answerBlockId: "answer-block:0001",
+        identity: `trusted-answer-block.v1:${"a".repeat(64)}`,
+      },
+    ],
+    excludedTailBlockCount: 0,
+  };
 
   await sql.begin(async (tx) => {
+    await assert.rejects(
+      tx.savepoint("null_schema_dimension_corruption", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET feedback_mode = 'partial_scorecard',
+              feedback_round_type = 'product_sense',
+              dimension_coverage = '{}'::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_dimension_coverage_tuple_check/
+    );
     await assert.rejects(
       tx.savepoint("retired_evidence_limited_v1", async (savepoint) => {
         await savepoint`
@@ -9421,11 +9460,166 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
     );
     await tx`
       UPDATE feedback
+      SET schema_version = 'feedback.dimension-coverage.v2',
+          prompt_version = 'feedback.prompt.dimension-coverage.v1',
+          model_version = 'verified-prefix-migration-test',
+          rubric_version = 'pm-feedback-rubric.v3',
+          evaluation_state = 'partial',
+          feedback_mode = 'partial_scorecard',
+          feedback_round_type = 'product_sense',
+          dimension_coverage = '{"structure":{"score":8,"coverage":"sufficient","evidence":[]}}'::jsonb,
+          verified_prefix_scope = ${JSON.stringify(verifiedPrefixScope)}::jsonb,
+          overall_score = NULL
+      WHERE id = ${legacy.id}::uuid
+    `;
+    const [verifiedPrefixRow] = await tx<
+      {
+        schema_version: string;
+        overall_score: string | null;
+        verified_prefix_scope: unknown;
+      }[]
+    >`
+      SELECT schema_version, overall_score, verified_prefix_scope
+      FROM feedback
+      WHERE id = ${legacy.id}::uuid
+    `;
+    assert.deepEqual(verifiedPrefixRow, {
+      schema_version: "feedback.dimension-coverage.v2",
+      overall_score: null,
+      verified_prefix_scope: verifiedPrefixScope,
+    });
+    await assert.rejects(
+      tx.savepoint("verified_prefix_scope_required", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback SET verified_prefix_scope = NULL
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    for (const key of [
+      "contractVersion",
+      "projectionVersion",
+      "trustedBlockIdentities",
+      "excludedTailBlockCount",
+    ]) {
+      const missing = {
+        ...verifiedPrefixScope,
+      } as unknown as Record<string, unknown>;
+      delete missing[key];
+      await assert.rejects(
+        tx.savepoint(`verified_prefix_missing_${key}`, async (savepoint) => {
+          await savepoint`
+            UPDATE feedback
+            SET verified_prefix_scope = ${JSON.stringify(missing)}::jsonb
+            WHERE id = ${legacy.id}::uuid
+          `;
+        }),
+        /feedback_verified_prefix_scope_tuple_check/
+      );
+    }
+    await assert.rejects(
+      tx.savepoint("verified_prefix_scope_forged", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET verified_prefix_scope = ${JSON.stringify({
+            ...verifiedPrefixScope,
+            trustedBlockIdentities: [],
+          })}::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    await assert.rejects(
+      tx.savepoint(
+        "verified_prefix_identity_count_over_cap",
+        async (savepoint) => {
+          await savepoint`
+          UPDATE feedback
+          SET verified_prefix_scope = ${JSON.stringify({
+            ...verifiedPrefixScope,
+            trustedBlockIdentities: Array.from(
+              { length: 1_001 },
+              () => verifiedPrefixScope.trustedBlockIdentities[0]
+            ),
+          })}::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+        }
+      ),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    for (const excludedTailBlockCount of [-1, 1.5, 1_001]) {
+      await assert.rejects(
+        tx.savepoint(
+          `verified_prefix_excluded_count_${String(excludedTailBlockCount).replace(".", "_")}`,
+          async (savepoint) => {
+            await savepoint`
+              UPDATE feedback
+              SET verified_prefix_scope = ${JSON.stringify({
+                ...verifiedPrefixScope,
+                excludedTailBlockCount,
+              })}::jsonb
+              WHERE id = ${legacy.id}::uuid
+            `;
+          }
+        ),
+        /feedback_verified_prefix_scope_tuple_check/
+      );
+    }
+    await assert.rejects(
+      tx.savepoint("verified_prefix_scope_extra_key", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET verified_prefix_scope = ${JSON.stringify({
+            ...verifiedPrefixScope,
+            untrustedTailText: "must not persist",
+          })}::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    await assert.rejects(
+      tx.savepoint("verified_prefix_scope_storage_cap", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET verified_prefix_scope = ${JSON.stringify({
+            ...verifiedPrefixScope,
+            trustedBlockIdentities: [
+              {
+                ...verifiedPrefixScope.trustedBlockIdentities[0],
+                identity: `trusted-answer-block.v1:${"a".repeat(128_000)}`,
+              },
+            ],
+          })}::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    await assert.rejects(
+      tx.savepoint("verified_prefix_overall_forbidden", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback SET overall_score = 8
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_verified_prefix_scope_tuple_check/
+    );
+    await tx`
+      UPDATE feedback
       SET schema_version = NULL,
           prompt_version = NULL,
           model_version = NULL,
           rubric_version = '1.0.0',
-          evaluation_state = NULL
+          evaluation_state = NULL,
+          feedback_mode = NULL,
+          feedback_round_type = NULL,
+          dimension_coverage = NULL,
+          verified_prefix_scope = NULL,
+          overall_score = ${legacyBefore!.overall_score}
       WHERE id = ${legacy.id}::uuid
     `;
   });
@@ -9437,10 +9631,16 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       model_version: string | null;
       evaluation_state: string | null;
       rubric_version: string;
+      overall_score: string | null;
+      feedback_mode: string | null;
+      feedback_round_type: string | null;
+      dimension_coverage: unknown;
+      verified_prefix_scope: unknown;
     }[]
   >`
     SELECT schema_version, prompt_version, model_version, evaluation_state,
-           rubric_version
+      rubric_version, overall_score, feedback_mode, feedback_round_type,
+      dimension_coverage, verified_prefix_scope
     FROM feedback
     WHERE id = ${legacy.id}::uuid
   `;
@@ -9450,6 +9650,11 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
     model_version: null,
     evaluation_state: null,
     rubric_version: "1.0.0",
+    overall_score: legacyBefore!.overall_score,
+    feedback_mode: null,
+    feedback_round_type: null,
+    dimension_coverage: null,
+    verified_prefix_scope: null,
   });
 }
 

@@ -231,6 +231,11 @@ export function createDrizzleFeedbackGenerationStore(
           feedbackMode: dimensionCoverage ? evaluation.mode : null,
           feedbackRoundType: dimensionCoverage ? evaluation.roundType : null,
           dimensionCoverage: dimensionCoverage ? evaluation.dimensions : null,
+          verifiedPrefixScope:
+            dimensionCoverage &&
+            evaluation.schemaVersion === "feedback.dimension-coverage.v2"
+              ? evaluation.verifiedPrefixScope
+              : null,
         })
         .where(activeClaim(sessionId, eventId, deadlineAt))
         .returning({ id: feedback.id });
@@ -263,6 +268,7 @@ export function createDrizzleFeedbackGenerationStore(
           feedbackMode: null,
           feedbackRoundType: null,
           dimensionCoverage: null,
+          verifiedPrefixScope: null,
         })
         .where(activeClaim(sessionId, eventId, deadlineAt))
         .returning({ id: feedback.id });

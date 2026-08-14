@@ -11,6 +11,7 @@ import {
   FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   ROUND_DIMENSION_COVERAGE_CONFIG,
 } from "./feedback-dimension-coverage";
 import type { FeedbackScoreWithheldReason } from "./feedback-view-model";
@@ -54,7 +55,9 @@ export type FocusedPracticeGroundedFeedbackVersionSnapshot =
       sourceFingerprint: string;
     }
   | {
-      schemaVersion: typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+      schemaVersion:
+        | typeof FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+        | typeof FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
       promptVersion: typeof FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION;
       rubricVersion: typeof FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION;
       modelVersion: string;
@@ -560,7 +563,8 @@ function parseFeedbackVersion(
     });
   }
   if (
-    value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    (value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+      value.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) &&
     value.promptVersion === FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION &&
     value.rubricVersion === FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION &&
     (value.reviewOutcome === "partial_scorecard" ||
@@ -569,7 +573,7 @@ function parseFeedbackVersion(
       value.scoreWithheldReason === "rubric_coverage")
   ) {
     return Object.freeze({
-      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+      schemaVersion: value.schemaVersion,
       promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
       rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
       modelVersion: value.modelVersion,

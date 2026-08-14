@@ -1354,6 +1354,7 @@ export async function getFrozenFeedbackEvaluationEvidence(
         interruptions: [],
         sessionEndAt: null,
         sourceOverflow: false,
+        authority: null,
       };
     }
 
@@ -1365,6 +1366,7 @@ export async function getFrozenFeedbackEvaluationEvidence(
         interruptions: [],
         sessionEndAt: null,
         sourceOverflow: false,
+        authority: null,
       };
     }
 
@@ -1448,6 +1450,7 @@ export async function getFrozenFeedbackEvaluationEvidence(
         interruptions: [],
         sessionEndAt: session.cutoffAt,
         sourceOverflow,
+        authority: null,
       };
     }
     return {
@@ -1465,6 +1468,19 @@ export async function getFrozenFeedbackEvaluationEvidence(
       }),
       sessionEndAt: session.cutoffAt,
       sourceOverflow,
+      authority: {
+        contractVersion: "frozen-answer-block-authority.v1" as const,
+        snapshotState: session.evidenceState,
+        cutoffAtMs: session.cutoffAt.getTime(),
+        writers: cutoffs.map((cutoff) => ({
+          contractVersion: 1 as const,
+          writerId: cutoff.writerId,
+          writerGeneration: cutoff.writerGeneration,
+          committedSequence: cutoff.committedSequence,
+          integrityState: cutoff.integrityState,
+          settlementState: cutoff.settlementState,
+        })),
+      },
     };
   };
   return "transaction" in database

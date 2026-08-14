@@ -1,6 +1,7 @@
 # Round-Specific Dimension Evidence Coverage
 
-Status: `feedback.dimension-coverage.v1`
+Status: `feedback.dimension-coverage.v1` with additive verified-prefix
+`feedback.dimension-coverage.v2`
 
 ## Evaluation input
 
@@ -85,16 +86,34 @@ internally inconsistent freeze metadata, a wrong owning round, a truncated
 source, or an answer-block integrity failure makes the v3 row unavailable. It
 never falls back to the mutable transcript tail.
 
-A partial frozen snapshot is qualitative-only at generation and read time. A
-self-consistent persisted partial or full numerical scorecard over that
-snapshot is still invalid; only a canonical all-null coaching review may be
-presented.
+For `feedback.dimension-coverage.v1`, a partial frozen snapshot remains
+qualitative-only at generation and read time. A self-consistent persisted
+partial or full numerical v1 scorecard over that snapshot is still invalid;
+only a canonical all-null coaching review may be presented.
 
-New rows store the v3 version tuple, round, mode, and bounded dimension JSON.
+The additive `feedback.dimension-coverage.v2` contract is selected only when a
+partial frozen snapshot recomputes an exact
+`trusted-answer-block-projection.v1` verified prefix. Only the projection's
+ordered trusted closed blocks enter evaluation. The server persists
+`feedback.verified-prefix-scope.v1`, binding the exact ordered trusted-block
+identities and diagnostic excluded-tail block count. Authenticated, dashboard,
+focused-practice, and feedback-quality reads must recompute the same projection
+from bounded frozen evidence and require exact canonical equality. A missing,
+forged, reordered, oversized, or inconsistent scope fails closed.
+
+A v2 result is always partial. It may expose a score only for a dimension with
+both configured facets grounded in a trusted block, and its overall score is
+always null even when every configured dimension happens to be sufficient. If
+no dimension supports a score, the same verified scope produces a scoreless
+coaching review. An empty or failed trusted projection does no provider work
+and exposes no numerical feedback.
+
+New rows store the closed dimension-coverage version tuple, round, mode,
+bounded dimension JSON, and—only for verified-prefix v2—the bounded scope.
 Existing scalar score columns are sparse for partial scorecards and empty for
-coaching. Overall is populated only for full scorecards. Legacy, Feedback v2,
-and evidence-limited v2 completed rows remain readable and immutable; no
-backfill or reinterpretation is allowed.
+coaching. Overall is populated only for complete v1 full scorecards. Legacy,
+Feedback v2, evidence-limited v2, and dimension-coverage v1 completed rows
+remain readable and immutable; no backfill or reinterpretation is allowed.
 
 Dashboard/history, session-list APIs, insights, and attempt comparison consume
 only the strict authenticated presentation projection. Unavailable and
@@ -120,3 +139,9 @@ to SHA-256
 `f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3`.
 It validates closed outcomes and exact grounding without credentials or
 provider calls.
+
+The additive `verified-prefix-scorecard-calibration.v1` manifest composes the
+trusted-authority and dimension-coverage corpora across historical full,
+verified-prefix partial, verified-prefix coaching, and authority-unavailable
+outcomes. Its exact synthetic case list is bound to SHA-256
+`195a9b9ae4b4347a97fa28f1d0b5a539ca005bc8d1f3469ee26c6832b8b82e04`.

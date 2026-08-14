@@ -4,50 +4,51 @@
 
 <!-- migration-journal:start -->
 
-| Index | Journal tag                                   |
-| ----: | --------------------------------------------- |
-|     0 | `0000_many_nocturne`                          |
-|     1 | `0001_panoramic_otto_octavius`                |
-|     2 | `0002_relaunch_reconciliation`                |
-|     3 | `0003_durable_account_deletion`               |
-|     4 | `0004_stripe_deletion_privacy`                |
-|     5 | `0005_multi_subject_account_deletion`         |
-|     6 | `0006_interview_session_lifecycle`            |
-|     7 | `0007_atomic_session_completion`              |
-|     8 | `0008_deadline_room_cleanup_ack`              |
-|     9 | `0009_interview_session_reconnect`            |
-|    10 | `0010_reconnect_cutoff_owner`                 |
-|    11 | `0011_transcript_ingest`                      |
-|    12 | `0012_transcript_privacy_integrity`           |
-|    13 | `0013_runtime_settlement`                     |
-|    14 | `0014_stable_start_usable_credit`             |
-|    15 | `0015_provider_credit_recovery`               |
-|    16 | `0016_billing_truth`                          |
-|    17 | `0017_webhook_convergence`                    |
-|    18 | `0018_invoice_status_convergence`             |
-|    19 | `0019_subscription_resource_convergence`      |
-|    20 | `0020_durable_livekit_deletion`               |
-|    21 | `0021_feedback_v2`                            |
-|    22 | `0022_server_owned_billing_privileges`        |
-|    23 | `0023_explicit_analytics_consent`             |
-|    24 | `0024_runtime_settlement_reconciliation`      |
-|    25 | `0025_public_demo_limits`                     |
-|    26 | `0026_preview_lineage_reconciliation`         |
-|    27 | `0027_question_provenance`                    |
-|    28 | `0028_focused_practice_attempts`              |
-|    29 | `0029_durable_contact_submission`             |
-|    30 | `0030_transcript_committed_watermarks`        |
-|    31 | `0031_sav_397_feedback_outcomes`              |
-|    32 | `0032_dimension_evidence_coverage`            |
-|    33 | `0033_scoreless_focused_practice`             |
-|    34 | `0034_feedback_quality_signals`               |
-|    35 | `0035_sav_431_public_demo_preview_allowance`  |
-|    36 | `0036_sav_442_runtime_settlement_command`     |
-|    37 | `0037_sav_439_feedback_stage_attempt_history` |
+| Index | Journal tag                                       |
+| ----: | ------------------------------------------------- |
+|     0 | `0000_many_nocturne`                              |
+|     1 | `0001_panoramic_otto_octavius`                    |
+|     2 | `0002_relaunch_reconciliation`                    |
+|     3 | `0003_durable_account_deletion`                   |
+|     4 | `0004_stripe_deletion_privacy`                    |
+|     5 | `0005_multi_subject_account_deletion`             |
+|     6 | `0006_interview_session_lifecycle`                |
+|     7 | `0007_atomic_session_completion`                  |
+|     8 | `0008_deadline_room_cleanup_ack`                  |
+|     9 | `0009_interview_session_reconnect`                |
+|    10 | `0010_reconnect_cutoff_owner`                     |
+|    11 | `0011_transcript_ingest`                          |
+|    12 | `0012_transcript_privacy_integrity`               |
+|    13 | `0013_runtime_settlement`                         |
+|    14 | `0014_stable_start_usable_credit`                 |
+|    15 | `0015_provider_credit_recovery`                   |
+|    16 | `0016_billing_truth`                              |
+|    17 | `0017_webhook_convergence`                        |
+|    18 | `0018_invoice_status_convergence`                 |
+|    19 | `0019_subscription_resource_convergence`          |
+|    20 | `0020_durable_livekit_deletion`                   |
+|    21 | `0021_feedback_v2`                                |
+|    22 | `0022_server_owned_billing_privileges`            |
+|    23 | `0023_explicit_analytics_consent`                 |
+|    24 | `0024_runtime_settlement_reconciliation`          |
+|    25 | `0025_public_demo_limits`                         |
+|    26 | `0026_preview_lineage_reconciliation`             |
+|    27 | `0027_question_provenance`                        |
+|    28 | `0028_focused_practice_attempts`                  |
+|    29 | `0029_durable_contact_submission`                 |
+|    30 | `0030_transcript_committed_watermarks`            |
+|    31 | `0031_sav_397_feedback_outcomes`                  |
+|    32 | `0032_dimension_evidence_coverage`                |
+|    33 | `0033_scoreless_focused_practice`                 |
+|    34 | `0034_feedback_quality_signals`                   |
+|    35 | `0035_sav_431_public_demo_preview_allowance`      |
+|    36 | `0036_sav_442_runtime_settlement_command`         |
+|    37 | `0037_sav_439_feedback_stage_attempt_history`     |
+|    38 | `0038_sav_440_verified_prefix_partial_scorecards` |
 
 <!-- migration-journal:end -->
 
-This thirty-eight-entry inventory is generated from the same ordered contract as
+This thirty-nine-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -428,3 +429,20 @@ and is removed before feedback/session parents during account erasure. The
 migration is additive and performs no backfill. Application code attempts one
 bounded post-outcome batch; a row is durable when accepted, but a terminating
 serverless invocation does not guarantee completion after that bound.
+
+## Verified-prefix partial scorecards
+
+Migration `0038_sav_440_verified_prefix_partial_scorecards` adds the nullable
+`verified_prefix_scope` JSONB column to feedback and extends the closed
+dimension-coverage and focused-practice tuples for the additive
+`feedback.dimension-coverage.v2` contract. A v2 row must be partial, must have a
+null overall score, and must carry the exact four-key versioned scope. The
+database guard fails closed on missing keys, extra keys, non-array or empty
+trusted identities, negative/fractional/over-cap excluded-tail counts, and
+scope storage beyond the bounded octet limit. Application decoders remain the
+authority for exact nested trusted-identity shape and recompute canonical
+projection equality before any authenticated use.
+
+Non-v2 rows require the new column to remain null. The migration performs no
+backfill or history rewrite, and the historical v1 focused-practice fingerprint
+projection stays byte-for-byte compatible.

@@ -3,6 +3,7 @@ import {
   type CandidateAnswerBlock,
   type DimensionCoverageFeedbackResult,
   type RoundType,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
@@ -43,6 +44,7 @@ export async function generateDimensionCoverageFeedback(
     deadlineAtMs?: number;
     now?: () => number;
     reportAttempt?: FeedbackGenerationAttemptReporter;
+    verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   } = {}
 ): Promise<DimensionCoverageFeedbackResult> {
   if (answerBlocks.length === 0) {
@@ -166,6 +168,11 @@ export async function generateDimensionCoverageFeedback(
         answerBlocks,
         modelVersion: completion.model,
         allowNumericalScores,
+        ...(dependencies.verifiedPrefixProjection
+          ? {
+              verifiedPrefixProjection: dependencies.verifiedPrefixProjection,
+            }
+          : {}),
       });
     } catch (error) {
       throw new FeedbackProviderInvocationError(

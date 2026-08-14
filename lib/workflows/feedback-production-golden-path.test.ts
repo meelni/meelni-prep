@@ -575,6 +575,7 @@ function frozenEndCompletion(
       feedbackMode: null,
       feedbackRoundType: null,
       dimensionCoverage: null,
+      verifiedPrefixScope: null,
       processingStartedAt: null,
       processingDurationMs: null,
       completionTier: snapshot.validation.tier,

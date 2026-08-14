@@ -21,6 +21,26 @@ const evidenceTurn = "browser-qa-turn-1";
 export const fullScorecardFeedback = browserDimensionCoverageView("full");
 export const partialScorecardFeedback = browserDimensionCoverageView("partial");
 export const coachingReviewFeedback = browserDimensionCoverageView("coaching");
+export const verifiedPrefixPartialScorecardFeedback = {
+  ...partialScorecardFeedback,
+  id: "browser-qa-verified-prefix-partial",
+  sessionId: "browser-qa-verified-prefix-partial",
+  verifiedScope: {
+    kind: "verified_prefix" as const,
+    reviewedAnswerCount: 1,
+    excludedTail: true,
+  },
+};
+export const verifiedPrefixCoachingReviewFeedback = {
+  ...coachingReviewFeedback,
+  id: "browser-qa-verified-prefix-coaching",
+  sessionId: "browser-qa-verified-prefix-coaching",
+  verifiedScope: {
+    kind: "verified_prefix" as const,
+    reviewedAnswerCount: 2,
+    excludedTail: true,
+  },
+};
 
 export const dashboardSessions = [
   {
@@ -235,6 +255,7 @@ function browserDimensionCoverageView(
             transcriptRef: evidenceTurn,
           }
         : null,
+    verifiedScope: null,
     createdAt: "2026-08-13T12:00:00.000Z",
     nextPracticeRecommendation: null,
   };

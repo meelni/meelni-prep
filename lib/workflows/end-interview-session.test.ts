@@ -353,6 +353,7 @@ function feedbackRecordBase(): typeof feedbackTable.$inferSelect {
     feedbackMode: null,
     feedbackRoundType: null,
     dimensionCoverage: null,
+    verifiedPrefixScope: null,
     processingStartedAt: null,
     processingDurationMs: null,
     completionTier: "full" as const,

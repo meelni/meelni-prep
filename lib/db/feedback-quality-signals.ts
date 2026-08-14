@@ -2,6 +2,7 @@ import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FEEDBACK_QUALITY_SIGNAL_RATE_LIMIT,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   deriveFeedbackQualityOutcome,
   parseFeedbackQualitySignalView,
   presentCompletedFeedback,
@@ -9,6 +10,9 @@ import {
   type FeedbackQualityOutcome,
   type FeedbackQualitySignalCommand,
   type FeedbackQualitySignalView,
+  type PersistedCompletedFeedback,
+  type PresentCompletedFeedbackOptions,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -21,7 +25,10 @@ import {
   buildFeedbackEvidenceTurnsQuery,
   getFrozenFeedbackEvaluationEvidence,
 } from "@/lib/db/transcripts";
-import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
+import {
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+} from "@/lib/evaluation/session-validator";
 import type {
   FeedbackQualityReadDisposition,
   FeedbackQualitySignalRepository,
@@ -301,19 +308,35 @@ async function loadOwnedQualitySource(
   if (!boundedRow || boundedRow.id !== source.feedbackId) return null;
   const bounded = decodeBoundedFeedbackReadRow(boundedRow);
   const evidenceTurns =
-    bounded.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
+    bounded.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+    bounded.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
       ? []
       : await buildFeedbackEvidenceTurnsQuery(database, input.sessionId);
   let answerBlocks: CandidateAnswerBlock[] = [];
   let frozenEvidenceState: "complete" | "partial" | undefined;
-  if (bounded.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION) {
+  let verifiedPrefixProjection: TrustedAnswerBlockProjection | undefined;
+  if (
+    bounded.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+    bounded.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+  ) {
     const frozen = await getFrozenFeedbackEvaluationEvidence(
       input.sessionId,
       database
     );
+    const preparedTrusted =
+      bounded.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+        ? prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(frozen)
+        : null;
     const prepared =
+      preparedTrusted ??
       prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(frozen);
     answerBlocks = prepared.eligible ? prepared.blocks : [];
+    if (
+      preparedTrusted?.eligible &&
+      preparedTrusted.projection.status === "verified_prefix"
+    ) {
+      verifiedPrefixProjection = preparedTrusted.projection;
+    }
     frozenEvidenceState =
       frozen.snapshotValid &&
       (frozen.snapshotState === "complete" ||
@@ -321,7 +344,7 @@ async function loadOwnedQualitySource(
         ? frozen.snapshotState
         : undefined;
   }
-  const presented = presentCompletedFeedback(
+  const outcome = deriveFeedbackQualityOutcomeFromSource(
     {
       id: bounded.id,
       sessionId: bounded.sessionId,
@@ -343,6 +366,7 @@ async function loadOwnedQualitySource(
       feedbackMode: bounded.feedbackMode,
       feedbackRoundType: bounded.feedbackRoundType,
       dimensionCoverage: bounded.dimensionCoverage,
+      verifiedPrefixScope: bounded.verifiedPrefixScope,
       createdAt: bounded.createdAt,
     },
     {
@@ -356,6 +380,7 @@ async function loadOwnedQualitySource(
           ? source.roundType
           : undefined,
       frozenEvidenceState,
+      verifiedPrefixProjection,
       scoreWithheldReason:
         bounded.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
         hasEvidenceLimitedOnlyConstraint(bounded.completionStats)
@@ -363,8 +388,16 @@ async function loadOwnedQualitySource(
           : "rubric_coverage",
     }
   );
-  const outcome = deriveFeedbackQualityOutcome(presented);
   return outcome ? { feedbackId: source.feedbackId, outcome } : null;
+}
+
+export function deriveFeedbackQualityOutcomeFromSource(
+  feedbackSource: PersistedCompletedFeedback,
+  presentation: PresentCompletedFeedbackOptions
+): FeedbackQualityOutcome | null {
+  return deriveFeedbackQualityOutcome(
+    presentCompletedFeedback(feedbackSource, presentation)
+  );
 }
 
 function sameSelection(
