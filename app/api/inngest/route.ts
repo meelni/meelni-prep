@@ -35,6 +35,11 @@ import {
   finalizeUserInterviewEnd,
   recoverUserInterviewEnds,
 } from "@/lib/inngest/functions/finalize-user-interview-end";
+import {
+  compareShadowFeedback,
+  evaluateShadowFeedback,
+  scheduleShadowFeedback,
+} from "@/lib/inngest/functions/shadow-feedback";
 
 /**
  * Serve Inngest functions via Next.js API route
@@ -70,5 +75,8 @@ export const { GET, POST, PUT } = serve({
     cleanupContactSubmissionRateLimits, // Bounded stale contact limiter cleanup
     finalizeUserInterviewEnd, // Completes accepted user end commands off-request
     recoverUserInterviewEnds, // Requeues ending rows if event delivery was lost
+    scheduleShadowFeedback, // Default-off terminal frozen-block scheduling
+    evaluateShadowFeedback, // Provider-neutral exact-key evaluation seam
+    compareShadowFeedback, // Content-free batch-authority comparison
   ],
 });
