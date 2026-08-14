@@ -19,6 +19,7 @@ import {
   practiceSet,
   practiceSetQuestion,
   sessionQuestion,
+  shadowFeedbackArtifact,
   subscription,
   transcriptTurn,
   usageRecord,
@@ -260,6 +261,15 @@ export async function loadAccountExportSource(
     .where(eq(feedbackQualitySignal.userId, userId))
     .orderBy(asc(feedbackQualitySignal.createdAt));
 
+  const shadowFeedbackArtifacts = await db
+    .select({
+      userId: shadowFeedbackArtifact.userId,
+      artifact: shadowFeedbackArtifact.artifact,
+    })
+    .from(shadowFeedbackArtifact)
+    .where(eq(shadowFeedbackArtifact.userId, userId))
+    .orderBy(asc(shadowFeedbackArtifact.createdAt));
+
   const contactSubmissions = await db
     .select({
       userId: contactSubmission.userId,
@@ -411,6 +421,7 @@ export async function loadAccountExportSource(
     })),
     focusedPracticeAttempts,
     feedbackQualitySignals,
+    shadowFeedbackArtifacts,
     contactSubmissions: contactSubmissions.map((row) => ({
       ...row,
       userId: row.userId!,

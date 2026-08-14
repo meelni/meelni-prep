@@ -126,7 +126,7 @@ content.
 
 Every mutation takes the account-identity lock, locks the local account row,
 and checks the deletion tombstone in the same transaction. Account export
-schema `1.4.0` includes the user's persisted attempts using an explicit safe
+schema `1.5.0` includes the user's persisted attempts using an explicit safe
 field projection. Irreversible account deletion removes attempts before the
 feedback/session graph.
 

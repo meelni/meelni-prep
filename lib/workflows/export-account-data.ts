@@ -1,5 +1,6 @@
 import {
   ACCOUNT_EXPORT_SCHEMA_VERSION,
+  parseShadowFeedbackArtifact,
   type AccountExportSettingsV1,
   type AccountDataExportV1,
 } from "@meelni/core";
@@ -66,6 +67,7 @@ export interface AccountExportSource {
     createdAt: DateValue;
     updatedAt: DateValue;
   }>;
+  shadowFeedbackArtifacts: Array<{ userId: string; artifact: unknown }>;
   contactSubmissions: Array<{ userId: string } & Record<string, unknown>>;
   achievements: Array<{ userId: string } & Record<string, unknown>>;
   insights: Array<{ userId: string } & Record<string, unknown>>;
@@ -83,6 +85,7 @@ export const ACCOUNT_EXPORT_INCLUDED = [
   "Bookmarks, practice sets, frozen legacy achievement records, and saved progress insights",
   "Focused-practice attempts, candidate responses, and deterministic self-reviews",
   "Closed helpfulness responses for actionable feedback reviews",
+  "Versioned, non-authoritative shadow feedback artifacts",
   "Account-linked support requests and their current triage state",
   "Subscription, usage, payment summaries, and credit-ledger summaries",
 ] as const;
@@ -181,6 +184,9 @@ export function createAccountDataExport(input: {
         input.source.feedbackQualitySignals,
         userId
       ),
+      shadowFeedbackArtifacts: input.source.shadowFeedbackArtifacts
+        .filter((row) => row.userId === userId)
+        .map((row) => parseShadowFeedbackArtifact(row.artifact)),
       achievements: sanitizeOwnedRows(input.source.achievements, userId),
       insights: sanitizeOwnedRows(input.source.insights, userId),
     },

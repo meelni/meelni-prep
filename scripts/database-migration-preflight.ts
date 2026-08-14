@@ -20,6 +20,7 @@ import {
   PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
   FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
   VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
+  SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
   RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
   QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
@@ -157,11 +158,11 @@ async function run(url: string, environmentIdentity: string) {
       if (
         ![
           2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation through 39 verified-prefix migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 40 shadow-artifact migrations; found ${migrations.length}`
         );
       }
       const legacyRuntimeSettlementLineage =
@@ -175,10 +176,11 @@ async function run(url: string, environmentIdentity: string) {
         legacyRuntimeSettlementLineage &&
         ![
           23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+          40,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0038 reconciliation states"
+          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0039 reconciliation states"
         );
       }
       migrations.forEach((migration, index) => {
@@ -463,7 +465,8 @@ async function run(url: string, environmentIdentity: string) {
         | "public_demo_preview_allowance"
         | "durable_runtime_settlement_command"
         | "feedback_stage_attempt_history"
-        | "verified_prefix_partial_scorecards";
+        | "verified_prefix_partial_scorecards"
+        | "shadow_feedback_artifacts";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -550,14 +553,18 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "durable_runtime_settlement_command";
       } else if (migrations.length === 38) {
         startingContract = "feedback_stage_attempt_history";
-      } else {
+      } else if (migrations.length === 39) {
         startingContract = "verified_prefix_partial_scorecards";
+      } else {
+        startingContract = "shadow_feedback_artifacts";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
-          migrations.length >= 38
-            ? 41
-            : migrations.length >= 37
+          migrations.length >= 40
+            ? 42
+            : migrations.length >= 38
+              ? 41
+              : migrations.length >= 37
               ? 40
               : migrations.length >= 35
                 ? 39
@@ -600,9 +607,11 @@ async function run(url: string, environmentIdentity: string) {
             : await getDatabaseSchemaContract(tx)
         );
         const expectedFingerprint =
-          migrations.length === 39
-            ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
-            : migrations.length === 38
+          migrations.length === 40
+            ? SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
+            : migrations.length === 39
+              ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+              : migrations.length === 38
               ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
               : migrations.length === 37
                 ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
@@ -768,9 +777,11 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 39
-            ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
-            : migrations.length === 38
+          migrations.length === 40
+            ? SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
+            : migrations.length === 39
+              ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+              : migrations.length === 38
               ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
               : migrations.length === 37
                 ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
