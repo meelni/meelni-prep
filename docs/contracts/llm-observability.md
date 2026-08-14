@@ -40,6 +40,16 @@ retry delay, provider diagnostic kind/status, sanitized model/tier, and
 validated token counts. It never records identity, transcript/evidence or
 feedback text, provider payloads, provider request IDs, or raw errors.
 
+The durable `feedback_generation_stage_attempt` ledger uses the same
+content-free boundary but is not an Opik trace or provider event. It stores a
+versioned SHA-256 exact-generation-event fence rather than the raw internal
+event, because the raw event embeds a session identifier. Its closed row shape
+adds only replay-safe operation, separate workflow/provider attempt ordinals,
+exact bounded timing, environment/release, outcome/failure, and context-valid
+provider diagnostics. Non-provider operations cannot carry provider fields.
+Direct customer roles have no table access, and account erasure deletes the
+rows before their feedback parent.
+
 ## Failure Isolation
 
 SDK construction, trace creation, trace updates, export, and flush failures are
@@ -47,6 +57,16 @@ best-effort and cannot replace the product workflow result. Feedback waits for
 the bounded SDK flush after the provider result so serverless completion does
 not abandon a queued trace. LiveKit uses a batch exporter and shuts it down
 through the worker telemetry lifecycle.
+
+The workflow also attempts one durable stage-attempt batch after the
+authoritative feedback outcome. It invokes the recorder inside a promise
+boundary and waits at most 100 milliseconds. A synchronous throw, rejection,
+conflict, or non-resolving recorder cannot change evaluation, persistence,
+retry, or terminal state. This operations flush is outside the 90-second
+generation deadline, and completion beyond the bound is not guaranteed when the
+serverless invocation terminates. The existing attempt event remains
+best-effort aggregate fallback evidence rather than exact-event/joinable
+history.
 
 ## Production Gate
 

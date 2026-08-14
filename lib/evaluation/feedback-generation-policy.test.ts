@@ -159,8 +159,28 @@ test("closed provider failure matrix retries only transient transport and capaci
     "validation"
   );
   assert.equal(malformed.stage, "validation");
-  assert.equal(malformed.failureClass, "provider_contract");
+  assert.equal(malformed.failureClass, "provider_schema");
   assert.equal(malformed.retryable, false);
+});
+
+test("closed provider output taxonomy preserves refusal and schema failures", () => {
+  for (const [code, failureClass] of [
+    ["evaluation_provider_refused", "provider_refusal"],
+    ["evaluation_provider_content_filtered", "provider_refusal"],
+    ["evaluation_provider_returned_no_content", "provider_schema"],
+    ["evaluation_provider_returned_invalid_json", "provider_schema"],
+    ["evaluation_provider_returned_invalid_feedback", "provider_schema"],
+    ["evaluation_provider_usage_missing", "provider_schema"],
+    ["evaluation_provider_incomplete", "provider_contract"],
+    ["evaluation_provider_unexpected_finish", "provider_contract"],
+  ] as const) {
+    const failure = classifyFeedbackGenerationFailure(
+      new FeedbackProviderInvocationError(code),
+      "validation"
+    );
+    assert.equal(failure.failureClass, failureClass);
+    assert.equal(failure.retryable, false);
+  }
 });
 
 test("Retry-After is retained as typed provider evidence", () => {

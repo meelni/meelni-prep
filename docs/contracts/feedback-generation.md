@@ -123,6 +123,62 @@ question, transcript, evidence text, feedback text, raw provider payload,
 provider request ID, or raw error field. Telemetry is best-effort and cannot
 change workflow state.
 
+The separate `feedback_generation_stage_attempt` table preserves service-only
+stage history when a bounded post-outcome write is accepted. The raw generation
+event remains transient for the feedback-row lock and exact-event comparison;
+storage receives only
+`v1:<sha256>` of that event. The hash is an exact replay fence, not an identity
+or provider request ID. A transient event ID must already be non-empty,
+bounded, and equal to its trimmed form; the fence hashes the exact accepted
+bytes without normalization. The table has no user, session, room, question,
+transcript, answer-block, evidence, feedback-content, provider-payload,
+provider-request, or raw-error column, and direct customer roles have no grant.
+
+`workflow_attempt` is one-indexed and always equals the zero-indexed Inngest
+execution attempt plus one. `provider_attempt` is a separate nullable ordinal:
+it is null for non-provider operations and 1–3 for provider request/response
+operations. Operations map to one closed stage, and the compatible outcome and
+failure tuple is database constrained. The closed failure classes are
+`deadline_exceeded`, `transport_timeout`, `transport_network`,
+`provider_rate_limited`, `provider_capacity`, `provider_authentication`,
+`provider_configuration`, `provider_refusal`, `provider_schema`,
+`provider_contract`, `evidence_integrity`, `fenced`, `persistence`, and
+`internal`.
+
+Completed timestamp minus started timestamp must equal `duration_ms` exactly at
+millisecond precision. The duration bucket is derived and tied to its exact
+range in storage. Provider diagnostic/status/model/tier/usage fields and
+Retry-After are null on non-provider operations. Provider response operations
+cannot carry Retry-After; provider requests may carry it only when retrying.
+
+The latency fields have these operational meanings. Stage durations are not
+summed unless the row meanings below explicitly permit it.
+
+| Measure                        | Meaning                                                                                                                                                                                     | Measurement source                                                                                                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queue wait                     | Dispatch `requestedAtMs` to the workflow's first observation. This is time spent before workflow work begins.                                                                               | Direct `queue_wait` row.                                                                                                                                                                                                    |
+| Authorization                  | Active-account fence plus owned-session and exact-generation-event reads.                                                                                                                   | Direct `authorization` row.                                                                                                                                                                                                 |
+| Claim compare-and-set          | The pending/failed-to-processing database claim, including its event and deadline predicates. This is not queue wait.                                                                       | Direct `claim` row.                                                                                                                                                                                                         |
+| Provider request               | One provider transport attempt, ending when a response is accepted or the transport fails.                                                                                                  | Direct `provider_request` row reported by the evaluator, or the closed provider-stage failure row when no response was accepted.                                                                                            |
+| Validation / provider response | Parsing and validating an accepted provider response. It starts at the captured successful provider-request completion, so it does not include provider transport time.                     | Direct `provider_response` row.                                                                                                                                                                                             |
+| Persistence compare-and-set    | The terminal `complete` or `skip` database transition after the account-deletion precheck, including event and deadline predicates.                                                         | Direct `complete` or `skip` row.                                                                                                                                                                                            |
+| Attempt processing span        | This workflow execution's observation to its last operation completion. It excludes the cumulative queue delay, and memoized provider evidence remains attached to its originating attempt. | Derived by grouping one event fence and `workflow_attempt`, then measuring that attempt's `queue_wait.completed_at` to its latest operation `completed_at`; it is not an additional stored duration.                        |
+| Event elapsed to attempt end   | Original dispatch request to the end of a particular workflow attempt. This is cumulative event elapsed time, so a later retry includes all prior queue and retry delay.                    | Derived for one event fence and `workflow_attempt` from that attempt's `queue_wait.started_at` to its latest operation `completed_at`; do not sum it with queue wait or the attempt processing span.                        |
+| End-to-visible proxy           | Accepted interview end to terminal feedback application. This is a terminal-availability proxy, not browser paint or user observation.                                                      | Existing terminal `feedback_generation` operations timing derives `interview_session.ending_at` to the applied `complete`/`skip` time and carries the service-side session join; it does not come from summing ledger rows. |
+
+The exact logical attempt key is idempotent only when every normalized stored
+field matches. A same-key replay with a different outcome, failure, timing,
+budget, environment, or provider field conflicts and cannot rewrite history.
+The workflow buffers attempt inputs and invokes one batch recorder in `finally`
+after authoritative product work. That recorder is isolated from synchronous
+throws and bounded to 100 milliseconds; failure or non-resolution cannot
+replace product state or spend the 90-second generation budget. Completion
+beyond that bound is not guaranteed when the serverless invocation terminates.
+The existing attempt event remains best-effort aggregate fallback evidence; it
+is neither exact-event nor joinable history. Account erasure locks owned
+feedback and removes attempt rows before deleting their feedback/session
+parents.
+
 ## Authorization and side effects
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
