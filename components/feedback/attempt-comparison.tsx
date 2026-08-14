@@ -22,6 +22,10 @@ import {
   Eye,
   Users,
 } from "lucide-react";
+import {
+  getDisplayedOverallDelta,
+  getDisplayedOverallScore,
+} from "./score-presentation";
 
 interface AttemptComparisonProps {
   comparison: ComparisonData;
@@ -30,6 +34,10 @@ interface AttemptComparisonProps {
 export function AttemptComparison({ comparison }: AttemptComparisonProps) {
   const { session1, session2, scoreDelta } = comparison;
   const shouldReduceMotion = useReducedMotion();
+  const displayedOverallDelta = getDisplayedOverallDelta(
+    session1.scores.overall,
+    session2.scores.overall
+  );
 
   // Helper function to render score delta badge
   const renderScoreDelta = (delta: number | null) => {
@@ -126,9 +134,9 @@ export function AttemptComparison({ comparison }: AttemptComparisonProps) {
             </h3>
             <div className="flex items-center gap-2">
               <span className="text-primary text-2xl font-bold">
-                {session.scores.overall}/10
+                {getDisplayedOverallScore(session.scores.overall)}/10
               </span>
-              {delta && renderScoreDelta(delta.overall)}
+              {delta && renderScoreDelta(displayedOverallDelta)}
             </div>
           </div>
         </div>
