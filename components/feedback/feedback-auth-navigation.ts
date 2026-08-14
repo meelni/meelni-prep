@@ -9,6 +9,6 @@ export function buildFeedbackReauthenticationHref(
   }`;
   return buildAuthPageHref(AUTH_SIGNIN_PATH, {
     redirectTo: destination,
-    cancelTo: destination,
+    cancelTo: "/",
   });
 }
