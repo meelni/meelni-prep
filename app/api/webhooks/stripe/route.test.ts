@@ -1805,6 +1805,33 @@ describe("POST /api/webhooks/stripe", () => {
     expect(state.payments).toHaveLength(0);
   });
 
+  it.each(["incomplete", "incomplete_expired", "unpaid"] as const)(
+    "persists Stripe %s as non-entitling paused state",
+    async (stripeStatus) => {
+      const current = subscriptionRow({
+        stripeSubscriptionId: "sub_non_entitling",
+        status: "active",
+      });
+      state.selectResponses.push([], [], [current]);
+
+      const candidate = subscriptionCreatedEvent(
+        `evt_${stripeStatus}`,
+        "sub_non_entitling",
+        1_000,
+        1_000
+      );
+      candidate.data.object.status = stripeStatus;
+
+      const response = await POST(request(candidate));
+
+      expect(response.status).toBe(200);
+      expect(state.subscriptionWrites.at(-1)).toMatchObject({
+        stripeSubscriptionId: "sub_non_entitling",
+        status: "paused",
+      });
+    }
+  );
+
   it("accepts a newer cross-resource creation and retires the prior identity", async () => {
     state.selectResponses.push(
       [],

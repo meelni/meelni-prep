@@ -98,6 +98,7 @@ export interface StartInterviewSessionBody {
   role?: unknown;
   config?: unknown;
   questionId?: unknown;
+  company?: unknown;
 }
 
 export interface StartInterviewSessionInput {
@@ -116,11 +117,13 @@ export interface StartInterviewSessionDeps {
   }): Promise<PersistedStableInterviewStart>;
   getQuestionById(questionId: string): Promise<QuestionBankRecord | null>;
   getRandomQuestion(
-    questionTypes: string[]
+    questionTypes: string[],
+    company?: string
   ): Promise<QuestionBankRecord | null>;
   getRandomRecentQuestion(
     days: number,
-    questionTypes: string[]
+    questionTypes: string[],
+    company?: string
   ): Promise<QuestionBankRecord | null>;
   ensureTrialGrant(userId: string): Promise<unknown>;
   releaseReservation(input: {
@@ -224,7 +227,8 @@ export async function startInterviewSessionWorkflow(
     return parsed;
   }
 
-  const { startAttemptId, roundType, mode, role, config, questionId } = parsed;
+  const { startAttemptId, roundType, mode, role, config, questionId, company } =
+    parsed;
   const preferences = normalizeInterviewClientPreferences(config);
   const runtimeConfig = deps.resolveRuntimeConfig(preferences);
   const requestFingerprint = fingerprintStartRequest({
@@ -233,6 +237,7 @@ export async function startInterviewSessionWorkflow(
     role,
     config: runtimeConfig,
     questionId: questionId ?? null,
+    company: company ?? null,
   });
   const roomName = buildInterviewRoomNameForAttempt(startAttemptId);
   const reservationKey = buildInterviewReservationKey(
@@ -276,6 +281,7 @@ export async function startInterviewSessionWorkflow(
           selectQuestion({
             roundType,
             questionId,
+            company,
             recentDays: getRecentDays(preferences),
             deps,
           }),
@@ -963,6 +969,7 @@ type ParsedStartInterviewBody = {
   role: "pm";
   config: Record<string, unknown>;
   questionId?: string;
+  company?: string;
 };
 
 function parseStartInterviewBody(
@@ -999,6 +1006,25 @@ function parseStartInterviewBody(
     };
   }
 
+  let company: string | undefined;
+  if (body.company !== undefined) {
+    if (typeof body.company !== "string") {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: "Invalid company" },
+      };
+    }
+    company = body.company.trim();
+    if (company.length === 0 || company.length > 160) {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: "Invalid company" },
+      };
+    }
+  }
+
   return {
     ok: true,
     startAttemptId: body.startAttemptId,
@@ -1008,6 +1034,7 @@ function parseStartInterviewBody(
     config: isRecord(body.config) ? body.config : {},
     questionId:
       typeof body.questionId === "string" ? body.questionId : undefined,
+    company,
   };
 }
 
@@ -1032,11 +1059,13 @@ function mapCreditReservationError(
 async function selectQuestion({
   roundType,
   questionId,
+  company,
   recentDays,
   deps,
 }: {
   roundType: RoundType;
   questionId?: string;
+  company?: string;
   recentDays?: number;
   deps: StartInterviewSessionDeps;
 }): Promise<
@@ -1082,13 +1111,13 @@ async function selectQuestion({
 
   const dbQuestionTypes = QUESTION_TYPE_MAP[roundType];
   let question = recentDays
-    ? await deps.getRandomRecentQuestion(recentDays, dbQuestionTypes)
+    ? await deps.getRandomRecentQuestion(recentDays, dbQuestionTypes, company)
     : null;
 
   // Recency is a preference, not an availability requirement. A sparse or
   // older question bank should still let the candidate start an interview.
   if (!question) {
-    question = await deps.getRandomQuestion(dbQuestionTypes);
+    question = await deps.getRandomQuestion(dbQuestionTypes, company);
   }
 
   if (!question) {
@@ -1096,9 +1125,12 @@ async function selectQuestion({
       ok: false,
       status: 404,
       body: {
-        error: "no_questions_available",
-        message:
-          "We couldn't find an active question for this interview type. Choose another interview type and try again.",
+        error: company
+          ? "no_company_questions_available"
+          : "no_questions_available",
+        message: company
+          ? `We couldn't find an active ${company} question for this interview type. Choose another company or interview type and try again.`
+          : "We couldn't find an active question for this interview type. Choose another interview type and try again.",
         retryable: false,
       },
     };

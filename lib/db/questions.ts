@@ -136,7 +136,8 @@ function resolveStoredQuestionTypes(
  * Supports multiple question types via array or comma-separated string
  */
 export async function getRandomQuestion(
-  questionType?: string | string[]
+  questionType?: string | string[],
+  company?: string
 ): Promise<QuestionBankRecord | null> {
   const conditions = [eq(interviewQuestion.isActive, true)];
 
@@ -151,6 +152,11 @@ export async function getRandomQuestion(
     } else {
       conditions.push(inArray(interviewQuestion.questionType, types));
     }
+  }
+  if (company?.trim()) {
+    conditions.push(
+      sql`lower(btrim(${interviewQuestion.company})) = lower(btrim(${company}))`
+    );
   }
 
   const [question] = await db
@@ -353,7 +359,8 @@ export async function getQuestionsByDateRange(
  */
 export async function getRandomRecentQuestion(
   days = 365,
-  questionType?: string | string[]
+  questionType?: string | string[],
+  company?: string
 ): Promise<QuestionBankRecord | null> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -374,6 +381,11 @@ export async function getRandomRecentQuestion(
     } else {
       conditions.push(inArray(interviewQuestion.questionType, types));
     }
+  }
+  if (company?.trim()) {
+    conditions.push(
+      sql`lower(btrim(${interviewQuestion.company})) = lower(btrim(${company}))`
+    );
   }
 
   const [question] = await db

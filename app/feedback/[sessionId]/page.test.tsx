@@ -83,6 +83,49 @@ describe("feedback transcript read states", () => {
     expect(feedbackPostAttempts).toBe(0);
   });
 
+  it("reauthenticates a feedback GET 401 with the exact feedback deep link", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: "Unauthorized" }, { status: 401 })
+      )
+    );
+
+    render(<FeedbackPage />);
+
+    await waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith(
+        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2F`
+      )
+    );
+  });
+
+  it("reauthenticates a feedback recovery POST 401 with the exact feedback deep link", async () => {
+    let requests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests += 1;
+        if (init?.method === "POST") {
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        return Response.json({
+          status: "pending",
+          retryable: true,
+          delayed: true,
+        });
+      })
+    );
+
+    render(<FeedbackPage />);
+
+    await waitFor(() => expect(requests).toBe(2));
+    expect(navigation.replace).toHaveBeenCalledWith(
+      `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2F`
+    );
+    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+  });
+
   it("pauses honestly after exhausting the full automatic poll budget", async () => {
     vi.useFakeTimers();
     let feedbackGetAttempts = 0;

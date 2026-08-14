@@ -59,6 +59,7 @@ export async function GET() {
         currency: "usd",
         trialEnd: null,
         proTrialUsed: false,
+        portalAvailable: false,
       });
     }
 
@@ -76,6 +77,7 @@ export async function GET() {
       currency: sub.currency,
       trialEnd: sub.trialEnd?.toISOString() || null,
       proTrialUsed: sub.proTrialUsed,
+      portalAvailable: Boolean(sub.stripeCustomerId),
     });
   } catch {
     reportOperationalFailure({

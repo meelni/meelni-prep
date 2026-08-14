@@ -46,6 +46,7 @@ import {
 import { DashboardPage } from "@/components/dashboard/layout/dashboard-page";
 import { SettingsNotice } from "@/components/dashboard/settings-notice";
 import {
+  buildSettingsCategoryPatch,
   labelForDifficulty,
   labelForInterviewType,
   labelForQuestionRecency,
@@ -64,6 +65,7 @@ import {
   SETTINGS_NAV_ITEMS,
   buildSettingsAccountViewModel,
   buildSettingsPlanSummary,
+  canOpenBillingPortal,
   resolveSettingsCategory,
   type SettingsCreditSummary,
   type SettingsSubscriptionSummary,
@@ -199,8 +201,9 @@ export const SettingsSection = memo(function SettingsSection() {
     setSaveState("idle");
   };
 
-  const saveSettings = async () => {
+  const saveSettings = async (category: SettingsCategoryId) => {
     setSaveState("loading");
+    const patch = buildSettingsCategoryPatch(settings, category);
 
     try {
       const response = await fetch("/api/user/settings", {
@@ -208,7 +211,7 @@ export const SettingsSection = memo(function SettingsSection() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(patch),
       });
 
       if (!response.ok) {
@@ -216,7 +219,7 @@ export const SettingsSection = memo(function SettingsSection() {
       }
 
       setSaveState("ready");
-      setSavedSettings(settings);
+      setSavedSettings((current) => ({ ...current, ...patch }));
     } catch (error) {
       console.error("settings_save_failed", {
         error_code: "SETTINGS_SAVE_FAILED",
@@ -323,7 +326,7 @@ export const SettingsSection = memo(function SettingsSection() {
               onDisplayNameChange={(displayName) =>
                 updateSettings({ displayName })
               }
-              onSave={saveSettings}
+              onSave={() => saveSettings("account")}
               onSignOut={handleSignOut}
               saveState={saveState}
               isDirty={accountDirty}
@@ -334,7 +337,7 @@ export const SettingsSection = memo(function SettingsSection() {
             <InterviewDefaultsPane
               settings={settings}
               onChange={updateSettings}
-              onSave={saveSettings}
+              onSave={() => saveSettings("interview-defaults")}
               saveState={saveState}
               isDirty={defaultsDirty}
             />
@@ -352,7 +355,7 @@ export const SettingsSection = memo(function SettingsSection() {
             <NotificationsPane
               settings={settings}
               onChange={updateSettings}
-              onSave={saveSettings}
+              onSave={() => saveSettings("notifications")}
               saveState={saveState}
               isDirty={notificationsDirty}
             />
@@ -601,7 +604,7 @@ function PlanCreditsPane({
         <SettingsNotice
           tone="warning"
           title="Billing summary unavailable"
-          description="The billing endpoints did not respond. Use the billing portal or pricing page if you need to make account changes."
+          description="The billing endpoints did not respond. Visit pricing if you need to add interview credits."
         />
       )}
 
@@ -626,15 +629,17 @@ function PlanCreditsPane({
             />
           </div>
         )}
-        <SettingsActionRow
-          title="Manage billing"
-          description="Open the billing portal for payment methods, invoices, and subscription changes."
-          actionLabel={
-            portalState === "loading" ? "Opening billing" : "Manage billing"
-          }
-          onClick={openBillingPortal}
-          disabled={portalState === "loading"}
-        />
+        {canOpenBillingPortal(subscription) && (
+          <SettingsActionRow
+            title="Manage billing"
+            description="Open the billing portal for payment methods, invoices, and subscription changes."
+            actionLabel={
+              portalState === "loading" ? "Opening billing" : "Manage billing"
+            }
+            onClick={openBillingPortal}
+            disabled={portalState === "loading"}
+          />
+        )}
         <SettingsActionRow
           title="Add interview credits"
           description="Choose an Interview Pass, Starter, or Pro credit plan."

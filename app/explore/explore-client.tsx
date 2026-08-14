@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/sections/header";
 import { QuestionSignInModal } from "@/components/explore/question-signin-modal";
@@ -37,8 +37,14 @@ import {
   type QuestionLoadState,
 } from "@/lib/explore/public-question-availability";
 import type { PublicQuestion } from "@/lib/workflows/public-question-corpus";
-
-const QUESTIONS_PER_PAGE = 20;
+import {
+  EXPLORE_QUESTIONS_PER_PAGE,
+  buildExploreQuestionRequest,
+  buildExploreUrl,
+  parseExploreUrlState,
+  roundTypeForExploreLabel,
+  type ExploreTypeLabel,
+} from "@/lib/explore/explore-url-state";
 
 interface ExploreClientProps {
   initialQuestions: PublicQuestion[];
@@ -54,6 +60,11 @@ export function ExploreClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
+  const urlState = useMemo(
+    () => parseExploreUrlState(new URLSearchParams(searchParamsString)),
+    [searchParamsString]
+  );
   const { user, isLoading: authLoading } = useAuth();
   const activation = usePublicActivationDecision();
   const [questions, setQuestions] =
@@ -63,15 +74,17 @@ export function ExploreClient({
     initialLoadError ? "error" : "success"
   );
   const [requestVersion, setRequestVersion] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(urlState.search);
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [selectedType, setSelectedType] = useState("All Types");
-  const [currentPage, setCurrentPage] = useState(1);
+  const selectedType = urlState.typeLabel;
+  const currentPage = urlState.page;
   const [signInModalOpen, setSignInModalOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] =
     useState<PublicQuestion | null>(null);
   const questionTriggerRef = useRef<HTMLButtonElement | null>(null);
   const skipInitialRequestRef = useRef(initialLoadError === null);
+  const syncingSearchFromUrl = useRef(false);
+  const previousUrlSearch = useRef(urlState.search);
   const publicAvailability = resolvePublicQuestionAvailability(
     loadState,
     totalQuestions
@@ -86,6 +99,37 @@ export function ExploreClient({
     }
   }, [loadState, totalQuestions]);
 
+  useEffect(() => {
+    if (previousUrlSearch.current === urlState.search) return;
+    previousUrlSearch.current = urlState.search;
+    syncingSearchFromUrl.current = true;
+    setSearchQuery(urlState.search);
+  }, [urlState.search]);
+
+  useEffect(() => {
+    if (syncingSearchFromUrl.current) {
+      if (debouncedSearchQuery === urlState.search) {
+        syncingSearchFromUrl.current = false;
+      }
+      return;
+    }
+    if (debouncedSearchQuery === urlState.search) return;
+
+    router.replace(
+      buildExploreUrl(pathname, new URLSearchParams(searchParamsString), {
+        search: debouncedSearchQuery,
+        page: 1,
+      }),
+      { scroll: false }
+    );
+  }, [
+    debouncedSearchQuery,
+    pathname,
+    router,
+    searchParamsString,
+    urlState.search,
+  ]);
+
   // Fetch questions
   useEffect(() => {
     if (skipInitialRequestRef.current) {
@@ -99,27 +143,7 @@ export function ExploreClient({
     async function fetchQuestions() {
       try {
         setLoadState("loading");
-        const params = new URLSearchParams({
-          limit: String(QUESTIONS_PER_PAGE),
-          offset: String((currentPage - 1) * QUESTIONS_PER_PAGE),
-          activeOnly: "true",
-        });
-
-        if (debouncedSearchQuery) {
-          params.set("search", debouncedSearchQuery);
-        }
-
-        if (selectedType !== "All Types") {
-          const typeMap: Record<string, string> = {
-            Behavioral: "behavioral",
-            "Product Sense": "product_sense",
-            Execution: "execution",
-            Strategy: "strategy",
-          };
-          params.append("type", typeMap[selectedType]);
-        }
-
-        const res = await fetch(`/api/questions?${params.toString()}`, {
+        const res = await fetch(buildExploreQuestionRequest(urlState), {
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -157,25 +181,20 @@ export function ExploreClient({
       active = false;
       controller.abort();
     };
-  }, [currentPage, debouncedSearchQuery, selectedType, requestVersion]);
+  }, [requestVersion, urlState]);
 
   // Paginate questions
-  const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
+  const totalPages = Math.ceil(totalQuestions / EXPLORE_QUESTIONS_PER_PAGE);
   const paginatedQuestions = questions;
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearchQuery, selectedType]);
 
   // Track search queries
   useEffect(() => {
-    if (debouncedSearchQuery && loadState === "success") {
+    if (urlState.search && loadState === "success") {
       analytics.track("explore_search", {
         results_count: totalQuestions,
       });
     }
-  }, [debouncedSearchQuery, loadState, totalQuestions]);
+  }, [loadState, totalQuestions, urlState.search]);
 
   // Track filter changes
   useEffect(() => {
@@ -224,7 +243,7 @@ export function ExploreClient({
   };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    router.push(buildExploreUrl(pathname, searchParams, { page }));
     window.scrollTo(0, 0);
     analytics.track("explore_page_changed", {
       page,
@@ -314,7 +333,20 @@ export function ExploreClient({
                 </div>
 
                 {/* Type Filter */}
-                <Select value={selectedType} onValueChange={setSelectedType}>
+                <Select
+                  value={selectedType}
+                  onValueChange={(value) =>
+                    router.replace(
+                      buildExploreUrl(pathname, searchParams, {
+                        roundType: roundTypeForExploreLabel(
+                          value as ExploreTypeLabel
+                        ),
+                        page: 1,
+                      }),
+                      { scroll: false }
+                    )
+                  }
+                >
                   <SelectTrigger
                     className="min-h-11 w-full rounded-lg font-medium sm:w-[180px]"
                     aria-label="Filter by question type"

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   SETTINGS_CATEGORY_ORDER,
   SETTINGS_DATA_CONTRACT,
+  buildSettingsCategoryPatch,
   initialsForUser,
   normalizeDashboardSettings,
   type DashboardSettings,
@@ -82,4 +83,29 @@ test("settings normalization drops retired preference fields from stale payloads
 test("settings initials prefer display name and fall back to email", () => {
   assert.equal(initialsForUser("Savi Singh", "savi@example.com"), "SS");
   assert.equal(initialsForUser("", "savi@example.com"), "S");
+});
+
+test("saving a settings pane only builds a patch for that pane", () => {
+  const settings: DashboardSettings = {
+    ...normalizeDashboardSettings(null),
+    displayName: "Unsaved account edit",
+    defaultInterviewType: "strategy",
+    defaultDifficulty: "hard",
+    emailNotifications: false,
+  };
+
+  assert.deepEqual(buildSettingsCategoryPatch(settings, "account"), {
+    displayName: "Unsaved account edit",
+  });
+  assert.deepEqual(buildSettingsCategoryPatch(settings, "interview-defaults"), {
+    defaultInterviewType: "strategy",
+    defaultDifficulty: "hard",
+    questionRecency: "current",
+  });
+  assert.deepEqual(buildSettingsCategoryPatch(settings, "notifications"), {
+    emailNotifications: false,
+    sessionCompletionEmail: true,
+    feedbackReadyEmail: true,
+    weeklyProgressReport: false,
+  });
 });

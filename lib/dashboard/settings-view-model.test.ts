@@ -6,6 +6,7 @@ import {
   SETTINGS_NAV_ITEMS,
   buildSettingsAccountViewModel,
   buildSettingsPlanSummary,
+  canOpenBillingPortal,
   formatSettingsDateLabel,
   resolveSettingsCategory,
 } from "./settings-view-model";
@@ -117,5 +118,17 @@ test("settings plan summary view model preserves billing and credit fallback cop
         description: "Plan scheduled to end",
       },
     ]
+  );
+});
+
+test("billing management only appears when the server confirms a portal customer", () => {
+  assert.equal(canOpenBillingPortal(null), false);
+  assert.equal(
+    canOpenBillingPortal({ tier: "free", portalAvailable: false }),
+    false
+  );
+  assert.equal(
+    canOpenBillingPortal({ tier: "pro", portalAvailable: true }),
+    true
   );
 });

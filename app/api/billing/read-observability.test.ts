@@ -85,7 +85,7 @@ describe("billing read operational failures", () => {
     }
   );
 
-  it("syncs the authenticated app user before reading credit balance", async () => {
+  it("reads credit balance without mutating the authenticated app user", async () => {
     mocks.getBalance.mockResolvedValue({
       availableCredits: 0,
       reservedCredits: 0,
@@ -98,14 +98,24 @@ describe("billing read operational failures", () => {
     const response = await getCredits();
 
     expect(response.status).toBe(200);
-    expect(mocks.upsertUser).toHaveBeenCalledWith({
-      id: "user_fixture",
-      email: "fixture@meelni.test",
-      name: null,
-    });
+    expect(mocks.upsertUser).not.toHaveBeenCalled();
     expect(mocks.getBalance).toHaveBeenCalledWith({
       store: {},
       userId: "user_fixture",
     });
+  });
+
+  it("marks a synthetic free subscription as ineligible for the billing portal", async () => {
+    mocks.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+      })),
+    });
+
+    const response = await getSubscription();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ tier: "free", portalAvailable: false });
   });
 });

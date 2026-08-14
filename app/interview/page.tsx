@@ -325,7 +325,6 @@ export function InterviewPageContent() {
       abortBootstrapWork("interview_page_unmounted");
       abortCredentialWork("interview_page_unmounted");
       console.log("Interview page unmounting, invalidating sessions queries");
-      queryClient.invalidateQueries({ queryKey: sessionKeys.lists() });
       queryClient.invalidateQueries({ queryKey: sessionKeys.all });
     };
   }, [abortBootstrapWork, abortCredentialWork, queryClient]);
