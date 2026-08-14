@@ -403,11 +403,16 @@ provider-free:
 ```bash
 npm run calibration:preflight
 npm run calibration:self-test
+npm run calibration:build-provider-free-bakeoff
+npm run calibration:verify-provider-free-bakeoff
 ```
 
 They intentionally leave calibration-evidence acceptance pending. The paid
 live-provider mode requires a separate exact acknowledgement and is documented
-in the [Evaluation Calibration Runbook](./evaluation-calibration.md).
+in the [Evaluation Calibration Runbook](./evaluation-calibration.md). The
+provider-free bakeoff replays synthetic calibration outputs and pure queue
+assumptions only; it cannot change runtime configuration or authorize a
+provider/model/tier, spend, Production action, or default activation.
 
 ## Validation
 

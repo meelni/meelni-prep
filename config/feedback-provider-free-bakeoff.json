@@ -1,0 +1,59 @@
+{
+  "contractVersion": "feedback-provider-free-bakeoff-config.v1",
+  "replayClock": "2026-08-14T00:00:00.000Z",
+  "currentMaxCompletionTokens": 2000,
+  "outputTokenHeadroomBasisPoints": 2500,
+  "outputTokenRoundTo": 128,
+  "queueScenario": {
+    "burstSize": 24,
+    "arrivalSpacingMs": 0,
+    "claimMs": 750,
+    "validationMs": 250,
+    "persistenceMs": 1000
+  },
+  "evaluatorCandidates": [
+    {
+      "id": "accepted-baseline-replay",
+      "role": "baseline",
+      "simulatedLatency": {
+        "baseMs": 20000,
+        "perInputKiBMs": 10,
+        "perOutputKiBMs": 30
+      },
+      "comparisonCostUnitsPerMillionTokens": {
+        "input": 100,
+        "output": 800
+      }
+    },
+    {
+      "id": "configurable-candidate-replay",
+      "role": "candidate",
+      "simulatedLatency": {
+        "baseMs": 12000,
+        "perInputKiBMs": 8,
+        "perOutputKiBMs": 24
+      },
+      "comparisonCostUnitsPerMillionTokens": {
+        "input": 80,
+        "output": 600
+      }
+    }
+  ],
+  "queuePolicies": [
+    {
+      "id": "current-global-throttle",
+      "role": "baseline",
+      "maxConcurrency": 24,
+      "throttle": {
+        "limit": 10,
+        "periodMs": 60000
+      }
+    },
+    {
+      "id": "bounded-concurrency-candidate",
+      "role": "candidate",
+      "maxConcurrency": 8,
+      "throttle": null
+    }
+  ]
+}
