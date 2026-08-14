@@ -56,6 +56,8 @@ export type PersistedTranscriptRuntimeSettlement =
 export type PersistedTranscriptRuntimeWriter =
   typeof transcriptRuntimeWriter.$inferSelect;
 
+class RuntimeSettlementCommandAdmissionError extends Error {}
+
 export interface TranscriptRuntimeSettlementReadiness {
   writerCount: number;
   settledCount: number;
@@ -250,116 +252,200 @@ export function createDrizzleTranscriptRuntimeSettlementStore(
 ): TranscriptRuntimeSettlementStore<PersistedTranscriptRuntimeSettlement> {
   return {
     async persist(settlement) {
-      return database.transaction(async (tx) => {
-        await configureTranscriptPersistenceTimeouts(tx);
-        const sessions = await tx
-          .select({
-            roomName: interviewSession.livekitRoomName,
-            lifecycleState: interviewSession.lifecycleState,
-            terminalReason: interviewSession.terminalReason,
-            endingAt: interviewSession.endingAt,
-            reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
-            startedAt: interviewSession.startedAt,
-            config: interviewSession.config,
-          })
-          .from(interviewSession)
-          .where(eq(interviewSession.id, settlement.session_id))
-          .limit(1)
-          .for("update");
-        const session = sessions[0];
-        if (!session) return { ok: false, reason: "not_found" } as const;
-        if (session.roomName !== settlement.room_name) {
-          return { ok: false, reason: "room_mismatch" } as const;
-        }
+      try {
+        return await database.transaction(async (tx) => {
+          await configureTranscriptPersistenceTimeouts(tx);
+          const sessions = await tx
+            .select({
+              roomName: interviewSession.livekitRoomName,
+              lifecycleState: interviewSession.lifecycleState,
+              terminalReason: interviewSession.terminalReason,
+              endingAt: interviewSession.endingAt,
+              reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
+              startedAt: interviewSession.startedAt,
+              config: interviewSession.config,
+            })
+            .from(interviewSession)
+            .where(eq(interviewSession.id, settlement.session_id))
+            .limit(1)
+            .for("update");
+          const session = sessions[0];
+          if (!session) return { ok: false, reason: "not_found" } as const;
+          if (session.roomName !== settlement.room_name) {
+            return { ok: false, reason: "room_mismatch" } as const;
+          }
 
-        const existingRows = await tx
-          .select()
-          .from(transcriptRuntimeSettlement)
-          .where(
-            and(
-              eq(transcriptRuntimeSettlement.sessionId, settlement.session_id),
-              eq(
-                transcriptRuntimeSettlement.writerGeneration,
-                settlement.writer_generation
+          const commandAuthority = await lockMatchingSettlementCommand(
+            tx,
+            settlement
+          );
+
+          const existingRows = await tx
+            .select()
+            .from(transcriptRuntimeSettlement)
+            .where(
+              and(
+                eq(
+                  transcriptRuntimeSettlement.sessionId,
+                  settlement.session_id
+                ),
+                eq(
+                  transcriptRuntimeSettlement.writerGeneration,
+                  settlement.writer_generation
+                )
               )
             )
-          )
-          .limit(1);
-        if (existingRows[0]) {
-          if (!storedSettlementMatches(existingRows[0], settlement)) {
+            .limit(1);
+          if (existingRows[0]) {
+            if (!storedSettlementMatches(existingRows[0], settlement)) {
+              return { ok: false, reason: "settlement_conflict" } as const;
+            }
+            if (commandAuthority?.state === "acknowledged") {
+              return {
+                ok: true,
+                disposition: "existing",
+                settlement: existingRows[0],
+              } as const;
+            }
+            if (
+              commandAuthority &&
+              (!commandAuthority.accepting ||
+                !(await acknowledgePendingSettlementCommand(
+                  tx,
+                  commandAuthority.commandId,
+                  settlement
+                )))
+            ) {
+              return { ok: false, reason: "settlement_conflict" } as const;
+            }
+            return {
+              ok: true,
+              disposition: "existing",
+              settlement: existingRows[0],
+            } as const;
+          }
+          // A durable command is the authority for a matching rolling-runtime
+          // settlement. Once it expires or is fenced, a legacy/fallback write
+          // must not create proof that can upgrade frozen evidence.
+          if (commandAuthority && !commandAuthority.accepting) {
             return { ok: false, reason: "settlement_conflict" } as const;
           }
-          await acknowledgePendingSettlementCommand(tx, settlement);
-          return {
-            ok: true,
-            disposition: "existing",
-            settlement: existingRows[0],
-          } as const;
-        }
-        if (isInterviewTerminalState(session.lifecycleState)) {
-          return { ok: false, reason: "session_closed" } as const;
-        }
-        const registered = await getRegisteredWriter(tx, {
-          sessionId: settlement.session_id,
-          writerId: settlement.writer_id,
-          writerGeneration: settlement.writer_generation,
+          if (isInterviewTerminalState(session.lifecycleState)) {
+            return { ok: false, reason: "session_closed" } as const;
+          }
+          const registered = await getRegisteredWriter(tx, {
+            sessionId: settlement.session_id,
+            writerId: settlement.writer_id,
+            writerGeneration: settlement.writer_generation,
+          });
+          if (!registered) {
+            return { ok: false, reason: "writer_not_registered" } as const;
+          }
+          if (
+            settlement.state === "settled" &&
+            (registered.integrityState !== "healthy" ||
+              hasTranscriptWriterGap(registered))
+          ) {
+            return { ok: false, reason: "settlement_conflict" } as const;
+          }
+          const sessionWindow = transcriptSessionWindow(session);
+          if (
+            !sessionWindow ||
+            !isTimestampWithinSessionWindow(
+              settlement.settled_at,
+              sessionWindow
+            )
+          ) {
+            return { ok: false, reason: "event_time_out_of_bounds" } as const;
+          }
+          if (
+            session.lifecycleState === "ending" &&
+            !isEndingSettlementAtCutoff(session, settlement.settled_at)
+          ) {
+            return { ok: false, reason: "event_time_out_of_bounds" } as const;
+          }
+
+          const inserted = await tx
+            .insert(transcriptRuntimeSettlement)
+            .values({
+              sessionId: settlement.session_id,
+              writerGeneration: settlement.writer_generation,
+              contractVersion: settlement.contract_version,
+              roomName: settlement.room_name,
+              writerId: settlement.writer_id,
+              state: settlement.state,
+              settledAt: new Date(settlement.settled_at),
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (inserted[0]) {
+            if (
+              commandAuthority &&
+              !(await acknowledgePendingSettlementCommand(
+                tx,
+                commandAuthority.commandId,
+                settlement
+              ))
+            ) {
+              // Crossing the immutable expiry boundary between admission and
+              // acknowledgement rolls back the newly inserted proof.
+              throw new RuntimeSettlementCommandAdmissionError();
+            }
+            return {
+              ok: true,
+              disposition: "created",
+              settlement: inserted[0],
+            } as const;
+          }
+          return { ok: false, reason: "settlement_conflict" } as const;
         });
-        if (!registered) {
-          return { ok: false, reason: "writer_not_registered" } as const;
-        }
-        if (
-          settlement.state === "settled" &&
-          (registered.integrityState !== "healthy" ||
-            hasTranscriptWriterGap(registered))
-        ) {
+      } catch (error) {
+        if (error instanceof RuntimeSettlementCommandAdmissionError) {
           return { ok: false, reason: "settlement_conflict" } as const;
         }
-        const sessionWindow = transcriptSessionWindow(session);
-        if (
-          !sessionWindow ||
-          !isTimestampWithinSessionWindow(settlement.settled_at, sessionWindow)
-        ) {
-          return { ok: false, reason: "event_time_out_of_bounds" } as const;
-        }
-        if (
-          session.lifecycleState === "ending" &&
-          !isEndingSettlementAtCutoff(session, settlement.settled_at)
-        ) {
-          return { ok: false, reason: "event_time_out_of_bounds" } as const;
-        }
-
-        const inserted = await tx
-          .insert(transcriptRuntimeSettlement)
-          .values({
-            sessionId: settlement.session_id,
-            writerGeneration: settlement.writer_generation,
-            contractVersion: settlement.contract_version,
-            roomName: settlement.room_name,
-            writerId: settlement.writer_id,
-            state: settlement.state,
-            settledAt: new Date(settlement.settled_at),
-          })
-          .onConflictDoNothing()
-          .returning();
-        if (inserted[0]) {
-          await acknowledgePendingSettlementCommand(tx, settlement);
-          return {
-            ok: true,
-            disposition: "created",
-            settlement: inserted[0],
-          } as const;
-        }
-        return { ok: false, reason: "settlement_conflict" } as const;
-      });
+        throw error;
+      }
     },
   };
 }
 
-async function acknowledgePendingSettlementCommand(
+async function lockMatchingSettlementCommand(
   tx: TranscriptPersistenceTransaction,
   settlement: TranscriptRuntimeSettlement
-): Promise<void> {
-  await tx
+) {
+  const rows = await tx
+    .select({
+      commandId: transcriptRuntimeSettlementCommand.commandId,
+      state: transcriptRuntimeSettlementCommand.state,
+      accepting: sql<boolean>`(
+        ${transcriptRuntimeSettlementCommand.state} = 'pending' AND
+        ${transcriptRuntimeSettlementCommand.expiresAt} > clock_timestamp()
+      )`,
+    })
+    .from(transcriptRuntimeSettlementCommand)
+    .where(
+      and(
+        eq(transcriptRuntimeSettlementCommand.sessionId, settlement.session_id),
+        eq(
+          transcriptRuntimeSettlementCommand.writerGeneration,
+          settlement.writer_generation
+        ),
+        eq(transcriptRuntimeSettlementCommand.writerId, settlement.writer_id),
+        eq(transcriptRuntimeSettlementCommand.roomName, settlement.room_name)
+      )
+    )
+    .orderBy(desc(transcriptRuntimeSettlementCommand.lifecycleVersion))
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
+
+async function acknowledgePendingSettlementCommand(
+  tx: TranscriptPersistenceTransaction,
+  commandId: string,
+  settlement: TranscriptRuntimeSettlement
+): Promise<boolean> {
+  const updated = await tx
     .update(transcriptRuntimeSettlementCommand)
     .set({
       state: "acknowledged",
@@ -369,17 +455,13 @@ async function acknowledgePendingSettlementCommand(
     })
     .where(
       and(
-        eq(transcriptRuntimeSettlementCommand.sessionId, settlement.session_id),
-        eq(
-          transcriptRuntimeSettlementCommand.writerGeneration,
-          settlement.writer_generation
-        ),
-        eq(transcriptRuntimeSettlementCommand.writerId, settlement.writer_id),
-        eq(transcriptRuntimeSettlementCommand.roomName, settlement.room_name),
+        eq(transcriptRuntimeSettlementCommand.commandId, commandId),
         eq(transcriptRuntimeSettlementCommand.state, "pending"),
         sql`${transcriptRuntimeSettlementCommand.expiresAt} > clock_timestamp()`
       )
-    );
+    )
+    .returning({ commandId: transcriptRuntimeSettlementCommand.commandId });
+  return Boolean(updated[0]);
 }
 
 export function createDrizzleTranscriptInterruptionMarkerStore(
