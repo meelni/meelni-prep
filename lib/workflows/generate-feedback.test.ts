@@ -54,6 +54,9 @@ const USER_ID = "feedback-user-1";
 const EVENT_1 = `feedback/generate.requested:${SESSION_ID}:1`;
 const EVENT_2 = `feedback/generate.requested:${SESSION_ID}:2`;
 const NOW = new Date("2026-07-10T15:00:00.000Z");
+type RecordedStageAttempt = Parameters<
+  NonNullable<GenerateFeedbackWorkflowDeps["recordStageAttempts"]>
+>[0][number];
 
 test("concurrent deliveries claim once and emit insights once", async () => {
   const store = new MemoryGenerationStore(record());
@@ -211,6 +214,86 @@ test("a superseded durable retry is fenced before repeating provider work", asyn
   assert.equal(store.current.status, "processing");
 });
 
+test("domain-rejected claim, complete, and skip stages emit one closed non-success attempt", async (t) => {
+  await t.test(
+    "claim null is fenced without a duplicate logical key",
+    async () => {
+      const store = new MemoryGenerationStore(record());
+      store.claim = async () => null;
+      const deps = dependencies(store);
+      const batches: RecordedStageAttempt[][] = [];
+      deps.recordStageAttempts = captureStageAttemptBatches(batches);
+
+      const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+      assert.equal(result.disposition, "fenced");
+      const batch = batches.at(-1)!;
+      const claims = batch.filter((attempt) => attempt.operation === "claim");
+      assert.equal(claims.length, 1);
+      assert.equal(claims[0]?.outcome, "fenced");
+      assert.equal(claims[0]?.failureClass, "fenced");
+      assertUniqueStageAttemptKeys(batch);
+    }
+  );
+
+  await t.test(
+    "complete false at the deadline is deadline-exceeded",
+    async () => {
+      const store = new MemoryGenerationStore(record());
+      let nowMs = NOW.getTime();
+      store.complete = async () => {
+        nowMs = NOW.getTime() + 90_000;
+        return false;
+      };
+      const deps = dependencies(store);
+      deps.now = () => new Date(nowMs);
+      const batches: RecordedStageAttempt[][] = [];
+      deps.recordStageAttempts = captureStageAttemptBatches(batches);
+
+      await assert.rejects(
+        generateFeedbackWorkflow(
+          { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+          deps
+        ),
+        /feedback_generation_deadline_exceeded/
+      );
+
+      const batch = batches.at(-1)!;
+      const completions = batch.filter(
+        (attempt) => attempt.operation === "complete"
+      );
+      assert.equal(completions.length, 1);
+      assert.equal(completions[0]?.outcome, "failed");
+      assert.equal(completions[0]?.failureClass, "deadline_exceeded");
+      assertUniqueStageAttemptKeys(batch);
+    }
+  );
+
+  await t.test("skip false is fenced without reporting skipped", async () => {
+    const store = new MemoryGenerationStore(record());
+    store.skip = async () => false;
+    const deps = dependencies(store, {
+      answerBlockEvidence: {
+        blocks: [],
+        eligible: false,
+        evidenceFailureReason: "no_reviewable_answer",
+      },
+    });
+    const batches: RecordedStageAttempt[][] = [];
+    deps.recordStageAttempts = captureStageAttemptBatches(batches);
+
+    const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+    assert.equal(result.disposition, "in_progress");
+    const batch = batches.at(-1)!;
+    const skips = batch.filter((attempt) => attempt.operation === "skip");
+    assert.equal(skips.length, 1);
+    assert.equal(skips[0]?.outcome, "fenced");
+    assert.equal(skips[0]?.failureClass, "fenced");
+    assertUniqueStageAttemptKeys(batch);
+  });
+});
+
 test("stale failure callbacks and terminal replays are immutable", async () => {
   const completed = record({ status: "completed", eventId: EVENT_2 });
   const store = new MemoryGenerationStore(completed);
@@ -351,6 +434,288 @@ test("provider retry policy honors Retry-After inside the shared deadline", asyn
   assert.equal(evaluations, 2);
   assert.deepEqual(sleeps, [2_500]);
   assert.deepEqual(timeouts, [75_000, 75_000]);
+});
+
+test("durable stage history keeps workflow and provider attempts separate", async () => {
+  const store = new MemoryGenerationStore(record());
+  const attempts: Array<
+    Parameters<
+      NonNullable<GenerateFeedbackWorkflowDeps["recordStageAttempts"]>
+    >[0][number]
+  > = [];
+  let flushes = 0;
+  const deps = dependencies(store, {
+    async evaluate({ attempt, reportAttempt }) {
+      reportAttempt({
+        stage: "provider",
+        attempt,
+        outcome: "succeeded",
+        durationMs: 10,
+        remainingBudgetMs: 80_000,
+        observedModel: "fixture-model",
+        observedServiceTier: "default",
+      });
+      reportAttempt({
+        stage: "validation",
+        attempt,
+        outcome: "succeeded",
+        durationMs: 5,
+        remainingBudgetMs: 79_995,
+        observedModel: "fixture-model",
+        observedServiceTier: "default",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 25,
+          outputTokens: 50,
+          totalTokens: 150,
+        },
+      });
+      return evaluation("full");
+    },
+  });
+  deps.recordStageAttempts = async (batch) => {
+    flushes += 1;
+    attempts.push(...batch);
+    return batch.map(() => "inserted" as const);
+  };
+  deps.runtimeMetadata = { environmentClass: "test", release: "fixture" };
+
+  const result = await generateFeedbackWorkflow(
+    {
+      ...input(EVENT_1),
+      requestedAtMs: NOW.getTime(),
+      executionAttempt: 1,
+    },
+    deps
+  );
+
+  assert.equal(result.status, "completed");
+  assert.equal(flushes, 1);
+  assert.ok(attempts.length > 0);
+  assert.equal(
+    attempts.every((entry) => entry.workflowAttempt === 2),
+    true
+  );
+  assert.equal(
+    attempts.find((entry) => entry.operation === "claim")?.providerAttempt,
+    null
+  );
+  assert.equal(
+    attempts.find((entry) => entry.operation === "provider_request")
+      ?.providerAttempt,
+    1
+  );
+  assert.equal(
+    attempts.find((entry) => entry.operation === "provider_response")
+      ?.providerAttempt,
+    1
+  );
+});
+
+test("memoized provider evidence preserves its full originating attempt", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  const batches: RecordedStageAttempt[][] = [];
+  let evaluations = 0;
+  let nowMs = NOW.getTime();
+  const deps = dependencies(store, {
+    async evaluate({ attempt, reportAttempt }) {
+      evaluations += 1;
+      nowMs += 40;
+      reportAttempt({
+        stage: "provider",
+        attempt,
+        outcome: "succeeded",
+        durationMs: 40,
+        remainingBudgetMs: 80_000,
+        observedModel: "fixture-model",
+        observedServiceTier: "default",
+      });
+      nowMs += 7;
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_returned_invalid_json"
+      );
+    },
+  });
+  deps.now = () => new Date(nowMs);
+  deps.recordStageAttempts = captureStageAttemptBatches(batches);
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = await work();
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+      deps
+    ),
+    /evaluation_provider_returned_invalid_json/
+  );
+  nowMs += 5_000;
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      {
+        ...input(EVENT_1),
+        requestedAtMs: NOW.getTime(),
+        executionAttempt: 1,
+      },
+      deps
+    ),
+    /evaluation_provider_returned_invalid_json/
+  );
+
+  assert.equal(evaluations, 1);
+  assert.equal(batches.length, 2);
+  const firstProviderAttempts = providerStageAttempts(batches[0]!);
+  const replayedProviderAttempts = providerStageAttempts(batches[1]!);
+  assert.deepEqual(replayedProviderAttempts, firstProviderAttempts);
+  assert.deepEqual(
+    firstProviderAttempts.map((attempt) => ({
+      operation: attempt.operation,
+      workflowAttempt: attempt.workflowAttempt,
+      providerAttempt: attempt.providerAttempt,
+      durationMs: attempt.durationMs,
+    })),
+    [
+      {
+        operation: "provider_request",
+        workflowAttempt: 1,
+        providerAttempt: 1,
+        durationMs: 40,
+      },
+      {
+        operation: "provider_response",
+        workflowAttempt: 1,
+        providerAttempt: 1,
+        durationMs: 7,
+      },
+    ]
+  );
+  assert.equal(
+    firstProviderAttempts[0]?.completedAt.getTime(),
+    firstProviderAttempts[1]?.startedAt.getTime()
+  );
+  assertUniqueStageAttemptKeys(replayedProviderAttempts);
+});
+
+test("memoized transient provider failure keeps its original retry decision", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  const batches: RecordedStageAttempt[][] = [];
+  let evaluations = 0;
+  let nowMs = NOW.getTime();
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_invocation_failed",
+        undefined,
+        undefined,
+        undefined,
+        { diagnostic: { kind: "provider_network" } }
+      );
+    },
+  });
+  deps.now = () => new Date(nowMs);
+  deps.recordStageAttempts = captureStageAttemptBatches(batches);
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = await work();
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sleep() {
+      throw new Error("fixture_durable_sleep_failed");
+    },
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+      deps
+    ),
+    /fixture_durable_sleep_failed/
+  );
+  nowMs = NOW.getTime() + 79_500;
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      {
+        ...input(EVENT_1),
+        requestedAtMs: NOW.getTime(),
+        executionAttempt: 1,
+      },
+      deps
+    ),
+    /fixture_durable_sleep_failed/
+  );
+
+  assert.equal(evaluations, 1);
+  const firstFailure = providerStageAttempts(batches[0]!);
+  const replayedFailure = providerStageAttempts(batches[1]!);
+  assert.deepEqual(replayedFailure, firstFailure);
+  assert.equal(firstFailure.length, 1);
+  assert.equal(firstFailure[0]?.workflowAttempt, 1);
+  assert.equal(firstFailure[0]?.outcome, "retrying");
+  assert.equal(firstFailure[0]?.failureClass, "transport_network");
+  assert.equal(firstFailure[0]?.retryAfterMs, 1_000);
+});
+
+test("a non-resolving stage-history flush cannot gate product completion", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  let statusAtFlush: string | null = null;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+  });
+  deps.recordStageAttempts = async () => {
+    statusAtFlush = store.current.status;
+    return new Promise(() => undefined);
+  };
+
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    const result = await Promise.race([
+      generateFeedbackWorkflow(input(EVENT_1), deps),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("stage_history_blocked_product")),
+          500
+        );
+      }),
+    ]);
+    assert.equal(result.status, "completed");
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+  assert.equal(evaluations, 1);
+  assert.equal(store.current.status, "completed");
+  assert.equal(statusAtFlush, "completed");
+});
+
+test("a synchronous stage-history failure cannot replace product completion", async () => {
+  const store = new MemoryGenerationStore(record());
+  const deps = dependencies(store);
+  deps.recordStageAttempts = () => {
+    assert.equal(store.current.status, "completed");
+    throw new Error("fixture_stage_history_sync_failure");
+  };
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.disposition, "applied");
+  assert.equal(store.current.status, "completed");
 });
 
 test("a late durable retry wakeup cannot start a provider call without reserved persistence budget", async () => {
@@ -1633,6 +1998,36 @@ function createReplayFamilyWorkflowTurns(
     }
   }
   return turns;
+}
+
+function captureStageAttemptBatches(batches: RecordedStageAttempt[][]) {
+  return async (batch: readonly RecordedStageAttempt[]) => {
+    batches.push([...batch]);
+    return batch.map(() => "inserted" as const);
+  };
+}
+
+function providerStageAttempts(
+  attempts: readonly RecordedStageAttempt[]
+): RecordedStageAttempt[] {
+  return attempts.filter(
+    (attempt) =>
+      attempt.operation === "provider_request" ||
+      attempt.operation === "provider_response"
+  );
+}
+
+function assertUniqueStageAttemptKeys(
+  attempts: readonly RecordedStageAttempt[]
+): void {
+  const keys = attempts.map((attempt) =>
+    [
+      attempt.workflowAttempt,
+      attempt.operation,
+      attempt.providerAttempt ?? "none",
+    ].join(":")
+  );
+  assert.equal(new Set(keys).size, keys.length);
 }
 
 function dependencies(

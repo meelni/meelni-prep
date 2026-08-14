@@ -17,6 +17,7 @@ import {
   contactSubmission,
   creditReservation,
   feedback,
+  feedbackGenerationStageAttempt,
   feedbackQualitySignal,
   feedbackQualitySignalRateLimit,
   focusedPracticeAttempt,
@@ -776,8 +777,13 @@ export async function listRecoverableAccountDeletions(
   return rows.map(({ userId }) => userId);
 }
 
-export async function deleteUserApplicationData(userId: string) {
-  await db.transaction(async (tx) => {
+export type AccountDeletionDatabase = Pick<typeof db, "transaction">;
+
+export async function deleteUserApplicationData(
+  userId: string,
+  database: AccountDeletionDatabase = db
+) {
+  await database.transaction(async (tx) => {
     // Match the billing settlement lock order: user -> sessions ->
     // reservations. Account deletion is allowed to erase the audit rows, but
     // it must not deadlock a concurrent settlement while doing so.
@@ -795,6 +801,25 @@ export async function deleteUserApplicationData(userId: string) {
       .where(eq(interviewSession.userId, userId))
       .orderBy(asc(interviewSession.id))
       .for("update");
+    const sessionIds = sessions.map(({ id }) => id);
+    // The operations ledger locks feedback before inserting a fenced row.
+    // Erasure takes the same feedback lock before deleting ledger children so
+    // no concurrent recorder can recreate a child behind the deletion pass.
+    const feedbackRows =
+      sessionIds.length === 0
+        ? []
+        : await tx
+            .select({ id: feedback.id })
+            .from(feedback)
+            .where(inArray(feedback.sessionId, sessionIds))
+            .orderBy(asc(feedback.id))
+            .for("update");
+    const feedbackIds = feedbackRows.map(({ id }) => id);
+    if (feedbackIds.length > 0) {
+      await tx
+        .delete(feedbackGenerationStageAttempt)
+        .where(inArray(feedbackGenerationStageAttempt.feedbackId, feedbackIds));
+    }
 
     // Version-1 reservations reference their interview session with NO ACTION
     // so audit evidence cannot disappear through ordinary session deletion.

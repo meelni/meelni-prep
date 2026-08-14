@@ -47,6 +47,7 @@ import {
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
   FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
+  FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -156,6 +157,13 @@ const FEEDBACK_QUALITY_DELETION_SESSION =
   "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d";
 const FEEDBACK_QUALITY_DELETION_FEEDBACK =
   "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e";
+const FEEDBACK_STAGE_ATTEMPT_USER = "1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f";
+const FEEDBACK_STAGE_ATTEMPT_SESSION = "20202020-2020-4020-8020-202020202020";
+const FEEDBACK_STAGE_ATTEMPT_FEEDBACK = "21212121-2121-4121-8121-212121212121";
+const FEEDBACK_STAGE_ATTEMPT_EVENT = `feedback/generate.requested:${FEEDBACK_STAGE_ATTEMPT_SESSION}:1`;
+const FEEDBACK_STAGE_ATTEMPT_FENCE = `v1:${createHash("sha256")
+  .update(FEEDBACK_STAGE_ATTEMPT_EVENT)
+  .digest("hex")}`;
 const CONTACT_TRIAGE_ROLE = "meelni_contact_triage";
 const CONTACT_OPERATOR_ONE = `meelni_contact_operator_one_${process.pid}`;
 const CONTACT_OPERATOR_TWO = `meelni_contact_operator_two_${process.pid}`;
@@ -315,14 +323,12 @@ async function run() {
     assertZeroStableStartV1Integrity(
       runPreflight(cleanUrl, true, "reconciled")!
     );
+    await verifyFeedbackStageAttemptPersistence(clean, true);
 
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -520,9 +526,10 @@ async function run() {
         FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
         PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
         RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
+        FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 36; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 37; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -542,7 +549,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 37; found 22/
+            /Strict launch preflight requires the exact latest migration count 38; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -572,6 +579,7 @@ async function run() {
         countsBeforeRuntimeSettlement
       );
       await verifyDatabase(upgrade);
+      await verifyFeedbackStageAttemptPersistence(upgrade, false);
       await verifyQuestionProvenance(upgrade, true);
       await verifyFocusedPracticePersistence(upgrade, upgradeUrl, false);
       await verifyFeedbackQualityPersistence(upgrade, upgradeUrl, false);
@@ -851,7 +859,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 37);
+      assert.equal(await migrationCount(sql), 38);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -915,7 +923,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
+      FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1160,7 +1168,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 37; found 25/
+      /exact latest migration count 38; found 25/
     );
 
     const genericRows = await sql<
@@ -1259,21 +1267,21 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 37);
+    assert.equal(await migrationCount(sql), 38);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       finalPreflight.startingContract,
-      "durable_runtime_settlement_command"
+      "feedback_stage_attempt_history"
     );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 40);
-    assert.equal(finalPreflight.rls_tables, 40);
+    assert.equal(finalPreflight.tables, 41);
+    assert.equal(finalPreflight.rls_tables, 41);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
+      FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6648,7 +6656,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "durable_runtime_settlement_command"
+      "feedback_stage_attempt_history"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -8028,8 +8036,271 @@ async function verifyFeedbackQualityDeletionWinsRateLimit(
   }
 }
 
+async function verifyFeedbackStageAttemptPersistence(
+  sql: postgres.Sql,
+  verifyApplicationLifecycle: boolean
+) {
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (
+      ${FEEDBACK_STAGE_ATTEMPT_USER}::uuid,
+      'feedback-stage-attempt@example.invalid'
+    )
+  `;
+  await sql`
+    INSERT INTO interview_session (id, user_id, round_type, mode)
+    VALUES (
+      ${FEEDBACK_STAGE_ATTEMPT_SESSION}::uuid,
+      ${FEEDBACK_STAGE_ATTEMPT_USER}::uuid,
+      'strategy',
+      'voice_video'
+    )
+  `;
+  await sql`
+    INSERT INTO feedback (
+      id, session_id, status, dispatch_status, dispatch_event_id,
+      dispatch_attempts, dispatched_at
+    ) VALUES (
+      ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+      ${FEEDBACK_STAGE_ATTEMPT_SESSION}::uuid,
+      'pending',
+      'sent',
+      ${FEEDBACK_STAGE_ATTEMPT_EVENT},
+      1,
+      '2026-08-14T06:00:00.000Z'::timestamptz
+    )
+  `;
+
+  const claimAttempt = {
+    sessionId: FEEDBACK_STAGE_ATTEMPT_SESSION,
+    generationEventId: FEEDBACK_STAGE_ATTEMPT_EVENT,
+    workflowAttempt: 1,
+    operation: "claim" as const,
+    stage: "claim" as const,
+    providerAttempt: null,
+    outcome: "succeeded" as const,
+    retryable: false,
+    startedAt: new Date("2026-08-14T06:00:00.000Z"),
+    completedAt: new Date("2026-08-14T06:00:00.010Z"),
+    durationMs: 10,
+    remainingBudgetMs: 89_990,
+    environmentClass: "test" as const,
+  };
+  if (verifyApplicationLifecycle) {
+    const {
+      createDrizzleFeedbackGenerationStageAttemptRepository,
+      createFeedbackGenerationStageAttemptStore,
+    } = await import("../lib/db/feedback-generation-stage-attempts");
+    const store = createFeedbackGenerationStageAttemptStore(
+      createDrizzleFeedbackGenerationStageAttemptRepository(drizzle(sql))
+    );
+    assert.equal(await store.record(claimAttempt), "inserted");
+    assert.equal(await store.record(claimAttempt), "duplicate");
+    assert.equal(
+      await store.record({
+        ...claimAttempt,
+        completedAt: new Date("2026-08-14T06:00:00.011Z"),
+        durationMs: 11,
+      }),
+      "conflict"
+    );
+    assert.equal(
+      await store.record({
+        ...claimAttempt,
+        generationEventId: `${FEEDBACK_STAGE_ATTEMPT_EVENT}:retired`,
+      }),
+      "fenced"
+    );
+  } else {
+    await sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, provider_attempt, outcome, retryable, started_at,
+        completed_at, duration_ms, duration_bucket, remaining_budget_ms,
+        environment_class
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+        1, 'claim', 'claim', NULL, 'succeeded', false,
+        '2026-08-14T06:00:00.000Z'::timestamptz,
+        '2026-08-14T06:00:00.010Z'::timestamptz,
+        10, 'lt_1s', 89990, 'test'
+      )
+    `;
+  }
+
+  await sql`
+    INSERT INTO feedback_generation_stage_attempt (
+      feedback_id, generation_event_fence, workflow_attempt, operation,
+      stage, provider_attempt, outcome, failure_class, retryable, started_at,
+      completed_at, duration_ms, duration_bucket, remaining_budget_ms,
+      retry_after_ms, environment_class, provider_diagnostic_kind,
+      provider_http_status, observed_model, observed_service_tier
+    ) VALUES (
+      ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+      ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+      1, 'provider_request', 'provider', 1, 'retrying',
+      'provider_rate_limited', true,
+      '2026-08-14T06:00:01.000Z'::timestamptz,
+      '2026-08-14T06:00:02.000Z'::timestamptz,
+      1000, '1s_to_5s', 70000, 2500, 'test',
+      'provider_rate_limited', 429, 'fixture-model', 'default'
+    )
+  `;
+
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, outcome, retryable, started_at, completed_at, duration_ms,
+        duration_bucket, remaining_budget_ms, environment_class
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+        1, 'authorization', 'claim', 'succeeded', false,
+        '2026-08-14T06:00:03.000Z'::timestamptz,
+        '2026-08-14T06:00:04.000Z'::timestamptz,
+        1000, 'lt_1s', 60000, 'test'
+      )
+    `,
+    /feedback_generation_stage_attempt_duration_bucket_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, outcome, retryable, started_at, completed_at, duration_ms,
+        duration_bucket, remaining_budget_ms, environment_class
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+        1, 'legacy_evidence', 'evidence_preparation', 'succeeded', false,
+        '2026-08-14T06:00:05.000Z'::timestamptz,
+        '2026-08-14T06:01:05.000Z'::timestamptz,
+        10, 'lt_1s', 50000, 'test'
+      )
+    `,
+    /feedback_generation_stage_attempt_timing_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, outcome, retryable, started_at, completed_at, duration_ms,
+        duration_bucket, remaining_budget_ms, environment_class,
+        provider_diagnostic_kind
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+        1, 'answer_blocks', 'evidence_preparation', 'succeeded', false,
+        '2026-08-14T06:00:06.000Z'::timestamptz,
+        '2026-08-14T06:00:06.010Z'::timestamptz,
+        10, 'lt_1s', 40000, 'test', 'provider_timeout'
+      )
+    `,
+    /feedback_generation_stage_attempt_provider_context_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, provider_attempt, outcome, failure_class, retryable,
+        started_at, completed_at, duration_ms, duration_bucket,
+        remaining_budget_ms, retry_after_ms, environment_class
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_FENCE},
+        1, 'provider_response', 'validation', 2, 'retrying',
+        'provider_rate_limited', true,
+        '2026-08-14T06:00:07.000Z'::timestamptz,
+        '2026-08-14T06:00:07.010Z'::timestamptz,
+        10, 'lt_1s', 30000, 1000, 'test'
+      )
+    `,
+    /feedback_generation_stage_attempt_provider_context_check/
+  );
+  await assert.rejects(
+    () => sql`
+      INSERT INTO feedback_generation_stage_attempt (
+        feedback_id, generation_event_fence, workflow_attempt, operation,
+        stage, outcome, retryable, started_at, completed_at, duration_ms,
+        duration_bucket, remaining_budget_ms, environment_class
+      ) VALUES (
+        ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid,
+        ${FEEDBACK_STAGE_ATTEMPT_EVENT},
+        1, 'queue_wait', 'claim', 'succeeded', false,
+        '2026-08-14T06:00:08.000Z'::timestamptz,
+        '2026-08-14T06:00:08.010Z'::timestamptz,
+        10, 'lt_1s', 20000, 'test'
+      )
+    `,
+    /feedback_generation_stage_attempt_event_fence_check/
+  );
+
+  const rows = await sql<
+    { generation_event_fence: string; serialized: string }[]
+  >`
+    SELECT generation_event_fence, row_to_json(attempt)::text AS serialized
+    FROM feedback_generation_stage_attempt attempt
+    WHERE feedback_id = ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid
+    ORDER BY operation
+  `;
+  assert.equal(rows.length, 2);
+  assert.ok(
+    rows.every(
+      ({ generation_event_fence }) =>
+        generation_event_fence === FEEDBACK_STAGE_ATTEMPT_FENCE
+    )
+  );
+  const serializedRows = JSON.stringify(rows);
+  assert.equal(serializedRows.includes(FEEDBACK_STAGE_ATTEMPT_SESSION), false);
+  assert.equal(serializedRows.includes(FEEDBACK_STAGE_ATTEMPT_EVENT), false);
+
+  if (verifyApplicationLifecycle) {
+    const { deleteUserApplicationData } = await import(
+      "../lib/db/account-deletions"
+    );
+    await deleteUserApplicationData(FEEDBACK_STAGE_ATTEMPT_USER, drizzle(sql));
+    const [deleted] = await sql<
+      { attempts: number; feedback: number; sessions: number; users: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM feedback_generation_stage_attempt
+          WHERE feedback_id = ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid)
+          AS attempts,
+        (SELECT count(*)::int FROM feedback
+          WHERE id = ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid) AS feedback,
+        (SELECT count(*)::int FROM interview_session
+          WHERE id = ${FEEDBACK_STAGE_ATTEMPT_SESSION}::uuid) AS sessions,
+        (SELECT count(*)::int FROM app_user
+          WHERE id = ${FEEDBACK_STAGE_ATTEMPT_USER}::uuid) AS users
+    `;
+    assert.deepEqual(deleted, {
+      attempts: 0,
+      feedback: 0,
+      sessions: 0,
+      users: 0,
+    });
+  } else {
+    await sql`
+      DELETE FROM feedback_generation_stage_attempt
+      WHERE feedback_id = ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid
+    `;
+    await sql`
+      DELETE FROM feedback WHERE id = ${FEEDBACK_STAGE_ATTEMPT_FEEDBACK}::uuid
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE id = ${FEEDBACK_STAGE_ATTEMPT_SESSION}::uuid
+    `;
+    await sql`
+      DELETE FROM app_user WHERE id = ${FEEDBACK_STAGE_ATTEMPT_USER}::uuid
+    `;
+  }
+}
+
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 37);
+  assert.equal(await migrationCount(sql), 38);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -8037,7 +8308,7 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 40);
+  assert.equal(tables.length, 41);
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -8092,6 +8363,11 @@ async function verifyDatabase(sql: postgres.Sql) {
   assert.ok(
     tables.some(
       ({ table_name }) => table_name === "feedback_quality_signal_rate_limit"
+    )
+  );
+  assert.ok(
+    tables.some(
+      ({ table_name }) => table_name === "feedback_generation_stage_attempt"
     )
   );
   for (const table of [
@@ -8320,6 +8596,78 @@ async function verifyDatabase(sql: postgres.Sql) {
   `;
   assert.equal(feedbackV2Constraints.length, 1);
 
+  const stageAttemptColumns = await sql<{ column_name: string }[]>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'feedback_generation_stage_attempt'
+    ORDER BY ordinal_position
+  `;
+  assert.equal(stageAttemptColumns.length, 27);
+  const stageAttemptColumnNames = stageAttemptColumns.map(
+    ({ column_name }) => column_name
+  );
+  assert.ok(stageAttemptColumnNames.includes("generation_event_fence"));
+  for (const forbiddenColumn of [
+    "user_id",
+    "session_id",
+    "room_name",
+    "generation_event_id",
+    "provider_request_id",
+    "question",
+    "transcript",
+    "feedback",
+    "raw_error",
+  ]) {
+    assert.equal(stageAttemptColumnNames.includes(forbiddenColumn), false);
+  }
+
+  const stageAttemptContracts = await sql<{ name: string }[]>`
+    SELECT conname AS name
+    FROM pg_constraint
+    WHERE conname IN (
+      'feedback_generation_stage_attempt_pkey',
+      'feedback_generation_stage_attempt_exact_idx',
+      'feedback_generation_stage_attempt_feedback_id_feedback_id_fk',
+      'feedback_generation_stage_attempt_event_fence_check',
+      'feedback_generation_stage_attempt_workflow_attempt_check',
+      'feedback_generation_stage_attempt_operation_check',
+      'feedback_generation_stage_attempt_stage_check',
+      'feedback_generation_stage_attempt_operation_stage_check',
+      'feedback_generation_stage_attempt_provider_attempt_check',
+      'feedback_generation_stage_attempt_outcome_check',
+      'feedback_generation_stage_attempt_failure_class_check',
+      'feedback_generation_stage_attempt_outcome_failure_check',
+      'feedback_generation_stage_attempt_timing_check',
+      'feedback_generation_stage_attempt_duration_bucket_check',
+      'feedback_generation_stage_attempt_environment_check',
+      'feedback_generation_stage_attempt_release_check',
+      'feedback_generation_stage_attempt_provider_diagnostic_check',
+      'feedback_generation_stage_attempt_provider_status_check',
+      'feedback_generation_stage_attempt_provider_context_check',
+      'feedback_generation_stage_attempt_provider_label_check',
+      'feedback_generation_stage_attempt_usage_tuple_check'
+    )
+  `;
+  assert.equal(stageAttemptContracts.length, 21);
+
+  const [stageAttemptComment] = await sql<{ comment: string | null }[]>`
+    SELECT obj_description(
+      'feedback_generation_stage_attempt'::regclass,
+      'pg_class'
+    ) AS comment
+  `;
+  assert.match(stageAttemptComment?.comment ?? "", /v1 SHA-256/);
+  assert.match(stageAttemptComment?.comment ?? "", /raw event/);
+  const [stageAttemptRls] = await sql<{ enabled: boolean; forced: boolean }[]>`
+    SELECT relrowsecurity AS enabled, relforcerowsecurity AS forced
+    FROM pg_class
+    JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+    WHERE pg_namespace.nspname = 'public'
+      AND relname = 'feedback_generation_stage_attempt'
+  `;
+  assert.deepEqual(stageAttemptRls, { enabled: true, forced: true });
+
   const transcriptColumns = await sql<{ column_name: string }[]>`
     SELECT column_name
     FROM information_schema.columns
@@ -8545,7 +8893,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 40);
+  assert.equal(rls.length, 41);
   assert.ok(rls.every((table) => table.enabled));
 
   const contactRls = await sql<
@@ -8579,7 +8927,8 @@ async function verifyDatabase(sql: postgres.Sql) {
         OR (tablename IN (
               'transcript_runtime_writer',
               'transcript_runtime_settlement',
-              'transcript_runtime_settlement_command'
+              'transcript_runtime_settlement_command',
+              'feedback_generation_stage_attempt'
             ) AND cmd IN ('SELECT', 'INSERT', 'UPDATE', 'ALL')
           AND roles && ARRAY['public', 'anon', 'authenticated']::name[])
       )
@@ -8600,6 +8949,11 @@ async function verifyDatabase(sql: postgres.Sql) {
       auth_settlement_command_select: boolean;
       auth_settlement_command_insert: boolean;
       service_settlement_command_insert: boolean;
+      auth_stage_attempt_select: boolean;
+      auth_stage_attempt_insert: boolean;
+      service_stage_attempt_select: boolean;
+      service_stage_attempt_insert: boolean;
+      service_stage_attempt_delete: boolean;
       auth_writer_select: boolean;
       auth_writer_insert: boolean;
       service_writer_insert: boolean;
@@ -8665,6 +9019,31 @@ async function verifyDatabase(sql: postgres.Sql) {
       ) AS service_settlement_command_insert,
       has_table_privilege(
         'authenticated',
+        'public.feedback_generation_stage_attempt',
+        'SELECT'
+      ) AS auth_stage_attempt_select,
+      has_table_privilege(
+        'authenticated',
+        'public.feedback_generation_stage_attempt',
+        'INSERT'
+      ) AS auth_stage_attempt_insert,
+      has_table_privilege(
+        'service_role',
+        'public.feedback_generation_stage_attempt',
+        'SELECT'
+      ) AS service_stage_attempt_select,
+      has_table_privilege(
+        'service_role',
+        'public.feedback_generation_stage_attempt',
+        'INSERT'
+      ) AS service_stage_attempt_insert,
+      has_table_privilege(
+        'service_role',
+        'public.feedback_generation_stage_attempt',
+        'DELETE'
+      ) AS service_stage_attempt_delete,
+      has_table_privilege(
+        'authenticated',
         'public.transcript_runtime_writer',
         'SELECT'
       ) AS auth_writer_select,
@@ -8722,6 +9101,11 @@ async function verifyDatabase(sql: postgres.Sql) {
     auth_settlement_command_select: false,
     auth_settlement_command_insert: false,
     service_settlement_command_insert: true,
+    auth_stage_attempt_select: false,
+    auth_stage_attempt_insert: false,
+    service_stage_attempt_select: true,
+    service_stage_attempt_insert: true,
+    service_stage_attempt_delete: true,
     auth_writer_select: false,
     auth_writer_insert: false,
     service_writer_insert: true,
