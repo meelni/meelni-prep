@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY,
   FEEDBACK_GENERATION_FAILED,
+  classifyProviderInvocationFailure,
   getEvaluationFailureCode,
+  getProviderRetryAfterMs,
 } from "./scorer";
 
 test("evaluation maps provider authentication status to a stable code", () => {
@@ -24,4 +26,18 @@ test("evaluation maps arbitrary provider content to a generic stable code", () =
     getEvaluationFailureCode(new Error(sentinel)),
     FEEDBACK_GENERATION_FAILED
   );
+});
+
+test("provider classification retains bounded Retry-After without payloads", () => {
+  const error = Object.assign(new Error("PRIVATE_PROVIDER_SENTINEL"), {
+    status: 429,
+    headers: { "retry-after": "2.5" },
+  });
+
+  assert.equal(getProviderRetryAfterMs(error), 2_500);
+  assert.deepEqual(classifyProviderInvocationFailure(error), {
+    kind: "provider_rate_limited",
+    httpStatus: 429,
+    retryAfterMs: 2_500,
+  });
 });

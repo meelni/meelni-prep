@@ -405,6 +405,7 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   const evaluatorModes = new Set<string>();
   const steps: FeedbackGenerationSteps = {
     run: (_name, work) => work(),
+    sleep: async () => undefined,
     async sendInsights() {},
   };
   const handlerDeps: FeedbackGenerationRequestedHandlerDeps = {
@@ -607,6 +608,7 @@ function createGenerationDeps(input: {
     store: input.store,
     steps: input.steps,
     now: () => NOW,
+    reportAttempt: () => undefined,
     isDeletionPending: async () => false,
     getSession: async () => ({
       userId: input.fixture.userId,
