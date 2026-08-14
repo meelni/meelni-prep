@@ -1,16 +1,61 @@
 import {
+  classifyFrozenFeedbackTranscriptReadiness,
   classifySkippedFeedbackLifecycle,
   decodeFeedbackLifecycleResponse,
+  decodeSavedInterviewWorkspace,
+  isValidRoundType,
   presentCompletedFeedback,
+  SAVED_INTERVIEW_WORKSPACE_VERSION,
   type FeedbackLifecycleResponse,
   type CandidateAnswerBlock,
   type PersistedCompletedFeedback,
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
+  type SavedInterviewWorkspace,
 } from "@meelni/core";
 
 export const DISPATCH_FAILED_CUSTOMER_MESSAGE =
   "Your interview is saved, but feedback could not be queued.";
+
+export function buildSavedInterviewWorkspace(input: {
+  roundType: unknown;
+  lifecycleState: unknown;
+  transcriptEvidenceVersion: unknown;
+  transcriptEvidenceState: unknown;
+  transcriptCutoffAt: unknown;
+  transcriptEvidenceFrozenAt: unknown;
+  question: { text: unknown; company: unknown } | null;
+}): SavedInterviewWorkspace | null {
+  if (
+    typeof input.roundType !== "string" ||
+    !isValidRoundType(input.roundType)
+  ) {
+    return null;
+  }
+
+  const questionCandidate = input.question
+    ? { text: input.question.text, company: input.question.company }
+    : null;
+  const readiness = classifyFrozenFeedbackTranscriptReadiness(input);
+  const frozenTranscript =
+    readiness === "not_ready"
+      ? input.lifecycleState === "ending"
+        ? "pending"
+        : "unavailable"
+      : readiness;
+
+  const candidate = {
+    version: SAVED_INTERVIEW_WORKSPACE_VERSION,
+    saved: true,
+    roundType: input.roundType,
+    question: questionCandidate,
+    frozenTranscript,
+  };
+  const decoded = decodeSavedInterviewWorkspace(candidate);
+  if (decoded) return decoded;
+
+  return decodeSavedInterviewWorkspace({ ...candidate, question: null });
+}
 
 export function buildDispatchFailedFeedbackLifecycleResponse(
   retryable: boolean

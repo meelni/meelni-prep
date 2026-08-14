@@ -24,7 +24,7 @@ import {
 } from "@/components/feedback/feedback-lifecycle-status";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { Button } from "@/components/ui/button";
-import type { FeedbackViewState } from "@meelni/core";
+import type { FeedbackViewState, SavedInterviewWorkspace } from "@meelni/core";
 
 import {
   completedFeedback,
@@ -58,6 +58,8 @@ export const HARNESS_SCENARIOS = [
   "feedback-loading",
   "feedback-pending",
   "feedback-processing",
+  "feedback-processing-workspace",
+  "feedback-processing-workspace-paused",
   "feedback-failed",
   "feedback-unavailable",
   "feedback-compare",
@@ -270,18 +272,36 @@ type FeedbackLifecycleScenarioState = Exclude<
 
 function FeedbackLifecycleScenario({
   state,
+  workspace,
+  pollingPaused = false,
 }: {
   state: FeedbackLifecycleScenarioState;
+  workspace?: SavedInterviewWorkspace;
+  pollingPaused?: boolean;
 }) {
   return (
     <FeedbackLifecycleStatus
       state={state}
+      workspace={workspace}
+      sessionId="browser-qa-saved-interview"
       recovering={false}
       recoveryError={null}
+      pollingPaused={pollingPaused}
       onRecover={() => undefined}
     />
   );
 }
+
+const savedInterviewWorkspace = {
+  version: "saved-interview.workspace.v1",
+  saved: true,
+  roundType: "product_sense",
+  question: {
+    text: "How would you improve a synthetic planning product?",
+    company: "Synthetic Co",
+  },
+  frozenTranscript: "ready",
+} as const satisfies SavedInterviewWorkspace;
 
 const longLifecycleMessage =
   "Your saved interview remains available while this intentionally long recovery message verifies strict responsive reflow without hiding the next action. " +
@@ -403,6 +423,21 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return (
         <FeedbackLifecycleScenario
           state={{ kind: "processing", retryable: true, delayed: true }}
+        />
+      );
+    case "feedback-processing-workspace":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "processing", retryable: false, delayed: false }}
+          workspace={savedInterviewWorkspace}
+        />
+      );
+    case "feedback-processing-workspace-paused":
+      return (
+        <FeedbackLifecycleScenario
+          state={{ kind: "processing", retryable: false, delayed: true }}
+          workspace={savedInterviewWorkspace}
+          pollingPaused
         />
       );
     case "feedback-failed":

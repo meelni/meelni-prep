@@ -70,8 +70,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isRetryableSupabaseAuthError } from "@/lib/supabase/auth-error";
-import { getSessionTranscript } from "@/lib/db/transcripts";
-import { isSessionOwnedByUser } from "@/lib/db/sessions";
+import {
+  getFrozenFeedbackTranscriptTurns,
+  getSessionTranscript,
+} from "@/lib/db/transcripts";
+import { getSessionById, isSessionOwnedByUser } from "@/lib/db/sessions";
 import { isRetryableDatabaseContentionError } from "@/lib/db/retryable-error";
 import { withInteractiveReadTransaction } from "@/lib/db/interactive-read";
 import {
@@ -80,6 +83,10 @@ import {
   isDeadlineExceededError,
   withDeadline,
 } from "@/lib/http/deadline";
+import {
+  classifyFrozenFeedbackTranscriptReadiness,
+  projectFrozenFeedbackTranscriptDisplayTurns,
+} from "@meelni/core";
 
 const PRIVATE_NO_STORE_HEADERS = {
   "Cache-Control": "private, no-store",
@@ -119,8 +126,15 @@ export async function GET(
         }
 
         const { sessionId } = await params;
+        const requestedScope = req.nextUrl.searchParams.get("scope");
+        if (requestedScope !== null && requestedScope !== "frozen") {
+          return transcriptResponse(
+            { error: "Unsupported transcript scope" },
+            400
+          );
+        }
 
-        const transcript = await withInteractiveReadTransaction(
+        const transcriptRead = await withInteractiveReadTransaction(
           async (database) => {
             const isOwner = await isSessionOwnedByUser(
               sessionId,
@@ -128,17 +142,52 @@ export async function GET(
               database
             );
             if (!isOwner) return null;
-            return getSessionTranscript(sessionId, database);
+            if (requestedScope === "frozen") {
+              const session = await getSessionById(sessionId, database);
+              if (!session) return null;
+              const availability =
+                classifyFrozenFeedbackTranscriptReadiness(session);
+              if (availability !== "ready") return { availability } as const;
+              return { availability: "ready" as const, turns: null };
+            }
+            return {
+              availability: "ready" as const,
+              turns: await getSessionTranscript(sessionId, database),
+            };
           }
         );
-        if (transcript === null) {
+        if (transcriptRead === null) {
           return transcriptResponse(
             { error: "Session not found or access denied" },
             404
           );
         }
+        if (transcriptRead.availability !== "ready") {
+          return transcriptResponse(
+            {
+              error: `frozen_transcript_${transcriptRead.availability}`,
+              scope: "frozen",
+            },
+            409
+          );
+        }
+        const turns =
+          requestedScope === "frozen"
+            ? projectFrozenFeedbackTranscriptDisplayTurns(
+                await getFrozenFeedbackTranscriptTurns(sessionId)
+              )
+            : transcriptRead.turns;
+        if (turns === null) {
+          return transcriptResponse(
+            { error: "Frozen transcript display is unavailable" },
+            500
+          );
+        }
 
-        return transcriptResponse({ turns: transcript });
+        return transcriptResponse({
+          turns,
+          ...(requestedScope === "frozen" ? { scope: "frozen" } : {}),
+        });
       })(),
       CUSTOMER_READ_ROUTE_DEADLINE_MS
     );

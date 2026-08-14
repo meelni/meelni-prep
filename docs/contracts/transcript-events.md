@@ -173,6 +173,40 @@ rendering and does not persist the legacy packet because the current database
 requires a measured start time. New writers must never emit this shape.
 Unsupported explicit versions and malformed packets fail closed.
 
+### Authenticated frozen feedback read
+
+The authenticated transcript route retains its existing default read for
+non-feedback consumers. Feedback surfaces request
+`GET /api/session/:sessionId/transcript?scope=frozen`. The route authenticates
+the user, establishes ownership, and checks server-owned lifecycle and evidence
+readiness before invoking the frozen-prefix query.
+
+- Active and `ending` sessions return content-free
+  `frozen_transcript_not_ready`; neither the ordinary nor frozen transcript
+  query runs.
+- A version-1 terminal session is readable only for `complete` or `partial`
+  evidence with finite timestamps and a frozen timestamp at or after its
+  immutable cutoff.
+- Other version-1 terminal evidence returns content-free
+  `frozen_transcript_unavailable`.
+- A terminal legacy session may use the existing bounded legacy projection.
+  This compatibility exception never applies before terminal state.
+- Unsupported scopes fail closed before transcript content is read.
+
+The frozen response contains only `{ scope: "frozen", turns }`. Every display
+turn contains an opaque stable transcript-row `id`, `speaker`, bounded nullable
+`text`, nullable ISO `startedAt`, and canonical `eventId` only when one exists.
+Terminal legacy turns keep distinct row IDs when `eventId` is null. Writer ID,
+writer generation, sequence, contract version, delivery state, end time, audio,
+section, session identity, and other evaluation-only facts are stripped before
+serialization. The client strictly decodes the same exact display shape and
+rejects duplicate row IDs or unexpected fields.
+
+Operational logs use fixed messages and never include transcript content or
+data-layer errors. The processing workspace exposes an expand action only when
+the lifecycle projection says frozen evidence is ready; the route repeats the
+gate so a direct or stale browser request cannot expose a mutable tail.
+
 Version 1 read support can be removed only after deployed agents all emit
 version 2 and the observation window reports no legacy packets. Version 2 is
 additive at the transport boundary; SAV-194 adds nullable canonical persistence
