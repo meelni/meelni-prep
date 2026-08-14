@@ -11,12 +11,14 @@ import {
 import { eq, desc, and, asc, inArray, sql } from "drizzle-orm";
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   ALL_INTERVIEW_TYPES,
   isInterviewSessionCompletedForRead,
   MAX_CANONICAL_EVENT_ID_LENGTH,
   type CandidateAnswerBlock,
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
+  type TrustedAnswerBlockProjection,
 } from "@/lib/internal/core";
 import {
   classifyDashboardFeedbackPresentation,
@@ -25,7 +27,10 @@ import {
   type DashboardFeedbackPresentationKind,
 } from "@/lib/dashboard/feedback-presentation";
 import { getFrozenFeedbackEvaluationEvidence } from "./transcripts";
-import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
+import {
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+} from "@/lib/evaluation/session-validator";
 import { lockAccountIdentity } from "./account-identity-lock";
 import { AccountDeletionPendingError } from "./users";
 
@@ -475,6 +480,9 @@ export const dashboardSessionSelection = {
     dimensionCoverageJson: sql<
       string | null
     >`left(${feedback.dimensionCoverage}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson + 1})`,
+    verifiedPrefixScopeJson: sql<
+      string | null
+    >`left(${feedback.verifiedPrefixScope}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.verifiedPrefixScopeJson + 1})`,
     strengthsJson: sql<
       string | null
     >`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
@@ -497,6 +505,7 @@ const EMPTY_CANDIDATE_ANSWER_BLOCKS: readonly CandidateAnswerBlock[] = [];
 interface DashboardV3AnswerEvidence {
   blocks: readonly CandidateAnswerBlock[];
   state: "complete" | "partial" | undefined;
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection;
 }
 const EMPTY_V3_ANSWER_EVIDENCE: DashboardV3AnswerEvidence = {
   blocks: EMPTY_CANDIDATE_ANSWER_BLOCKS,
@@ -520,6 +529,8 @@ async function loadDashboardFeedbackEvidenceTurns(
     row.feedbackPresentationCandidate.schemaVersion !== null &&
     row.feedbackPresentationCandidate.schemaVersion !==
       FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    row.feedbackPresentationCandidate.schemaVersion !==
+      FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION &&
     typeof row.id === "string"
       ? [row.id]
       : []
@@ -548,8 +559,10 @@ async function loadDashboardDimensionCoverageAnswerBlocks(
 ): Promise<ReadonlyMap<string, DashboardV3AnswerEvidence>> {
   const sessionIds = rows.flatMap((row) =>
     row.feedbackPresentationCandidate?.status === "completed" &&
-    row.feedbackPresentationCandidate.schemaVersion ===
-      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    (row.feedbackPresentationCandidate.schemaVersion ===
+      FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+      row.feedbackPresentationCandidate.schemaVersion ===
+        FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) &&
     typeof row.id === "string"
       ? [row.id]
       : []
@@ -557,7 +570,14 @@ async function loadDashboardDimensionCoverageAnswerBlocks(
   const entries = await Promise.all(
     sessionIds.map(async (sessionId) => {
       const evidence = await getFrozenFeedbackEvaluationEvidence(sessionId);
+      const verifiedPrefix =
+        rows.find((row) => row.id === sessionId)?.feedbackPresentationCandidate
+          ?.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
+      const preparedTrusted = verifiedPrefix
+        ? prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence)
+        : null;
       const prepared =
+        preparedTrusted ??
         prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(evidence);
       return [
         sessionId,
@@ -569,6 +589,10 @@ async function loadDashboardDimensionCoverageAnswerBlocks(
             prepared.eligible && evidence.snapshotValid
               ? (evidence.snapshotState ?? undefined)
               : undefined,
+          ...(preparedTrusted?.eligible &&
+          preparedTrusted.projection.status === "verified_prefix"
+            ? { verifiedPrefixProjection: preparedTrusted.projection }
+            : {}),
         },
       ] as const;
     })
@@ -655,7 +679,8 @@ export function toDashboardSession<T extends DashboardSessionRow>(
         evidenceTurns,
         answerEvidence.blocks,
         parseDashboardRoundType(row.roundType),
-        answerEvidence.state
+        answerEvidence.state,
+        answerEvidence.verifiedPrefixProjection
       )
     : "unavailable";
   const exposesDimensionScores =

@@ -29,11 +29,15 @@ import {
 } from "@/lib/db/feedback-generation-state";
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   isInterviewTerminalState,
   isValidRoundType,
 } from "@meelni/core";
-import { prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot } from "@/lib/evaluation/session-validator";
+import {
+  prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+  prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
+} from "@/lib/evaluation/session-validator";
 import {
   buildCompletedFeedbackLifecycleResponse,
   buildDispatchFailedFeedbackLifecycleResponse,
@@ -345,20 +349,35 @@ export async function GET(
             const needsTurnEvidence =
               hasVersionedFeedback &&
               feedbackRecord.schemaVersion !==
-                FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
+                FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+              feedbackRecord.schemaVersion !==
+                FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
             const evidenceTurns = needsTurnEvidence
               ? await getFeedbackEvidenceTurns(sessionId, database)
               : [];
-            const frozenAnswerEvidence =
+            const usesDimensionCoverage =
               feedbackRecord.schemaVersion ===
-              FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION
-                ? await getFrozenFeedbackEvaluationEvidence(sessionId, database)
-                : null;
-            const preparedAnswerEvidence = frozenAnswerEvidence
-              ? prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
-                  frozenAnswerEvidence
-                )
+                FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION ||
+              feedbackRecord.schemaVersion ===
+                FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
+            const frozenAnswerEvidence = usesDimensionCoverage
+              ? await getFrozenFeedbackEvaluationEvidence(sessionId, database)
               : null;
+            const preparedTrustedAnswerEvidence =
+              frozenAnswerEvidence &&
+              feedbackRecord.schemaVersion ===
+                FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+                ? prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+                    frozenAnswerEvidence
+                  )
+                : null;
+            const preparedAnswerEvidence =
+              preparedTrustedAnswerEvidence ??
+              (frozenAnswerEvidence
+                ? prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+                    frozenAnswerEvidence
+                  )
+                : null);
             const answerBlocks = preparedAnswerEvidence?.eligible
               ? preparedAnswerEvidence.blocks
               : [];
@@ -369,6 +388,12 @@ export async function GET(
             const expectedRoundType =
               session && isValidRoundType(session.roundType)
                 ? session.roundType
+                : undefined;
+            const verifiedPrefixProjection =
+              preparedTrustedAnswerEvidence?.eligible &&
+              preparedTrustedAnswerEvidence.projection.status ===
+                "verified_prefix"
+                ? preparedTrustedAnswerEvidence.projection
                 : undefined;
             const completedResponse = buildCompletedFeedbackLifecycleResponse(
               {
@@ -392,6 +417,7 @@ export async function GET(
                 feedbackMode: feedbackRecord.feedbackMode,
                 feedbackRoundType: feedbackRecord.feedbackRoundType,
                 dimensionCoverage: feedbackRecord.dimensionCoverage,
+                verifiedPrefixScope: feedbackRecord.verifiedPrefixScope,
                 createdAt: feedbackRecord.createdAt,
               },
               evidenceTurns,
@@ -402,7 +428,8 @@ export async function GET(
                 FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION &&
                 hasEvidenceLimitedOnlyConstraint(feedbackRecord.completionStats)
                 ? "verified_evidence_integrity"
-                : "rubric_coverage"
+                : "rubric_coverage",
+              verifiedPrefixProjection
             );
             if (completedResponse.feedback.kind === "invalid") {
               reportOperationalFailure({

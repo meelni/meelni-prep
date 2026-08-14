@@ -73,6 +73,10 @@ export function CompletedDimensionCoverageReview({
             </p>
           </FeedbackSectionCard>
 
+          {feedback.verifiedScope && (
+            <VerifiedPrefixScopeCard scope={feedback.verifiedScope} />
+          )}
+
           <FeedbackSectionCard
             title="Observed PM signals"
             description="Each signal is tied to an exact citation from this interview."
@@ -196,6 +200,10 @@ export function CompletedDimensionCoverageReview({
           </p>
         </FeedbackSectionCard>
 
+        {feedback.verifiedScope && (
+          <VerifiedPrefixScopeCard scope={feedback.verifiedScope} />
+        )}
+
         <FeedbackSectionCard
           title="Observed practice scores"
           description={
@@ -301,6 +309,32 @@ export function CompletedDimensionCoverageReview({
         />
       </div>
     </FeedbackReviewShell>
+  );
+}
+
+function VerifiedPrefixScopeCard({
+  scope,
+}: {
+  scope: NonNullable<FeedbackDimensionCoverageView["verifiedScope"]>;
+}) {
+  const answerLabel = scope.reviewedAnswerCount === 1 ? "answer" : "answers";
+
+  return (
+    <FeedbackSectionCard title="Verified interview scope" tone="info">
+      <div className="space-y-2">
+        <p className="text-foreground leading-6">
+          Meelni reviewed only the {scope.reviewedAnswerCount} completed{" "}
+          {answerLabel} it could verify.
+        </p>
+        {scope.excludedTail && (
+          <p className="text-muted-foreground leading-6">
+            The unfinished or unverified end of the interview stayed outside
+            this review. It did not count as weaker evidence or affect the
+            review shown here.
+          </p>
+        )}
+      </div>
+    </FeedbackSectionCard>
   );
 }
 

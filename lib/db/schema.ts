@@ -27,6 +27,7 @@ import type {
   AvailableFocusedPracticeGroundedPlan,
   DimensionCoverageFeedbackMode,
   DimensionCoverageResultDimensions,
+  VerifiedPrefixFeedbackScopeV1,
   FeedbackOutcomeReason,
   FeedbackQualityOutcome,
   FeedbackQualityReason,
@@ -909,6 +910,9 @@ export const feedback = pgTable(
     feedbackRoundType: text("feedback_round_type").$type<RoundType>(),
     dimensionCoverage:
       jsonb("dimension_coverage").$type<DimensionCoverageResultDimensions>(),
+    verifiedPrefixScope: jsonb(
+      "verified_prefix_scope"
+    ).$type<VerifiedPrefixFeedbackScopeV1>(),
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true,
     }),
@@ -1006,6 +1010,12 @@ export const feedback = pgTable(
             ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
             ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
             ${table.evaluationState} IN ('full', 'partial')
+          ) OR
+          (
+            ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
+            ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
+            ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
+            ${table.evaluationState} = 'partial'
           )
         ) AND
         length(trim(${table.modelVersion})) > 0
@@ -1015,15 +1025,48 @@ export const feedback = pgTable(
       "feedback_dimension_coverage_tuple_check",
       sql`(
         ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v1' AND
+        ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v2' AND
         ${table.feedbackMode} IS NULL AND
         ${table.feedbackRoundType} IS NULL AND
         ${table.dimensionCoverage} IS NULL
       ) OR (
-        ${table.schemaVersion} = 'feedback.dimension-coverage.v1' AND
+        ${table.schemaVersion} IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND
         ${table.feedbackMode} IN ('full_scorecard', 'partial_scorecard', 'coaching_review') AND
         ${table.feedbackRoundType} IN ('product_sense', 'execution', 'behavioral', 'strategy') AND
         ${table.dimensionCoverage} IS NOT NULL AND
         ${table.rubricVersion} = 'pm-feedback-rubric.v3'
+      )`
+    ),
+    verifiedPrefixScopeTupleCheck: check(
+      "feedback_verified_prefix_scope_tuple_check",
+      sql`(
+        ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v2' AND
+        ${table.verifiedPrefixScope} IS NULL
+      ) OR (
+        ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
+        ${table.evaluationState} = 'partial' AND
+        ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
+        ${table.overallScore} IS NULL AND
+        ${table.verifiedPrefixScope} IS NOT NULL AND
+        CASE
+          WHEN jsonb_typeof(${table.verifiedPrefixScope}) IS NOT DISTINCT FROM 'object' THEN
+            ${table.verifiedPrefixScope}->>'contractVersion' IS NOT DISTINCT FROM 'feedback.verified-prefix-scope.v1' AND
+            ${table.verifiedPrefixScope}->>'projectionVersion' IS NOT DISTINCT FROM 'trusted-answer-block-projection.v1' AND
+            CASE
+              WHEN jsonb_typeof(${table.verifiedPrefixScope}->'trustedBlockIdentities') IS NOT DISTINCT FROM 'array' THEN
+                jsonb_array_length(${table.verifiedPrefixScope}->'trustedBlockIdentities') BETWEEN 1 AND 1000
+              ELSE false
+            END AND
+            jsonb_typeof(${table.verifiedPrefixScope}->'excludedTailBlockCount') IS NOT DISTINCT FROM 'number' AND
+            CASE
+              WHEN ${table.verifiedPrefixScope}->>'excludedTailBlockCount' ~ '^(0|[1-9][0-9]{0,3})$' THEN
+                (${table.verifiedPrefixScope}->>'excludedTailBlockCount')::integer BETWEEN 0 AND 1000
+              ELSE false
+            END AND
+            (${table.verifiedPrefixScope} - 'contractVersion' - 'projectionVersion' - 'trustedBlockIdentities' - 'excludedTailBlockCount') IS NOT DISTINCT FROM '{}'::jsonb AND
+            octet_length(${table.verifiedPrefixScope}::text) <= 128000
+          ELSE false
+        END
       )`
     ),
     dispatchEventRequiredCheck: check(
@@ -1473,7 +1516,7 @@ export const focusedPracticeAttempt = pgTable(
           ${table.feedbackVersion}->>'sourceFingerprint' ~ '^[0-9a-f]{64}$'
         ) OR (
           ${table.contractVersion} = 'focused-practice-attempt.v2' AND
-          ${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND
+          ${table.feedbackVersion}->>'schemaVersion' IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND
           ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.dimension-coverage.v1' AND
           ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v3' AND
           ${table.feedbackVersion}->>'evaluationState' = 'partial' AND
@@ -1495,7 +1538,7 @@ export const focusedPracticeAttempt = pgTable(
             ${table.plan}#>>'{source,focusIdentity,kind}' = ${table.sourceFinding}->>'kind' AND
             (
               (${table.feedbackVersion}->>'schemaVersion' = 'feedback.evidence-limited.v2' AND ${table.sourceFinding}->>'kind' = 'evidence_limited_improvement') OR
-              (${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND ${table.sourceFinding}->>'kind' = 'dimension_coverage_focus')
+              (${table.feedbackVersion}->>'schemaVersion' IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND ${table.sourceFinding}->>'kind' = 'dimension_coverage_focus')
             )
           )
         ) AND
