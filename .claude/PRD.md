@@ -164,7 +164,20 @@ These ideas are not shipped relaunch promises:
 - AI and agent product-management practice tracks.
 - Validated progress models based on longitudinal evidence.
 - Enterprise custom rubrics, cohorts, privacy controls, and evaluation exports.
-- Broader roles only after the PM wedge is working or a concrete distribution advantage justifies expansion.
+- A domain-pack platform for high-stakes, dialogue-based professional practice,
+  with complete competency, scenario, interviewer-policy, evidence,
+  evaluation, progression, and tool contracts for each profession.
+- Potential domain expansion into consulting cases, engineering judgment and
+  system design, accounting and finance scenarios, and later higher-trust
+  professional formats only after the PM wedge is working or a concrete buyer
+  or distribution advantage justifies expansion.
+- Interviewer training and calibration followed by workplace skill simulations
+  when enterprise buyer evidence supports them.
+
+The accepted long-term direction is recorded in
+`docs/decisions/2026-08-13-multi-domain-professional-simulation-direction.md`.
+It does not change the current live PM interview practice category or authorize
+a second public domain.
 
 Future work should strengthen acquisition, activation, retention, monetization, enterprise validation, or product quality and name which lever it serves.
 
