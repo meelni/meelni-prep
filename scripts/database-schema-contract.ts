@@ -47,6 +47,10 @@ export const ANALYTICS_CONSENT_SCHEMA_FINGERPRINT =
   "d6b855e326a11e0f44732bcbb4a25b0565af76074a4976d3caec750877bd9701";
 export const PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT =
   "82586c6f559387b1a1b98f955565b9e7efbf91265a36234adac41079d4d381ba";
+// Refreshed after the forward-only ten-preview allowance changes the two
+// public-demo function definitions without changing the table shape.
+export const PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT =
+  "c6b818b528246faee01597450cff4a3b5d4ebca70c0738990a6e92f1a188634e";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =

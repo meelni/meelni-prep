@@ -56,6 +56,7 @@ import {
   SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT,
   LEGACY_RELAUNCH_SCHEMA_FINGERPRINT,
   PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
+  PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
   QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT,
   TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT,
@@ -315,7 +316,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, FEEDBACK_QUALITY_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -511,9 +515,10 @@ async function run() {
         DIMENSION_COVERAGE_SCHEMA_FINGERPRINT,
         FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT,
         FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
+        PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 34; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 35; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -533,7 +538,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 35; found 22/
+            /Strict launch preflight requires the exact latest migration count 36; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -842,7 +847,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 35);
+      assert.equal(await migrationCount(sql), 36);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -906,7 +911,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
+      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1151,7 +1156,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 35; found 25/
+      /exact latest migration count 36; found 25/
     );
 
     const genericRows = await sql<
@@ -1250,9 +1255,12 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 35);
+    assert.equal(await migrationCount(sql), 36);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "feedback_quality_signals");
+    assert.equal(
+      finalPreflight.startingContract,
+      "public_demo_preview_allowance"
+    );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 39);
@@ -1261,7 +1269,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
+      PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6428,7 +6436,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "feedback_quality_signals"
+      "public_demo_preview_allowance"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7809,7 +7817,7 @@ async function verifyFeedbackQualityDeletionWinsRateLimit(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 35);
+  assert.equal(await migrationCount(sql), 36);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -9867,11 +9875,12 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
         room_name: string | null;
         limiting_scope: string | null;
         retry_after_seconds: number;
+        remaining: number;
         recovery_claim_token: string | null;
         deadline_at: Date | string | null;
       }[]
     >`
-      SELECT decision, room_name, limiting_scope, retry_after_seconds,
+      SELECT decision, room_name, limiting_scope, retry_after_seconds, remaining,
         recovery_claim_token, deadline_at
       FROM public.reserve_public_demo_session(
         ${requestedSessionId}::uuid,
@@ -10061,6 +10070,31 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
   `;
   assert.equal(ipRowsAfter[0]?.rows, ipRowsBefore[0]?.rows);
 
+  await sql`
+    UPDATE public_demo_session
+    SET active_expires_at = clock_timestamp() - interval '1 second'
+    WHERE id = ${sessionId}::uuid
+  `;
+  const [rotation] = await reserve(sql, sessionId);
+  assert.deepEqual(
+    {
+      decision: rotation?.decision,
+      roomName: rotation?.room_name,
+      limitingScope: rotation?.limiting_scope,
+      retryAfterSeconds: rotation?.retry_after_seconds,
+      remaining: rotation?.remaining,
+      deadlineAt: rotation?.deadline_at,
+    },
+    {
+      decision: "rotate_session",
+      roomName: null,
+      limitingScope: null,
+      retryAfterSeconds: 0,
+      remaining: 0,
+      deadlineAt: null,
+    }
+  );
+
   const rollbackSessionId = "d3000000-0000-4000-8000-000000000001";
   assert.equal(
     (await reserve(sql, rollbackSessionId, "c".repeat(64), "d".repeat(64)))[0]
@@ -10091,6 +10125,108 @@ async function verifyPublicDemoLimits(sql: postgres.Sql) {
       ?.decision,
     "issue_token"
   );
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
+  const sharedIp = "8".repeat(64);
+  const sharedDevice = "9".repeat(64);
+  for (let index = 0; index < 10; index += 1) {
+    const nextSession = `d4000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+    const [accepted] = await reserve(sql, nextSession, sharedIp, sharedDevice);
+    assert.equal(accepted?.decision, "provision");
+    assert.equal(accepted?.remaining, 9 - index);
+    const [ready] = await sql<{ completed: boolean }[]>`
+      SELECT public.complete_public_demo_session(
+        ${nextSession}::uuid, 'ready', NULL
+      ) AS completed
+    `;
+    assert.equal(ready?.completed, true);
+    await sql`
+      UPDATE public_demo_session
+      SET active_expires_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${nextSession}::uuid
+    `;
+  }
+  const [sharedIpEleventh] = await reserve(
+    sql,
+    "d4000000-0000-4000-8000-000000000010",
+    sharedIp,
+    sharedDevice
+  );
+  assert.equal(sharedIpEleventh?.decision, "rate_limited");
+  assert.ok(["ip", "device"].includes(sharedIpEleventh?.limiting_scope ?? ""));
+  assert.ok((sharedIpEleventh?.retry_after_seconds ?? 0) > 0);
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
+  const dailyDevice = "7".repeat(64);
+  for (let index = 0; index < 10; index += 1) {
+    const nextSession = `d5000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+    const [accepted] = await reserve(
+      sql,
+      nextSession,
+      index.toString(16).padStart(64, "0"),
+      dailyDevice
+    );
+    assert.equal(accepted?.decision, "provision");
+    const [ready] = await sql<{ completed: boolean }[]>`
+      SELECT public.complete_public_demo_session(
+        ${nextSession}::uuid, 'ready', NULL
+      ) AS completed
+    `;
+    assert.equal(ready?.completed, true);
+    await sql`
+      UPDATE public_demo_session
+      SET active_expires_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${nextSession}::uuid
+    `;
+  }
+  const [deviceEleventh] = await reserve(
+    sql,
+    "d5000000-0000-4000-8000-000000000010",
+    "a".repeat(64),
+    dailyDevice
+  );
+  assert.equal(deviceEleventh?.decision, "rate_limited");
+  assert.equal(deviceEleventh?.limiting_scope, "device");
+
+  await sql`DELETE FROM public_demo_session`;
+  await sql`DELETE FROM public_demo_rate_limit`;
+
+  const failedSessionId = "d6000000-0000-4000-8000-000000000001";
+  const failedIp = "5".repeat(64);
+  const failedDevice = "6".repeat(64);
+  assert.equal(
+    (await reserve(sql, failedSessionId, failedIp, failedDevice))[0]?.decision,
+    "provision"
+  );
+  const [failedCompletion] = await sql<{ completed: boolean }[]>`
+    SELECT public.complete_public_demo_session(
+      ${failedSessionId}::uuid, 'failed', 'livekit_demo_start_failed'
+    ) AS completed
+  `;
+  assert.equal(failedCompletion?.completed, true);
+  const refunded = await sql<{ scope: string; accepted: number }[]>`
+    SELECT scope, cardinality(accepted_at)::int AS accepted
+    FROM public_demo_rate_limit
+    WHERE deployment_scope = 'development'
+    ORDER BY scope
+  `;
+  assert.deepEqual(Array.from(refunded), [
+    { scope: "device", accepted: 0 },
+    { scope: "global", accepted: 0 },
+    { scope: "ip", accepted: 0 },
+  ]);
+  const [retryAfterRefund] = await reserve(
+    sql,
+    "d6000000-0000-4000-8000-000000000002",
+    failedIp,
+    failedDevice
+  );
+  assert.equal(retryAfterRefund?.decision, "provision");
+  assert.equal(retryAfterRefund?.remaining, 9);
 }
 
 async function verifyDurableContactSubmission(
