@@ -35,6 +35,8 @@ export const FEEDBACK_GENERATION_FAILURE_CLASSES = [
   "provider_capacity",
   "provider_authentication",
   "provider_configuration",
+  "provider_refusal",
+  "provider_schema",
   "provider_contract",
   "evidence_integrity",
   "fenced",
@@ -200,6 +202,26 @@ export function classifyFeedbackGenerationFailure(
       observedServiceTier: providerError.observedServiceTier ?? null,
       retryAfterMs: providerError.diagnostic?.retryAfterMs ?? null,
     };
+    if (
+      providerError.code === "evaluation_provider_refused" ||
+      providerError.code === "evaluation_provider_content_filtered"
+    ) {
+      return {
+        ...failure("validation", "provider_refusal"),
+        ...diagnostics,
+      };
+    }
+    if (
+      providerError.code === "evaluation_provider_returned_no_content" ||
+      providerError.code === "evaluation_provider_returned_invalid_json" ||
+      providerError.code === "evaluation_provider_returned_invalid_feedback" ||
+      providerError.code === "evaluation_provider_usage_missing"
+    ) {
+      return {
+        ...failure("validation", "provider_schema"),
+        ...diagnostics,
+      };
+    }
     if (providerError.code !== "evaluation_provider_invocation_failed") {
       return {
         ...failure("validation", "provider_contract"),

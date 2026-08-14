@@ -3,9 +3,10 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains thirty-seven entries, from
-`0000_many_nocturne` through `0036_sav_442_runtime_settlement_command`. The migration-history
-inventory is checked against `_journal.json` in the local operations suite so
+The current committed journal contains thirty-eight entries, from
+`0000_many_nocturne` through
+`0037_sav_439_feedback_stage_attempt_history`. The migration-history inventory
+is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
 Open PRs do not reserve sequence numbers independently. Before merging a
@@ -91,8 +92,8 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with thirty-seven
-ledger entries, 40 RLS-enabled tables, three unique contracts, zero unsafe
+six ledger entries. Expected post-migration status is `reconciled` with thirty-eight
+ledger entries, 41 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
 transcript-privacy, runtime-settlement, stable-start, provider-credit-recovery,
@@ -102,8 +103,9 @@ server-owned billing privilege, explicit-analytics-consent,
 runtime-settlement-reconciliation, public-demo-limit, question-provenance, and
 focused-practice-attempt, durable-contact-submission, transcript-watermark,
 feedback-outcome, dimension-coverage, scoreless-focused-practice,
-feedback-quality, public-demo-preview-allowance, and
-durable-runtime-settlement-command contract fingerprints.
+feedback-quality, public-demo-preview-allowance,
+durable-runtime-settlement-command, and feedback-stage-attempt contract
+fingerprints.
 The durable-contact contract includes the non-login contact-triage group role,
 denial of triage RPCs to Supabase shared roles, separate runtime limiter access,
 and zero direct group privileges on contact tables.
@@ -202,9 +204,8 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 37`, and durable-runtime-settlement-command schema
-   fingerprint
-   `7b260723e163004467cf2913341d0fa5169ad8378b8e23c37f8a02e2ff54cb88`.
+   `migrationCount: 38`, and feedback-stage-attempt schema fingerprint
+   `e8fa457fb30012ddc2d519078ebd1bb64103c72749e1994f1a7a539a70f0bcc7`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.

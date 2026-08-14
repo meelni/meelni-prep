@@ -1048,6 +1048,219 @@ export const feedback = pgTable(
   })
 );
 
+// Content-free, service-only history for one exact feedback generation event.
+// generation_event_fence is a versioned SHA-256 of the internal workflow event,
+// never the raw event or a provider request id. Rows contain no user/session/
+// room identity, content, provider payload, provider request id, or raw error.
+export const feedbackGenerationStageAttempt = pgTable(
+  "feedback_generation_stage_attempt",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    feedbackId: uuid("feedback_id")
+      .references(() => feedback.id)
+      .notNull(),
+    generationEventFence: text("generation_event_fence").notNull(),
+    workflowAttempt: integer("workflow_attempt").notNull(),
+    operation: text("operation")
+      .$type<
+        | "queue_wait"
+        | "authorization"
+        | "claim"
+        | "legacy_evidence"
+        | "answer_blocks"
+        | "provider_request"
+        | "provider_response"
+        | "complete"
+        | "skip"
+      >()
+      .notNull(),
+    stage: text("stage")
+      .$type<
+        | "claim"
+        | "evidence_preparation"
+        | "provider"
+        | "validation"
+        | "persistence"
+      >()
+      .notNull(),
+    providerAttempt: integer("provider_attempt"),
+    outcome: text("outcome")
+      .$type<"succeeded" | "retrying" | "skipped" | "failed" | "fenced">()
+      .notNull(),
+    failureClass: text("failure_class"),
+    retryable: boolean("retryable").default(false).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    durationBucket: text("duration_bucket")
+      .$type<"lt_1s" | "1s_to_5s" | "5s_to_15s" | "15s_to_45s" | "45s_to_90s">()
+      .notNull(),
+    remainingBudgetMs: integer("remaining_budget_ms").notNull(),
+    retryAfterMs: integer("retry_after_ms"),
+    environmentClass: text("environment_class")
+      .$type<
+        "local" | "test" | "preview" | "staging" | "production" | "unknown"
+      >()
+      .notNull(),
+    release: text("release"),
+    providerDiagnosticKind: text("provider_diagnostic_kind"),
+    providerHttpStatus: integer("provider_http_status"),
+    observedModel: text("observed_model"),
+    observedServiceTier: text("observed_service_tier"),
+    inputTokens: integer("input_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    outputTokens: integer("output_tokens"),
+    totalTokens: integer("total_tokens"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    eventFenceCheck: check(
+      "feedback_generation_stage_attempt_event_fence_check",
+      sql`${table.generationEventFence} ~ '^v1:[a-f0-9]{64}$'`
+    ),
+    workflowAttemptCheck: check(
+      "feedback_generation_stage_attempt_workflow_attempt_check",
+      sql`${table.workflowAttempt} BETWEEN 1 AND 3`
+    ),
+    operationCheck: check(
+      "feedback_generation_stage_attempt_operation_check",
+      sql`${table.operation} IN ('queue_wait', 'authorization', 'claim', 'legacy_evidence', 'answer_blocks', 'provider_request', 'provider_response', 'complete', 'skip')`
+    ),
+    stageCheck: check(
+      "feedback_generation_stage_attempt_stage_check",
+      sql`${table.stage} IN ('claim', 'evidence_preparation', 'provider', 'validation', 'persistence')`
+    ),
+    operationStageCheck: check(
+      "feedback_generation_stage_attempt_operation_stage_check",
+      sql`(
+        ${table.operation} IN ('queue_wait', 'authorization', 'claim') AND ${table.stage} = 'claim'
+      ) OR (
+        ${table.operation} IN ('legacy_evidence', 'answer_blocks') AND ${table.stage} = 'evidence_preparation'
+      ) OR (
+        ${table.operation} = 'provider_request' AND ${table.stage} = 'provider'
+      ) OR (
+        ${table.operation} = 'provider_response' AND ${table.stage} = 'validation'
+      ) OR (
+        ${table.operation} IN ('complete', 'skip') AND ${table.stage} = 'persistence'
+      )`
+    ),
+    providerAttemptCheck: check(
+      "feedback_generation_stage_attempt_provider_attempt_check",
+      sql`(
+        ${table.operation} IN ('provider_request', 'provider_response') AND ${table.providerAttempt} BETWEEN 1 AND 3
+      ) OR (
+        ${table.operation} NOT IN ('provider_request', 'provider_response') AND ${table.providerAttempt} IS NULL
+      )`
+    ),
+    outcomeCheck: check(
+      "feedback_generation_stage_attempt_outcome_check",
+      sql`${table.outcome} IN ('succeeded', 'retrying', 'skipped', 'failed', 'fenced')`
+    ),
+    failureClassCheck: check(
+      "feedback_generation_stage_attempt_failure_class_check",
+      sql`${table.failureClass} IS NULL OR ${table.failureClass} IN ('deadline_exceeded', 'transport_timeout', 'transport_network', 'provider_rate_limited', 'provider_capacity', 'provider_authentication', 'provider_configuration', 'provider_refusal', 'provider_schema', 'provider_contract', 'evidence_integrity', 'fenced', 'persistence', 'internal')`
+    ),
+    outcomeFailureCheck: check(
+      "feedback_generation_stage_attempt_outcome_failure_check",
+      sql`(
+        ${table.outcome} IN ('succeeded', 'skipped') AND ${table.failureClass} IS NULL AND ${table.retryable} = false
+      ) OR (
+        ${table.outcome} = 'retrying' AND ${table.failureClass} IS NOT NULL AND ${table.retryable} = true
+      ) OR (
+        ${table.outcome} = 'failed' AND ${table.failureClass} IS NOT NULL AND ${table.retryable} = false
+      ) OR (
+        ${table.outcome} = 'fenced' AND ${table.failureClass} = 'fenced' AND ${table.retryable} = false
+      )`
+    ),
+    timingCheck: check(
+      "feedback_generation_stage_attempt_timing_check",
+      sql`${table.completedAt} = ${table.startedAt} + (${table.durationMs} * INTERVAL '1 millisecond') AND ${table.durationMs} BETWEEN 0 AND 90000 AND ${table.remainingBudgetMs} BETWEEN 0 AND 90000 AND (${table.retryAfterMs} IS NULL OR ${table.retryAfterMs} BETWEEN 0 AND 90000)`
+    ),
+    durationBucketCheck: check(
+      "feedback_generation_stage_attempt_duration_bucket_check",
+      sql`(
+        ${table.durationBucket} = 'lt_1s' AND ${table.durationMs} >= 0 AND ${table.durationMs} < 1000
+      ) OR (
+        ${table.durationBucket} = '1s_to_5s' AND ${table.durationMs} >= 1000 AND ${table.durationMs} < 5000
+      ) OR (
+        ${table.durationBucket} = '5s_to_15s' AND ${table.durationMs} >= 5000 AND ${table.durationMs} < 15000
+      ) OR (
+        ${table.durationBucket} = '15s_to_45s' AND ${table.durationMs} >= 15000 AND ${table.durationMs} < 45000
+      ) OR (
+        ${table.durationBucket} = '45s_to_90s' AND ${table.durationMs} >= 45000 AND ${table.durationMs} <= 90000
+      )`
+    ),
+    environmentCheck: check(
+      "feedback_generation_stage_attempt_environment_check",
+      sql`${table.environmentClass} IN ('local', 'test', 'preview', 'staging', 'production', 'unknown')`
+    ),
+    releaseCheck: check(
+      "feedback_generation_stage_attempt_release_check",
+      sql`${table.release} IS NULL OR ${table.release} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$'`
+    ),
+    providerDiagnosticCheck: check(
+      "feedback_generation_stage_attempt_provider_diagnostic_check",
+      sql`${table.providerDiagnosticKind} IS NULL OR ${table.providerDiagnosticKind} IN ('provider_bad_request', 'provider_authentication', 'provider_permission', 'provider_not_found', 'provider_conflict', 'provider_unprocessable', 'provider_rate_limited', 'provider_timeout', 'provider_network', 'provider_aborted', 'provider_server_error', 'provider_unknown')`
+    ),
+    providerStatusCheck: check(
+      "feedback_generation_stage_attempt_provider_status_check",
+      sql`${table.providerHttpStatus} IS NULL OR ${table.providerHttpStatus} BETWEEN 100 AND 599`
+    ),
+    providerContextCheck: check(
+      "feedback_generation_stage_attempt_provider_context_check",
+      sql`(
+        ${table.operation} NOT IN ('provider_request', 'provider_response') AND
+        ${table.retryAfterMs} IS NULL AND
+        ${table.providerDiagnosticKind} IS NULL AND
+        ${table.providerHttpStatus} IS NULL AND
+        ${table.observedModel} IS NULL AND
+        ${table.observedServiceTier} IS NULL AND
+        ${table.inputTokens} IS NULL AND
+        ${table.cachedInputTokens} IS NULL AND
+        ${table.outputTokens} IS NULL AND
+        ${table.totalTokens} IS NULL
+      ) OR (
+        ${table.operation} = 'provider_request' AND
+        (${table.providerHttpStatus} IS NULL OR ${table.providerDiagnosticKind} IS NOT NULL) AND
+        (${table.retryAfterMs} IS NULL OR ${table.outcome} = 'retrying')
+      ) OR (
+        ${table.operation} = 'provider_response' AND
+        ${table.retryAfterMs} IS NULL AND
+        (${table.providerHttpStatus} IS NULL OR ${table.providerDiagnosticKind} IS NOT NULL)
+      )`
+    ),
+    providerLabelCheck: check(
+      "feedback_generation_stage_attempt_provider_label_check",
+      sql`(${table.observedModel} IS NULL OR ${table.observedModel} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$') AND (${table.observedServiceTier} IS NULL OR ${table.observedServiceTier} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$')`
+    ),
+    usageTupleCheck: check(
+      "feedback_generation_stage_attempt_usage_tuple_check",
+      sql`(
+        ${table.inputTokens} IS NULL AND ${table.cachedInputTokens} IS NULL AND ${table.outputTokens} IS NULL AND ${table.totalTokens} IS NULL
+      ) OR (
+        ${table.inputTokens} BETWEEN 0 AND 10000000 AND
+        ${table.cachedInputTokens} BETWEEN 0 AND 10000000 AND
+        ${table.outputTokens} BETWEEN 0 AND 10000000 AND
+        ${table.totalTokens} BETWEEN 0 AND 10000000
+      )`
+    ),
+    exactAttemptUnique: unique("feedback_generation_stage_attempt_exact_idx")
+      .on(
+        table.feedbackId,
+        table.generationEventFence,
+        table.workflowAttempt,
+        table.operation,
+        table.providerAttempt
+      )
+      .nullsNotDistinct(),
+    feedbackTimelineIdx: index(
+      "feedback_generation_stage_attempt_timeline_idx"
+    ).on(table.feedbackId, table.startedAt),
+  })
+);
+
 // One mutable, owner-authored quality signal for an immutable actionable
 // review. The source review remains unchanged; this table owns only the
 // candidate's current closed response and CAS revision.
@@ -1749,12 +1962,23 @@ export const interviewSessionRelations = relations(
   })
 );
 
-export const feedbackRelations = relations(feedback, ({ one }) => ({
+export const feedbackRelations = relations(feedback, ({ one, many }) => ({
   session: one(interviewSession, {
     fields: [feedback.sessionId],
     references: [interviewSession.id],
   }),
+  generationStageAttempts: many(feedbackGenerationStageAttempt),
 }));
+
+export const feedbackGenerationStageAttemptRelations = relations(
+  feedbackGenerationStageAttempt,
+  ({ one }) => ({
+    feedback: one(feedback, {
+      fields: [feedbackGenerationStageAttempt.feedbackId],
+      references: [feedback.id],
+    }),
+  })
+);
 
 export const focusedPracticeAttemptRelations = relations(
   focusedPracticeAttempt,

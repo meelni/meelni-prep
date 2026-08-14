@@ -13,6 +13,10 @@ import {
   type FeedbackGenerationRecord,
   type FeedbackGenerationStore,
 } from "@/lib/db/feedback-generation-state";
+import {
+  createFeedbackGenerationStageAttemptStore,
+  type FeedbackGenerationStageAttemptStore,
+} from "@/lib/db/feedback-generation-stage-attempts";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
 import { getFrozenFeedbackEvaluationEvidence } from "@/lib/db/transcripts";
@@ -37,9 +41,15 @@ import {
 } from "@/lib/evaluation/feedback-generation-policy";
 import {
   reportFeedbackGenerationAttempt,
+  type FeedbackGenerationAttemptInput,
   type FeedbackGenerationAttemptOutcome,
   type FeedbackGenerationAttemptReporter,
 } from "@/lib/operations/feedback-generation-attempt";
+import {
+  resolveFeedbackGenerationRuntimeMetadata,
+  type FeedbackGenerationRuntimeMetadata,
+  type FeedbackGenerationStageAttemptOperation,
+} from "@/lib/operations/feedback-generation-stage-attempt";
 import {
   SessionTier,
   prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
@@ -97,6 +107,12 @@ export interface GenerateFeedbackWorkflowDeps {
     reportAttempt: FeedbackGenerationAttemptReporter;
   }): Promise<FeedbackEvaluationResult>;
   reportAttempt: FeedbackGenerationAttemptReporter;
+  recordStageAttempts?: FeedbackGenerationStageAttemptStore["recordMany"];
+  runtimeMetadata?: FeedbackGenerationRuntimeMetadata;
+  /** Per-invocation transient buffer; raw event identity is never persisted. */
+  stageAttemptBuffer?: Array<
+    Parameters<FeedbackGenerationStageAttemptStore["record"]>[0]
+  >;
   /** In-memory compatibility only for the pre-v3 synthetic calibration harness. */
   allowLegacyEvaluationForSyntheticCalibration?: true;
   /** Preserves the calibration harness's authenticated provider diagnostics. */
@@ -129,7 +145,27 @@ export type GenerateFeedbackWorkflowResult =
       sessionId: string;
     };
 
+interface CapturedFeedbackGenerationAttempt {
+  input: FeedbackGenerationAttemptInput;
+  completedAtMs: number;
+}
+
 export async function generateFeedbackWorkflow(
+  input: GenerateFeedbackWorkflowInput,
+  deps: GenerateFeedbackWorkflowDeps
+): Promise<GenerateFeedbackWorkflowResult> {
+  const stageAttemptBuffer: NonNullable<
+    GenerateFeedbackWorkflowDeps["stageAttemptBuffer"]
+  > = [];
+  const observedDeps = { ...deps, stageAttemptBuffer };
+  try {
+    return await runGenerateFeedbackWorkflow(input, observedDeps);
+  } finally {
+    await flushStageAttemptBuffer(observedDeps);
+  }
+}
+
+async function runGenerateFeedbackWorkflow(
   input: GenerateFeedbackWorkflowInput,
   deps: GenerateFeedbackWorkflowDeps
 ): Promise<GenerateFeedbackWorkflowResult> {
@@ -138,13 +174,28 @@ export async function generateFeedbackWorkflow(
     nowMs: deps.now().getTime(),
   });
   const executionAttempt = getFeedbackGenerationExecutionAttempt(input);
+  const queueObservedAtMs = deps.now().getTime();
+  await reportAttemptEvidence(deps, deadlineAtMs, input, {
+    operation: "queue_wait",
+    stage: "claim",
+    workflowAttempt: executionAttempt,
+    providerAttempt: null,
+    outcome: "succeeded",
+    durationMs: Math.min(
+      90_000,
+      Math.max(0, queueObservedAtMs - (deadlineAtMs - 90_000))
+    ),
+    completedAtMs: queueObservedAtMs,
+  });
   const authorization = await runObservedFeedbackStage(
     {
       deps,
+      workflow: input,
       deadlineAtMs,
       name: "authorize-feedback-generation",
+      operation: "authorization",
       stage: "claim",
-      attempt: executionAttempt,
+      workflowAttempt: executionAttempt,
     },
     async () => {
       await assertAccountIsActive(input.userId, deps);
@@ -170,10 +221,12 @@ export async function generateFeedbackWorkflow(
   const claimed = await runObservedFeedbackStage(
     {
       deps,
+      workflow: input,
       deadlineAtMs,
       name: "claim-feedback-generation",
+      operation: "claim",
       stage: "claim",
-      attempt: executionAttempt,
+      workflowAttempt: executionAttempt,
     },
     () =>
       deps.store.claim({
@@ -184,16 +237,6 @@ export async function generateFeedbackWorkflow(
       })
   );
   if (!claimed) {
-    reportAttemptEvidence(deps, deadlineAtMs, {
-      stage: "claim",
-      attempt: executionAttempt,
-      outcome: "fenced",
-      failure: classifyFeedbackGenerationFailure(
-        new Error("feedback_generation_fenced"),
-        "claim"
-      ),
-      durationMs: 0,
-    });
     const current = await deps.steps.run("read-feedback-generation-claim", () =>
       deps.store.get(input.sessionId)
     );
@@ -217,10 +260,12 @@ export async function generateFeedbackWorkflow(
     const validation = await runObservedFeedbackStage(
       {
         deps,
+        workflow: input,
         deadlineAtMs,
         name: "validate-legacy-session",
+        operation: "legacy_evidence",
         stage: "evidence_preparation",
-        attempt: executionAttempt,
+        workflowAttempt: executionAttempt,
       },
       () => deps.validateLegacy(input.sessionId)
     );
@@ -251,10 +296,12 @@ export async function generateFeedbackWorkflow(
   const evidence = await runObservedFeedbackStage(
     {
       deps,
+      workflow: input,
       deadlineAtMs,
       name: "fetch-feedback-answer-blocks",
+      operation: "answer_blocks",
       stage: "evidence_preparation",
-      attempt: executionAttempt,
+      workflowAttempt: executionAttempt,
     },
     () => deps.getAnswerBlockEvidence(input.sessionId)
   );
@@ -295,9 +342,11 @@ export async function generateFeedbackWorkflow(
   for (;;) {
     if (!plan) {
       const failure = deadlineExceededFailure("provider");
-      reportAttemptEvidence(deps, deadlineAtMs, {
+      await reportAttemptEvidence(deps, deadlineAtMs, input, {
+        operation: "provider_request",
         stage: "provider",
-        attempt: Math.min(attempt, 3),
+        workflowAttempt: executionAttempt,
+        providerAttempt: Math.min(attempt, 3),
         outcome: "failed",
         failure,
         durationMs: 0,
@@ -318,9 +367,11 @@ export async function generateFeedbackWorkflow(
       current.status !== "processing" ||
       current.eventId !== input.eventId
     ) {
-      reportAttemptEvidence(deps, deadlineAtMs, {
+      await reportAttemptEvidence(deps, deadlineAtMs, input, {
+        operation: "provider_request",
         stage: "provider",
-        attempt,
+        workflowAttempt: executionAttempt,
+        providerAttempt: attempt,
         outcome: "fenced",
         failure: classifyFeedbackGenerationFailure(
           new Error("feedback_generation_fenced"),
@@ -335,6 +386,7 @@ export async function generateFeedbackWorkflow(
       `evaluate-feedback-attempt-${attempt}`,
       async () => {
         const startedAtMs = deps.now().getTime();
+        const capturedAttempts: CapturedFeedbackGenerationAttempt[] = [];
         try {
           const currentAttemptPlan = planFeedbackProviderAttempt({
             attempt,
@@ -357,7 +409,17 @@ export async function generateFeedbackWorkflow(
               deadlineAtMs,
               requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
               now: () => deps.now().getTime(),
-              reportAttempt: deps.reportAttempt,
+              reportAttempt: (attemptInput) => {
+                capturedAttempts.push({
+                  input: attemptInput,
+                  completedAtMs: deps.now().getTime(),
+                });
+                try {
+                  deps.reportAttempt(attemptInput);
+                } catch {
+                  // The aggregate event remains best-effort.
+                }
+              },
             }),
             currentAttemptPlan.requestTimeoutMs
           );
@@ -383,30 +445,58 @@ export async function generateFeedbackWorkflow(
           }
           return {
             disposition: "evaluated" as const,
+            workflowAttempt: executionAttempt,
             evaluation,
             processingDurationMs: Math.max(
               0,
               deps.now().getTime() -
                 (claimed.processingStartedAt?.getTime() ?? startedAtMs)
             ),
+            capturedAttempts,
           };
         } catch (error) {
           if (deps.preserveEvaluatorFailuresForSyntheticCalibration === true) {
             throw error;
           }
           if (!isClosedEvaluationFailure(error)) throw error;
+          const completedAtMs = deps.now().getTime();
+          const failure = classifyFeedbackGenerationFailure(
+            error,
+            "validation"
+          );
+          const failureStartedAtMs =
+            failure.stage === "validation"
+              ? (lastSuccessfulProviderCompletion(capturedAttempts) ??
+                startedAtMs)
+              : startedAtMs;
           return {
             disposition: "failed" as const,
-            failure: classifyFeedbackGenerationFailure(error, "validation"),
-            durationMs: Math.max(0, deps.now().getTime() - startedAtMs),
-            safeMessage: safeFeedbackGenerationErrorMessage(
-              error,
-              classifyFeedbackGenerationFailure(error, "validation")
-            ),
+            workflowAttempt: executionAttempt,
+            failure,
+            startedAtMs: failureStartedAtMs,
+            completedAtMs,
+            durationMs: Math.max(0, completedAtMs - failureStartedAtMs),
+            safeMessage: safeFeedbackGenerationErrorMessage(error, failure),
+            capturedAttempts,
           };
         }
       }
     );
+
+    for (const captured of attemptResult.capturedAttempts) {
+      if (
+        captured.input.stage === "validation" &&
+        attemptResult.disposition !== "evaluated"
+      ) {
+        continue;
+      }
+      await recordCapturedAttempt(
+        deps,
+        input,
+        attemptResult.workflowAttempt,
+        captured
+      );
+    }
 
     if (attemptResult.disposition === "evaluated") {
       evaluated = attemptResult;
@@ -417,17 +507,24 @@ export async function generateFeedbackWorkflow(
       ? planFeedbackProviderAttempt({
           attempt: attempt + 1,
           deadlineAtMs,
-          nowMs: deps.now().getTime(),
+          nowMs: attemptResult.completedAtMs,
           retryAfterMs: attemptResult.failure.retryAfterMs,
         })
       : null;
-    reportAttemptEvidence(deps, deadlineAtMs, {
+    await reportAttemptEvidence(deps, deadlineAtMs, input, {
+      operation:
+        attemptResult.failure.stage === "validation"
+          ? "provider_response"
+          : "provider_request",
       stage: attemptResult.failure.stage,
-      attempt,
+      workflowAttempt: attemptResult.workflowAttempt,
+      providerAttempt: attempt,
       outcome: retryPlan ? "retrying" : "failed",
       failure: attemptResult.failure,
       durationMs: attemptResult.durationMs,
       retryAfterMs: retryPlan?.delayMs ?? null,
+      startedAtMs: attemptResult.startedAtMs,
+      completedAtMs: attemptResult.completedAtMs,
     });
     if (!retryPlan) {
       throw new FeedbackGenerationPolicyError(
@@ -450,24 +547,25 @@ export async function generateFeedbackWorkflow(
     });
   }
 
+  await assertAccountIsActive(input.userId, deps);
   const applied = await runObservedFeedbackStage(
     {
       deps,
+      workflow: input,
       deadlineAtMs,
       name: "complete-feedback-generation",
+      operation: "complete",
       stage: "persistence",
-      attempt: executionAttempt,
+      workflowAttempt: executionAttempt,
     },
     () =>
-      assertAccountIsActive(input.userId, deps).then(() =>
-        deps.store.complete({
-          sessionId: input.sessionId,
-          eventId: input.eventId,
-          evaluation: evaluated!.evaluation,
-          processingDurationMs: evaluated!.processingDurationMs,
-          deadlineAt: new Date(deadlineAtMs),
-        })
-      )
+      deps.store.complete({
+        sessionId: input.sessionId,
+        eventId: input.eventId,
+        evaluation: evaluated!.evaluation,
+        processingDurationMs: evaluated!.processingDurationMs,
+        deadlineAt: new Date(deadlineAtMs),
+      })
   );
   if (!applied) {
     const current = await deps.steps.run(
@@ -552,11 +650,14 @@ export function createGenerateFeedbackWorkflowDeps(
     startObservabilityTrace?: StartFeedbackObservabilityTrace;
   } = {}
 ): GenerateFeedbackWorkflowDeps {
+  const stageAttemptStore = createFeedbackGenerationStageAttemptStore();
   return {
     store: createDrizzleFeedbackGenerationStore(),
     steps,
     now: () => new Date(),
     reportAttempt: reportFeedbackGenerationAttempt,
+    recordStageAttempts: (attempts) => stageAttemptStore.recordMany(attempts),
+    runtimeMetadata: resolveFeedbackGenerationRuntimeMetadata(),
     isDeletionPending: hasAccountDeletionTombstone,
     async getSession(sessionId) {
       const session = await getSessionById(sessionId);
@@ -627,10 +728,12 @@ async function skipClaimedFeedback(input: {
   const applied = await runObservedFeedbackStage(
     {
       deps: input.deps,
+      workflow: input.input,
       deadlineAtMs: input.deadlineAtMs,
       name: "skip-feedback-generation",
+      operation: "skip",
       stage: "persistence",
-      attempt: getFeedbackGenerationExecutionAttempt(input.input),
+      workflowAttempt: getFeedbackGenerationExecutionAttempt(input.input),
       successOutcome: "skipped",
     },
     () =>
@@ -748,10 +851,12 @@ function toEvaluationState(value: SessionTier): FeedbackEvaluationState | null {
 async function runObservedFeedbackStage<T>(
   input: {
     deps: GenerateFeedbackWorkflowDeps;
+    workflow: GenerateFeedbackWorkflowInput;
     deadlineAtMs: number;
     name: string;
+    operation: FeedbackGenerationStageAttemptOperation;
     stage: FeedbackGenerationStage;
-    attempt: number;
+    workflowAttempt: number;
     successOutcome?: FeedbackGenerationAttemptOutcome;
   },
   work: () => Promise<T>
@@ -769,22 +874,53 @@ async function runObservedFeedbackStage<T>(
         work(),
         getFeedbackGenerationRemainingBudgetMs(input.deadlineAtMs, startedAtMs)
       );
-      reportAttemptEvidence(input.deps, input.deadlineAtMs, {
-        stage: input.stage,
-        attempt: input.attempt,
-        outcome: input.successOutcome ?? "succeeded",
-        durationMs: Math.max(0, input.deps.now().getTime() - startedAtMs),
-      });
+      const completedAtMs = input.deps.now().getTime();
+      const rejectedFailure = observedStageRejectionFailure(
+        result,
+        input.stage,
+        input.deadlineAtMs,
+        completedAtMs
+      );
+      await reportAttemptEvidence(
+        input.deps,
+        input.deadlineAtMs,
+        input.workflow,
+        {
+          operation: input.operation,
+          stage: input.stage,
+          workflowAttempt: input.workflowAttempt,
+          providerAttempt: null,
+          outcome: rejectedFailure
+            ? rejectedFailure.failureClass === "fenced"
+              ? "fenced"
+              : "failed"
+            : (input.successOutcome ?? "succeeded"),
+          ...(rejectedFailure ? { failure: rejectedFailure } : {}),
+          durationMs: Math.max(0, completedAtMs - startedAtMs),
+          startedAtMs,
+          completedAtMs,
+        }
+      );
       return { disposition: "succeeded" as const, value: result };
     } catch (error) {
       const failure = classifyFeedbackGenerationFailure(error, input.stage);
-      reportAttemptEvidence(input.deps, input.deadlineAtMs, {
-        stage: input.stage,
-        attempt: input.attempt,
-        outcome: failure.retryable ? "retrying" : "failed",
-        failure,
-        durationMs: Math.max(0, input.deps.now().getTime() - startedAtMs),
-      });
+      const completedAtMs = input.deps.now().getTime();
+      await reportAttemptEvidence(
+        input.deps,
+        input.deadlineAtMs,
+        input.workflow,
+        {
+          operation: input.operation,
+          stage: input.stage,
+          workflowAttempt: input.workflowAttempt,
+          providerAttempt: null,
+          outcome: failure.retryable ? "retrying" : "failed",
+          failure,
+          durationMs: Math.max(0, completedAtMs - startedAtMs),
+          startedAtMs,
+          completedAtMs,
+        }
+      );
       if (!failure.retryable) {
         return {
           disposition: "failed" as const,
@@ -799,6 +935,35 @@ async function runObservedFeedbackStage<T>(
     throw new FeedbackGenerationPolicyError(result.failure, result.safeMessage);
   }
   return result.value;
+}
+
+function observedStageRejectionFailure(
+  result: unknown,
+  stage: FeedbackGenerationStage,
+  deadlineAtMs: number,
+  completedAtMs: number
+): FeedbackGenerationFailure | null {
+  if (result !== false && result !== null) return null;
+  if (completedAtMs >= deadlineAtMs) return deadlineExceededFailure(stage);
+  return classifyFeedbackGenerationFailure(
+    new Error("feedback_generation_fenced"),
+    stage
+  );
+}
+
+function lastSuccessfulProviderCompletion(
+  attempts: readonly CapturedFeedbackGenerationAttempt[]
+): number | null {
+  for (let index = attempts.length - 1; index >= 0; index -= 1) {
+    const attempt = attempts[index];
+    if (
+      attempt?.input.stage === "provider" &&
+      attempt.input.outcome === "succeeded"
+    ) {
+      return attempt.completedAtMs;
+    }
+  }
+  return null;
 }
 
 function isClosedEvaluationFailure(error: unknown): boolean {
@@ -845,28 +1010,39 @@ function throwFeedbackGenerationPolicyFailure(
 }
 
 function reportAttemptEvidence(
-  deps: Pick<GenerateFeedbackWorkflowDeps, "now" | "reportAttempt">,
+  deps: Pick<
+    GenerateFeedbackWorkflowDeps,
+    "now" | "reportAttempt" | "runtimeMetadata" | "stageAttemptBuffer"
+  >,
   deadlineAtMs: number,
+  workflow: GenerateFeedbackWorkflowInput,
   input: {
+    operation: FeedbackGenerationStageAttemptOperation;
     stage: FeedbackGenerationStage;
-    attempt: number;
+    workflowAttempt: number;
+    providerAttempt: number | null;
     outcome: FeedbackGenerationAttemptOutcome;
     durationMs: number;
     failure?: FeedbackGenerationFailure;
     retryAfterMs?: number | null;
+    startedAtMs?: number;
+    completedAtMs?: number;
   }
 ): void {
+  const completedAtMs = input.completedAtMs ?? deps.now().getTime();
+  const durationMs = Math.min(90_000, Math.max(0, input.durationMs));
+  const remainingBudgetMs = getFeedbackGenerationRemainingBudgetMs(
+    deadlineAtMs,
+    completedAtMs
+  );
   try {
     deps.reportAttempt({
       stage: input.stage,
-      attempt: input.attempt,
+      attempt: input.providerAttempt ?? input.workflowAttempt,
       outcome: input.outcome,
       failureClass: input.failure?.failureClass,
-      durationMs: Math.min(90_000, Math.max(0, input.durationMs)),
-      remainingBudgetMs: getFeedbackGenerationRemainingBudgetMs(
-        deadlineAtMs,
-        deps.now().getTime()
-      ),
+      durationMs,
+      remainingBudgetMs,
       retryAfterMs: input.retryAfterMs,
       providerDiagnosticKind: input.failure?.providerDiagnosticKind,
       providerHttpStatus: input.failure?.providerHttpStatus,
@@ -877,4 +1053,88 @@ function reportAttemptEvidence(
   } catch {
     // Operational evidence is best-effort and cannot change workflow state.
   }
+  const runtimeMetadata =
+    deps.runtimeMetadata ?? resolveFeedbackGenerationRuntimeMetadata();
+  deps.stageAttemptBuffer?.push({
+    sessionId: workflow.sessionId,
+    generationEventId: workflow.eventId,
+    workflowAttempt: input.workflowAttempt,
+    operation: input.operation,
+    stage: input.stage,
+    providerAttempt: input.providerAttempt,
+    outcome: input.outcome,
+    failureClass: input.failure?.failureClass ?? null,
+    retryable: input.failure?.retryable ?? false,
+    startedAt: new Date(input.startedAtMs ?? completedAtMs - durationMs),
+    completedAt: new Date(completedAtMs),
+    durationMs,
+    remainingBudgetMs,
+    retryAfterMs: input.retryAfterMs ?? null,
+    environmentClass: runtimeMetadata.environmentClass,
+    release: runtimeMetadata.release,
+    providerDiagnosticKind: input.failure?.providerDiagnosticKind ?? null,
+    providerHttpStatus: input.failure?.providerHttpStatus ?? null,
+    observedModel: input.failure?.observedModel ?? null,
+    observedServiceTier: input.failure?.observedServiceTier ?? null,
+    usage: input.failure?.usage ?? null,
+  });
+}
+
+function recordCapturedAttempt(
+  deps: Pick<
+    GenerateFeedbackWorkflowDeps,
+    "runtimeMetadata" | "stageAttemptBuffer"
+  >,
+  workflow: GenerateFeedbackWorkflowInput,
+  workflowAttempt: number,
+  captured: CapturedFeedbackGenerationAttempt
+): void {
+  const runtimeMetadata =
+    deps.runtimeMetadata ?? resolveFeedbackGenerationRuntimeMetadata();
+  const durationMs = Math.min(90_000, Math.max(0, captured.input.durationMs));
+  deps.stageAttemptBuffer?.push({
+    sessionId: workflow.sessionId,
+    generationEventId: workflow.eventId,
+    workflowAttempt,
+    operation:
+      captured.input.stage === "validation"
+        ? "provider_response"
+        : "provider_request",
+    stage: captured.input.stage,
+    providerAttempt: captured.input.attempt,
+    outcome: captured.input.outcome,
+    failureClass: captured.input.failureClass ?? null,
+    retryable: captured.input.outcome === "retrying",
+    startedAt: new Date(captured.completedAtMs - durationMs),
+    completedAt: new Date(captured.completedAtMs),
+    durationMs,
+    remainingBudgetMs: captured.input.remainingBudgetMs,
+    retryAfterMs: captured.input.retryAfterMs ?? null,
+    environmentClass: runtimeMetadata.environmentClass,
+    release: runtimeMetadata.release,
+    providerDiagnosticKind: captured.input.providerDiagnosticKind ?? null,
+    providerHttpStatus: captured.input.providerHttpStatus ?? null,
+    observedModel: captured.input.observedModel ?? null,
+    observedServiceTier: captured.input.observedServiceTier ?? null,
+    usage: captured.input.usage ?? null,
+  });
+}
+
+async function flushStageAttemptBuffer(
+  deps: Pick<
+    GenerateFeedbackWorkflowDeps,
+    "recordStageAttempts" | "stageAttemptBuffer"
+  >
+): Promise<void> {
+  if (!deps.recordStageAttempts || !deps.stageAttemptBuffer?.length) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 100);
+    void Promise.resolve()
+      .then(() => deps.recordStageAttempts!(deps.stageAttemptBuffer!))
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
 }
