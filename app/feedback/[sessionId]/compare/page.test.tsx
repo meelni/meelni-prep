@@ -87,7 +87,7 @@ describe("feedback comparison accessibility", () => {
 
     await waitFor(() =>
       expect(mocks.replace).toHaveBeenCalledWith(
-        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}%2Fcompare&cancelTo=%2Ffeedback%2F${SESSION_ID}%2Fcompare`
+        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}%2Fcompare&cancelTo=%2F`
       )
     );
   });

@@ -95,7 +95,7 @@ describe("feedback transcript read states", () => {
 
     await waitFor(() =>
       expect(navigation.replace).toHaveBeenCalledWith(
-        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2Ffeedback%2F${SESSION_ID}`
+        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2F`
       )
     );
   });
@@ -121,7 +121,7 @@ describe("feedback transcript read states", () => {
 
     await waitFor(() => expect(requests).toBe(2));
     expect(navigation.replace).toHaveBeenCalledWith(
-      `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2Ffeedback%2F${SESSION_ID}`
+      `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}&cancelTo=%2F`
     );
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
