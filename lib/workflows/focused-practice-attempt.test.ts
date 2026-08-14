@@ -858,7 +858,7 @@ test("an existing dimension-coverage v1 attempt resumes across authority enrichm
       roundType: sourceFixture.roundType,
       feedbackStatus: sourceFixture.feedbackStatus,
       question: sourceFixture.question,
-      feedback: sourceFixture.feedback as Record<string, unknown>,
+      feedback: sourceFixture.feedback as unknown as Record<string, unknown>,
       evidenceTurns: sourceFixture.evidenceTurns,
       frozenEvidence: {
         snapshotValid: true,
