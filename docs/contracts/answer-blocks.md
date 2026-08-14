@@ -141,3 +141,8 @@ required.
 The scoring policy is defined by the separately versioned
 [dimension evidence coverage contract](./dimension-evidence-coverage.md).
 Unsupported rubric dimensions and overall scores must never be fabricated.
+
+Whether a derived block is independently authoritative under frozen terminal
+evidence is defined by the additive
+[trusted closed answer-block authority contract](./trusted-answer-block-authority.md).
+That projection reuses these exact blocks and never changes this grouper.
