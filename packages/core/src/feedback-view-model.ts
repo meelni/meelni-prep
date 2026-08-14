@@ -36,6 +36,10 @@ import {
   MAX_CANONICAL_EVENT_ID_LENGTH,
   prepareFeedbackTranscript,
 } from "./feedback-transcript";
+import {
+  decodeSavedInterviewWorkspace,
+  type SavedInterviewWorkspace,
+} from "./saved-interview-workspace";
 
 export const LEGACY_FEEDBACK_RUBRIC_VERSION = "1.0.0" as const;
 export const FEEDBACK_REVIEW_PRESENTATION_VERSION =
@@ -226,7 +230,7 @@ export interface SkippedFeedbackDetails {
     | "credit_recovery_in_progress";
 }
 
-export type FeedbackLifecycleResponse =
+export type FeedbackLifecycleResponse = (
   | { status: "missing"; retryable: true; message?: string }
   | {
       status: "session_not_ended";
@@ -272,7 +276,8 @@ export type FeedbackLifecycleResponse =
       status: "skipped";
       retryable: false;
       details: SkippedFeedbackDetails;
-    };
+    }
+) & { workspace?: SavedInterviewWorkspace };
 
 export type FeedbackViewState =
   | { kind: "unavailable"; message: string }
@@ -546,6 +551,9 @@ export function decodeFeedbackLifecycleResponse(
   value: unknown
 ): FeedbackLifecycleResponse | null {
   if (!isRecord(value) || typeof value.status !== "string") return null;
+  const workspace = decodeOptionalSavedInterviewWorkspace(value.workspace);
+  if (workspace === null) return null;
+  const workspaceField = workspace ? { workspace } : {};
   switch (value.status) {
     case "missing":
       return value.retryable === true && isOptionalString(value.message)
@@ -553,6 +561,7 @@ export function decodeFeedbackLifecycleResponse(
             status: "missing",
             retryable: true,
             ...(value.message ? { message: value.message } : {}),
+            ...workspaceField,
           }
         : null;
     case "session_not_ended":
@@ -561,6 +570,7 @@ export function decodeFeedbackLifecycleResponse(
             status: "session_not_ended",
             retryable: false,
             ...(value.message ? { message: value.message } : {}),
+            ...workspaceField,
           }
         : null;
     case "settling":
@@ -572,6 +582,7 @@ export function decodeFeedbackLifecycleResponse(
             retryable: value.retryable,
             ...(value.delayed !== undefined ? { delayed: value.delayed } : {}),
             ...(value.message ? { message: value.message } : {}),
+            ...workspaceField,
           }
         : null;
     case "pending":
@@ -586,6 +597,7 @@ export function decodeFeedbackLifecycleResponse(
             ...(value.estimatedTimeRemaining !== undefined
               ? { estimatedTimeRemaining: value.estimatedTimeRemaining }
               : {}),
+            ...workspaceField,
           }
         : null;
     case "dispatch_failed":
@@ -597,6 +609,7 @@ export function decodeFeedbackLifecycleResponse(
             retryable: value.retryable,
             message: value.message,
             outcomeReason: "dispatch_failed",
+            ...workspaceField,
           }
         : null;
     case "failed":
@@ -608,23 +621,31 @@ export function decodeFeedbackLifecycleResponse(
             retryable: value.retryable,
             message: value.message,
             outcomeReason: "generation_failed",
+            ...workspaceField,
           }
         : null;
     case "skipped": {
       const details = decodeSkippedDetails(value.details);
       return value.retryable === false && details
-        ? { status: "skipped", retryable: false, details }
+        ? { status: "skipped", retryable: false, details, ...workspaceField }
         : null;
     }
     case "completed": {
       const feedback = decodeCompletedFeedbackView(value.feedback);
       return value.retryable === false && feedback
-        ? { status: "completed", retryable: false, feedback }
+        ? { status: "completed", retryable: false, feedback, ...workspaceField }
         : null;
     }
     default:
       return null;
   }
+}
+
+function decodeOptionalSavedInterviewWorkspace(
+  value: unknown
+): SavedInterviewWorkspace | undefined | null {
+  if (value === undefined) return undefined;
+  return decodeSavedInterviewWorkspace(value);
 }
 
 function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {

@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
+  buildFrozenFeedbackTranscriptUrl,
   FeedbackTranscriptSection,
   findTranscriptTurnReference,
   formatTranscriptTimestamp,
@@ -25,7 +26,14 @@ test("matches evidence by canonical event reference and reports missing referenc
   assert.equal(findTranscriptTurnReference(turns, "row-1"), null);
   assert.equal(
     findTranscriptTurnReference(
-      [{ ...turns[0], id: "legacy-row", eventId: null }],
+      [
+        {
+          id: "legacy-row",
+          speaker: turns[0].speaker,
+          startedAt: turns[0].startedAt,
+          text: turns[0].text,
+        },
+      ],
       "legacy-row"
     ),
     null
@@ -36,6 +44,13 @@ test("matches evidence by canonical event reference and reports missing referenc
 test("evidence scrolling honors the reduced-motion preference", () => {
   assert.equal(getEvidenceScrollBehavior(false), "smooth");
   assert.equal(getEvidenceScrollBehavior(true), "auto");
+});
+
+test("feedback transcript reads always request the frozen evidence scope", () => {
+  assert.equal(
+    buildFrozenFeedbackTranscriptUrl("session/with spaces"),
+    "/api/session/session%2Fwith%20spaces/transcript?scope=frozen"
+  );
 });
 
 test("transcript failure state offers an explicit retry action", () => {

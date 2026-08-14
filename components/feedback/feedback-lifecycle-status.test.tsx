@@ -5,6 +5,136 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
 
+const SAVED_WORKSPACE = {
+  version: "saved-interview.workspace.v1",
+  saved: true,
+  roundType: "product_sense",
+  question: {
+    text: "How would you improve a synthetic planning product?",
+    company: "Synthetic Co",
+  },
+  frozenTranscript: "ready",
+} as const;
+
+test("processing keeps saved interview context and frozen transcript access visible", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "processing", retryable: false, delayed: false },
+      workspace: SAVED_WORKSPACE,
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Interview saved/);
+  assert.match(html, /Product Sense mock interview/);
+  assert.match(html, /synthetic planning product/);
+  assert.match(html, /Synthetic Co/);
+  assert.match(html, /Saved interview transcript/);
+  assert.match(html, /Only finalized saved evidence is shown/);
+  assert.match(html, /aria-current="step"/);
+  assert.doesNotMatch(html, /score|provider/i);
+  const liveRegion = stageLiveRegion(html);
+  assert.match(liveRegion, /Reviewing your interview/);
+  assert.match(liveRegion, /aria-atomic="true"/);
+  assert.doesNotMatch(liveRegion, /synthetic planning product/);
+  assert.doesNotMatch(liveRegion, /Saved interview transcript/);
+});
+
+test("settling never offers transcript access before frozen evidence is ready", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "settling", retryable: false, delayed: false },
+      workspace: { ...SAVED_WORKSPACE, frozenTranscript: "pending" },
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Finalized transcript is still being prepared/);
+  assert.doesNotMatch(html, /Expand interview transcript/);
+  assert.doesNotMatch(html, /transcript could not be loaded/i);
+});
+
+test("paused saved workspace keeps context without claiming active work", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "processing", retryable: false, delayed: true },
+      workspace: SAVED_WORKSPACE,
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      recovering: false,
+      recoveryError: null,
+      pollingPaused: true,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Automatic checking paused/);
+  assert.match(html, /aria-busy="false"/);
+  assert.match(html, /Check again/);
+  assert.match(html, /Saved interview transcript/);
+  assert.doesNotMatch(html, /animate-spin/);
+  const liveRegion = stageLiveRegion(html);
+  assert.match(liveRegion, /Automatic checking paused/);
+  assert.match(liveRegion, /aria-busy="false"/);
+  assert.doesNotMatch(liveRegion, /Saved interview transcript/);
+});
+
+test("stage rerenders keep context and transcript outside the live region", () => {
+  const render = (pollingPaused: boolean) =>
+    renderToStaticMarkup(
+      React.createElement(FeedbackLifecycleStatus, {
+        state: { kind: "processing", retryable: false, delayed: pollingPaused },
+        workspace: SAVED_WORKSPACE,
+        sessionId: "550e8400-e29b-41d4-a716-446655440000",
+        recovering: false,
+        recoveryError: null,
+        pollingPaused,
+        onRecover() {},
+      })
+    );
+
+  for (const html of [render(false), render(true)]) {
+    const liveRegion = stageLiveRegion(html);
+    assert.doesNotMatch(liveRegion, /synthetic planning product/);
+    assert.doesNotMatch(liveRegion, /Synthetic Co/);
+    assert.doesNotMatch(liveRegion, /Saved interview transcript/);
+    assert.match(html, /synthetic planning product/);
+    assert.match(html, /Saved interview transcript/);
+  }
+});
+
+test("settling with unavailable evidence marks only feedback review current", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "settling", retryable: false, delayed: true },
+      workspace: { ...SAVED_WORKSPACE, frozenTranscript: "unavailable" },
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.equal(html.match(/aria-current="step"/g)?.length, 1);
+  assert.match(html, /Finalized transcript<\/p><p[^>]*>Unavailable<\/p>/);
+  assert.match(html, /aria-current="step"[^>]*>[\s\S]*?Feedback review/);
+});
+
+function stageLiveRegion(html: string): string {
+  const marker = html.indexOf("data-feedback-stage-status");
+  assert.notEqual(marker, -1);
+  const start = html.lastIndexOf("<div", marker);
+  assert.notEqual(start, -1);
+  const end = html.indexOf("</div>", marker);
+  assert.notEqual(end, -1);
+  return html.slice(start, end);
+}
+
 test("retryable processing remains visibly processing while recovery is available", () => {
   const html = renderToStaticMarkup(
     React.createElement(FeedbackLifecycleStatus, {

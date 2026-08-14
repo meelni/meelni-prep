@@ -15,6 +15,8 @@ export * from "./feedback-dimension-coverage";
 export * from "./feedback-outcome";
 export * from "./feedback-quality";
 export * from "./feedback-view-model";
+export * from "./saved-interview-workspace";
+export * from "./frozen-feedback-transcript-display";
 export * from "./feedback-transcript";
 export * from "./feedback-eligibility";
 export * from "./answer-blocks";
