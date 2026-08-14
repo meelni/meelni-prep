@@ -138,8 +138,8 @@ export function interpretPublicDemoStartFailure({
       60
     );
     return {
-      title: "The voice preview is at capacity for now",
-      message: "Availability resets automatically.",
+      title: "The voice preview is on cooldown",
+      message: "You can try again when the cooldown ends.",
       retryAt: now + retryAfter * 1000,
     };
   }
