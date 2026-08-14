@@ -1347,21 +1347,21 @@ function splitEnglishCoordinatedClauses(words) {
 function isBoundedCoordinatedNominalComplement(words) {
   return words.length >= 2 && words.length <= 3 && isEnglishAdjectiveShaped(words[0]) && !isEnglishAdjectiveShaped(words[words.length - 1]) && words.slice(1).every(isPotentialEnglishContentWord);
 }
-function hasEnglishDependentClause(words, marker) {
+function hasEnglishDependentClause(words, marker2) {
   if (words.length === 0) return false;
-  if (ENGLISH_RELATIVE_MARKERS.has(marker) && (isLikelyEnglishFinitePredicate(words[0]) || isEnglishDeclarativePredicate(words[0]))) {
+  if (ENGLISH_RELATIVE_MARKERS.has(marker2) && (isLikelyEnglishFinitePredicate(words[0]) || isEnglishDeclarativePredicate(words[0]))) {
     return words.slice(1).filter(isPotentialEnglishContentWord).length >= 1;
   }
-  if (ENGLISH_RELATIVE_MARKERS.has(marker) && words.length === 2 && isPotentialEnglishContentWord(words[0]) && ENGLISH_BOUNDED_INTRANSITIVE_PREDICATES.has(words[1])) {
+  if (ENGLISH_RELATIVE_MARKERS.has(marker2) && words.length === 2 && isPotentialEnglishContentWord(words[0]) && ENGLISH_BOUNDED_INTRANSITIVE_PREDICATES.has(words[1])) {
     return true;
   }
-  if ((marker === "if" || marker === "when") && words.length === 1 && isEnglishAdjectiveShaped(words[0])) {
+  if ((marker2 === "if" || marker2 === "when") && words.length === 1 && isEnglishAdjectiveShaped(words[0])) {
     return true;
   }
-  if (marker === "then") {
+  if (marker2 === "then") {
     return words.slice(0, 3).some(isEnglishContentPredicate);
   }
-  if ((marker === "before" || marker === "after" || marker === "while") && /^[a-z]{4,}ing$/u.test(words[0])) {
+  if ((marker2 === "before" || marker2 === "after" || marker2 === "while") && /^[a-z]{4,}ing$/u.test(words[0])) {
     if (words.length === 1 && ENGLISH_BOUNDED_INTRANSITIVE_GERUNDS.has(words[0])) {
       return true;
     }
@@ -1640,8 +1640,8 @@ function shouldTreatAsExtendedSubject(words, predicateIndex, recognizedPredicate
   );
 }
 function hasCompleteEnglishPredicateComplement(words, predicateIndex) {
-  const terminal = words[words.length - 1];
-  if (ENGLISH_COORDINATING_CONJUNCTIONS.has(terminal) || ENGLISH_DETERMINERS.has(terminal) || ENGLISH_PREPOSITIONS.has(terminal)) {
+  const terminal2 = words[words.length - 1];
+  if (ENGLISH_COORDINATING_CONJUNCTIONS.has(terminal2) || ENGLISH_DETERMINERS.has(terminal2) || ENGLISH_PREPOSITIONS.has(terminal2)) {
     return false;
   }
   for (let index2 = 0; index2 < words.length; index2 += 1) {
@@ -1721,7 +1721,7 @@ function hasSpacedStructuralCoherence(analysis, scaffold) {
     return true;
   });
   if (relationshipIndex > 0) {
-    const marker = englishWords[relationshipIndex];
+    const marker2 = englishWords[relationshipIndex];
     const mainWords = englishWords.slice(0, relationshipIndex);
     const boundedFrontedSubjectIndex = ENGLISH_FRONTED_CONTEXT_CONNECTORS.has(
       mainWords[0]
@@ -1732,13 +1732,13 @@ function hasSpacedStructuralCoherence(analysis, scaffold) {
       (word) => SPACED_MODAL_MARKERS.has(word)
     );
     const hasCompleteFrontedModalMainClause = boundedFrontedSubjectIndex > 0 && mainModalIndex > 0 && hasEnglishMainClause(predicateWords) && predicateWords.slice(mainModalIndex + 1).filter(isPotentialEnglishContentWord).length >= 3;
-    const hasCompleteMainClauseBeforeWhile = marker !== "while" || hasCompleteFrontedModalMainClause || mainPredicateIndex > 0 && hasCompleteEnglishPredicateComplement(
+    const hasCompleteMainClauseBeforeWhile = marker2 !== "while" || hasCompleteFrontedModalMainClause || mainPredicateIndex > 0 && hasCompleteEnglishPredicateComplement(
       predicateWords,
       mainPredicateIndex
     );
     return hasCompleteMainClauseBeforeWhile && hasEnglishMainClause(predicateWords) && hasEnglishDependentClause(
       englishWords.slice(relationshipIndex + 1),
-      marker
+      marker2
     );
   }
   return hasEnglishMainClause(englishWords) && (predicateCount >= 2 && (hasContentConnector || /[,;:]/u.test(analysis.normalized)) || hasEnglishStructuredObject(englishWords, analysis.normalized) || hasGroundedEnglishCoordinatedDeclarativeObject(englishWords));
@@ -2809,11 +2809,11 @@ function prepareFeedbackTranscript(turns, options = {}) {
   };
   let previousCandidateSecurityTurns = [];
   let partialFeedbackResultControlState = null;
-  for (const turn of turns) {
-    const eventId = typeof turn.eventId === "string" ? turn.eventId : "";
-    const text2 = typeof turn.text === "string" ? turn.text.trim() : "";
-    const speaker = turn.speaker;
-    const malformed = !eventId || !eventId.trim() || eventId.length > MAX_CANONICAL_EVENT_ID_LENGTH || !text2 || isCorruptedTranscriptText(text2) || speaker !== "user" && speaker !== "interviewer" || options.requireContractV2 && turn.contractVersion !== 2 || eventIds.has(eventId);
+  for (const turn3 of turns) {
+    const eventId = typeof turn3.eventId === "string" ? turn3.eventId : "";
+    const text2 = typeof turn3.text === "string" ? turn3.text.trim() : "";
+    const speaker = turn3.speaker;
+    const malformed = !eventId || !eventId.trim() || eventId.length > MAX_CANONICAL_EVENT_ID_LENGTH || !text2 || isCorruptedTranscriptText(text2) || speaker !== "user" && speaker !== "interviewer" || options.requireContractV2 && turn3.contractVersion !== 2 || eventIds.has(eventId);
     if (malformed) {
       previousCandidateSecurityTurns = [];
       partialFeedbackResultControlState = null;
@@ -2917,10 +2917,10 @@ function prepareFeedbackTranscript(turns, options = {}) {
       eventId,
       speaker: canonicalSpeaker,
       text: text2,
-      deliveryState: turn.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
+      deliveryState: turn3.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
     });
   }
-  if (!transcript.some((turn) => turn.speaker === "user")) {
+  if (!transcript.some((turn3) => turn3.speaker === "user")) {
     issues.push({ code: "missing_user_speech", eventId: null, fatal: true });
   }
   const fatalCodes = new Set(
@@ -2978,7 +2978,7 @@ function isCrossEventFeedbackResultControl(previousTurns, currentText) {
     -MAX_CROSS_EVENT_PREVIOUS_CANDIDATE_EVENTS
   );
   for (let windowSize = 1; windowSize <= boundedPreviousTurns.length; windowSize += 1) {
-    const priorTails = boundedPreviousTurns.slice(-windowSize).map(({ tail }) => tail.trim()).filter(Boolean);
+    const priorTails = boundedPreviousTurns.slice(-windowSize).map(({ tail: tail2 }) => tail2.trim()).filter(Boolean);
     if (priorTails.length !== windowSize) continue;
     if (isPromptInjectionShaped([...priorTails, currentHead].join(" "))) {
       return true;
@@ -3274,7 +3274,7 @@ function getIndexedSemanticReplayMatch(index2, tokens, terminalCandidates, inter
   return { replay, acceptedFamilyContributions };
 }
 function addObservedSemanticTurn(index2, text2, tokens, internalDeltaSignatures, leadingLabelSignature, acceptedFamilyContributions) {
-  const turn = {
+  const turn3 = {
     tokens,
     acceptedFamilyContributions
   };
@@ -3297,7 +3297,7 @@ function addObservedSemanticTurn(index2, text2, tokens, internalDeltaSignatures,
       )
     );
   }
-  return turn;
+  return turn3;
 }
 function getOrCreateReplaySequenceChild(index2, node, token) {
   const existing = node.children.get(token);
@@ -3507,8 +3507,8 @@ function isProtectedTerminalMetricCorrection(priorTurns, tokens) {
     return priorMetric !== correctedMetric && PROTECTED_TERMINAL_METRIC_TOKENS.has(priorMetric) && PROTECTED_TERMINAL_METRIC_TOKENS.has(correctedMetric);
   });
 }
-function addReplayPrefixObservation(root, turn, accepted) {
-  const { tokens } = turn;
+function addReplayPrefixObservation(root, turn3, accepted) {
+  const { tokens } = turn3;
   const minimumPrefixLength = getMinimumReplayPrefixLength(tokens);
   if (minimumPrefixLength > tokens.length) return;
   let node = root;
@@ -3523,10 +3523,10 @@ function addReplayPrefixObservation(root, turn, accepted) {
     if (index2 + 1 >= minimumPrefixLength) {
       node.maxAcceptedContributions = Math.max(
         node.maxAcceptedContributions,
-        turn.acceptedFamilyContributions
+        turn3.acceptedFamilyContributions
       );
       if (accepted && tokens.length - (index2 + 1) <= MAX_TERMINAL_REPLAY_DELTA_TOKENS && node.terminalCandidates.length < MAX_REPLAY_CANDIDATES_PER_TERMINAL_KEY) {
-        node.terminalCandidates.push(turn);
+        node.terminalCandidates.push(turn3);
       }
     }
   }
@@ -3768,18 +3768,18 @@ function buildTranscriptIndex(transcript) {
     );
   }
   const index2 = /* @__PURE__ */ new Map();
-  for (const [position, turn] of transcript.entries()) {
+  for (const [position, turn3] of transcript.entries()) {
     const eventId = requireNonEmpty(
-      turn.eventId,
+      turn3.eventId,
       `transcript[${position}].eventId`,
       "canonical_transcript_turn_invalid"
     );
     const text2 = requireNonEmpty(
-      turn.text,
+      turn3.text,
       `transcript[${position}].text`,
       "canonical_transcript_turn_invalid"
     );
-    if (turn.speaker !== "user" && turn.speaker !== "interviewer") {
+    if (turn3.speaker !== "user" && turn3.speaker !== "interviewer") {
       throw new FeedbackV2ParseError(
         "canonical_transcript_turn_invalid",
         `transcript[${position}].speaker must be user or interviewer`
@@ -3791,7 +3791,7 @@ function buildTranscriptIndex(transcript) {
         `duplicate transcript eventId ${eventId}`
       );
     }
-    index2.set(eventId, { eventId, text: text2, speaker: turn.speaker });
+    index2.set(eventId, { eventId, text: text2, speaker: turn3.speaker });
   }
   return index2;
 }
@@ -5591,10 +5591,10 @@ function addBoundQuantityAnchors(anchors, quantity, quantities, metricTargets, t
   }
 }
 function getBoundQuantityUnit(text2, quantityEnd) {
-  const tail = text2.slice(quantityEnd);
-  const immediate = tail.match(/^\s+([\p{L}][\p{L}\p{N}_-]*)/u)?.[1];
+  const tail2 = text2.slice(quantityEnd);
+  const immediate = tail2.match(/^\s+([\p{L}][\p{L}\p{N}_-]*)/u)?.[1];
   if (!immediate || NON_COUNT_QUANTITY_UNITS.has(immediate)) return immediate;
-  const boundedPhrase = tail.match(
+  const boundedPhrase = tail2.match(
     /^\s+((?:[\p{L}][\p{L}\p{N}_-]*\s+){0,2}[\p{L}][\p{L}\p{N}_-]*)(?=\s+(?:after|and|at|before|but|during|for|from|in|into|of|on|or|to|with|within)\b|\s*[,.;:!?]|$)/u
   )?.[1];
   return boundedPhrase ? getWordTokens(boundedPhrase).at(-1) : immediate;
@@ -5704,27 +5704,27 @@ function parseEvidence(value, path2, transcriptById) {
       );
     }
     seen.add(turnRef);
-    const turn = transcriptById.get(turnRef);
-    if (!turn) {
+    const turn3 = transcriptById.get(turnRef);
+    if (!turn3) {
       throw new FeedbackV2ParseError(
         "evidence_turn_ref_not_found",
         `${evidencePath}.turnRef does not exist in the canonical transcript`
       );
     }
-    if (turn.speaker !== "user") {
+    if (turn3.speaker !== "user") {
       throw new FeedbackV2ParseError(
         "evidence_turn_ref_wrong_speaker",
         `${evidencePath}.turnRef must reference a candidate turn`
       );
     }
-    const normalizedQuote = normalizeEvidenceQuoteToSource(turn.text, quote);
+    const normalizedQuote = normalizeEvidenceQuoteToSource(turn3.text, quote);
     if (!normalizedQuote) {
       throw new FeedbackV2ParseError(
         "evidence_quote_not_grounded",
         `${evidencePath}.quote is not exact evidence from ${turnRef}`
       );
     }
-    if (!isMinimallySubstantiveEvidenceQuote(normalizedQuote, turn.text)) {
+    if (!isMinimallySubstantiveEvidenceQuote(normalizedQuote, turn3.text)) {
       throw new FeedbackV2ParseError(
         "evidence_quote_insufficient",
         `${evidencePath}.quote must contain minimally substantive evidence`
@@ -6707,27 +6707,27 @@ function classifyTurnTransition(previous, current, maxContinuationGapMs, include
 function hasInvalidSameSpeakerTiming(previous, current) {
   return current.endedAtMs < previous.startedAtMs || current.startedAtMs < previous.endedAtMs;
 }
-function isCanonicalAnswerBlockSpeechEvent(turn) {
-  return turn.contractVersion === 2 && turn.isFinal === true && Boolean(turn.eventId) && Boolean(turn.writerId) && Number.isSafeInteger(turn.writerGeneration) && turn.writerGeneration > 0 && Number.isSafeInteger(turn.sequence) && turn.sequence > 0 && (turn.speaker === "user" || turn.speaker === "interviewer") && Boolean(turn.text.trim()) && Number.isFinite(turn.startedAtMs) && Number.isFinite(turn.endedAtMs) && turn.endedAtMs > turn.startedAtMs && Number.isSafeInteger(turn.audioDurationMs) && turn.audioDurationMs > 0 && Math.abs(turn.endedAtMs - turn.startedAtMs - turn.audioDurationMs) <= 1 && Boolean(turn.section) && (turn.kind !== "semantic_replay" || Boolean(turn.replayOfEventId)) && (turn.deliveryState === "delivered" || turn.deliveryState === "partially_delivered");
+function isCanonicalAnswerBlockSpeechEvent(turn3) {
+  return turn3.contractVersion === 2 && turn3.isFinal === true && Boolean(turn3.eventId) && Boolean(turn3.writerId) && Number.isSafeInteger(turn3.writerGeneration) && turn3.writerGeneration > 0 && Number.isSafeInteger(turn3.sequence) && turn3.sequence > 0 && (turn3.speaker === "user" || turn3.speaker === "interviewer") && Boolean(turn3.text.trim()) && Number.isFinite(turn3.startedAtMs) && Number.isFinite(turn3.endedAtMs) && turn3.endedAtMs > turn3.startedAtMs && Number.isSafeInteger(turn3.audioDurationMs) && turn3.audioDurationMs > 0 && Math.abs(turn3.endedAtMs - turn3.startedAtMs - turn3.audioDurationMs) <= 1 && Boolean(turn3.section) && (turn3.kind !== "semantic_replay" || Boolean(turn3.replayOfEventId)) && (turn3.deliveryState === "delivered" || turn3.deliveryState === "partially_delivered");
 }
-function toSourceTurn(turn) {
+function toSourceTurn(turn3) {
   return {
-    eventId: turn.eventId,
-    writerId: turn.writerId,
-    writerGeneration: turn.writerGeneration,
-    sequence: turn.sequence,
-    speaker: turn.speaker,
-    text: turn.text,
-    textUtf8Bytes: new TextEncoder().encode(turn.text),
-    startedAtMs: turn.startedAtMs,
-    endedAtMs: turn.endedAtMs,
-    audioDurationMs: turn.audioDurationMs,
-    section: turn.section,
-    deliveryState: turn.deliveryState
+    eventId: turn3.eventId,
+    writerId: turn3.writerId,
+    writerGeneration: turn3.writerGeneration,
+    sequence: turn3.sequence,
+    speaker: turn3.speaker,
+    text: turn3.text,
+    textUtf8Bytes: new TextEncoder().encode(turn3.text),
+    startedAtMs: turn3.startedAtMs,
+    endedAtMs: turn3.endedAtMs,
+    audioDurationMs: turn3.audioDurationMs,
+    section: turn3.section,
+    deliveryState: turn3.deliveryState
   };
 }
 function joinBlockText(turns) {
-  return turns.map((turn) => turn.text.trim()).join(" ").replace(/\s+/gu, " ").trim();
+  return turns.map((turn3) => turn3.text.trim()).join(" ").replace(/\s+/gu, " ").trim();
 }
 
 // packages/core/src/session-lifecycle.ts
@@ -8479,10 +8479,10 @@ function buildScoredCase(roundType, index2, caseSeed) {
   const adjudication = SCORED_ADJUDICATIONS[id];
   if (!adjudication) throw new Error(`Missing adjudication candidate: ${id}`);
   const strengthTurn = transcript.find(
-    (turn) => turn.eventId === `${id}:user:${adjudication.strength.turnSequence}`
+    (turn3) => turn3.eventId === `${id}:user:${adjudication.strength.turnSequence}`
   );
   const improvementTurn = transcript.find(
-    (turn) => turn.eventId === `${id}:user:${adjudication.improvement.turnSequence}`
+    (turn3) => turn3.eventId === `${id}:user:${adjudication.improvement.turnSequence}`
   );
   return baseCase({
     id,
@@ -8644,7 +8644,7 @@ function buildConversation(id, answers, state) {
   ];
   const turns = [];
   const spacing = state === "full" ? 130 : 150;
-  answers.forEach((answer, index2) => {
+  answers.forEach((answer2, index2) => {
     const base = index2 * spacing;
     turns.push([
       "interviewer",
@@ -8652,7 +8652,7 @@ function buildConversation(id, answers, state) {
       base,
       base + 10
     ]);
-    turns.push(["user", answer, base + 20, base + 70]);
+    turns.push(["user", answer2, base + 20, base + 70]);
   });
   return timedTurns(id, turns);
 }
@@ -8698,6 +8698,100 @@ function toBands(expected) {
       { minimum: Math.max(0, score - 1), maximum: Math.min(10, score + 1) }
     ])
   );
+}
+
+// packages/test-fixtures/src/answer-blocks.ts
+var ANSWER_BLOCK_SEGMENT_COUNTS = [1, 2, 5, 10];
+var SYNTHETIC_ANSWERS = [
+  "I would begin with working parents because schedule changes create repeated coordination failures, then validate the problem through weekly interviews before choosing a workflow.",
+  "I would measure weekly retained households because recurring planning use shows durable value, then monitor missed handoffs and support requests as guardrails."
+];
+var SYNTHETIC_PROMPTS = [
+  "How would you improve a shared family planning product?",
+  "How would you measure whether the product works?"
+];
+function createAnswerBlockSegmentationFixture(segmentCount) {
+  const events = [];
+  let sequence = 1;
+  let cursorMs = Date.parse("2026-08-12T12:00:00.000Z");
+  for (const [answerIndex, answer2] of SYNTHETIC_ANSWERS.entries()) {
+    events.push(
+      turn({
+        sequence: sequence++,
+        speaker: "interviewer",
+        text: SYNTHETIC_PROMPTS[answerIndex],
+        startedAtMs: cursorMs,
+        durationMs: 1e3
+      })
+    );
+    cursorMs += 1300;
+    const fragmentDurationMs = 1e4 / segmentCount;
+    for (const fragment2 of splitWords(answer2, segmentCount)) {
+      events.push(
+        turn({
+          sequence: sequence++,
+          speaker: "user",
+          text: fragment2,
+          startedAtMs: cursorMs,
+          durationMs: fragmentDurationMs
+        })
+      );
+      cursorMs += fragmentDurationMs;
+    }
+    cursorMs += 700;
+  }
+  events.push({ kind: "session_end", occurredAtMs: cursorMs });
+  return {
+    segmentCount,
+    events,
+    expectedReviewability: SYNTHETIC_ANSWERS.map((responseText, index2) => ({
+      answerBlockId: `answer-block:${String(index2 + 1).padStart(4, "0")}`,
+      promptText: SYNTHETIC_PROMPTS[index2],
+      responseText
+    }))
+  };
+}
+function createAnswerBlockTurn(overrides = {}) {
+  return turn({
+    sequence: overrides.sequence ?? 1,
+    speaker: overrides.speaker ?? "user",
+    text: overrides.text ?? "I would prioritize working parents because recurring schedule changes create the clearest weekly coordination problem.",
+    startedAtMs: overrides.startedAtMs ?? Date.parse("2026-08-12T12:00:00.000Z"),
+    durationMs: overrides.audioDurationMs ?? 1e3,
+    overrides
+  });
+}
+function turn(input) {
+  return {
+    kind: "turn",
+    contractVersion: 2,
+    eventId: `synthetic-writer:${input.sequence}`,
+    writerId: "synthetic-writer",
+    writerGeneration: 1,
+    sequence: input.sequence,
+    speaker: input.speaker,
+    text: input.text,
+    isFinal: true,
+    startedAtMs: input.startedAtMs,
+    endedAtMs: input.startedAtMs + input.durationMs,
+    audioDurationMs: input.durationMs,
+    section: "product_sense",
+    deliveryState: "delivered",
+    ...input.overrides
+  };
+}
+function splitWords(text2, count) {
+  const words = text2.split(" ");
+  const baseSize = Math.floor(words.length / count);
+  const remainder = words.length % count;
+  const fragments = [];
+  let cursor = 0;
+  for (let index2 = 0; index2 < count; index2 += 1) {
+    const size2 = baseSize + (index2 < remainder ? 1 : 0);
+    fragments.push(words.slice(cursor, cursor + size2).join(" "));
+    cursor += size2;
+  }
+  return fragments;
 }
 
 // packages/test-fixtures/src/dimension-coverage-calibration.ts
@@ -8885,6 +8979,283 @@ var RUNTIME_SETTLEMENT_COMMAND_FIXTURE = {
     outcome: "settled"
   }
 };
+
+// packages/test-fixtures/src/trusted-answer-block-calibration.ts
+var TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION = "trusted-answer-block-calibration.v1";
+var segmentationCases = ANSWER_BLOCK_SEGMENT_COUNTS.map((segmentCount) => {
+  const fixture = createAnswerBlockSegmentationFixture(segmentCount);
+  return calibrationCase2({
+    id: `segmentation-${segmentCount}`,
+    family: "segmentation",
+    events: fixture.events,
+    authority: authority(fixture.events, "complete", "settled"),
+    expectedStatus: "complete",
+    expectedFailureReason: null,
+    expectedTrustedResponseTexts: fixture.expectedReviewability.map(
+      ({ responseText }) => responseText
+    ),
+    expectedExcludedAnswerBlockIds: []
+  });
+});
+var prompt = turn2(1, "interviewer", "Frame the product decision.", 0);
+var answer = turn2(
+  2,
+  "user",
+  "I would begin with working caregivers because the handoff failure repeats every week.",
+  1e3
+);
+var followUp = turn2(
+  3,
+  "interviewer",
+  "Which assumption would you test first?",
+  2e3
+);
+var tail = turn2(
+  4,
+  "user",
+  "I would test whether the coordination failure remains severe before building.",
+  3e3
+);
+var TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES = [
+  ...segmentationCases,
+  calibrationCase2({
+    id: "terminal-preserving-marker",
+    family: "terminal_preserving_marker",
+    events: [
+      prompt,
+      answer,
+      followUp,
+      tail,
+      marker(5, "interviewer", "no_provider_confirmed_prefix", 4100),
+      terminal(5e3)
+    ],
+    authority: authority(
+      [
+        prompt,
+        answer,
+        followUp,
+        tail,
+        marker(5, "interviewer", "no_provider_confirmed_prefix", 4100),
+        terminal(5e3)
+      ],
+      "partial",
+      "missing"
+    ),
+    expectedStatus: "verified_prefix",
+    expectedFailureReason: null,
+    expectedTrustedResponseTexts: [answer.text],
+    expectedExcludedAnswerBlockIds: ["answer-block:0002"]
+  }),
+  failureCase(
+    "candidate-marker",
+    "candidate_marker",
+    [
+      prompt,
+      answer,
+      marker(3, "user", "no_provider_confirmed_prefix", 2100),
+      terminal(3e3)
+    ],
+    "canonicalization_failure"
+  ),
+  failureCase(
+    "canonicalization-failure",
+    "canonicalization_failure",
+    [
+      prompt,
+      answer,
+      marker(3, "interviewer", "canonicalization_failed", 2100),
+      terminal(3e3)
+    ],
+    "canonicalization_failure"
+  ),
+  failureCase(
+    "sequence-gap",
+    "sequence_gap",
+    [
+      prompt,
+      { ...answer, sequence: 3, eventId: "synthetic-writer:3" },
+      terminal(3e3)
+    ],
+    "sequence_gap"
+  ),
+  failureCase(
+    "writer-drift",
+    "writer_drift",
+    [
+      prompt,
+      {
+        ...answer,
+        eventId: "replacement-writer:1",
+        writerId: "replacement-writer",
+        writerGeneration: 2,
+        sequence: 1
+      },
+      terminal(3e3)
+    ],
+    "writer_drift"
+  ),
+  calibrationCase2({
+    id: "degraded-writer-integrity",
+    family: "degraded_writer",
+    events: [prompt, answer, terminal(3e3)],
+    authority: authority(
+      [prompt, answer, terminal(3e3)],
+      "complete",
+      "settled",
+      "degraded"
+    ),
+    expectedStatus: "integrity_failure",
+    expectedFailureReason: "writer_degraded",
+    expectedTrustedResponseTexts: [],
+    expectedExcludedAnswerBlockIds: []
+  }),
+  calibrationCase2({
+    id: "degraded-writer-settlement",
+    family: "degraded_writer",
+    events: [prompt, answer, terminal(3e3)],
+    authority: authority(
+      [prompt, answer, terminal(3e3)],
+      "partial",
+      "degraded"
+    ),
+    expectedStatus: "integrity_failure",
+    expectedFailureReason: "writer_degraded",
+    expectedTrustedResponseTexts: [],
+    expectedExcludedAnswerBlockIds: []
+  }),
+  failureCase(
+    "turn-after-cutoff",
+    "cutoff_conflict",
+    [
+      prompt,
+      turn2(2, "user", "This answer ends beyond the frozen cutoff.", 2500),
+      terminal(3e3)
+    ],
+    "cutoff_conflict"
+  ),
+  failureCase(
+    "marker-after-cutoff",
+    "cutoff_conflict",
+    [
+      prompt,
+      answer,
+      marker(3, "interviewer", "no_provider_confirmed_prefix", 3100),
+      terminal(3e3)
+    ],
+    "cutoff_conflict"
+  ),
+  replayCase(false),
+  replayCase(true),
+  calibrationCase2({
+    id: "historical-authority-version",
+    family: "historical_authority",
+    events: [prompt, answer, terminal(3e3)],
+    authority: {
+      ...authority([prompt, answer, terminal(3e3)], "complete", "settled"),
+      contractVersion: "frozen-answer-block-authority.v0"
+    },
+    expectedStatus: "integrity_failure",
+    expectedFailureReason: "authority_contract_unsupported",
+    expectedTrustedResponseTexts: [],
+    expectedExcludedAnswerBlockIds: []
+  })
+];
+function replayCase(conflicting) {
+  const replay = {
+    ...turn2(
+      3,
+      "user",
+      conflicting ? `${answer.text} conflicting correction` : answer.text,
+      2100
+    ),
+    kind: "semantic_replay",
+    replayOfEventId: answer.eventId
+  };
+  const replayFollowUp = turn2(
+    4,
+    "interviewer",
+    "What result would change your plan?",
+    3100
+  );
+  const events = [prompt, answer, replay, replayFollowUp, terminal(5e3)];
+  return calibrationCase2({
+    id: conflicting ? "conflicting-replay" : "exact-replay",
+    family: conflicting ? "conflicting_replay" : "exact_replay",
+    events,
+    authority: authority(events, "complete", "settled"),
+    expectedStatus: conflicting ? "integrity_failure" : "complete",
+    expectedFailureReason: conflicting ? "replay_conflict" : null,
+    expectedTrustedResponseTexts: conflicting ? [] : [answer.text],
+    expectedExcludedAnswerBlockIds: []
+  });
+}
+function failureCase(id, family, events, expectedFailureReason) {
+  return calibrationCase2({
+    id,
+    family,
+    events,
+    authority: authority(events, "complete", "settled"),
+    expectedStatus: "integrity_failure",
+    expectedFailureReason,
+    expectedTrustedResponseTexts: [],
+    expectedExcludedAnswerBlockIds: []
+  });
+}
+function calibrationCase2(input) {
+  return {
+    ...input,
+    provenance: "fully_synthetic",
+    version: TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION
+  };
+}
+function authority(events, snapshotState, settlementState, integrityState = "healthy") {
+  const sequences = events.flatMap(
+    (event) => "sequence" in event ? [event.sequence] : []
+  );
+  return {
+    contractVersion: "frozen-answer-block-authority.v1",
+    snapshotState,
+    cutoffAtMs: events.findLast(
+      (event) => event.kind === "session_end" || event.kind === "cutoff"
+    )?.occurredAtMs ?? 0,
+    writers: [
+      {
+        contractVersion: 1,
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        committedSequence: Math.max(0, ...sequences),
+        integrityState,
+        settlementState
+      }
+    ]
+  };
+}
+function turn2(sequence, speaker, text2, startedAtMs) {
+  return createAnswerBlockTurn({
+    sequence,
+    eventId: `synthetic-writer:${sequence}`,
+    speaker,
+    text: text2,
+    startedAtMs,
+    endedAtMs: startedAtMs + 800,
+    audioDurationMs: 800
+  });
+}
+function marker(sequence, speaker, reason, occurredAtMs) {
+  return {
+    kind: "integrity_boundary",
+    eventId: `synthetic-writer:${sequence}`,
+    writerId: "synthetic-writer",
+    writerGeneration: 1,
+    sequence,
+    speaker,
+    occurredAtMs,
+    reason
+  };
+}
+function terminal(occurredAtMs) {
+  return { kind: "session_end", occurredAtMs };
+}
 
 // packages/test-fixtures/src/index.ts
 var FIXTURE_CLOCK = {
@@ -20881,23 +21252,23 @@ var THRESHOLDS = {
 };
 function calculateSessionStatsFromTurns(turns) {
   const totalTurns = turns.length;
-  const userTurns = turns.filter((turn) => turn.speaker === "user").length;
-  const totalWords = turns.reduce((sum, turn) => {
-    if (!turn.text) return sum;
-    return sum + tokenizeWords(turn.text).length;
+  const userTurns = turns.filter((turn3) => turn3.speaker === "user").length;
+  const totalWords = turns.reduce((sum, turn3) => {
+    if (!turn3.text) return sum;
+    return sum + tokenizeWords(turn3.text).length;
   }, 0);
   const startTimes = turns.flatMap(
-    (turn) => turn.startedAt && Number.isFinite(turn.startedAt.getTime()) ? [turn.startedAt.getTime()] : []
+    (turn3) => turn3.startedAt && Number.isFinite(turn3.startedAt.getTime()) ? [turn3.startedAt.getTime()] : []
   );
   const endTimes = turns.flatMap(
-    (turn) => turn.endedAt && Number.isFinite(turn.endedAt.getTime()) ? [turn.endedAt.getTime()] : []
+    (turn3) => turn3.endedAt && Number.isFinite(turn3.endedAt.getTime()) ? [turn3.endedAt.getTime()] : []
   );
   const durationSeconds = startTimes.length > 0 && endTimes.length > 0 ? Math.max(
     0,
     Math.floor((Math.max(...endTimes) - Math.min(...startTimes)) / 1e3)
   ) : 0;
   const evidenceLevels = turns.flatMap(
-    (turn) => turn.speaker === "user" && turn.text ? [classifyUserResponseEvidence(turn.text)] : []
+    (turn3) => turn3.speaker === "user" && turn3.text ? [classifyUserResponseEvidence(turn3.text)] : []
   );
   const substantiveResponses = evidenceLevels.filter(
     (level) => level !== "insufficient"
@@ -20990,13 +21361,13 @@ function tokenizeWords(text2) {
 }
 function calculateValidatedSessionFromTurns(turns, options = {}) {
   const hasCanonicalFields = turns.some(
-    (turn) => [
-      turn.contractVersion,
-      turn.eventId,
-      turn.writerId,
-      turn.writerGeneration,
-      turn.sequence,
-      turn.deliveryState
+    (turn3) => [
+      turn3.contractVersion,
+      turn3.eventId,
+      turn3.writerId,
+      turn3.writerGeneration,
+      turn3.sequence,
+      turn3.deliveryState
     ].some((value) => value != null)
   );
   if (!hasCanonicalFields) {
@@ -21014,7 +21385,7 @@ function calculateValidatedSessionFromTurns(turns, options = {}) {
   } = answerEvidence;
   const evidenceLevels = preparedAnswerBlocks.flatMap(
     (preparedBlock) => preparedBlock.transcript.map(
-      (turn) => options.legacySurfaceEligibilityForSyntheticCalibration === true ? classifyLegacySyntheticCalibrationEvidence(turn.text) : classifyUserResponseEvidence(turn.text)
+      (turn3) => options.legacySurfaceEligibilityForSyntheticCalibration === true ? classifyLegacySyntheticCalibrationEvidence(turn3.text) : classifyUserResponseEvidence(turn3.text)
     )
   );
   const hasInvalidReplayContinuity = answerBlockDerivation.issues.some(
@@ -21069,20 +21440,20 @@ function prepareCandidateAnswerBlockEvidenceFromTurns(turns, options = {}) {
 }
 function deriveCandidateAnswerBlockEvidenceFromTurns(turns, options) {
   const hasInvalidTiming = turns.some(
-    (turn) => !turn.startedAt || !turn.endedAt || !Number.isFinite(turn.startedAt.getTime()) || !Number.isFinite(turn.endedAt.getTime()) || turn.endedAt <= turn.startedAt
+    (turn3) => !turn3.startedAt || !turn3.endedAt || !Number.isFinite(turn3.startedAt.getTime()) || !Number.isFinite(turn3.endedAt.getTime()) || turn3.endedAt <= turn3.startedAt
   );
   const prepared = prepareFeedbackTranscript(
-    turns.map((turn) => ({
-      eventId: turn.eventId ?? null,
-      speaker: turn.speaker,
-      text: turn.text,
-      contractVersion: turn.contractVersion ?? null,
-      deliveryState: turn.deliveryState ?? null
+    turns.map((turn3) => ({
+      eventId: turn3.eventId ?? null,
+      speaker: turn3.speaker,
+      text: turn3.text,
+      contractVersion: turn3.contractVersion ?? null,
+      deliveryState: turn3.deliveryState ?? null
     })),
     { requireContractV2: true }
   );
   const acceptedEventIds = new Set(
-    prepared.transcript.map((turn) => turn.eventId)
+    prepared.transcript.map((turn3) => turn3.eventId)
   );
   const semanticReplayAnchors = new Map(
     prepared.issues.flatMap(
@@ -21097,11 +21468,11 @@ function deriveCandidateAnswerBlockEvidenceFromTurns(turns, options) {
   const answerBlockDerivation = deriveCandidateAnswerBlocks(
     orderAnswerBlockLedgerEvents([
       ...turns.flatMap(
-        (turn) => turn.eventId && acceptedEventIds.has(turn.eventId) ? toAnswerBlockTurn(turn) : turn.eventId && semanticReplayAnchors.has(turn.eventId) ? toAnswerBlockTurn(
-          turn,
+        (turn3) => turn3.eventId && acceptedEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3) : turn3.eventId && semanticReplayAnchors.has(turn3.eventId) ? toAnswerBlockTurn(
+          turn3,
           "semantic_replay",
-          semanticReplayAnchors.get(turn.eventId)
-        ) : turn.eventId && semanticReplayBoundaryEventIds.has(turn.eventId) ? toAnswerBlockTurn(turn, "semantic_replay_boundary") : []
+          semanticReplayAnchors.get(turn3.eventId)
+        ) : turn3.eventId && semanticReplayBoundaryEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3, "semantic_replay_boundary") : []
       ),
       ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
       ...options.sessionEndAt && Number.isFinite(options.sessionEndAt.getTime()) ? [
@@ -21143,15 +21514,15 @@ function calculateAnswerBlockSessionStats(blocks) {
   for (const block of blocks) {
     if (block.prompt.length === 0) continue;
     promptGroups.set(
-      JSON.stringify(block.prompt.map((turn) => turn.eventId)),
+      JSON.stringify(block.prompt.map((turn3) => turn3.eventId)),
       block.prompt
     );
   }
   const logicalTurns = [
-    ...[...promptGroups.values()].map((prompt) => ({
-      text: prompt.map((turn) => turn.text.trim()).join(" "),
-      startedAtMs: prompt[0].startedAtMs,
-      endedAtMs: prompt.at(-1).endedAtMs
+    ...[...promptGroups.values()].map((prompt2) => ({
+      text: prompt2.map((turn3) => turn3.text.trim()).join(" "),
+      startedAtMs: prompt2[0].startedAtMs,
+      endedAtMs: prompt2.at(-1).endedAtMs
     })),
     ...blocks.map((block) => ({
       text: block.responseText,
@@ -21159,13 +21530,13 @@ function calculateAnswerBlockSessionStats(blocks) {
       endedAtMs: block.endedAtMs
     }))
   ];
-  const startedAtMs = logicalTurns.map((turn) => turn.startedAtMs);
-  const endedAtMs = logicalTurns.map((turn) => turn.endedAtMs);
+  const startedAtMs = logicalTurns.map((turn3) => turn3.startedAtMs);
+  const endedAtMs = logicalTurns.map((turn3) => turn3.endedAtMs);
   return {
     totalTurns: logicalTurns.length,
     userTurns: blocks.length,
     totalWords: logicalTurns.reduce(
-      (sum, turn) => sum + tokenizeWords(turn.text).length,
+      (sum, turn3) => sum + tokenizeWords(turn3.text).length,
       0
     ),
     durationSeconds: logicalTurns.length === 0 ? 0 : Math.max(
@@ -21178,22 +21549,22 @@ function calculateAnswerBlockSessionStats(blocks) {
     scoreableResponses: 0
   };
 }
-function toAnswerBlockTurn(turn, kind = "turn", replayOfEventId) {
-  if (turn.contractVersion !== 2 || !turn.eventId || !turn.writerId || !Number.isSafeInteger(turn.writerGeneration) || (turn.writerGeneration ?? 0) <= 0 || !Number.isSafeInteger(turn.sequence) || (turn.sequence ?? 0) <= 0 || turn.speaker !== "user" && turn.speaker !== "interviewer" || !turn.text || !turn.startedAt || !turn.endedAt || !Number.isSafeInteger(turn.audioMs) || (turn.audioMs ?? 0) <= 0 || !turn.section || turn.deliveryState !== "delivered" && turn.deliveryState !== "partially_delivered") {
+function toAnswerBlockTurn(turn3, kind = "turn", replayOfEventId) {
+  if (turn3.contractVersion !== 2 || !turn3.eventId || !turn3.writerId || !Number.isSafeInteger(turn3.writerGeneration) || (turn3.writerGeneration ?? 0) <= 0 || !Number.isSafeInteger(turn3.sequence) || (turn3.sequence ?? 0) <= 0 || turn3.speaker !== "user" && turn3.speaker !== "interviewer" || !turn3.text || !turn3.startedAt || !turn3.endedAt || !Number.isSafeInteger(turn3.audioMs) || (turn3.audioMs ?? 0) <= 0 || !turn3.section || turn3.deliveryState !== "delivered" && turn3.deliveryState !== "partially_delivered") {
     const projected2 = {
       contractVersion: 2,
-      eventId: turn.eventId ?? "",
-      writerId: turn.writerId ?? "",
-      writerGeneration: turn.writerGeneration ?? 0,
-      sequence: turn.sequence ?? 0,
-      speaker: turn.speaker === "interviewer" ? "interviewer" : "user",
-      text: turn.text ?? "",
+      eventId: turn3.eventId ?? "",
+      writerId: turn3.writerId ?? "",
+      writerGeneration: turn3.writerGeneration ?? 0,
+      sequence: turn3.sequence ?? 0,
+      speaker: turn3.speaker === "interviewer" ? "interviewer" : "user",
+      text: turn3.text ?? "",
       isFinal: true,
-      startedAtMs: turn.startedAt?.getTime() ?? Number.NaN,
-      endedAtMs: turn.endedAt?.getTime() ?? Number.NaN,
-      audioDurationMs: turn.audioMs ?? 0,
-      section: turn.section ?? "",
-      deliveryState: turn.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
+      startedAtMs: turn3.startedAt?.getTime() ?? Number.NaN,
+      endedAtMs: turn3.endedAt?.getTime() ?? Number.NaN,
+      audioDurationMs: turn3.audioMs ?? 0,
+      section: turn3.section ?? "",
+      deliveryState: turn3.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
     };
     if (kind === "semantic_replay") {
       return [{ kind, replayOfEventId: replayOfEventId ?? "", ...projected2 }];
@@ -21202,34 +21573,34 @@ function toAnswerBlockTurn(turn, kind = "turn", replayOfEventId) {
   }
   const projected = {
     contractVersion: 2,
-    eventId: turn.eventId,
-    writerId: turn.writerId,
-    writerGeneration: turn.writerGeneration,
-    sequence: turn.sequence,
-    speaker: turn.speaker === "interviewer" ? "interviewer" : "user",
-    text: turn.text,
+    eventId: turn3.eventId,
+    writerId: turn3.writerId,
+    writerGeneration: turn3.writerGeneration,
+    sequence: turn3.sequence,
+    speaker: turn3.speaker === "interviewer" ? "interviewer" : "user",
+    text: turn3.text,
     isFinal: true,
-    startedAtMs: turn.startedAt.getTime(),
-    endedAtMs: turn.endedAt.getTime(),
-    audioDurationMs: turn.audioMs,
-    section: turn.section,
-    deliveryState: turn.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
+    startedAtMs: turn3.startedAt.getTime(),
+    endedAtMs: turn3.endedAt.getTime(),
+    audioDurationMs: turn3.audioMs,
+    section: turn3.section,
+    deliveryState: turn3.deliveryState === "partially_delivered" ? "partially_delivered" : "delivered"
   };
   if (kind === "semantic_replay") {
     return [{ kind, replayOfEventId: replayOfEventId ?? "", ...projected }];
   }
   return [{ kind, ...projected }];
 }
-function toAnswerBlockInterruption(marker) {
+function toAnswerBlockInterruption(marker2) {
   return {
     kind: "integrity_boundary",
-    eventId: marker.eventId,
-    writerId: marker.writerId,
-    writerGeneration: marker.writerGeneration,
-    sequence: marker.sequence,
-    speaker: marker.speaker,
-    occurredAtMs: marker.occurredAt.getTime(),
-    reason: marker.reason
+    eventId: marker2.eventId,
+    writerId: marker2.writerId,
+    writerGeneration: marker2.writerGeneration,
+    sequence: marker2.sequence,
+    speaker: marker2.speaker,
+    occurredAtMs: marker2.occurredAt.getTime(),
+    reason: marker2.reason
   };
 }
 function orderAnswerBlockLedgerEvents(events) {
@@ -29724,10 +30095,10 @@ var TRANSCRIPT_ALIAS_PATTERN = /^turn_\d{4,}$/;
 function projectEvaluationTranscriptAliases(transcript) {
   const width = Math.max(4, String(transcript.length).length);
   const canonicalIdByAlias = /* @__PURE__ */ new Map();
-  const aliasedTranscript = transcript.map((turn, index2) => {
+  const aliasedTranscript = transcript.map((turn3, index2) => {
     const alias = `turn_${String(index2 + 1).padStart(width, "0")}`;
-    canonicalIdByAlias.set(alias, turn.eventId);
-    return { ...turn, eventId: alias };
+    canonicalIdByAlias.set(alias, turn3.eventId);
+    return { ...turn3, eventId: alias };
   });
   return {
     transcript: aliasedTranscript,
@@ -29735,17 +30106,17 @@ function projectEvaluationTranscriptAliases(transcript) {
   };
 }
 function serializeEvaluationTranscript(transcript) {
-  const records = transcript.map((turn) => {
-    if (!TRANSCRIPT_ALIAS_PATTERN.test(turn.eventId)) {
+  const records = transcript.map((turn3) => {
+    if (!TRANSCRIPT_ALIAS_PATTERN.test(turn3.eventId)) {
       throw new Error(
         "Evaluation prompt transcript requires canonical aliases"
       );
     }
     return {
-      turnRef: turn.eventId,
-      speaker: turn.speaker,
-      deliveryState: turn.deliveryState ?? "delivered",
-      text: turn.text
+      turnRef: turn3.eventId,
+      speaker: turn3.speaker,
+      deliveryState: turn3.deliveryState ?? "delivered",
+      text: turn3.text
     };
   });
   return JSON.stringify(records, null, 2).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
@@ -30166,34 +30537,34 @@ function buildCalibrationEvidenceHints(input) {
   const anchoredQuotes = new Set(
     hints.map((hint) => `${hint.turnRef}\0${hint.quote}`)
   );
-  for (const turn of input.transcript) {
-    if (turn.speaker !== "user") continue;
-    for (const quote of splitCandidateEvidenceSlots(turn.text)) {
-      const identity = `${turn.eventId}\0${quote}`;
+  for (const turn3 of input.transcript) {
+    if (turn3.speaker !== "user") continue;
+    for (const quote of splitCandidateEvidenceSlots(turn3.text)) {
+      const identity = `${turn3.eventId}\0${quote}`;
       if (anchoredQuotes.has(identity)) continue;
       if (hints.some(
-        (hint) => hint.turnRef === turn.eventId && exactSpansOverlap(turn.text, quote, hint.quote)
+        (hint) => hint.turnRef === turn3.eventId && exactSpansOverlap(turn3.text, quote, hint.quote)
       )) {
         continue;
       }
-      hints.push({ kind: "fallback", turnRef: turn.eventId, quote });
+      hints.push({ kind: "fallback", turnRef: turn3.eventId, quote });
       anchoredQuotes.add(identity);
       if (hints.length >= input.evidenceAnchors.length + 4) {
         return hints;
       }
     }
     for (const quote of splitResidualEvidenceSlots(
-      turn.text,
-      hints.filter((hint) => hint.turnRef === turn.eventId).map((hint) => hint.quote)
+      turn3.text,
+      hints.filter((hint) => hint.turnRef === turn3.eventId).map((hint) => hint.quote)
     )) {
-      const identity = `${turn.eventId}\0${quote}`;
+      const identity = `${turn3.eventId}\0${quote}`;
       if (anchoredQuotes.has(identity)) continue;
       if (hints.some(
-        (hint) => hint.turnRef === turn.eventId && exactSpansOverlap(turn.text, quote, hint.quote)
+        (hint) => hint.turnRef === turn3.eventId && exactSpansOverlap(turn3.text, quote, hint.quote)
       )) {
         continue;
       }
-      hints.push({ kind: "fallback", turnRef: turn.eventId, quote });
+      hints.push({ kind: "fallback", turnRef: turn3.eventId, quote });
       anchoredQuotes.add(identity);
       if (hints.length >= input.evidenceAnchors.length + 4) {
         return hints;
@@ -30202,8 +30573,8 @@ function buildCalibrationEvidenceHints(input) {
   }
   return hints;
 }
-function appendCalibrationEvidenceHints(prompt, hints, canonicalIdByAlias) {
-  if (!hints?.length) return prompt;
+function appendCalibrationEvidenceHints(prompt2, hints, canonicalIdByAlias) {
+  if (!hints?.length) return prompt2;
   const aliasByCanonicalId = /* @__PURE__ */ new Map();
   for (const [alias, canonicalId] of canonicalIdByAlias.entries()) {
     aliasByCanonicalId.set(canonicalId, alias);
@@ -30214,8 +30585,8 @@ function appendCalibrationEvidenceHints(prompt, hints, canonicalIdByAlias) {
     const slot = hint.kind === "fallback" ? "fallback" : `${hint.kind}:${hint.dimension ?? "unknown"}`;
     return `- ${slot} | ${alias} | ${JSON.stringify(hint.quote)}`;
   }).filter((line2) => line2 !== null).join("\n");
-  if (!serialized) return prompt;
-  return `${prompt}
+  if (!serialized) return prompt2;
+  return `${prompt2}
 
 **Synthetic calibration evidence slot hints:**
 The following hints are approved synthetic calibration anchors or fallback
@@ -32025,13 +32396,13 @@ function getEvaluationAdjudicationHashes() {
         expectedQuality: fixture.expectedQuality,
         expectedCompletionState: fixture.expectedCompletionState,
         scoreBands: fixture.scoreBands,
-        transcript: fixture.transcript.map((turn) => ({
-          contractVersion: turn.contractVersion,
-          eventId: turn.eventId,
-          speaker: turn.speaker,
-          text: turn.text,
-          startedAt: turn.startedAt.toISOString(),
-          endedAt: turn.endedAt.toISOString()
+        transcript: fixture.transcript.map((turn3) => ({
+          contractVersion: turn3.contractVersion,
+          eventId: turn3.eventId,
+          speaker: turn3.speaker,
+          text: turn3.text,
+          startedAt: turn3.startedAt.toISOString(),
+          endedAt: turn3.endedAt.toISOString()
         }))
       }))
     )
@@ -32081,22 +32452,22 @@ function parseEvaluationAdjudicationApproval(input) {
     if (reviewBasis.semanticAdjudicationOnly !== true) {
       throw new Error("Invalid delegated approval semantic scope");
     }
-    const authority = requireRecord2(
+    const authority2 = requireRecord2(
       record.delegatedAuthority,
       "delegatedAuthority"
     );
-    if (authority.source !== "product_owner_task_thread" || authority.humanReviewerIdentity !== null) {
+    if (authority2.source !== "product_owner_task_thread" || authority2.humanReviewerIdentity !== null) {
       throw new Error("Invalid delegated approval authority provenance");
     }
     const reviewedHead = requireSha256(
-      authority.reviewedHead,
+      authority2.reviewedHead,
       "delegatedAuthority.reviewedHead"
     );
-    if (!Array.isArray(authority.panels) || authority.panels.length !== 2) {
+    if (!Array.isArray(authority2.panels) || authority2.panels.length !== 2) {
       throw new Error("Delegated approval requires exactly two agent panels");
     }
     const panelPaths = /* @__PURE__ */ new Set();
-    const panels = authority.panels.map((unknownPanel) => {
+    const panels = authority2.panels.map((unknownPanel) => {
       const panel = requireRecord2(unknownPanel, "delegatedAuthority.panel");
       const taskPath = requireText(
         panel.taskPath,
@@ -32118,10 +32489,10 @@ function parseEvaluationAdjudicationApproval(input) {
         changesRequiredCases: 0
       };
     });
-    if (!Array.isArray(authority.roundHistory)) {
+    if (!Array.isArray(authority2.roundHistory)) {
       throw new Error("Invalid delegated approval round history");
     }
-    const roundHistory = authority.roundHistory.map((unknownRound, index2) => {
+    const roundHistory = authority2.roundHistory.map((unknownRound, index2) => {
       const round = requireRecord2(
         unknownRound,
         "delegatedAuthority.roundHistory"
@@ -32271,11 +32642,11 @@ async function runEvaluationCalibration(options) {
       failures.push({ caseId: fixture.id, code: "expected_state_mismatch" });
     }
     const byId = new Map(
-      fixture.transcript.map((turn) => [turn.eventId, turn])
+      fixture.transcript.map((turn3) => [turn3.eventId, turn3])
     );
     for (const anchor of fixture.evidenceAnchors) {
-      const turn = byId.get(anchor.turnRef);
-      if (!turn || turn.speaker !== "user" || !turn.text.includes(anchor.quote)) {
+      const turn3 = byId.get(anchor.turnRef);
+      if (!turn3 || turn3.speaker !== "user" || !turn3.text.includes(anchor.quote)) {
         invalidEvidenceAnchors += 1;
         failures.push({
           caseId: fixture.id,
@@ -32801,7 +33172,7 @@ async function runCaseThroughGenerationWorkflow(input) {
     completionStats: {
       totalTurns: input.fixture.transcript.length,
       userTurns: input.fixture.transcript.filter(
-        (turn) => turn.speaker === "user"
+        (turn3) => turn3.speaker === "user"
       ).length,
       totalWords: 0,
       durationSeconds: 0,
@@ -34820,7 +35191,7 @@ function buildSemanticAdjudicationReviewInput(source) {
   const runId = requireSafeId(source.runId, "runId");
   const approvedPlan = parseVersionedHash(source.approvedPlan, "approvedPlan");
   const corpus = parseVersionedHash(source.corpus, "corpus");
-  const prompt = parseVersionedHash(source.prompt, "prompt");
+  const prompt2 = parseVersionedHash(source.prompt, "prompt");
   const schema = parseVersionedHash(source.schema, "schema");
   const modelVersion = requireText2(source.modelVersion, "modelVersion");
   const model = {
@@ -34832,7 +35203,7 @@ function buildSemanticAdjudicationReviewInput(source) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     model
   });
@@ -34849,7 +35220,7 @@ function buildSemanticAdjudicationReviewInput(source) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     model,
     runSha256,
@@ -34913,9 +35284,9 @@ function buildSemanticAdjudicationPanel(input) {
   return { ...body, panelArtifactSha256: hashCanonical(body) };
 }
 function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unknownAuthorityEnvelope) {
-  const authority = parseAuthorityEnvelope(unknownAuthorityEnvelope);
+  const authority2 = parseAuthorityEnvelope(unknownAuthorityEnvelope);
   const reviewInput = parseReviewInput(unknownReviewInput);
-  assertAuthorityCoverage(authority, reviewInput);
+  assertAuthorityCoverage(authority2, reviewInput);
   const artifact = requireRecord4(unknownArtifact, "artifact");
   assertExactKeys3(
     artifact,
@@ -34937,14 +35308,14 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   if (artifact.reviewInputSha256 !== reviewInput.reviewInputSha256) {
     throw new Error("Semantic adjudication reviewInputSha256 mismatch");
   }
-  if (artifact.authorityEnvelopeSha256 !== authority.authorityEnvelopeSha256) {
+  if (artifact.authorityEnvelopeSha256 !== authority2.authorityEnvelopeSha256) {
     throw new Error("Semantic adjudication authorityEnvelopeSha256 mismatch");
   }
   if (!Array.isArray(artifact.panels) || artifact.panels.length !== 2) {
     throw new Error("Semantic adjudication requires exactly two agent panels");
   }
   const panels = artifact.panels.map(
-    (panel, index2) => parsePanel(panel, reviewInput, authority, index2)
+    (panel, index2) => parsePanel(panel, reviewInput, authority2, index2)
   );
   if (panels[0].taskPath === panels[1].taskPath) {
     throw new Error("Semantic adjudication agent panels must be independent");
@@ -34992,7 +35363,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
     modelSha256: reviewInput.model.sha256,
     responseSetSha256: reviewInput.responseSetSha256,
     reviewInputSha256: reviewInput.reviewInputSha256,
-    authorityEnvelopeSha256: authority.authorityEnvelopeSha256,
+    authorityEnvelopeSha256: authority2.authorityEnvelopeSha256,
     panelArtifactSha256s: [
       panels[0].panelArtifactSha256,
       panels[1].panelArtifactSha256
@@ -35037,7 +35408,7 @@ function parseReviewInput(input) {
   const runId = requireSafeId(record.runId, "runId");
   const approvedPlan = parseVersionedHash(record.approvedPlan, "approvedPlan");
   const corpus = parseVersionedHash(record.corpus, "corpus");
-  const prompt = parseVersionedHash(record.prompt, "prompt");
+  const prompt2 = parseVersionedHash(record.prompt, "prompt");
   const schema = parseVersionedHash(record.schema, "schema");
   const model = parseVersionedHash(record.model, "model");
   if (model.sha256 !== sha2564(model.version)) {
@@ -35048,7 +35419,7 @@ function parseReviewInput(input) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     model
   });
@@ -35074,7 +35445,7 @@ function parseReviewInput(input) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     model,
     runSha256,
@@ -35135,21 +35506,21 @@ function parseAuthorityEnvelope(input) {
   }
   return { ...body, authorityEnvelopeSha256 };
 }
-function assertAuthorityCoverage(authority, reviewInput) {
-  if (authority.reviewInputSha256 !== reviewInput.reviewInputSha256) {
+function assertAuthorityCoverage(authority2, reviewInput) {
+  if (authority2.reviewInputSha256 !== reviewInput.reviewInputSha256) {
     throw new Error(
       "Semantic adjudication authority review-input hash mismatch"
     );
   }
-  if (authority.runSha256 !== reviewInput.runSha256) {
+  if (authority2.runSha256 !== reviewInput.runSha256) {
     throw new Error("Semantic adjudication authority run hash mismatch");
   }
-  if (authority.responseSetSha256 !== reviewInput.responseSetSha256) {
+  if (authority2.responseSetSha256 !== reviewInput.responseSetSha256) {
     throw new Error(
       "Semantic adjudication authority response-set hash mismatch"
     );
   }
-  if (canonicalJson(authority.approvedPlan) !== canonicalJson(reviewInput.approvedPlan)) {
+  if (canonicalJson(authority2.approvedPlan) !== canonicalJson(reviewInput.approvedPlan)) {
     throw new Error("Semantic adjudication approved plan mismatch");
   }
   const actual = reviewInput.outputs.map(
@@ -35159,11 +35530,11 @@ function assertAuthorityCoverage(authority, reviewInput) {
       runIndex
     })
   );
-  if (canonicalJson(authority.expectedOutputs) !== canonicalJson(actual)) {
+  if (canonicalJson(authority2.expectedOutputs) !== canonicalJson(actual)) {
     throw new Error("Semantic adjudication authority output coverage mismatch");
   }
 }
-function parsePanel(input, reviewInput, authority, index2) {
+function parsePanel(input, reviewInput, authority2, index2) {
   const panel = requireRecord4(input, `panel:${index2}`);
   assertExactKeys3(
     panel,
@@ -35187,7 +35558,7 @@ function parsePanel(input, reviewInput, authority, index2) {
     panel.executionReceiptSha256,
     `panel:${index2}.executionReceiptSha256`
   );
-  const authorizedExecution = authority.panelExecutions.find(
+  const authorizedExecution = authority2.panelExecutions.find(
     (execution) => execution.taskPath === taskPath
   );
   if (!authorizedExecution || authorizedExecution.executionReceiptSha256 !== executionReceiptSha256) {
@@ -35615,7 +35986,7 @@ function initializePrivateSemanticCapture(input) {
   caseRuns.sort(compareCaseRuns);
   const approvedPlan = requireVersionedHash(input.approvedPlan, "approvedPlan");
   const corpus = requireVersionedHash(input.corpus, "corpus");
-  const prompt = requireVersionedHash(input.prompt, "prompt");
+  const prompt2 = requireVersionedHash(input.prompt, "prompt");
   const schema = requireVersionedHash(input.schema, "schema");
   const modelVersion = requireText3(input.modelVersion, "modelVersion");
   const runId = requireText3(input.runId, "runId");
@@ -35626,7 +35997,7 @@ function initializePrivateSemanticCapture(input) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     modelVersion,
     caseRunSetSha256,
@@ -35641,7 +36012,7 @@ function initializePrivateSemanticCapture(input) {
     runId,
     approvedPlan,
     corpus,
-    prompt,
+    prompt: prompt2,
     schema,
     modelVersion,
     caseRunSetSha256,
@@ -35806,7 +36177,7 @@ function publishPrivateSemanticReviewBeforeTerminalReport(input) {
       "Semantic review requires distinct actual panel executions"
     );
   }
-  const authority = buildSemanticAdjudicationAuthorityEnvelope({
+  const authority2 = buildSemanticAdjudicationAuthorityEnvelope({
     approvedPlan: reviewInput.approvedPlan,
     runSha256: reviewInput.runSha256,
     responseSetSha256: reviewInput.responseSetSha256,
@@ -35837,10 +36208,10 @@ function publishPrivateSemanticReviewBeforeTerminalReport(input) {
       contractVersion: "evaluation-output-semantic-adjudication.v1",
       humanReviewerIdentity: null,
       reviewInputSha256: reviewInput.reviewInputSha256,
-      authorityEnvelopeSha256: authority.authorityEnvelopeSha256,
+      authorityEnvelopeSha256: authority2.authorityEnvelopeSha256,
       panels
     },
-    authority
+    authority2
   );
   assertCanonicalMismatchAlternatives(
     manifest,
@@ -36007,9 +36378,9 @@ function parseExecutionReceipt(receipt, index2) {
     executionReceiptSha256: receipt.executionReceiptSha256
   };
 }
-function parseTrustedExecutionAuthority(authority, reviewInputSha256) {
+function parseTrustedExecutionAuthority(authority2, reviewInputSha256) {
   assertExactKeys4(
-    authority,
+    authority2,
     [
       "contractVersion",
       "authorityKind",
@@ -36020,10 +36391,10 @@ function parseTrustedExecutionAuthority(authority, reviewInputSha256) {
     "trustedExecutionAuthority"
   );
   const rebuilt = buildTrustedSemanticExecutionAuthority({
-    reviewInputSha256: authority.reviewInputSha256,
-    verifiedExecutions: authority.verifiedExecutions
+    reviewInputSha256: authority2.reviewInputSha256,
+    verifiedExecutions: authority2.verifiedExecutions
   });
-  if (authority.reviewInputSha256 !== reviewInputSha256 || authority.authoritySha256 !== rebuilt.authoritySha256) {
+  if (authority2.reviewInputSha256 !== reviewInputSha256 || authority2.authoritySha256 !== rebuilt.authoritySha256) {
     throw new Error("Trusted semantic execution authority mismatch");
   }
   return rebuilt;
