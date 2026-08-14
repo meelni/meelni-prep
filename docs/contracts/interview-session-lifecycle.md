@@ -153,7 +153,11 @@ initial connection or recovery, the authenticated browser asks the server to
 inspect candidate and agent presence. The server feeds those provider-verified
 facts through the same idempotent presence-reconciliation workflow used for
 missed webhooks. The UI reports `connected` only after the lifecycle is active
-or recovered. Browser transport, provider-observed interviewer liveness, and
+or recovered and an actual active interviewer-agent participant is present.
+A running dispatch without its participant projection remains an eligible
+settlement target but is not interviewer liveness for readiness or recovery.
+An active row with only candidate presence returns a non-ready agent-absent
+result. Browser transport, provider-observed interviewer liveness, and
 canonical lifecycle readiness remain separate facts. A selected LiveKit agent
 participant that is active and conversationally listening, thinking, or
 speaking establishes monotonic browser liveness for the current session and
@@ -305,7 +309,8 @@ participants are in joined/active provider state. A merely joining participant,
 arbitrary standard participant, an agent
 using the candidate identity, and stale/reordered presence never activate;
 candidate loss moves an active session to reconnecting, and candidate rejoin
-recovers it. Candidate observations persist their ordering watermark even when
+recovers it only while the exact interviewer-agent participant is also live.
+Candidate observations persist their ordering watermark even when
 they do not change lifecycle state, preventing delayed loss delivery from
 overriding a later join.
 
@@ -314,9 +319,10 @@ accepted loss persists the effective cutoff and its owner, including a loss in
 the final 30 seconds. Only a grace-owned cutoff schedules reconnect enforcement;
 the hard-deadline worker retains termination ownership when the hard deadline
 wins. The grace event carries the version and exact stored cutoff. At expiry the
-worker first checks authoritative candidate presence. Only provider state
-`JOINED` or `ACTIVE` with a finite provider `joinedAt` strictly before the
-stored cutoff may repair a missed join through the same
+worker first checks authoritative candidate and interviewer-agent presence.
+Only candidate provider state `JOINED` or `ACTIVE` with a finite provider
+`joinedAt` strictly before the stored cutoff, plus an actual active agent
+participant, may repair a missed join through the same
 lifecycle-version, deadline, and timestamp compare-and-set. Ordinary signed
 join and periodic presence repair require PostgreSQL time to remain strictly
 before the cutoff. Once a grace-owned cutoff is due, the enforcement worker may
@@ -365,7 +371,10 @@ lists provider participants for connecting, active, and reconnecting voice
 sessions, with never-checked and least-recently-checked sessions first. For a
 connecting room it repairs a missing candidate receipt, agent receipt, or both
 only when the exact candidate and a distinct agent-kind participant are both
-currently present. Confirmed absence from an active room synthesizes one
+currently present. A provider-confirmed absent startup room terminalizes as a
+provider failure only after the existing one-minute recovery window and
+atomically converges reserved credit; this recovers runtimes that stopped
+before they could sign a failure report. Confirmed absence from an active room synthesizes one
 ordered candidate-loss observation; confirmed presence in reconnecting repairs
 a missed join by version/deadline CAS. A stale scan cannot overwrite a newer
 lifecycle version, and a provider read failure never invents absence.
@@ -418,8 +427,13 @@ After signing, the workflow locks and reads the session and PostgreSQL wall cloc
 second time and withholds the credential unless `exp` is strictly later than
 that snapshot and no later than the whole-second floor of the unchanged earlier
 reconnect or hard deadline. A slow, fast, or delayed signer cannot extend or
-return an already-expired credential. A transient failure of that final read
-withholds the credential without treating the ready room as nonjoinable;
+return an already-expired credential. If the post-sign snapshot changed but
+the newer owned room generation remains joinable, the server returns a typed
+retryable `409 reconnect_authorization_changed`; the browser retries it within
+the existing credential bound without discarding the mounted room. A genuinely
+nonjoinable newer snapshot remains terminal `409 session_not_joinable`. A
+transient failure of that final read withholds the credential without treating
+the ready room as nonjoinable;
 cleanup requires durable terminal/nonjoinable evidence.
 
 ## Legacy Compatibility And Backfill

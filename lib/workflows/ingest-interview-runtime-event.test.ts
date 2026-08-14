@@ -9,7 +9,7 @@ import {
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
-test("provider failure persists then converges credit on every replay", async () => {
+test("pre-writer provider failure persists then converges reserved credit on every replay", async () => {
   let persisted = false;
   const store: InterviewRuntimeFailureStore = {
     async persistProviderFailure() {
@@ -100,7 +100,7 @@ function providerFailure(): InterviewRuntimeEvent {
     runtime_ref: { provider: "livekit", id: `interview-${SESSION_ID}` },
     failure: {
       reason: "provider_failure",
-      code: "voice_runtime_provider_failed",
+      code: "runtime_writer_registration_failed",
       retryable: true,
     },
   };

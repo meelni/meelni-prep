@@ -111,6 +111,7 @@ type RoomCredentialFailure = {
   status: number;
   error: string;
   message?: string;
+  retryable: boolean;
   retryAfterMs: number | null;
 };
 
@@ -425,7 +426,12 @@ export function InterviewPageContent() {
       if (endIntentRef.current) return;
       if ("aborted" in credentialResult) return;
       if (!credentialResult.ok) {
-        if (shouldDiscardInterviewRoomCredentials(credentialResult.status)) {
+        if (
+          shouldDiscardInterviewRoomCredentials(
+            credentialResult.status,
+            credentialResult.retryable
+          )
+        ) {
           setToken("");
           setUrl("");
           if (credentialResult.status === 401) {
@@ -822,7 +828,9 @@ export function InterviewPageContent() {
       status: result.status,
       error: result.error,
     });
-    if (shouldDiscardInterviewRoomCredentials(result.status)) {
+    if (
+      shouldDiscardInterviewRoomCredentials(result.status, result.retryable)
+    ) {
       setToken("");
       setUrl("");
       if (result.status === 401) {
@@ -1761,6 +1769,7 @@ async function requestInterviewRoomCredentialsWithRetry(
     status: 503,
     error: "connection_unavailable",
     message: "Reconnect authorization is temporarily unavailable.",
+    retryable: true,
     retryAfterMs: 2_000,
   };
 
@@ -1796,13 +1805,16 @@ async function requestInterviewRoomCredentialsWithRetry(
           status: 502,
           error: "invalid_room_credentials",
           message: "The interview room response was invalid.",
+          retryable: false,
           retryAfterMs: null,
         };
       }
 
+      const retryable = isRecord(payload) && payload.retryable === true;
       const retryAfterMs = getCredentialRetryDelayMs(
         response.status,
-        response.headers.get("Retry-After")
+        response.headers.get("Retry-After"),
+        retryable
       );
       lastFailure = {
         ok: false,
@@ -1815,6 +1827,7 @@ async function requestInterviewRoomCredentialsWithRetry(
           isRecord(payload) && typeof payload.message === "string"
             ? payload.message
             : undefined,
+        retryable,
         retryAfterMs,
       };
     } catch (credentialError) {
@@ -1828,6 +1841,7 @@ async function requestInterviewRoomCredentialsWithRetry(
         status: 503,
         error: "connection_unavailable",
         message: "Reconnect authorization is temporarily unavailable.",
+        retryable: true,
         retryAfterMs: 2_000,
       };
     }

@@ -169,6 +169,12 @@ test("session bootstrap retries only advertised transient reads", () => {
   assert.equal(classifyInterviewSessionBootstrapResponse(200, {}), "ready");
 });
 
+test("credential recovery retries a typed post-sign 409 without discarding the mounted room", () => {
+  assert.equal(getCredentialRetryDelayMs(409, null, true), 2_000);
+  assert.equal(shouldDiscardInterviewRoomCredentials(409, true), false);
+  assert.equal(shouldDiscardInterviewRoomCredentials(409, false), true);
+});
+
 test("interview recovery sleeps are cancellable", async () => {
   const controller = new AbortController();
   const waiting = waitForInterviewRecoveryDelay(60_000, controller.signal);
@@ -177,7 +183,7 @@ test("interview recovery sleeps are cancellable", async () => {
 });
 
 test("terminal credential denial discards the mounted room connection", () => {
-  assert.equal(shouldDiscardInterviewRoomCredentials(409), true);
+  assert.equal(shouldDiscardInterviewRoomCredentials(409, false), true);
   assert.equal(shouldDiscardInterviewRoomCredentials(401), true);
   assert.equal(shouldDiscardInterviewRoomCredentials(403), true);
   assert.equal(shouldDiscardInterviewRoomCredentials(404), true);

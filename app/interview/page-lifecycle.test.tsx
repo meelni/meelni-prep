@@ -1179,6 +1179,34 @@ describe("active interview page lifecycle", () => {
     );
   });
 
+  it("retries a typed post-sign authorization race before mounting the room", async () => {
+    let tokenRequests = 0;
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/livekit/token") {
+          tokenRequests += 1;
+          if (tokenRequests === 1) {
+            return Response.json(
+              {
+                error: "reconnect_authorization_changed",
+                retryable: true,
+              },
+              { status: 409, headers: { "Retry-After": "0" } }
+            );
+          }
+        }
+        return activeInterviewResponse(input, init);
+      }
+    );
+    vi.stubGlobal("fetch", request);
+
+    render(<InterviewPageContent />);
+
+    expect(await screen.findByTestId("livekit-room")).toBeInTheDocument();
+    expect(tokenRequests).toBe(2);
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
   it("hands an ending session reload to feedback before requesting room credentials", async () => {
     const request = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
