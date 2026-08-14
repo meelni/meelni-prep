@@ -2,6 +2,29 @@
 
 Meelni must not make paid access depend on Stripe webhook delivery order.
 
+## Provider status normalization
+
+Webhook reconciliation and authenticated manual sync use one exhaustive Stripe
+subscription-status adapter. `active`, `trialing`, `past_due`, `canceled`, and
+`paused` retain their corresponding local state. Initial-payment and terminal
+non-paying states (`incomplete`, `incomplete_expired`, and `unpaid`) normalize
+to the local non-entitling `paused` state. A provider status introduced before
+the adapter is updated also fails closed as `paused`; it cannot default to
+active access.
+
+Subscription-derived grants remain usable for `past_due` only before the
+stored `grace_period_end`, using database time observed after the owning user
+and subscription locks. Equality with the cutoff is denied. A missing cutoff
+denies access. `paused` and unknown local states deny subscription-derived
+credits immediately. Ordinary cancellation remains separately bounded by the
+provider period end.
+
+`GET /api/billing/credits` is a read-only balance projection. It may authenticate
+and read the fenced app-user, subscription, and ledger snapshot, but it does
+not create or update the app-user profile, grant a trial, or otherwise mutate
+billing state. Mutating interview-start workflows remain responsible for
+creating any required first-use identity before ledger mutation.
+
 ## Initial paid invoice
 
 A `subscription_create` invoice may establish missing local subscription state

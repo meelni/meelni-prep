@@ -157,6 +157,32 @@ export function normalizeDashboardSettings(
   };
 }
 
+export function buildSettingsCategoryPatch(
+  settings: DashboardSettings,
+  category: SettingsCategoryId
+): Partial<DashboardSettings> {
+  switch (category) {
+    case "account":
+      return { displayName: settings.displayName };
+    case "interview-defaults":
+      return {
+        defaultInterviewType: settings.defaultInterviewType,
+        defaultDifficulty: settings.defaultDifficulty,
+        questionRecency: settings.questionRecency,
+      };
+    case "notifications":
+      return {
+        emailNotifications: settings.emailNotifications,
+        sessionCompletionEmail: settings.sessionCompletionEmail,
+        feedbackReadyEmail: settings.feedbackReadyEmail,
+        weeklyProgressReport: settings.weeklyProgressReport,
+      };
+    case "plan-credits":
+    case "data-privacy":
+      return {};
+  }
+}
+
 export function initialsForUser(
   displayName?: string | null,
   email?: string | null
