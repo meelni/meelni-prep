@@ -27,6 +27,49 @@ These modes make no model or database calls. A green deterministic self-test
 proves only the harness; its live-provider and calibration-evidence gates
 remain pending.
 
+## Provider-free latency bakeoff
+
+Regenerate and verify the canonical aggregate report with:
+
+```bash
+npm run calibration:build-provider-free-bakeoff
+npm run calibration:verify-provider-free-bakeoff
+```
+
+To inspect the report on stdout or replay another closed, provider-neutral
+assumption file without committing it, use:
+
+```bash
+npm run calibration:provider-free-bakeoff
+npm run calibration:provider-free-bakeoff -- --config /absolute/path/to/config.json
+```
+
+The command reuses the existing synthetic calibration evaluator and the real
+Feedback v2 parser. `evidenceValidityRate` reports exact-evidence grounding;
+`structuredOutputAcceptanceRate` separately reports parser round-trip
+acceptance. Do not rename either metric to imply a broader schema claim. The
+output-token result uses only parser-accepted outputs and a conservative UTF-8
+byte upper bound with explicit headroom.
+
+Per profile, the report separately counts 64 calibration evaluator calls, 32
+scored-fixture measurement replay calls, and 96 total local evaluator calls.
+All three counts describe deterministic local execution; `providerCalls` must
+remain zero.
+
+The queue output is a pure simulation against the durable generation deadline.
+Its latency and cost-unit distributions come from explicit assumptions in the
+config file, not live observations, provider pricing, or customer traffic. A
+green report therefore supports only staging-plan review. It does not authorize
+provider calls, credential access, a model or tier choice, spend, queue tuning,
+token-cap changes, runtime configuration, default-on activation, Production
+mutation, deployment, or launch.
+
+Any future live comparison requires fresh exact product-owner authorization
+under the existing calibration authorization and ledger controls before call
+one. Any later runtime change requires its own reviewed implementation and
+applicable Production-action authorization; the human product owner retains the
+launch decision. Never treat this report or its hashes as either authority.
+
 ## V3 synthetic-output semantic review
 
 The SAV-248 v10 live launcher integrates the semantic-review contract in

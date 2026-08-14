@@ -1,0 +1,394 @@
+{
+  "contractVersion": "feedback-provider-free-bakeoff-report.v1",
+  "generatedAt": "2026-08-14T00:00:00.000Z",
+  "execution": {
+    "kind": "provider_free_deterministic_replay",
+    "customerDataUsed": false,
+    "providerCredentialRead": false,
+    "paidProviderCalled": false,
+    "productionConfigurationChanged": false,
+    "defaultActivationChanged": false
+  },
+  "versions": {
+    "goldSet": "pm-gold-set.v4",
+    "adjudication": "pm-gold-adjudication-candidates.v4",
+    "schema": "feedback.v2",
+    "prompt": "feedback.prompt.v2",
+    "rubric": "pm-feedback-rubric.v2",
+    "candidateArtifactHash": "80870d1fbf1ee464b874f6da755563cf54149e3c8183171a89c03b5a70853317",
+    "corpusHash": "31a6235c228c44f78cdcf44dec403c24fef64d7d6320424d1d2b6614e149b87c",
+    "configHash": "c6f71cc975395b746e83bf497cc453c56d23772c493ce43267df4bc1f96292ad"
+  },
+  "candidates": [
+    {
+      "id": "accepted-baseline-replay",
+      "role": "baseline",
+      "evidence": {
+        "fullySyntheticCases": 40,
+        "scoredCases": 32,
+        "insufficientCases": 8,
+        "calibrationEvaluatorCalls": 64,
+        "measurementReplayCalls": 32,
+        "totalEvaluatorCalls": 96,
+        "providerCalls": 0,
+        "evidenceValidityRate": 1,
+        "structuredOutputAcceptedOutputs": 32,
+        "structuredOutputAcceptanceRate": 1,
+        "adjudicatedEvidenceMatchRate": 1,
+        "scoreBandAgreementRate": 1,
+        "insufficientHandlingRate": 1,
+        "deterministicHarness": "passed"
+      },
+      "measurements": {
+        "promptTokenUpperBound": {
+          "minimum": 20501,
+          "p50": 20591,
+          "p95": 23744,
+          "maximum": 23796
+        },
+        "outputBytes": {
+          "minimum": 1069,
+          "p50": 1169,
+          "p95": 1233,
+          "maximum": 1349
+        },
+        "outputTokenUpperBound": {
+          "minimum": 1069,
+          "p50": 1169,
+          "p95": 1233,
+          "maximum": 1349
+        },
+        "simulatedProviderLatencyMs": {
+          "minimum": 20270,
+          "p50": 20270,
+          "p95": 20300,
+          "maximum": 20300
+        },
+        "estimatedComparisonCostUnits": {
+          "unit": "configured_comparison_units",
+          "total": 129,
+          "perEvaluation": {
+            "minimum": 4,
+            "p50": 4,
+            "p95": 4,
+            "maximum": 5
+          }
+        }
+      },
+      "conclusion": "deterministic_contract_passed"
+    },
+    {
+      "id": "configurable-candidate-replay",
+      "role": "candidate",
+      "evidence": {
+        "fullySyntheticCases": 40,
+        "scoredCases": 32,
+        "insufficientCases": 8,
+        "calibrationEvaluatorCalls": 64,
+        "measurementReplayCalls": 32,
+        "totalEvaluatorCalls": 96,
+        "providerCalls": 0,
+        "evidenceValidityRate": 1,
+        "structuredOutputAcceptedOutputs": 32,
+        "structuredOutputAcceptanceRate": 1,
+        "adjudicatedEvidenceMatchRate": 1,
+        "scoreBandAgreementRate": 1,
+        "insufficientHandlingRate": 1,
+        "deterministicHarness": "passed"
+      },
+      "measurements": {
+        "promptTokenUpperBound": {
+          "minimum": 20501,
+          "p50": 20591,
+          "p95": 23744,
+          "maximum": 23796
+        },
+        "outputBytes": {
+          "minimum": 1069,
+          "p50": 1169,
+          "p95": 1233,
+          "maximum": 1349
+        },
+        "outputTokenUpperBound": {
+          "minimum": 1069,
+          "p50": 1169,
+          "p95": 1233,
+          "maximum": 1349
+        },
+        "simulatedProviderLatencyMs": {
+          "minimum": 12216,
+          "p50": 12216,
+          "p95": 12240,
+          "maximum": 12240
+        },
+        "estimatedComparisonCostUnits": {
+          "unit": "configured_comparison_units",
+          "total": 96,
+          "perEvaluation": {
+            "minimum": 3,
+            "p50": 3,
+            "p95": 3,
+            "maximum": 3
+          }
+        }
+      },
+      "conclusion": "deterministic_contract_passed"
+    }
+  ],
+  "outputTokenCeiling": {
+    "estimator": "utf8-byte-upper-bound.v1",
+    "validMeasuredOutputs": 64,
+    "maximumMeasuredOutputBytes": 1349,
+    "maximumMeasuredOutputTokenUpperBound": 1349,
+    "headroomBasisPoints": 2500,
+    "roundTo": 128,
+    "currentMaxCompletionTokens": 2000,
+    "candidateMaxCompletionTokens": 1792,
+    "status": "lower_candidate_for_owner_review",
+    "activated": false
+  },
+  "queue": {
+    "deadlineMs": 90000,
+    "persistenceReserveMs": 5000,
+    "scenario": {
+      "burstSize": 24,
+      "arrivalSpacingMs": 0,
+      "claimMs": 750,
+      "validationMs": 250,
+      "persistenceMs": 1000
+    },
+    "results": [
+      {
+        "evaluatorCandidateId": "accepted-baseline-replay",
+        "queuePolicyId": "current-global-throttle",
+        "totalJobs": 24,
+        "providerStartedJobs": 20,
+        "completedWithinDeadlineJobs": 20,
+        "expiredBeforeProviderJobs": 4,
+        "timedOutProviderJobs": 0,
+        "deadlineSuccessRate": 0.8333333333333334,
+        "stagesMs": {
+          "throttleWait": {
+            "minimum": 0,
+            "p50": 60000,
+            "p95": 120000,
+            "maximum": 120000
+          },
+          "concurrencyWait": {
+            "minimum": 0,
+            "p50": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "claim": {
+            "minimum": 750,
+            "p50": 750,
+            "p95": 750,
+            "maximum": 750
+          },
+          "provider": {
+            "minimum": 0,
+            "p50": 20270,
+            "p95": 20300,
+            "maximum": 20300
+          },
+          "validation": {
+            "minimum": 0,
+            "p50": 250,
+            "p95": 250,
+            "maximum": 250
+          },
+          "persistence": {
+            "minimum": 0,
+            "p50": 1000,
+            "p95": 1000,
+            "maximum": 1000
+          },
+          "total": {
+            "minimum": 22270,
+            "p50": 82270,
+            "p95": 120750,
+            "maximum": 120750
+          }
+        }
+      },
+      {
+        "evaluatorCandidateId": "accepted-baseline-replay",
+        "queuePolicyId": "bounded-concurrency-candidate",
+        "totalJobs": 24,
+        "providerStartedJobs": 24,
+        "completedWithinDeadlineJobs": 24,
+        "expiredBeforeProviderJobs": 0,
+        "timedOutProviderJobs": 0,
+        "deadlineSuccessRate": 1,
+        "stagesMs": {
+          "throttleWait": {
+            "minimum": 0,
+            "p50": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "concurrencyWait": {
+            "minimum": 0,
+            "p50": 22270,
+            "p95": 44540,
+            "maximum": 44600
+          },
+          "claim": {
+            "minimum": 750,
+            "p50": 750,
+            "p95": 750,
+            "maximum": 750
+          },
+          "provider": {
+            "minimum": 20270,
+            "p50": 20270,
+            "p95": 20300,
+            "maximum": 20300
+          },
+          "validation": {
+            "minimum": 250,
+            "p50": 250,
+            "p95": 250,
+            "maximum": 250
+          },
+          "persistence": {
+            "minimum": 1000,
+            "p50": 1000,
+            "p95": 1000,
+            "maximum": 1000
+          },
+          "total": {
+            "minimum": 22270,
+            "p50": 44540,
+            "p95": 66810,
+            "maximum": 66900
+          }
+        }
+      },
+      {
+        "evaluatorCandidateId": "configurable-candidate-replay",
+        "queuePolicyId": "current-global-throttle",
+        "totalJobs": 24,
+        "providerStartedJobs": 20,
+        "completedWithinDeadlineJobs": 20,
+        "expiredBeforeProviderJobs": 4,
+        "timedOutProviderJobs": 0,
+        "deadlineSuccessRate": 0.8333333333333334,
+        "stagesMs": {
+          "throttleWait": {
+            "minimum": 0,
+            "p50": 60000,
+            "p95": 120000,
+            "maximum": 120000
+          },
+          "concurrencyWait": {
+            "minimum": 0,
+            "p50": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "claim": {
+            "minimum": 750,
+            "p50": 750,
+            "p95": 750,
+            "maximum": 750
+          },
+          "provider": {
+            "minimum": 0,
+            "p50": 12216,
+            "p95": 12240,
+            "maximum": 12240
+          },
+          "validation": {
+            "minimum": 0,
+            "p50": 250,
+            "p95": 250,
+            "maximum": 250
+          },
+          "persistence": {
+            "minimum": 0,
+            "p50": 1000,
+            "p95": 1000,
+            "maximum": 1000
+          },
+          "total": {
+            "minimum": 14216,
+            "p50": 74216,
+            "p95": 120750,
+            "maximum": 120750
+          }
+        }
+      },
+      {
+        "evaluatorCandidateId": "configurable-candidate-replay",
+        "queuePolicyId": "bounded-concurrency-candidate",
+        "totalJobs": 24,
+        "providerStartedJobs": 24,
+        "completedWithinDeadlineJobs": 24,
+        "expiredBeforeProviderJobs": 0,
+        "timedOutProviderJobs": 0,
+        "deadlineSuccessRate": 1,
+        "stagesMs": {
+          "throttleWait": {
+            "minimum": 0,
+            "p50": 0,
+            "p95": 0,
+            "maximum": 0
+          },
+          "concurrencyWait": {
+            "minimum": 0,
+            "p50": 14216,
+            "p95": 28432,
+            "maximum": 28480
+          },
+          "claim": {
+            "minimum": 750,
+            "p50": 750,
+            "p95": 750,
+            "maximum": 750
+          },
+          "provider": {
+            "minimum": 12216,
+            "p50": 12216,
+            "p95": 12240,
+            "maximum": 12240
+          },
+          "validation": {
+            "minimum": 250,
+            "p50": 250,
+            "p95": 250,
+            "maximum": 250
+          },
+          "persistence": {
+            "minimum": 1000,
+            "p50": 1000,
+            "p95": 1000,
+            "maximum": 1000
+          },
+          "total": {
+            "minimum": 14216,
+            "p50": 28432,
+            "p95": 42648,
+            "maximum": 42720
+          }
+        }
+      }
+    ],
+    "recommendation": {
+      "status": "provider_free_candidate_ready_for_staging_review",
+      "baselinePolicyId": "current-global-throttle",
+      "candidatePolicyId": "bounded-concurrency-candidate",
+      "productionChangeAuthorized": false
+    }
+  },
+  "evaluatorDecision": {
+    "status": "provider_free_contract_evidence_only",
+    "recommendedModelOrTier": null,
+    "liveQualityLatencyEvidenceRequired": true
+  },
+  "reproducibility": {
+    "inputSha256": "a9405464ccd1f873b486f74c19f2efee918103adce51cac1cb1414ac2870d12d",
+    "reportSha256": "bd8ad7e89b0b1d070bc83f057e5278b5b235f9be9816f9eccce88d65d6529912"
+  }
+}
