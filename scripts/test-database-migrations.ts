@@ -85,6 +85,7 @@ const SESSION_ERROR = "88888888-8888-4888-8888-888888888888";
 const SESSION_CONCURRENT = "99999999-9999-4999-8999-999999999999";
 const SESSION_ATOMIC_END = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SESSION_DURABLE_COMMAND = "a4420000-0000-4000-8000-000000000442";
+const SESSION_EXPIRED_COMMAND = "a4430000-0000-4000-8000-000000000443";
 const SESSION_RETIRED_REWARD_GUARD = "abababab-abab-4bab-8bab-abababababab";
 const SESSION_REPAIR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SESSION_RECONNECT_ORDER = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -3531,6 +3532,11 @@ async function verifyAtomicSessionCompletion(
       listInterviewDeadlineSchedules,
     },
     { createDrizzleInterviewReconnectStore },
+    {
+      createDrizzleTranscriptRuntimeSettlementStore,
+      getTranscriptRuntimeSettlementReadiness,
+    },
+    { expireRuntimeSettlementCommand },
     { enforceInterviewDeadlineWorkflow },
     { dispatchFeedbackGenerationWorkflow },
     { dispatchInterviewSessionSettlement, settleInterviewSessionWorkflow },
@@ -3541,6 +3547,8 @@ async function verifyAtomicSessionCompletion(
     import("../lib/db/feedback-dispatch"),
     import("../lib/db/session-deadlines"),
     import("../lib/db/session-reconnects"),
+    import("../lib/db/transcripts"),
+    import("../lib/db/runtime-settlement-commands"),
     import("../lib/workflows/enforce-interview-deadline"),
     import("../lib/workflows/dispatch-feedback-generation"),
     import("../lib/workflows/end-interview-session"),
@@ -3585,7 +3593,7 @@ async function verifyAtomicSessionCompletion(
       'active',
       3,
       now(),
-      '2026-07-10T05:00:00.000Z'::timestamptz,
+      now() - interval '1 minute',
       'durable-command-room'
     )
   `;
@@ -3596,7 +3604,35 @@ async function verifyAtomicSessionCompletion(
     ) VALUES (
       ${SESSION_DURABLE_COMMAND}::uuid, 2, 1,
       'durable-command-room', 'durable-command-writer',
-      '2026-07-10T05:00:01.000Z'::timestamptz
+      now() - interval '59 seconds'
+    )
+  `;
+  await sql`
+    INSERT INTO interview_session (
+      id, user_id, round_type, mode, status,
+      lifecycle_state, lifecycle_version, activated_at, started_at,
+      livekit_room_name
+    ) VALUES (
+      ${SESSION_EXPIRED_COMMAND}::uuid,
+      ${USER_ONE}::uuid,
+      'product_sense',
+      'voice_video',
+      'in_progress',
+      'active',
+      3,
+      now(),
+      now() - interval '1 minute',
+      'expired-command-room'
+    )
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_writer (
+      session_id, generation, contract_version, room_name, writer_id,
+      registered_at
+    ) VALUES (
+      ${SESSION_EXPIRED_COMMAND}::uuid, 2, 1,
+      'expired-command-room', 'expired-command-writer',
+      now() - interval '59 seconds'
     )
   `;
   await sql`
@@ -3800,6 +3836,109 @@ async function verifyAtomicSessionCompletion(
       databaseTimestamp(durableCommand!.expires_at).getTime() -
         databaseTimestamp(durableCommand!.cutoff_at).getTime(),
       20_000
+    );
+
+    const settlementStore = createDrizzleTranscriptRuntimeSettlementStore(
+      databases[0]
+    );
+    const durableSettlement = {
+      contract_version: 1 as const,
+      event_type: "runtime_settlement" as const,
+      session_id: SESSION_DURABLE_COMMAND,
+      room_name: "durable-command-room",
+      writer_id: "durable-command-writer",
+      writer_generation: 2,
+      state: "settled" as const,
+      settled_at: databaseTimestamp(durableCommand!.cutoff_at).toISOString(),
+    };
+    const persistedSettlement =
+      await settlementStore.persist(durableSettlement);
+    assert.equal(
+      persistedSettlement.ok && persistedSettlement.disposition,
+      "created"
+    );
+    const replayedSettlement = await settlementStore.persist(durableSettlement);
+    assert.equal(
+      replayedSettlement.ok && replayedSettlement.disposition,
+      "existing"
+    );
+    const [acknowledgedCommand] = await sql<
+      { state: string; terminal_reason: string }[]
+    >`
+      SELECT state, terminal_reason
+      FROM transcript_runtime_settlement_command
+      WHERE session_id = ${SESSION_DURABLE_COMMAND}::uuid
+    `;
+    assert.deepEqual(acknowledgedCommand, {
+      state: "acknowledged",
+      terminal_reason: "settled",
+    });
+
+    const expiredAccepted = await acceptUserInterviewEnd(
+      { sessionId: SESSION_EXPIRED_COMMAND, userId: USER_ONE },
+      databases[0]
+    );
+    assert.equal(expiredAccepted.ok && expiredAccepted.disposition, "accepted");
+    const [expiredCommand] = await sql<
+      { command_id: string; cutoff_at: Date | string }[]
+    >`
+      SELECT command_id, cutoff_at
+      FROM transcript_runtime_settlement_command
+      WHERE session_id = ${SESSION_EXPIRED_COMMAND}::uuid
+    `;
+    await expireRuntimeSettlementCommand(
+      expiredCommand!.command_id,
+      databases[0]
+    );
+    assert.deepEqual(
+      await settlementStore.persist({
+        contract_version: 1,
+        event_type: "runtime_settlement",
+        session_id: SESSION_EXPIRED_COMMAND,
+        room_name: "expired-command-room",
+        writer_id: "expired-command-writer",
+        writer_generation: 2,
+        state: "settled",
+        settled_at: databaseTimestamp(expiredCommand!.cutoff_at).toISOString(),
+      }),
+      { ok: false, reason: "settlement_conflict" }
+    );
+    const [expiredProof] = await sql<
+      {
+        settlements: number;
+        evidence_version: number | null;
+        evidence_state: string | null;
+      }[]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM transcript_runtime_settlement
+          WHERE session_id = ${SESSION_EXPIRED_COMMAND}::uuid) AS settlements,
+        transcript_evidence_version AS evidence_version,
+        transcript_evidence_state AS evidence_state
+      FROM interview_session
+      WHERE id = ${SESSION_EXPIRED_COMMAND}::uuid
+    `;
+    assert.deepEqual(expiredProof, {
+      settlements: 0,
+      evidence_version: null,
+      evidence_state: null,
+    });
+    assert.deepEqual(
+      await getTranscriptRuntimeSettlementReadiness(
+        SESSION_EXPIRED_COMMAND,
+        databases[0]
+      ),
+      {
+        writerCount: 1,
+        settledCount: 0,
+        degradedCount: 0,
+        missingCount: 1,
+        currentWriterGeneration: 2,
+        currentWriterState: null,
+        unhealthyWriterCount: 0,
+        gapWriterCount: 0,
+        ready: false,
+      }
     );
 
     const stores = databases.map((database) =>
@@ -12419,6 +12558,26 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     )
   `;
   await sql`
+    UPDATE interview_session
+    SET lifecycle_state = 'ending',
+      lifecycle_version = 2,
+      terminal_reason = 'user_end',
+      ending_at = date_trunc('milliseconds', clock_timestamp())
+    WHERE id = ${SESSION_DELETION_MARKER}::uuid
+  `;
+  await sql`
+    INSERT INTO transcript_runtime_settlement_command (
+      session_id, lifecycle_version, contract_version, command_id,
+      room_name, writer_id, writer_generation, cutoff_at, expires_at
+    )
+    SELECT id, lifecycle_version, 1,
+      ${`runtime-settlement:${SESSION_DELETION_MARKER}:2`},
+      livekit_room_name, 'deletion-marker-writer', 1, ending_at,
+      ending_at + interval '20 seconds'
+    FROM interview_session
+    WHERE id = ${SESSION_DELETION_MARKER}::uuid
+  `;
+  await sql`
     INSERT INTO transcript_interruption_marker (
       session_id, contract_version, event_id, writer_id, writer_generation,
       sequence, room_name, speaker, occurred_at, reason
@@ -12616,6 +12775,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       redacted_error: string | null;
       interruption_markers: number;
       runtime_settlements: number;
+      runtime_settlement_commands: number;
       reservations: number;
       runtime_writers: number;
     }[]
@@ -12645,6 +12805,9 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
       (SELECT count(*)::int FROM transcript_runtime_settlement
         WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
         AS runtime_settlements,
+      (SELECT count(*)::int FROM transcript_runtime_settlement_command
+        WHERE session_id = ${SESSION_DELETION_MARKER}::uuid)
+        AS runtime_settlement_commands,
       (SELECT count(*)::int FROM credit_reservation
         WHERE user_id = ${USER_TWO}::uuid) AS reservations,
       (SELECT count(*)::int FROM transcript_runtime_writer
@@ -12672,6 +12835,7 @@ async function verifyDeletionTombstone(sql: postgres.Sql) {
     tombstone_exists: true,
     interruption_markers: 0,
     runtime_settlements: 0,
+    runtime_settlement_commands: 0,
     reservations: 0,
     runtime_writers: 0,
     raw_provider_ids: 0,
