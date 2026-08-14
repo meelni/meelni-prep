@@ -121,6 +121,11 @@ failure rate, and estimated cost before any later owner decision.
 - New storage and payload contracts must be additive, versioned, replay-safe,
   and covered by sanitized or synthetic fixtures.
 
+The accepted shadow-storage implementation uses a separate immutable,
+service-only exact-key table behind an opaque default-off write context. The
+key binds session, trusted block fingerprint, rubric, prompt, selection schema,
+and model versions; the table has no dependency into feedback lifecycle reads.
+
 This decision extends, rather than weakens,
 [Interview Lifecycle Reliability](../architecture/interview-lifecycle-reliability.md),
 [Evidence-Gated Feedback Outcomes](2026-08-10-evidence-gated-feedback-outcomes.md),

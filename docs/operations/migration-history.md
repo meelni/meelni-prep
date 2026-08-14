@@ -45,10 +45,11 @@
 |    36 | `0036_sav_442_runtime_settlement_command`         |
 |    37 | `0037_sav_439_feedback_stage_attempt_history`     |
 |    38 | `0038_sav_440_verified_prefix_partial_scorecards` |
+|    39 | `0039_sav_445_shadow_feedback_artifacts`          |
 
 <!-- migration-journal:end -->
 
-This thirty-nine-entry inventory is generated from the same ordered contract as
+This forty-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -446,3 +447,18 @@ projection equality before any authenticated use.
 Non-v2 rows require the new column to remain null. The migration performs no
 backfill or history rewrite, and the historical v1 focused-practice fingerprint
 projection stays byte-for-byte compatible.
+
+## Shadow feedback artifacts
+
+Migration `0039_sav_445_shadow_feedback_artifacts` adds one immutable,
+service-only `shadow_feedback_artifact` table. Its SHA-256 primary key binds the
+session, trusted block fingerprint, rubric, prompt, selection schema, and model
+version tuple; a separate unique constraint enforces the expanded tuple. The
+artifact JSON must repeat those exact columns and stay within 64,000 octets.
+
+The composite session/owner foreign key rejects cross-account attachment and
+cascades on deletion. Forced RLS plus revoked `PUBLIC`, `anon`, and
+`authenticated` privileges keep raw artifacts server-only; `service_role` may
+select, insert, and delete but cannot update, and an immutable-row trigger
+rejects updates from privileged callers too. The migration performs no backfill,
+evaluation, provider call, feedback mutation, or activation.

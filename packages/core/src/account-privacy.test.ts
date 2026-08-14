@@ -10,7 +10,7 @@ import {
 const NOW = new Date("2026-07-10T16:00:00.000Z");
 
 test("account export version includes closed feedback quality state", () => {
-  assert.equal(ACCOUNT_EXPORT_SCHEMA_VERSION, "1.4.0");
+  assert.equal(ACCOUNT_EXPORT_SCHEMA_VERSION, "1.5.0");
 });
 
 test("account deletion accepts a recent server-verified sign-in", () => {

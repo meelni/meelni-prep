@@ -3,7 +3,7 @@
 ## Account export
 
 `GET /api/user/export` requires a server-verified authenticated user and returns
-one JSON attachment scoped to that user. The payload version is `1.4.0` and is
+one JSON attachment scoped to that user. The payload version is `1.5.0` and is
 defined by `ACCOUNT_EXPORT_SCHEMA_VERSION` in `@meelni/core`.
 
 The export includes:
@@ -15,6 +15,10 @@ The export includes:
   source finding, and candidate-authored completion when present;
 - current feedback-quality responses using only contract version, server-derived
   outcome, closed response/reason, revision, and timestamps;
+- versioned non-authoritative shadow feedback artifacts, including only their
+  content-bound key, closed facet/score result, failure class, bounded timing,
+  and token counts; raw transcript text, provider payloads, and provider errors
+  are not stored in the artifact;
 - account-linked contact submissions with explicit content, receipt, persistence,
   triage, and created-time fields;
 - subscription, usage, payment summaries, and credit-ledger summaries.
@@ -53,7 +57,7 @@ Generating an export is a read-only operation. It does not delete data or create
 a durable export artifact on the server.
 
 Meelni no longer writes or derives streaks and achievements in active product
-workflows. Export schema `1.4.0` continues to return any historical values so a
+workflows. Export schema `1.5.0` continues to return any historical values so a
 product retirement does not silently discard user data. The legacy columns and
 table also remain covered by account deletion. Physical removal requires a
 separate retention decision, a versioned export-contract change, and a
@@ -108,6 +112,11 @@ rate rows, then focused-practice attempts, before the referenced feedback/sessio
 graph. A durable deletion tombstone prevents a late quality mutation from
 recreating either state. Cleanup also removes `user_insights` before its referenced interview
 session because `user_insights.last_session_id` is a `NO ACTION` foreign key.
+Non-authoritative shadow feedback artifacts are removed explicitly before the
+session graph; composite owner/session foreign keys also cascade as defense in
+depth. No automatic artifact expiry is promised: artifacts follow their owning
+interview retention until account deletion unless a later accepted retention
+decision establishes a shorter forward-only policy.
 The account-deletion job normalizes provider, redaction, and application errors
 inside the Inngest step boundary so raw database/provider messages do not enter
 job history; the tombstone and job retain only a stable failure code.

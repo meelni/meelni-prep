@@ -49,6 +49,7 @@ import {
   FEEDBACK_QUALITY_SCHEMA_FINGERPRINT,
   FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
   VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
+  SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -161,6 +162,8 @@ const FEEDBACK_QUALITY_DELETION_FEEDBACK =
 const FEEDBACK_STAGE_ATTEMPT_USER = "1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f";
 const FEEDBACK_STAGE_ATTEMPT_SESSION = "20202020-2020-4020-8020-202020202020";
 const FEEDBACK_STAGE_ATTEMPT_FEEDBACK = "21212121-2121-4121-8121-212121212121";
+const SHADOW_ARTIFACT_USER = "44500000-0000-4000-8000-000000000001";
+const SHADOW_ARTIFACT_SESSION = "44500000-0000-4000-8000-000000000445";
 const FEEDBACK_STAGE_ATTEMPT_EVENT = `feedback/generate.requested:${FEEDBACK_STAGE_ATTEMPT_SESSION}:1`;
 const FEEDBACK_STAGE_ATTEMPT_FENCE = `v1:${createHash("sha256")
   .update(FEEDBACK_STAGE_ATTEMPT_EVENT)
@@ -324,15 +327,13 @@ async function run() {
     assertZeroStableStartV1Integrity(
       runPreflight(cleanUrl, true, "reconciled")!
     );
+    await verifyShadowFeedbackArtifactPersistence(clean, cleanUrl, true);
     await verifyFeedbackStageAttemptPersistence(clean, true);
 
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(
-      cleanFingerprint,
-      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
-    );
+    assert.equal(cleanFingerprint, SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT);
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -532,9 +533,10 @@ async function run() {
         RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
         FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
         VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
+        SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 38; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 39; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -554,7 +556,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 39; found 22/
+            /Strict launch preflight requires the exact latest migration count 40; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -584,6 +586,7 @@ async function run() {
         countsBeforeRuntimeSettlement
       );
       await verifyDatabase(upgrade);
+      await verifyShadowFeedbackArtifactPersistence(upgrade, upgradeUrl, false);
       await verifyFeedbackStageAttemptPersistence(upgrade, false);
       await verifyQuestionProvenance(upgrade, true);
       await verifyFocusedPracticePersistence(upgrade, upgradeUrl, false);
@@ -864,7 +867,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 39);
+      assert.equal(await migrationCount(sql), 40);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -928,7 +931,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+      SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1173,7 +1176,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 39; found 25/
+      /exact latest migration count 40; found 25/
     );
 
     const genericRows = await sql<
@@ -1272,21 +1275,18 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 39);
+    assert.equal(await migrationCount(sql), 40);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      finalPreflight.startingContract,
-      "verified_prefix_partial_scorecards"
-    );
+    assert.equal(finalPreflight.startingContract, "shadow_feedback_artifacts");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
-    assert.equal(finalPreflight.tables, 41);
-    assert.equal(finalPreflight.rls_tables, 41);
+    assert.equal(finalPreflight.tables, 42);
+    assert.equal(finalPreflight.rls_tables, 42);
     assert.equal(
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+      SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6661,7 +6661,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "verified_prefix_partial_scorecards"
+      "shadow_feedback_artifacts"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7833,7 +7833,7 @@ async function verifyFeedbackQualityPersistence(
         source,
         exportedAt: new Date("2026-08-13T12:00:00.000Z"),
       });
-      assert.equal(exported.schemaVersion, "1.4.0");
+      assert.equal(exported.schemaVersion, "1.5.0");
       assert.equal(exported.practice.feedbackQualitySignals.length, 1);
       assert.equal(
         JSON.stringify(exported.practice.feedbackQualitySignals).includes(
@@ -8039,6 +8039,352 @@ async function verifyFeedbackQualityDeletionWinsRateLimit(
     ]);
     await Promise.all([deletionClient.end(), limiterClient.end()]);
   }
+}
+
+async function verifyShadowFeedbackArtifactPersistence(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  verifyApplicationLifecycle: boolean
+) {
+  const { createShadowFeedbackArtifactKey, SHADOW_FEEDBACK_ARTIFACT_VERSION } =
+    await import("../packages/core/src/index");
+  const makeKey = (modelVersion: string) =>
+    createShadowFeedbackArtifactKey({
+      sessionId: SHADOW_ARTIFACT_SESSION,
+      trustedBlockIdentity: {
+        contractVersion: "trusted-answer-block-identity.v1",
+        answerBlockId: "answer-block:0001",
+        identity: `trusted-answer-block.v1:${"a".repeat(64)}`,
+      },
+      rubricVersion: "pm-feedback-rubric.v3",
+      promptVersion: "feedback.prompt.dimension-coverage.v1",
+      selectionSchemaVersion: "feedback.dimension-coverage.selection.v1",
+      modelVersion,
+    });
+  const makeArtifact = (key: ReturnType<typeof makeKey>) => ({
+    contractVersion: SHADOW_FEEDBACK_ARTIFACT_VERSION,
+    key,
+    outcome: {
+      state: "completed" as const,
+      roundType: "strategy" as const,
+      mode: "coaching_review" as const,
+      dimensions: {
+        structure: { score: null, facetCodes: [] },
+        clarity: { score: null, facetCodes: [] },
+        insight: { score: null, facetCodes: [] },
+        communication: { score: null, facetCodes: [] },
+        leadership: { score: null, facetCodes: [] },
+      },
+    },
+    metrics: {
+      durationMs: 800,
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    },
+    completedAt: "2020-01-01T00:00:00.000Z",
+  });
+  const currentArtifact = makeArtifact(makeKey("synthetic-shadow-model.v1"));
+  const staleArtifact = makeArtifact(makeKey("synthetic-shadow-model.v0"));
+
+  await sql`
+    INSERT INTO app_user (id, email)
+    VALUES (
+      ${SHADOW_ARTIFACT_USER}::uuid,
+      'shadow-artifact@example.invalid'
+    )
+  `;
+  await sql`
+    INSERT INTO interview_session (id, user_id, round_type, mode)
+    VALUES (
+      ${SHADOW_ARTIFACT_SESSION}::uuid,
+      ${SHADOW_ARTIFACT_USER}::uuid,
+      'strategy',
+      'voice_video'
+    )
+  `;
+
+  const insertArtifact = async (artifact: ReturnType<typeof makeArtifact>) => {
+    const { key } = artifact;
+    await sql`
+      INSERT INTO shadow_feedback_artifact (
+        artifact_key_fingerprint, user_id, session_id,
+        key_contract_version, artifact_contract_version,
+        trusted_block_fingerprint, rubric_version, prompt_version,
+        selection_schema_version, model_version, artifact, completed_at
+      ) VALUES (
+        ${key.keyFingerprint},
+        ${SHADOW_ARTIFACT_USER}::uuid,
+        ${key.sessionId}::uuid,
+        ${key.contractVersion},
+        ${artifact.contractVersion},
+        ${key.trustedBlockFingerprint},
+        ${key.rubricVersion},
+        ${key.promptVersion},
+        ${key.selectionSchemaVersion},
+        ${key.modelVersion},
+        ${JSON.stringify(artifact)}::jsonb,
+        ${artifact.completedAt}::timestamptz
+      )
+    `;
+  };
+
+  if (verifyApplicationLifecycle) {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = databaseUrl;
+    try {
+      const { getShadowFeedbackArtifactStorageGate } = await import(
+        "../lib/evaluation/shadow-feedback-artifact-config"
+      );
+      const { createShadowFeedbackArtifactStore } = await import(
+        "../lib/db/shadow-feedback-artifacts"
+      );
+      const store = createShadowFeedbackArtifactStore();
+      assert.equal(
+        await store.record(getShadowFeedbackArtifactStorageGate({}), {
+          userId: SHADOW_ARTIFACT_USER,
+          artifact: currentArtifact,
+        }),
+        "disabled"
+      );
+      const [disabledCount] = await sql<{ rows: number }[]>`
+        SELECT count(*)::int AS rows FROM shadow_feedback_artifact
+        WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid
+      `;
+      assert.equal(disabledCount?.rows, 0);
+
+      const enabledGate = getShadowFeedbackArtifactStorageGate({
+        MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE: "enabled",
+      });
+      assert.equal(
+        await store.record(enabledGate, {
+          userId: SHADOW_ARTIFACT_USER,
+          artifact: currentArtifact,
+        }),
+        "inserted"
+      );
+      for (const replayKind of ["crash_retry", "event_replay", "reconnect"]) {
+        assert.equal(
+          await store.record(enabledGate, {
+            userId: SHADOW_ARTIFACT_USER,
+            artifact: currentArtifact,
+          }),
+          "duplicate",
+          replayKind
+        );
+      }
+      assert.equal(
+        await store.record(enabledGate, {
+          userId: SHADOW_ARTIFACT_USER,
+          artifact: {
+            ...currentArtifact,
+            completedAt: "2020-01-01T00:00:01.000Z",
+          },
+        }),
+        "conflict"
+      );
+      assert.equal(
+        await store.record(enabledGate, {
+          userId: SHADOW_ARTIFACT_USER,
+          artifact: staleArtifact,
+        }),
+        "inserted"
+      );
+      const exact = await store.readExact([currentArtifact.key]);
+      assert.equal(exact.status, "complete");
+      assert.deepEqual(
+        exact.artifacts.map(({ key }) => key.keyFingerprint),
+        [currentArtifact.key.keyFingerprint]
+      );
+
+      const { loadAccountExportSource } = await import(
+        "../lib/db/account-export"
+      );
+      const { createAccountDataExport } = await import(
+        "../lib/workflows/export-account-data"
+      );
+      const source = await loadAccountExportSource(SHADOW_ARTIFACT_USER);
+      assert.equal(source.shadowFeedbackArtifacts.length, 2);
+      const exported = createAccountDataExport({
+        authenticatedUser: { id: SHADOW_ARTIFACT_USER },
+        source,
+        exportedAt: new Date("2026-08-14T12:00:00.000Z"),
+      });
+      assert.equal(exported.schemaVersion, "1.5.0");
+      assert.equal(exported.practice.shadowFeedbackArtifacts.length, 2);
+      assert.equal(JSON.stringify(exported).includes("providerPayload"), false);
+    } finally {
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  } else {
+    await insertArtifact(currentArtifact);
+    await insertArtifact(staleArtifact);
+  }
+
+  const [stored] = await sql<{ rows: number; oldest_completed_at: Date }[]>`
+    SELECT count(*)::int AS rows, min(completed_at) AS oldest_completed_at
+    FROM shadow_feedback_artifact
+    WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid
+  `;
+  assert.equal(stored?.rows, 2);
+  assert.equal(
+    new Date(stored!.oldest_completed_at).toISOString(),
+    "2020-01-01T00:00:00.000Z"
+  );
+
+  await assert.rejects(
+    () => sql`
+      UPDATE shadow_feedback_artifact
+      SET completed_at = '2026-08-14T12:00:00.000Z'::timestamptz
+      WHERE artifact_key_fingerprint = ${currentArtifact.key.keyFingerprint}
+    `,
+    /shadow_feedback_artifact_immutable/
+  );
+
+  const alternateFingerprint = `shadow-feedback-artifact-key.v1:${"f".repeat(64)}`;
+  const alternateArtifact = {
+    ...currentArtifact,
+    key: {
+      ...currentArtifact.key,
+      keyFingerprint: alternateFingerprint,
+    },
+  };
+  await assert.rejects(
+    () => sql`
+      INSERT INTO shadow_feedback_artifact (
+        artifact_key_fingerprint, user_id, session_id,
+        key_contract_version, artifact_contract_version,
+        trusted_block_fingerprint, rubric_version, prompt_version,
+        selection_schema_version, model_version, artifact, completed_at
+      ) VALUES (
+        ${alternateFingerprint}, ${SHADOW_ARTIFACT_USER}::uuid,
+        ${SHADOW_ARTIFACT_SESSION}::uuid,
+        ${currentArtifact.key.contractVersion},
+        ${currentArtifact.contractVersion},
+        ${currentArtifact.key.trustedBlockFingerprint},
+        ${currentArtifact.key.rubricVersion},
+        ${currentArtifact.key.promptVersion},
+        ${currentArtifact.key.selectionSchemaVersion},
+        ${currentArtifact.key.modelVersion},
+        ${JSON.stringify(alternateArtifact)}::jsonb,
+        ${currentArtifact.completedAt}::timestamptz
+      )
+    `,
+    /shadow_feedback_artifact_exact_key_uniq/
+  );
+
+  const oversizedArtifact = {
+    ...makeArtifact(makeKey("synthetic-shadow-model.oversized")),
+    padding: "x".repeat(65_000),
+  };
+  await assert.rejects(
+    () => sql`
+      INSERT INTO shadow_feedback_artifact (
+        artifact_key_fingerprint, user_id, session_id,
+        key_contract_version, artifact_contract_version,
+        trusted_block_fingerprint, rubric_version, prompt_version,
+        selection_schema_version, model_version, artifact, completed_at
+      ) VALUES (
+        ${oversizedArtifact.key.keyFingerprint},
+        ${SHADOW_ARTIFACT_USER}::uuid, ${SHADOW_ARTIFACT_SESSION}::uuid,
+        ${oversizedArtifact.key.contractVersion},
+        ${oversizedArtifact.contractVersion},
+        ${oversizedArtifact.key.trustedBlockFingerprint},
+        ${oversizedArtifact.key.rubricVersion},
+        ${oversizedArtifact.key.promptVersion},
+        ${oversizedArtifact.key.selectionSchemaVersion},
+        ${oversizedArtifact.key.modelVersion},
+        ${JSON.stringify(oversizedArtifact)}::jsonb,
+        ${oversizedArtifact.completedAt}::timestamptz
+      )
+    `,
+    /shadow_feedback_artifact_shape_check/
+  );
+
+  const privileges = await sql<
+    {
+      anon_select: boolean;
+      authenticated_select: boolean;
+      service_select: boolean;
+      service_insert: boolean;
+      service_delete: boolean;
+      service_update: boolean;
+    }[]
+  >`
+    SELECT
+      has_table_privilege('anon', 'public.shadow_feedback_artifact', 'SELECT') AS anon_select,
+      has_table_privilege('authenticated', 'public.shadow_feedback_artifact', 'SELECT') AS authenticated_select,
+      has_table_privilege('service_role', 'public.shadow_feedback_artifact', 'SELECT') AS service_select,
+      has_table_privilege('service_role', 'public.shadow_feedback_artifact', 'INSERT') AS service_insert,
+      has_table_privilege('service_role', 'public.shadow_feedback_artifact', 'DELETE') AS service_delete,
+      has_table_privilege('service_role', 'public.shadow_feedback_artifact', 'UPDATE') AS service_update
+  `;
+  assert.deepEqual(privileges[0], {
+    anon_select: false,
+    authenticated_select: false,
+    service_select: true,
+    service_insert: true,
+    service_delete: true,
+    service_update: false,
+  });
+
+  const [sideEffects] = await sql<
+    {
+      feedback: number;
+      insights: number;
+      usage: number;
+      subscriptions: number;
+    }[]
+  >`
+    SELECT
+      (SELECT count(*)::int FROM feedback
+        WHERE session_id = ${SHADOW_ARTIFACT_SESSION}::uuid) AS feedback,
+      (SELECT count(*)::int FROM user_insights
+        WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid) AS insights,
+      (SELECT count(*)::int FROM usage_record
+        WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid) AS usage,
+      (SELECT count(*)::int FROM subscription
+        WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid) AS subscriptions
+  `;
+  assert.deepEqual(sideEffects, {
+    feedback: 0,
+    insights: 0,
+    usage: 0,
+    subscriptions: 0,
+  });
+
+  if (verifyApplicationLifecycle) {
+    const { deleteUserApplicationData } = await import(
+      "../lib/db/account-deletions"
+    );
+    await deleteUserApplicationData(SHADOW_ARTIFACT_USER, drizzle(sql));
+  } else {
+    await sql`
+      DELETE FROM shadow_feedback_artifact
+      WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid
+    `;
+    await sql`
+      DELETE FROM interview_session
+      WHERE id = ${SHADOW_ARTIFACT_SESSION}::uuid
+    `;
+    await sql`
+      DELETE FROM app_user WHERE id = ${SHADOW_ARTIFACT_USER}::uuid
+    `;
+  }
+  const [deleted] = await sql<
+    { artifacts: number; sessions: number; users: number }[]
+  >`
+    SELECT
+      (SELECT count(*)::int FROM shadow_feedback_artifact
+        WHERE user_id = ${SHADOW_ARTIFACT_USER}::uuid) AS artifacts,
+      (SELECT count(*)::int FROM interview_session
+        WHERE id = ${SHADOW_ARTIFACT_SESSION}::uuid) AS sessions,
+      (SELECT count(*)::int FROM app_user
+        WHERE id = ${SHADOW_ARTIFACT_USER}::uuid) AS users
+  `;
+  assert.deepEqual(deleted, { artifacts: 0, sessions: 0, users: 0 });
 }
 
 async function verifyFeedbackStageAttemptPersistence(
@@ -8305,7 +8651,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 39);
+  assert.equal(await migrationCount(sql), 40);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -8313,7 +8659,10 @@ async function verifyDatabase(sql: postgres.Sql) {
     WHERE table_schema = 'public'
     ORDER BY table_name
   `;
-  assert.equal(tables.length, 41);
+  assert.equal(tables.length, 42);
+  assert.ok(
+    tables.some(({ table_name }) => table_name === "shadow_feedback_artifact")
+  );
   assert.ok(
     tables.some(({ table_name }) => table_name === "billing_adjustment")
   );
@@ -8898,7 +9247,7 @@ async function verifyDatabase(sql: postgres.Sql) {
       AND pg_class.relkind = 'r'
     ORDER BY relname
   `;
-  assert.equal(rls.length, 41);
+  assert.equal(rls.length, 42);
   assert.ok(rls.every((table) => table.enabled));
 
   const contactRls = await sql<
