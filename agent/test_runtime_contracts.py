@@ -337,6 +337,57 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertTrue(asyncio.run(run_optional(succeeds)))
         self.assertFalse(asyncio.run(run_optional(fails)))
 
+    def test_public_demo_control_publishes_valid_json_on_expected_topic(self):
+        demo_path = Path(__file__).parent / "demo" / "agent.py"
+        demo_tree = ast.parse(demo_path.read_text())
+        publish_helper = next(
+            node
+            for node in demo_tree.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "publish_demo_control"
+        )
+        helper_imports = [
+            node
+            for node in demo_tree.body
+            if isinstance(node, ast.Import)
+            and any(alias.name in {"asyncio", "json"} for alias in node.names)
+        ]
+        isolated_module = ast.fix_missing_locations(
+            ast.Module(body=[*helper_imports, publish_helper], type_ignores=[])
+        )
+        namespace = {
+            "CONTROL_PUBLISH_TIMEOUT_SECONDS": 1,
+            "JobContext": object,
+        }
+        exec(compile(isolated_module, str(demo_path), "exec"), namespace)
+
+        class RecordingParticipant:
+            def __init__(self):
+                self.calls = []
+
+            async def publish_data(self, payload, **options):
+                self.calls.append((payload, options))
+
+        participant = RecordingParticipant()
+        ctx = SimpleNamespace(
+            room=SimpleNamespace(local_participant=participant),
+        )
+        payload = {"type": "demo_ready", "remaining_seconds": 87}
+
+        asyncio.run(
+            namespace["publish_demo_control"](
+                ctx,
+                payload,
+                timeout_seconds=0.1,
+            )
+        )
+
+        self.assertEqual(len(participant.calls), 1)
+        published_payload, publish_options = participant.calls[0]
+        self.assertIsInstance(published_payload, bytes)
+        self.assertEqual(json.loads(published_payload.decode("utf-8")), payload)
+        self.assertEqual(publish_options, {"topic": "demo_control"})
+
     def test_public_demo_source_arms_deadline_and_waits_for_exact_participant(self):
         source = (Path(__file__).parent / "demo" / "agent.py").read_text()
 

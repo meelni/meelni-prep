@@ -136,4 +136,38 @@ describe("DemoModal", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("presents a generic 429 as a retryable cooldown", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: "demo_rate_limited",
+              retryAfterSeconds: 42,
+            }),
+            {
+              status: 429,
+              headers: {
+                "content-type": "application/json",
+                "Retry-After": "42",
+              },
+            }
+          )
+      )
+    );
+    const user = userEvent.setup();
+    render(<DemoHarness />);
+
+    await user.click(screen.getByRole("button", { name: "Try voice demo" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The voice preview is on cooldown");
+    expect(alert).toHaveTextContent(
+      "You can try again when the cooldown ends."
+    );
+    expect(alert).not.toHaveTextContent(/capacity/i);
+    expect(screen.getByRole("button", { name: /Try again in/ })).toBeDisabled();
+  });
 });
