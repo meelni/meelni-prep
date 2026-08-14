@@ -958,8 +958,21 @@ test("a durable qualitative-only constraint overrides five scoreable responses",
   assert.notEqual(store.current.status, "skipped");
 });
 
-test("a partial frozen snapshot permits only qualitative coaching", async () => {
-  const store = new MemoryGenerationStore(record());
+test("a partial frozen snapshot without a trusted prefix permits only qualitative coaching", async () => {
+  const store = new MemoryGenerationStore(
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 100,
+        durationSeconds: 60,
+        substantiveResponses: 5,
+        scoreableResponses: 5,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
+    })
+  );
   let observedNumericalPolicy: boolean | undefined;
   const deps = dependencies(store, {
     async evaluate(input) {
@@ -1768,7 +1781,18 @@ test("verified-prefix partial generation scores only trusted blocks and rejects 
   assert.equal(expected.schemaVersion, "feedback.dimension-coverage.v2");
 
   const store = new MemoryGenerationStore(
-    record({ completionTier: "partial" })
+    record({
+      completionTier: "partial",
+      completionStats: {
+        totalTurns: 10,
+        userTurns: 5,
+        totalWords: 100,
+        durationSeconds: 60,
+        substantiveResponses: 5,
+        scoreableResponses: 5,
+        feedbackModeConstraint: "evidence_limited_only",
+      },
+    })
   );
   const deps = dependencies(store, {
     answerBlockEvidence: {

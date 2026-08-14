@@ -14,6 +14,20 @@ projection MUST produce no provider evaluation and no numerical feedback.
   excluded by a valid verified-prefix projection
 - **THEN** only the earlier trusted block is available to the evaluator
 
+#### Scenario: Durable qualitative constraint has verified authority
+
+- **WHEN** a current partial completion record carries
+  `feedbackModeConstraint=evidence_limited_only` and the server recomputes an
+  exact verified-prefix projection
+- **THEN** the projection supersedes that constraint only for its trusted
+  blocks and the invocation may produce sparse dimension scores
+
+#### Scenario: Durable qualitative constraint has no verified authority
+
+- **WHEN** the same partial completion record has no valid verified-prefix
+  projection
+- **THEN** the invocation remains scoreless
+
 ### Requirement: Partial scorecards are sparse and never overall-scored
 
 The system MUST persist and present scores only for sufficiently supported

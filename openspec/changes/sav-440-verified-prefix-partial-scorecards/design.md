@@ -21,6 +21,12 @@ trusted block. Unsupported dimensions remain null. A verified-prefix result is
 always `partial` and its overall score is always null, including the defensive
 case where the provider finds sufficient evidence for every dimension.
 
+Partial completion records retain the durable `evidence_limited_only`
+constraint because it remains the safe default when authority is absent. An
+exact server-recomputed `verified_prefix` projection supersedes that legacy
+constraint only for the current invocation and only for the projected trusted
+blocks. Without that projection the same completion record remains scoreless.
+
 When no dimension is sufficiently supported, the same v2 scope produces a
 scoreless coaching review. A partial snapshot with no trusted blocks or any
 authority/integrity failure follows the existing unable-to-review path without

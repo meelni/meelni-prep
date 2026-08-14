@@ -336,9 +336,10 @@ async function runGenerateFeedbackWorkflow(
       ? evidence.trustedProjection
       : undefined;
   const allowNumericalScores =
-    (evidence.snapshotState !== "partial" ||
-      verifiedPrefixProjection !== undefined) &&
-    claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+    verifiedPrefixProjection !== undefined ||
+    (evidence.snapshotState !== "partial" &&
+      claimed.completionStats?.feedbackModeConstraint !==
+        "evidence_limited_only");
   let evaluated: {
     evaluation: FeedbackEvaluationResult;
     processingDurationMs: number;

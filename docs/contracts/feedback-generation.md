@@ -58,9 +58,12 @@ interviewer speech and does not degrade independent candidate evidence.
 Candidate markers and every `canonicalization_failed` marker still fail closed.
 A preserving marker or missing runtime settlement is frozen with the durable
 `evidence_limited_only` feedback-mode constraint. New evaluation may still
-record grounded facet coverage, but core forces `coaching_review` with all
-scores and overall absent. The Python runtime uses the same exact role/reason
-rule, so the preserving marker alone does not manufacture degradation.
+record grounded facet coverage. Core keeps that invocation scoreless unless
+the server recomputes an exact `verified_prefix` trusted-answer projection.
+That projection supersedes the legacy qualitative-only constraint only for its
+trusted blocks: supported dimension scores may be present, but overall remains
+absent. The Python runtime uses the same exact role/reason rule, so the
+preserving marker alone does not manufacture degradation or scoreability.
 
 ## Event fencing
 
