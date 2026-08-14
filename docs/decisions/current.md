@@ -2,6 +2,7 @@
 
 Active accepted engineering decisions:
 
+- [Multi-Domain Professional Simulation Direction](2026-08-13-multi-domain-professional-simulation-direction.md): Keep live PM interview practice as the current beachhead while guiding future expansion through validated domain packs, interviewer calibration, and professional skill simulations.
 - [Bound Public Voice Preview](2026-07-09-bound-public-voice-preview.md): Allow up to ten previews per signed device in a rolling 24-hour window, preserve one-active-preview and shared spend safeguards, and refund only server-confirmed provider startup failures.
 - [Four-Outcome Feedback Presentation](2026-08-13-four-outcome-feedback-presentation.md): Present full, partial, coaching, and unable outcomes from trusted coverage and integrity evidence while keeping scoreless results out of numeric progress.
 - [Round-Specific Dimension Evidence Coverage](2026-08-12-round-specific-dimension-evidence-coverage.md): Score only sufficiently grounded round-specific rubric dimensions over answer blocks; withhold unsupported dimensions and overall scores.
