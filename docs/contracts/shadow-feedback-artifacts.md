@@ -15,9 +15,12 @@ batch feedback remains the sole customer and insight authority.
 
 The server-only `MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE` setting is disabled
 when absent or blank. Only the exact value `enabled` mints an opaque in-memory
-write context. Unknown values fail closed. The service write entrypoint checks
+storage context. Unknown values fail closed. The service write entrypoint checks
 that runtime-minted context before parsing an artifact or touching its
-repository; a plain or forged `enabled: true` object is rejected.
+repository; exact-set reads require the same context and return invalid before
+repository access when disabled or forged. A plain or forged `enabled: true`
+object is rejected. The production gate accepts no environment override and
+can mint a capability only from the current server process configuration.
 
 No environment in this change is configured or activated. The variable is not
 public and does not authorize provider execution.
@@ -75,10 +78,11 @@ Inserts are append-only:
 - same key with different value: `conflict`, never update.
 
 Exact-set reads accept the currently expected keys, fetch only those key
-fingerprints, and parse every row again. Old version tuples are ignored as
-stale. An unknown/malformed stored version or conflicting duplicate invalidates
-the whole set and exposes no artifact. A `complete` set means only that every
-expected shadow artifact succeeded; it grants no batch or customer authority.
+fingerprints, and parse every row again, but only while the same runtime-minted
+storage capability is enabled. Old version tuples are ignored as stale. An
+unknown/malformed stored version or conflicting duplicate invalidates the whole
+set and exposes no artifact. A `complete` set means only that every expected
+shadow artifact succeeded; it grants no batch or customer authority.
 
 ## Privacy and retention
 
@@ -95,8 +99,8 @@ decision defines a shorter forward-only policy.
 
 | Fixture                                   | Required result                                         |
 | ----------------------------------------- | ------------------------------------------------------- |
-| Storage setting absent/blank              | `disabled`; zero repository calls                       |
-| Unknown setting or forged context         | rejected/disabled; zero repository calls                |
+| Storage setting absent/blank              | writes disabled, reads invalid; zero repository calls   |
+| Unknown setting or forged context         | rejected/invalid; zero repository calls                 |
 | Crash after insert before acknowledgement | retry returns `duplicate`; one row                      |
 | Duplicate event delivery                  | same exact key returns `duplicate`; one row             |
 | Reconnect                                 | same exact key returns `duplicate`; one row             |

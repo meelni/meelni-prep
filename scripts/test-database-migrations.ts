@@ -8132,6 +8132,8 @@ async function verifyShadowFeedbackArtifactPersistence(
 
   if (verifyApplicationLifecycle) {
     const previousDatabaseUrl = process.env.DATABASE_URL;
+    const previousStorageSetting =
+      process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
     process.env.DATABASE_URL = databaseUrl;
     try {
       const { getShadowFeedbackArtifactStorageGate } = await import(
@@ -8141,8 +8143,10 @@ async function verifyShadowFeedbackArtifactPersistence(
         "../lib/db/shadow-feedback-artifacts"
       );
       const store = createShadowFeedbackArtifactStore();
+      delete process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
+      const disabledGate = getShadowFeedbackArtifactStorageGate();
       assert.equal(
-        await store.record(getShadowFeedbackArtifactStorageGate({}), {
+        await store.record(disabledGate, {
           userId: SHADOW_ARTIFACT_USER,
           artifact: currentArtifact,
         }),
@@ -8154,9 +8158,8 @@ async function verifyShadowFeedbackArtifactPersistence(
       `;
       assert.equal(disabledCount?.rows, 0);
 
-      const enabledGate = getShadowFeedbackArtifactStorageGate({
-        MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE: "enabled",
-      });
+      process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE = "enabled";
+      const enabledGate = getShadowFeedbackArtifactStorageGate();
       assert.equal(
         await store.record(enabledGate, {
           userId: SHADOW_ARTIFACT_USER,
@@ -8191,7 +8194,7 @@ async function verifyShadowFeedbackArtifactPersistence(
         }),
         "inserted"
       );
-      const exact = await store.readExact([currentArtifact.key]);
+      const exact = await store.readExact(enabledGate, [currentArtifact.key]);
       assert.equal(exact.status, "complete");
       assert.deepEqual(
         exact.artifacts.map(({ key }) => key.keyFingerprint),
@@ -8215,6 +8218,12 @@ async function verifyShadowFeedbackArtifactPersistence(
       assert.equal(exported.practice.shadowFeedbackArtifacts.length, 2);
       assert.equal(JSON.stringify(exported).includes("providerPayload"), false);
     } finally {
+      if (previousStorageSetting === undefined) {
+        delete process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
+      } else {
+        process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE =
+          previousStorageSetting;
+      }
       if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
@@ -8275,9 +8284,21 @@ async function verifyShadowFeedbackArtifactPersistence(
     /shadow_feedback_artifact_exact_key_uniq/
   );
 
+  const oversizedBase = makeArtifact(
+    makeKey("synthetic-shadow-model.oversized")
+  );
   const oversizedArtifact = {
-    ...makeArtifact(makeKey("synthetic-shadow-model.oversized")),
-    padding: "x".repeat(65_000),
+    ...oversizedBase,
+    outcome: {
+      ...oversizedBase.outcome,
+      dimensions: {
+        ...oversizedBase.outcome.dimensions,
+        structure: {
+          ...oversizedBase.outcome.dimensions.structure,
+          facetCodes: Array.from({ length: 20_000 }, () => "x"),
+        },
+      },
+    },
   };
   await assert.rejects(
     () => sql`
@@ -8301,6 +8322,30 @@ async function verifyShadowFeedbackArtifactPersistence(
       )
     `,
     /shadow_feedback_artifact_shape_check/
+  );
+
+  const topLevelUnknownArtifact = {
+    ...makeArtifact(makeKey("synthetic-shadow-model.unknown-top-level")),
+    providerPayload: { response: "forbidden" },
+  };
+  await assert.rejects(
+    () => insertArtifact(topLevelUnknownArtifact),
+    /shadow_feedback_artifact_exact_json_shape_check/
+  );
+
+  const nestedUnknownBase = makeArtifact(
+    makeKey("synthetic-shadow-model.unknown-nested")
+  );
+  const nestedUnknownArtifact = {
+    ...nestedUnknownBase,
+    metrics: {
+      ...nestedUnknownBase.metrics,
+      transcriptText: "forbidden",
+    },
+  };
+  await assert.rejects(
+    () => insertArtifact(nestedUnknownArtifact),
+    /shadow_feedback_artifact_exact_json_shape_check/
   );
 
   const privileges = await sql<

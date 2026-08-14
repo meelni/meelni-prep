@@ -20,6 +20,71 @@ CREATE TABLE "shadow_feedback_artifact" (
 	CONSTRAINT "shadow_feedback_artifact_shape_check" CHECK (jsonb_typeof("shadow_feedback_artifact"."artifact") = 'object' AND "shadow_feedback_artifact"."artifact"->>'contractVersion' = "shadow_feedback_artifact"."artifact_contract_version" AND jsonb_typeof("shadow_feedback_artifact"."artifact"->'key') = 'object' AND "shadow_feedback_artifact"."artifact"#>>'{key,contractVersion}' = "shadow_feedback_artifact"."key_contract_version" AND "shadow_feedback_artifact"."artifact"#>>'{key,keyFingerprint}' = "shadow_feedback_artifact"."artifact_key_fingerprint" AND "shadow_feedback_artifact"."artifact"#>>'{key,sessionId}' = "shadow_feedback_artifact"."session_id"::text AND "shadow_feedback_artifact"."artifact"#>>'{key,trustedBlockFingerprint}' = "shadow_feedback_artifact"."trusted_block_fingerprint" AND "shadow_feedback_artifact"."artifact"#>>'{key,rubricVersion}' = "shadow_feedback_artifact"."rubric_version" AND "shadow_feedback_artifact"."artifact"#>>'{key,promptVersion}' = "shadow_feedback_artifact"."prompt_version" AND "shadow_feedback_artifact"."artifact"#>>'{key,selectionSchemaVersion}' = "shadow_feedback_artifact"."selection_schema_version" AND "shadow_feedback_artifact"."artifact"#>>'{key,modelVersion}' = "shadow_feedback_artifact"."model_version" AND jsonb_typeof("shadow_feedback_artifact"."artifact"->'outcome') = 'object' AND jsonb_typeof("shadow_feedback_artifact"."artifact"->'metrics') = 'object' AND octet_length("shadow_feedback_artifact"."artifact"::text) <= 64000)
 );
 --> statement-breakpoint
+ALTER TABLE "shadow_feedback_artifact"
+ADD CONSTRAINT "shadow_feedback_artifact_exact_json_shape_check" CHECK (
+  "artifact" ?& ARRAY['contractVersion','key','outcome','metrics','completedAt']::text[]
+  AND ("artifact" - ARRAY['contractVersion','key','outcome','metrics','completedAt']::text[]) = '{}'::jsonb
+  AND jsonb_typeof("artifact"->'completedAt') = 'string'
+  AND ("artifact"->'key') ?& ARRAY['contractVersion','keyFingerprint','sessionId','trustedBlockFingerprint','rubricVersion','promptVersion','selectionSchemaVersion','modelVersion']::text[]
+  AND (("artifact"->'key') - ARRAY['contractVersion','keyFingerprint','sessionId','trustedBlockFingerprint','rubricVersion','promptVersion','selectionSchemaVersion','modelVersion']::text[]) = '{}'::jsonb
+  AND ("artifact"->'metrics') ?& ARRAY['durationMs','inputTokens','cachedInputTokens','outputTokens','totalTokens']::text[]
+  AND (("artifact"->'metrics') - ARRAY['durationMs','inputTokens','cachedInputTokens','outputTokens','totalTokens']::text[]) = '{}'::jsonb
+  AND jsonb_typeof("artifact"#>'{metrics,durationMs}') = 'number'
+  AND jsonb_typeof("artifact"#>'{metrics,inputTokens}') IN ('number','null')
+  AND jsonb_typeof("artifact"#>'{metrics,cachedInputTokens}') IN ('number','null')
+  AND jsonb_typeof("artifact"#>'{metrics,outputTokens}') IN ('number','null')
+  AND jsonb_typeof("artifact"#>'{metrics,totalTokens}') IN ('number','null')
+  AND (
+    (
+      "artifact"#>>'{outcome,state}' = 'failed'
+      AND ("artifact"->'outcome') ?& ARRAY['state','failureClass']::text[]
+      AND (("artifact"->'outcome') - ARRAY['state','failureClass']::text[]) = '{}'::jsonb
+      AND "artifact"#>>'{outcome,failureClass}' IN (
+        'deadline_exceeded','transport_timeout','transport_network',
+        'provider_rate_limited','provider_capacity','provider_authentication',
+        'provider_configuration','provider_refusal','provider_schema',
+        'provider_contract','evidence_integrity','fenced','persistence','internal'
+      )
+    )
+    OR
+    (
+      "artifact"#>>'{outcome,state}' = 'completed'
+      AND ("artifact"->'outcome') ?& ARRAY['state','roundType','mode','dimensions']::text[]
+      AND (("artifact"->'outcome') - ARRAY['state','roundType','mode','dimensions']::text[]) = '{}'::jsonb
+      AND "artifact"#>>'{outcome,roundType}' IN ('product_sense','execution','behavioral','strategy')
+      AND "artifact"#>>'{outcome,mode}' IN ('full_scorecard','partial_scorecard','coaching_review')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions}') ?& ARRAY['structure','clarity','insight','communication','leadership']::text[]
+      AND (("artifact"#>'{outcome,dimensions}') - ARRAY['structure','clarity','insight','communication','leadership']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,structure}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions,structure}') ?& ARRAY['score','facetCodes']::text[]
+      AND (("artifact"#>'{outcome,dimensions,structure}') - ARRAY['score','facetCodes']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,structure,score}') IN ('number','null')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,structure,facetCodes}') = 'array'
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,clarity}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions,clarity}') ?& ARRAY['score','facetCodes']::text[]
+      AND (("artifact"#>'{outcome,dimensions,clarity}') - ARRAY['score','facetCodes']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,clarity,score}') IN ('number','null')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,clarity,facetCodes}') = 'array'
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,insight}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions,insight}') ?& ARRAY['score','facetCodes']::text[]
+      AND (("artifact"#>'{outcome,dimensions,insight}') - ARRAY['score','facetCodes']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,insight,score}') IN ('number','null')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,insight,facetCodes}') = 'array'
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,communication}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions,communication}') ?& ARRAY['score','facetCodes']::text[]
+      AND (("artifact"#>'{outcome,dimensions,communication}') - ARRAY['score','facetCodes']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,communication,score}') IN ('number','null')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,communication,facetCodes}') = 'array'
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,leadership}') = 'object'
+      AND ("artifact"#>'{outcome,dimensions,leadership}') ?& ARRAY['score','facetCodes']::text[]
+      AND (("artifact"#>'{outcome,dimensions,leadership}') - ARRAY['score','facetCodes']::text[]) = '{}'::jsonb
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,leadership,score}') IN ('number','null')
+      AND jsonb_typeof("artifact"#>'{outcome,dimensions,leadership,facetCodes}') = 'array'
+    )
+  )
+);
+--> statement-breakpoint
 ALTER TABLE "shadow_feedback_artifact" ADD CONSTRAINT "shadow_feedback_artifact_user_id_app_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shadow_feedback_artifact" ADD CONSTRAINT "shadow_feedback_artifact_session_owner_fk" FOREIGN KEY ("session_id","user_id") REFERENCES "public"."interview_session"("id","user_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "shadow_feedback_artifact_user_timeline_idx" ON "shadow_feedback_artifact" USING btree ("user_id","created_at");--> statement-breakpoint

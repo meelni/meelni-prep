@@ -454,7 +454,9 @@ Migration `0039_sav_445_shadow_feedback_artifacts` adds one immutable,
 service-only `shadow_feedback_artifact` table. Its SHA-256 primary key binds the
 session, trusted block fingerprint, rubric, prompt, selection schema, and model
 version tuple; a separate unique constraint enforces the expanded tuple. The
-artifact JSON must repeat those exact columns and stay within 64,000 octets.
+artifact JSON must repeat those exact columns, stay within 64,000 octets, and
+use exact v1 key sets at every object layer so direct SQL cannot add provider or
+transcript fields.
 
 The composite session/owner foreign key rejects cross-account attachment and
 cascades on deletion. Forced RLS plus revoked `PUBLIC`, `anon`, and

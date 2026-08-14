@@ -14,13 +14,14 @@ rubric version, prompt version, selection-schema version, and model version.
 
 ### Requirement: Storage is structurally default-off
 
-The write entrypoint MUST require a runtime-validated enabled context and MUST
-return before repository access when disabled or forged.
+The write and exact-read entrypoints MUST require a runtime-validated enabled
+context and MUST return before repository access when disabled or forged.
 
 #### Scenario: Default configuration
 
 - **WHEN** the server-only storage setting is absent
-- **THEN** recording returns disabled and performs zero database side effects
+- **THEN** recording returns disabled, exact reads return invalid, and neither
+  path performs database side effects
 
 ### Requirement: Writes and exact reads are immutable and fail closed
 

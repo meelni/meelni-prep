@@ -32,8 +32,9 @@ test("disabled and forged gates produce zero repository side effects", async () 
   const store = createShadowFeedbackArtifactStore(repository);
   const artifact = fixtureArtifact();
 
+  const disabledGate = gateFor(undefined);
   assert.equal(
-    await store.record(getShadowFeedbackArtifactStorageGate({}), {
+    await store.record(disabledGate, {
       userId: USER_ID,
       artifact,
     }),
@@ -45,6 +46,18 @@ test("disabled and forged gates produce zero repository side effects", async () 
       artifact,
     }),
     "rejected"
+  );
+  assert.equal(
+    (await store.readExact(disabledGate, [artifact.key])).status,
+    "invalid"
+  );
+  assert.equal(
+    (
+      await store.readExact({ enabled: true, context: {} } as never, [
+        artifact.key,
+      ])
+    ).status,
+    "invalid"
   );
   assert.deepEqual({ inserts, reads }, { inserts: 0, reads: 0 });
 });
@@ -71,9 +84,7 @@ test("crash retry, event replay, and reconnect converge on one immutable exact k
     },
   };
   const store = createShadowFeedbackArtifactStore(repository);
-  const gate = getShadowFeedbackArtifactStorageGate({
-    MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE: "enabled",
-  });
+  const gate = gateFor("enabled");
   const artifact = fixtureArtifact();
 
   assert.equal(
@@ -106,9 +117,28 @@ test("a stale tuple cannot replace current data and exact reads fail closed", as
     },
   };
   const store = createShadowFeedbackArtifactStore(repository);
+  const gate = gateFor("enabled");
 
-  assert.equal((await store.readExact([current.key])).status, "invalid");
+  assert.equal((await store.readExact(gate, [current.key])).status, "invalid");
 });
+
+function gateFor(value: string | undefined) {
+  const previous = process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
+  if (value === undefined) {
+    delete process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
+  } else {
+    process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE = value;
+  }
+  try {
+    return getShadowFeedbackArtifactStorageGate();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE;
+    } else {
+      process.env.MEELNI_SHADOW_FEEDBACK_ARTIFACT_STORAGE = previous;
+    }
+  }
+}
 
 function fixtureArtifact(): ShadowFeedbackArtifactV1 {
   const key = createShadowFeedbackArtifactKey({
