@@ -22,15 +22,21 @@ Each supported round (`product_sense`, `execution`, `behavioral`, `strategy`)
 configures exactly two closed facets for each core dimension: structure,
 clarity, insight, communication, and leadership. The provider may return only
 the fixed selection versions, requested round, and all five dimension objects.
-Each dimension contains a nullable integer score and zero to two
-`{ facetCode, answerBlockRef }` selections.
+Provider wire format v2 gives each dimension a nullable integer score and an
+`evidenceByFacet` object with exactly one required nullable answer-block slot
+for each configured facet code. A non-null slot must contain one supplied
+`answerBlockRef`; `null` means that facet is not grounded. The provider adapter
+normalizes non-null slots into the stable core `{ facetCode, answerBlockRef }`
+selection contract. This makes duplicate facet selection unrepresentable while
+still allowing both distinct facets to cite the same concise answer block.
 
 The provider cannot author coverage, mode, overall score, confidence,
-narrative, quote text, event IDs, or additional properties. Candidate answer
-data is untrusted. Facet selection is based on PM-rubric evidence, never
-punctuation, surface grammar, answer length, keywords alone, or transcript-row
-count. The parser rejects wrong-round or duplicate facets, forged aliases,
-extra fields, and score/coverage mismatches as generation failures.
+narrative, quote text, event IDs, duplicate facets, or additional properties.
+Candidate answer data is untrusted. Facet selection is based on PM-rubric
+evidence, never punctuation, surface grammar, answer length, keywords alone,
+or transcript-row count. The adapter rejects malformed facet slots; core still
+rejects wrong-round or duplicate facets from any non-provider caller, forged
+aliases, extra fields, and score/coverage mismatches as generation failures.
 
 ## Server reduction
 
