@@ -27,7 +27,9 @@ test("provider-free bakeoff replays the existing calibration contract without a 
     assert.equal(candidate.evidence.fullySyntheticCases, 40);
     assert.equal(candidate.evidence.scoredCases, 32);
     assert.equal(candidate.evidence.insufficientCases, 8);
-    assert.equal(candidate.evidence.evaluatorCalls, 64);
+    assert.equal(candidate.evidence.calibrationEvaluatorCalls, 64);
+    assert.equal(candidate.evidence.measurementReplayCalls, 32);
+    assert.equal(candidate.evidence.totalEvaluatorCalls, 96);
     assert.equal(candidate.evidence.providerCalls, 0);
     assert.equal(candidate.evidence.evidenceValidityRate, 1);
     assert.equal(candidate.evidence.structuredOutputAcceptedOutputs, 32);
@@ -39,7 +41,10 @@ test("provider-free bakeoff replays the existing calibration contract without a 
     assert.equal(candidate.conclusion, "deterministic_contract_passed");
   }
   assert.equal(report.evaluatorDecision.recommendedModelOrTier, null);
-  assert.equal(report.evaluatorDecision.liveQualityLatencyEvidenceRequired, true);
+  assert.equal(
+    report.evaluatorDecision.liveQualityLatencyEvidenceRequired,
+    true
+  );
 });
 
 test("evidence validity and structured-output acceptance remain separate report claims", async () => {

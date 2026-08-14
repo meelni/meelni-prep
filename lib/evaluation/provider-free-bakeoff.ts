@@ -87,7 +87,9 @@ export interface ProviderFreeCandidateReport {
     fullySyntheticCases: number;
     scoredCases: number;
     insufficientCases: number;
-    evaluatorCalls: number;
+    calibrationEvaluatorCalls: number;
+    measurementReplayCalls: number;
+    totalEvaluatorCalls: number;
     providerCalls: 0;
     evidenceValidityRate: number;
     structuredOutputAcceptedOutputs: number;
@@ -285,7 +287,10 @@ export async function runProviderFreeBakeoff(
         fullySyntheticCases: calibration.corpus.totalCases,
         scoredCases: calibration.corpus.scoredCases,
         insufficientCases: calibration.corpus.insufficientCases,
-        evaluatorCalls: calibration.metrics.evaluatorCalls,
+        calibrationEvaluatorCalls: calibration.metrics.evaluatorCalls,
+        measurementReplayCalls: candidateMeasurements.length,
+        totalEvaluatorCalls:
+          calibration.metrics.evaluatorCalls + candidateMeasurements.length,
         providerCalls: 0,
         evidenceValidityRate: calibration.metrics.evidenceValidityRate ?? 0,
         structuredOutputAcceptedOutputs: acceptedMeasurements.length,
@@ -293,8 +298,7 @@ export async function runProviderFreeBakeoff(
           acceptedMeasurements.length / calibration.corpus.scoredCases,
         adjudicatedEvidenceMatchRate:
           calibration.metrics.adjudicatedEvidenceMatchRate ?? 0,
-        scoreBandAgreementRate:
-          calibration.metrics.scoreBandAgreementRate ?? 0,
+        scoreBandAgreementRate: calibration.metrics.scoreBandAgreementRate ?? 0,
         insufficientHandlingRate: calibration.metrics.insufficientHandlingRate,
         deterministicHarness: passed ? "passed" : "failed",
       },
@@ -309,9 +313,7 @@ export async function runProviderFreeBakeoff(
           acceptedMeasurements.map((entry) => entry.outputTokenUpperBound)
         ),
         simulatedProviderLatencyMs: createNumericDistribution(
-          candidateMeasurements.map(
-            (entry) => entry.simulatedProviderLatencyMs
-          )
+          candidateMeasurements.map((entry) => entry.simulatedProviderLatencyMs)
         ),
         estimatedComparisonCostUnits: {
           unit: "configured_comparison_units",
@@ -360,10 +362,7 @@ export async function runProviderFreeBakeoff(
       })
     )
   );
-  const queueRecommendation = recommendQueuePolicy(
-    config,
-    queueResults
-  );
+  const queueRecommendation = recommendQueuePolicy(config, queueResults);
   const configHash = sha256(stableJson(config));
   const inputSha256 = sha256(
     stableJson({
@@ -451,7 +450,9 @@ async function measureCandidate(
 ): Promise<CandidateMeasurement[]> {
   const scoredCases = evaluationCalibrationCases
     .filter(
-      (fixture): fixture is EvaluationCalibrationCase & {
+      (
+        fixture
+      ): fixture is EvaluationCalibrationCase & {
         expectedCompletionState: FeedbackEvaluationState;
       } =>
         fixture.expectedCompletionState === "full" ||
