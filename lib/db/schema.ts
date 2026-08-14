@@ -1132,6 +1132,8 @@ export const shadowFeedbackArtifact = pgTable(
       "shadow_feedback_artifact_version_tuple_check",
       sql`${table.keyContractVersion} = 'feedback.shadow-artifact-key.v1' AND ${table.artifactContractVersion} = 'feedback.shadow-artifact.v1' AND ${table.rubricVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.promptVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.selectionSchemaVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.modelVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$'`
     ),
+    // Migration 0039 appends the exact nested-key CHECK as custom SQL because
+    // Drizzle's table DSL cannot express this bounded JSONB shape readably.
     artifactShapeCheck: check(
       "shadow_feedback_artifact_shape_check",
       sql`jsonb_typeof(${table.artifact}) = 'object' AND ${table.artifact}->>'contractVersion' = ${table.artifactContractVersion} AND jsonb_typeof(${table.artifact}->'key') = 'object' AND ${table.artifact}#>>'{key,contractVersion}' = ${table.keyContractVersion} AND ${table.artifact}#>>'{key,keyFingerprint}' = ${table.artifactKeyFingerprint} AND ${table.artifact}#>>'{key,sessionId}' = ${table.sessionId}::text AND ${table.artifact}#>>'{key,trustedBlockFingerprint}' = ${table.trustedBlockFingerprint} AND ${table.artifact}#>>'{key,rubricVersion}' = ${table.rubricVersion} AND ${table.artifact}#>>'{key,promptVersion}' = ${table.promptVersion} AND ${table.artifact}#>>'{key,selectionSchemaVersion}' = ${table.selectionSchemaVersion} AND ${table.artifact}#>>'{key,modelVersion}' = ${table.modelVersion} AND jsonb_typeof(${table.artifact}->'outcome') = 'object' AND jsonb_typeof(${table.artifact}->'metrics') = 'object' AND octet_length(${table.artifact}::text) <= 64000`

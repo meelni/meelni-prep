@@ -60,7 +60,7 @@ export const VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT =
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // service-only shadow artifact contract changes.
 export const SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT =
-  "11722dd2a314979b337097d1e73c86c45f89928833ea0dbc80c7a45372364191";
+  "90ee1265eed98424299cf06a01e225ccb3905071e6295ff51e4652fa00b62985";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =

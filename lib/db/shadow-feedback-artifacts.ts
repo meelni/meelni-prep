@@ -42,6 +42,7 @@ export interface ShadowFeedbackArtifactStore {
     input: { userId: string; artifact: unknown }
   ): Promise<ShadowFeedbackArtifactWriteResult>;
   readExact(
+    gate: ShadowFeedbackArtifactStorageGate,
     expectedKeys: readonly unknown[]
   ): Promise<ShadowFeedbackArtifactSetV1>;
 }
@@ -65,7 +66,11 @@ export function createShadowFeedbackArtifactStore(
       return repository.insert({ userId: input.userId, artifact });
     },
 
-    async readExact(expectedKeys) {
+    async readExact(gate, expectedKeys) {
+      if (!gate.enabled) return invalidSet();
+      if (!isShadowFeedbackArtifactStorageEnabledContext(gate.context)) {
+        return invalidSet();
+      }
       let keys: ShadowFeedbackArtifactKeyV1[];
       try {
         keys = expectedKeys.map(parseShadowFeedbackArtifactKey);
