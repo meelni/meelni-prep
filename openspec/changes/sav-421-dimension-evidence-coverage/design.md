@@ -12,9 +12,11 @@ Each supported round configures two assessable facets for each existing PM feedb
 
 - a fixed schema/prompt/rubric version and the requested round;
 - all five dimension keys;
-- for each dimension, a nullable integer score and zero or more `{ facetCode, answerBlockRef }` selections.
+- for each dimension, a nullable integer score and one required nullable answer-block alias slot for each configured facet code.
 
-It cannot return coverage, mode, overall score, confidence, narrative, quote text, event IDs, or additional properties. Core rejects unknown/missing/duplicate dimensions, wrong-round facet codes, unknown block aliases, duplicate facet selections, and score/coverage mismatches.
+The provider-only wire shape is versioned separately from the stable core selection and persisted result. The adapter maps every non-null facet slot into one `{ facetCode, answerBlockRef }` core selection. Duplicate facet selections are therefore unrepresentable at the provider boundary while distinct facets may cite the same concise answer block.
+
+It cannot return coverage, mode, overall score, confidence, narrative, quote text, event IDs, or additional properties. The adapter rejects unknown or malformed facet slots. Core still rejects unknown/missing/duplicate dimensions, wrong-round facet codes, unknown block aliases, duplicate facet selections from non-provider callers, and score/coverage mismatches.
 
 ## Coverage and mode reduction
 

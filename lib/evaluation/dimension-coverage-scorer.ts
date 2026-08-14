@@ -11,7 +11,10 @@ import {
   DIMENSION_COVERAGE_SYSTEM_PROMPT,
   getDimensionCoveragePrompt,
 } from "./dimension-coverage-prompt";
-import { getDimensionCoverageProviderResponseFormat } from "./dimension-coverage-provider-format";
+import {
+  getDimensionCoverageProviderResponseFormat,
+  normalizeDimensionCoverageProviderResponse,
+} from "./dimension-coverage-provider-format";
 import {
   FeedbackProviderInvocationError,
   createFeedbackOpenAIClient,
@@ -127,7 +130,11 @@ export async function generateDimensionCoverageFeedback(
     }
     let result: DimensionCoverageFeedbackResult;
     try {
-      result = parseDimensionCoverageProviderSelection(value, {
+      const normalized = normalizeDimensionCoverageProviderResponse(
+        value,
+        roundType
+      );
+      result = parseDimensionCoverageProviderSelection(normalized, {
         roundType,
         answerBlocks,
         modelVersion: completion.model,

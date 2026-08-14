@@ -36,8 +36,8 @@ ${JSON.stringify(catalog)}
 Scoring rule:
 - Coverage and result mode are server-derived; do not return either.
 - ${allowNumericalScores ? "Return an integer score from 0 through 10 only when both configured facets for that dimension have grounded selections; otherwise return null." : "This frozen interview is qualitative-only. Return null for every score even when facet evidence is present."}
-- Each facetCode must belong to its dimension and this round.
-- Each answerBlockRef must be copied exactly from the supplied blocks.
+- For every required facet-code key in evidenceByFacet, copy one exact answerBlockRef when that facet is grounded; otherwise return null.
+- Different facets may cite the same answer block. Each facet has exactly one slot and cannot be selected more than once.
 - Do not infer evidence from interviewer prompts. The candidate response is the only evidence.
 
 <answer_block_data>
