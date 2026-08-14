@@ -58,6 +58,10 @@ export const FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT =
 export const VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT =
   "3ff3223a059e3dd0f8891745f7fd06ff178fb95ae7bbe81de824515b24a2799b";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
+// service-only shadow artifact contract changes.
+export const SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT =
+  "90ee1265eed98424299cf06a01e225ccb3905071e6295ff51e4652fa00b62985";
+// Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =
   "6089186d1df02b3d47f78d9926859a3f6b2aac90e935c9e3d7e56f88fed36af3";

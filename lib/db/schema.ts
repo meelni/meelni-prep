@@ -28,6 +28,7 @@ import type {
   DimensionCoverageFeedbackMode,
   DimensionCoverageResultDimensions,
   VerifiedPrefixFeedbackScopeV1,
+  ShadowFeedbackArtifactV1,
   FeedbackOutcomeReason,
   FeedbackQualityOutcome,
   FeedbackQualityReason,
@@ -1091,6 +1092,77 @@ export const feedback = pgTable(
   })
 );
 
+// Immutable, service-only, non-authoritative shadow output. The exact key is
+// independent from feedback lifecycle rows so it cannot satisfy customer reads.
+export const shadowFeedbackArtifact = pgTable(
+  "shadow_feedback_artifact",
+  {
+    artifactKeyFingerprint: text("artifact_key_fingerprint").notNull(),
+    userId: uuid("user_id")
+      .references(() => appUser.id, { onDelete: "cascade" })
+      .notNull(),
+    sessionId: uuid("session_id").notNull(),
+    keyContractVersion: text("key_contract_version").notNull(),
+    artifactContractVersion: text("artifact_contract_version").notNull(),
+    trustedBlockFingerprint: text("trusted_block_fingerprint").notNull(),
+    rubricVersion: text("rubric_version").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    selectionSchemaVersion: text("selection_schema_version").notNull(),
+    modelVersion: text("model_version").notNull(),
+    artifact: jsonb("artifact").$type<ShadowFeedbackArtifactV1>().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      name: "shadow_feedback_artifact_pkey",
+      columns: [table.artifactKeyFingerprint],
+    }),
+    keyFingerprintCheck: check(
+      "shadow_feedback_artifact_key_fingerprint_check",
+      sql`${table.artifactKeyFingerprint} ~ '^shadow-feedback-artifact-key\\.v1:[a-f0-9]{64}$'`
+    ),
+    trustedBlockFingerprintCheck: check(
+      "shadow_feedback_artifact_trusted_block_fingerprint_check",
+      sql`${table.trustedBlockFingerprint} ~ '^trusted-answer-block\\.v1:[a-f0-9]{64}$'`
+    ),
+    versionTupleCheck: check(
+      "shadow_feedback_artifact_version_tuple_check",
+      sql`${table.keyContractVersion} = 'feedback.shadow-artifact-key.v1' AND ${table.artifactContractVersion} = 'feedback.shadow-artifact.v1' AND ${table.rubricVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.promptVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.selectionSchemaVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$' AND ${table.modelVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$'`
+    ),
+    // Migration 0039 appends the exact nested-key CHECK as custom SQL because
+    // Drizzle's table DSL cannot express this bounded JSONB shape readably.
+    artifactShapeCheck: check(
+      "shadow_feedback_artifact_shape_check",
+      sql`jsonb_typeof(${table.artifact}) = 'object' AND ${table.artifact}->>'contractVersion' = ${table.artifactContractVersion} AND jsonb_typeof(${table.artifact}->'key') = 'object' AND ${table.artifact}#>>'{key,contractVersion}' = ${table.keyContractVersion} AND ${table.artifact}#>>'{key,keyFingerprint}' = ${table.artifactKeyFingerprint} AND ${table.artifact}#>>'{key,sessionId}' = ${table.sessionId}::text AND ${table.artifact}#>>'{key,trustedBlockFingerprint}' = ${table.trustedBlockFingerprint} AND ${table.artifact}#>>'{key,rubricVersion}' = ${table.rubricVersion} AND ${table.artifact}#>>'{key,promptVersion}' = ${table.promptVersion} AND ${table.artifact}#>>'{key,selectionSchemaVersion}' = ${table.selectionSchemaVersion} AND ${table.artifact}#>>'{key,modelVersion}' = ${table.modelVersion} AND jsonb_typeof(${table.artifact}->'outcome') = 'object' AND jsonb_typeof(${table.artifact}->'metrics') = 'object' AND octet_length(${table.artifact}::text) <= 64000`
+    ),
+    sessionOwnerReference: foreignKey({
+      name: "shadow_feedback_artifact_session_owner_fk",
+      columns: [table.sessionId, table.userId],
+      foreignColumns: [interviewSession.id, interviewSession.userId],
+    })
+      .onUpdate("no action")
+      .onDelete("cascade"),
+    exactKeyUnique: unique("shadow_feedback_artifact_exact_key_uniq").on(
+      table.sessionId,
+      table.trustedBlockFingerprint,
+      table.rubricVersion,
+      table.promptVersion,
+      table.selectionSchemaVersion,
+      table.modelVersion
+    ),
+    userTimelineIdx: index("shadow_feedback_artifact_user_timeline_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    sessionIdx: index("shadow_feedback_artifact_session_idx").on(
+      table.sessionId
+    ),
+  })
+);
+
 // Content-free, service-only history for one exact feedback generation event.
 // generation_event_fence is a versioned SHA-256 of the internal workflow event,
 // never the raw event or a provider request id. Rows contain no user/session/
@@ -2001,6 +2073,7 @@ export const interviewSessionRelations = relations(
     transcriptRuntimeWriters: many(transcriptRuntimeWriter),
     transcriptRuntimeSettlements: many(transcriptRuntimeSettlement),
     transcriptEvidenceWriterCutoffs: many(transcriptEvidenceWriterCutoff),
+    shadowFeedbackArtifacts: many(shadowFeedbackArtifact),
     sessionQuestions: many(sessionQuestion),
   })
 );
@@ -2019,6 +2092,20 @@ export const feedbackGenerationStageAttemptRelations = relations(
     feedback: one(feedback, {
       fields: [feedbackGenerationStageAttempt.feedbackId],
       references: [feedback.id],
+    }),
+  })
+);
+
+export const shadowFeedbackArtifactRelations = relations(
+  shadowFeedbackArtifact,
+  ({ one }) => ({
+    user: one(appUser, {
+      fields: [shadowFeedbackArtifact.userId],
+      references: [appUser.id],
+    }),
+    session: one(interviewSession, {
+      fields: [shadowFeedbackArtifact.sessionId],
+      references: [interviewSession.id],
     }),
   })
 );
@@ -2132,6 +2219,7 @@ export const appUserRelations = relations(appUser, ({ many, one }) => ({
   sessions: many(interviewSession),
   feedbackQualitySignals: many(feedbackQualitySignal),
   focusedPracticeAttempts: many(focusedPracticeAttempt),
+  shadowFeedbackArtifacts: many(shadowFeedbackArtifact),
   settings: one(userSettings, {
     fields: [appUser.id],
     references: [userSettings.userId],
