@@ -95,7 +95,7 @@ test("an acknowledged queue delivery expires exactly at the customer upper bound
   );
 });
 
-test("database claims and terminal writes are fenced by the exact event", () => {
+test("database claims and terminal writes are fenced by event and deadline", () => {
   const source = readFileSync(
     new URL("./feedback-generation-state.ts", import.meta.url),
     "utf8"
@@ -103,6 +103,10 @@ test("database claims and terminal writes are fenced by the exact event", () => 
   const activeClaimUses = source.match(/\.where\(activeClaim\(/g) ?? [];
 
   assert.match(source, /eq\(feedback\.dispatchEventId, eventId\)/);
+  assert.equal(
+    (source.match(/CURRENT_TIMESTAMP < \$\{deadlineAt\}/g) ?? []).length,
+    2
+  );
   assert.match(source, /inArray\(feedback\.status, \["pending", "failed"\]\)/);
   assert.equal(activeClaimUses.length, 3);
   assert.doesNotMatch(source, /COALESCE/i);

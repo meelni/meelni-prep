@@ -80,6 +80,45 @@ Pending dispatches, failed dispatches, and expired sending leases can be dispatc
 
 Concurrent recovery calls are safe: preparation is conditional, dispatch claim is atomic, and callers converge on sent or in-progress state.
 
+### Generation deadline and retry ownership
+
+Each dispatched generation event has one 90-second deadline anchored to the
+event timestamp. Queue delay consumes that budget. The same deadline crosses
+authorization and claim, frozen-evidence preparation, provider evaluation,
+response validation, and terminal persistence. Claim, completion, and skip
+compare-and-set statements also require database time to remain before that
+deadline, so work that finishes late cannot become authoritative.
+
+The production provider SDK keeps `maxRetries = 0`. The workflow owns at most
+three provider attempts within the shared budget, reserves five seconds for
+persistence, and caps each provider request at 75 seconds. A later attempt
+starts only when at least five seconds remain for the request after the
+persistence reserve and any bounded `Retry-After` delay.
+
+The closed provider policy retries only timeout/abort, network, rate-limit, and
+provider-capacity failures. Authentication, configuration, provider contract,
+response-validation, evidence-integrity, deadline, and fenced failures are
+non-retryable. Unknown validation failures fail closed instead of starting a
+second provider call.
+
+Inngest retains two whole-function retries as the durable owner for transient
+pre-provider infrastructure and persistence failures. Successful durable step
+results are replayed: evaluation step IDs are stable, while the pre-evaluation
+fence read includes the Inngest execution attempt and is refreshed on every
+function replay. A transient persistence failure therefore retries the
+compare-and-set with the memoized validated evaluation and does not call the
+provider again. Policy-exhausted or permanent failures are converted to an
+Inngest non-retryable error. Terminal completed or skipped feedback remains
+authoritative throughout every replay.
+
+`meelni_feedback_generation_attempt` version 1 records only stage, local
+attempt number, outcome, closed failure class, bounded duration and remaining
+budget, bounded retry delay, provider diagnostic kind/status, sanitized
+model/tier labels, and validated token counts. It accepts no session, user,
+question, transcript, evidence text, feedback text, raw provider payload,
+provider request ID, or raw error field. Telemetry is best-effort and cannot
+change workflow state.
+
 ## Authorization and side effects
 
 - The workflow verifies the session owner and exact event identity before transcript or provider work.
@@ -136,9 +175,10 @@ Deadline-ended interviews whose room cleanup has not been acknowledged return `s
 
 Eligible user-ended feedback is dispatched before room cleanup and credit
 convergence. Production evaluation requests cap output at 2,000 completion
-tokens, use a 75-second SDK timeout, and disable SDK-level retries. Durable
-worker retries own subsequent attempts so one provider call cannot silently
-double the latency tail.
+tokens, cap one request at 75 seconds, and disable SDK-level retries. The typed
+workflow policy owns provider attempts inside the one 90-second generation
+deadline; durable Inngest replay owns only transient infrastructure and
+persistence recovery.
 
 ## Compatibility
 

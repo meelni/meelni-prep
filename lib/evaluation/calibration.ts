@@ -1019,8 +1019,10 @@ async function runCaseThroughGenerationWorkflow(input: {
     isDeletionPending: async () => false,
     steps: {
       run: (_name, work) => work(),
+      sleep: async () => undefined,
       sendInsights: async () => undefined,
     },
+    reportAttempt: () => undefined,
     getSession: async () => ({
       userId: "synthetic-calibration-user",
       roundType: input.fixture.roundType,
@@ -1040,6 +1042,7 @@ async function runCaseThroughGenerationWorkflow(input: {
       });
     },
     allowLegacyEvaluationForSyntheticCalibration: true,
+    preserveEvaluatorFailuresForSyntheticCalibration: true,
   };
   const result = await generateFeedbackWorkflow(
     {
