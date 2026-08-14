@@ -6035,383 +6035,6 @@ function sourceRecommendationId(roundType, dimension, evidenceGap) {
   ].join(":");
 }
 
-// packages/core/src/feedback-dimension-coverage.ts
-var FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION = "feedback.dimension-coverage.v1";
-var FEEDBACK_DIMENSIONS = [
-  "structure",
-  "clarity",
-  "insight",
-  "communication",
-  "leadership"
-];
-function facet(code, label, evaluatorGuidance) {
-  return { code, label, evaluatorGuidance };
-}
-var ROUND_DIMENSION_COVERAGE_CONFIG = {
-  product_sense: {
-    structure: {
-      facets: [
-        facet(
-          "ps_structure_problem_progression",
-          "Problem progression",
-          "Connect a product problem, user, or goal through an explicit progression."
-        ),
-        facet(
-          "ps_structure_solution_tradeoff",
-          "Solution and tradeoff structure",
-          "Connect a proposed solution to prioritization or a tradeoff."
-        )
-      ]
-    },
-    clarity: {
-      facets: [
-        facet(
-          "ps_clarity_prioritized_thesis",
-          "Prioritized thesis",
-          "State a clear product focus or prioritized claim."
-        ),
-        facet(
-          "ps_clarity_connected_rationale",
-          "Connected rationale",
-          "Connect the user problem, choice, and intended outcome."
-        )
-      ]
-    },
-    insight: {
-      facets: [
-        facet(
-          "ps_insight_user_need_specificity",
-          "Specific user need",
-          "Identify a concrete user need, behavior, or constraint."
-        ),
-        facet(
-          "ps_insight_non_obvious_tradeoff",
-          "Non-obvious tradeoff",
-          "Identify a meaningful second-order effect or non-obvious tradeoff."
-        )
-      ]
-    },
-    communication: {
-      facets: [
-        facet(
-          "ps_communication_clarifying_alignment",
-          "Clarifying alignment",
-          "Align on scope, assumptions, or the product decision."
-        ),
-        facet(
-          "ps_communication_reasoning_visibility",
-          "Visible reasoning",
-          "Make product reasoning and prioritization legible."
-        )
-      ]
-    },
-    leadership: {
-      facets: [
-        facet(
-          "ps_leadership_explicit_decision",
-          "Explicit decision",
-          "Make an explicit product decision instead of listing undifferentiated options."
-        ),
-        facet(
-          "ps_leadership_conviction_with_tradeoff",
-          "Conviction with tradeoff",
-          "Own a recommendation while acknowledging a material tradeoff."
-        )
-      ]
-    }
-  },
-  execution: {
-    structure: {
-      facets: [
-        facet(
-          "ex_structure_goal_to_plan",
-          "Goal-to-plan structure",
-          "Connect the execution goal to an ordered plan or decision path."
-        ),
-        facet(
-          "ex_structure_prioritization_sequence",
-          "Prioritization sequence",
-          "Sequence priorities, dependencies, or milestones."
-        )
-      ]
-    },
-    clarity: {
-      facets: [
-        facet(
-          "ex_clarity_priority_rationale",
-          "Priority rationale",
-          "Explain why one execution priority comes before another."
-        ),
-        facet(
-          "ex_clarity_decision_rule",
-          "Decision rule",
-          "State a rule, threshold, or criterion for an execution choice."
-        )
-      ]
-    },
-    insight: {
-      facets: [
-        facet(
-          "ex_insight_dependency_risk",
-          "Dependency or risk",
-          "Identify a dependency, failure mode, or execution risk."
-        ),
-        facet(
-          "ex_insight_metric_tradeoff",
-          "Metric tradeoff",
-          "Explain a metric relationship, guardrail, or tradeoff that changes the plan."
-        )
-      ]
-    },
-    communication: {
-      facets: [
-        facet(
-          "ex_communication_constraint_alignment",
-          "Constraint alignment",
-          "Surface and align on a relevant execution constraint."
-        ),
-        facet(
-          "ex_communication_plan_visibility",
-          "Plan visibility",
-          "Communicate the plan, checkpoints, or decision logic."
-        )
-      ]
-    },
-    leadership: {
-      facets: [
-        facet(
-          "ex_leadership_accountable_owner",
-          "Accountable ownership",
-          "Identify ownership or take responsibility for an execution decision."
-        ),
-        facet(
-          "ex_leadership_ship_decision",
-          "Ship decision",
-          "Make a bounded ship, sequence, or escalation decision."
-        )
-      ]
-    }
-  },
-  behavioral: {
-    structure: {
-      facets: [
-        facet(
-          "bh_structure_context_goal",
-          "Context and goal",
-          "Establish the situation and the candidate's responsibility."
-        ),
-        facet(
-          "bh_structure_action_result",
-          "Action and result",
-          "Connect candidate actions to a concrete result."
-        )
-      ]
-    },
-    clarity: {
-      facets: [
-        facet(
-          "bh_clarity_specific_example",
-          "Specific example",
-          "Use a specific situation rather than general leadership principles."
-        ),
-        facet(
-          "bh_clarity_personal_contribution",
-          "Personal contribution",
-          "Distinguish the candidate's decisions and actions from the team's work."
-        )
-      ]
-    },
-    insight: {
-      facets: [
-        facet(
-          "bh_insight_reflection",
-          "Reflection",
-          "Reflect on why the situation unfolded or what was learned."
-        ),
-        facet(
-          "bh_insight_changed_behavior",
-          "Changed behavior",
-          "Identify how later judgment or behavior changed."
-        )
-      ]
-    },
-    communication: {
-      facets: [
-        facet(
-          "bh_communication_stakeholder_context",
-          "Stakeholder context",
-          "Make relevant stakeholder perspectives or conflict understandable."
-        ),
-        facet(
-          "bh_communication_causal_narrative",
-          "Causal narrative",
-          "Connect decisions, actions, and consequences."
-        )
-      ]
-    },
-    leadership: {
-      facets: [
-        facet(
-          "bh_leadership_influence_ownership",
-          "Influence and ownership",
-          "Ground an example of influencing others or taking ownership."
-        ),
-        facet(
-          "bh_leadership_measurable_impact",
-          "Measurable impact",
-          "Identify a concrete team, customer, product, or business impact."
-        )
-      ]
-    }
-  },
-  strategy: {
-    structure: {
-      facets: [
-        facet(
-          "st_structure_market_to_choice",
-          "Market-to-choice structure",
-          "Connect market or customer context to strategic options and a choice."
-        ),
-        facet(
-          "st_structure_option_tradeoff",
-          "Option tradeoff",
-          "Compare strategic options using explicit tradeoffs."
-        )
-      ]
-    },
-    clarity: {
-      facets: [
-        facet(
-          "st_clarity_strategic_thesis",
-          "Strategic thesis",
-          "State a clear strategic thesis or recommendation."
-        ),
-        facet(
-          "st_clarity_logic_chain",
-          "Logic chain",
-          "Make the causal logic from market fact to recommendation explicit."
-        )
-      ]
-    },
-    insight: {
-      facets: [
-        facet(
-          "st_insight_market_dynamic",
-          "Market dynamic",
-          "Identify a concrete market, customer, or competitive dynamic."
-        ),
-        facet(
-          "st_insight_second_order_effect",
-          "Second-order effect",
-          "Identify a second-order strategic implication, risk, or response."
-        )
-      ]
-    },
-    communication: {
-      facets: [
-        facet(
-          "st_communication_assumption_alignment",
-          "Assumption alignment",
-          "Surface a material strategic assumption or uncertainty."
-        ),
-        facet(
-          "st_communication_evidence_narrative",
-          "Evidence narrative",
-          "Connect evidence and reasoning into a coherent strategic narrative."
-        )
-      ]
-    },
-    leadership: {
-      facets: [
-        facet(
-          "st_leadership_bounded_bet",
-          "Bounded strategic bet",
-          "Commit to a bounded strategic bet rather than leaving every option open."
-        ),
-        facet(
-          "st_leadership_long_term_tradeoff",
-          "Long-term tradeoff",
-          "Own a long-term tradeoff, sequence, or exit condition."
-        )
-      ]
-    }
-  }
-};
-function isDimensionCoverageFeedbackResult(value) {
-  return value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION;
-}
-
-// packages/core/src/feedback-evidence-limited.ts
-var FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION = "feedback.evidence-limited.v2";
-var FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION = "feedback.evidence-limited.selection.v1";
-var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited.v2";
-function isEvidenceLimitedFeedbackResult(value) {
-  return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
-}
-
-// packages/core/src/focused-practice-attempt.ts
-var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
-  revised_answer: 8e3,
-  reflection: 2e3
-});
-
-// packages/core/src/feedback-outcome.ts
-var FEEDBACK_OUTCOME_REASONS = [
-  "feedback_generated",
-  "no_reviewable_answer",
-  "transcript_integrity_degraded",
-  "dispatch_failed",
-  "generation_failed"
-];
-var FEEDBACK_OUTCOME_REASON_SET = new Set(FEEDBACK_OUTCOME_REASONS);
-
-// packages/core/src/feedback-quality.ts
-var FEEDBACK_QUALITY_SIGNAL_RATE_WINDOW_SECONDS = 60 * 60;
-var FEEDBACK_QUALITY_OUTCOMES = [
-  "full_scorecard",
-  "partial_scorecard",
-  "coaching_review"
-];
-var FEEDBACK_QUALITY_RESPONSES = ["helpful", "not_helpful"];
-var FEEDBACK_QUALITY_COMMON_REASONS = [
-  "not_specific_enough",
-  "evidence_did_not_match",
-  "next_step_unclear",
-  "too_much_to_use"
-];
-var FEEDBACK_QUALITY_SCORE_REASONS = [
-  "score_explanation_unclear"
-];
-var FEEDBACK_QUALITY_COACHING_REASONS = [
-  "score_withholding_unclear"
-];
-var FEEDBACK_QUALITY_REASONS = [
-  ...FEEDBACK_QUALITY_COMMON_REASONS,
-  ...FEEDBACK_QUALITY_SCORE_REASONS,
-  ...FEEDBACK_QUALITY_COACHING_REASONS
-];
-var OUTCOME_SET = new Set(FEEDBACK_QUALITY_OUTCOMES);
-var RESPONSE_SET = new Set(FEEDBACK_QUALITY_RESPONSES);
-var REASON_SET = new Set(FEEDBACK_QUALITY_REASONS);
-var COMMON_REASON_SET = new Set(FEEDBACK_QUALITY_COMMON_REASONS);
-var SCORE_REASON_SET = new Set(FEEDBACK_QUALITY_SCORE_REASONS);
-var COACHING_REASON_SET = new Set(FEEDBACK_QUALITY_COACHING_REASONS);
-
-// packages/core/src/feedback-eligibility.ts
-var FEEDBACK_ELIGIBILITY_POLICY = {
-  partial: {
-    minSubstantiveResponses: 1
-  },
-  full: {
-    minScoreableResponses: 5
-  }
-};
-function classifyCandidateResponseEvidence(input) {
-  if (!input.passesQuantitativeGates) return "insufficient";
-  if (hasSubstantiveCandidateResponseSignal(input.text)) return "scoreable";
-  return hasEvidenceLimitedCandidateResponseSignal(input.text) ? "evidence_limited" : "insufficient";
-}
-
 // packages/core/src/answer-blocks.ts
 var ANSWER_BLOCK_CONTRACT_VERSION = 1;
 var ANSWER_BLOCK_MAX_CONTINUATION_GAP_MS = 5e3;
@@ -6728,6 +6351,696 @@ function toSourceTurn(turn3) {
 }
 function joinBlockText(turns) {
   return turns.map((turn3) => turn3.text.trim()).join(" ").replace(/\s+/gu, " ").trim();
+}
+
+// packages/core/src/trusted-answer-block-authority.ts
+var TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION = "trusted-answer-block-projection.v1";
+
+// packages/core/src/feedback-dimension-coverage.ts
+var FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION = "feedback.dimension-coverage.v1";
+var FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION = "feedback.dimension-coverage.v2";
+var FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION = "feedback.verified-prefix-scope.v1";
+var MAX_VERIFIED_PREFIX_IDENTITIES = 1e3;
+var MAX_VERIFIED_PREFIX_SCOPE_SERIALIZED_LENGTH = 128e3;
+var FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION = "feedback.dimension-coverage.selection.v1";
+var FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION = "feedback.prompt.dimension-coverage.v1";
+var FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION = "pm-feedback-rubric.v3";
+var FEEDBACK_DIMENSIONS = [
+  "structure",
+  "clarity",
+  "insight",
+  "communication",
+  "leadership"
+];
+function facet(code, label, evaluatorGuidance) {
+  return { code, label, evaluatorGuidance };
+}
+var ROUND_DIMENSION_COVERAGE_CONFIG = {
+  product_sense: {
+    structure: {
+      facets: [
+        facet(
+          "ps_structure_problem_progression",
+          "Problem progression",
+          "Connect a product problem, user, or goal through an explicit progression."
+        ),
+        facet(
+          "ps_structure_solution_tradeoff",
+          "Solution and tradeoff structure",
+          "Connect a proposed solution to prioritization or a tradeoff."
+        )
+      ]
+    },
+    clarity: {
+      facets: [
+        facet(
+          "ps_clarity_prioritized_thesis",
+          "Prioritized thesis",
+          "State a clear product focus or prioritized claim."
+        ),
+        facet(
+          "ps_clarity_connected_rationale",
+          "Connected rationale",
+          "Connect the user problem, choice, and intended outcome."
+        )
+      ]
+    },
+    insight: {
+      facets: [
+        facet(
+          "ps_insight_user_need_specificity",
+          "Specific user need",
+          "Identify a concrete user need, behavior, or constraint."
+        ),
+        facet(
+          "ps_insight_non_obvious_tradeoff",
+          "Non-obvious tradeoff",
+          "Identify a meaningful second-order effect or non-obvious tradeoff."
+        )
+      ]
+    },
+    communication: {
+      facets: [
+        facet(
+          "ps_communication_clarifying_alignment",
+          "Clarifying alignment",
+          "Align on scope, assumptions, or the product decision."
+        ),
+        facet(
+          "ps_communication_reasoning_visibility",
+          "Visible reasoning",
+          "Make product reasoning and prioritization legible."
+        )
+      ]
+    },
+    leadership: {
+      facets: [
+        facet(
+          "ps_leadership_explicit_decision",
+          "Explicit decision",
+          "Make an explicit product decision instead of listing undifferentiated options."
+        ),
+        facet(
+          "ps_leadership_conviction_with_tradeoff",
+          "Conviction with tradeoff",
+          "Own a recommendation while acknowledging a material tradeoff."
+        )
+      ]
+    }
+  },
+  execution: {
+    structure: {
+      facets: [
+        facet(
+          "ex_structure_goal_to_plan",
+          "Goal-to-plan structure",
+          "Connect the execution goal to an ordered plan or decision path."
+        ),
+        facet(
+          "ex_structure_prioritization_sequence",
+          "Prioritization sequence",
+          "Sequence priorities, dependencies, or milestones."
+        )
+      ]
+    },
+    clarity: {
+      facets: [
+        facet(
+          "ex_clarity_priority_rationale",
+          "Priority rationale",
+          "Explain why one execution priority comes before another."
+        ),
+        facet(
+          "ex_clarity_decision_rule",
+          "Decision rule",
+          "State a rule, threshold, or criterion for an execution choice."
+        )
+      ]
+    },
+    insight: {
+      facets: [
+        facet(
+          "ex_insight_dependency_risk",
+          "Dependency or risk",
+          "Identify a dependency, failure mode, or execution risk."
+        ),
+        facet(
+          "ex_insight_metric_tradeoff",
+          "Metric tradeoff",
+          "Explain a metric relationship, guardrail, or tradeoff that changes the plan."
+        )
+      ]
+    },
+    communication: {
+      facets: [
+        facet(
+          "ex_communication_constraint_alignment",
+          "Constraint alignment",
+          "Surface and align on a relevant execution constraint."
+        ),
+        facet(
+          "ex_communication_plan_visibility",
+          "Plan visibility",
+          "Communicate the plan, checkpoints, or decision logic."
+        )
+      ]
+    },
+    leadership: {
+      facets: [
+        facet(
+          "ex_leadership_accountable_owner",
+          "Accountable ownership",
+          "Identify ownership or take responsibility for an execution decision."
+        ),
+        facet(
+          "ex_leadership_ship_decision",
+          "Ship decision",
+          "Make a bounded ship, sequence, or escalation decision."
+        )
+      ]
+    }
+  },
+  behavioral: {
+    structure: {
+      facets: [
+        facet(
+          "bh_structure_context_goal",
+          "Context and goal",
+          "Establish the situation and the candidate's responsibility."
+        ),
+        facet(
+          "bh_structure_action_result",
+          "Action and result",
+          "Connect candidate actions to a concrete result."
+        )
+      ]
+    },
+    clarity: {
+      facets: [
+        facet(
+          "bh_clarity_specific_example",
+          "Specific example",
+          "Use a specific situation rather than general leadership principles."
+        ),
+        facet(
+          "bh_clarity_personal_contribution",
+          "Personal contribution",
+          "Distinguish the candidate's decisions and actions from the team's work."
+        )
+      ]
+    },
+    insight: {
+      facets: [
+        facet(
+          "bh_insight_reflection",
+          "Reflection",
+          "Reflect on why the situation unfolded or what was learned."
+        ),
+        facet(
+          "bh_insight_changed_behavior",
+          "Changed behavior",
+          "Identify how later judgment or behavior changed."
+        )
+      ]
+    },
+    communication: {
+      facets: [
+        facet(
+          "bh_communication_stakeholder_context",
+          "Stakeholder context",
+          "Make relevant stakeholder perspectives or conflict understandable."
+        ),
+        facet(
+          "bh_communication_causal_narrative",
+          "Causal narrative",
+          "Connect decisions, actions, and consequences."
+        )
+      ]
+    },
+    leadership: {
+      facets: [
+        facet(
+          "bh_leadership_influence_ownership",
+          "Influence and ownership",
+          "Ground an example of influencing others or taking ownership."
+        ),
+        facet(
+          "bh_leadership_measurable_impact",
+          "Measurable impact",
+          "Identify a concrete team, customer, product, or business impact."
+        )
+      ]
+    }
+  },
+  strategy: {
+    structure: {
+      facets: [
+        facet(
+          "st_structure_market_to_choice",
+          "Market-to-choice structure",
+          "Connect market or customer context to strategic options and a choice."
+        ),
+        facet(
+          "st_structure_option_tradeoff",
+          "Option tradeoff",
+          "Compare strategic options using explicit tradeoffs."
+        )
+      ]
+    },
+    clarity: {
+      facets: [
+        facet(
+          "st_clarity_strategic_thesis",
+          "Strategic thesis",
+          "State a clear strategic thesis or recommendation."
+        ),
+        facet(
+          "st_clarity_logic_chain",
+          "Logic chain",
+          "Make the causal logic from market fact to recommendation explicit."
+        )
+      ]
+    },
+    insight: {
+      facets: [
+        facet(
+          "st_insight_market_dynamic",
+          "Market dynamic",
+          "Identify a concrete market, customer, or competitive dynamic."
+        ),
+        facet(
+          "st_insight_second_order_effect",
+          "Second-order effect",
+          "Identify a second-order strategic implication, risk, or response."
+        )
+      ]
+    },
+    communication: {
+      facets: [
+        facet(
+          "st_communication_assumption_alignment",
+          "Assumption alignment",
+          "Surface a material strategic assumption or uncertainty."
+        ),
+        facet(
+          "st_communication_evidence_narrative",
+          "Evidence narrative",
+          "Connect evidence and reasoning into a coherent strategic narrative."
+        )
+      ]
+    },
+    leadership: {
+      facets: [
+        facet(
+          "st_leadership_bounded_bet",
+          "Bounded strategic bet",
+          "Commit to a bounded strategic bet rather than leaving every option open."
+        ),
+        facet(
+          "st_leadership_long_term_tradeoff",
+          "Long-term tradeoff",
+          "Own a long-term tradeoff, sequence, or exit condition."
+        )
+      ]
+    }
+  }
+};
+var DimensionCoverageParseError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "DimensionCoverageParseError";
+  }
+};
+function isDimensionCoverageFeedbackResult(value) {
+  return value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION || value.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
+}
+function parseDimensionCoverageProviderSelection(value, options) {
+  const verifiedPrefixScope = options.verifiedPrefixProjection ? scopeFromVerifiedPrefixProjection(
+    options.verifiedPrefixProjection,
+    options.answerBlocks
+  ) : null;
+  const root = requireRecord2(value);
+  requireKeys(root, [
+    "schemaVersion",
+    "promptVersion",
+    "rubricVersion",
+    "roundType",
+    "dimensions"
+  ]);
+  requireExact2(
+    root.schemaVersion,
+    FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION
+  );
+  requireExact2(root.promptVersion, FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION);
+  requireExact2(root.rubricVersion, FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION);
+  if (root.roundType !== options.roundType)
+    throw new DimensionCoverageParseError("round_mismatch");
+  const modelVersion = requireBoundedString(options.modelVersion, 256);
+  const blockByRef = /* @__PURE__ */ new Map();
+  for (const block of options.answerBlocks) {
+    if (blockByRef.has(block.answerBlockId) || !block.responseText.trim()) {
+      throw new DimensionCoverageParseError("invalid_shape");
+    }
+    blockByRef.set(block.answerBlockId, block);
+  }
+  if (blockByRef.size === 0 || blockByRef.size > 1e3) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  const rawDimensions = requireRecord2(root.dimensions);
+  requireKeys(rawDimensions, FEEDBACK_DIMENSIONS);
+  const config = ROUND_DIMENSION_COVERAGE_CONFIG[options.roundType];
+  const dimensions = {};
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const rawDimension = requireRecord2(rawDimensions[dimension]);
+    requireKeys(rawDimension, ["score", "evidence"]);
+    if (!Array.isArray(rawDimension.evidence) || rawDimension.evidence.length > 2) {
+      throw new DimensionCoverageParseError("invalid_shape");
+    }
+    const allowedFacets = new Map(
+      config[dimension].facets.map((entry) => [entry.code, entry])
+    );
+    const selectedFacets = /* @__PURE__ */ new Set();
+    const evidence = rawDimension.evidence.map((item) => {
+      const rawEvidence = requireRecord2(item);
+      requireKeys(rawEvidence, ["facetCode", "answerBlockRef"]);
+      const foundFacet = typeof rawEvidence.facetCode === "string" ? allowedFacets.get(rawEvidence.facetCode) : void 0;
+      if (!foundFacet)
+        throw new DimensionCoverageParseError("wrong_round_facet");
+      if (selectedFacets.has(foundFacet.code))
+        throw new DimensionCoverageParseError("duplicate_facet");
+      selectedFacets.add(foundFacet.code);
+      const block = typeof rawEvidence.answerBlockRef === "string" ? blockByRef.get(rawEvidence.answerBlockRef) : void 0;
+      if (!block) throw new DimensionCoverageParseError("unknown_answer_block");
+      return {
+        facetCode: foundFacet.code,
+        facetLabel: foundFacet.label,
+        answerBlockRef: block.answerBlockId,
+        evidenceText: requireBoundedString(block.responseText, 32e3)
+      };
+    });
+    evidence.sort(
+      (left, right) => left.facetCode.localeCompare(right.facetCode) || left.answerBlockRef.localeCompare(right.answerBlockRef)
+    );
+    const coverage = selectedFacets.size === 0 ? "absent" : selectedFacets.size === 1 ? "partial" : "sufficient";
+    const score = parseNullableScore(rawDimension.score);
+    if ((options.allowNumericalScores && coverage === "sufficient") !== (score !== null)) {
+      throw new DimensionCoverageParseError("score_coverage_mismatch");
+    }
+    dimensions[dimension] = { coverage, score, evidence };
+  }
+  const sufficientCount = FEEDBACK_DIMENSIONS.filter(
+    (dimension) => dimensions[dimension].coverage === "sufficient"
+  ).length;
+  const mode = verifiedPrefixScope ? options.allowNumericalScores && sufficientCount > 0 ? "partial_scorecard" : "coaching_review" : !options.allowNumericalScores ? "coaching_review" : sufficientCount === FEEDBACK_DIMENSIONS.length ? "full_scorecard" : sufficientCount > 0 ? "partial_scorecard" : "coaching_review";
+  const overallScore = mode === "full_scorecard" ? calculateOverallScore({
+    structure: dimensions.structure.score,
+    clarity: dimensions.clarity.score,
+    insight: dimensions.insight.score,
+    communication: dimensions.communication.score,
+    leadership: dimensions.leadership.score
+  }) : null;
+  return verifiedPrefixScope ? {
+    schemaVersion: FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+    rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+    modelVersion,
+    roundType: options.roundType,
+    evaluationState: "partial",
+    mode,
+    dimensions,
+    overallScore: null,
+    summary: summaryForMode(mode, true),
+    verifiedPrefixScope
+  } : {
+    schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
+    promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+    rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+    modelVersion,
+    roundType: options.roundType,
+    evaluationState: mode === "full_scorecard" ? "full" : "partial",
+    mode,
+    dimensions,
+    overallScore,
+    summary: summaryForMode(mode)
+  };
+}
+function parsePersistedDimensionCoverageFeedback(value, options) {
+  const root = requireRecord2(value);
+  const verifiedPrefix = root.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
+  requireKeys(root, [
+    "schemaVersion",
+    "promptVersion",
+    "rubricVersion",
+    "modelVersion",
+    "roundType",
+    "evaluationState",
+    "mode",
+    "dimensions",
+    "overallScore",
+    "summary",
+    ...verifiedPrefix ? ["verifiedPrefixScope"] : []
+  ]);
+  if (root.schemaVersion !== FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION && !verifiedPrefix) {
+    throw new DimensionCoverageParseError("version_mismatch");
+  }
+  const persistedVerifiedPrefixScope = verifiedPrefix ? parseVerifiedPrefixScope(root.verifiedPrefixScope) : null;
+  requireExact2(root.promptVersion, FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION);
+  requireExact2(root.rubricVersion, FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION);
+  const roundType = parseRoundType(root.roundType);
+  const mode = parseMode(root.mode);
+  const persistedDimensions = requireRecord2(root.dimensions);
+  requireKeys(persistedDimensions, FEEDBACK_DIMENSIONS);
+  const providerDimensions = {};
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const persisted = requireRecord2(persistedDimensions[dimension]);
+    requireKeys(persisted, ["coverage", "score", "evidence"]);
+    if (!Array.isArray(persisted.evidence))
+      throw new DimensionCoverageParseError("invalid_shape");
+    providerDimensions[dimension] = {
+      score: parseNullableScore(persisted.score),
+      evidence: persisted.evidence.map((item) => {
+        const evidence = requireRecord2(item);
+        requireKeys(evidence, [
+          "facetCode",
+          "facetLabel",
+          "answerBlockRef",
+          "evidenceText"
+        ]);
+        return {
+          facetCode: requireBoundedString(evidence.facetCode, 128),
+          answerBlockRef: requireBoundedString(evidence.answerBlockRef, 128)
+        };
+      })
+    };
+  }
+  const derived = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType,
+      dimensions: providerDimensions
+    },
+    {
+      roundType,
+      answerBlocks: options.answerBlocks,
+      modelVersion: typeof root.modelVersion === "string" ? root.modelVersion : "",
+      allowNumericalScores: options.allowNumericalScores ?? mode !== "coaching_review",
+      ...verifiedPrefix ? { verifiedPrefixProjection: options.verifiedPrefixProjection } : {}
+    }
+  );
+  const boundedRoot = persistedVerifiedPrefixScope ? { ...root, verifiedPrefixScope: persistedVerifiedPrefixScope } : root;
+  if (canonicalJson(derived) !== canonicalJson(boundedRoot)) {
+    throw new DimensionCoverageParseError("persisted_result_mismatch");
+  }
+  return derived;
+}
+function canonicalJson(value) {
+  return JSON.stringify(sortJsonValue(value));
+}
+function sortJsonValue(value) {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (!value || typeof value !== "object") return value;
+  const record = value;
+  return Object.fromEntries(
+    Object.keys(record).sort().map((key) => [key, sortJsonValue(record[key])])
+  );
+}
+function scopeFromVerifiedPrefixProjection(projection, answerBlocks) {
+  const aligned = projection.contractVersion === TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION && projection.status === "verified_prefix" && projection.failureReason === null && projection.trustedBlocks.length > 0 && projection.trustedBlocks.length === projection.trustedBlockIdentities.length && projection.trustedBlocks.length === projection.closureAuthorities.length && canonicalJson(projection.trustedBlocks) === canonicalJson(answerBlocks) && projection.trustedBlocks.every(
+    (block, index2) => block.answerBlockId === projection.trustedBlockIdentities[index2]?.answerBlockId && block.answerBlockId === projection.closureAuthorities[index2]?.answerBlockId
+  );
+  if (!aligned) throw new DimensionCoverageParseError("invalid_shape");
+  return {
+    contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+    projectionVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
+    trustedBlockIdentities: projection.trustedBlockIdentities.map(
+      (identity) => ({ ...identity })
+    ),
+    excludedTailBlockCount: projection.excludedBlocks.length
+  };
+}
+function parseVerifiedPrefixScope(value) {
+  const scope = requireRecord2(value);
+  requireKeys(scope, [
+    "contractVersion",
+    "projectionVersion",
+    "trustedBlockIdentities",
+    "excludedTailBlockCount"
+  ]);
+  requireExact2(scope.contractVersion, FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION);
+  requireExact2(
+    scope.projectionVersion,
+    TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION
+  );
+  if (!Array.isArray(scope.trustedBlockIdentities) || scope.trustedBlockIdentities.length === 0 || scope.trustedBlockIdentities.length > MAX_VERIFIED_PREFIX_IDENTITIES || !Number.isSafeInteger(scope.excludedTailBlockCount) || scope.excludedTailBlockCount < 0 || scope.excludedTailBlockCount > MAX_VERIFIED_PREFIX_IDENTITIES) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  const trustedBlockIdentities = scope.trustedBlockIdentities.map((value2) => {
+    const identity = requireRecord2(value2);
+    requireKeys(identity, ["contractVersion", "answerBlockId", "identity"]);
+    requireExact2(identity.contractVersion, "trusted-answer-block-identity.v1");
+    const answerBlockId = requireBoundedString(identity.answerBlockId, 17);
+    if (!/^answer-block:[0-9]{4}$/u.test(answerBlockId) || typeof identity.identity !== "string" || !/^trusted-answer-block\.v1:[a-f0-9]{64}$/u.test(identity.identity)) {
+      throw new DimensionCoverageParseError("invalid_shape");
+    }
+    return {
+      contractVersion: "trusted-answer-block-identity.v1",
+      answerBlockId,
+      identity: identity.identity
+    };
+  });
+  const decoded = {
+    contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+    projectionVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
+    trustedBlockIdentities,
+    excludedTailBlockCount: scope.excludedTailBlockCount
+  };
+  if (new TextEncoder().encode(JSON.stringify(decoded)).byteLength > MAX_VERIFIED_PREFIX_SCOPE_SERIALIZED_LENGTH) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  return decoded;
+}
+function summaryForMode(mode, verifiedPrefix = false) {
+  if (mode === "full_scorecard")
+    return "Every configured PM dimension had sufficient grounded evidence for a complete scorecard.";
+  if (mode === "partial_scorecard")
+    return verifiedPrefix ? "Only PM dimensions supported by verified completed answers are scored; the unverified interview tail and overall score are excluded." : "Only PM dimensions with sufficient grounded evidence are scored; unsupported dimensions and the overall score are withheld.";
+  if (verifiedPrefix)
+    return "Verified completed answers support grounded coaching, while the unverified interview tail is excluded from review.";
+  return "The interview contains a reviewable candidate answer for coaching, but it does not support a fair numerical scorecard.";
+}
+function parseNullableScore(value) {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 10) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  return value;
+}
+function parseRoundType(value) {
+  if (value === "product_sense" || value === "execution" || value === "behavioral" || value === "strategy")
+    return value;
+  throw new DimensionCoverageParseError("invalid_shape");
+}
+function parseMode(value) {
+  if (value === "full_scorecard" || value === "partial_scorecard" || value === "coaching_review")
+    return value;
+  throw new DimensionCoverageParseError("invalid_shape");
+}
+function requireBoundedString(value, max) {
+  if (typeof value !== "string" || !value.trim() || value.length > max) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  return value;
+}
+function requireRecord2(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+  return value;
+}
+function requireKeys(value, keys) {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length || actual.some((key, index2) => key !== expected[index2])) {
+    throw new DimensionCoverageParseError("invalid_shape");
+  }
+}
+function requireExact2(value, expected) {
+  if (value !== expected)
+    throw new DimensionCoverageParseError("version_mismatch");
+}
+
+// packages/core/src/feedback-evidence-limited.ts
+var FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION = "feedback.evidence-limited.v2";
+var FEEDBACK_EVIDENCE_LIMITED_SELECTION_SCHEMA_VERSION = "feedback.evidence-limited.selection.v1";
+var FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION = "feedback.prompt.evidence-limited.v2";
+function isEvidenceLimitedFeedbackResult(value) {
+  return value.schemaVersion === FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION;
+}
+
+// packages/core/src/focused-practice-attempt.ts
+var FOCUSED_PRACTICE_RESPONSE_LIMITS = Object.freeze({
+  revised_answer: 8e3,
+  reflection: 2e3
+});
+
+// packages/core/src/feedback-outcome.ts
+var FEEDBACK_OUTCOME_REASONS = [
+  "feedback_generated",
+  "no_reviewable_answer",
+  "transcript_integrity_degraded",
+  "dispatch_failed",
+  "generation_failed"
+];
+var FEEDBACK_OUTCOME_REASON_SET = new Set(FEEDBACK_OUTCOME_REASONS);
+
+// packages/core/src/feedback-quality.ts
+var FEEDBACK_QUALITY_SIGNAL_RATE_WINDOW_SECONDS = 60 * 60;
+var FEEDBACK_QUALITY_OUTCOMES = [
+  "full_scorecard",
+  "partial_scorecard",
+  "coaching_review"
+];
+var FEEDBACK_QUALITY_RESPONSES = ["helpful", "not_helpful"];
+var FEEDBACK_QUALITY_COMMON_REASONS = [
+  "not_specific_enough",
+  "evidence_did_not_match",
+  "next_step_unclear",
+  "too_much_to_use"
+];
+var FEEDBACK_QUALITY_SCORE_REASONS = [
+  "score_explanation_unclear"
+];
+var FEEDBACK_QUALITY_COACHING_REASONS = [
+  "score_withholding_unclear"
+];
+var FEEDBACK_QUALITY_REASONS = [
+  ...FEEDBACK_QUALITY_COMMON_REASONS,
+  ...FEEDBACK_QUALITY_SCORE_REASONS,
+  ...FEEDBACK_QUALITY_COACHING_REASONS
+];
+var OUTCOME_SET = new Set(FEEDBACK_QUALITY_OUTCOMES);
+var RESPONSE_SET = new Set(FEEDBACK_QUALITY_RESPONSES);
+var REASON_SET = new Set(FEEDBACK_QUALITY_REASONS);
+var COMMON_REASON_SET = new Set(FEEDBACK_QUALITY_COMMON_REASONS);
+var SCORE_REASON_SET = new Set(FEEDBACK_QUALITY_SCORE_REASONS);
+var COACHING_REASON_SET = new Set(FEEDBACK_QUALITY_COACHING_REASONS);
+
+// packages/core/src/feedback-eligibility.ts
+var FEEDBACK_ELIGIBILITY_POLICY = {
+  partial: {
+    minSubstantiveResponses: 1
+  },
+  full: {
+    minScoreableResponses: 5
+  }
+};
+function classifyCandidateResponseEvidence(input) {
+  if (!input.passesQuantitativeGates) return "insufficient";
+  if (hasSubstantiveCandidateResponseSignal(input.text)) return "scoreable";
+  return hasEvidenceLimitedCandidateResponseSignal(input.text) ? "evidence_limited" : "insufficient";
 }
 
 // packages/core/src/session-lifecycle.ts
@@ -9255,6 +9568,50 @@ function marker(sequence, speaker, reason, occurredAtMs) {
 }
 function terminal(occurredAtMs) {
   return { kind: "session_end", occurredAtMs };
+}
+
+// packages/test-fixtures/src/verified-prefix-scorecard-calibration.ts
+var VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION = "verified-prefix-scorecard-calibration.v1";
+var VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES = [
+  calibrationCase3(
+    "historical-complete-scorecard",
+    "historical_full",
+    "segmentation-1",
+    "complete-product_sense",
+    "full_scorecard"
+  ),
+  calibrationCase3(
+    "verified-prefix-sparse-scorecard",
+    "verified_prefix_partial",
+    "terminal-preserving-marker",
+    "spoken-product-choice",
+    "partial_scorecard"
+  ),
+  calibrationCase3(
+    "verified-prefix-coaching-only",
+    "verified_prefix_coaching",
+    "terminal-preserving-marker",
+    "concise-strategy-bet",
+    "coaching_review"
+  ),
+  calibrationCase3(
+    "candidate-marker-unavailable",
+    "authority_unavailable",
+    "candidate-marker",
+    null,
+    "unable_to_review_integrity"
+  )
+];
+function calibrationCase3(id, family, authorityCaseId, coverageCaseId, expectedOutcome) {
+  return {
+    id,
+    provenance: "fully_synthetic",
+    version: VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION,
+    family,
+    authorityCaseId,
+    coverageCaseId,
+    expectedOutcome
+  };
 }
 
 // packages/test-fixtures/src/index.ts
@@ -20391,6 +20748,9 @@ var feedback = pgTable(
     feedbackMode: text("feedback_mode").$type(),
     feedbackRoundType: text("feedback_round_type").$type(),
     dimensionCoverage: jsonb("dimension_coverage").$type(),
+    verifiedPrefixScope: jsonb(
+      "verified_prefix_scope"
+    ).$type(),
     processingStartedAt: timestamp("processing_started_at", {
       withTimezone: true
     }),
@@ -20471,6 +20831,12 @@ var feedback = pgTable(
             ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
             ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
             ${table.evaluationState} IN ('full', 'partial')
+          ) OR
+          (
+            ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
+            ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
+            ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
+            ${table.evaluationState} = 'partial'
           )
         ) AND
         length(trim(${table.modelVersion})) > 0
@@ -20480,15 +20846,48 @@ var feedback = pgTable(
       "feedback_dimension_coverage_tuple_check",
       sql`(
         ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v1' AND
+        ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v2' AND
         ${table.feedbackMode} IS NULL AND
         ${table.feedbackRoundType} IS NULL AND
         ${table.dimensionCoverage} IS NULL
       ) OR (
-        ${table.schemaVersion} = 'feedback.dimension-coverage.v1' AND
+        ${table.schemaVersion} IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND
         ${table.feedbackMode} IN ('full_scorecard', 'partial_scorecard', 'coaching_review') AND
         ${table.feedbackRoundType} IN ('product_sense', 'execution', 'behavioral', 'strategy') AND
         ${table.dimensionCoverage} IS NOT NULL AND
         ${table.rubricVersion} = 'pm-feedback-rubric.v3'
+      )`
+    ),
+    verifiedPrefixScopeTupleCheck: check(
+      "feedback_verified_prefix_scope_tuple_check",
+      sql`(
+        ${table.schemaVersion} IS DISTINCT FROM 'feedback.dimension-coverage.v2' AND
+        ${table.verifiedPrefixScope} IS NULL
+      ) OR (
+        ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
+        ${table.evaluationState} = 'partial' AND
+        ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
+        ${table.overallScore} IS NULL AND
+        ${table.verifiedPrefixScope} IS NOT NULL AND
+        CASE
+          WHEN jsonb_typeof(${table.verifiedPrefixScope}) IS NOT DISTINCT FROM 'object' THEN
+            ${table.verifiedPrefixScope}->>'contractVersion' IS NOT DISTINCT FROM 'feedback.verified-prefix-scope.v1' AND
+            ${table.verifiedPrefixScope}->>'projectionVersion' IS NOT DISTINCT FROM 'trusted-answer-block-projection.v1' AND
+            CASE
+              WHEN jsonb_typeof(${table.verifiedPrefixScope}->'trustedBlockIdentities') IS NOT DISTINCT FROM 'array' THEN
+                jsonb_array_length(${table.verifiedPrefixScope}->'trustedBlockIdentities') BETWEEN 1 AND 1000
+              ELSE false
+            END AND
+            jsonb_typeof(${table.verifiedPrefixScope}->'excludedTailBlockCount') IS NOT DISTINCT FROM 'number' AND
+            CASE
+              WHEN ${table.verifiedPrefixScope}->>'excludedTailBlockCount' ~ '^(0|[1-9][0-9]{0,3})$' THEN
+                (${table.verifiedPrefixScope}->>'excludedTailBlockCount')::integer BETWEEN 0 AND 1000
+              ELSE false
+            END AND
+            (${table.verifiedPrefixScope} - 'contractVersion' - 'projectionVersion' - 'trustedBlockIdentities' - 'excludedTailBlockCount') IS NOT DISTINCT FROM '{}'::jsonb AND
+            octet_length(${table.verifiedPrefixScope}::text) <= 128000
+          ELSE false
+        END
       )`
     ),
     dispatchEventRequiredCheck: check(
@@ -20844,7 +21243,7 @@ var focusedPracticeAttempt = pgTable(
           ${table.feedbackVersion}->>'sourceFingerprint' ~ '^[0-9a-f]{64}$'
         ) OR (
           ${table.contractVersion} = 'focused-practice-attempt.v2' AND
-          ${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND
+          ${table.feedbackVersion}->>'schemaVersion' IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND
           ${table.feedbackVersion}->>'promptVersion' = 'feedback.prompt.dimension-coverage.v1' AND
           ${table.feedbackVersion}->>'rubricVersion' = 'pm-feedback-rubric.v3' AND
           ${table.feedbackVersion}->>'evaluationState' = 'partial' AND
@@ -20866,7 +21265,7 @@ var focusedPracticeAttempt = pgTable(
             ${table.plan}#>>'{source,focusIdentity,kind}' = ${table.sourceFinding}->>'kind' AND
             (
               (${table.feedbackVersion}->>'schemaVersion' = 'feedback.evidence-limited.v2' AND ${table.sourceFinding}->>'kind' = 'evidence_limited_improvement') OR
-              (${table.feedbackVersion}->>'schemaVersion' = 'feedback.dimension-coverage.v1' AND ${table.sourceFinding}->>'kind' = 'dimension_coverage_focus')
+              (${table.feedbackVersion}->>'schemaVersion' IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') AND ${table.sourceFinding}->>'kind' = 'dimension_coverage_focus')
             )
           )
         ) AND
@@ -21651,24 +22050,23 @@ function deriveCandidateAnswerBlockEvidenceFromTurns(turns, options) {
       (issue) => issue.code === "repeated_turn" && issue.replayKind === "semantic_family" && issue.eventId ? [issue.eventId] : []
     )
   );
-  const answerBlockDerivation = deriveCandidateAnswerBlocks(
-    orderAnswerBlockLedgerEvents([
-      ...turns.flatMap(
-        (turn3) => turn3.eventId && acceptedEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3) : turn3.eventId && semanticReplayAnchors.has(turn3.eventId) ? toAnswerBlockTurn(
-          turn3,
-          "semantic_replay",
-          semanticReplayAnchors.get(turn3.eventId)
-        ) : turn3.eventId && semanticReplayBoundaryEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3, "semantic_replay_boundary") : []
-      ),
-      ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
-      ...options.sessionEndAt && Number.isFinite(options.sessionEndAt.getTime()) ? [
-        {
-          kind: "session_end",
-          occurredAtMs: options.sessionEndAt.getTime()
-        }
-      ] : []
-    ])
-  );
+  const ledgerEvents = orderAnswerBlockLedgerEvents([
+    ...turns.flatMap(
+      (turn3) => turn3.eventId && acceptedEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3) : turn3.eventId && semanticReplayAnchors.has(turn3.eventId) ? toAnswerBlockTurn(
+        turn3,
+        "semantic_replay",
+        semanticReplayAnchors.get(turn3.eventId)
+      ) : turn3.eventId && semanticReplayBoundaryEventIds.has(turn3.eventId) ? toAnswerBlockTurn(turn3, "semantic_replay_boundary") : []
+    ),
+    ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
+    ...options.sessionEndAt && Number.isFinite(options.sessionEndAt.getTime()) ? [
+      {
+        kind: "session_end",
+        occurredAtMs: options.sessionEndAt.getTime()
+      }
+    ] : []
+  ]);
+  const answerBlockDerivation = deriveCandidateAnswerBlocks(ledgerEvents);
   const preparedAnswerBlocks = answerBlockDerivation.blocks.map(
     (block) => prepareFeedbackTranscript([
       {
@@ -21683,7 +22081,8 @@ function deriveCandidateAnswerBlockEvidenceFromTurns(turns, options) {
     hasInvalidTiming,
     hasSourceOverflow: options.sourceOverflow === true,
     prepared,
-    preparedAnswerBlocks
+    preparedAnswerBlocks,
+    ledgerEvents
   };
 }
 function hasCorruptCandidateAnswerBlockEvidence(derived) {
@@ -30562,6 +30961,7 @@ var DASHBOARD_FEEDBACK_PRESENTATION_LIMITS = {
   // value one character beyond each limit so corrupt rows fail closed.
   findingsJson: 1e6,
   dimensionCoverageJson: 1e6,
+  verifiedPrefixScopeJson: 128e3,
   drillsJson: 64e3,
   summary: 4e3,
   version: 256
@@ -32093,6 +32493,7 @@ var dashboardSessionSelection = {
     feedbackMode: sql`left(${feedback.feedbackMode}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
     feedbackRoundType: sql`left(${feedback.feedbackRoundType}, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.version + 1})`,
     dimensionCoverageJson: sql`left(${feedback.dimensionCoverage}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.dimensionCoverageJson + 1})`,
+    verifiedPrefixScopeJson: sql`left(${feedback.verifiedPrefixScope}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.verifiedPrefixScopeJson + 1})`,
     strengthsJson: sql`left(${feedback.strengths}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
     improvementsJson: sql`left(${feedback.improvements}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.findingsJson + 1})`,
     drillsJson: sql`left(${feedback.drills}::text, ${DASHBOARD_FEEDBACK_PRESENTATION_LIMITS.drillsJson + 1})`,
@@ -32284,7 +32685,8 @@ async function runGenerateFeedbackWorkflow(input, deps) {
   }
   const roundType = authorization.session.roundType;
   await assertAccountIsActive(input.userId, deps);
-  const allowNumericalScores = evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+  const verifiedPrefixProjection = evidence.snapshotState === "partial" && evidence.trustedProjection?.status === "verified_prefix" ? evidence.trustedProjection : void 0;
+  const allowNumericalScores = (evidence.snapshotState !== "partial" || verifiedPrefixProjection !== void 0) && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
   let evaluated = null;
   let attempt = 1;
   let plan = planFeedbackProviderAttempt({
@@ -32352,6 +32754,7 @@ async function runGenerateFeedbackWorkflow(input, deps) {
               roundType,
               answerBlocks: evidence.blocks,
               allowNumericalScores,
+              ...verifiedPrefixProjection ? { verifiedPrefixProjection } : {},
               attempt,
               deadlineAtMs,
               requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
@@ -32381,6 +32784,13 @@ async function runGenerateFeedbackWorkflow(input, deps) {
             throw new Error(
               "feedback_generation_qualitative_constraint_violated"
             );
+          }
+          if (isDimensionCoverageFeedbackResult(evaluation)) {
+            parsePersistedDimensionCoverageFeedback(evaluation, {
+              answerBlocks: evidence.blocks,
+              allowNumericalScores,
+              ...verifiedPrefixProjection ? { verifiedPrefixProjection } : {}
+            });
           }
           return {
             disposition: "evaluated",
@@ -32838,7 +33248,7 @@ function getEvaluationAdjudicationHashes() {
   return { candidateArtifactHash, corpusHash };
 }
 function parseEvaluationAdjudicationApproval(input) {
-  const record = requireRecord2(input, "approval");
+  const record = requireRecord3(input, "approval");
   const hashes = getEvaluationAdjudicationHashes();
   if (record.contractVersion !== "evaluation-adjudication-approval.v2") {
     throw new Error("Invalid adjudication approval contractVersion");
@@ -32855,7 +33265,7 @@ function parseEvaluationAdjudicationApproval(input) {
   if (record.adjudicationVersion !== EVALUATION_ADJUDICATION_VERSION) {
     throw new Error("Adjudication approval adjudicationVersion mismatch");
   }
-  const reviewer = requireRecord2(record.reviewer, "reviewer");
+  const reviewer = requireRecord3(record.reviewer, "reviewer");
   const identity = requireText(reviewer.identity, "reviewer.identity");
   if (reviewer.role !== "product_owner" && reviewer.role !== "pm_reviewer") {
     throw new Error("Invalid adjudication approval reviewer.role");
@@ -32867,7 +33277,7 @@ function parseEvaluationAdjudicationApproval(input) {
   if (!Array.isArray(record.decisions)) {
     throw new Error("Invalid adjudication approval decisions");
   }
-  const reviewBasis = requireRecord2(record.reviewBasis, "reviewBasis");
+  const reviewBasis = requireRecord3(record.reviewBasis, "reviewBasis");
   if (reviewBasis.candidateManifestVersion !== "evaluation-adjudication-review.v2" || reviewBasis.independentExactHashReview !== true) {
     throw new Error("Invalid adjudication approval reviewBasis");
   }
@@ -32880,7 +33290,7 @@ function parseEvaluationAdjudicationApproval(input) {
     if (reviewBasis.semanticAdjudicationOnly !== true) {
       throw new Error("Invalid delegated approval semantic scope");
     }
-    const authority2 = requireRecord2(
+    const authority2 = requireRecord3(
       record.delegatedAuthority,
       "delegatedAuthority"
     );
@@ -32896,7 +33306,7 @@ function parseEvaluationAdjudicationApproval(input) {
     }
     const panelPaths = /* @__PURE__ */ new Set();
     const panels = authority2.panels.map((unknownPanel) => {
-      const panel = requireRecord2(unknownPanel, "delegatedAuthority.panel");
+      const panel = requireRecord3(unknownPanel, "delegatedAuthority.panel");
       const taskPath = requireText(
         panel.taskPath,
         "delegatedAuthority.panel.taskPath"
@@ -32921,7 +33331,7 @@ function parseEvaluationAdjudicationApproval(input) {
       throw new Error("Invalid delegated approval round history");
     }
     const roundHistory = authority2.roundHistory.map((unknownRound, index2) => {
-      const round = requireRecord2(
+      const round = requireRecord3(
         unknownRound,
         "delegatedAuthority.roundHistory"
       );
@@ -32955,7 +33365,7 @@ function parseEvaluationAdjudicationApproval(input) {
   }
   const requiredCaseIds = evaluationCalibrationCases.filter(({ expectedQuality }) => expectedQuality !== null).map(({ id }) => id).sort();
   const decisions = record.decisions.map((unknownDecision) => {
-    const decision = requireRecord2(unknownDecision, "decision");
+    const decision = requireRecord3(unknownDecision, "decision");
     const caseId = requireText(decision.caseId, "decision.caseId");
     const decisionValue = decision.decision;
     if (decisionValue !== "approved" && decisionValue !== "changes_required") {
@@ -33000,7 +33410,7 @@ function requireSha256(value, field) {
 function sha2562(value) {
   return createHash3("sha256").update(value).digest("hex");
 }
-function requireRecord2(value, field) {
+function requireRecord3(value, field) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Invalid adjudication approval ${field}`);
   }
@@ -35101,8 +35511,8 @@ var DirectCalibrationGitHubCasClient = class {
       "GET",
       SAV_248_V32_GITHUB_REPOSITORY_API_PATH
     );
-    const record = requireRecord3(response, "repository");
-    const owner = requireRecord3(record.owner, "repository.owner");
+    const record = requireRecord4(response, "repository");
+    const owner = requireRecord4(record.owner, "repository.owner");
     return {
       id: requireNumber(record.id, "repository.id"),
       fullName: requireString(record.full_name, "repository.full_name"),
@@ -35114,7 +35524,7 @@ var DirectCalibrationGitHubCasClient = class {
     };
   }
   async getViewer() {
-    const record = requireRecord3(await this.api("GET", "/user"), "viewer");
+    const record = requireRecord4(await this.api("GET", "/user"), "viewer");
     return {
       id: requireNumber(record.id, "viewer.id"),
       login: requireString(record.login, "viewer.login")
@@ -35130,7 +35540,7 @@ var DirectCalibrationGitHubCasClient = class {
     }
     const rulesets = [];
     for (const item of listed) {
-      const summary = requireRecord3(item, "ruleset.summary");
+      const summary = requireRecord4(item, "ruleset.summary");
       if (summary.name !== SAV_248_V32_IMMUTABLE_RULESET_NAME && summary.name !== SAV_248_V32_ACTOR_RULESET_NAME) {
         continue;
       }
@@ -35156,7 +35566,7 @@ var DirectCalibrationGitHubCasClient = class {
       throw new Error("calibration_github_effective_rules_invalid");
     }
     return response.map(
-      (rule) => requireString(requireRecord3(rule, "effective.rule").type, "rule.type")
+      (rule) => requireString(requireRecord4(rule, "effective.rule").type, "rule.type")
     );
   }
   async getRefIfPresent() {
@@ -35200,7 +35610,7 @@ var DirectCalibrationGitHubCasClient = class {
     );
   }
   async createRef(input) {
-    const record = requireRecord3(
+    const record = requireRecord4(
       await this.api(
         "POST",
         `${SAV_248_V32_GITHUB_REPOSITORY_API_PATH}/git/refs`,
@@ -35211,7 +35621,7 @@ var DirectCalibrationGitHubCasClient = class {
     return parseGitHubRef(record, "createdRef");
   }
   async updateRef(input) {
-    const record = requireRecord3(
+    const record = requireRecord4(
       await this.api(
         "PATCH",
         `${SAV_248_V32_GITHUB_REPOSITORY_API_PATH}/git/refs/${SAV_248_V32_GIT_LEDGER_API_REF}`,
@@ -35219,7 +35629,7 @@ var DirectCalibrationGitHubCasClient = class {
       ),
       "updatedRef"
     );
-    const object = requireRecord3(record.object, "updatedRef.object");
+    const object = requireRecord4(record.object, "updatedRef.object");
     return {
       ref: requireString(record.ref, "updatedRef.ref"),
       sha: requireOid(object.sha, "updatedRef.object.sha")
@@ -35361,9 +35771,9 @@ function buildNodeGitHubRequestOptions(input) {
   };
 }
 function parseGitHubRuleset(value) {
-  const record = requireRecord3(value, "ruleset");
-  const conditions = requireRecord3(record.conditions, "ruleset.conditions");
-  const refName = requireRecord3(conditions.ref_name, "ruleset.ref_name");
+  const record = requireRecord4(value, "ruleset");
+  const conditions = requireRecord4(record.conditions, "ruleset.conditions");
+  const refName = requireRecord4(conditions.ref_name, "ruleset.ref_name");
   if (!Array.isArray(record.bypass_actors) || !Array.isArray(record.rules)) {
     throw new Error("calibration_github_ruleset_shape_invalid");
   }
@@ -35374,7 +35784,7 @@ function parseGitHubRuleset(value) {
     target: requireString(record.target, "ruleset.target"),
     enforcement: requireString(record.enforcement, "ruleset.enforcement"),
     bypassActors: record.bypass_actors.map((value2) => {
-      const actor = requireRecord3(value2, "ruleset.bypassActor");
+      const actor = requireRecord4(value2, "ruleset.bypassActor");
       return {
         actorId: actor.actor_id === null ? null : requireNumber(actor.actor_id, "ruleset.actor_id"),
         actorType: requireString(actor.actor_type, "ruleset.actor_type"),
@@ -35384,13 +35794,13 @@ function parseGitHubRuleset(value) {
     includeRefs: requireStringArray(refName.include, "ruleset.include"),
     excludeRefs: requireStringArray(refName.exclude, "ruleset.exclude"),
     ruleTypes: record.rules.map(
-      (value2) => requireString(requireRecord3(value2, "ruleset.rule").type, "rule.type")
+      (value2) => requireString(requireRecord4(value2, "ruleset.rule").type, "rule.type")
     )
   };
 }
 function parseGitHubRef(value, field) {
-  const record = requireRecord3(value, field);
-  const object = requireRecord3(record.object, `${field}.object`);
+  const record = requireRecord4(value, field);
+  const object = requireRecord4(record.object, `${field}.object`);
   if (object.type !== "commit") {
     throw new Error("calibration_github_ledger_ref_not_commit");
   }
@@ -35400,8 +35810,8 @@ function parseGitHubRef(value, field) {
   };
 }
 function parseGitHubCommit(value) {
-  const record = requireRecord3(value, "commit");
-  const tree = requireRecord3(record.tree, "commit.tree");
+  const record = requireRecord4(value, "commit");
+  const tree = requireRecord4(record.tree, "commit.tree");
   if (!Array.isArray(record.parents)) {
     throw new Error("calibration_github_commit_parents_invalid");
   }
@@ -35410,14 +35820,14 @@ function parseGitHubCommit(value) {
     message: requireString(record.message, "commit.message"),
     treeSha: requireOid(tree.sha, "commit.tree.sha"),
     parents: record.parents.map(
-      (value2) => requireOid(requireRecord3(value2, "commit.parent").sha, "parent.sha")
+      (value2) => requireOid(requireRecord4(value2, "commit.parent").sha, "parent.sha")
     ),
     author: parseGitHubCommitIdentity(record.author, "commit.author"),
     committer: parseGitHubCommitIdentity(record.committer, "commit.committer")
   };
 }
 function parseGitHubCommitIdentity(value, field) {
-  const record = requireRecord3(value, field);
+  const record = requireRecord4(value, field);
   return {
     name: requireString(record.name, `${field}.name`),
     email: requireString(record.email, `${field}.email`),
@@ -35448,7 +35858,7 @@ function assertExactKeys2(value, expected) {
     throw new Error("calibration_authorization_unknown_or_missing_field");
   }
 }
-function requireRecord3(value, field) {
+function requireRecord4(value, field) {
   if (!isRecord2(value)) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
@@ -35715,7 +36125,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   const authority2 = parseAuthorityEnvelope(unknownAuthorityEnvelope);
   const reviewInput = parseReviewInput(unknownReviewInput);
   assertAuthorityCoverage(authority2, reviewInput);
-  const artifact = requireRecord4(unknownArtifact, "artifact");
+  const artifact = requireRecord5(unknownArtifact, "artifact");
   assertExactKeys3(
     artifact,
     [
@@ -35748,7 +36158,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   if (panels[0].taskPath === panels[1].taskPath) {
     throw new Error("Semantic adjudication agent panels must be independent");
   }
-  if (canonicalJson(panels[0].decisions) !== canonicalJson(panels[1].decisions)) {
+  if (canonicalJson2(panels[0].decisions) !== canonicalJson2(panels[1].decisions)) {
     throw new Error("Semantic adjudication agent panels disagree");
   }
   const privateDecisions = panels[0].decisions;
@@ -35810,7 +36220,7 @@ function validateSemanticAdjudication(unknownReviewInput, unknownArtifact, unkno
   };
 }
 function parseReviewInput(input) {
-  const record = requireRecord4(input, "reviewInput");
+  const record = requireRecord5(input, "reviewInput");
   assertExactKeys3(
     record,
     [
@@ -35883,7 +36293,7 @@ function parseReviewInput(input) {
   };
 }
 function parseAuthorityEnvelope(input) {
-  const record = requireRecord4(input, "authorityEnvelope");
+  const record = requireRecord5(input, "authorityEnvelope");
   assertExactKeys3(
     record,
     [
@@ -35948,7 +36358,7 @@ function assertAuthorityCoverage(authority2, reviewInput) {
       "Semantic adjudication authority response-set hash mismatch"
     );
   }
-  if (canonicalJson(authority2.approvedPlan) !== canonicalJson(reviewInput.approvedPlan)) {
+  if (canonicalJson2(authority2.approvedPlan) !== canonicalJson2(reviewInput.approvedPlan)) {
     throw new Error("Semantic adjudication approved plan mismatch");
   }
   const actual = reviewInput.outputs.map(
@@ -35958,12 +36368,12 @@ function assertAuthorityCoverage(authority2, reviewInput) {
       runIndex
     })
   );
-  if (canonicalJson(authority2.expectedOutputs) !== canonicalJson(actual)) {
+  if (canonicalJson2(authority2.expectedOutputs) !== canonicalJson2(actual)) {
     throw new Error("Semantic adjudication authority output coverage mismatch");
   }
 }
 function parsePanel(input, reviewInput, authority2, index2) {
-  const panel = requireRecord4(input, `panel:${index2}`);
+  const panel = requireRecord5(input, `panel:${index2}`);
   assertExactKeys3(
     panel,
     [
@@ -36023,7 +36433,7 @@ function parseDecisions(input) {
     throw new Error("Semantic adjudication decisions must be non-empty");
   }
   const decisions = input.map((unknownDecision, index2) => {
-    const decision = requireRecord4(unknownDecision, `decision:${index2}`);
+    const decision = requireRecord5(unknownDecision, `decision:${index2}`);
     assertExactKeys3(
       decision,
       [
@@ -36146,7 +36556,7 @@ function parseOutputManifest(input) {
   const seen = /* @__PURE__ */ new Set();
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
-    const output = requireRecord4(unknownOutput, `output:${index2}`);
+    const output = requireRecord5(unknownOutput, `output:${index2}`);
     assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex", "responseSha256"],
@@ -36204,7 +36614,7 @@ function parseExpectedOutputs(input) {
   const seenOutputs = /* @__PURE__ */ new Set();
   const seenCaseRuns = /* @__PURE__ */ new Set();
   const outputs = input.map((unknownOutput, index2) => {
-    const output = requireRecord4(unknownOutput, `authorityOutput:${index2}`);
+    const output = requireRecord5(unknownOutput, `authorityOutput:${index2}`);
     assertExactKeys3(
       output,
       ["sanitizedOutputId", "sanitizedCaseId", "runIndex"],
@@ -36258,7 +36668,7 @@ function parsePanelExecutions(input) {
     );
   }
   const executions = input.map((unknownExecution, index2) => {
-    const execution = requireRecord4(
+    const execution = requireRecord5(
       unknownExecution,
       `panelExecution:${index2}`
     );
@@ -36287,7 +36697,7 @@ function parsePanelExecutions(input) {
   return executions;
 }
 function parseVersionedHash(input, field) {
-  const record = requireRecord4(input, field);
+  const record = requireRecord5(input, field);
   assertExactKeys3(record, ["version", "sha256"], field);
   return {
     version: requireText2(record.version, `${field}.version`),
@@ -36338,7 +36748,7 @@ function requireText2(input, field) {
   }
   return input;
 }
-function requireRecord4(input, field) {
+function requireRecord5(input, field) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error(`Invalid semantic adjudication ${field}`);
   }
@@ -36355,15 +36765,15 @@ function sha2564(value) {
   return createHash6("sha256").update(value).digest("hex");
 }
 function hashCanonical(value) {
-  return sha2564(canonicalJson(value));
+  return sha2564(canonicalJson2(value));
 }
-function canonicalJson(value) {
+function canonicalJson2(value) {
   if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
+    return `[${value.map(canonicalJson2).join(",")}]`;
   }
   if (value !== null && typeof value === "object") {
     const record = value;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
@@ -36861,7 +37271,7 @@ function assertCanonicalMismatchAlternatives(manifest, canonicalMismatchCaseRuns
   }
   const actual = [...reviewedLegitimateAlternativeOutputIds].sort();
   expected.sort();
-  if (canonicalJson2(actual) !== canonicalJson2(expected)) {
+  if (canonicalJson3(actual) !== canonicalJson3(expected)) {
     throw new Error(
       "Semantic adjudication legitimate alternatives do not match canonical mismatches"
     );
@@ -36895,7 +37305,7 @@ function readManifest(directoryInput, expected, allowExpired = false) {
   if (manifest.runId !== issued.runId || manifest.approvedPlan.sha256 !== issued.approvedPlanSha256 || manifest.caseRunSetSha256 !== issued.caseRunSetSha256 || manifest.captureBindingSha256 !== issued.captureBindingSha256 || manifest.retentionExpiresAt !== issued.retentionExpiresAt) {
     throw new Error("Semantic capture manifest does not match trusted handle");
   }
-  if (manifest.state !== issued.state || canonicalJson2(manifest.caseRuns) !== canonicalJson2(issued.caseRuns)) {
+  if (manifest.state !== issued.state || canonicalJson3(manifest.caseRuns) !== canonicalJson3(issued.caseRuns)) {
     throw new Error("Semantic capture manifest does not match trusted state");
   }
   if (!allowExpired && Date.parse(manifest.retentionExpiresAt) <= Date.now()) {
@@ -37279,13 +37689,13 @@ function sha2565(value) {
   return createHash7("sha256").update(value).digest("hex");
 }
 function hashCanonical2(value) {
-  return sha2565(canonicalJson2(value));
+  return sha2565(canonicalJson3(value));
 }
-function canonicalJson2(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson2).join(",")}]`;
+function canonicalJson3(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson3).join(",")}]`;
   if (value !== null && typeof value === "object") {
     const record = value;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record[key])}`).join(",")}}`;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson3(record[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }

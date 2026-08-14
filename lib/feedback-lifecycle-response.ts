@@ -12,6 +12,7 @@ import {
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
   type SavedInterviewWorkspace,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 export const DISPATCH_FAILED_CUSTOMER_MESSAGE =
@@ -74,7 +75,8 @@ export function buildCompletedFeedbackLifecycleResponse(
   answerBlocks: readonly CandidateAnswerBlock[] = [],
   expectedRoundType?: RoundType,
   frozenEvidenceState?: "complete" | "partial",
-  scoreWithheldReason?: "rubric_coverage" | "verified_evidence_integrity"
+  scoreWithheldReason?: "rubric_coverage" | "verified_evidence_integrity",
+  verifiedPrefixProjection?: TrustedAnswerBlockProjection
 ): Extract<FeedbackLifecycleResponse, { status: "completed" }> {
   return {
     status: "completed",
@@ -85,6 +87,7 @@ export function buildCompletedFeedbackLifecycleResponse(
       expectedRoundType,
       frozenEvidenceState,
       scoreWithheldReason,
+      verifiedPrefixProjection,
     }),
   };
 }

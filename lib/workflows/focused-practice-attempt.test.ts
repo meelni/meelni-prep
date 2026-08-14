@@ -11,6 +11,14 @@ import {
   FEEDBACK_EVIDENCE_LIMITED_PROMPT_VERSION,
   FEEDBACK_EVIDENCE_LIMITED_SCHEMA_VERSION,
   FOCUSED_PRACTICE_COMPLETION_CONTRACT_VERSION,
+  FEEDBACK_DIMENSIONS,
+  FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+  FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  ROUND_DIMENSION_COVERAGE_CONFIG,
+  parseDimensionCoverageProviderSelection,
+  projectTrustedClosedAnswerBlocks,
+  type DimensionCoverageProviderSelection,
   type AnyCompletedFocusedPracticeAttempt,
   type AnyFocusedPracticeAttempt,
   type AnyInProgressFocusedPracticeAttempt,
@@ -19,7 +27,12 @@ import {
 import {
   createFocusedPracticeAttemptSourceFixtures,
   createSyntheticFeedbackReviewOutcomeFixtures,
+  createAnswerBlockTurn,
 } from "@meelni/test-fixtures";
+import {
+  createFocusedPracticeSourceFingerprint,
+  projectLegacyFocusedPracticeSourceFingerprintInput,
+} from "@/lib/focused-practice/source-fingerprint";
 import {
   completeFocusedPracticeAttemptWorkflow,
   readFocusedPracticeAttemptWorkflow,
@@ -313,6 +326,53 @@ test("partial scorecards and coaching reviews create one scoreless grounded path
       /weakestScore|overallScore|provider-authored/i
     );
   }
+});
+
+test("verified-prefix v2 scorecards fully revalidate before focused practice", async () => {
+  for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
+    const sourceFixture = verifiedPrefixSource(outcome);
+    const harness = createHarness(sourceFixture);
+    const result = await startFocusedPracticeAttemptWorkflow(
+      startInput(sourceFixture),
+      harness.deps
+    );
+
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (!result.ok) continue;
+    assert.equal(
+      result.attempt.feedbackVersion.schemaVersion,
+      "feedback.dimension-coverage.v2"
+    );
+    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(harness.repository.attemptWrites, 1);
+  }
+
+  const forged = verifiedPrefixSource("partial_scorecard");
+  forged.feedback.verifiedPrefixScope = {
+    ...(forged.feedback.verifiedPrefixScope as Record<string, unknown>),
+    excludedTailBlockCount: 999,
+  };
+  const forgedHarness = createHarness(forged);
+  assert.deepEqual(
+    await startFocusedPracticeAttemptWorkflow(
+      startInput(forged),
+      forgedHarness.deps
+    ),
+    { ok: false, reason: "source_integrity_invalid" }
+  );
+  assert.equal(forgedHarness.repository.attemptWrites, 0);
+
+  const missingProjection = verifiedPrefixSource("partial_scorecard");
+  delete missingProjection.verifiedPrefixProjection;
+  const missingHarness = createHarness(missingProjection);
+  assert.deepEqual(
+    await startFocusedPracticeAttemptWorkflow(
+      startInput(missingProjection),
+      missingHarness.deps
+    ),
+    { ok: false, reason: "source_integrity_invalid" }
+  );
+  assert.equal(missingHarness.repository.attemptWrites, 0);
 });
 
 test("evidence-limited coaching creates a closed scoreless path independent of provider order", async () => {
@@ -787,6 +847,60 @@ test("resume returns the frozen attempt after the source question changes", asyn
   assert.equal(harness.repository.sourceReads, 1);
 });
 
+test("an existing dimension-coverage v1 attempt resumes across authority enrichment", async () => {
+  const sourceFixture = dimensionCoverageSource("partial_scorecard");
+  sourceFixture.feedback.verifiedPrefixScope = null;
+  const enrichedFingerprint = createFocusedPracticeSourceFingerprint(
+    projectLegacyFocusedPracticeSourceFingerprintInput({
+      userId: sourceFixture.userId,
+      sessionId: sourceFixture.sessionId,
+      feedbackId: sourceFixture.feedbackId,
+      roundType: sourceFixture.roundType,
+      feedbackStatus: sourceFixture.feedbackStatus,
+      question: sourceFixture.question,
+      feedback: sourceFixture.feedback as Record<string, unknown>,
+      evidenceTurns: sourceFixture.evidenceTurns,
+      frozenEvidence: {
+        snapshotValid: true,
+        snapshotState: "partial",
+        turns: [],
+        interruptions: [],
+        sessionEndAt: new Date("2026-08-13T12:00:00.000Z"),
+        sourceOverflow: false,
+        authority: {
+          contractVersion: "frozen-answer-block-authority.v1",
+        },
+      },
+    })
+  );
+  sourceFixture.sourceFingerprint = enrichedFingerprint;
+  const winnerHarness = createHarness(sourceFixture);
+  const created = await startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    winnerHarness.deps
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok || created.attempt.state !== "in_progress") return;
+
+  const harness = createHarness(sourceFixture);
+  harness.repository.beforeCreateOrLoad = () => {
+    harness.repository.attempts.set(
+      created.attempt.attemptId,
+      structuredClone(created.attempt)
+    );
+  };
+  const resumed = await startFocusedPracticeAttemptWorkflow(
+    startInput(sourceFixture),
+    harness.deps
+  );
+  assert.equal(resumed.ok, true);
+  if (!resumed.ok) return;
+  assert.equal(resumed.disposition, "resumed");
+  assert.deepEqual(resumed.attempt, created.attempt);
+  assert.equal(harness.repository.sourceReads, 1);
+  assert.equal(harness.repository.attemptWrites, 0);
+});
+
 test("corrupt repository attempts fail closed before resume or completion", async () => {
   const sourceFixture = source();
   const resumeHarness = createHarness(sourceFixture);
@@ -1229,6 +1343,132 @@ function dimensionCoverageSource(
     answerBlocks: structuredClone(variant.answerBlocks),
     frozenEvidenceState: "complete",
     sourceFingerprint: "a".repeat(64),
+    completionStats: null,
+  };
+}
+
+function verifiedPrefixSource(
+  outcome: "partial_scorecard" | "coaching_review"
+): BoundedFocusedPracticeSource {
+  const events = [
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:1",
+      sequence: 1,
+      speaker: "interviewer",
+      text: "Which customer problem would you prioritize?",
+      startedAtMs: 1_000,
+      audioDurationMs: 500,
+    }),
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:2",
+      sequence: 2,
+      speaker: "user",
+      text: "I would prioritize working parents because repeated handoff failures create measurable weekly coordination pain.",
+      startedAtMs: 2_000,
+      audioDurationMs: 500,
+    }),
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:3",
+      sequence: 3,
+      speaker: "interviewer",
+      text: "Which assumption would you test first?",
+      startedAtMs: 3_000,
+      audioDurationMs: 500,
+    }),
+    { kind: "session_end" as const, occurredAtMs: 4_000 },
+  ];
+  const projection = projectTrustedClosedAnswerBlocks(events, {
+    contractVersion: "frozen-answer-block-authority.v1",
+    snapshotState: "partial",
+    cutoffAtMs: 4_000,
+    writers: [
+      {
+        contractVersion: 1,
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        committedSequence: 3,
+        integrityState: "healthy",
+        settlementState: "missing",
+      },
+    ],
+  });
+  assert.equal(projection.status, "verified_prefix");
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    const facetCount =
+      dimension === "insight"
+        ? 1
+        : outcome === "partial_scorecard" && dimension === "structure"
+          ? 2
+          : 0;
+    dimensions[dimension] = {
+      score: facetCount === 2 ? 8 : null,
+      evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[dimension].facets
+        .slice(0, facetCount)
+        .map((facet) => ({
+          facetCode: facet.code,
+          answerBlockRef: projection.trustedBlocks[0]!.answerBlockId,
+        })),
+    };
+  }
+  const result = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: "synthetic-focused-practice-v2",
+      allowNumericalScores: outcome === "partial_scorecard",
+      verifiedPrefixProjection: projection,
+    }
+  );
+  assert.equal(result.schemaVersion, "feedback.dimension-coverage.v2");
+  const sessionId = `synthetic-focused-practice-v2-${outcome}`;
+  const feedbackId = `synthetic-feedback-v2-${outcome}`;
+  return {
+    userId: "synthetic-focused-practice-owner",
+    sessionId,
+    feedbackId,
+    roundType: "product_sense",
+    feedbackStatus: "completed",
+    question: {
+      questionId: "synthetic-focused-practice-question-v2",
+      questionText: "How would you improve a shared planning product?",
+    },
+    feedback: {
+      id: feedbackId,
+      sessionId,
+      structureScore: result.dimensions.structure.score,
+      clarityScore: result.dimensions.clarity.score,
+      insightScore: result.dimensions.insight.score,
+      communicationScore: result.dimensions.communication.score,
+      leadershipScore: result.dimensions.leadership.score,
+      overallScore: null,
+      strengths: null,
+      improvements: null,
+      drills: [],
+      summary: result.summary,
+      rubricVersion: result.rubricVersion,
+      schemaVersion: result.schemaVersion,
+      promptVersion: result.promptVersion,
+      modelVersion: result.modelVersion,
+      evaluationState: result.evaluationState,
+      feedbackMode: result.mode,
+      feedbackRoundType: result.roundType,
+      dimensionCoverage: structuredClone(result.dimensions),
+      verifiedPrefixScope: structuredClone(result.verifiedPrefixScope),
+      createdAt: new Date("2026-08-14T12:00:00.000Z"),
+    },
+    evidenceTurns: [],
+    answerBlocks: structuredClone(projection.trustedBlocks),
+    frozenEvidenceState: "partial",
+    verifiedPrefixProjection: structuredClone(projection),
+    sourceFingerprint: "b".repeat(64),
     completionStats: null,
   };
 }

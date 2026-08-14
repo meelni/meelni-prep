@@ -3,14 +3,18 @@ import test from "node:test";
 
 import {
   ANSWER_BLOCK_SEGMENT_COUNTS,
+  TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES,
   createAnswerBlockSegmentationFixture,
 } from "@meelni/test-fixtures";
 import { deriveCandidateAnswerBlocks } from "./answer-blocks";
+import { projectTrustedClosedAnswerBlocks } from "./trusted-answer-block-authority";
 import {
   FEEDBACK_DIMENSIONS,
   FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   ROUND_DIMENSION_COVERAGE_CONFIG,
   parseDimensionCoverageProviderSelection,
   parsePersistedDimensionCoverageFeedback,
@@ -130,6 +134,220 @@ test("qualitative-only frozen evidence remains coaching even with sufficient fac
   assert.equal(result.overallScore, null);
   assert.equal(result.dimensions.structure.coverage, "sufficient");
   assert.equal(result.dimensions.structure.score, null);
+});
+
+test("verified-prefix partial scorecards bind trusted identities and never compute overall", () => {
+  const projection = verifiedPrefixProjection();
+  const blocks = projection.trustedBlocks;
+  const result = parseDimensionCoverageProviderSelection(
+    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    {
+      roundType: "product_sense",
+      answerBlocks: blocks,
+      modelVersion: MODEL,
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+
+  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+  assert.equal(result.evaluationState, "partial");
+  assert.equal(result.mode, "partial_scorecard");
+  assert.equal(result.overallScore, null);
+  assert.deepEqual(result.verifiedPrefixScope, {
+    contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
+    projectionVersion: projection.contractVersion,
+    trustedBlockIdentities: projection.trustedBlockIdentities,
+    excludedTailBlockCount: projection.excludedBlocks.length,
+  });
+});
+
+test("verified-prefix coaching retains the projection binding without numerical scores", () => {
+  const projection = verifiedPrefixProjection();
+  const blocks = projection.trustedBlocks;
+  const result = parseDimensionCoverageProviderSelection(
+    selection("product_sense", blocks[0]!.answerBlockId, "absent"),
+    {
+      roundType: "product_sense",
+      answerBlocks: blocks,
+      modelVersion: MODEL,
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+
+  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+  assert.equal(result.mode, "coaching_review");
+  assert.equal(result.overallScore, null);
+  assert.ok(result.verifiedPrefixScope);
+});
+
+test("verified-prefix persistence rejects forged scope, untrusted blocks, and non-prefix projections", () => {
+  const projection = verifiedPrefixProjection();
+  const blocks = projection.trustedBlocks;
+  const result = parseDimensionCoverageProviderSelection(
+    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    {
+      roundType: "product_sense",
+      answerBlocks: blocks,
+      modelVersion: MODEL,
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+
+  assert.deepEqual(
+    parsePersistedDimensionCoverageFeedback(result, {
+      answerBlocks: blocks,
+      verifiedPrefixProjection: projection,
+    }),
+    result
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            excludedTailBlockCount: 0,
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /persisted_result_mismatch/
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            extra: true,
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /invalid_shape/
+  );
+  const forgedIdentity = {
+    contractVersion: "trusted-answer-block-identity.v1" as const,
+    answerBlockId: "answer-block:9999",
+    identity: `trusted-answer-block.v1:${"a".repeat(64)}`,
+  };
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            trustedBlockIdentities: [
+              forgedIdentity,
+              ...result.verifiedPrefixScope.trustedBlockIdentities,
+            ].reverse(),
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /persisted_result_mismatch/
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            trustedBlockIdentities: [
+              {
+                ...result.verifiedPrefixScope.trustedBlockIdentities[0]!,
+                answerBlockId: "answer-block:forged",
+              },
+            ],
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /invalid_shape/
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            trustedBlockIdentities: Array.from({ length: 1_001 }, () =>
+              structuredClone(
+                result.verifiedPrefixScope.trustedBlockIdentities[0]!
+              )
+            ),
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /invalid_shape/
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(
+        {
+          ...result,
+          verifiedPrefixScope: {
+            ...result.verifiedPrefixScope,
+            trustedBlockIdentities: Array.from({ length: 1_000 }, () => ({
+              ...forgedIdentity,
+              answerBlockId: "answer-block:0001",
+            })),
+          },
+        },
+        { answerBlocks: blocks, verifiedPrefixProjection: projection }
+      ),
+    /invalid_shape/
+  );
+  assert.throws(
+    () =>
+      parsePersistedDimensionCoverageFeedback(result, {
+        answerBlocks: blocks,
+      }),
+    /persisted_result_mismatch/
+  );
+
+  const completeFixture = createAnswerBlockSegmentationFixture(1);
+  const completeProjection = projectTrustedClosedAnswerBlocks(
+    completeFixture.events,
+    {
+      contractVersion: "frozen-answer-block-authority.v1",
+      snapshotState: "complete",
+      cutoffAtMs: completeFixture.events.at(-1)!.occurredAtMs,
+      writers: [
+        {
+          contractVersion: 1,
+          writerId: "synthetic-writer",
+          writerGeneration: 1,
+          committedSequence: completeFixture.events.length - 1,
+          integrityState: "healthy",
+          settlementState: "settled",
+        },
+      ],
+    }
+  );
+  assert.throws(
+    () =>
+      parseDimensionCoverageProviderSelection(
+        selection("product_sense", blocks[0]!.answerBlockId, "full"),
+        {
+          roundType: "product_sense",
+          answerBlocks: blocks,
+          modelVersion: MODEL,
+          allowNumericalScores: true,
+          verifiedPrefixProjection: completeProjection,
+        }
+      ),
+    /invalid_shape/
+  );
 });
 
 test("equivalent 1/2/5/10 event segmentation preserves coverage, mode, citations, and persistence", () => {
@@ -268,6 +486,19 @@ function answerBlocks(segmentCount: 1 | 2 | 5 | 10) {
   const derived = deriveCandidateAnswerBlocks(fixture.events);
   assert.equal(derived.eligible, true);
   return derived.blocks;
+}
+
+function verifiedPrefixProjection() {
+  const fixture = TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES.find(
+    ({ id }) => id === "terminal-preserving-marker"
+  )!;
+  const projection = projectTrustedClosedAnswerBlocks(
+    fixture.events,
+    fixture.authority
+  );
+  assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.trustedBlocks.length, 1);
+  return projection;
 }
 
 function selection(

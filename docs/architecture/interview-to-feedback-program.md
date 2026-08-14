@@ -201,6 +201,13 @@ PR-sized children:
 - SAV-441 — trusted closed answer-block authority and OpenSpec contract;
 - SAV-440 — verified-prefix partial scorecards and compatibility tests.
 
+Implementation status (2026-08-14): the additive verified-prefix slice keeps
+the existing batch evaluator and answer-block grouper, binds partial numerical
+results to the ordered SAV-441 trusted projection, withholds overall scores,
+and revalidates the projection at every authenticated downstream action. The
+historical v1 path and its focused-practice fingerprints retain their exact
+pre-prefix projections; no existing row is rewritten.
+
 ## Phase 3: end-to-end latency budget
 
 Linear parent: SAV-437

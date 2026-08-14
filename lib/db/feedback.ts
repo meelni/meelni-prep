@@ -18,6 +18,7 @@ export const FEEDBACK_DB_READ_LIMITS = {
   completionStatsJson: 2_000,
   completionRecommendationsJson: 64_000,
   dimensionCoverageJson: 1_000_000,
+  verifiedPrefixScopeJson: 128_000,
 } as const;
 
 type FeedbackRow = typeof feedback.$inferSelect;
@@ -79,6 +80,9 @@ export function buildFeedbackReadQuery(
       dimensionCoverageJson: sql<
         string | null
       >`left(${feedback.dimensionCoverage}::text, ${FEEDBACK_DB_READ_LIMITS.dimensionCoverageJson + 1})`,
+      verifiedPrefixScopeJson: sql<
+        string | null
+      >`left(${feedback.verifiedPrefixScope}::text, ${FEEDBACK_DB_READ_LIMITS.verifiedPrefixScopeJson + 1})`,
       createdAt: feedback.createdAt,
       status: sql<
         FeedbackRow["status"]
@@ -122,6 +126,7 @@ export function decodeBoundedFeedbackReadRow(row: BoundedFeedbackReadRow) {
     completionStatsJson,
     completionRecommendationsJson,
     dimensionCoverageJson,
+    verifiedPrefixScopeJson,
     ...record
   } = row;
   return {
@@ -146,6 +151,10 @@ export function decodeBoundedFeedbackReadRow(row: BoundedFeedbackReadRow) {
     dimensionCoverage: decodeBoundedJson(
       dimensionCoverageJson,
       FEEDBACK_DB_READ_LIMITS.dimensionCoverageJson
+    ),
+    verifiedPrefixScope: decodeBoundedJson(
+      verifiedPrefixScopeJson,
+      FEEDBACK_DB_READ_LIMITS.verifiedPrefixScopeJson
     ),
   };
 }

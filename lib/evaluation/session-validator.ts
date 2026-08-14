@@ -15,12 +15,15 @@ import {
   classifyCandidateResponseEvidence,
   deriveCandidateAnswerBlocks,
   FEEDBACK_ELIGIBILITY_POLICY,
+  projectTrustedClosedAnswerBlocks,
   prepareFeedbackTranscript,
   type AnswerBlockIntegrityBoundaryEvent,
   type AnswerBlockLedgerEvent,
   type CandidateAnswerBlock,
   type CandidateResponseEvidenceLevel,
+  type FrozenAnswerBlockAuthorityV1,
   type SkippedFeedbackOutcomeReason,
+  type TrustedAnswerBlockProjection,
 } from "@meelni/core";
 
 /**
@@ -113,6 +116,11 @@ export interface PreparedCandidateAnswerBlockEvidence {
   blocks: CandidateAnswerBlock[];
   eligible: boolean;
   evidenceFailureReason: SkippedFeedbackOutcomeReason | null;
+}
+
+export interface PreparedTrustedCandidateAnswerBlockEvidence
+  extends PreparedCandidateAnswerBlockEvidence {
+  projection: TrustedAnswerBlockProjection;
 }
 
 /**
@@ -464,6 +472,7 @@ export interface FrozenCandidateAnswerBlockEvidenceSnapshot {
   interruptions: SessionValidationInterruptionInput[];
   sessionEndAt: Date | null;
   sourceOverflow: boolean;
+  authority?: FrozenAnswerBlockAuthorityV1 | null;
 }
 
 /** Invalid freeze metadata is an integrity failure, never a v3 fallback. */
@@ -475,6 +484,38 @@ export function prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot(
     ...(evidence.sessionEndAt ? { sessionEndAt: evidence.sessionEndAt } : {}),
     sourceOverflow: evidence.sourceOverflow || !evidence.snapshotValid,
   });
+}
+
+/**
+ * Recompute SAV-441 authority over the exact frozen ledger. This is the only
+ * partial-snapshot preparation path allowed to authorize numerical feedback.
+ */
+export function prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot(
+  evidence: FrozenCandidateAnswerBlockEvidenceSnapshot
+): PreparedTrustedCandidateAnswerBlockEvidence {
+  const derived = deriveCandidateAnswerBlockEvidenceFromTurns(evidence.turns, {
+    interruptions: evidence.interruptions,
+    ...(evidence.sessionEndAt ? { sessionEndAt: evidence.sessionEndAt } : {}),
+    sourceOverflow: evidence.sourceOverflow || !evidence.snapshotValid,
+  });
+  const projection = projectTrustedClosedAnswerBlocks(
+    derived.ledgerEvents,
+    evidence.authority
+  );
+  const corrupt =
+    hasCorruptCandidateAnswerBlockEvidence(derived) ||
+    projection.status === "integrity_failure";
+  const blocks = corrupt ? [] : projection.trustedBlocks;
+  return {
+    blocks,
+    eligible: !corrupt && blocks.length > 0,
+    evidenceFailureReason: corrupt
+      ? "transcript_integrity_degraded"
+      : blocks.length === 0
+        ? "no_reviewable_answer"
+        : null,
+    projection,
+  };
 }
 
 function deriveCandidateAnswerBlockEvidenceFromTurns(
@@ -521,33 +562,31 @@ function deriveCandidateAnswerBlockEvidenceFromTurns(
         : []
     )
   );
-  const answerBlockDerivation = deriveCandidateAnswerBlocks(
-    orderAnswerBlockLedgerEvents([
-      ...turns.flatMap((turn) =>
-        turn.eventId && acceptedEventIds.has(turn.eventId)
-          ? toAnswerBlockTurn(turn)
-          : turn.eventId && semanticReplayAnchors.has(turn.eventId)
-            ? toAnswerBlockTurn(
-                turn,
-                "semantic_replay",
-                semanticReplayAnchors.get(turn.eventId)
-              )
-            : turn.eventId && semanticReplayBoundaryEventIds.has(turn.eventId)
-              ? toAnswerBlockTurn(turn, "semantic_replay_boundary")
-              : []
-      ),
-      ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
-      ...(options.sessionEndAt &&
-      Number.isFinite(options.sessionEndAt.getTime())
-        ? [
-            {
-              kind: "session_end" as const,
-              occurredAtMs: options.sessionEndAt.getTime(),
-            },
-          ]
-        : []),
-    ])
-  );
+  const ledgerEvents = orderAnswerBlockLedgerEvents([
+    ...turns.flatMap((turn) =>
+      turn.eventId && acceptedEventIds.has(turn.eventId)
+        ? toAnswerBlockTurn(turn)
+        : turn.eventId && semanticReplayAnchors.has(turn.eventId)
+          ? toAnswerBlockTurn(
+              turn,
+              "semantic_replay",
+              semanticReplayAnchors.get(turn.eventId)
+            )
+          : turn.eventId && semanticReplayBoundaryEventIds.has(turn.eventId)
+            ? toAnswerBlockTurn(turn, "semantic_replay_boundary")
+            : []
+    ),
+    ...(options.interruptions ?? []).map(toAnswerBlockInterruption),
+    ...(options.sessionEndAt && Number.isFinite(options.sessionEndAt.getTime())
+      ? [
+          {
+            kind: "session_end" as const,
+            occurredAtMs: options.sessionEndAt.getTime(),
+          },
+        ]
+      : []),
+  ]);
+  const answerBlockDerivation = deriveCandidateAnswerBlocks(ledgerEvents);
   const preparedAnswerBlocks = answerBlockDerivation.blocks.map((block) =>
     prepareFeedbackTranscript([
       {
@@ -563,6 +602,7 @@ function deriveCandidateAnswerBlockEvidenceFromTurns(
     hasSourceOverflow: options.sourceOverflow === true,
     prepared,
     preparedAnswerBlocks,
+    ledgerEvents,
   };
 }
 

@@ -29,7 +29,11 @@ import {
   type DimensionCoverageProviderSelection,
 } from "./feedback-dimension-coverage";
 import { deriveCandidateAnswerBlocks } from "./answer-blocks";
-import { createAnswerBlockSegmentationFixture } from "@meelni/test-fixtures";
+import {
+  createAnswerBlockSegmentationFixture,
+  createAnswerBlockTurn,
+} from "@meelni/test-fixtures";
+import { projectTrustedClosedAnswerBlocks } from "./trusted-answer-block-authority";
 
 const finding = {
   dimension: "insight",
@@ -897,6 +901,132 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
       feedback: view,
     }).kind,
     "completed-partial-scorecard"
+  );
+});
+
+test("verified-prefix presentation always explains the excluded terminal tail", () => {
+  const events = [
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:1",
+      sequence: 1,
+      speaker: "interviewer",
+      text: "Which customer problem would you prioritize?",
+      startedAtMs: 1_000,
+      endedAtMs: 1_500,
+      audioDurationMs: 500,
+    }),
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:2",
+      sequence: 2,
+      speaker: "user",
+      text: "I would prioritize working parents because repeated handoff failures create measurable weekly coordination pain.",
+      startedAtMs: 2_000,
+      endedAtMs: 2_500,
+      audioDurationMs: 500,
+    }),
+    createAnswerBlockTurn({
+      eventId: "synthetic-writer:3",
+      sequence: 3,
+      speaker: "interviewer",
+      text: "Which assumption would you test first?",
+      startedAtMs: 3_000,
+      endedAtMs: 3_500,
+      audioDurationMs: 500,
+    }),
+    { kind: "session_end" as const, occurredAtMs: 4_000 },
+  ];
+  const projection = projectTrustedClosedAnswerBlocks(events, {
+    contractVersion: "frozen-answer-block-authority.v1",
+    snapshotState: "partial",
+    cutoffAtMs: 4_000,
+    writers: [
+      {
+        contractVersion: 1,
+        writerId: "synthetic-writer",
+        writerGeneration: 1,
+        committedSequence: 3,
+        integrityState: "healthy",
+        settlementState: "missing",
+      },
+    ],
+  });
+  assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.excludedBlocks.length, 0);
+  const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    dimensions[dimension] = {
+      score: dimension === "structure" ? 8 : null,
+      evidence:
+        dimension === "structure"
+          ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(
+              (facet) => ({
+                facetCode: facet.code,
+                answerBlockRef: projection.trustedBlocks[0]!.answerBlockId,
+              })
+            )
+          : [],
+    };
+  }
+  const result = parseDimensionCoverageProviderSelection(
+    {
+      schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+      promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+      rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+      roundType: "product_sense",
+      dimensions,
+    },
+    {
+      roundType: "product_sense",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: "synthetic-presenter-v2",
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+  const view = presentCompletedFeedback(
+    completed({
+      structureScore: 8,
+      clarityScore: null,
+      insightScore: null,
+      communicationScore: null,
+      leadershipScore: null,
+      overallScore: null,
+      strengths: null,
+      improvements: null,
+      drills: [],
+      summary: result.summary,
+      rubricVersion: result.rubricVersion,
+      schemaVersion: result.schemaVersion,
+      promptVersion: result.promptVersion,
+      modelVersion: result.modelVersion,
+      evaluationState: result.evaluationState,
+      feedbackMode: result.mode,
+      feedbackRoundType: result.roundType,
+      dimensionCoverage: result.dimensions,
+      verifiedPrefixScope: result.verifiedPrefixScope,
+    }),
+    {
+      evidenceTurns: [],
+      answerBlocks: projection.trustedBlocks,
+      expectedRoundType: "product_sense",
+      frozenEvidenceState: "partial",
+      verifiedPrefixProjection: projection,
+    }
+  );
+
+  assert.equal(view.kind, "dimension-coverage");
+  if (view.kind !== "dimension-coverage") return;
+  assert.deepEqual(view.verifiedScope, {
+    kind: "verified_prefix",
+    reviewedAnswerCount: 1,
+    excludedTail: true,
+  });
+  assert.ok(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: view,
+    })
   );
 });
 

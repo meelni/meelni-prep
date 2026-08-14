@@ -19,6 +19,7 @@ import {
   PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT,
   PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT,
   FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
+  VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
   RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT,
   QUESTION_PROVENANCE_SCHEMA_FINGERPRINT,
   FOCUSED_PRACTICE_SCHEMA_FINGERPRINT,
@@ -156,11 +157,11 @@ async function run(url: string, environmentIdentity: string) {
       if (
         ![
           2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+          24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          `Expected 2 pre-reconciliation through 38 feedback-stage-attempt migrations; found ${migrations.length}`
+          `Expected 2 pre-reconciliation through 39 verified-prefix migrations; found ${migrations.length}`
         );
       }
       const legacyRuntimeSettlementLineage =
@@ -173,11 +174,11 @@ async function run(url: string, environmentIdentity: string) {
       if (
         legacyRuntimeSettlementLineage &&
         ![
-          23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+          23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0037 reconciliation states"
+          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0038 reconciliation states"
         );
       }
       migrations.forEach((migration, index) => {
@@ -461,7 +462,8 @@ async function run(url: string, environmentIdentity: string) {
         | "feedback_quality_signals"
         | "public_demo_preview_allowance"
         | "durable_runtime_settlement_command"
-        | "feedback_stage_attempt_history";
+        | "feedback_stage_attempt_history"
+        | "verified_prefix_partial_scorecards";
       if (migrations.length === 2) {
         const preMigrationFingerprint = databaseSchemaFingerprint(
           await getDatabasePreMigrationContract(tx)
@@ -546,8 +548,10 @@ async function run(url: string, environmentIdentity: string) {
         startingContract = "public_demo_preview_allowance";
       } else if (migrations.length === 37) {
         startingContract = "durable_runtime_settlement_command";
-      } else {
+      } else if (migrations.length === 38) {
         startingContract = "feedback_stage_attempt_history";
+      } else {
+        startingContract = "verified_prefix_partial_scorecards";
       }
       if (migrations.length >= 6) {
         const expectedTableCount =
@@ -596,89 +600,92 @@ async function run(url: string, environmentIdentity: string) {
             : await getDatabaseSchemaContract(tx)
         );
         const expectedFingerprint =
-          migrations.length === 38
-            ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
-            : migrations.length === 37
-              ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
-              : migrations.length === 36
-                ? PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
-                : migrations.length === 35
-                  ? FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
-                  : migrations.length === 34
-                    ? FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
-                    : migrations.length === 33
-                      ? DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
-                      : migrations.length === 32
-                        ? FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
-                        : migrations.length === 31
-                          ? TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
-                          : migrations.length === 30
-                            ? DURABLE_CONTACT_SCHEMA_FINGERPRINT
-                            : migrations.length === 29
-                              ? FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
-                              : migrations.length === 28
-                                ? QUESTION_PROVENANCE_SCHEMA_FINGERPRINT
-                                : historicalPreviewLineage &&
-                                    migrations.length === 26
-                                  ? HISTORICAL_PREVIEW_THROUGH_0025_SCHEMA_FINGERPRINT
-                                  : migrations.length >= 26
-                                    ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
-                                    : legacyRuntimeSettlementLineage &&
-                                        migrations.length === 23
-                                      ? LEGACY_RUNTIME_SETTLEMENT_THROUGH_0022_SCHEMA_FINGERPRINT
+          migrations.length === 39
+            ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+            : migrations.length === 38
+              ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
+              : migrations.length === 37
+                ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
+                : migrations.length === 36
+                  ? PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+                  : migrations.length === 35
+                    ? FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
+                    : migrations.length === 34
+                      ? FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
+                      : migrations.length === 33
+                        ? DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
+                        : migrations.length === 32
+                          ? FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
+                          : migrations.length === 31
+                            ? TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+                            : migrations.length === 30
+                              ? DURABLE_CONTACT_SCHEMA_FINGERPRINT
+                              : migrations.length === 29
+                                ? FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
+                                : migrations.length === 28
+                                  ? QUESTION_PROVENANCE_SCHEMA_FINGERPRINT
+                                  : historicalPreviewLineage &&
+                                      migrations.length === 26
+                                    ? HISTORICAL_PREVIEW_THROUGH_0025_SCHEMA_FINGERPRINT
+                                    : migrations.length >= 26
+                                      ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
                                       : legacyRuntimeSettlementLineage &&
-                                          migrations.length === 24
-                                        ? LEGACY_RUNTIME_SETTLEMENT_WITH_ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
-                                        : migrations.length >= 24
-                                          ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
-                                          : migrations.length === 6
-                                            ? RELAUNCH_SCHEMA_FINGERPRINT
-                                            : migrations.length === 7
-                                              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
-                                              : migrations.length === 8
-                                                ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
-                                                : migrations.length === 9
-                                                  ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
-                                                  : migrations.length === 10
-                                                    ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
-                                                    : migrations.length === 11
-                                                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
-                                                      : migrations.length === 12
-                                                        ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                                          migrations.length === 23
+                                        ? LEGACY_RUNTIME_SETTLEMENT_THROUGH_0022_SCHEMA_FINGERPRINT
+                                        : legacyRuntimeSettlementLineage &&
+                                            migrations.length === 24
+                                          ? LEGACY_RUNTIME_SETTLEMENT_WITH_ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+                                          : migrations.length >= 24
+                                            ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+                                            : migrations.length === 6
+                                              ? RELAUNCH_SCHEMA_FINGERPRINT
+                                              : migrations.length === 7
+                                                ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                                : migrations.length === 8
+                                                  ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                                  : migrations.length === 9
+                                                    ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                                                    : migrations.length === 10
+                                                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                                                      : migrations.length === 11
+                                                        ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
                                                         : migrations.length ===
-                                                            13
-                                                          ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                                                            12
+                                                          ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
                                                           : migrations.length ===
-                                                              14
-                                                            ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                                                              13
+                                                            ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
                                                             : migrations.length ===
-                                                                15
-                                                              ? STABLE_START_SCHEMA_FINGERPRINT
+                                                                14
+                                                              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
                                                               : migrations.length ===
-                                                                  16
-                                                                ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                                                                  15
+                                                                ? STABLE_START_SCHEMA_FINGERPRINT
                                                                 : migrations.length ===
-                                                                    17
-                                                                  ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                                                                    16
+                                                                  ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
                                                                   : migrations.length ===
-                                                                      18
-                                                                    ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
+                                                                      17
+                                                                    ? BILLING_TRUTH_SCHEMA_FINGERPRINT
                                                                     : migrations.length ===
-                                                                        19
-                                                                      ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
+                                                                        18
+                                                                      ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
                                                                       : migrations.length ===
-                                                                          20
-                                                                        ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+                                                                          19
+                                                                        ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
                                                                         : migrations.length ===
-                                                                            21
-                                                                          ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                                                                            20
+                                                                          ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
                                                                           : migrations.length ===
-                                                                              22
-                                                                            ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                                                                              21
+                                                                            ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
                                                                             : migrations.length ===
-                                                                                23
-                                                                              ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-                                                                              : ANALYTICS_CONSENT_SCHEMA_FINGERPRINT;
+                                                                                22
+                                                                              ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                                                                              : migrations.length ===
+                                                                                  23
+                                                                                ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+                                                                                : ANALYTICS_CONSENT_SCHEMA_FINGERPRINT;
         if (schemaFingerprint !== expectedFingerprint) {
           throw new Error(
             `Reconciled database differs from the exact launch schema contract (expected ${expectedFingerprint}, found ${schemaFingerprint})`
@@ -761,89 +768,92 @@ async function run(url: string, environmentIdentity: string) {
         migrationCount: migrations.length,
         startingContract,
         schemaContract:
-          migrations.length === 38
-            ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
-            : migrations.length === 37
-              ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
-              : migrations.length === 36
-                ? PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
-                : migrations.length === 35
-                  ? FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
-                  : migrations.length === 34
-                    ? FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
-                    : migrations.length === 33
-                      ? DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
-                      : migrations.length === 32
-                        ? FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
-                        : migrations.length === 31
-                          ? TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
-                          : migrations.length === 30
-                            ? DURABLE_CONTACT_SCHEMA_FINGERPRINT
-                            : migrations.length === 29
-                              ? FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
-                              : migrations.length === 28
-                                ? QUESTION_PROVENANCE_SCHEMA_FINGERPRINT
-                                : historicalPreviewLineage &&
-                                    migrations.length === 26
-                                  ? HISTORICAL_PREVIEW_THROUGH_0025_SCHEMA_FINGERPRINT
-                                  : migrations.length >= 26
-                                    ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
-                                    : legacyRuntimeSettlementLineage &&
-                                        migrations.length === 23
-                                      ? LEGACY_RUNTIME_SETTLEMENT_THROUGH_0022_SCHEMA_FINGERPRINT
+          migrations.length === 39
+            ? VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT
+            : migrations.length === 38
+              ? FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT
+              : migrations.length === 37
+                ? RUNTIME_SETTLEMENT_COMMAND_SCHEMA_FINGERPRINT
+                : migrations.length === 36
+                  ? PUBLIC_DEMO_PREVIEW_ALLOWANCE_SCHEMA_FINGERPRINT
+                  : migrations.length === 35
+                    ? FEEDBACK_QUALITY_SCHEMA_FINGERPRINT
+                    : migrations.length === 34
+                      ? FOCUSED_PRACTICE_SCORELESS_SCHEMA_FINGERPRINT
+                      : migrations.length === 33
+                        ? DIMENSION_COVERAGE_SCHEMA_FINGERPRINT
+                        : migrations.length === 32
+                          ? FEEDBACK_OUTCOMES_SCHEMA_FINGERPRINT
+                          : migrations.length === 31
+                            ? TRANSCRIPT_WATERMARK_SCHEMA_FINGERPRINT
+                            : migrations.length === 30
+                              ? DURABLE_CONTACT_SCHEMA_FINGERPRINT
+                              : migrations.length === 29
+                                ? FOCUSED_PRACTICE_SCHEMA_FINGERPRINT
+                                : migrations.length === 28
+                                  ? QUESTION_PROVENANCE_SCHEMA_FINGERPRINT
+                                  : historicalPreviewLineage &&
+                                      migrations.length === 26
+                                    ? HISTORICAL_PREVIEW_THROUGH_0025_SCHEMA_FINGERPRINT
+                                    : migrations.length >= 26
+                                      ? PUBLIC_DEMO_LIMITS_SCHEMA_FINGERPRINT
                                       : legacyRuntimeSettlementLineage &&
-                                          migrations.length === 24
-                                        ? LEGACY_RUNTIME_SETTLEMENT_WITH_ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
-                                        : migrations.length >= 24
-                                          ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
-                                          : migrations.length === 23
-                                            ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
-                                            : migrations.length === 22
-                                              ? FEEDBACK_V2_SCHEMA_FINGERPRINT
-                                              : migrations.length === 21
-                                                ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
-                                                : migrations.length === 20
-                                                  ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
-                                                  : migrations.length === 19
-                                                    ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
-                                                    : migrations.length === 18
-                                                      ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
-                                                      : migrations.length === 17
-                                                        ? BILLING_TRUTH_SCHEMA_FINGERPRINT
+                                          migrations.length === 23
+                                        ? LEGACY_RUNTIME_SETTLEMENT_THROUGH_0022_SCHEMA_FINGERPRINT
+                                        : legacyRuntimeSettlementLineage &&
+                                            migrations.length === 24
+                                          ? LEGACY_RUNTIME_SETTLEMENT_WITH_ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+                                          : migrations.length >= 24
+                                            ? ANALYTICS_CONSENT_SCHEMA_FINGERPRINT
+                                            : migrations.length === 23
+                                              ? SERVER_OWNED_BILLING_PRIVILEGES_SCHEMA_FINGERPRINT
+                                              : migrations.length === 22
+                                                ? FEEDBACK_V2_SCHEMA_FINGERPRINT
+                                                : migrations.length === 21
+                                                  ? DURABLE_LIVEKIT_DELETION_SCHEMA_FINGERPRINT
+                                                  : migrations.length === 20
+                                                    ? SUBSCRIPTION_RESOURCE_CONVERGENCE_SCHEMA_FINGERPRINT
+                                                    : migrations.length === 19
+                                                      ? INVOICE_CONVERGENCE_SCHEMA_FINGERPRINT
+                                                      : migrations.length === 18
+                                                        ? WEBHOOK_CONVERGENCE_SCHEMA_FINGERPRINT
                                                         : migrations.length ===
-                                                            16
-                                                          ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
+                                                            17
+                                                          ? BILLING_TRUTH_SCHEMA_FINGERPRINT
                                                           : migrations.length ===
-                                                              15
-                                                            ? STABLE_START_SCHEMA_FINGERPRINT
+                                                              16
+                                                            ? CREDIT_RECOVERY_SCHEMA_FINGERPRINT
                                                             : migrations.length ===
-                                                                14
-                                                              ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
+                                                                15
+                                                              ? STABLE_START_SCHEMA_FINGERPRINT
                                                               : migrations.length ===
-                                                                  13
-                                                                ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
+                                                                  14
+                                                                ? RUNTIME_SETTLEMENT_SCHEMA_FINGERPRINT
                                                                 : migrations.length ===
-                                                                    12
-                                                                  ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
+                                                                    13
+                                                                  ? TRANSCRIPT_PRIVACY_SCHEMA_FINGERPRINT
                                                                   : migrations.length ===
-                                                                      11
-                                                                    ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
+                                                                      12
+                                                                    ? TRANSCRIPT_INGEST_SCHEMA_FINGERPRINT
                                                                     : migrations.length ===
-                                                                        10
-                                                                      ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
+                                                                        11
+                                                                      ? INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT
                                                                       : migrations.length ===
-                                                                          9
-                                                                        ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
+                                                                          10
+                                                                        ? INTERVIEW_RECONNECT_V1_SCHEMA_FINGERPRINT
                                                                         : migrations.length ===
-                                                                            8
-                                                                          ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
+                                                                            9
+                                                                          ? DEADLINE_ROOM_CLEANUP_SCHEMA_FINGERPRINT
                                                                           : migrations.length ===
-                                                                              7
-                                                                            ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                                                              8
+                                                                            ? ATOMIC_SESSION_COMPLETION_SCHEMA_FINGERPRINT
                                                                             : migrations.length ===
-                                                                                6
-                                                                              ? RELAUNCH_SCHEMA_FINGERPRINT
-                                                                              : "pending",
+                                                                                7
+                                                                              ? SESSION_LIFECYCLE_SCHEMA_FINGERPRINT
+                                                                              : migrations.length ===
+                                                                                  6
+                                                                                ? RELAUNCH_SCHEMA_FINGERPRINT
+                                                                                : "pending",
         lifecycleBackfill:
           migrations.length === 6
             ? { phase: "preview", counts: lifecycleBackfillCounts }

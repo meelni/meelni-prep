@@ -129,6 +129,23 @@ test("database deadline fences bind an explicit timestamp instead of a Date obje
   );
 });
 
+test("legacy null-version feedback cannot bypass dimension-coverage null guards", () => {
+  const source = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
+  const start = source.indexOf('"feedback_dimension_coverage_tuple_check"');
+  const end = source.indexOf('"feedback_verified_prefix_scope_tuple_check"');
+  const guard = source.slice(start, end);
+
+  assert.match(
+    guard,
+    /schemaVersion\} IS DISTINCT FROM 'feedback\.dimension-coverage\.v1'/
+  );
+  assert.match(
+    guard,
+    /schemaVersion\} IS DISTINCT FROM 'feedback\.dimension-coverage\.v2'/
+  );
+  assert.doesNotMatch(guard, /NOT IN/);
+});
+
 test("retry preparation cannot reopen terminal or active leased work", () => {
   const source = readFileSync(
     new URL("./feedback-generation-state.ts", import.meta.url),
