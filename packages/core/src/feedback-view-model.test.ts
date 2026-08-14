@@ -24,6 +24,7 @@ import {
   FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
   FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+  FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION,
   ROUND_DIMENSION_COVERAGE_CONFIG,
   parseDimensionCoverageProviderSelection,
   type DimensionCoverageProviderSelection,
@@ -983,6 +984,10 @@ test("verified-prefix presentation always explains the excluded terminal tail", 
       verifiedPrefixProjection: projection,
     }
   );
+  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+  if (result.schemaVersion !== FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) {
+    throw new Error("expected verified-prefix feedback");
+  }
   const view = presentCompletedFeedback(
     completed({
       structureScore: 8,

@@ -26,6 +26,15 @@ import type { RoundType } from "./interview";
 
 const MODEL = "synthetic-evaluator-v1";
 
+function assertVerifiedPrefixResult(
+  result: DimensionCoverageFeedbackResult
+): asserts result is Extract<
+  DimensionCoverageFeedbackResult,
+  { schemaVersion: typeof FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION }
+> {
+  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+}
+
 test("all supported rounds expose exactly two closed facets per core dimension", () => {
   for (const roundType of Object.keys(
     ROUND_DIMENSION_COVERAGE_CONFIG
@@ -150,7 +159,7 @@ test("verified-prefix partial scorecards bind trusted identities and never compu
     }
   );
 
-  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+  assertVerifiedPrefixResult(result);
   assert.equal(result.evaluationState, "partial");
   assert.equal(result.mode, "partial_scorecard");
   assert.equal(result.overallScore, null);
@@ -176,7 +185,7 @@ test("verified-prefix coaching retains the projection binding without numerical 
     }
   );
 
-  assert.equal(result.schemaVersion, FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION);
+  assertVerifiedPrefixResult(result);
   assert.equal(result.mode, "coaching_review");
   assert.equal(result.overallScore, null);
   assert.ok(result.verifiedPrefixScope);
@@ -195,6 +204,8 @@ test("verified-prefix persistence rejects forged scope, untrusted blocks, and no
       verifiedPrefixProjection: projection,
     }
   );
+
+  assertVerifiedPrefixResult(result);
 
   assert.deepEqual(
     parsePersistedDimensionCoverageFeedback(result, {
@@ -316,12 +327,18 @@ test("verified-prefix persistence rejects forged scope, untrusted blocks, and no
   );
 
   const completeFixture = createAnswerBlockSegmentationFixture(1);
+  const completeTerminalEvent = completeFixture.events.at(-1);
+  assert.ok(completeTerminalEvent);
+  assert.equal(completeTerminalEvent.kind, "session_end");
+  if (completeTerminalEvent.kind !== "session_end") {
+    throw new Error("expected complete terminal event");
+  }
   const completeProjection = projectTrustedClosedAnswerBlocks(
     completeFixture.events,
     {
       contractVersion: "frozen-answer-block-authority.v1",
       snapshotState: "complete",
-      cutoffAtMs: completeFixture.events.at(-1)!.occurredAtMs,
+      cutoffAtMs: completeTerminalEvent.occurredAtMs,
       writers: [
         {
           contractVersion: 1,
