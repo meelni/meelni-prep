@@ -103,6 +103,7 @@ import {
   type StripeSubscriptionResourceProof,
   type StripeSubscriptionEventCursor,
 } from "@/lib/billing/stripe-subscription-event-order";
+import { mapStripeSubscriptionStatus } from "@/lib/billing/stripe-subscription-status";
 
 const MAX_STRIPE_WEBHOOK_BODY_BYTES = 64 * 1024;
 const PAYMENT_FAILURE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -601,7 +602,9 @@ async function handleSubscriptionUpdate(
           .for("update");
         if ((currentSub?.version ?? null) !== expectedVersion) return "retry";
 
-        const incomingStatus = mapStripeStatus(stripeSubscription.status);
+        const incomingStatus = mapStripeSubscriptionStatus(
+          stripeSubscription.status
+        );
         const currentResourceId = currentSub?.stripeSubscriptionId ?? null;
         const candidateResourceProof = subscriptionResourceProofFromEvent(
           stripeSubscription,
@@ -2014,26 +2017,6 @@ function assertPersistedFailedCheckoutPayment(
       !CHECKOUT_REPLAY_PAYMENT_STATUSES.has(actual.status))
   ) {
     throw new Error("billing_payment_truth_mismatch:status");
-  }
-}
-
-/**
- * Map Stripe subscription status to our internal status
- */
-function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
-  switch (stripeStatus) {
-    case "active":
-      return "active";
-    case "canceled":
-      return "canceled";
-    case "past_due":
-      return "past_due";
-    case "paused":
-      return "paused";
-    case "trialing":
-      return "trialing";
-    default:
-      return "active";
   }
 }
 
