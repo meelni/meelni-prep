@@ -22720,10 +22720,30 @@ var dashboardSessionSelection = {
   }
 };
 
-// lib/evaluation/model-config.ts
-var ACCEPTED_FEEDBACK_MODEL = "gpt-5.1";
-function getFeedbackEvaluationModel(env = process.env) {
-  return env.OPENAI_FEEDBACK_MODEL?.trim() || ACCEPTED_FEEDBACK_MODEL;
+// lib/http/deadline.ts
+var DeadlineExceededError = class extends Error {
+  constructor(operation) {
+    super(`${operation} exceeded its deadline`);
+    this.operation = operation;
+    this.name = "DeadlineExceededError";
+  }
+};
+function isDeadlineExceededError(error) {
+  return error instanceof DeadlineExceededError;
+}
+async function withDeadline(operation, work, timeoutMs) {
+  let timeout;
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new DeadlineExceededError(operation)),
+      timeoutMs
+    );
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timeout !== void 0) clearTimeout(timeout);
+  }
 }
 
 // node_modules/openai/internal/tslib.mjs
@@ -29569,6 +29589,12 @@ function normalizePracticeRecommendations(value) {
   });
 }
 
+// lib/evaluation/model-config.ts
+var ACCEPTED_FEEDBACK_MODEL = "gpt-5.1";
+function getFeedbackEvaluationModel(env = process.env) {
+  return env.OPENAI_FEEDBACK_MODEL?.trim() || ACCEPTED_FEEDBACK_MODEL;
+}
+
 // lib/evaluation/transcript-aliases.ts
 var TRANSCRIPT_ALIAS_PATTERN = /^turn_\d{4,}$/;
 function projectEvaluationTranscriptAliases(transcript) {
@@ -30531,6 +30557,9 @@ function getFeedbackCalibrationRequestPolicyHash() {
 }
 
 // lib/evaluation/scorer.ts
+var FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY = "feedback_configuration_missing_openai_key";
+var FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY = "feedback_configuration_invalid_openai_key";
+var FEEDBACK_GENERATION_FAILED = "feedback_generation_failed";
 var FEEDBACK_REQUEST_TIMEOUT_MS = 75e3;
 var FEEDBACK_MAX_SDK_RETRIES = 0;
 var FEEDBACK_MAX_COMPLETION_TOKENS = 2e3;
@@ -30920,8 +30949,27 @@ function normalizeFeedbackV2Recommendations(result) {
   }
   return { ...result, drills: recommendations };
 }
+function getEvaluationFailureCode(error) {
+  let current = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (current instanceof Error && current.message === "OPENAI_API_KEY environment variable is required") {
+      return FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY;
+    }
+    if (isInvalidOpenAIKeyError(current)) {
+      return FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY;
+    }
+    current = current instanceof Error ? current.cause : void 0;
+  }
+  return FEEDBACK_GENERATION_FAILED;
+}
+function isInvalidOpenAIKeyError(error) {
+  if (!error || typeof error !== "object") return false;
+  const safeFields = error;
+  return safeFields.status === 401 || safeFields.code === "invalid_api_key" || safeFields.name === "AuthenticationError";
+}
 function classifyProviderInvocationFailure(error) {
   const status = getProviderHttpStatus(error);
+  const retryAfterMs = getProviderRetryAfterMs(error);
   if (status !== void 0) {
     if (status === 400)
       return { kind: "provider_bad_request", httpStatus: status };
@@ -30937,9 +30985,17 @@ function classifyProviderInvocationFailure(error) {
     if (status === 422)
       return { kind: "provider_unprocessable", httpStatus: status };
     if (status === 429)
-      return { kind: "provider_rate_limited", httpStatus: status };
+      return {
+        kind: "provider_rate_limited",
+        httpStatus: status,
+        ...retryAfterMs !== void 0 ? { retryAfterMs } : {}
+      };
     if (status >= 500 && status <= 599) {
-      return { kind: "provider_server_error", httpStatus: status };
+      return {
+        kind: "provider_server_error",
+        httpStatus: status,
+        ...retryAfterMs !== void 0 ? { retryAfterMs } : {}
+      };
     }
     return { kind: "provider_unknown", httpStatus: status };
   }
@@ -30971,15 +31027,38 @@ function getProviderErrorName(error) {
   const name = error.name;
   return typeof name === "string" ? name : void 0;
 }
-function createFeedbackOpenAIClient() {
+function getProviderRetryAfterMs(error, nowMs = Date.now()) {
+  if (typeof error !== "object" || error === null || !("headers" in error)) {
+    return void 0;
+  }
+  const headers = error.headers;
+  let value;
+  if (headers instanceof Headers) {
+    value = headers.get("retry-after");
+  } else if (headers && typeof headers === "object") {
+    const record = headers;
+    const candidate2 = record["retry-after"] ?? record["Retry-After"];
+    value = typeof candidate2 === "string" ? candidate2 : void 0;
+  }
+  if (!value) return void 0;
+  const seconds = Number(value);
+  const delayMs = Number.isFinite(seconds) ? seconds * 1e3 : Date.parse(value) - nowMs;
+  if (!Number.isFinite(delayMs) || delayMs < 0) return void 0;
+  return Math.min(6e4, Math.max(0, Math.floor(delayMs)));
+}
+function createFeedbackOpenAIClient(options = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
+  const timeoutMs = options.timeoutMs ?? FEEDBACK_REQUEST_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > FEEDBACK_REQUEST_TIMEOUT_MS) {
+    throw new Error("feedback_provider_timeout_invalid");
+  }
   return new OpenAI({
     apiKey,
     maxRetries: FEEDBACK_MAX_SDK_RETRIES,
-    timeout: FEEDBACK_REQUEST_TIMEOUT_MS
+    timeout: Math.floor(timeoutMs)
   });
 }
 function assertCalibrationOpenAIEnvironment(env = process.env) {
@@ -31033,6 +31112,253 @@ function createGuardedCalibrationFetch(beforePhysicalRequest, fetchImplementatio
   };
 }
 
+// lib/evaluation/feedback-generation-policy.ts
+var FEEDBACK_GENERATION_DEADLINE_MS = 9e4;
+var FEEDBACK_GENERATION_PERSISTENCE_RESERVE_MS = 5e3;
+var FEEDBACK_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS = 5e3;
+var FEEDBACK_PROVIDER_MAX_ATTEMPT_TIMEOUT_MS = 75e3;
+var FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS = 3;
+var FEEDBACK_PROVIDER_DEFAULT_RETRY_DELAY_MS = 1e3;
+var FEEDBACK_PROVIDER_MAX_RETRY_DELAY_MS = 6e4;
+var FEEDBACK_GENERATION_STAGES = [
+  "claim",
+  "evidence_preparation",
+  "provider",
+  "validation",
+  "persistence"
+];
+var FEEDBACK_GENERATION_FAILURE_CLASSES = [
+  "deadline_exceeded",
+  "transport_timeout",
+  "transport_network",
+  "provider_rate_limited",
+  "provider_capacity",
+  "provider_authentication",
+  "provider_configuration",
+  "provider_contract",
+  "evidence_integrity",
+  "fenced",
+  "persistence",
+  "internal"
+];
+var FeedbackGenerationPolicyError = class extends Error {
+  constructor(failure2, safeMessage = feedbackGenerationStatusReason(failure2)) {
+    super(safeMessage);
+    this.failure = failure2;
+    this.name = "FeedbackGenerationPolicyError";
+  }
+};
+function getFeedbackGenerationDeadlineAt(input) {
+  const requestedAtMs = typeof input.requestedAtMs === "number" && Number.isFinite(input.requestedAtMs) && input.requestedAtMs >= 0 && input.requestedAtMs <= input.nowMs ? input.requestedAtMs : input.nowMs;
+  return requestedAtMs + FEEDBACK_GENERATION_DEADLINE_MS;
+}
+function getFeedbackGenerationRemainingBudgetMs(deadlineAtMs, nowMs) {
+  if (!Number.isFinite(deadlineAtMs) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(0, Math.floor(deadlineAtMs - nowMs));
+}
+function planFeedbackProviderAttempt(input) {
+  if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS) {
+    return null;
+  }
+  const remainingBudgetMs = getFeedbackGenerationRemainingBudgetMs(
+    input.deadlineAtMs,
+    input.nowMs
+  );
+  const delayMs = input.attempt === 1 || input.retryDelayApplied === true ? 0 : normalizeRetryDelay(
+    input.retryAfterMs ?? defaultRetryDelay(input.attempt - 1)
+  );
+  const requestTimeoutMs = Math.min(
+    FEEDBACK_PROVIDER_MAX_ATTEMPT_TIMEOUT_MS,
+    remainingBudgetMs - delayMs - FEEDBACK_GENERATION_PERSISTENCE_RESERVE_MS
+  );
+  if (requestTimeoutMs < FEEDBACK_PROVIDER_MIN_ATTEMPT_TIMEOUT_MS) return null;
+  return {
+    attempt: input.attempt,
+    delayMs,
+    requestTimeoutMs,
+    remainingBudgetMs
+  };
+}
+function deadlineExceededFailure(stage) {
+  return failure(stage, "deadline_exceeded");
+}
+function classifyFeedbackGenerationFailure(error, fallbackStage) {
+  if (error instanceof FeedbackGenerationPolicyError) return error.failure;
+  if (isDeadlineExceededError(error)) {
+    if (error.operation === "feedback_provider_attempt") {
+      return failure("provider", "transport_timeout", true);
+    }
+    return deadlineExceededFailure(fallbackStage);
+  }
+  const messages2 = collectMessages(error);
+  if (messages2.some(
+    (message) => message.includes("event_mismatch") || message.includes("not_authorized") || message.includes("not_found") || message.includes("account_deletion_pending") || message.includes("fenced")
+  )) {
+    return failure(fallbackStage, "fenced");
+  }
+  if (messages2.some(
+    (message) => message.includes("transcript_integrity") || message.includes("evidence_integrity") || message.includes("invalid_committed_tier") || message.includes("round_type_invalid") || message.includes("snapshot") || message.includes("persistence_contract_invalid")
+  )) {
+    return failure("evidence_preparation", "evidence_integrity");
+  }
+  const stableCode = getEvaluationFailureCode(error);
+  if (stableCode === FEEDBACK_CONFIGURATION_MISSING_OPENAI_KEY || messages2.some((message) => message.includes("OPENAI_API_KEY"))) {
+    return failure("provider", "provider_configuration");
+  }
+  if (stableCode === FEEDBACK_CONFIGURATION_INVALID_OPENAI_KEY) {
+    return failure("provider", "provider_authentication");
+  }
+  const providerError = findProviderError(error);
+  if (providerError) {
+    const diagnostics = {
+      providerDiagnosticKind: providerError.diagnostic?.kind ?? null,
+      providerHttpStatus: providerError.diagnostic?.httpStatus ?? null,
+      usage: providerError.usage ?? null,
+      observedModel: providerError.observedModel ?? null,
+      observedServiceTier: providerError.observedServiceTier ?? null,
+      retryAfterMs: providerError.diagnostic?.retryAfterMs ?? null
+    };
+    if (providerError.code !== "evaluation_provider_invocation_failed") {
+      return {
+        ...failure("validation", "provider_contract"),
+        ...diagnostics
+      };
+    }
+    switch (providerError.diagnostic?.kind) {
+      case "provider_timeout":
+      case "provider_aborted":
+        return {
+          ...failure("provider", "transport_timeout", true),
+          ...diagnostics
+        };
+      case "provider_network":
+        return {
+          ...failure("provider", "transport_network", true),
+          ...diagnostics
+        };
+      case "provider_rate_limited":
+        return {
+          ...failure("provider", "provider_rate_limited", true),
+          ...diagnostics
+        };
+      case "provider_server_error":
+        return {
+          ...failure("provider", "provider_capacity", true),
+          ...diagnostics
+        };
+      case "provider_authentication":
+      case "provider_permission":
+        return {
+          ...failure("provider", "provider_authentication"),
+          ...diagnostics
+        };
+      case "provider_not_found":
+        return {
+          ...failure("provider", "provider_configuration"),
+          ...diagnostics
+        };
+      case "provider_bad_request":
+      case "provider_conflict":
+      case "provider_unprocessable":
+        return {
+          ...failure("validation", "provider_contract"),
+          ...diagnostics
+        };
+      default:
+        return { ...failure("provider", "internal"), ...diagnostics };
+    }
+  }
+  if (fallbackStage === "validation" || messages2.some(
+    (message) => message.includes("dimension_coverage_required") || message.includes("qualitative_constraint") || message.includes("provider_returned")
+  )) {
+    return failure("validation", "provider_contract");
+  }
+  if (fallbackStage === "persistence") {
+    return failure("persistence", "persistence", true);
+  }
+  return failure(
+    fallbackStage,
+    "internal",
+    fallbackStage === "claim" || fallbackStage === "evidence_preparation"
+  );
+}
+function assertFeedbackGenerationBudget(deadlineAtMs, nowMs, stage) {
+  if (getFeedbackGenerationRemainingBudgetMs(deadlineAtMs, nowMs) <= 0) {
+    throw new FeedbackGenerationPolicyError(deadlineExceededFailure(stage));
+  }
+}
+function feedbackGenerationStatusReason(value) {
+  return `feedback_generation_${value.failureClass}`;
+}
+function failure(stage, failureClass, retryable = false) {
+  return {
+    stage,
+    failureClass,
+    retryable,
+    retryAfterMs: null,
+    providerDiagnosticKind: null,
+    providerHttpStatus: null,
+    usage: null,
+    observedModel: null,
+    observedServiceTier: null
+  };
+}
+function normalizeRetryDelay(value) {
+  if (!Number.isFinite(value) || value < 0) {
+    return FEEDBACK_PROVIDER_DEFAULT_RETRY_DELAY_MS;
+  }
+  return Math.min(
+    FEEDBACK_PROVIDER_MAX_RETRY_DELAY_MS,
+    Math.max(0, Math.floor(value))
+  );
+}
+function defaultRetryDelay(completedAttempts) {
+  return Math.min(
+    FEEDBACK_PROVIDER_DEFAULT_RETRY_DELAY_MS * 2 ** Math.max(0, completedAttempts - 1),
+    FEEDBACK_PROVIDER_MAX_RETRY_DELAY_MS
+  );
+}
+function findProviderError(error) {
+  let current = error;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < 6 && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    if (current instanceof FeedbackProviderInvocationError) return current;
+    current = current instanceof Error ? current.cause : void 0;
+  }
+  return null;
+}
+function collectMessages(error) {
+  const messages2 = [];
+  let current = error;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < 6 && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    if (current instanceof Error) {
+      messages2.push(current.message);
+      current = current.cause;
+    } else if (typeof current === "string") {
+      messages2.push(current);
+      break;
+    } else {
+      break;
+    }
+  }
+  return messages2;
+}
+
+// lib/operations/feedback-generation-attempt.ts
+var FEEDBACK_GENERATION_ATTEMPT_OUTCOMES = [
+  "succeeded",
+  "retrying",
+  "skipped",
+  "failed",
+  "fenced"
+];
+var STAGES = new Set(FEEDBACK_GENERATION_STAGES);
+var OUTCOMES = new Set(FEEDBACK_GENERATION_ATTEMPT_OUTCOMES);
+var FAILURE_CLASSES = new Set(FEEDBACK_GENERATION_FAILURE_CLASSES);
+
 // lib/workflows/feedback-generation-evidence.ts
 function resolveFeedbackGenerationEligibility(tier) {
   if (tier === "full" /* FULL */) {
@@ -31049,10 +31375,21 @@ function resolveFeedbackGenerationEligibility(tier) {
 
 // lib/workflows/generate-feedback.ts
 async function generateFeedbackWorkflow(input, deps) {
-  await assertAccountIsActive(input.userId, deps);
-  const authorization = await deps.steps.run(
-    "authorize-feedback-generation",
+  const deadlineAtMs = getFeedbackGenerationDeadlineAt({
+    requestedAtMs: input.requestedAtMs,
+    nowMs: deps.now().getTime()
+  });
+  const executionAttempt = getFeedbackGenerationExecutionAttempt(input);
+  const authorization = await runObservedFeedbackStage(
+    {
+      deps,
+      deadlineAtMs,
+      name: "authorize-feedback-generation",
+      stage: "claim",
+      attempt: executionAttempt
+    },
     async () => {
+      await assertAccountIsActive(input.userId, deps);
       const [session, generation] = await Promise.all([
         deps.getSession(input.sessionId),
         deps.store.get(input.sessionId)
@@ -31070,15 +31407,32 @@ async function generateFeedbackWorkflow(input, deps) {
   if (isTerminal(authorization.generation)) {
     return terminalResult(input.sessionId, authorization.generation);
   }
-  const claimed = await deps.steps.run(
-    "claim-feedback-generation",
+  const claimed = await runObservedFeedbackStage(
+    {
+      deps,
+      deadlineAtMs,
+      name: "claim-feedback-generation",
+      stage: "claim",
+      attempt: executionAttempt
+    },
     () => deps.store.claim({
       sessionId: input.sessionId,
       eventId: input.eventId,
-      now: deps.now()
+      now: deps.now(),
+      deadlineAt: new Date(deadlineAtMs)
     })
   );
   if (!claimed) {
+    reportAttemptEvidence(deps, deadlineAtMs, {
+      stage: "claim",
+      attempt: executionAttempt,
+      outcome: "fenced",
+      failure: classifyFeedbackGenerationFailure(
+        new Error("feedback_generation_fenced"),
+        "claim"
+      ),
+      durationMs: 0
+    });
     const current = await deps.steps.run(
       "read-feedback-generation-claim",
       () => deps.store.get(input.sessionId)
@@ -31092,11 +31446,20 @@ async function generateFeedbackWorkflow(input, deps) {
   if (eligibility.disposition === "committed_eligible") {
     const committedState = toEvaluationState(eligibility.tier);
     if (!committedState) {
-      throw new Error("feedback_generation_invalid_committed_tier");
+      throwFeedbackGenerationPolicyFailure(
+        "feedback_generation_invalid_committed_tier",
+        "evidence_preparation"
+      );
     }
   } else if (eligibility.disposition === "legacy_requires_validation") {
-    const validation = await deps.steps.run(
-      "validate-legacy-session",
+    const validation = await runObservedFeedbackStage(
+      {
+        deps,
+        deadlineAtMs,
+        name: "validate-legacy-session",
+        stage: "evidence_preparation",
+        attempt: executionAttempt
+      },
       () => deps.validateLegacy(input.sessionId)
     );
     const validatedState = toEvaluationState(validation.tier);
@@ -31106,7 +31469,8 @@ async function generateFeedbackWorkflow(input, deps) {
         deps,
         endingAtMs: authorization.session.endingAtMs,
         reason: validation.evidenceFailureReason ?? "no_reviewable_answer",
-        completionTier: "insufficient"
+        completionTier: "insufficient",
+        deadlineAtMs
       });
     }
   } else {
@@ -31114,11 +31478,18 @@ async function generateFeedbackWorkflow(input, deps) {
       input,
       deps,
       endingAtMs: authorization.session.endingAtMs,
-      reason: claimed.outcomeReason === "transcript_integrity_degraded" ? "transcript_integrity_degraded" : "no_reviewable_answer"
+      reason: claimed.outcomeReason === "transcript_integrity_degraded" ? "transcript_integrity_degraded" : "no_reviewable_answer",
+      deadlineAtMs
     });
   }
-  const evidence = await deps.steps.run(
-    "fetch-feedback-answer-blocks",
+  const evidence = await runObservedFeedbackStage(
+    {
+      deps,
+      deadlineAtMs,
+      name: "fetch-feedback-answer-blocks",
+      stage: "evidence_preparation",
+      attempt: executionAttempt
+    },
     () => deps.getAnswerBlockEvidence(input.sessionId)
   );
   if (!evidence.eligible || evidence.blocks.length === 0) {
@@ -31127,56 +31498,180 @@ async function generateFeedbackWorkflow(input, deps) {
       deps,
       endingAtMs: authorization.session.endingAtMs,
       reason: evidence.evidenceFailureReason ?? "no_reviewable_answer",
-      completionTier: "insufficient"
+      completionTier: "insufficient",
+      deadlineAtMs
     });
   }
   if (!isValidRoundType(authorization.session.roundType)) {
-    throw new Error("feedback_generation_round_type_invalid");
+    throwFeedbackGenerationPolicyFailure(
+      "feedback_generation_round_type_invalid",
+      "evidence_preparation"
+    );
   }
   const roundType = authorization.session.roundType;
   await assertAccountIsActive(input.userId, deps);
-  const evaluated = await deps.steps.run("evaluate-feedback", async () => {
-    const current = await deps.store.get(input.sessionId);
-    if (!current || current.status !== "processing" || current.eventId !== input.eventId) {
-      return { disposition: "fenced" };
-    }
-    const startedAt = deps.now();
-    const allowNumericalScores = evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
-    const evaluation = await deps.evaluate({
-      roundType,
-      answerBlocks: evidence.blocks,
-      allowNumericalScores
-    });
-    if (!isDimensionCoverageFeedbackResult(evaluation) && deps.allowLegacyEvaluationForSyntheticCalibration !== true) {
-      throw new Error("feedback_generation_dimension_coverage_required");
-    }
-    if (!allowNumericalScores && isDimensionCoverageFeedbackResult(evaluation) && evaluation.mode !== "coaching_review") {
-      throw new Error("feedback_generation_qualitative_constraint_violated");
-    }
-    return {
-      disposition: "evaluated",
-      evaluation,
-      processingDurationMs: Math.max(
-        0,
-        deps.now().getTime() - startedAt.getTime()
-      )
-    };
+  const allowNumericalScores = evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+  let evaluated = null;
+  let attempt = 1;
+  let plan = planFeedbackProviderAttempt({
+    attempt,
+    deadlineAtMs,
+    nowMs: deps.now().getTime()
   });
-  if (evaluated.disposition === "fenced") {
+  for (; ; ) {
+    if (!plan) {
+      const failure2 = deadlineExceededFailure("provider");
+      reportAttemptEvidence(deps, deadlineAtMs, {
+        stage: "provider",
+        attempt: Math.min(attempt, 3),
+        outcome: "failed",
+        failure: failure2,
+        durationMs: 0
+      });
+      throw new FeedbackGenerationPolicyError(failure2);
+    }
     const current = await deps.steps.run(
-      "read-fenced-feedback-evaluation",
+      `read-current-feedback-evaluation-${attempt}-execution-${input.executionAttempt ?? 0}`,
       () => deps.store.get(input.sessionId)
     );
-    return unclaimedResult(input, current);
+    if (current?.eventId === input.eventId && current.status === "completed") {
+      await sendInsightsUpdate(input, deps);
+      return terminalResult(input.sessionId, current);
+    }
+    if (!current || current.status !== "processing" || current.eventId !== input.eventId) {
+      reportAttemptEvidence(deps, deadlineAtMs, {
+        stage: "provider",
+        attempt,
+        outcome: "fenced",
+        failure: classifyFeedbackGenerationFailure(
+          new Error("feedback_generation_fenced"),
+          "provider"
+        ),
+        durationMs: 0
+      });
+      return unclaimedResult(input, current);
+    }
+    const attemptResult = await deps.steps.run(
+      `evaluate-feedback-attempt-${attempt}`,
+      async () => {
+        const startedAtMs = deps.now().getTime();
+        try {
+          const currentAttemptPlan = planFeedbackProviderAttempt({
+            attempt,
+            deadlineAtMs,
+            nowMs: startedAtMs,
+            retryDelayApplied: true
+          });
+          if (!currentAttemptPlan) {
+            throw new FeedbackGenerationPolicyError(
+              deadlineExceededFailure("provider")
+            );
+          }
+          const evaluation = await withDeadline(
+            "feedback_provider_attempt",
+            deps.evaluate({
+              roundType,
+              answerBlocks: evidence.blocks,
+              allowNumericalScores,
+              attempt,
+              deadlineAtMs,
+              requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
+              now: () => deps.now().getTime(),
+              reportAttempt: deps.reportAttempt
+            }),
+            currentAttemptPlan.requestTimeoutMs
+          );
+          assertFeedbackGenerationBudget(
+            deadlineAtMs,
+            deps.now().getTime(),
+            "validation"
+          );
+          if (!isDimensionCoverageFeedbackResult(evaluation) && deps.allowLegacyEvaluationForSyntheticCalibration !== true) {
+            throw new Error("feedback_generation_dimension_coverage_required");
+          }
+          if (!allowNumericalScores && isDimensionCoverageFeedbackResult(evaluation) && evaluation.mode !== "coaching_review") {
+            throw new Error(
+              "feedback_generation_qualitative_constraint_violated"
+            );
+          }
+          return {
+            disposition: "evaluated",
+            evaluation,
+            processingDurationMs: Math.max(
+              0,
+              deps.now().getTime() - (claimed.processingStartedAt?.getTime() ?? startedAtMs)
+            )
+          };
+        } catch (error) {
+          if (deps.preserveEvaluatorFailuresForSyntheticCalibration === true) {
+            throw error;
+          }
+          if (!isClosedEvaluationFailure(error)) throw error;
+          return {
+            disposition: "failed",
+            failure: classifyFeedbackGenerationFailure(error, "validation"),
+            durationMs: Math.max(0, deps.now().getTime() - startedAtMs),
+            safeMessage: safeFeedbackGenerationErrorMessage(
+              error,
+              classifyFeedbackGenerationFailure(error, "validation")
+            )
+          };
+        }
+      }
+    );
+    if (attemptResult.disposition === "evaluated") {
+      evaluated = attemptResult;
+      break;
+    }
+    const retryPlan = attemptResult.failure.retryable ? planFeedbackProviderAttempt({
+      attempt: attempt + 1,
+      deadlineAtMs,
+      nowMs: deps.now().getTime(),
+      retryAfterMs: attemptResult.failure.retryAfterMs
+    }) : null;
+    reportAttemptEvidence(deps, deadlineAtMs, {
+      stage: attemptResult.failure.stage,
+      attempt,
+      outcome: retryPlan ? "retrying" : "failed",
+      failure: attemptResult.failure,
+      durationMs: attemptResult.durationMs,
+      retryAfterMs: retryPlan?.delayMs ?? null
+    });
+    if (!retryPlan) {
+      throw new FeedbackGenerationPolicyError(
+        attemptResult.failure,
+        attemptResult.safeMessage
+      );
+    }
+    if (retryPlan.delayMs > 0) {
+      await deps.steps.sleep(
+        `wait-feedback-evaluation-retry-${attempt}`,
+        retryPlan.delayMs
+      );
+    }
+    attempt += 1;
+    plan = planFeedbackProviderAttempt({
+      attempt,
+      deadlineAtMs,
+      nowMs: deps.now().getTime(),
+      retryDelayApplied: true
+    });
   }
-  const applied = await deps.steps.run(
-    "complete-feedback-generation",
+  const applied = await runObservedFeedbackStage(
+    {
+      deps,
+      deadlineAtMs,
+      name: "complete-feedback-generation",
+      stage: "persistence",
+      attempt: executionAttempt
+    },
     () => assertAccountIsActive(input.userId, deps).then(
       () => deps.store.complete({
         sessionId: input.sessionId,
         eventId: input.eventId,
         evaluation: evaluated.evaluation,
-        processingDurationMs: evaluated.processingDurationMs
+        processingDurationMs: evaluated.processingDurationMs,
+        deadlineAt: new Date(deadlineAtMs)
       })
     )
   );
@@ -31185,14 +31680,18 @@ async function generateFeedbackWorkflow(input, deps) {
       "read-fenced-feedback-generation",
       () => deps.store.get(input.sessionId)
     );
+    if (getFeedbackGenerationRemainingBudgetMs(
+      deadlineAtMs,
+      deps.now().getTime()
+    ) <= 0) {
+      throw new FeedbackGenerationPolicyError(
+        deadlineExceededFailure("persistence")
+      );
+    }
     return unclaimedResult(input, current);
   }
   const completedAt = deps.now();
-  await deps.steps.sendInsights({
-    id: `insights:update:${input.sessionId}:${input.eventId}`,
-    name: "insights/update.requested",
-    data: { userId: input.userId, sessionId: input.sessionId }
-  });
+  await sendInsightsUpdate(input, deps);
   return {
     status: "completed",
     disposition: "applied",
@@ -31203,18 +31702,30 @@ async function generateFeedbackWorkflow(input, deps) {
 }
 async function assertAccountIsActive(userId, deps) {
   if (await deps.isDeletionPending(userId)) {
-    throw new Error("feedback_generation_account_deletion_pending");
+    const error = new Error("feedback_generation_account_deletion_pending");
+    throw new FeedbackGenerationPolicyError(
+      classifyFeedbackGenerationFailure(error, "claim"),
+      error.message
+    );
   }
 }
 async function skipClaimedFeedback(input) {
   await assertAccountIsActive(input.input.userId, input.deps);
-  const applied = await input.deps.steps.run(
-    "skip-feedback-generation",
+  const applied = await runObservedFeedbackStage(
+    {
+      deps: input.deps,
+      deadlineAtMs: input.deadlineAtMs,
+      name: "skip-feedback-generation",
+      stage: "persistence",
+      attempt: getFeedbackGenerationExecutionAttempt(input.input),
+      successOutcome: "skipped"
+    },
     () => input.deps.store.skip({
       sessionId: input.input.sessionId,
       eventId: input.input.eventId,
       reason: input.reason,
-      completionTier: input.completionTier
+      completionTier: input.completionTier,
+      deadlineAt: new Date(input.deadlineAtMs)
     })
   );
   if (!applied) {
@@ -31239,6 +31750,20 @@ function endToFeedbackTiming(endingAtMs, completedAt) {
   return {
     endToFeedbackMs: Math.max(0, completedAt.getTime() - endingAtMs)
   };
+}
+function sendInsightsUpdate(input, deps) {
+  return deps.steps.sendInsights({
+    id: `insights:update:${input.sessionId}:${input.eventId}`,
+    name: "insights/update.requested",
+    data: { userId: input.userId, sessionId: input.sessionId }
+  });
+}
+function getFeedbackGenerationExecutionAttempt(input) {
+  const executionAttempt = input.executionAttempt ?? 0;
+  return Math.min(
+    FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS,
+    Math.max(1, Number.isInteger(executionAttempt) ? executionAttempt + 1 : 1)
+  );
 }
 function unclaimedResult(input, current) {
   if (!current) {
@@ -31274,6 +31799,92 @@ function toEvaluationState(value) {
   if (value === "full" /* FULL */) return "full";
   if (value === "partial" /* PARTIAL */) return "partial";
   return null;
+}
+async function runObservedFeedbackStage(input, work) {
+  const result = await input.deps.steps.run(input.name, async () => {
+    const startedAtMs = input.deps.now().getTime();
+    try {
+      assertFeedbackGenerationBudget(
+        input.deadlineAtMs,
+        startedAtMs,
+        input.stage
+      );
+      const result2 = await withDeadline(
+        `feedback_generation_${input.stage}`,
+        work(),
+        getFeedbackGenerationRemainingBudgetMs(input.deadlineAtMs, startedAtMs)
+      );
+      reportAttemptEvidence(input.deps, input.deadlineAtMs, {
+        stage: input.stage,
+        attempt: input.attempt,
+        outcome: input.successOutcome ?? "succeeded",
+        durationMs: Math.max(0, input.deps.now().getTime() - startedAtMs)
+      });
+      return { disposition: "succeeded", value: result2 };
+    } catch (error) {
+      const failure2 = classifyFeedbackGenerationFailure(error, input.stage);
+      reportAttemptEvidence(input.deps, input.deadlineAtMs, {
+        stage: input.stage,
+        attempt: input.attempt,
+        outcome: failure2.retryable ? "retrying" : "failed",
+        failure: failure2,
+        durationMs: Math.max(0, input.deps.now().getTime() - startedAtMs)
+      });
+      if (!failure2.retryable) {
+        return {
+          disposition: "failed",
+          failure: failure2,
+          safeMessage: safeFeedbackGenerationErrorMessage(error, failure2)
+        };
+      }
+      throw error;
+    }
+  });
+  if (result.disposition === "failed") {
+    throw new FeedbackGenerationPolicyError(result.failure, result.safeMessage);
+  }
+  return result.value;
+}
+function isClosedEvaluationFailure(error) {
+  if (error instanceof FeedbackProviderInvocationError || error instanceof FeedbackGenerationPolicyError) {
+    return true;
+  }
+  if (isDeadlineExceededError(error) && error.operation === "feedback_provider_attempt") {
+    return true;
+  }
+  return error instanceof Error && (error.message === "feedback_generation_dimension_coverage_required" || error.message === "feedback_generation_qualitative_constraint_violated");
+}
+function safeFeedbackGenerationErrorMessage(error, failure2) {
+  return error instanceof Error && /^feedback_generation_[a-z0-9_]+$/.test(error.message) ? error.message : error instanceof FeedbackProviderInvocationError ? error.code : feedbackGenerationStatusReason(failure2);
+}
+function throwFeedbackGenerationPolicyFailure(message, stage) {
+  const error = new Error(message);
+  throw new FeedbackGenerationPolicyError(
+    classifyFeedbackGenerationFailure(error, stage),
+    message
+  );
+}
+function reportAttemptEvidence(deps, deadlineAtMs, input) {
+  try {
+    deps.reportAttempt({
+      stage: input.stage,
+      attempt: input.attempt,
+      outcome: input.outcome,
+      failureClass: input.failure?.failureClass,
+      durationMs: Math.min(9e4, Math.max(0, input.durationMs)),
+      remainingBudgetMs: getFeedbackGenerationRemainingBudgetMs(
+        deadlineAtMs,
+        deps.now().getTime()
+      ),
+      retryAfterMs: input.retryAfterMs,
+      providerDiagnosticKind: input.failure?.providerDiagnosticKind,
+      providerHttpStatus: input.failure?.providerHttpStatus,
+      observedModel: input.failure?.observedModel,
+      observedServiceTier: input.failure?.observedServiceTier,
+      usage: input.failure?.usage
+    });
+  } catch {
+  }
 }
 
 // lib/evaluation/calibration-approval.ts
@@ -31846,7 +32457,7 @@ async function runEvaluationCalibration(options) {
     evaluatorCalls,
     providerEvaluationCalls: liveCostReport?.physicalHttpAttemptCeiling ?? 0
   };
-  const corpusPassed = failures.every((failure) => failure.code !== "expected_state_mismatch") && invalidEvidenceAnchors === 0 && metrics.insufficientHandlingRate === EVALUATION_CALIBRATION_THRESHOLDS.insufficientHandlingRate;
+  const corpusPassed = failures.every((failure2) => failure2.code !== "expected_state_mismatch") && invalidEvidenceAnchors === 0 && metrics.insufficientHandlingRate === EVALUATION_CALIBRATION_THRESHOLDS.insufficientHandlingRate;
   const evaluatedThresholdsWithoutCanonicalPassed = metrics.evidenceValidityRate === EVALUATION_CALIBRATION_THRESHOLDS.evidenceValidityRate && metrics.scoreBandAgreementRate !== null && metrics.scoreBandAgreementRate >= EVALUATION_CALIBRATION_THRESHOLDS.scoreBandAgreementRate && everyRateAtLeast(
     metrics.scoreBandAgreementByDimension,
     EVALUATION_CALIBRATION_THRESHOLDS.minimumDimensionScoreBandAgreementRate
@@ -32086,8 +32697,10 @@ async function runCaseThroughGenerationWorkflow(input) {
     isDeletionPending: async () => false,
     steps: {
       run: (_name, work) => work(),
+      sleep: async () => void 0,
       sendInsights: async () => void 0
     },
+    reportAttempt: () => void 0,
     getSession: async () => ({
       userId: "synthetic-calibration-user",
       roundType: input.fixture.roundType
@@ -32106,7 +32719,8 @@ async function runCaseThroughGenerationWorkflow(input) {
         runIndex: input.runIndex
       });
     },
-    allowLegacyEvaluationForSyntheticCalibration: true
+    allowLegacyEvaluationForSyntheticCalibration: true,
+    preserveEvaluatorFailuresForSyntheticCalibration: true
   };
   const result = await generateFeedbackWorkflow(
     {

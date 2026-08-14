@@ -28,6 +28,20 @@ bound. The UI becomes explicitly delayed at 45 seconds, while automatic or
 manual generation retry becomes available only after the execution lease
 expires.
 
+One generation event also carries a 90-second execution deadline from its
+accepted event timestamp through claim, frozen-evidence preparation, provider,
+validation, and persistence. The provider SDK does not retry. The workflow may
+make at most three typed provider attempts for transient transport,
+rate-limit, or capacity failures while retaining a five-second persistence
+reserve. Inngest's two whole-function retries remain the owner for transient
+pre-provider infrastructure and persistence failures. Successful evaluation
+steps replay from durable state, so a persistence retry refreshes the event
+fence and compare-and-set without duplicating provider evaluation. Permanent
+or budget-exhausted policy failures do not consume whole-function retries.
+Every provider timeout is recomputed after a durable retry sleep and again at
+the call boundary; a late wakeup fails closed when the request plus the
+persistence reserve no longer fit.
+
 ### Implemented deadline ladder
 
 The SLO table describes customer objectives and stale-state transitions. The
@@ -133,7 +147,9 @@ sanitized event counts match database truth.
 6. If feedback is `pending/sent` beyond 90 seconds, confirm recovery rotated
    the event ID and incremented dispatch attempts before redispatch.
 7. If feedback is `processing`, do not force a second generation call before
-   the five-minute lease expires. Confirm the customer sees the delayed state.
+   the five-minute lease expires. Inspect content-free generation-attempt
+   events to separate provider-policy exhaustion from an infrastructure or
+   persistence replay, and confirm the customer sees the delayed state.
 8. If a lifecycle read reaches its eight-second deadline, investigate auth or
    database contention; the response must remain private and retryable.
 9. Once durable session truth is `ending` or terminal, confirm the focused
@@ -173,6 +189,9 @@ sanitized event counts match database truth.
   rotates identity, and is claimed once.
 - A slow generation renders delayed copy at 45 seconds and does not duplicate
   model evaluation before the execution lease expires.
+- A simulated transient terminal-persistence failure converges through durable
+  replay with one provider evaluation, a refreshed event fence, and one
+  authoritative completed feedback row.
 - Completed, partial, insufficient, failed, and unavailable states remain
   explicit and navigable.
 - Stage telemetry contains no customer content and classifies both thresholds

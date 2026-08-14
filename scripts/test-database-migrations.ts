@@ -9065,6 +9065,13 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(sentEvents.length, 1);
 
   const eventId = dispatch.dispatch.eventId;
+  const [generationClock] = await sql<
+    { current_timestamp: Date | string }[]
+  >`SELECT CURRENT_TIMESTAMP`;
+  assert.ok(generationClock);
+  const generationRequestedAt = databaseTimestamp(
+    generationClock.current_timestamp
+  );
   const generationStore = createDrizzleFeedbackGenerationStore(database);
   const insightsEvents: unknown[] = [];
   let evaluatorCalls = 0;
@@ -9072,17 +9079,19 @@ async function verifyFeedbackProductionDatabaseLifecycle(
     run<T>(_name: string, work: () => Promise<T>): Promise<T> {
       return work();
     },
+    async sleep() {},
     async sendInsights(event: unknown) {
       insightsEvents.push(event);
     },
   };
   const handlerDeps = {
-    now: () => finalizedAt.getTime() + 3_000,
+    now: () => generationRequestedAt.getTime(),
     createWorkflowDeps: (handlerSteps: typeof steps) => ({
       store: generationStore,
       steps: handlerSteps,
-      now: () => new Date(finalizedAt.getTime() + 3_000),
+      now: () => generationRequestedAt,
       isDeletionPending: async () => false,
+      reportAttempt: () => undefined,
       async getSession(sessionId: string) {
         const session = await getSessionById(sessionId, database);
         return session
@@ -9157,6 +9166,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   };
   const generated = await runFeedbackGenerationRequested({
     eventId,
+    requestedAtMs: generationRequestedAt.getTime(),
     data: { sessionId: shortRich.sessionId, userId: shortRich.userId },
     steps,
     deps: handlerDeps,
@@ -9168,6 +9178,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
 
   const duplicateRun = await runFeedbackGenerationRequested({
     eventId,
+    requestedAtMs: generationRequestedAt.getTime(),
     data: { sessionId: shortRich.sessionId, userId: shortRich.userId },
     steps,
     deps: handlerDeps,

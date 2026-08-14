@@ -15,9 +15,9 @@ explicitly enables prompt, transcript, and response capture.
 
 ## Traced Surfaces
 
-- Feedback evaluation creates one trace with an OpenAI LLM span, model, token
-  usage, outcome, environment, and release when available. Content mode adds
-  the evaluation prompt and raw provider response.
+- Each feedback provider attempt creates one trace with an OpenAI LLM span,
+  model, token usage, outcome, environment, and release when available.
+  Content mode adds the evaluation prompt and raw provider response.
 - Demo and full-interview workers export LiveKit Agents spans through OTLP.
   Content mode retains system, user, and assistant message content plus the
   transcript/text attributes needed to inspect the conversation.
@@ -32,6 +32,13 @@ names, job IDs, provider request IDs, tool arguments/results, exception text,
 stack traces, headers, tokens, API keys, and credentials. Voice traces keep
 OpenTelemetry trace context so spans within one runtime trace remain grouped,
 but do not add a Meelni customer/session correlation identifier.
+
+The separate `meelni_feedback_generation_attempt` operational event is always
+content-free, regardless of the Opik capture setting. It records the bounded
+generation stage, attempt, outcome, failure class, duration, remaining budget,
+retry delay, provider diagnostic kind/status, sanitized model/tier, and
+validated token counts. It never records identity, transcript/evidence or
+feedback text, provider payloads, provider request IDs, or raw errors.
 
 ## Failure Isolation
 

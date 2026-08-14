@@ -101,6 +101,7 @@ export type FeedbackProviderInvocationDiagnosticKind =
 export interface FeedbackProviderInvocationDiagnostic {
   kind: FeedbackProviderInvocationDiagnosticKind;
   httpStatus?: number;
+  retryAfterMs?: number;
 }
 
 const feedbackRejectionCodesByError = new WeakMap<
@@ -691,10 +692,11 @@ function isInvalidOpenAIKeyError(error: unknown): boolean {
   );
 }
 
-function classifyProviderInvocationFailure(
+export function classifyProviderInvocationFailure(
   error: unknown
 ): FeedbackProviderInvocationDiagnostic {
   const status = getProviderHttpStatus(error);
+  const retryAfterMs = getProviderRetryAfterMs(error);
   if (status !== undefined) {
     if (status === 400)
       return { kind: "provider_bad_request", httpStatus: status };
@@ -710,9 +712,17 @@ function classifyProviderInvocationFailure(
     if (status === 422)
       return { kind: "provider_unprocessable", httpStatus: status };
     if (status === 429)
-      return { kind: "provider_rate_limited", httpStatus: status };
+      return {
+        kind: "provider_rate_limited",
+        httpStatus: status,
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+      };
     if (status >= 500 && status <= 599) {
-      return { kind: "provider_server_error", httpStatus: status };
+      return {
+        kind: "provider_server_error",
+        httpStatus: status,
+        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+      };
     }
     return { kind: "provider_unknown", httpStatus: status };
   }
@@ -753,15 +763,50 @@ function getProviderErrorName(error: unknown): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
-export function createFeedbackOpenAIClient() {
+export function getProviderRetryAfterMs(
+  error: unknown,
+  nowMs = Date.now()
+): number | undefined {
+  if (typeof error !== "object" || error === null || !("headers" in error)) {
+    return undefined;
+  }
+  const headers = (error as { headers?: unknown }).headers;
+  let value: string | null | undefined;
+  if (headers instanceof Headers) {
+    value = headers.get("retry-after");
+  } else if (headers && typeof headers === "object") {
+    const record = headers as Record<string, unknown>;
+    const candidate = record["retry-after"] ?? record["Retry-After"];
+    value = typeof candidate === "string" ? candidate : undefined;
+  }
+  if (!value) return undefined;
+  const seconds = Number(value);
+  const delayMs = Number.isFinite(seconds)
+    ? seconds * 1_000
+    : Date.parse(value) - nowMs;
+  if (!Number.isFinite(delayMs) || delayMs < 0) return undefined;
+  return Math.min(60_000, Math.max(0, Math.floor(delayMs)));
+}
+
+export function createFeedbackOpenAIClient(
+  options: { timeoutMs?: number } = {}
+) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
+  const timeoutMs = options.timeoutMs ?? FEEDBACK_REQUEST_TIMEOUT_MS;
+  if (
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > FEEDBACK_REQUEST_TIMEOUT_MS
+  ) {
+    throw new Error("feedback_provider_timeout_invalid");
+  }
   return new OpenAI({
     apiKey,
     maxRetries: FEEDBACK_MAX_SDK_RETRIES,
-    timeout: FEEDBACK_REQUEST_TIMEOUT_MS,
+    timeout: Math.floor(timeoutMs),
   });
 }
 
