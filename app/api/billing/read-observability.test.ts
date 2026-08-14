@@ -104,4 +104,18 @@ describe("billing read operational failures", () => {
       userId: "user_fixture",
     });
   });
+
+  it("marks a synthetic free subscription as ineligible for the billing portal", async () => {
+    mocks.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+      })),
+    });
+
+    const response = await getSubscription();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ tier: "free", portalAvailable: false });
+  });
 });

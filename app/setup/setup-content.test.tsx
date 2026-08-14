@@ -20,11 +20,13 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   storeCredentials: vi.fn(),
   validateSessionStart: vi.fn(),
+  searchParams: new URLSearchParams(),
+  settings: null as Record<string, unknown> | null,
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mocks.searchParams,
 }));
 
 vi.mock("@/app/providers/auth-provider", () => ({
@@ -172,13 +174,17 @@ import { SetupContent } from "./setup-content";
 describe("interview setup microphone permission check", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    mocks.searchParams = new URLSearchParams();
+    mocks.settings = null;
     mocks.validateSessionStart.mockImplementation((data: unknown) => ({
       success: true,
       data,
     }));
     const abortError = new Error("launch request timed out");
     abortError.name = "AbortError";
-    mocks.fetchWithDeadline.mockRejectedValue(abortError);
+    mockStartFetch(async () => {
+      throw abortError;
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -189,6 +195,9 @@ describe("interview setup microphone permission check", () => {
             nextCreditExpiresAt: null,
             trialAvailable: false,
           });
+        }
+        if (String(input) === "/api/user/settings") {
+          return Response.json({ settings: mocks.settings });
         }
         throw new Error(`Unexpected request: ${String(input)}`);
       })
@@ -205,9 +214,7 @@ describe("interview setup microphone permission check", () => {
     const { getUserMedia, tracks } = installPermissionStream();
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
 
     expect(
       await screen.findByText(/no second click or extra credit is needed/i)
@@ -225,32 +232,28 @@ describe("interview setup microphone permission check", () => {
 
   it("releases the permission stream before a successful launch request", async () => {
     const { tracks } = installPermissionStream();
-    mocks.fetchWithDeadline.mockImplementation(
-      async (_input: RequestInfo | URL, init?: RequestInit) => {
-        for (const track of tracks) {
-          expect(track.stop).toHaveBeenCalledTimes(1);
-        }
-        const startBody = JSON.parse(String(init?.body));
-        expect(startBody).not.toHaveProperty("permissionStream");
-        expect(Object.keys(startBody).sort()).toEqual([
-          "config",
-          "mode",
-          "roundType",
-          "startAttemptId",
-        ]);
-        return Response.json({
-          sessionId: "550e8400-e29b-41d4-a716-446655440000",
-          token: "short-lived-token",
-          url: "wss://preview.livekit.cloud",
-          roomName: "interview-room",
-        });
+    mockStartFetch(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalledTimes(1);
       }
-    );
+      const startBody = JSON.parse(String(init?.body));
+      expect(startBody).not.toHaveProperty("permissionStream");
+      expect(Object.keys(startBody).sort()).toEqual([
+        "config",
+        "mode",
+        "roundType",
+        "startAttemptId",
+      ]);
+      return Response.json({
+        sessionId: "550e8400-e29b-41d4-a716-446655440000",
+        token: "short-lived-token",
+        url: "wss://preview.livekit.cloud",
+        roomName: "interview-room",
+      });
+    });
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
 
     await waitFor(() =>
       expect(mocks.push).toHaveBeenCalledWith(
@@ -274,16 +277,21 @@ describe("interview setup microphone permission check", () => {
     [402, { error: "no_credits_remaining" }],
   ])("releases every track after an HTTP %s response", async (status, body) => {
     const { tracks } = installPermissionStream();
-    mocks.fetchWithDeadline.mockResolvedValue(Response.json(body, { status }));
+    mockStartFetch(async () => Response.json(body, { status }));
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
 
-    await waitFor(() => expect(mocks.fetchWithDeadline).toHaveBeenCalled());
-    for (const track of tracks) {
-      expect(track.stop).toHaveBeenCalledTimes(1);
+    await waitFor(expectStartRequest);
+    await waitFor(() => {
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalledTimes(1);
+      }
+    });
+    const cancelButton = screen.queryByRole("button", { name: "Cancel start" });
+    if (cancelButton) {
+      fireEvent.click(cancelButton);
+      await screen.findByText(/interview start canceled/i);
     }
   });
 
@@ -295,17 +303,146 @@ describe("interview setup microphone permission check", () => {
     });
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
 
     await waitFor(() =>
       expect(mocks.validateSessionStart).toHaveBeenCalledTimes(1)
     );
-    expect(mocks.fetchWithDeadline).not.toHaveBeenCalled();
+    expectNoStartRequest();
     for (const track of tracks) {
       expect(track.stop).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("loads saved launcher defaults and carries company context into the validated start", async () => {
+    mocks.searchParams = new URLSearchParams("company=Acme");
+    mocks.settings = {
+      defaultInterviewType: "analytical",
+      defaultDifficulty: "hard",
+      questionRecency: "recent",
+    };
+    installPermissionStream();
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+    await waitFor(() =>
+      expect(screen.getByText("Execution · Senior PM")).toBeInTheDocument()
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start mock interview" })
+    );
+
+    await waitFor(() => {
+      expect(mocks.validateSessionStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roundType: "execution",
+          company: "Acme",
+          config: expect.objectContaining({
+            difficulty: "advanced",
+            questionPreference: { recency: "recent", recentDays: 730 },
+          }),
+        })
+      );
+    });
+  });
+
+  it("keeps Start unavailable until saved launcher defaults resolve", async () => {
+    let resolveSettings: ((response: Response) => void) | undefined;
+    const settingsResponse = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    mocks.fetchWithDeadline.mockImplementation(
+      async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/user/settings") return settingsResponse;
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }
+    );
+    installPermissionStream();
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+    const loadingButton = screen.getByRole("button", {
+      name: "Loading saved setup...",
+    });
+    expect(loadingButton).toBeDisabled();
+    fireEvent.click(loadingButton);
+    expect(mocks.validateSessionStart).not.toHaveBeenCalled();
+    expectNoStartRequest();
+
+    act(() => {
+      resolveSettings?.(
+        Response.json({
+          settings: {
+            defaultInterviewType: "analytical",
+            defaultDifficulty: "hard",
+            questionRecency: "recent",
+          },
+        })
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("Execution · Senior PM")).toBeInTheDocument()
+    );
+    const startButton = await findReadyStartButton();
+    expect(startButton).toBeEnabled();
+    expect(mocks.fetchWithDeadline).toHaveBeenCalledWith(
+      "/api/user/settings",
+      {},
+      8_000
+    );
+    fireEvent.click(startButton);
+    await waitFor(() =>
+      expect(mocks.validateSessionStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roundType: "execution",
+          config: expect.objectContaining({
+            difficulty: "advanced",
+            questionPreference: { recency: "recent", recentDays: 730 },
+          }),
+        })
+      )
+    );
+  });
+
+  it("falls back to system defaults when the bounded settings read times out", async () => {
+    const timeoutError = new Error("settings request timed out");
+    timeoutError.name = "AbortError";
+    mocks.fetchWithDeadline.mockImplementation(
+      async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/user/settings") throw timeoutError;
+        throw new Error(`Unexpected request: ${String(input)}`);
+      }
+    );
+    installPermissionStream();
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+
+    const startButton = await findReadyStartButton();
+    expect(startButton).toBeEnabled();
+    expect(screen.getByText("Product Sense · IC PM")).toBeInTheDocument();
+    expect(mocks.fetchWithDeadline).toHaveBeenCalledWith(
+      "/api/user/settings",
+      {},
+      8_000
+    );
+
+    expect(mocks.validateSessionStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit URL round and difficulty ahead of saved defaults", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "interview_type=strategy&difficulty=beginner"
+    );
+    mocks.settings = {
+      defaultInterviewType: "analytical",
+      defaultDifficulty: "hard",
+      questionRecency: "all",
+    };
+
+    render(<SetupContent voiceUnavailableInPreview={false} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Strategy · Junior/APM")).toBeInTheDocument()
+    );
   });
 
   it("preserves the actionable denial message without trying to clean an absent stream", async () => {
@@ -317,15 +454,13 @@ describe("interview setup microphone permission check", () => {
     installGetUserMedia(getUserMedia);
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
 
     await screen.findByText(
       "Microphone access is required for voice interviews. Please grant permission and try again."
     );
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
-    expect(mocks.fetchWithDeadline).not.toHaveBeenCalled();
+    expectNoStartRequest();
     expect(
       screen.getByRole("button", { name: "Start mock interview" })
     ).toBeEnabled();
@@ -345,9 +480,7 @@ describe("interview setup microphone permission check", () => {
         <SetupContent voiceUnavailableInPreview={false} />
       </React.StrictMode>
     );
-    const startButton = screen.getByRole("button", {
-      name: "Start mock interview",
-    });
+    const startButton = await findReadyStartButton();
     act(() => {
       fireEvent.click(startButton);
       fireEvent.click(startButton);
@@ -373,9 +506,7 @@ describe("interview setup microphone permission check", () => {
     const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }];
 
     const view = render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
     view.unmount();
 
@@ -391,7 +522,7 @@ describe("interview setup microphone permission check", () => {
         expect(track.stop).toHaveBeenCalledTimes(1);
       }
     });
-    expect(mocks.fetchWithDeadline).not.toHaveBeenCalled();
+    expectNoStartRequest();
   });
 
   it("never requests a permission stream when voice is unavailable in Preview", () => {
@@ -404,7 +535,7 @@ describe("interview setup microphone permission check", () => {
       screen.getByRole("button", { name: "Voice unavailable in Preview" })
     ).toBeDisabled();
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(mocks.fetchWithDeadline).not.toHaveBeenCalled();
+    expectNoStartRequest();
   });
 });
 
@@ -431,6 +562,8 @@ describe("setup interview start recovery", () => {
       success: true,
       data,
     }));
+    mocks.searchParams = new URLSearchParams();
+    mocks.settings = null;
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(ATTEMPT_ID);
     Object.defineProperty(globalThis.navigator, "mediaDevices", {
       configurable: true,
@@ -444,6 +577,9 @@ describe("setup interview start recovery", () => {
       "fetch",
       vi.fn<typeof fetch>(async (input) => {
         if (String(input) === "/api/billing/credits") return creditsResponse();
+        if (String(input) === "/api/user/settings") {
+          return jsonResponse(200, { settings: mocks.settings });
+        }
         throw new Error(`Unexpected request: ${String(input)}`);
       })
     );
@@ -462,45 +598,41 @@ describe("setup interview start recovery", () => {
     let activeRequests = 0;
     let maxActiveRequests = 0;
 
-    mocks.fetchWithDeadline.mockImplementation(
-      async (_input, init, deadlineMs) => {
-        startRequests += 1;
-        startBodies.push(JSON.parse(String(init?.body)));
-        requestDeadlines.push(deadlineMs);
-        activeRequests += 1;
-        maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+    mockStartFetch(async (_input, init, deadlineMs) => {
+      startRequests += 1;
+      startBodies.push(JSON.parse(String(init?.body)));
+      requestDeadlines.push(deadlineMs);
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
 
-        if (startRequests === 1) {
-          return new Promise<Response>((_resolve, reject) => {
-            setTimeout(() => {
-              activeRequests -= 1;
-              reject(abortError("browser deadline"));
-            }, deadlineMs);
-          });
-        }
-
-        activeRequests -= 1;
-        if (startRequests === 2) {
-          return jsonResponse(
-            503,
-            { retryable: true, retryAfterMs: 1 },
-            { "Retry-After": "0" }
-          );
-        }
-
-        return jsonResponse(200, {
-          sessionId: ATTEMPT_ID,
-          roomName: `interview-${ATTEMPT_ID}`,
-          token: "join-token",
-          url: "wss://preview.example.test",
+      if (startRequests === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          setTimeout(() => {
+            activeRequests -= 1;
+            reject(abortError("browser deadline"));
+          }, deadlineMs);
         });
       }
-    );
+
+      activeRequests -= 1;
+      if (startRequests === 2) {
+        return jsonResponse(
+          503,
+          { retryable: true, retryAfterMs: 1 },
+          { "Retry-After": "0" }
+        );
+      }
+
+      return jsonResponse(200, {
+        sessionId: ATTEMPT_ID,
+        roomName: `interview-${ATTEMPT_ID}`,
+        token: "join-token",
+        url: "wss://preview.example.test",
+      });
+    });
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    const startButton = screen.getByRole("button", {
-      name: "Start mock interview",
-    });
+    const startButton = await findReadyStartButton();
     fireEvent.click(startButton);
     fireEvent.click(startButton);
 
@@ -536,9 +668,7 @@ describe("setup interview start recovery", () => {
     });
 
     const view = render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
     await screen.findByText(/no second click or extra credit is needed/i);
 
     view.unmount();
@@ -557,9 +687,7 @@ describe("setup interview start recovery", () => {
     });
 
     render(<SetupContent voiceUnavailableInPreview={false} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start mock interview" })
-    );
+    fireEvent.click(await findReadyStartButton());
     await screen.findByText(/no second click or extra credit is needed/i);
     fireEvent.click(screen.getByRole("button", { name: "Cancel start" }));
     await screen.findByText(/interview start canceled/i);
@@ -572,21 +700,61 @@ describe("setup interview start recovery", () => {
 });
 
 function stubStartThatStaysBusy(nextRequest: () => number) {
-  mocks.fetchWithDeadline.mockImplementation(
-    async (_input, _init, deadlineMs) => {
-      const requestNumber = nextRequest();
-      if (requestNumber === 1) {
-        return new Promise<Response>((_resolve, reject) =>
-          setTimeout(() => reject(abortError("browser deadline")), deadlineMs)
-        );
-      }
-      return jsonResponse(
-        503,
-        { retryable: true, retryAfterMs: 1_000 },
-        { "Retry-After": "1" }
+  mockStartFetch(async (_input, _init, deadlineMs) => {
+    const requestNumber = nextRequest();
+    if (requestNumber === 1) {
+      return new Promise<Response>((_resolve, reject) =>
+        setTimeout(() => reject(abortError("browser deadline")), deadlineMs)
       );
     }
+    return jsonResponse(
+      503,
+      { retryable: true, retryAfterMs: 1_000 },
+      { "Retry-After": "1" }
+    );
+  });
+}
+
+async function findReadyStartButton() {
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Start mock interview" })
+    ).toBeEnabled()
   );
+  return screen.getByRole("button", { name: "Start mock interview" });
+}
+
+function mockStartFetch(
+  startRequest: (
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    deadlineMs: number
+  ) => Promise<Response>
+) {
+  mocks.fetchWithDeadline.mockImplementation(
+    async (input: RequestInfo | URL, init?: RequestInit, deadlineMs = 0) => {
+      if (String(input) === "/api/user/settings") {
+        return Response.json({ settings: mocks.settings });
+      }
+      return startRequest(input, init, deadlineMs);
+    }
+  );
+}
+
+function expectNoStartRequest() {
+  expect(
+    mocks.fetchWithDeadline.mock.calls.some(
+      ([input]) => String(input) === "/api/session/start"
+    )
+  ).toBe(false);
+}
+
+function expectStartRequest() {
+  expect(
+    mocks.fetchWithDeadline.mock.calls.some(
+      ([input]) => String(input) === "/api/session/start"
+    )
+  ).toBe(true);
 }
 
 function creditsResponse() {

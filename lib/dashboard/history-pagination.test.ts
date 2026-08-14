@@ -5,8 +5,9 @@ import { buildSessionsRequestPath, sessionKeys } from "../api/queries";
 import { buildHistoryPaginationView } from "./history-pagination";
 
 test("session queries isolate each API page in the cache and request path", () => {
-  assert.deepEqual(sessionKeys.list(20, 40), [
+  assert.deepEqual(sessionKeys.list("user-123", 20, 40), [
     "sessions",
+    { userId: "user-123" },
     "list",
     { limit: 20, offset: 40 },
   ]);

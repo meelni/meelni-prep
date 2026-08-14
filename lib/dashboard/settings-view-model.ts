@@ -26,6 +26,7 @@ export interface SettingsSubscriptionSummary {
   planName?: string;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
+  portalAvailable?: boolean;
 }
 
 export interface SettingsCreditSummary {
@@ -45,6 +46,12 @@ export const SETTINGS_NAV_ITEMS: SettingsNavItem[] =
     id,
     label: SETTINGS_CATEGORY_LABELS[id],
   }));
+
+export function canOpenBillingPortal(
+  subscription: SettingsSubscriptionSummary | null
+) {
+  return subscription?.portalAvailable === true;
+}
 
 export function resolveSettingsCategory(
   value: string | null | undefined,
