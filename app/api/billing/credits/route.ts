@@ -6,7 +6,6 @@ import {
   getLocalDevCreditBalanceResponse,
   isLocalDevCreditBypassEnabled,
 } from "@/lib/billing/local-dev-bypass";
-import { upsertUser } from "@/lib/db/users";
 import { reportOperationalFailure } from "@/lib/operations/operational-events";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,12 +20,6 @@ export async function GET() {
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    await upsertUser({
-      id: user.id,
-      email: user.email!,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || null,
-    });
 
     if (isLocalDevCreditBypassEnabled()) {
       return NextResponse.json(getLocalDevCreditBalanceResponse());

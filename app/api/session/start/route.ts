@@ -18,6 +18,7 @@
  * @request.config.duration {number} Optional - 15, 30, or 45 minutes
  * @request.config.hintMode {string} Optional compatibility field; full mock interviews always normalize it to off
  * @request.config.questionPreference {Object} Optional - Question recency preference
+ * @request.company {string} Optional - Exact company context for server-owned question selection
  *
  * @response {Object} response - Session credentials and info
  * @response.sessionId {string} - UUID of created session

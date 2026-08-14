@@ -77,6 +77,14 @@ and offers another interview. An immutable terminal evidence failure does not
 invent a retry action. Separately modeled transient dispatch and generation
 failures retain their existing retry controls.
 
+An expired authenticated session is a reauthentication state, not a generic
+feedback failure. A `401` from the feedback GET, authorized recovery POST, or
+comparison read redirects through the shared safe auth handoff with the exact
+owned feedback or comparison path as both the return and cancel destination.
+Successful sign-in therefore resumes the same review instead of dropping the
+candidate at Dashboard. The client does not surface the raw unauthorized
+response as recovery copy.
+
 Feedback-route and Dashboard reads share one strict skipped-tuple classifier.
 `no_reviewable_answer` requires an `insufficient` or `abandoned` completion
 tier. Integrity failure remains independent of candidate coverage, so it may
@@ -98,6 +106,12 @@ trends, progress bars, comparisons, focus areas, or weakness patterns. Partial,
 coaching, unable, pending, failed, malformed, and missing results add no numeric
 value and no synthetic zero. A future dimension-specific metric may consume a
 supported partial dimension only if it preserves a supported-score denominator.
+
+Customer-facing overall scores use whole-number presentation everywhere,
+including comparison selectors and side-by-side detail. Comparison overall
+deltas are derived from those displayed whole-number values, so the delta
+cannot imply precision that the two displayed scores omit. Persisted canonical
+score arithmetic remains unchanged.
 
 ## Accessibility and privacy
 

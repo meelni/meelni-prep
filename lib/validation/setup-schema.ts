@@ -28,6 +28,7 @@ export const sessionStartSchema = z.object({
   role: z.literal("pm").optional(),
   config: interviewConfigSchema,
   questionId: z.string().uuid().optional(), // Optional pre-selected question from explore page
+  company: z.string().trim().min(1).max(160).optional(),
 });
 
 /**
