@@ -19,6 +19,8 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { SessionAttempt, ComparisonData } from "@/lib/types/comparison";
 import { toSafeErrorLog } from "@/lib/privacy/safe-error";
+import { buildFeedbackReauthenticationHref } from "./feedback-auth-navigation";
+import { getDisplayedOverallScore } from "./score-presentation";
 
 const roundTypeLabels: Record<string, string> = {
   product_sense: "Product Sense",
@@ -119,6 +121,10 @@ export function FeedbackComparisonReview() {
   const router = useRouter();
   const params = useParams();
   const sessionId = params.sessionId as string;
+  const reauthenticationHref = buildFeedbackReauthenticationHref(
+    sessionId,
+    true
+  );
   const shouldReduceMotion = useReducedMotion();
 
   const [attempts, setAttempts] = useState<SessionAttempt[]>([]);
@@ -137,7 +143,7 @@ export function FeedbackComparisonReview() {
   // Fetch available attempts
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/auth/signin");
+      router.replace(reauthenticationHref);
       return;
     }
 
@@ -149,6 +155,10 @@ export function FeedbackComparisonReview() {
         setAttemptsError(null);
 
         const res = await fetch(`/api/feedback/${sessionId}/attempts`);
+        if (res.status === 401) {
+          router.replace(reauthenticationHref);
+          return;
+        }
         if (!res.ok) {
           throw new Error("Failed to fetch attempts");
         }
@@ -175,7 +185,7 @@ export function FeedbackComparisonReview() {
     };
 
     fetchAttempts();
-  }, [user, authLoading, sessionId, router]);
+  }, [user, authLoading, reauthenticationHref, sessionId, router]);
 
   // Fetch comparison data when both attempts are selected
   useEffect(() => {
@@ -204,6 +214,10 @@ export function FeedbackComparisonReview() {
           }),
         });
 
+        if (res.status === 401) {
+          router.replace(reauthenticationHref);
+          return;
+        }
         if (!res.ok) {
           throw new Error("Failed to fetch comparison");
         }
@@ -227,7 +241,13 @@ export function FeedbackComparisonReview() {
       active = false;
       controller.abort();
     };
-  }, [comparisonRetryKey, selectedAttempt1, selectedAttempt2]);
+  }, [
+    comparisonRetryKey,
+    reauthenticationHref,
+    router,
+    selectedAttempt1,
+    selectedAttempt2,
+  ]);
 
   // Loading state
   if (authLoading || loading) {
@@ -362,7 +382,8 @@ export function FeedbackComparisonReview() {
                           </span>
                           {attempt.overallScore !== null && (
                             <Badge className="border-border/50 bg-muted/50 text-muted-foreground">
-                              {attempt.overallScore}/10
+                              {getDisplayedOverallScore(attempt.overallScore)}
+                              /10
                             </Badge>
                           )}
                         </div>
@@ -401,7 +422,8 @@ export function FeedbackComparisonReview() {
                           </span>
                           {attempt.overallScore !== null && (
                             <Badge className="border-primary/20 bg-primary/10 text-primary">
-                              {attempt.overallScore}/10
+                              {getDisplayedOverallScore(attempt.overallScore)}
+                              /10
                             </Badge>
                           )}
                         </div>

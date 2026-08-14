@@ -9,6 +9,7 @@ import {
   getStripeCatalogIdForPrice,
 } from "@/lib/billing/stripe-catalog";
 import { mayApplyStripeSubscriptionResource } from "@/lib/billing/stripe-subscription-event-order";
+import { mapStripeSubscriptionStatus } from "@/lib/billing/stripe-subscription-status";
 import { cancelObservedMissingStripeSubscription } from "@/lib/db/stripe-subscription-sync";
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -236,7 +237,7 @@ async function syncSubscriptionFromStripe(
 ): Promise<{ tier: string; status: string }> {
   const firstItem = stripeSubscription.items.data[0];
   const priceId = firstItem?.price?.id;
-  const status = mapStripeStatus(stripeSubscription.status);
+  const status = mapStripeSubscriptionStatus(stripeSubscription.status);
 
   const existing = await db
     .select()
@@ -355,27 +356,4 @@ async function syncSubscriptionFromStripe(
   }
 
   return { tier: updateData.tier, status };
-}
-
-/**
- * Map Stripe subscription status to our internal status
- */
-function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
-  switch (stripeStatus) {
-    case "active":
-      return "active";
-    case "canceled":
-      return "canceled";
-    case "past_due":
-      return "past_due";
-    case "paused":
-      return "paused";
-    case "trialing":
-      return "trialing";
-    case "incomplete":
-    case "incomplete_expired":
-      return "canceled";
-    default:
-      return "active";
-  }
 }

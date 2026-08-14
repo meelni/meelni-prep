@@ -242,6 +242,15 @@ Expected:
 - No new `subscription` row is activated from this attempt.
 - No new `credit_grant` row is created.
 
+Also reconcile authoritative subscriptions in each Stripe state through both
+the signed webhook and authenticated manual-sync adapters. `incomplete`,
+`incomplete_expired`, and `unpaid` must persist as local `paused`, never
+`active`; a synthetic future status must also fail closed in the shared
+normalizer. `past_due` subscription-derived credits are available strictly
+before the recorded grace cutoff and unavailable at equality, after it, or
+when the cutoff is missing. Non-subscription grants remain governed by their
+own expiration and reversal evidence.
+
 ## Scenario 5: 3D Secure
 
 **Goal**: Verify Checkout handles SCA and still grants credits after successful completion.
