@@ -61,6 +61,12 @@ import {
   INTERVIEW_START_SLOS,
   type InterviewStartStageOutcome,
 } from "@/lib/operations/interview-start-slo";
+import {
+  normalizeInterviewLauncherDefaults,
+  resolveInterviewLauncherDefaults,
+} from "@/lib/dashboard/interview-defaults";
+
+const INITIAL_LAUNCHER_DEFAULTS = normalizeInterviewLauncherDefaults(null);
 
 export function SetupContent({
   voiceUnavailableInPreview,
@@ -102,6 +108,11 @@ export function SetupContent({
   const [difficulty, setDifficulty] = useState<DifficultyLevel | null>(
     fallbackRecommendation.difficulty
   );
+  const [savedLauncherDefaults, setSavedLauncherDefaults] = useState(
+    INITIAL_LAUNCHER_DEFAULTS
+  );
+  const [launcherDefaultsResolved, setLauncherDefaultsResolved] =
+    useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isRecoveringStart, setIsRecoveringStart] = useState(false);
   const [showCustomization, setShowCustomization] = useState(false);
@@ -113,6 +124,8 @@ export function SetupContent({
   const defaultDifficulty = useRef<DifficultyLevel | null>(
     fallbackRecommendation.difficulty
   );
+  const roundCustomized = useRef(false);
+  const difficultyCustomized = useRef(false);
   const startSingleFlight = useMemo(createInterviewStartSingleFlight, []);
 
   useEffect(
@@ -136,6 +149,11 @@ export function SetupContent({
   const launcherViewKey = questionIdParam ?? "dashboard";
   const trackedLauncherViewKey = useRef<string | null>(null);
 
+  const resolvedLauncherDefaults = resolveInterviewLauncherDefaults({
+    saved: savedLauncherDefaults,
+    explicitRoundType: launchContext.roundType,
+    explicitDifficulty: launchContext.difficulty,
+  });
   const recommendation = buildInterviewRecommendation({
     selectedQuestion:
       questionId && questionData
@@ -146,8 +164,8 @@ export function SetupContent({
             type: questionData.type,
           }
         : null,
-    requestedRoundType: launchContext.roundType,
-    requestedDifficulty: launchContext.difficulty,
+    requestedRoundType: resolvedLauncherDefaults.roundType,
+    requestedDifficulty: resolvedLauncherDefaults.difficulty,
     focus: launchContext.focus,
     company: launchContext.company,
   });
@@ -210,6 +228,56 @@ export function SetupContent({
   }, [launchContext.difficulty, launchContext.roundType]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+
+    async function loadLauncherDefaults() {
+      try {
+        const response = await fetch("/api/user/settings");
+        if (!response.ok) return;
+        const payload: unknown = await response.json();
+        const settings =
+          payload && typeof payload === "object" && "settings" in payload
+            ? (payload as { settings?: unknown }).settings
+            : null;
+        const normalized = normalizeInterviewLauncherDefaults(settings);
+        if (!active) return;
+
+        setSavedLauncherDefaults(normalized);
+        if (
+          !launchContext.roundType &&
+          !questionIdParam &&
+          !roundCustomized.current
+        ) {
+          setRoundType(normalized.roundType);
+          defaultRoundType.current = normalized.roundType;
+        }
+        if (!launchContext.difficulty && !difficultyCustomized.current) {
+          setDifficulty(normalized.difficulty);
+          defaultDifficulty.current = normalized.difficulty;
+        }
+      } catch (loadError) {
+        console.error("[Interview Setup] settings_fetch_failed", {
+          code: "settings_fetch_failed",
+          ...toSafeErrorLog(loadError),
+        });
+      } finally {
+        if (active) setLauncherDefaultsResolved(true);
+      }
+    }
+
+    void loadLauncherDefaults();
+    return () => {
+      active = false;
+    };
+  }, [
+    launchContext.difficulty,
+    launchContext.roundType,
+    questionIdParam,
+    user?.id,
+  ]);
+
+  useEffect(() => {
     if (questionIntentState.status !== "ready" || !questionIdParam) {
       return;
     }
@@ -230,6 +298,7 @@ export function SetupContent({
 
     if (
       !isLauncherViewReady ||
+      !launcherDefaultsResolved ||
       trackedLauncherViewKey.current === launcherViewKey
     ) {
       return;
@@ -253,6 +322,7 @@ export function SetupContent({
     analyticsLaunchContext,
     hasLaunchContext,
     launcherViewKey,
+    launcherDefaultsResolved,
     recommendation.difficulty,
     recommendation.roundType,
     recommendation.source,
@@ -387,7 +457,10 @@ export function SetupContent({
         };
 
         // Expand to full config with system defaults
-        const fullConfig = buildFullConfig(minimalConfig);
+        const fullConfig = {
+          ...buildFullConfig(minimalConfig),
+          questionPreference: savedLauncherDefaults.questionPreference,
+        };
 
         // Prepare session data
         const sessionData = {
@@ -395,6 +468,7 @@ export function SetupContent({
           mode: "voice_video" as const,
           config: fullConfig,
           questionId: questionId || undefined, // Include pre-selected question if available
+          company: launchContext.company || undefined,
         };
 
         // Validate data
@@ -882,6 +956,7 @@ export function SetupContent({
                     isCreatingSession || Boolean(selectedQuestionRoundType)
                   }
                   onSelect={(type) => {
+                    roundCustomized.current = true;
                     if (defaultRoundType.current === null) {
                       defaultRoundType.current = type;
                     }
@@ -904,6 +979,7 @@ export function SetupContent({
                   selected={difficulty}
                   onSelect={(level) => {
                     if (isCreatingSession) return;
+                    difficultyCustomized.current = true;
                     if (defaultDifficulty.current === null) {
                       defaultDifficulty.current = level;
                     }
@@ -938,6 +1014,8 @@ export function SetupContent({
                 variant="link"
                 className="text-dashboard-accent h-auto min-h-11 px-0"
                 onClick={() => {
+                  roundCustomized.current = true;
+                  difficultyCustomized.current = true;
                   setRoundType(recommendation.roundType);
                   setDifficulty(recommendation.difficulty);
                 }}

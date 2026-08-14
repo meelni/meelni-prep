@@ -97,8 +97,8 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <ErrorBoundary>
-            <QueryProvider>
-              <AuthProvider>
+            <AuthProvider>
+              <QueryProvider>
                 <AnalyticsConsentProvider
                   initialAccountRevision={trustedConsent.accountRevision}
                   initialAccountSyncPending={trustedConsent.accountSyncPending}
@@ -118,8 +118,8 @@ export default async function RootLayout({
                     </StatsigProvider>
                   </PostHogProvider>
                 </AnalyticsConsentProvider>
-              </AuthProvider>
-            </QueryProvider>
+              </QueryProvider>
+            </AuthProvider>
           </ErrorBoundary>
         </ThemeProvider>
       </body>
