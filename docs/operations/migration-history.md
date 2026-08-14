@@ -4,47 +4,48 @@
 
 <!-- migration-journal:start -->
 
-| Index | Journal tag                              |
-| ----: | ---------------------------------------- |
-|     0 | `0000_many_nocturne`                     |
-|     1 | `0001_panoramic_otto_octavius`           |
-|     2 | `0002_relaunch_reconciliation`           |
-|     3 | `0003_durable_account_deletion`          |
-|     4 | `0004_stripe_deletion_privacy`           |
-|     5 | `0005_multi_subject_account_deletion`    |
-|     6 | `0006_interview_session_lifecycle`       |
-|     7 | `0007_atomic_session_completion`         |
-|     8 | `0008_deadline_room_cleanup_ack`         |
-|     9 | `0009_interview_session_reconnect`       |
-|    10 | `0010_reconnect_cutoff_owner`            |
-|    11 | `0011_transcript_ingest`                 |
-|    12 | `0012_transcript_privacy_integrity`      |
-|    13 | `0013_runtime_settlement`                |
-|    14 | `0014_stable_start_usable_credit`        |
-|    15 | `0015_provider_credit_recovery`          |
-|    16 | `0016_billing_truth`                     |
-|    17 | `0017_webhook_convergence`               |
-|    18 | `0018_invoice_status_convergence`        |
-|    19 | `0019_subscription_resource_convergence` |
-|    20 | `0020_durable_livekit_deletion`          |
-|    21 | `0021_feedback_v2`                       |
-|    22 | `0022_server_owned_billing_privileges`   |
-|    23 | `0023_explicit_analytics_consent`        |
-|    24 | `0024_runtime_settlement_reconciliation` |
-|    25 | `0025_public_demo_limits`                |
-|    26 | `0026_preview_lineage_reconciliation`    |
-|    27 | `0027_question_provenance`               |
-|    28 | `0028_focused_practice_attempts`         |
-|    29 | `0029_durable_contact_submission`        |
-|    30 | `0030_transcript_committed_watermarks`   |
-|    31 | `0031_sav_397_feedback_outcomes`         |
-|    32 | `0032_dimension_evidence_coverage`       |
-|    33 | `0033_scoreless_focused_practice`        |
-|    34 | `0034_feedback_quality_signals`          |
+| Index | Journal tag                                  |
+| ----: | -------------------------------------------- |
+|     0 | `0000_many_nocturne`                         |
+|     1 | `0001_panoramic_otto_octavius`               |
+|     2 | `0002_relaunch_reconciliation`               |
+|     3 | `0003_durable_account_deletion`              |
+|     4 | `0004_stripe_deletion_privacy`               |
+|     5 | `0005_multi_subject_account_deletion`        |
+|     6 | `0006_interview_session_lifecycle`           |
+|     7 | `0007_atomic_session_completion`             |
+|     8 | `0008_deadline_room_cleanup_ack`             |
+|     9 | `0009_interview_session_reconnect`           |
+|    10 | `0010_reconnect_cutoff_owner`                |
+|    11 | `0011_transcript_ingest`                     |
+|    12 | `0012_transcript_privacy_integrity`          |
+|    13 | `0013_runtime_settlement`                    |
+|    14 | `0014_stable_start_usable_credit`            |
+|    15 | `0015_provider_credit_recovery`              |
+|    16 | `0016_billing_truth`                         |
+|    17 | `0017_webhook_convergence`                   |
+|    18 | `0018_invoice_status_convergence`            |
+|    19 | `0019_subscription_resource_convergence`     |
+|    20 | `0020_durable_livekit_deletion`              |
+|    21 | `0021_feedback_v2`                           |
+|    22 | `0022_server_owned_billing_privileges`       |
+|    23 | `0023_explicit_analytics_consent`            |
+|    24 | `0024_runtime_settlement_reconciliation`     |
+|    25 | `0025_public_demo_limits`                    |
+|    26 | `0026_preview_lineage_reconciliation`        |
+|    27 | `0027_question_provenance`                   |
+|    28 | `0028_focused_practice_attempts`             |
+|    29 | `0029_durable_contact_submission`            |
+|    30 | `0030_transcript_committed_watermarks`       |
+|    31 | `0031_sav_397_feedback_outcomes`             |
+|    32 | `0032_dimension_evidence_coverage`           |
+|    33 | `0033_scoreless_focused_practice`            |
+|    34 | `0034_feedback_quality_signals`              |
+|    35 | `0035_sav_431_public_demo_preview_allowance` |
 
 <!-- migration-journal:end -->
 
-This thirty-five-entry inventory is generated from the same ordered contract as
+This thirty-six-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -379,3 +380,21 @@ RLS permits owner reads only, while writes and limiter execution remain
 service-owned. The limiter fails closed against durable deletion intent, and
 account cleanup explicitly removes both tables. The migration does not rewrite
 evaluator feedback, transcript evidence, or existing account data.
+
+## Public demo preview allowance
+
+Migration `0035_sav_431_public_demo_preview_allowance` replaces the public demo
+reservation and completion functions without changing their service-role-only
+privilege boundary. A signed device may start ten previews in a rolling 24-hour
+window, subject to one active preview, an IP safeguard of ten per ten minutes
+and twenty per day, and the unchanged deployment-wide breaker. Once the
+two-minute active window ends, the function asks the web route to rotate the
+signed session identity instead of applying the old 15-minute session
+cooldown. New reservations receive random server-derived room names.
+
+A provider startup failure confirmed before a usable token is issued refunds
+exactly one matching reservation timestamp from the device, IP, and global
+counters under the same global lock order used for admission. Later client or
+runtime failures remain counted because the server cannot safely prove the
+preview was unused. The migration changes no customer, interview, transcript,
+feedback, billing, or provider state.

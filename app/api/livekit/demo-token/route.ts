@@ -136,13 +136,41 @@ export async function POST(req: NextRequest) {
     env: livekitEnv.data,
   });
 
+  let responseDeviceCookie = identity.deviceCookie;
+  let responseSessionCookie = identity.sessionCookie;
+  if (!result.ok && result.rotateSessionCookie) {
+    try {
+      const rotatedIdentity = resolvePublicDemoIdentity({
+        headers: req.headers,
+        deviceCookie: identity.deviceCookie,
+        sessionCookie: undefined,
+        secret: abuseSecret,
+        trustedLocalDevelopment: isTrustedPublicDemoLocalDevelopment(req),
+        trustedVercelDeployment: process.env.VERCEL === "1",
+      });
+      responseDeviceCookie = rotatedIdentity.deviceCookie;
+      responseSessionCookie = rotatedIdentity.sessionCookie;
+    } catch {
+      console.error("[PublicDemoAudit]", {
+        outcome: "failed",
+        reason: "session_rotation_unavailable",
+      });
+      return noStore(
+        NextResponse.json(
+          { error: "demo_temporarily_unavailable" },
+          { status: 503 }
+        )
+      );
+    }
+  }
+
   const response = noStore(
     NextResponse.json(result.body, { status: result.ok ? 200 : result.status })
   );
   if (!result.ok && result.retryAfterSeconds) {
     response.headers.set("Retry-After", String(result.retryAfterSeconds));
   }
-  setIdentityCookies(response, identity.deviceCookie, identity.sessionCookie);
+  setIdentityCookies(response, responseDeviceCookie, responseSessionCookie);
   if (!result.ok && result.resetSessionCookie) {
     response.cookies.delete(PUBLIC_DEMO_SESSION_COOKIE);
   }

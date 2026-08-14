@@ -61,6 +61,8 @@ export type StartPublicDemoResult =
       status: 409 | 429 | 503;
       body: {
         error:
+          | "demo_identity_initialized"
+          | "demo_preview_active"
           | "demo_start_in_progress"
           | "demo_rate_limited"
           | "demo_temporarily_unavailable";
@@ -69,6 +71,7 @@ export type StartPublicDemoResult =
       };
       retryAfterSeconds?: number;
       resetSessionCookie?: boolean;
+      rotateSessionCookie?: boolean;
     };
 
 export async function startPublicDemoWorkflow(
@@ -88,33 +91,56 @@ export async function startPublicDemoWorkflow(
     return unavailable();
   }
 
+  if (reservation.action === "rotate_session") {
+    deps.audit({ outcome: "allowed", reason: "session_rotation_required" });
+    return {
+      ok: false,
+      status: 409,
+      body: { error: "demo_identity_initialized" },
+      rotateSessionCookie: true,
+    };
+  }
+
   if (
     reservation.action === "rate_limited" ||
     reservation.action === "failed"
   ) {
     const retryAfterSeconds = reservation.retryAfterSeconds;
+    const activePreview =
+      reservation.action === "rate_limited" &&
+      reservation.limitingScope === "active_device";
     deps.audit({
       outcome: "denied",
       reason:
         reservation.action === "failed"
           ? "prior_provider_failure"
-          : "rate_limited",
+          : activePreview
+            ? "preview_active"
+            : "rate_limited",
       limitingScope: reservation.limitingScope ?? undefined,
       retryBucket: retryBucket(retryAfterSeconds),
     });
     return {
       ok: false,
-      status: reservation.action === "failed" ? 503 : 429,
+      status: reservation.action === "failed" ? 503 : activePreview ? 409 : 429,
       body:
         reservation.action === "failed"
           ? { error: "demo_temporarily_unavailable" }
-          : {
-              error: "demo_rate_limited",
-              retryAfterSeconds,
-              retryAt: new Date(
-                deps.now().getTime() + retryAfterSeconds * 1000
-              ).toISOString(),
-            },
+          : activePreview
+            ? {
+                error: "demo_preview_active",
+                retryAfterSeconds,
+                retryAt: new Date(
+                  deps.now().getTime() + retryAfterSeconds * 1000
+                ).toISOString(),
+              }
+            : {
+                error: "demo_rate_limited",
+                retryAfterSeconds,
+                retryAt: new Date(
+                  deps.now().getTime() + retryAfterSeconds * 1000
+                ).toISOString(),
+              },
       retryAfterSeconds:
         reservation.action === "failed" ? undefined : retryAfterSeconds,
       ...(reservation.action === "failed" ? { resetSessionCookie: true } : {}),
