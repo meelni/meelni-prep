@@ -101,6 +101,8 @@ export function planFeedbackProviderAttempt(input: {
   deadlineAtMs: number;
   nowMs: number;
   retryAfterMs?: number | null;
+  /** The durable retry delay has already completed; only budget the request. */
+  retryDelayApplied?: boolean;
 }): FeedbackProviderAttemptPlan | null {
   if (
     !Number.isInteger(input.attempt) ||
@@ -114,7 +116,7 @@ export function planFeedbackProviderAttempt(input: {
     input.nowMs
   );
   const delayMs =
-    input.attempt === 1
+    input.attempt === 1 || input.retryDelayApplied === true
       ? 0
       : normalizeRetryDelay(
           input.retryAfterMs ?? defaultRetryDelay(input.attempt - 1)
@@ -144,6 +146,9 @@ export function classifyFeedbackGenerationFailure(
 ): FeedbackGenerationFailure {
   if (error instanceof FeedbackGenerationPolicyError) return error.failure;
   if (isDeadlineExceededError(error)) {
+    if (error.operation === "feedback_provider_attempt") {
+      return failure("provider", "transport_timeout", true);
+    }
     return deadlineExceededFailure(fallbackStage);
   }
 

@@ -163,5 +163,10 @@ function sanitizeUsage(
   ) {
     return null;
   }
-  return { ...value };
+  return {
+    inputTokens: value.inputTokens,
+    cachedInputTokens: value.cachedInputTokens,
+    outputTokens: value.outputTokens,
+    totalTokens: value.totalTokens,
+  };
 }

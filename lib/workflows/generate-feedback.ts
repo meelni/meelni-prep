@@ -16,7 +16,7 @@ import {
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
 import { getFrozenFeedbackEvaluationEvidence } from "@/lib/db/transcripts";
-import { withDeadline } from "@/lib/http/deadline";
+import { isDeadlineExceededError, withDeadline } from "@/lib/http/deadline";
 import {
   FeedbackProviderInvocationError,
   type StartFeedbackObservabilityTrace,
@@ -331,13 +331,22 @@ export async function generateFeedbackWorkflow(
       return unclaimedResult(input, current);
     }
 
-    const attemptPlan = plan;
     const attemptResult = await deps.steps.run(
       `evaluate-feedback-attempt-${attempt}`,
       async () => {
         const startedAtMs = deps.now().getTime();
         try {
-          assertFeedbackGenerationBudget(deadlineAtMs, startedAtMs, "provider");
+          const currentAttemptPlan = planFeedbackProviderAttempt({
+            attempt,
+            deadlineAtMs,
+            nowMs: startedAtMs,
+            retryDelayApplied: true,
+          });
+          if (!currentAttemptPlan) {
+            throw new FeedbackGenerationPolicyError(
+              deadlineExceededFailure("provider")
+            );
+          }
           const evaluation = await withDeadline(
             "feedback_provider_attempt",
             deps.evaluate({
@@ -346,11 +355,11 @@ export async function generateFeedbackWorkflow(
               allowNumericalScores,
               attempt,
               deadlineAtMs,
-              requestTimeoutMs: attemptPlan.requestTimeoutMs,
+              requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
               now: () => deps.now().getTime(),
               reportAttempt: deps.reportAttempt,
             }),
-            attemptPlan.requestTimeoutMs
+            currentAttemptPlan.requestTimeoutMs
           );
           assertFeedbackGenerationBudget(
             deadlineAtMs,
@@ -433,7 +442,12 @@ export async function generateFeedbackWorkflow(
       );
     }
     attempt += 1;
-    plan = retryPlan;
+    plan = planFeedbackProviderAttempt({
+      attempt,
+      deadlineAtMs,
+      nowMs: deps.now().getTime(),
+      retryDelayApplied: true,
+    });
   }
 
   const applied = await runObservedFeedbackStage(
@@ -791,6 +805,12 @@ function isClosedEvaluationFailure(error: unknown): boolean {
   if (
     error instanceof FeedbackProviderInvocationError ||
     error instanceof FeedbackGenerationPolicyError
+  ) {
+    return true;
+  }
+  if (
+    isDeadlineExceededError(error) &&
+    error.operation === "feedback_provider_attempt"
   ) {
     return true;
   }

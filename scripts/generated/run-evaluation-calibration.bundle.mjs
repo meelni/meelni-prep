@@ -31164,7 +31164,7 @@ function planFeedbackProviderAttempt(input) {
     input.deadlineAtMs,
     input.nowMs
   );
-  const delayMs = input.attempt === 1 ? 0 : normalizeRetryDelay(
+  const delayMs = input.attempt === 1 || input.retryDelayApplied === true ? 0 : normalizeRetryDelay(
     input.retryAfterMs ?? defaultRetryDelay(input.attempt - 1)
   );
   const requestTimeoutMs = Math.min(
@@ -31185,6 +31185,9 @@ function deadlineExceededFailure(stage) {
 function classifyFeedbackGenerationFailure(error, fallbackStage) {
   if (error instanceof FeedbackGenerationPolicyError) return error.failure;
   if (isDeadlineExceededError(error)) {
+    if (error.operation === "feedback_provider_attempt") {
+      return failure("provider", "transport_timeout", true);
+    }
     return deadlineExceededFailure(fallbackStage);
   }
   const messages2 = collectMessages(error);
@@ -31548,13 +31551,22 @@ async function generateFeedbackWorkflow(input, deps) {
       });
       return unclaimedResult(input, current);
     }
-    const attemptPlan = plan;
     const attemptResult = await deps.steps.run(
       `evaluate-feedback-attempt-${attempt}`,
       async () => {
         const startedAtMs = deps.now().getTime();
         try {
-          assertFeedbackGenerationBudget(deadlineAtMs, startedAtMs, "provider");
+          const currentAttemptPlan = planFeedbackProviderAttempt({
+            attempt,
+            deadlineAtMs,
+            nowMs: startedAtMs,
+            retryDelayApplied: true
+          });
+          if (!currentAttemptPlan) {
+            throw new FeedbackGenerationPolicyError(
+              deadlineExceededFailure("provider")
+            );
+          }
           const evaluation = await withDeadline(
             "feedback_provider_attempt",
             deps.evaluate({
@@ -31563,11 +31575,11 @@ async function generateFeedbackWorkflow(input, deps) {
               allowNumericalScores,
               attempt,
               deadlineAtMs,
-              requestTimeoutMs: attemptPlan.requestTimeoutMs,
+              requestTimeoutMs: currentAttemptPlan.requestTimeoutMs,
               now: () => deps.now().getTime(),
               reportAttempt: deps.reportAttempt
             }),
-            attemptPlan.requestTimeoutMs
+            currentAttemptPlan.requestTimeoutMs
           );
           assertFeedbackGenerationBudget(
             deadlineAtMs,
@@ -31638,7 +31650,12 @@ async function generateFeedbackWorkflow(input, deps) {
       );
     }
     attempt += 1;
-    plan = retryPlan;
+    plan = planFeedbackProviderAttempt({
+      attempt,
+      deadlineAtMs,
+      nowMs: deps.now().getTime(),
+      retryDelayApplied: true
+    });
   }
   const applied = await runObservedFeedbackStage(
     {
@@ -31830,6 +31847,9 @@ async function runObservedFeedbackStage(input, work) {
 }
 function isClosedEvaluationFailure(error) {
   if (error instanceof FeedbackProviderInvocationError || error instanceof FeedbackGenerationPolicyError) {
+    return true;
+  }
+  if (isDeadlineExceededError(error) && error.operation === "feedback_provider_attempt") {
     return true;
   }
   return error instanceof Error && (error.message === "feedback_generation_dimension_coverage_required" || error.message === "feedback_generation_qualitative_constraint_violated");

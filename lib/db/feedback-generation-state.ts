@@ -153,7 +153,11 @@ export function createDrizzleFeedbackGenerationStore(
             inArray(feedback.status, ["pending", "failed"]),
             eq(feedback.dispatchEventId, eventId),
             sql`${feedback.dispatchStatus} <> 'not_required'`,
-            ...(deadlineAt ? [sql`CURRENT_TIMESTAMP < ${deadlineAt}`] : [])
+            ...(deadlineAt
+              ? [
+                  sql`CURRENT_TIMESTAMP < ${feedbackGenerationDeadlineTimestamp(deadlineAt)}::timestamptz`,
+                ]
+              : [])
           )
         )
         .returning();
@@ -338,8 +342,16 @@ function activeClaim(sessionId: string, eventId: string, deadlineAt?: Date) {
     eq(feedback.sessionId, sessionId),
     eq(feedback.status, "processing"),
     eq(feedback.dispatchEventId, eventId),
-    ...(deadlineAt ? [sql`CURRENT_TIMESTAMP < ${deadlineAt}`] : [])
+    ...(deadlineAt
+      ? [
+          sql`CURRENT_TIMESTAMP < ${feedbackGenerationDeadlineTimestamp(deadlineAt)}::timestamptz`,
+        ]
+      : [])
   );
+}
+
+export function feedbackGenerationDeadlineTimestamp(deadlineAt: Date): string {
+  return deadlineAt.toISOString();
 }
 
 function mapRecord(

@@ -93,13 +93,17 @@ The production provider SDK keeps `maxRetries = 0`. The workflow owns at most
 three provider attempts within the shared budget, reserves five seconds for
 persistence, and caps each provider request at 75 seconds. A later attempt
 starts only when at least five seconds remain for the request after the
-persistence reserve and any bounded `Retry-After` delay.
+persistence reserve and any bounded `Retry-After` delay. After every durable
+retry sleep resumes, the workflow recomputes that request budget from current
+time; a late wakeup cannot reuse the pre-sleep timeout or start another call.
 
-The closed provider policy retries only timeout/abort, network, rate-limit, and
-provider-capacity failures. Authentication, configuration, provider contract,
-response-validation, evidence-integrity, deadline, and fenced failures are
-non-retryable. Unknown validation failures fail closed instead of starting a
-second provider call.
+The closed provider policy retries only per-attempt timeout/abort, network,
+rate-limit, and provider-capacity failures. The local per-attempt circuit
+breaker is classified as a typed provider timeout and increments the same
+three-attempt counter. Event-wide deadline exhaustion, authentication,
+configuration, provider contract, response-validation, evidence-integrity,
+and fenced failures are non-retryable. Unknown validation failures fail closed
+instead of starting a second provider call.
 
 Inngest retains two whole-function retries as the durable owner for transient
 pre-provider infrastructure and persistence failures. Successful durable step
