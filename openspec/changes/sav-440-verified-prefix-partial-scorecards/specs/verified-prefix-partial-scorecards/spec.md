@@ -60,6 +60,8 @@ and analytics behavior without rewrite.
 ### Requirement: Presentation explains verified scope safely
 
 The partial scorecard UI MUST explain in visible, candidate-safe language that
-only verified completed answers were scored and the excluded tail did not lower
-the shown scores. Partial scorecards MUST remain excluded from overall progress,
+the excluded tail was not treated as negative evidence and only verified
+completed answers could support the scores or coaching shown. It MUST NOT claim
+that excluding unavailable information had no effect on which rubric dimensions
+were supportable. Partial scorecards MUST remain excluded from overall progress,
 trend, and insight claims.

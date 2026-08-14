@@ -48,9 +48,11 @@ oversized, or inconsistent v2 data renders unavailable.
 
 The partial scorecard and coaching surfaces state that the review uses only
 verified completed answers and that the unfinished/unverified tail stayed
-outside the review without counting as weaker evidence or affecting what is
-shown. The explanation is visible text and does not depend on color. Historical
-v1 partial/coaching reviews keep a null scope and do not receive this new claim.
+outside the review without being treated as negative evidence. They state that
+only verified completed answers could support the scores or coaching shown,
+without claiming that exclusion had no effect on evidence availability. The
+explanation is visible text and does not depend on color. Historical v1
+partial/coaching reviews keep a null scope and do not receive this new claim.
 
 History keeps the review reachable, exposes only validated sparse dimension
 scores, and never presents an overall score. Existing progress, trend, and

@@ -55,7 +55,9 @@ for (const viewport of [
       page.getByText(/only the 1 completed answer it could verify/i)
     ).toBeVisible();
     await expect(
-      page.getByText(/did not count as weaker evidence or affect the review/i)
+      page.getByText(
+        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+      )
     ).toBeVisible();
     await expectNoHorizontalScroll(page);
 
@@ -90,7 +92,9 @@ for (const viewport of [
       page.getByText(/only the 2 completed answers it could verify/i)
     ).toBeVisible();
     await expect(
-      page.getByText(/did not count as weaker evidence or affect the review/i)
+      page.getByText(
+        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+      )
     ).toBeVisible();
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
       0
