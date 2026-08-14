@@ -18,6 +18,7 @@ const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const mocks = vi.hoisted(() => ({
   authLoading: false,
   push: vi.fn(),
+  replace: vi.fn(),
   user: { id: "synthetic-owner" } as { id: string } | null,
 }));
 
@@ -77,6 +78,18 @@ describe("feedback comparison accessibility", () => {
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     const spinner = container.querySelector(".motion-reduce\\:animate-none");
     expect(spinner).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("reauthenticates with the exact comparison deep link", async () => {
+    mocks.user = null;
+
+    render(<ComparePage />);
+
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        `/auth/signin?redirectTo=%2Ffeedback%2F${SESSION_ID}%2Fcompare&cancelTo=%2F`
+      )
+    );
   });
 
   it("renders no-attempt actions as sibling links instead of nested controls", async () => {
@@ -150,6 +163,37 @@ describe("feedback comparison accessibility", () => {
     expect(within(latest).getByText("9/10")).toBeInTheDocument();
     expect(within(latest).getByText("Latest Session")).toBeInTheDocument();
     expect(screen.getByRole("radio")).toHaveTextContent("4/10");
+  });
+
+  it("presents decimal attempt scores with accepted whole-number precision", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json({
+        attempts: [
+          {
+            ...attempt(
+              "550e8400-e29b-41d4-a716-446655440009",
+              "2099-01-01T00:00:00.000Z"
+            ),
+            overallScore: 7.9,
+          },
+          {
+            ...attempt(SESSION_ID, "2098-12-01T00:00:00.000Z"),
+            overallScore: 6.4,
+          },
+        ],
+        roundType: "product_sense",
+      })
+    );
+
+    render(<ComparePage />);
+
+    const latest = await screen.findByRole("region", {
+      name: "Latest Attempt",
+    });
+    expect(within(latest).getByText("8/10")).toBeInTheDocument();
+    expect(screen.getByRole("radio")).toHaveTextContent("6/10");
+    expect(screen.queryByText("7.9/10")).toBeNull();
+    expect(screen.queryByText("6.4/10")).toBeNull();
   });
 
   it("excludes an unstarted attempt from latest and earlier choices", async () => {
