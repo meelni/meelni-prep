@@ -2064,6 +2064,7 @@ test("LiveKit presence normalizes candidate connection states", async () => {
     );
     assert.equal(result.ok, true);
     if (result.ok) {
+      assert.equal(result.data.roomPresent, true);
       assert.equal(result.data.present, true);
       assert.equal(result.data.joined, state !== 0);
       assert.equal(
@@ -2104,6 +2105,7 @@ test("LiveKit presence normalizes candidate connection states", async () => {
     ok: true,
     provider: "livekit",
     data: {
+      roomPresent: true,
       present: false,
       joined: false,
       joinedAt: null,
@@ -2926,6 +2928,7 @@ test("LiveKit presence treats an absent room as absent and other failures as ret
     ok: true,
     provider: "livekit",
     data: {
+      roomPresent: false,
       present: false,
       joined: false,
       joinedAt: null,

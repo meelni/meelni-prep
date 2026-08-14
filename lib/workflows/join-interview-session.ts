@@ -98,7 +98,7 @@ export type JoinInterviewSessionResult =
   | {
       ok: false;
       status: number;
-      body: { error: string; message?: string };
+      body: { error: string; message?: string; retryable?: boolean };
       retryAfterSeconds?: number;
     };
 
@@ -228,7 +228,7 @@ export async function joinInterviewSessionWorkflow(
     current && currentDatabaseNow
       ? deriveJoinAuthorization(current, currentDatabaseNow)
       : null;
-  if (
+  const authorizationChanged =
     !current ||
     !currentDatabaseNow ||
     current.userId !== input.user.id ||
@@ -240,20 +240,33 @@ export async function joinInterviewSessionWorkflow(
       authorization.reconnectDeadlineAt
     ) ||
     !currentAuthorization ||
-    !sameInstant(currentAuthorization.expiresAt, authorization.expiresAt)
-  ) {
+    !sameInstant(currentAuthorization.expiresAt, authorization.expiresAt);
+  if (authorizationChanged) {
     deps.audit({
       outcome: "denied",
       reason: "reconnect_authorization_changed",
       correlationId,
     });
+    const retryable = Boolean(
+      current &&
+        currentDatabaseNow &&
+        current.userId === input.user.id &&
+        current.livekitRoomName === session.livekitRoomName &&
+        currentAuthorization
+    );
     return {
       ok: false,
       status: 409,
-      body: {
-        error: "session_not_joinable",
-        message: "This interview session is no longer active.",
-      },
+      body: retryable
+        ? {
+            error: "reconnect_authorization_changed",
+            message: "Reconnect authorization changed. Please retry.",
+            retryable: true,
+          }
+        : {
+            error: "session_not_joinable",
+            message: "This interview session is no longer active.",
+          },
     };
   }
 

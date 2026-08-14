@@ -16,6 +16,7 @@ export const INTERVIEW_RUNTIME_FAILURE_CODES = [
   "voice_runtime_provider_failed",
   "voice_session_construction_failed",
   "voice_session_start_failed",
+  "runtime_writer_registration_failed",
   "deadline_enforcement_failed",
   "initial_greeting_failed",
 ] as const;

@@ -313,6 +313,62 @@ test("a token completed after timeout is discarded when authorization generation
   assert.equal(audits.at(-1)?.reason, "reconnect_authorization_changed");
 });
 
+test("a post-sign authorization race remains retryable while the newer generation is joinable", async () => {
+  const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
+  let reads = 0;
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => {
+        reads += 1;
+        return createSession({
+          lifecycleState: reads === 1 ? "reconnecting" : "active",
+          lifecycleVersion: reads === 1 ? 4 : 5,
+          reconnectDeadlineAt: reads === 1 ? reconnectDeadlineAt : null,
+          reconnectDeadlineOwner: reads === 1 ? "reconnect_grace" : null,
+        });
+      },
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 409,
+    body: {
+      error: "reconnect_authorization_changed",
+      message: "Reconnect authorization changed. Please retry.",
+      retryable: true,
+    },
+  });
+});
+
+test("a post-sign authorization change stays terminal when the newer generation is not joinable", async () => {
+  const reconnectDeadlineAt = new Date("2026-07-09T12:20:30.000Z");
+  let reads = 0;
+  const result = await joinInterviewSessionWorkflow(
+    { user: { id: USER_ID }, sessionId: SESSION_ID, env: ENV },
+    createDeps({
+      getSession: async () => {
+        reads += 1;
+        return createSession({
+          lifecycleState: reads === 1 ? "reconnecting" : "ending",
+          lifecycleVersion: reads === 1 ? 4 : 5,
+          reconnectDeadlineAt,
+        });
+      },
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 409,
+    body: {
+      error: "session_not_joinable",
+      message: "This interview session is no longer active.",
+    },
+  });
+});
+
 test("a token is withheld when database time advances through its exp during signing", async () => {
   let reads = 0;
   const tokenExpiresAt = new Date("2026-07-09T12:20:01.000Z");

@@ -53,7 +53,10 @@ async function handlePresenceRequest(req: NextRequest) {
     deliveryId: `browser-presence:${sessionId}:${randomUUID()}`,
     env: env.data,
   });
-  if (result.ok && result.disposition === "terminal") {
+  if (
+    result.ok &&
+    (result.disposition === "terminal" || result.disposition === "failed")
+  ) {
     return response({ error: "session_not_joinable" }, 409);
   }
   if (!result.ok) {

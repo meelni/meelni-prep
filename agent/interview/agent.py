@@ -77,6 +77,7 @@ from shared.transcript_ingest import (
     finish_tasks_before_shutdown,
     interruption_marker_degrades_candidate_evidence,
     parse_runtime_settlement_request,
+    persist_runtime_failure_event,
     post_ingest_request,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
@@ -239,7 +240,6 @@ async def entrypoint(ctx: JobContext):
     # Establish the signed provider-neutral failure path before constructing
     # provider-backed voice components.
     # The runtime must register durably before it can produce audible output.
-    transcript_ingest_secret = resolve_transcript_ingest_secret(os.environ)
     transcript_writer_id = str(uuid4())
     writer_registration = create_runtime_writer_registration(
         session_id=session_id,
@@ -247,7 +247,9 @@ async def entrypoint(ctx: JobContext):
         writer_id=transcript_writer_id,
         registered_at=time.time(),
     )
+    transcript_ingest_secret: str | None = None
     try:
+        transcript_ingest_secret = resolve_transcript_ingest_secret(os.environ)
         transcript_writer_generation = await asyncio.wait_for(
             register_runtime_writer(
                 ingest_url=transcript_ingest_url,
@@ -264,7 +266,56 @@ async def entrypoint(ctx: JobContext):
             "Interview runtime writer registration failed",
             error,
         )
-        ctx.shutdown("runtime writer registration failed")
+
+        failure_event = create_runtime_event(
+            event_id=(
+                f"provider-failure:{session_id}:runtime-writer-registration"
+            ),
+            session_id=session_id,
+            event_type="provider_failed",
+            occurred_at=datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
+            runtime_ref={"provider": "livekit", "id": room_name},
+            failure={
+                "reason": "provider_failure",
+                "code": "runtime_writer_registration_failed",
+                "retryable": True,
+            },
+        )
+
+        async def no_op_async() -> None:
+            return None
+
+        async def report_registration_failure() -> bool:
+            if transcript_ingest_secret is None:
+                return False
+            return await persist_runtime_failure_event(
+                ingest_url=transcript_ingest_url,
+                livekit_api_secret=transcript_ingest_secret,
+                event=failure_event,
+                transport=post_ingest_request,
+            )
+
+        try:
+            persisted = await stop_provider_runtime_then_report(
+                disable_input=lambda: None,
+                close_session=no_op_async,
+                terminate_room=lambda: terminate_livekit_room(ctx, room_name),
+                shutdown=lambda: ctx.shutdown(
+                    "runtime writer registration failed"
+                ),
+                report_failure=report_registration_failure,
+            )
+            if not persisted:
+                logger.error(
+                    "Writer registration failure report did not settle before shutdown"
+                )
+        except BaseException as cleanup_error:
+            logger.error(
+                "Writer registration failure cleanup did not complete",
+                extra={"error_type": type(cleanup_error).__name__},
+            )
         return
 
     # The runtime persists transcript evidence before publishing it to the room.

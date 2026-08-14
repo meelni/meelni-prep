@@ -23,6 +23,13 @@ Provider-failure ingress accepts only the deployed `livekit` runtime and the
 normalized failure-code set shared by the TypeScript and Python contracts.
 The first accepted terminal claim is immutable; an equivalent replay is
 idempotent and a conflicting claim fails closed.
+Pre-output writer-registration failures use the allowlisted
+`runtime_writer_registration_failed` code and the same atomic provider-failure
+transaction, so an active reservation releases without requiring a writer row.
+When the runtime lacks signing authority, it still deletes the room first; an
+authoritative absent-room observation after the one-minute startup recovery
+window supplies the server-owned provider-failure fact and converges the same
+credit policy. A younger or unreadable room observation never terminalizes.
 Fatal runtime failures use one tracked stop sequence: disable input, close the
 agent session, terminate the room, and shut down the job before awaiting the
 bounded provider-neutral failure report. Session close and room termination
