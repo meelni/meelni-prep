@@ -131,6 +131,19 @@ export function interpretPublicDemoStartFailure({
     };
   }
 
+  if (status === 409 && body.error === "demo_preview_active") {
+    const retryAfter = positiveRetryAfter(
+      body.retryAfterSeconds,
+      retryAfterHeader,
+      60
+    );
+    return {
+      title: "Your voice preview is still active",
+      message: "You can start another preview when this one ends.",
+      retryAt: now + retryAfter * 1000,
+    };
+  }
+
   if (status === 429 && body.error === "demo_rate_limited") {
     const retryAfter = positiveRetryAfter(
       body.retryAfterSeconds,
@@ -138,8 +151,9 @@ export function interpretPublicDemoStartFailure({
       60
     );
     return {
-      title: "The voice preview is on cooldown",
-      message: "You can try again when the cooldown ends.",
+      title: "You've reached the voice preview limit",
+      message:
+        "You can start up to 10 voice previews in 24 hours. Try again when your preview allowance resets.",
       retryAt: now + retryAfter * 1000,
     };
   }

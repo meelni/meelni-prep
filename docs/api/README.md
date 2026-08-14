@@ -709,6 +709,12 @@ Issues a short-lived JWT access token for reconnecting to an existing, active in
 
 Authorizes a server-bounded two-minute voice preview on the landing page. A first accepted request creates an ephemeral LiveKit room and dispatches the dedicated demo agent; one server-authorized recovery request may issue a second token for that same room without redispatching the agent.
 
+A signed device may start up to 10 previews in a rolling 24-hour window, with
+only one preview active at a time. The web route rotates the signed session
+identity after an active preview expires; this internal handshake performs no
+provider work. A server-confirmed provider startup failure restores the device,
+IP, and deployment allowances for that reservation.
+
 **Authentication**: Public, with signed HttpOnly device/session cookies and shared server-side abuse limits
 
 **Request Body**:
@@ -733,7 +739,7 @@ No caller-supplied identity, room name, or dispatch identifier is accepted. The 
 
 **Implementation Details**:
 
-- Room identity: Deterministic, opaque, and server-derived; never returned to the browser
+- Room identity: Random, opaque, and server-derived for every new preview; never returned to the browser
 - Browser identity: A first zero-cost `409 demo_identity_initialized` handshake commits signed cookies before any database reservation or provider call; the client then repeats the empty request once
 - Session deadline: Absolute server-authored deadline, 2 minutes after authorization
 - Empty/departure cleanup: 30 seconds empty; 5 seconds after participant departure
@@ -747,9 +753,9 @@ No caller-supplied identity, room name, or dispatch identifier is accepted. The 
 - `403 Forbidden` - Cross-site request rejected
 - `404 Not Found` - Public voice preview disabled by the relaunch gate
 - `400 Bad Request` - Body is malformed JSON or is not exactly `{}`
-- `409 Conflict` - Signed identity was initialized without provider work, or start is already in progress
+- `409 Conflict` - Signed identity was initialized or rotated without provider work, start is already in progress, or the device already has an active preview
 - `415 Unsupported Media Type` - Request is not `application/json`
-- `429 Too Many Requests` - A shared limit was reached; response includes `Retry-After`
+- `429 Too Many Requests` - The 10-preview rolling device allowance or a shared safety limit was reached; response includes `Retry-After`
 - `503 Service Unavailable` - Authorization, configuration, or LiveKit is unavailable
 
 ---
