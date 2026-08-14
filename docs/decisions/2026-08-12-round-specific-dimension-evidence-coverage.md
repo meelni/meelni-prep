@@ -11,15 +11,16 @@ evidence over SAV-369 candidate answer blocks. Surface grammar, punctuation,
 answer length, transcript-row count, and keyword presence do not establish PM
 competence or numerical precision.
 
-The provider returns only closed facet codes, answer-block aliases, and
-nullable dimension scores. Core resolves exact candidate evidence and derives
-coverage, result mode, overall score, summary, and persisted presentation.
-Coverage is `absent`, `partial`, or `sufficient`. A full scorecard requires
-sufficient coverage for every core dimension. A partial scorecard scores only
-sufficient dimensions and has no overall. Grounded usable evidence without a
-fair numerical dimension produces a scoreless coaching review. No usable
-answer and transcript integrity degradation remain the only unable-to-review
-states.
+The provider returns only one closed nullable answer-block alias slot per
+configured facet plus nullable dimension scores. The provider adapter maps
+those slots into closed facet-code selections; core resolves exact candidate
+evidence and derives coverage, result mode, overall score, summary, and
+persisted presentation. Coverage is `absent`, `partial`, or `sufficient`. A
+full scorecard requires sufficient coverage for every core dimension. A
+partial scorecard scores only sufficient dimensions and has no overall.
+Grounded usable evidence without a fair numerical dimension produces a
+scoreless coaching review. No usable answer and transcript integrity
+degradation remain the only unable-to-review states.
 
 Equivalent semantic answers under different event segmentation must have
 identical coverage, scores, mode, citations, and persistence. Canonical events
