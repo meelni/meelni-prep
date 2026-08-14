@@ -246,6 +246,13 @@
       "when": 1786622902735,
       "tag": "0034_feedback_quality_signals",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786676236808,
+      "tag": "0035_sav_431_public_demo_preview_allowance",
+      "breakpoints": true
     }
   ]
 }

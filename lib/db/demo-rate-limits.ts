@@ -15,6 +15,7 @@ export type PublicDemoLimitScope =
 export type PublicDemoReservationAction =
   | "provision"
   | "issue_token"
+  | "rotate_session"
   | "provisioning"
   | "failed"
   | "rate_limited";
@@ -81,10 +82,15 @@ export async function reservePublicDemoSession(
         row.retry_after_seconds !== 0)) ||
     (row.decision === "issue_token" && row.recovery_claim_token === null) ||
     (row.decision !== "issue_token" && row.recovery_claim_token !== null) ||
+    (row.decision === "rotate_session" &&
+      (row.room_name !== null ||
+        row.limiting_scope !== null ||
+        row.retry_after_seconds !== 0 ||
+        row.remaining !== 0)) ||
     (["provision", "issue_token"].includes(row.decision) && !deadlineAt) ||
     (!["provision", "issue_token"].includes(row.decision) &&
       row.deadline_at !== null) ||
-    (!["provision", "issue_token"].includes(row.decision) &&
+    (!["provision", "issue_token", "rotate_session"].includes(row.decision) &&
       (row.retry_after_seconds < 1 || row.remaining !== 0))
   ) {
     throw new Error("Invalid public demo reservation result");
@@ -196,6 +202,7 @@ function isAction(value: unknown): value is PublicDemoReservationAction {
   return (
     value === "provision" ||
     value === "issue_token" ||
+    value === "rotate_session" ||
     value === "provisioning" ||
     value === "failed" ||
     value === "rate_limited"

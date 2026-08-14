@@ -780,15 +780,15 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
   const errorHeadingRef = useRef<HTMLHeadingElement>(null);
   const tokenRequestRef = useRef<AbortController | null>(null);
   const openedRequestStartedRef = useRef(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
 
   useEffect(() => {
     if (!error?.retryAt) {
-      setCooldownSeconds(0);
+      setRetrySeconds(0);
       return;
     }
     const update = () =>
-      setCooldownSeconds(
+      setRetrySeconds(
         Math.max(0, Math.ceil((error.retryAt! - Date.now()) / 1000))
       );
     update();
@@ -810,7 +810,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
 
   const fetchDemoToken = useCallback(async () => {
     if (!activation.canActivate) return;
-    if (tokenRequestRef.current || cooldownSeconds > 0) return;
+    if (tokenRequestRef.current || retrySeconds > 0) return;
     const controller = new AbortController();
     let requestTimedOut = false;
     const requestTimeout = window.setTimeout(() => {
@@ -853,7 +853,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
       tokenRequestRef.current = null;
       setIsLoading(false);
     }
-  }, [activation.canActivate, cooldownSeconds]);
+  }, [activation.canActivate, retrySeconds]);
 
   const handleRuntimeError = useCallback((nextError: DemoStartError) => {
     setToken("");
@@ -959,10 +959,10 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                     {error.message}
                   </p>
                 </div>
-                {!error.paused && cooldownSeconds > 0 && (
+                {!error.paused && retrySeconds > 0 && (
                   <p className="text-primary-foreground/70 text-sm">
-                    Try again in {formatCooldown(cooldownSeconds)}. You can
-                    still start a full mock interview now.
+                    Try again in {formatCooldown(retrySeconds)}. You can still
+                    start a full mock interview now.
                   </p>
                 )}
                 {error.paused ? (
@@ -979,12 +979,12 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                     <Button
                       type="button"
                       onClick={fetchDemoToken}
-                      disabled={cooldownSeconds > 0 || isLoading}
+                      disabled={retrySeconds > 0 || isLoading}
                       size="lg"
                       className="min-h-11 rounded-xl font-semibold"
                     >
-                      {cooldownSeconds > 0
-                        ? `Try again in ${formatCooldown(cooldownSeconds)}`
+                      {retrySeconds > 0
+                        ? `Try again in ${formatCooldown(retrySeconds)}`
                         : "Try Again"}
                     </Button>
                     <PublicActivationButton
@@ -1024,8 +1024,7 @@ export function DemoModal({ isOpen, onClose, returnFocusRef }: DemoModalProps) {
                 if (!demoCompletedRef.current) {
                   handleRuntimeError({
                     title: "The connection dropped",
-                    message:
-                      "We didn't count this as a completed preview. You can try again.",
+                    message: "You can try to reconnect to this preview.",
                   });
                 }
               }}

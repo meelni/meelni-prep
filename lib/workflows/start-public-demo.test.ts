@@ -62,6 +62,66 @@ test("public demo workflow authorizes before provider work and maps a typed deni
   });
 });
 
+test("an expired preview rotates the signed session without provider work", async () => {
+  let providerCalled = false;
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => ({
+        action: "rotate_session",
+        roomName: null,
+        limitingScope: null,
+        retryAfterSeconds: 0,
+        remaining: 0,
+        recoveryClaimToken: null,
+        deadlineAt: null,
+      }),
+      livekit: provider({
+        startPublicDemoRoom: async () => {
+          providerCalled = true;
+          return success("unexpected");
+        },
+      }),
+    })
+  );
+
+  assert.equal(providerCalled, false);
+  assert.deepEqual(result, {
+    ok: false,
+    status: 409,
+    body: { error: "demo_identity_initialized" },
+    rotateSessionCookie: true,
+  });
+});
+
+test("an active preview is not presented as the daily allowance", async () => {
+  const result = await startPublicDemoWorkflow(
+    INPUT,
+    deps({
+      reserveSession: async () => ({
+        action: "rate_limited",
+        roomName: null,
+        limitingScope: "active_device",
+        retryAfterSeconds: 75,
+        remaining: 0,
+        recoveryClaimToken: null,
+        deadlineAt: null,
+      }),
+    })
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 409,
+    body: {
+      error: "demo_preview_active",
+      retryAfterSeconds: 75,
+      retryAt: "2026-07-09T12:01:15.000Z",
+    },
+    retryAfterSeconds: 75,
+  });
+});
+
 test("public demo workflow provisions one room and durably finalizes it", async () => {
   const calls: string[] = [];
   let startInput:

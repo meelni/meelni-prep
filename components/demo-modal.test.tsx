@@ -137,7 +137,7 @@ describe("DemoModal", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("presents a generic 429 as a retryable cooldown", async () => {
+  it("presents a generic 429 as a daily preview allowance", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -163,11 +163,11 @@ describe("DemoModal", () => {
     await user.click(screen.getByRole("button", { name: "Try voice demo" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("The voice preview is on cooldown");
+    expect(alert).toHaveTextContent("You've reached the voice preview limit");
     expect(alert).toHaveTextContent(
-      "You can try again when the cooldown ends."
+      "You can start up to 10 voice previews in 24 hours. Try again when your preview allowance resets."
     );
-    expect(alert).not.toHaveTextContent(/capacity/i);
+    expect(alert).not.toHaveTextContent(/capacity|cooldown/i);
     expect(screen.getByRole("button", { name: /Try again in/ })).toBeDisabled();
   });
 });
