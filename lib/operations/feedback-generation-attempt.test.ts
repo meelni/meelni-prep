@@ -17,6 +17,13 @@ test("feedback attempt evidence is content-free and closed", () => {
     providerHttpStatus: 429,
     observedModel: "gpt-fixture",
     observedServiceTier: "default",
+    usage: {
+      inputTokens: 100,
+      cachedInputTokens: 25,
+      outputTokens: 50,
+      totalTokens: 150,
+      privateContent: "PRIVATE_USAGE_CONTENT",
+    },
     transcript: "PRIVATE_INTERVIEW_CONTENT",
     providerPayload: "PRIVATE_PROVIDER_PAYLOAD",
   };
@@ -28,10 +35,16 @@ test("feedback attempt evidence is content-free and closed", () => {
   );
 
   assert.ok(event);
-  assert.equal(event.usage, null);
+  assert.deepEqual(event.usage, {
+    inputTokens: 100,
+    cachedInputTokens: 25,
+    outputTokens: 50,
+    totalTokens: 150,
+  });
   assert.deepEqual(writes, [JSON.stringify(event)]);
   assert.equal(writes[0]?.includes("PRIVATE_INTERVIEW_CONTENT"), false);
   assert.equal(writes[0]?.includes("PRIVATE_PROVIDER_PAYLOAD"), false);
+  assert.equal(writes[0]?.includes("PRIVATE_USAGE_CONTENT"), false);
   assert.deepEqual(Object.keys(event).sort(), [
     "attempt",
     "durationMs",

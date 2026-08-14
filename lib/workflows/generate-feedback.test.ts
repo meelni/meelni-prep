@@ -31,6 +31,7 @@ import {
 
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import { FeedbackProviderInvocationError } from "@/lib/evaluation/scorer";
+import { DeadlineExceededError } from "@/lib/http/deadline";
 import {
   calculateValidatedSessionFromTurns,
   prepareCandidateAnswerBlockEvidenceFromTurns,
@@ -350,6 +351,76 @@ test("provider retry policy honors Retry-After inside the shared deadline", asyn
   assert.equal(evaluations, 2);
   assert.deepEqual(sleeps, [2_500]);
   assert.deepEqual(timeouts, [75_000, 75_000]);
+});
+
+test("a late durable retry wakeup cannot start a provider call without reserved persistence budget", async () => {
+  const store = new MemoryGenerationStore(record());
+  let nowMs = NOW.getTime();
+  const sleeps: number[] = [];
+  const timeouts: number[] = [];
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate({ requestTimeoutMs }) {
+      evaluations += 1;
+      timeouts.push(requestTimeoutMs);
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_invocation_failed",
+        undefined,
+        undefined,
+        undefined,
+        { diagnostic: { kind: "provider_network" } }
+      );
+    },
+  });
+  deps.now = () => new Date(nowMs);
+  deps.steps.sleep = async (_name, durationMs) => {
+    sleeps.push(durationMs);
+    nowMs += 84_500;
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+      deps
+    ),
+    /feedback_generation_deadline_exceeded/
+  );
+
+  assert.deepEqual(sleeps, [1_000]);
+  assert.deepEqual(timeouts, [75_000]);
+  assert.equal(evaluations, 1);
+});
+
+test("per-attempt circuit-breaker timeouts stay inside the closed three-attempt policy", async () => {
+  const store = new MemoryGenerationStore(record());
+  const attempts: number[] = [];
+  const outcomes: Array<{ attempt: number; outcome: string }> = [];
+  const deps = dependencies(store, {
+    async evaluate({ attempt }) {
+      attempts.push(attempt);
+      throw new DeadlineExceededError("feedback_provider_attempt");
+    },
+  });
+  deps.reportAttempt = (attempt) => {
+    if (attempt.stage === "provider") {
+      outcomes.push({ attempt: attempt.attempt, outcome: attempt.outcome });
+    }
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(
+      { ...input(EVENT_1), requestedAtMs: NOW.getTime() },
+      deps
+    ),
+    /feedback_generation_transport_timeout/
+  );
+
+  assert.deepEqual(attempts, [1, 2, 3]);
+  assert.deepEqual(outcomes, [
+    { attempt: 1, outcome: "retrying" },
+    { attempt: 2, outcome: "retrying" },
+    { attempt: 3, outcome: "failed" },
+  ]);
 });
 
 test("one event deadline bounds pre-provider infrastructure work", async () => {

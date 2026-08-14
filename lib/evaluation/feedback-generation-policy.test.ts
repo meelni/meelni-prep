@@ -5,6 +5,7 @@ import {
   FeedbackProviderInvocationError,
   type FeedbackProviderInvocationDiagnosticKind,
 } from "./scorer";
+import { DeadlineExceededError } from "@/lib/http/deadline";
 import {
   FEEDBACK_GENERATION_DEADLINE_MS,
   FeedbackGenerationPolicyError,
@@ -74,6 +75,20 @@ test("provider attempt planning reserves persistence time and fails closed", () 
     }),
     null
   );
+  assert.deepEqual(
+    planFeedbackProviderAttempt({
+      attempt: 2,
+      deadlineAtMs: 90_000,
+      nowMs: 10_000,
+      retryDelayApplied: true,
+    }),
+    {
+      attempt: 2,
+      delayMs: 0,
+      requestTimeoutMs: 75_000,
+      remainingBudgetMs: 80_000,
+    }
+  );
   assert.equal(
     planFeedbackProviderAttempt({
       attempt: 4,
@@ -82,6 +97,22 @@ test("provider attempt planning reserves persistence time and fails closed", () 
     }),
     null
   );
+});
+
+test("only the per-attempt deadline is a retryable provider timeout", () => {
+  const attemptTimeout = classifyFeedbackGenerationFailure(
+    new DeadlineExceededError("feedback_provider_attempt"),
+    "provider"
+  );
+  assert.equal(attemptTimeout.failureClass, "transport_timeout");
+  assert.equal(attemptTimeout.retryable, true);
+
+  const eventDeadline = classifyFeedbackGenerationFailure(
+    new DeadlineExceededError("feedback_generation_provider"),
+    "provider"
+  );
+  assert.equal(eventDeadline.failureClass, "deadline_exceeded");
+  assert.equal(eventDeadline.retryable, false);
 });
 
 test("closed provider failure matrix retries only transient transport and capacity", () => {

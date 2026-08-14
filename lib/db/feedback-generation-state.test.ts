@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   FEEDBACK_GENERATION_LEASE_MS,
   FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
+  feedbackGenerationDeadlineTimestamp,
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
@@ -104,13 +105,28 @@ test("database claims and terminal writes are fenced by event and deadline", () 
 
   assert.match(source, /eq\(feedback\.dispatchEventId, eventId\)/);
   assert.equal(
-    (source.match(/CURRENT_TIMESTAMP < \$\{deadlineAt\}/g) ?? []).length,
+    (
+      source.match(
+        /CURRENT_TIMESTAMP < \$\{feedbackGenerationDeadlineTimestamp\(deadlineAt\)\}::timestamptz/g
+      ) ?? []
+    ).length,
     2
   );
   assert.match(source, /inArray\(feedback\.status, \["pending", "failed"\]\)/);
   assert.equal(activeClaimUses.length, 3);
   assert.doesNotMatch(source, /COALESCE/i);
   assert.doesNotMatch(source, /dispatchStatus:\s*"sent"/);
+});
+
+test("database deadline fences bind an explicit timestamp instead of a Date object", () => {
+  assert.equal(
+    feedbackGenerationDeadlineTimestamp(NOW),
+    "2026-07-10T15:00:00.000Z"
+  );
+  assert.throws(
+    () => feedbackGenerationDeadlineTimestamp(new Date(Number.NaN)),
+    /Invalid time value/
+  );
 });
 
 test("retry preparation cannot reopen terminal or active leased work", () => {

@@ -38,6 +38,9 @@ pre-provider infrastructure and persistence failures. Successful evaluation
 steps replay from durable state, so a persistence retry refreshes the event
 fence and compare-and-set without duplicating provider evaluation. Permanent
 or budget-exhausted policy failures do not consume whole-function retries.
+Every provider timeout is recomputed after a durable retry sleep and again at
+the call boundary; a late wakeup fails closed when the request plus the
+persistence reserve no longer fit.
 
 ### Implemented deadline ladder
 
