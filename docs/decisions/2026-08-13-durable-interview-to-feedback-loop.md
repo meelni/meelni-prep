@@ -116,6 +116,15 @@ Model, provider, and queue-policy changes must be evaluated against sanitized
 provider-free fixtures first. Paid calls, provider mutations, Production
 configuration, and default-on rollout remain separately human-authorized.
 
+On 2026-08-14, SAV-450 closed a durable-step serialization gap found during an
+authorized Production recovery. Database `Date` objects may not cross Inngest
+step boundaries as typed dates because replay storage is JSON-shaped. The
+generation claim now returns an explicit primitive snapshot and validates its
+finite `processingStartedAtMs` before provider work. Invalid durable claim
+state fails non-retryably; no fallible timestamp conversion may occur after a
+successful provider response but before the step result commits. The queue
+policy and event-anchored deadline remain unchanged.
+
 ### Processing is a useful saved-review workspace
 
 After End is accepted, the feedback route should immediately show the saved

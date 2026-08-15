@@ -115,6 +115,17 @@ test("only the per-attempt deadline is a retryable provider timeout", () => {
   assert.equal(eventDeadline.retryable, false);
 });
 
+test("invalid durable step state is a closed non-retryable persistence failure", () => {
+  const failure = classifyFeedbackGenerationFailure(
+    new Error("feedback_generation_durable_step_invalid"),
+    "claim"
+  );
+
+  assert.equal(failure.stage, "claim");
+  assert.equal(failure.failureClass, "persistence");
+  assert.equal(failure.retryable, false);
+});
+
 test("closed provider failure matrix retries only transient transport and capacity", () => {
   const transient: Array<{
     diagnostic: FeedbackProviderInvocationDiagnosticKind;
