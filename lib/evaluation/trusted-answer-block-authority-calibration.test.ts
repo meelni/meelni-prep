@@ -11,7 +11,7 @@ import {
 test("trusted-answer-block calibration is versioned, synthetic, and family-complete", () => {
   assert.equal(
     TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION,
-    "trusted-answer-block-calibration.v1"
+    "trusted-answer-block-calibration.v2"
   );
   assert.equal(
     new Set(TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES.map(({ id }) => id)).size,
@@ -25,6 +25,7 @@ test("trusted-answer-block calibration is versioned, synthetic, and family-compl
   for (const family of [
     "segmentation",
     "terminal_preserving_marker",
+    "repeated_preserving_markers",
     "candidate_marker",
     "canonicalization_failure",
     "sequence_gap",
@@ -49,7 +50,7 @@ test("trusted-answer-block calibration corpus is hash-bound", () => {
     createHash("sha256")
       .update(JSON.stringify(TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES))
       .digest("hex"),
-    "fc234949fc7058b15f436f1a2cf5dda2a31a2ed112c4889bb3e883b15cfce4ae"
+    "96b10bc181459bd3fe2d6b78a39887b605f660ffe0d6e883fb7441a3110c2f1f"
   );
 });
 

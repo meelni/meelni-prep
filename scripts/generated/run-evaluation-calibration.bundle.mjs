@@ -6169,15 +6169,16 @@ function deriveCandidateAnswerBlocks(events, options = {}) {
       }
     }
     if (event.kind === "integrity_boundary") {
+      if (event.speaker === "interviewer" && event.reason === "no_provider_confirmed_prefix") {
+        continue;
+      }
       const boundaryKind = event.reason === "canonicalization_failed" ? "canonicalization_failure" : "interruption_marker";
       closeOrRecordBoundary(boundaryKind, {
         afterEventId: current?.response.at(-1)?.eventId ?? null,
         beforeEventId: null,
         boundaryEventId: event.eventId
       });
-      if (event.reason === "canonicalization_failed" || event.speaker === "user") {
-        issues.push({ code: "integrity_boundary", eventId: event.eventId });
-      }
+      issues.push({ code: "integrity_boundary", eventId: event.eventId });
       currentPrompt = [];
       previousLedgerTurn = null;
       previousEvidenceTurn = null;
@@ -9294,7 +9295,7 @@ var RUNTIME_SETTLEMENT_COMMAND_FIXTURE = {
 };
 
 // packages/test-fixtures/src/trusted-answer-block-calibration.ts
-var TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION = "trusted-answer-block-calibration.v1";
+var TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION = "trusted-answer-block-calibration.v2";
 var segmentationCases = ANSWER_BLOCK_SEGMENT_COUNTS.map((segmentCount) => {
   const fixture = createAnswerBlockSegmentationFixture(segmentCount);
   return calibrationCase2({
@@ -9359,6 +9360,7 @@ var TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES = [
     expectedTrustedResponseTexts: [answer.text],
     expectedExcludedAnswerBlockIds: ["answer-block:0002"]
   }),
+  repeatedPreservingMarkersCase(),
   failureCase(
     "candidate-marker",
     "candidate_marker",
@@ -9473,6 +9475,41 @@ var TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES = [
     expectedExcludedAnswerBlockIds: []
   })
 ];
+function repeatedPreservingMarkersCase() {
+  const events = [
+    turn2(1, "interviewer", "Frame the product decision.", 0),
+    marker(2, "interviewer", "no_provider_confirmed_prefix", 900),
+    turn2(
+      3,
+      "user",
+      "I would begin with working caregivers because the handoff failure repeats every week.",
+      1e3
+    ),
+    marker(4, "interviewer", "no_provider_confirmed_prefix", 1900),
+    turn2(5, "interviewer", "Which assumption would you test first?", 2e3),
+    marker(6, "interviewer", "no_provider_confirmed_prefix", 2900),
+    turn2(
+      7,
+      "user",
+      "I would test whether the coordination failure remains severe before building.",
+      3e3
+    ),
+    marker(8, "interviewer", "no_provider_confirmed_prefix", 3900),
+    terminal(5e3)
+  ];
+  return calibrationCase2({
+    id: "repeated-mid-session-preserving-markers",
+    family: "repeated_preserving_markers",
+    events,
+    authority: authority(events, "partial", "missing"),
+    expectedStatus: "verified_prefix",
+    expectedFailureReason: null,
+    expectedTrustedResponseTexts: [
+      "I would begin with working caregivers because the handoff failure repeats every week."
+    ],
+    expectedExcludedAnswerBlockIds: ["answer-block:0002"]
+  });
+}
 function replayCase(conflicting) {
   const replay = {
     ...turn2(

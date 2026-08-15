@@ -111,7 +111,7 @@ test("coaching fixtures are grounded, scoreless, and reason-specific", () => {
   }
 });
 
-test("unable outcomes never fabricate scores, coaching, retry, or credit state", () => {
+test("unable outcomes never fabricate scores or coaching and enumerate recovery truth", () => {
   const unable = createSyntheticFeedbackReviewOutcomeFixtures().filter(
     (fixture) => fixture.expected.outcome === "unable_to_review"
   );
@@ -141,7 +141,27 @@ test("unable outcomes never fabricate scores, coaching, retry, or credit state",
   );
   assert.deepEqual(
     new Set(integrity.map((fixture) => fixture.expected.recovery)),
-    new Set(["credit_returned", "credit_recovery_in_progress"])
+    new Set([
+      "credit_returned",
+      "credit_recovery_in_progress",
+      "review_recovery_available",
+      null,
+    ])
   );
-  assert.ok(integrity.every((fixture) => fixture.sourceIntegrity === "failed"));
+  const reviewRecovery = integrity.find(
+    (fixture) => fixture.expected.recovery === "review_recovery_available"
+  )!;
+  assert.equal(reviewRecovery.sourceIntegrity, "verified");
+  assert.ok(
+    reviewRecovery.sourceVariants.every(
+      (variant) => variant.answerBlocks.length > 0
+    )
+  );
+  assert.ok(
+    integrity
+      .filter(
+        (fixture) => fixture.expected.recovery !== "review_recovery_available"
+      )
+      .every((fixture) => fixture.sourceIntegrity === "failed")
+  );
 });

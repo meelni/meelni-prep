@@ -52,21 +52,30 @@ while every earlier block in the prefix remains trusted and the block is:
 
 Accepted logical closure is deliberately narrow:
 
-| Derived boundary                                                                                | Authority                                                                                                                 |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Interviewer follow-up                                                                           | Closes the preceding prompt-bound candidate block.                                                                        |
-| Explicit section change                                                                         | Closes the preceding prompt-bound block; later evidence must still prove its own prompt binding.                          |
-| Session end or cutoff                                                                           | Closes the final block only when the frozen snapshot is complete and the writer settlement is `settled`.                  |
-| Exact terminal `interviewer/no_provider_confirmed_prefix` marker                                | Preserves only earlier independently closed blocks. The block affected by the marker remains an excluded unverified tail. |
-| Long silence, input exhaustion, raw writer change, replay boundary, or other derived separation | Does not establish trust. The block and later suffix are excluded.                                                        |
+| Derived boundary                                                                                | Authority                                                                                                                       |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Interviewer follow-up                                                                           | Closes the preceding prompt-bound candidate block.                                                                              |
+| Explicit section change                                                                         | Closes the preceding prompt-bound block; later evidence must still prove its own prompt binding.                                |
+| Session end or cutoff                                                                           | Closes the final block only when the frozen snapshot is complete and the writer settlement is `settled`.                        |
+| Exact `interviewer/no_provider_confirmed_prefix` marker                                         | Advances the shared sequence but is content-free and transparent to prompt/answer continuity. It provides no closure authority. |
+| Long silence, input exhaustion, raw writer change, replay boundary, or other derived separation | Does not establish trust. The block and later suffix are excluded.                                                              |
 
-The preserving marker exception is exact. It must be the single final
-sequenced event and may be followed only by the frozen terminal boundary. A
-marker timestamp before previously sequenced speech ends is malformed. A
-candidate marker, any `canonicalization_failed` marker, a malformed or
-non-terminal preserving marker, sequence gap, conflicting replay, writer
-drift/degradation, or cutoff conflict returns `integrity_failure` with no
-trusted blocks or identities.
+The preserving marker exception is exact by role and reason, not by count or
+position. Any number of exact interviewer
+`no_provider_confirmed_prefix` markers may appear between sequenced speech
+events. Each marker proves that no provider-confirmed interviewer prefix is
+available, contains no speech evidence, and therefore neither closes nor
+splits the current prompt-bound answer. Later verified speech may continue that
+answer and an accepted later boundary may close it normally. Repeated or
+mid-session preserving markers do not globally invalidate otherwise trusted
+blocks.
+
+The presence of any preserving marker keeps the frozen snapshot partial and
+the projection at most `verified_prefix`; it can never authorize an overall
+score. A marker timestamp before previously sequenced speech ends is malformed.
+A candidate marker, any `canonicalization_failed` marker, sequence gap,
+conflicting replay, writer drift/degradation, malformed marker, or cutoff
+conflict returns `integrity_failure` with no trusted blocks or identities.
 
 ## Projection and identity
 
@@ -95,9 +104,13 @@ Canonical source events remain the only citation authority.
 
 The v1 projection is additive. It does not modify the existing answer-block
 contract, session validator, feedback schemas, stored rows, historical
-readers, calibration v1 corpora, or current qualitative-only behavior for
+readers, historical calibration v1 corpora, the current synthetic calibration
+v2 corpus, or qualitative-only behavior outside the verified-prefix path for
 partial snapshots. Unknown authority versions fail closed and never fall back
 to a historical or mutable transcript path.
+
+An exact preserving marker is not evidence that the snapshot is complete; its
+only scoring-capable result remains a verified prefix with no overall score.
 
 SAV-440 separately owns any evaluator wiring, sparse supported dimension
 scores, `overallScore = null` policy, persistence, authenticated reads, and UI.

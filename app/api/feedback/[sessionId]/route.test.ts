@@ -44,6 +44,9 @@ vi.mock("@/lib/db/transcripts", () => ({
 vi.mock("@/lib/workflows/recover-feedback-generation", () => ({
   recoverFeedbackGenerationWorkflow: vi.fn(),
 }));
+vi.mock("@/lib/evaluation/skipped-feedback-recovery", () => ({
+  evaluateSkippedFeedbackRecovery: vi.fn(),
+}));
 vi.mock("@/lib/workflows/accept-user-interview-end", () => ({
   acceptUserInterviewEndWorkflow: vi.fn(),
   userInterviewEndRedeliveryId: vi.fn(() => "feedback-recovery:test-bucket"),
@@ -83,6 +86,7 @@ import {
   getFrozenFeedbackEvaluationEvidence,
 } from "@/lib/db/transcripts";
 import { prepareCandidateAnswerBlockEvidenceFromTurns } from "@/lib/evaluation/session-validator";
+import { evaluateSkippedFeedbackRecovery } from "@/lib/evaluation/skipped-feedback-recovery";
 import { createClient } from "@/lib/supabase/server";
 import { acceptUserInterviewEndWorkflow } from "@/lib/workflows/accept-user-interview-end";
 import { recoverFeedbackGenerationWorkflow } from "@/lib/workflows/recover-feedback-generation";
@@ -138,6 +142,12 @@ describe("/api/feedback/[sessionId]", () => {
     vi.mocked(getFrozenFeedbackEvaluationEvidence).mockResolvedValue(
       frozenDimensionEvidence() as never
     );
+    vi.mocked(evaluateSkippedFeedbackRecovery).mockReturnValue({
+      eligible: false,
+      completionTier: null,
+      evidenceFailureReason: "transcript_integrity_degraded",
+      trustedBlockCount: 0,
+    });
   });
 
   it("rejects unauthenticated polling", async () => {
@@ -1101,6 +1111,112 @@ describe("/api/feedback/[sessionId]", () => {
         scoreWithheldReason: "verified_evidence_integrity",
         recovery: "credit_recovery_in_progress",
       },
+    });
+  });
+
+  it("offers review recovery only when the skipped row and frozen evidence are recoverable", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "completed",
+      terminalReason: "user_end",
+      creditSettlementAction: "retain",
+      creditSettledAt: new Date("2026-08-15T01:19:17.857Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        statusReason: "transcript_integrity_degraded",
+        outcomeReason: "transcript_integrity_degraded",
+        dispatchStatus: "sent",
+        completionTier: "insufficient",
+      }) as never
+    );
+    vi.mocked(evaluateSkippedFeedbackRecovery).mockReturnValue({
+      eligible: true,
+      completionTier: "partial",
+      evidenceFailureReason: null,
+      trustedBlockCount: 3,
+    });
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(getFrozenFeedbackEvaluationEvidence).toHaveBeenCalledWith(
+      SESSION_ID,
+      expect.anything()
+    );
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "review_recovery_available",
+      },
+    });
+  });
+
+  it("does not claim credit recovery after a retained credit is settled", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "completed",
+      terminalReason: "user_end",
+      creditSettlementAction: "retain",
+      creditSettledAt: new Date("2026-08-15T01:19:17.857Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        statusReason: "transcript_integrity_degraded",
+        outcomeReason: "transcript_integrity_degraded",
+        dispatchStatus: "sent",
+        completionTier: "insufficient",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
+    await expect(response.json()).resolves.toEqual({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: null,
+      },
+    });
+  });
+
+  it("does not revalidate skipped rows that the recovery transition cannot claim", async () => {
+    vi.mocked(getSessionById).mockResolvedValue({
+      userId: "user-1",
+      roundType: "product_sense",
+      lifecycleState: "completed",
+      terminalReason: "user_end",
+      creditSettlementAction: "retain",
+      creditSettledAt: new Date("2026-08-15T01:19:17.857Z"),
+    } as never);
+    vi.mocked(getFeedbackBySessionId).mockResolvedValue(
+      feedbackRecord({
+        status: "skipped",
+        statusReason: "transcript_integrity_degraded",
+        outcomeReason: "transcript_integrity_degraded",
+        dispatchStatus: "not_required",
+        dispatchEventId: null,
+        completionTier: "insufficient",
+      }) as never
+    );
+
+    const response = await GET(request(), PARAMS);
+
+    expect(getFrozenFeedbackEvaluationEvidence).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      status: "skipped",
+      retryable: false,
+      details: { recovery: null },
     });
   });
 
