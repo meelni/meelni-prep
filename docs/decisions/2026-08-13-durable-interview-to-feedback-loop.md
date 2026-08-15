@@ -116,6 +116,14 @@ Model, provider, and queue-policy changes must be evaluated against sanitized
 provider-free fixtures first. Paid calls, provider mutations, Production
 configuration, and default-on rollout remain separately human-authorized.
 
+On 2026-08-14, SAV-450 activated the provider-free queue candidate after an
+authorized Production recovery exposed 85–87 seconds of baseline throttle
+wait before provider execution. The worker now admits at most eight feedback
+jobs globally, preserves one-at-a-time execution per session, and applies no
+global rate throttle. The original event-anchored 90-second deadline, closed
+retry policy, provider-attempt cap, persistence reserve, event fencing, and
+human-owned Production authorization remain unchanged.
+
 ### Processing is a useful saved-review workspace
 
 After End is accepted, the feedback route should immediately show the saved

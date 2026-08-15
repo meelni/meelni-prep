@@ -89,6 +89,15 @@ authorize spend, alter a token ceiling or queue, activate a default, or
 authorize a Production or launch action. Live quality and latency evidence and
 the applicable owner-controlled authorization remain separate prerequisites.
 
+The `bounded-concurrency-candidate` queue policy was activated for the
+authoritative feedback worker under SAV-450 after Production evidence showed
+the baseline global throttle consuming 85–87 seconds before provider work.
+The activation changes only queue admission: global concurrency is eight,
+per-session concurrency remains one, and the global rate throttle is removed.
+It does not activate the evaluator candidate, change the 2,000-token runtime
+ceiling, reset the event-anchored 90-second budget, or alter provider retry and
+persistence reserves.
+
 ## Gold-set contract
 
 `packages/test-fixtures/src/evaluation-calibration.ts` owns
