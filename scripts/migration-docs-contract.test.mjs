@@ -50,19 +50,19 @@ test("migration operations docs match the ordered Drizzle journal", async () => 
   const journalTags = entries.map((entry) => entry.tag);
 
   assert.deepEqual(documentedTags, journalTags);
-  assert.equal(entries.length, 40);
-  assert.equal(entries.at(-1).tag, "0039_sav_445_shadow_feedback_artifacts");
-  assert.match(history, /forty-entry inventory/);
-  assert.match(runbook, /forty-entry schema\s+preflight/);
-  assert.match(runbook, /through\s+`0039_sav_445_shadow_feedback_artifacts`/);
+  assert.equal(entries.length, 41);
+  assert.equal(entries.at(-1).tag, "0040_sav_448_managed_service_role_grants");
+  assert.match(history, /forty-one-entry inventory/);
+  assert.match(runbook, /forty-one-entry schema\s+preflight/);
+  assert.match(runbook, /through\s+`0040_sav_448_managed_service_role_grants`/);
   assert.match(runbook, /isolated `meelni-preview` Supabase project/);
   assert.match(
     await readFile("docs/operations/database-migrations.md", "utf8"),
-    /forty\s+ledger entries, 42\s+RLS-enabled tables/i
+    /forty-one\s+ledger entries, 42\s+RLS-enabled tables/i
   );
   assert.match(
     await readFile("docs/operations/database-migrations.md", "utf8"),
-    /strict preflight[\s\S]*migrationCount: 40[\s\S]*90ee1265eed98424299cf06a01e225ccb3905071e6295ff51e4652fa00b62985/i
+    /strict preflight[\s\S]*migrationCount: 41[\s\S]*90ee1265eed98424299cf06a01e225ccb3905071e6295ff51e4652fa00b62985/i
   );
 
   assert.match(history, /`transcript_runtime_writer` registry/);
