@@ -40,7 +40,6 @@ export type TrustedAnswerBlockAuthorityFailureReason =
   | "authority_malformed"
   | "canonicalization_failure"
   | "cutoff_conflict"
-  | "non_terminal_preserving_marker"
   | "replay_conflict"
   | "sequence_gap"
   | "terminal_boundary_invalid"
@@ -141,9 +140,6 @@ export function projectTrustedClosedAnswerBlocks(
   if (!integrityMarkersFollowPriorSpeech(sequencedEvents)) {
     return failedProjection("terminal_boundary_invalid");
   }
-
-  const markerFailure = preservingMarkerFailure(sequencedEvents);
-  if (markerFailure) return failedProjection(markerFailure);
 
   const derived = deriveCandidateAnswerBlocks(events);
   if (!derived.eligible) {
@@ -326,18 +322,6 @@ function hasExactTerminalBoundary(
   return terminal.kind === "session_end" || terminal.kind === "cutoff"
     ? terminal.occurredAtMs === cutoffAtMs
     : false;
-}
-
-function preservingMarkerFailure(
-  events: readonly ReturnTypeEvent[]
-): TrustedAnswerBlockAuthorityFailureReason | null {
-  const preservingMarkers = events.filter(isPreservingMarker);
-  if (preservingMarkers.length === 0) return null;
-  const finalSequencedEvent = events.at(-1);
-  return preservingMarkers.length === 1 &&
-    finalSequencedEvent?.eventId === preservingMarkers[0]!.eventId
-    ? null
-    : "non_terminal_preserving_marker";
 }
 
 function integrityMarkersFollowPriorSpeech(

@@ -1,5 +1,8 @@
 # SAV-441 trusted closed answer-block authority
 
+Amended 2026-08-14 by SAV-449: the original single-terminal preserving-marker
+restriction is superseded by the exact role/reason behavior below.
+
 ## Why
 
 Frozen transcript evidence currently classifies a session as complete or
@@ -17,10 +20,12 @@ can consume a verified prefix.
   cutoff and writer facts.
 - Reuse the existing answer-block grouper and project only a trusted closed
   prefix with explicit closure provenance.
-- Preserve earlier closed blocks only for the exact terminal interviewer
-  `no_provider_confirmed_prefix` marker; exclude its affected tail.
-- Fail closed for candidate/canonicalization markers, non-terminal preserving
-  markers, gaps, replay conflicts, writer drift/degradation, cutoff conflicts,
+- Treat exact interviewer `no_provider_confirmed_prefix` markers as
+  content-free sequence evidence that neither closes nor splits an answer.
+  Repeated and mid-session occurrences preserve prompt/answer continuity while
+  keeping the snapshot partial and prohibiting an overall score.
+- Fail closed for candidate/canonicalization markers, malformed marker
+  ordering, gaps, replay conflicts, writer drift/degradation, cutoff conflicts,
   malformed inputs, and unknown versions.
 - Emit one private-minted, SHA-256, segmentation-invariant versioned identity
   alongside each trusted block.

@@ -419,6 +419,7 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
         <FeedbackLifecycleScenario
           state={{
             kind: "transcript-integrity-degraded",
+            retryable: false,
             details: {
               outcome: "unable_to_review",
               scoreWithheldReason: "verified_evidence_integrity",

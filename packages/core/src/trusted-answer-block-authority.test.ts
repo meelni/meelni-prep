@@ -365,21 +365,43 @@ test("candidate markers, canonicalization failures, gaps, and writer drift fail 
   }
 });
 
-test("a preserving marker followed by candidate evidence is non-terminal and fails closed", () => {
+test("repeated preserving markers remain transparent and retain only independently closed blocks", () => {
   const events: AnswerBlockLedgerEvent[] = [
     turn(1, "interviewer", "Frame the decision.", 0),
     turn(2, "user", "I would start with the riskiest assumption.", 1_000),
     marker(3, "interviewer", "no_provider_confirmed_prefix", 2_100),
-    turn(4, "user", "This suffix has no verified prompt.", 2_200),
-    { kind: "session_end", occurredAtMs: 4_000 },
+    turn(4, "user", "Then I would validate it with five customers.", 2_200),
+    marker(5, "interviewer", "no_provider_confirmed_prefix", 3_100),
+    turn(6, "interviewer", "What result would change your plan?", 3_200),
+    marker(7, "interviewer", "no_provider_confirmed_prefix", 4_100),
+    turn(
+      8,
+      "user",
+      "A weak repeat rate would make me narrow the segment.",
+      4_200
+    ),
+    marker(9, "interviewer", "no_provider_confirmed_prefix", 5_100),
+    { kind: "session_end", occurredAtMs: 6_000 },
   ];
   const projection = projectTrustedClosedAnswerBlocks(
     events,
     authority(events, { snapshotState: "partial", settlementState: "missing" })
   );
 
-  assert.equal(projection.status, "integrity_failure");
-  assert.equal(projection.failureReason, "non_terminal_preserving_marker");
+  assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.failureReason, null);
+  assert.deepEqual(
+    projection.trustedBlocks.map(({ responseText }) => responseText),
+    [
+      "I would start with the riskiest assumption. Then I would validate it with five customers.",
+    ]
+  );
+  assert.deepEqual(projection.excludedBlocks, [
+    {
+      answerBlockId: "answer-block:0002",
+      reason: "unverified_terminal_tail",
+    },
+  ]);
 });
 
 test("exact semantic replay preserves authority while conflicting replay fails closed", () => {

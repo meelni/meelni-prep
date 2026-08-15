@@ -303,6 +303,42 @@ export function FeedbackLifecycleStatus({
 
   if (state.kind === "transcript-integrity-degraded") {
     const creditReturned = state.details.recovery === "credit_returned";
+    const creditRecoveryInProgress =
+      state.details.recovery === "credit_recovery_in_progress";
+    const reviewRecoveryAvailable =
+      state.details.recovery === "review_recovery_available";
+
+    if (reviewRecoveryAvailable) {
+      return (
+        <FeedbackStatusPage
+          role="status"
+          aria-live="polite"
+          tone="warning"
+          icon={<RefreshCw className="h-8 w-8" aria-hidden="true" />}
+          title="Review ready to retry"
+          description={
+            recoveryError ||
+            "Your saved interview is intact. The earlier review stopped before feedback was created, but the verified evidence is now ready to review."
+          }
+          actions={
+            <div className="flex flex-col items-center gap-3 sm:flex-row">
+              {state.retryable && retryAction("Retry review")}
+              <FeedbackDashboardLink />
+            </div>
+          }
+        >
+          <div className="border-border bg-background/50 rounded-lg border p-4 text-center">
+            <p className="text-foreground font-semibold">
+              Retrying does not use another interview credit.
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm leading-6">
+              We’ll use the interview that is already saved.
+            </p>
+          </div>
+        </FeedbackStatusPage>
+      );
+    }
+
     return (
       <FeedbackStatusPage
         role="alert"
@@ -321,22 +357,24 @@ export function FeedbackLifecycleStatus({
           </div>
         }
       >
-        <div
-          role={creditReturned ? undefined : "status"}
-          aria-live={creditReturned ? undefined : "polite"}
-          className="border-border bg-background/50 rounded-lg border p-4 text-center"
-        >
-          <p className="text-foreground font-semibold">
-            {creditReturned
-              ? "Your interview credit was returned."
-              : "Credit recovery is in progress."}
-          </p>
-          <p className="text-muted-foreground mt-1 text-sm leading-6">
-            {creditReturned
-              ? "You can use it for another mock interview."
-              : "You do not need to retry the review while the saved credit record finishes updating."}
-          </p>
-        </div>
+        {(creditReturned || creditRecoveryInProgress) && (
+          <div
+            role={creditRecoveryInProgress ? "status" : undefined}
+            aria-live={creditRecoveryInProgress ? "polite" : undefined}
+            className="border-border bg-background/50 rounded-lg border p-4 text-center"
+          >
+            <p className="text-foreground font-semibold">
+              {creditReturned
+                ? "Your interview credit was returned."
+                : "Credit recovery is in progress."}
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm leading-6">
+              {creditReturned
+                ? "You can use it for another mock interview."
+                : "You do not need to retry the review while the saved credit record finishes updating."}
+            </p>
+          </div>
+        )}
       </FeedbackStatusPage>
     );
   }

@@ -61,7 +61,9 @@ export interface SyntheticFeedbackReviewOutcomeFixture {
       | "continue_practice"
       | "start_another_interview"
       | "credit_returned"
-      | "credit_recovery_in_progress";
+      | "credit_recovery_in_progress"
+      | "review_recovery_available"
+      | null;
     historyLabel:
       | "Full scorecard ready"
       | "Partial scorecard ready"
@@ -174,6 +176,40 @@ export function createSyntheticFeedbackReviewOutcomeFixtures(): SyntheticFeedbac
         exactCandidateCitation: null,
         prioritizedPracticeFocus: false,
         recovery: "start_another_interview",
+        historyLabel: "Unable to review",
+        numericMetricContribution: { overall: false, dimensions: [] },
+      },
+    },
+    {
+      id: "unable-integrity-review-recovery-available",
+      provenance: "fully_synthetic",
+      sourceIntegrity: "verified",
+      sourceVariants: reviewRecoveryVariants(),
+      expected: {
+        outcome: "unable_to_review",
+        withheldReason: "verified_evidence_integrity",
+        dimensions: [],
+        displayOverallScore: null,
+        exactCandidateCitation: null,
+        prioritizedPracticeFocus: false,
+        recovery: "review_recovery_available",
+        historyLabel: "Unable to review",
+        numericMetricContribution: { overall: false, dimensions: [] },
+      },
+    },
+    {
+      id: "unable-integrity-settled-retain",
+      provenance: "fully_synthetic",
+      sourceIntegrity: "failed",
+      sourceVariants: integrityFailureVariants(),
+      expected: {
+        outcome: "unable_to_review",
+        withheldReason: "verified_evidence_integrity",
+        dimensions: [],
+        displayOverallScore: null,
+        exactCandidateCitation: null,
+        prioritizedPracticeFocus: false,
+        recovery: null,
         historyLabel: "Unable to review",
         numericMetricContribution: { overall: false, dimensions: [] },
       },
@@ -301,6 +337,46 @@ function integrityFailureVariants(): SyntheticFeedbackTranscriptVariant[] {
       segmentCount,
       events: source.events,
       answerBlocks: [],
+      coverageResult: null,
+    };
+  });
+}
+
+function reviewRecoveryVariants(): SyntheticFeedbackTranscriptVariant[] {
+  return ANSWER_BLOCK_SEGMENT_COUNTS.map((segmentCount) => {
+    const source = createAnswerBlockSegmentationFixture(segmentCount);
+    const events: AnswerBlockLedgerEvent[] = [];
+    let sequence = 1;
+    for (const event of source.events) {
+      if (event.kind === "session_end") {
+        events.push(event);
+        continue;
+      }
+      if (event.kind !== "turn") {
+        events.push(event);
+        continue;
+      }
+      const turn = {
+        ...event,
+        eventId: `recovery-writer:${sequence}`,
+        sequence: sequence++,
+      };
+      events.push(turn);
+      events.push({
+        kind: "integrity_boundary",
+        eventId: `recovery-writer:${sequence}`,
+        writerId: turn.writerId,
+        writerGeneration: turn.writerGeneration,
+        sequence: sequence++,
+        speaker: "interviewer",
+        occurredAtMs: turn.endedAtMs,
+        reason: "no_provider_confirmed_prefix",
+      });
+    }
+    return {
+      segmentCount,
+      events,
+      answerBlocks: deriveCandidateAnswerBlocks(events).blocks,
       coverageResult: null,
     };
   });

@@ -7,13 +7,15 @@ Feedback generation is one idempotent workflow with durable dispatch and generat
 - Interview completion creates the row as `pending` or terminal `skipped` and commits the completion tier and dispatch state in the same transaction.
 - The dispatcher is the only owner of `dispatchStatus`, `dispatchEventId`, attempts, and dispatch leases.
 - The generation workflow is the only writer of generation status and evaluated feedback fields.
-- Completed and skipped rows are immutable. Recovery never reopens them.
+- Completed rows are immutable. Skipped rows are terminal except for the
+  exact owner-scoped late false-negative recovery described below.
 
 The feedback row also stores one content-free `outcome_reason` from the closed
 taxonomy `feedback_generated`, `no_reviewable_answer`,
 `transcript_integrity_degraded`, `dispatch_failed`, or `generation_failed`.
 Dispatch failures are transient and clear when a later claim succeeds. The
-completed and skipped outcome reasons remain immutable with their terminal row.
+Completed outcome reasons remain immutable. A skipped integrity outcome may
+change only through the fenced false-negative recovery transition below.
 
 ## Evidence-gated evaluation
 
@@ -54,9 +56,14 @@ failure remain the distinct `generation_failed` outcome.
 
 The marker rule is role/reason scoped: the exact
 `interviewer/no_provider_confirmed_prefix` marker records textless inaudible
-interviewer speech and does not degrade independent candidate evidence.
-Candidate markers and every `canonicalization_failed` marker still fail closed.
-A preserving marker or missing runtime settlement is frozen with the durable
+interviewer speech. It advances the shared writer sequence but is transparent
+to prompt/answer continuity: it neither closes nor splits an answer. Any number
+of these exact markers may occur mid-session or at the end without globally
+invalidating otherwise trusted blocks. Candidate markers and every
+`canonicalization_failed` marker still fail closed, as do sequence gaps,
+writer drift/degradation, malformed marker ordering, settlement/cutoff
+conflicts, and conflicting replay continuity. A preserving marker or missing
+runtime settlement is frozen with the durable
 `evidence_limited_only` feedback-mode constraint. New evaluation may still
 record grounded facet coverage. Core keeps that invocation scoreless unless
 the server recomputes an exact `verified_prefix` trusted-answer projection.
@@ -77,9 +84,32 @@ A delayed provider response or failure callback from an older attempt therefore 
 
 ## Retry and leases
 
-Generation has a five-minute processing lease. Recovery may prepare only `failed` work or `processing` work whose lease is missing or expired. Preparation returns the row to `pending`, clears processing and dispatch lease timestamps, and marks dispatch failed so the dispatcher can allocate a fresh event ID.
+Generation has a five-minute processing lease. Ordinary recovery may prepare
+only `failed` work or `processing` work whose lease is missing or expired.
+Preparation returns the row to `pending`, clears processing and dispatch lease
+timestamps, and marks dispatch failed so the dispatcher can allocate a fresh
+event ID.
 
-Pending dispatches, failed dispatches, and expired sending leases can be dispatched. Active generation and active sending leases report `retryable: false`. Terminal results always report `retryable: false`.
+A narrow late false-negative recovery may also prepare an exact persisted
+`skipped/transcript_integrity_degraded` row whose original dispatch was sent.
+It is available only through the authenticated owner-scoped recovery workflow,
+after the immutable frozen snapshot is revalidated under the current canonical
+trust boundary and produces reviewable trusted answer blocks. The transition
+is a compare-and-set against that exact terminal tuple and dispatch event. It
+returns the row to `pending`, conservatively retains partial completion
+authority, clears processing and dispatch leases, and lets the dispatcher mint
+a fresh attempt event. Concurrent calls converge on the same requeued work.
+Failure to revalidate leaves the terminal skip unchanged.
+
+Requeueing evaluates the already-consumed interview and performs no credit
+debit, grant, refund, release, or other credit mutation. The preserving-marker
+snapshot remains partial, so recovery cannot produce an overall score.
+
+Pending dispatches, failed dispatches, and expired sending leases can be
+dispatched. Active generation and active sending leases report
+`retryable: false`. Terminal results report `retryable: false` except for a
+skipped integrity row that has passed frozen-evidence revalidation and exposes
+the bounded owner-scoped review recovery above.
 
 Concurrent recovery calls are safe: preparation is conditional, dispatch claim is atomic, and callers converge on sent or in-progress state.
 
@@ -208,6 +238,14 @@ details. Feedback clients do not infer recovery from nested dispatch state.
 Missing feedback is retryable only for terminal sessions. Ending
 sessions return `settling` and `retryable: false`; active sessions remain
 `session_not_ended` and non-retryable.
+
+An authenticated read of a recoverable late false-negative skip returns the
+customer-safe `review_recovery_available` state with top-level
+`retryable: true`. The read derives that state from the same immutable frozen
+evidence revalidation required by POST; it does not infer retryability from the
+old skip reason alone. Recovery retries the saved review without consuming
+another credit. Credit copy remains independent: `credit_recovery_in_progress`
+is emitted only while settlement is outstanding, never after a settled retain.
 
 Each mounted feedback client may automatically invoke authenticated `POST` recovery once when top-level `retryable` is true. Concurrent polls share that attempt, then continue within a 30-poll, three-second interval budget. A failed automatic attempt becomes an explicit user recovery action rather than an unbounded POST loop.
 

@@ -236,7 +236,9 @@ export interface SkippedFeedbackDetails {
   recovery:
     | "start_another_interview"
     | "credit_returned"
-    | "credit_recovery_in_progress";
+    | "credit_recovery_in_progress"
+    | "review_recovery_available"
+    | null;
 }
 
 export type FeedbackLifecycleResponse = (
@@ -283,7 +285,7 @@ export type FeedbackLifecycleResponse = (
     }
   | {
       status: "skipped";
-      retryable: false;
+      retryable: boolean;
       details: SkippedFeedbackDetails;
     }
 ) & { workspace?: SavedInterviewWorkspace };
@@ -337,7 +339,11 @@ export type FeedbackViewState =
       outcomeReason: "generation_failed";
     }
   | { kind: "no-reviewable-answer"; details: SkippedFeedbackDetails }
-  | { kind: "transcript-integrity-degraded"; details: SkippedFeedbackDetails };
+  | {
+      kind: "transcript-integrity-degraded";
+      retryable: boolean;
+      details: SkippedFeedbackDetails;
+    };
 
 const DIMENSIONS = new Set<FeedbackDimension>([
   "structure",
@@ -515,7 +521,11 @@ export function toFeedbackViewState(
     case "skipped":
       return response.details.scoreWithheldReason ===
         "verified_evidence_integrity"
-        ? { kind: "transcript-integrity-degraded", details: response.details }
+        ? {
+            kind: "transcript-integrity-degraded",
+            retryable: response.retryable,
+            details: response.details,
+          }
         : { kind: "no-reviewable-answer", details: response.details };
     case "completed":
       if (response.feedback.kind === "invalid") {
@@ -639,8 +649,18 @@ export function decodeFeedbackLifecycleResponse(
         : null;
     case "skipped": {
       const details = decodeSkippedDetails(value.details);
-      return value.retryable === false && details
-        ? { status: "skipped", retryable: false, details, ...workspaceField }
+      if (typeof value.retryable !== "boolean" || !details) return null;
+      const recoveryMatchesRetryability =
+        details.recovery === "review_recovery_available"
+          ? value.retryable === true
+          : value.retryable === false;
+      return recoveryMatchesRetryability
+        ? {
+            status: "skipped",
+            retryable: value.retryable,
+            details,
+            ...workspaceField,
+          }
         : null;
     }
     case "completed": {
@@ -669,7 +689,9 @@ function decodeSkippedDetails(value: unknown): SkippedFeedbackDetails | null {
     value.scoreWithheldReason === "rubric_coverage"
       ? value.recovery === "start_another_interview"
       : value.recovery === "credit_returned" ||
-        value.recovery === "credit_recovery_in_progress";
+        value.recovery === "credit_recovery_in_progress" ||
+        value.recovery === "review_recovery_available" ||
+        value.recovery === null;
   if (!expectedRecovery) return null;
   if (
     Object.keys(value).some(

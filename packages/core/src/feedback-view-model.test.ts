@@ -591,6 +591,26 @@ test("keeps recovery attached to the authoritative lifecycle status", () => {
     }).kind,
     "no-reviewable-answer"
   );
+  assert.deepEqual(
+    toFeedbackViewState({
+      status: "skipped",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "review_recovery_available",
+      },
+    }),
+    {
+      kind: "transcript-integrity-degraded",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "review_recovery_available",
+      },
+    }
+  );
 });
 
 test("maps every non-completed lifecycle response to an explicit view state", () => {
@@ -647,6 +667,18 @@ test("maps every non-completed lifecycle response to an explicit view state", ()
           outcome: "unable_to_review",
           scoreWithheldReason: "verified_evidence_integrity",
           recovery: "credit_recovery_in_progress",
+        },
+      },
+      "transcript-integrity-degraded",
+    ],
+    [
+      {
+        status: "skipped",
+        retryable: true,
+        details: {
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
+          recovery: "review_recovery_available",
         },
       },
       "transcript-integrity-degraded",
@@ -714,6 +746,24 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
         recovery: "credit_recovery_in_progress",
       },
     },
+    {
+      status: "skipped",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "review_recovery_available",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: null,
+      },
+    },
     { status: "completed", retryable: false, feedback: validCompleted },
   ];
   for (const payload of valid) {
@@ -742,6 +792,33 @@ test("runtime-decodes every lifecycle status and rejects malformed or unknown pa
         outcome: "unable_to_review",
         scoreWithheldReason: "invented",
         recovery: "start_another_interview",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "review_recovery_available",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_returned",
+      },
+    },
+    {
+      status: "skipped",
+      retryable: true,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: null,
       },
     },
     {
