@@ -155,6 +155,16 @@ interface CapturedFeedbackGenerationAttempt {
   completedAtMs: number;
 }
 
+type FeedbackGenerationStepState = Pick<
+  FeedbackGenerationRecord,
+  "status" | "eventId"
+>;
+
+type FeedbackGenerationClaimStepState = Pick<
+  FeedbackGenerationRecord,
+  "completionTier" | "completionStats" | "outcomeReason"
+> & { processingStartedAtMs: number };
+
 export async function generateFeedbackWorkflow(
   input: GenerateFeedbackWorkflowInput,
   deps: GenerateFeedbackWorkflowDeps
@@ -215,7 +225,10 @@ async function runGenerateFeedbackWorkflow(
       if (generation.eventId !== input.eventId) {
         throw new Error("feedback_generation_event_mismatch");
       }
-      return { session, generation };
+      return {
+        session,
+        generation: toFeedbackGenerationStepState(generation),
+      };
     }
   );
 
@@ -233,20 +246,28 @@ async function runGenerateFeedbackWorkflow(
       stage: "claim",
       workflowAttempt: executionAttempt,
     },
-    () =>
-      deps.store.claim({
-        sessionId: input.sessionId,
-        eventId: input.eventId,
-        now: deps.now(),
-        deadlineAt: new Date(deadlineAtMs),
-      })
+    async () =>
+      toFeedbackGenerationClaimStepState(
+        await deps.store.claim({
+          sessionId: input.sessionId,
+          eventId: input.eventId,
+          now: deps.now(),
+          deadlineAt: new Date(deadlineAtMs),
+        })
+      )
   );
   if (!claimed) {
-    const current = await deps.steps.run("read-feedback-generation-claim", () =>
-      deps.store.get(input.sessionId)
+    const current = await deps.steps.run(
+      "read-feedback-generation-claim",
+      async () =>
+        toFeedbackGenerationStepState(await deps.store.get(input.sessionId))
     );
     return unclaimedResult(input, current);
   }
+
+  const processingStartedAtMs = parseFeedbackGenerationProcessingStartedAtMs(
+    claimed.processingStartedAtMs
+  );
 
   await assertAccountIsActive(input.userId, deps);
 
@@ -368,7 +389,8 @@ async function runGenerateFeedbackWorkflow(
 
     const current = await deps.steps.run(
       `read-current-feedback-evaluation-${attempt}-execution-${input.executionAttempt ?? 0}`,
-      () => deps.store.get(input.sessionId)
+      async () =>
+        toFeedbackGenerationStepState(await deps.store.get(input.sessionId))
     );
     if (current?.eventId === input.eventId && current.status === "completed") {
       await sendInsightsUpdate(input, deps);
@@ -399,6 +421,7 @@ async function runGenerateFeedbackWorkflow(
       async () => {
         const startedAtMs = deps.now().getTime();
         const capturedAttempts: CapturedFeedbackGenerationAttempt[] = [];
+        let evaluationReturned = false;
         try {
           const currentAttemptPlan = planFeedbackProviderAttempt({
             attempt,
@@ -436,6 +459,7 @@ async function runGenerateFeedbackWorkflow(
             }),
             currentAttemptPlan.requestTimeoutMs
           );
+          evaluationReturned = true;
           assertFeedbackGenerationBudget(
             deadlineAtMs,
             deps.now().getTime(),
@@ -469,8 +493,7 @@ async function runGenerateFeedbackWorkflow(
             evaluation,
             processingDurationMs: Math.max(
               0,
-              deps.now().getTime() -
-                (claimed.processingStartedAt?.getTime() ?? startedAtMs)
+              deps.now().getTime() - processingStartedAtMs
             ),
             capturedAttempts,
           };
@@ -478,12 +501,26 @@ async function runGenerateFeedbackWorkflow(
           if (deps.preserveEvaluatorFailuresForSyntheticCalibration === true) {
             throw error;
           }
-          if (!isClosedEvaluationFailure(error)) throw error;
+          const providerSucceeded =
+            evaluationReturned ||
+            lastSuccessfulProviderCompletion(capturedAttempts) !== null;
+          if (!isClosedEvaluationFailure(error) && !providerSucceeded) {
+            throw error;
+          }
           const completedAtMs = deps.now().getTime();
-          const failure = classifyFeedbackGenerationFailure(
+          const classifiedFailure = classifyFeedbackGenerationFailure(
             error,
             "validation"
           );
+          const failure = providerSucceeded
+            ? {
+                ...classifiedFailure,
+                stage: "validation" as const,
+                failureClass: "provider_contract" as const,
+                retryable: false,
+                retryAfterMs: null,
+              }
+            : classifiedFailure;
           const failureStartedAtMs =
             failure.stage === "validation"
               ? (lastSuccessfulProviderCompletion(capturedAttempts) ??
@@ -590,7 +627,8 @@ async function runGenerateFeedbackWorkflow(
   if (!applied) {
     const current = await deps.steps.run(
       "read-fenced-feedback-generation",
-      () => deps.store.get(input.sessionId)
+      async () =>
+        toFeedbackGenerationStepState(await deps.store.get(input.sessionId))
     );
     if (
       getFeedbackGenerationRemainingBudgetMs(
@@ -783,7 +821,10 @@ async function skipClaimedFeedback(input: {
   if (!applied) {
     const current = await input.deps.steps.run(
       "read-fenced-skipped-feedback",
-      () => input.deps.store.get(input.input.sessionId)
+      async () =>
+        toFeedbackGenerationStepState(
+          await input.deps.store.get(input.input.sessionId)
+        )
     );
     return unclaimedResult(input.input, current);
   }
@@ -833,9 +874,55 @@ function getFeedbackGenerationExecutionAttempt(
   );
 }
 
+function toFeedbackGenerationStepState(
+  record: FeedbackGenerationRecord
+): FeedbackGenerationStepState;
+function toFeedbackGenerationStepState(record: null): null;
+function toFeedbackGenerationStepState(
+  record: FeedbackGenerationRecord | null
+): FeedbackGenerationStepState | null;
+function toFeedbackGenerationStepState(
+  record: FeedbackGenerationRecord | null
+): FeedbackGenerationStepState | null {
+  return record ? { status: record.status, eventId: record.eventId } : null;
+}
+
+function toFeedbackGenerationClaimStepState(
+  record: FeedbackGenerationRecord | null
+): FeedbackGenerationClaimStepState | null {
+  if (!record) return null;
+  const processingStartedAtMs = record.processingStartedAt?.getTime();
+  if (
+    typeof processingStartedAtMs !== "number" ||
+    !Number.isFinite(processingStartedAtMs) ||
+    processingStartedAtMs < 0
+  ) {
+    throwFeedbackGenerationPolicyFailure(
+      "feedback_generation_durable_step_invalid",
+      "claim"
+    );
+  }
+  return {
+    completionTier: record.completionTier,
+    completionStats: record.completionStats,
+    outcomeReason: record.outcomeReason,
+    processingStartedAtMs,
+  };
+}
+
+function parseFeedbackGenerationProcessingStartedAtMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throwFeedbackGenerationPolicyFailure(
+      "feedback_generation_durable_step_invalid",
+      "claim"
+    );
+  }
+  return value;
+}
+
 function unclaimedResult(
   input: GenerateFeedbackWorkflowInput,
-  current: FeedbackGenerationRecord | null
+  current: FeedbackGenerationStepState | null
 ): GenerateFeedbackWorkflowResult {
   if (!current) {
     return {

@@ -33,6 +33,7 @@ import {
 import { getEvaluationFailureReason } from "@/lib/evaluation/failure-reason";
 import { FeedbackProviderInvocationError } from "@/lib/evaluation/scorer";
 import { DeadlineExceededError } from "@/lib/http/deadline";
+import { FeedbackGenerationPolicyError } from "@/lib/evaluation/feedback-generation-policy";
 import {
   calculateValidatedSessionFromTurns,
   prepareCandidateAnswerBlockEvidenceFromTurns,
@@ -87,6 +88,75 @@ test("concurrent deliveries claim once and emit insights once", async () => {
     ).length,
     1
   );
+});
+
+test("durable claim timestamps survive JSON step serialization without repeating provider work", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+  });
+  deps.steps = {
+    async run<T>(_name: string, work: () => Promise<T>): Promise<T> {
+      return JSON.parse(JSON.stringify(await work())) as T;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.deepEqual(result, {
+    status: "completed",
+    disposition: "applied",
+    sessionId: SESSION_ID,
+    overallScore: 8,
+  });
+  assert.equal(evaluations, 1);
+  assert.equal(store.current.status, "completed");
+});
+
+test("invalid durable claim timestamps fail closed before provider work", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+  });
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      const persisted = JSON.parse(JSON.stringify(await work())) as T & {
+        disposition?: unknown;
+        value?: { processingStartedAtMs?: unknown };
+      };
+      if (
+        name === "claim-feedback-generation" &&
+        persisted.disposition === "succeeded" &&
+        persisted.value
+      ) {
+        persisted.value.processingStartedAtMs = "not-a-timestamp";
+      }
+      return persisted;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.message === "feedback_generation_durable_step_invalid" &&
+      error.failure.stage === "claim" &&
+      error.failure.failureClass === "persistence" &&
+      error.failure.retryable === false
+  );
+  assert.equal(evaluations, 0);
 });
 
 test("completion latency is anchored to accepted end truth", async () => {
@@ -602,6 +672,114 @@ test("memoized provider evidence preserves its full originating attempt", async 
     firstProviderAttempts[1]?.startedAt.getTime()
   );
   assertUniqueStageAttemptKeys(replayedProviderAttempts);
+});
+
+test("unknown failures after provider success close without repeating paid work", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+    requireDimensionCoverage: true,
+  });
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = JSON.parse(JSON.stringify(await work())) as T;
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+  await assert.rejects(
+    generateFeedbackWorkflow({ ...input(EVENT_1), executionAttempt: 1 }, deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+
+  assert.equal(evaluations, 1);
+});
+
+test("retryable provider errors after accepted provider success close without another attempt", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate({ attempt, reportAttempt }) {
+      evaluations += 1;
+      reportAttempt({
+        stage: "provider",
+        attempt,
+        outcome: "succeeded",
+        durationMs: 10,
+        remainingBudgetMs: 80_000,
+        observedModel: "fixture-model",
+        observedServiceTier: "default",
+      });
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_invocation_failed",
+        undefined,
+        undefined,
+        undefined,
+        { diagnostic: { kind: "provider_network" } }
+      );
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+
+  assert.equal(evaluations, 1);
+});
+
+test("retryable provider errors before success evidence still retry", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      if (evaluations === 1) {
+        throw new FeedbackProviderInvocationError(
+          "evaluation_provider_invocation_failed",
+          undefined,
+          undefined,
+          undefined,
+          { diagnostic: { kind: "provider_network" } }
+        );
+      }
+      return evaluation("full");
+    },
+  });
+  deps.steps.sleep = async () => {};
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.equal(result.status, "completed");
+  assert.equal(evaluations, 2);
 });
 
 test("memoized transient provider failure keeps its original retry decision", async () => {
