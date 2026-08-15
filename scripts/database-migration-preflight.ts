@@ -178,11 +178,11 @@ async function run(url: string, environmentIdentity: string) {
         legacyRuntimeSettlementLineage &&
         ![
           23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-          40,
+          40, 41,
         ].includes(migrations.length)
       ) {
         throw new Error(
-          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0039 reconciliation states"
+          "Legacy runtime-settlement lineage is supported only through the exact 0022 to 0040 reconciliation states"
         );
       }
       migrations.forEach((migration, index) => {
