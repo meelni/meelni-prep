@@ -46,10 +46,11 @@
 |    37 | `0037_sav_439_feedback_stage_attempt_history`     |
 |    38 | `0038_sav_440_verified_prefix_partial_scorecards` |
 |    39 | `0039_sav_445_shadow_feedback_artifacts`          |
+|    40 | `0040_sav_448_managed_service_role_grants`        |
 
 <!-- migration-journal:end -->
 
-This forty-entry inventory is generated from the same ordered contract as
+This forty-one-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -464,3 +465,18 @@ cascades on deletion. Forced RLS plus revoked `PUBLIC`, `anon`, and
 select, insert, and delete but cannot update, and an immutable-row trigger
 rejects updates from privileged callers too. The migration performs no backfill,
 evaluation, provider call, feedback mutation, or activation.
+
+## Managed service-role grants
+
+Migration `0040_sav_448_managed_service_role_grants` repairs the managed
+Supabase default-privilege difference discovered during the SAV-433 Production
+rollout. It revokes all privileges from `PUBLIC`, `anon`, `authenticated`, and
+`service_role` on `transcript_runtime_settlement_command`,
+`feedback_generation_stage_attempt`, and `shadow_feedback_artifact`, then
+re-grants only the reviewed service-only subsets.
+
+The migration changes no rows, RLS policies, feedback artifacts, transcript
+evidence, evaluator settings, or feature flags. Clean local PostgreSQL already
+has the intended grants, so the migration is catalog-idempotent there; managed
+Supabase environments converge from their broader defaults to the same schema
+fingerprint. Rollback keeps the narrower grants in place.
