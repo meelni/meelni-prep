@@ -26,6 +26,7 @@ import {
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
+  isSkippedIntegrityRecoveryCandidate,
 } from "@/lib/db/feedback-generation-state";
 import {
   FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION,
@@ -38,6 +39,7 @@ import {
   prepareCandidateAnswerBlockEvidenceFromFrozenSnapshot,
   prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
 } from "@/lib/evaluation/session-validator";
+import { evaluateSkippedFeedbackRecovery } from "@/lib/evaluation/skipped-feedback-recovery";
 import {
   buildCompletedFeedbackLifecycleResponse,
   buildDispatchFailedFeedbackLifecycleResponse,
@@ -450,15 +452,33 @@ export async function GET(
             });
           }
 
-          // Case 4: Skipped - return immutable completion evidence. Do not rerun the
-          // validator after terminalization because late transcript writes or a new
-          // validator deployment cannot redefine the committed outcome.
+          // Case 4: Skipped - the frozen ledger remains immutable. Revalidation is
+          // allowed only for the exact late integrity false-negative shape that the
+          // recovery workflow can compare-and-set back to pending.
           if (status === "skipped") {
-            const skippedResponse = buildSkippedFeedbackLifecycleResponse({
-              ...feedbackRecord,
-              creditSettlementAction: session?.creditSettlementAction,
-              creditSettledAt: session?.creditSettledAt,
-            });
+            const skippedIntegrityRecoveryCandidate =
+              isSkippedIntegrityRecoveryCandidate({
+                status,
+                statusReason: feedbackRecord.statusReason,
+                outcomeReason: feedbackRecord.outcomeReason,
+                dispatchStatus: feedbackRecord.dispatchStatus,
+                eventId: feedbackRecord.dispatchEventId,
+              });
+            const reviewRecoveryAvailable =
+              skippedIntegrityRecoveryCandidate &&
+              evaluateSkippedFeedbackRecovery(
+                await getFrozenFeedbackEvaluationEvidence(sessionId, database)
+              ).eligible;
+            const skippedResponse = buildSkippedFeedbackLifecycleResponse(
+              {
+                ...feedbackRecord,
+                creditSettlementAction: session?.creditSettlementAction,
+                creditSettledAt: session?.creditSettledAt,
+              },
+              {
+                reviewRecoveryAvailable,
+              }
+            );
             if (!skippedResponse) {
               reportOperationalFailure({
                 operation: "feedback_dispatch",
@@ -478,8 +498,9 @@ export async function GET(
             return NextResponse.json(skippedResponse, {
               headers: {
                 "Cache-Control":
+                  skippedResponse.retryable ||
                   skippedResponse.details.recovery ===
-                  "credit_recovery_in_progress"
+                    "credit_recovery_in_progress"
                     ? "private, no-store"
                     : "private, max-age=300",
               },

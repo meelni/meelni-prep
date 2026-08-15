@@ -14,6 +14,7 @@ import {
   FEEDBACK_GENERATION_LEASE_MS,
   FEEDBACK_QUEUE_CLAIM_TIMEOUT_MS,
 } from "@/lib/operations/interview-lifecycle-slo";
+import { FEEDBACK_RECOVERY_FENCE_PREFIX } from "./feedback-event-id";
 
 export {
   FEEDBACK_GENERATION_LEASE_MS,
@@ -81,6 +82,9 @@ export interface FeedbackGenerationStore {
     eventId: string;
     reason: string;
   }): Promise<boolean>;
+  prepareSkippedIntegrityRetry?(input: {
+    sessionId: string;
+  }): Promise<FeedbackGenerationRetryPreparation>;
   prepareRetry(input: {
     sessionId: string;
     now: Date;
@@ -107,6 +111,21 @@ export function isFeedbackGenerationRetryable(
 ): boolean {
   return (
     record.status === "failed" || isFeedbackGenerationLeaseExpired(record, now)
+  );
+}
+
+export function isSkippedIntegrityRecoveryCandidate(
+  record: Pick<
+    FeedbackGenerationRecord,
+    "status" | "statusReason" | "outcomeReason" | "dispatchStatus" | "eventId"
+  >
+): boolean {
+  return (
+    record.status === "skipped" &&
+    record.statusReason === "transcript_integrity_degraded" &&
+    record.outcomeReason === "transcript_integrity_degraded" &&
+    record.dispatchStatus === "sent" &&
+    record.eventId !== null
   );
 }
 
@@ -288,6 +307,41 @@ export function createDrizzleFeedbackGenerationStore(
         .where(activeClaim(sessionId, eventId))
         .returning({ id: feedback.id });
       return rows.length === 1;
+    },
+
+    async prepareSkippedIntegrityRetry({ sessionId }) {
+      const rows = await database
+        .update(feedback)
+        .set({
+          status: "pending",
+          statusReason: null,
+          outcomeReason: null,
+          completionTier: "partial",
+          processingStartedAt: null,
+          dispatchStatus: "failed",
+          // Atomically replace the already-sent identity before reopening the
+          // row. A delayed delivery for the prior attempt can no longer claim
+          // generation during the gap before dispatch creates attempt + 1.
+          dispatchEventId: sql`${FEEDBACK_RECOVERY_FENCE_PREFIX} || ':' || ${feedback.sessionId}::text || ':' || (${feedback.dispatchAttempts} + 1)::text`,
+          dispatchClaimedAt: null,
+          dispatchedAt: null,
+          dispatchLastError: "feedback_integrity_recovery_requested",
+        })
+        .where(
+          and(
+            eq(feedback.sessionId, sessionId),
+            eq(feedback.status, "skipped"),
+            eq(feedback.statusReason, "transcript_integrity_degraded"),
+            eq(feedback.outcomeReason, "transcript_integrity_degraded"),
+            eq(feedback.dispatchStatus, "sent"),
+            sql`${feedback.dispatchEventId} IS NOT NULL`
+          )
+        )
+        .returning();
+      if (rows[0]) {
+        return { prepared: true, record: mapRecord(rows[0]) };
+      }
+      return { prepared: false, record: await this.get(sessionId) };
     },
 
     async prepareRetry({ sessionId, now }) {

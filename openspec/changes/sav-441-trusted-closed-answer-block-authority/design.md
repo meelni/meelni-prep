@@ -1,5 +1,8 @@
 # Design: Trusted closed answer-block authority
 
+Amended 2026-08-14 by SAV-449: this design supersedes the original
+single-terminal preserving-marker restriction.
+
 ## Boundary and dependency direction
 
 `packages/core` owns a pure projection. It imports only the existing
@@ -39,12 +42,16 @@ Missing settlement leaves the terminal block unverified. Once one block is not
 trusted, that block and every later block are excluded, producing a
 deterministic prefix rather than a selective suffix.
 
-The exact terminal `interviewer/no_provider_confirmed_prefix` marker is the
-sole preserving marker. It must be the only preserving marker and the final
-sequenced event with a timestamp after all preceding speech. It preserves
-blocks closed before the marker; a block closed by the marker is the affected
-tail and is excluded. Candidate markers, every canonicalization failure, and
-non-terminal or malformed preserving markers fail closed.
+The exact `interviewer/no_provider_confirmed_prefix` marker is the sole
+preserving marker by role and reason. It advances the shared sequence but
+contains no speech evidence, so it neither closes nor splits the current
+prompt-bound answer. It may repeat and may occur between speech events. Later
+verified speech continues the same answer, which may become trusted only when
+an accepted later boundary closes it. Any preserving marker keeps the snapshot
+partial and the projection at most `verified_prefix`, so no overall score can
+be authorized. Candidate markers, every canonicalization failure, timestamps
+that precede already-sequenced speech, and other malformed preserving markers
+fail closed, as do gaps, writer/cutoff conflicts, and replay conflicts.
 
 ## Trusted identity
 
@@ -62,8 +69,9 @@ identity. Source events remain citation truth.
 ## Compatibility and calibration
 
 Unknown authority versions fail closed; they never reinterpret legacy rows.
-The existing grouper and current feedback generation are unchanged. A new
-`trusted-answer-block-calibration.v1` synthetic corpus covers segmentation,
-terminal marker behavior, degraded writers, cutoff safety, exact/conflicting
-replay, gaps, drift, canonicalization, and historical-version rejection under
-its own SHA-256 binding. Existing dimension calibration v1 remains immutable.
+The existing grouper and current feedback generation are unchanged. The
+`trusted-answer-block-calibration.v2` synthetic corpus covers segmentation,
+repeated safe markers, terminal marker behavior, degraded writers, cutoff
+safety, exact/conflicting replay, gaps, drift, canonicalization, and
+historical-version rejection under its own SHA-256 binding. The historical v1
+corpus and existing dimension calibration v1 remain immutable.

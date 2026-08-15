@@ -325,23 +325,25 @@ for (const outcomeReason of [
   test(`uses system-safe copy for ${outcomeReason}`, () => {
     const html = renderToStaticMarkup(
       React.createElement(FeedbackLifecycleStatus, {
-        state: {
-          kind:
-            outcomeReason === "transcript_integrity_degraded"
-              ? "transcript-integrity-degraded"
-              : "no-reviewable-answer",
-          details: {
-            outcome: "unable_to_review",
-            scoreWithheldReason:
-              outcomeReason === "transcript_integrity_degraded"
-                ? "verified_evidence_integrity"
-                : "rubric_coverage",
-            recovery:
-              outcomeReason === "transcript_integrity_degraded"
-                ? "credit_recovery_in_progress"
-                : "start_another_interview",
-          },
-        },
+        state:
+          outcomeReason === "transcript_integrity_degraded"
+            ? {
+                kind: "transcript-integrity-degraded",
+                retryable: false,
+                details: {
+                  outcome: "unable_to_review",
+                  scoreWithheldReason: "verified_evidence_integrity",
+                  recovery: "credit_recovery_in_progress",
+                },
+              }
+            : {
+                kind: "no-reviewable-answer",
+                details: {
+                  outcome: "unable_to_review",
+                  scoreWithheldReason: "rubric_coverage",
+                  recovery: "start_another_interview",
+                },
+              },
         recovering: false,
         recoveryError: null,
         onRecover() {},
@@ -371,6 +373,7 @@ test("integrity failure confirms a returned credit without exposing internals", 
     React.createElement(FeedbackLifecycleStatus, {
       state: {
         kind: "transcript-integrity-degraded",
+        retryable: false,
         details: {
           outcome: "unable_to_review",
           scoreWithheldReason: "verified_evidence_integrity",
@@ -386,4 +389,53 @@ test("integrity failure confirms a returned credit without exposing internals", 
   assert.match(html, /Your interview credit was returned/);
   assert.match(html, /use it for another mock interview/);
   assert.doesNotMatch(html, /provider|model|settlement|refund_action|code/i);
+});
+
+test("recoverable integrity review offers a credit-safe retry", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "transcript-integrity-degraded",
+        retryable: true,
+        details: {
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
+          recovery: "review_recovery_available",
+        },
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Review ready to retry/);
+  assert.match(html, /saved interview is intact/i);
+  assert.match(html, /Retry review/);
+  assert.match(html, /does not use another interview credit/i);
+  assert.doesNotMatch(html, /Credit recovery is in progress/);
+  assert.doesNotMatch(html, /Start another mock interview/);
+});
+
+test("settled retained credit does not appear to still be recovering", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: {
+        kind: "transcript-integrity-degraded",
+        retryable: false,
+        details: {
+          outcome: "unable_to_review",
+          scoreWithheldReason: "verified_evidence_integrity",
+          recovery: null,
+        },
+      },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  assert.match(html, /Unable to review/);
+  assert.doesNotMatch(html, /Credit recovery is in progress/);
+  assert.doesNotMatch(html, /credit was returned/i);
 });

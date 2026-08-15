@@ -18,12 +18,12 @@ event, derived answer-block, or rubric-dimension coverage contracts.
 
 ## Closed customer outcomes
 
-| Outcome           | Numerical result                                     | Customer explanation                                                                                       | Next action                                                                            |
-| ----------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Full scorecard    | Every supported dimension and a valid overall        | Every PM rubric dimension had enough verified evidence                                                     | Review the observed scorecard and continue practice                                    |
-| Partial scorecard | Supported dimensions only; never an overall          | Some rubric dimensions lacked enough verified coverage                                                     | Review supported scores and the dimensions labeled `Not enough evidence`               |
-| Coaching review   | No dimension or overall scores                       | Grounded coaching exists, but reliable numerical coverage or complete verified-evidence integrity does not | Use one grounded prioritized practice focus                                            |
-| Unable to review  | No scores, coaching claim, or performance conclusion | No reviewable candidate answer exists, or saved evidence integrity failed                                  | Start another interview and, for integrity failure, show returned/pending credit truth |
+| Outcome           | Numerical result                                     | Customer explanation                                                                                       | Next action                                                                                                                             |
+| ----------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Full scorecard    | Every supported dimension and a valid overall        | Every PM rubric dimension had enough verified evidence                                                     | Review the observed scorecard and continue practice                                                                                     |
+| Partial scorecard | Supported dimensions only; never an overall          | Some rubric dimensions lacked enough verified coverage                                                     | Review supported scores and the dimensions labeled `Not enough evidence`                                                                |
+| Coaching review   | No dimension or overall scores                       | Grounded coaching exists, but reliable numerical coverage or complete verified-evidence integrity does not | Use one grounded prioritized practice focus                                                                                             |
+| Unable to review  | No scores, coaching claim, or performance conclusion | No reviewable candidate answer exists, or saved evidence integrity failed                                  | Retry the saved review when revalidation proves it recoverable; otherwise start another interview and show settled/pending credit truth |
 
 Coverage and integrity are different customer-safe reason families:
 
@@ -53,7 +53,8 @@ The completed-feedback presenter may expose only:
 - for verified-prefix v2 only, the count of verified completed answers and the
   semantic fact that the unfinished or unverified terminal tail stayed outside
   the review; and
-- customer-safe credit recovery state for terminal integrity failures.
+- customer-safe review or credit recovery state for terminal integrity
+  failures.
 
 It does not expose model, schema, prompt, rubric, facet, answer-block, provider,
 parser, settlement, or transcript-integrity codes. Historical supported review
@@ -88,11 +89,22 @@ was necessarily unscored.
 ## Recovery
 
 `no_reviewable_answer` offers another mock interview and makes no credit
-promise. `transcript_integrity_degraded` shows either `credit_returned` or
-`credit_recovery_in_progress`, derived from first-party settlement evidence,
-and offers another interview. An immutable terminal evidence failure does not
-invent a retry action. Separately modeled transient dispatch and generation
-failures retain their existing retry controls.
+promise. Most `transcript_integrity_degraded` outcomes remain terminal and
+show `credit_returned` only after a settled refund/release, or
+`credit_recovery_in_progress` only while settlement is actually outstanding.
+A settled retained credit is not described as recovery in progress.
+
+There is one narrow `review_recovery_available` exception for a late
+false-negative integrity skip. The authenticated owner read may expose it only
+after the immutable frozen evidence revalidates under the current trusted
+answer-block authority and contains reviewable trusted blocks. The response is
+`retryable: true`; recovery requeues the same saved review and consumes no new
+interview credit. It does not promise scores: a snapshot containing an exact
+interviewer `no_provider_confirmed_prefix` marker remains partial and can
+produce only verified-prefix feedback with no overall score. If revalidation
+fails, the terminal skip stays closed and the UI offers no review retry.
+Separately modeled transient dispatch and generation failures retain their
+existing retry controls.
 
 An expired authenticated session is a reauthentication state, not a generic
 feedback failure. A `401` from the feedback GET, authorized recovery POST, or

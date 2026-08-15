@@ -6,6 +6,7 @@ import { feedback } from "./schema";
 export const FEEDBACK_DB_READ_LIMITS = {
   numericString: 32,
   lifecycleStatus: 32,
+  statusReason: 64,
   completionTier: 32,
   dispatchStatus: 32,
   outcomeReason: 64,
@@ -87,6 +88,9 @@ export function buildFeedbackReadQuery(
       status: sql<
         FeedbackRow["status"]
       >`left(${feedback.status}, ${FEEDBACK_DB_READ_LIMITS.lifecycleStatus + 1})`,
+      statusReason: sql<
+        string | null
+      >`left(${feedback.statusReason}, ${FEEDBACK_DB_READ_LIMITS.statusReason + 1})`,
       outcomeReason: sql<
         FeedbackRow["outcomeReason"]
       >`left(${feedback.outcomeReason}, ${FEEDBACK_DB_READ_LIMITS.outcomeReason + 1})`,

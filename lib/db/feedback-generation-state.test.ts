@@ -9,6 +9,7 @@ import {
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
   isFeedbackGenerationRetryable,
+  isSkippedIntegrityRecoveryCandidate,
 } from "./feedback-generation-state";
 
 const NOW = new Date("2026-07-10T15:00:00.000Z");
@@ -51,6 +52,30 @@ test("terminal and pending feedback never reopen through lease recovery", () => 
   for (const status of ["pending", "completed", "skipped"] as const) {
     assert.equal(
       isFeedbackGenerationRetryable({ status, processingStartedAt: null }, NOW),
+      false
+    );
+  }
+});
+
+test("skipped integrity recovery requires the exact persisted late-false-negative shape", () => {
+  const candidate = {
+    status: "skipped",
+    statusReason: "transcript_integrity_degraded",
+    outcomeReason: "transcript_integrity_degraded",
+    dispatchStatus: "sent",
+    eventId: "feedback/generate.requested:session-1:1",
+  } as const;
+
+  assert.equal(isSkippedIntegrityRecoveryCandidate(candidate), true);
+  for (const mismatch of [
+    { status: "completed" },
+    { statusReason: "no_reviewable_answer" },
+    { outcomeReason: "no_reviewable_answer" },
+    { dispatchStatus: "failed" },
+    { eventId: null },
+  ] as const) {
+    assert.equal(
+      isSkippedIntegrityRecoveryCandidate({ ...candidate, ...mismatch }),
       false
     );
   }
@@ -160,4 +185,32 @@ test("retry preparation cannot reopen terminal or active leased work", () => {
   assert.match(retryBody, /eq\(feedback\.status, "processing"\)/);
   assert.match(retryBody, /lte\(feedback\.processingStartedAt, staleBefore\)/);
   assert.doesNotMatch(retryBody, /"completed"|"skipped"/);
+});
+
+test("skipped integrity retry is a narrow CAS that fences the prior dispatch identity", () => {
+  const source = readFileSync(
+    new URL("./feedback-generation-state.ts", import.meta.url),
+    "utf8"
+  );
+  const retryBody = source.slice(
+    source.indexOf("async prepareSkippedIntegrityRetry"),
+    source.indexOf("async prepareRetry")
+  );
+
+  assert.match(retryBody, /eq\(feedback\.status, "skipped"\)/);
+  assert.equal(
+    (retryBody.match(/"transcript_integrity_degraded"/g) ?? []).length,
+    2
+  );
+  assert.match(retryBody, /eq\(feedback\.dispatchStatus, "sent"\)/);
+  assert.match(retryBody, /feedback\.dispatchEventId\} IS NOT NULL/);
+  assert.match(retryBody, /status: "pending"/);
+  assert.match(retryBody, /completionTier: "partial"/);
+  assert.match(retryBody, /dispatchStatus: "failed"/);
+  assert.match(retryBody, /FEEDBACK_RECOVERY_FENCE_PREFIX/);
+  assert.match(retryBody, /feedback\.dispatchAttempts\} \+ 1/);
+  assert.match(retryBody, /processingStartedAt: null/);
+  assert.match(retryBody, /dispatchClaimedAt: null/);
+  assert.match(retryBody, /dispatchedAt: null/);
+  assert.match(retryBody, /dispatchEventId:/);
 });
