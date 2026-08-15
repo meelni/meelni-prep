@@ -156,6 +156,13 @@ export function classifyFeedbackGenerationFailure(
 
   const messages = collectMessages(error);
   if (
+    messages.some((message) =>
+      message.includes("feedback_generation_durable_step_invalid")
+    )
+  ) {
+    return failure(fallbackStage, "persistence");
+  }
+  if (
     messages.some(
       (message) =>
         message.includes("event_mismatch") ||

@@ -116,13 +116,14 @@ Model, provider, and queue-policy changes must be evaluated against sanitized
 provider-free fixtures first. Paid calls, provider mutations, Production
 configuration, and default-on rollout remain separately human-authorized.
 
-On 2026-08-14, SAV-450 activated the provider-free queue candidate after an
-authorized Production recovery exposed 85–87 seconds of baseline throttle
-wait before provider execution. The worker now admits at most eight feedback
-jobs globally, preserves one-at-a-time execution per session, and applies no
-global rate throttle. The original event-anchored 90-second deadline, closed
-retry policy, provider-attempt cap, persistence reserve, event fencing, and
-human-owned Production authorization remain unchanged.
+On 2026-08-14, SAV-450 closed a durable-step serialization gap found during an
+authorized Production recovery. Database `Date` objects may not cross Inngest
+step boundaries as typed dates because replay storage is JSON-shaped. The
+generation claim now returns an explicit primitive snapshot and validates its
+finite `processingStartedAtMs` before provider work. Invalid durable claim
+state fails non-retryably; no fallible timestamp conversion may occur after a
+successful provider response but before the step result commits. The queue
+policy and event-anchored deadline remain unchanged.
 
 ### Processing is a useful saved-review workspace
 
