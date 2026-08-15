@@ -50,6 +50,7 @@ import {
   FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
   VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
   SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
+  MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -534,9 +535,10 @@ async function run() {
         FEEDBACK_STAGE_ATTEMPT_SCHEMA_FINGERPRINT,
         VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
         SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
+        MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 39; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 40; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -556,7 +558,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 40; found 22/
+            /Strict launch preflight requires the exact latest migration count 41; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -578,6 +580,21 @@ async function run() {
         if (maxIndex === 31) {
           await verifyFeedbackOutcomeBackfill(upgrade);
           await removeFeedbackOutcomeBackfillFixtures(upgrade);
+        }
+        if (maxIndex === 39) {
+          await upgrade.unsafe(`
+            GRANT ALL ON TABLE
+              transcript_runtime_settlement_command,
+              feedback_generation_stage_attempt,
+              shadow_feedback_artifact
+            TO service_role
+          `);
+          assert.notEqual(
+            databaseSchemaFingerprint(
+              await getStableStartDatabaseSchemaContract(upgrade)
+            ),
+            MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT
+          );
         }
       }
       assertLegacyCreditLedgerIntegrity(reconnectApplied!);
@@ -867,7 +884,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 40);
+      assert.equal(await migrationCount(sql), 41);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -1176,7 +1193,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 40; found 25/
+      /exact latest migration count 41; found 25/
     );
 
     const genericRows = await sql<
@@ -1275,9 +1292,12 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 40);
+    assert.equal(await migrationCount(sql), 41);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(finalPreflight.startingContract, "shadow_feedback_artifacts");
+    assert.equal(
+      finalPreflight.startingContract,
+      "managed_service_role_grants"
+    );
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 42);
@@ -6661,7 +6681,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "shadow_feedback_artifacts"
+      "managed_service_role_grants"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -8696,7 +8716,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 40);
+  assert.equal(await migrationCount(sql), 41);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
