@@ -674,6 +674,114 @@ test("memoized provider evidence preserves its full originating attempt", async 
   assertUniqueStageAttemptKeys(replayedProviderAttempts);
 });
 
+test("unknown failures after provider success close without repeating paid work", async () => {
+  const store = new MemoryGenerationStore(record());
+  const cachedSteps = new Map<string, unknown>();
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      return evaluation("full");
+    },
+    requireDimensionCoverage: true,
+  });
+  deps.steps = {
+    async run<T>(name: string, work: () => Promise<T>): Promise<T> {
+      if (cachedSteps.has(name)) return cachedSteps.get(name) as T;
+      const result = JSON.parse(JSON.stringify(await work())) as T;
+      cachedSteps.set(name, result);
+      return result;
+    },
+    async sleep() {},
+    async sendInsights() {},
+  };
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+  await assert.rejects(
+    generateFeedbackWorkflow({ ...input(EVENT_1), executionAttempt: 1 }, deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+
+  assert.equal(evaluations, 1);
+});
+
+test("retryable provider errors after accepted provider success close without another attempt", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate({ attempt, reportAttempt }) {
+      evaluations += 1;
+      reportAttempt({
+        stage: "provider",
+        attempt,
+        outcome: "succeeded",
+        durationMs: 10,
+        remainingBudgetMs: 80_000,
+        observedModel: "fixture-model",
+        observedServiceTier: "default",
+      });
+      throw new FeedbackProviderInvocationError(
+        "evaluation_provider_invocation_failed",
+        undefined,
+        undefined,
+        undefined,
+        { diagnostic: { kind: "provider_network" } }
+      );
+    },
+  });
+
+  await assert.rejects(
+    generateFeedbackWorkflow(input(EVENT_1), deps),
+    (error: unknown) =>
+      error instanceof FeedbackGenerationPolicyError &&
+      error.failure.stage === "validation" &&
+      error.failure.failureClass === "provider_contract" &&
+      error.failure.retryable === false &&
+      error.failure.retryAfterMs === null
+  );
+
+  assert.equal(evaluations, 1);
+});
+
+test("retryable provider errors before success evidence still retry", async () => {
+  const store = new MemoryGenerationStore(record());
+  let evaluations = 0;
+  const deps = dependencies(store, {
+    async evaluate() {
+      evaluations += 1;
+      if (evaluations === 1) {
+        throw new FeedbackProviderInvocationError(
+          "evaluation_provider_invocation_failed",
+          undefined,
+          undefined,
+          undefined,
+          { diagnostic: { kind: "provider_network" } }
+        );
+      }
+      return evaluation("full");
+    },
+  });
+  deps.steps.sleep = async () => {};
+
+  const result = await generateFeedbackWorkflow(input(EVENT_1), deps);
+
+  assert.equal(result.status, "completed");
+  assert.equal(evaluations, 2);
+});
+
 test("memoized transient provider failure keeps its original retry decision", async () => {
   const store = new MemoryGenerationStore(record());
   const cachedSteps = new Map<string, unknown>();
