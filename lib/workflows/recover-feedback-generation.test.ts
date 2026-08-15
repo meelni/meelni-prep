@@ -5,6 +5,7 @@ import type {
   FeedbackGenerationRecord,
   FeedbackGenerationStore,
 } from "@/lib/db/feedback-generation-state";
+import type { FrozenCandidateAnswerBlockEvidenceSnapshot } from "@/lib/evaluation/session-validator";
 import {
   recoverFeedbackGenerationWorkflow,
   type RecoverFeedbackGenerationDeps,
@@ -112,6 +113,98 @@ test("terminal outcomes and cross-user requests cannot mutate state", async () =
   );
   assert.deepEqual(result, { ok: false, reason: "not_found" });
   assert.equal(store.prepareCount, 0);
+});
+
+test("an exact integrity skip revalidates frozen evidence and rotates dispatch identity", async () => {
+  const store = new RecoveryStore(
+    record({
+      status: "skipped",
+      statusReason: "transcript_integrity_degraded",
+      outcomeReason: "transcript_integrity_degraded",
+      completionTier: "insufficient",
+      dispatchStatus: "sent",
+      dispatchClaimedAt: NOW,
+      dispatchedAt: NOW,
+    })
+  );
+  const dispatches: string[] = [];
+  const deps = dependencies(store, dispatches);
+  deps.evaluateSkippedRecovery = () => ({
+    eligible: true,
+    completionTier: "partial",
+    evidenceFailureReason: null,
+    trustedBlockCount: 2,
+  });
+
+  const result = await recoverFeedbackGenerationWorkflow(input(), deps);
+
+  assert.equal(result.ok && result.status, "pending");
+  assert.equal(store.skippedPrepareCount, 1);
+  assert.notEqual(store.lastSkippedFenceEventId, EVENT_1);
+  assert.equal(store.current?.completionTier, "partial");
+  assert.equal(store.current?.eventId, EVENT_2);
+  assert.equal(dispatches.length, 1);
+});
+
+test("integrity skips fail closed when frozen authority cannot recover trusted blocks", async () => {
+  const store = new RecoveryStore(
+    record({
+      status: "skipped",
+      statusReason: "transcript_integrity_degraded",
+      outcomeReason: "transcript_integrity_degraded",
+      completionTier: "insufficient",
+      dispatchStatus: "sent",
+      dispatchClaimedAt: NOW,
+      dispatchedAt: NOW,
+    })
+  );
+  const dispatches: string[] = [];
+  const deps = dependencies(store, dispatches);
+  let evidenceReads = 0;
+  deps.getFrozenEvidence = async () => {
+    evidenceReads += 1;
+    return invalidFrozenEvidence();
+  };
+
+  const result = await recoverFeedbackGenerationWorkflow(input(), deps);
+
+  assert.equal(result.ok && result.disposition, "already_terminal");
+  assert.equal(evidenceReads, 1);
+  assert.equal(store.skippedPrepareCount, 0);
+  assert.equal(dispatches.length, 0);
+});
+
+test("other skipped outcomes never read evidence or reopen", async () => {
+  const variants = [
+    { statusReason: "no_reviewable_answer" },
+    { outcomeReason: "no_reviewable_answer" },
+    { dispatchStatus: "failed" },
+    { eventId: null },
+  ] as const;
+  for (const variant of variants) {
+    const store = new RecoveryStore(
+      record({
+        status: "skipped",
+        statusReason: "transcript_integrity_degraded",
+        outcomeReason: "transcript_integrity_degraded",
+        dispatchStatus: "sent",
+        dispatchedAt: NOW,
+        ...variant,
+      })
+    );
+    const deps = dependencies(store, []);
+    let evidenceReads = 0;
+    deps.getFrozenEvidence = async () => {
+      evidenceReads += 1;
+      return invalidFrozenEvidence();
+    };
+
+    const result = await recoverFeedbackGenerationWorkflow(input(), deps);
+
+    assert.equal(result.ok && result.disposition, "already_terminal");
+    assert.equal(evidenceReads, 0);
+    assert.equal(store.skippedPrepareCount, 0);
+  }
 });
 
 test("hard-deadline recovery waits for durable room cleanup acknowledgement", async () => {
@@ -245,6 +338,13 @@ function dependencies(
       deadlineRoomCleanupStatus: null,
     }),
     repairMissing: async () => false,
+    getFrozenEvidence: async () => invalidFrozenEvidence(),
+    evaluateSkippedRecovery: () => ({
+      eligible: false,
+      completionTier: null,
+      evidenceFailureReason: "transcript_integrity_degraded",
+      trustedBlockCount: 0,
+    }),
     async dispatch({ sessionId }) {
       if (store.current?.dispatchStatus === "sent") {
         return {
@@ -312,8 +412,22 @@ function dispatchRecord(value: FeedbackGenerationRecord) {
   };
 }
 
+function invalidFrozenEvidence(): FrozenCandidateAnswerBlockEvidenceSnapshot {
+  return {
+    snapshotValid: false,
+    snapshotState: null,
+    turns: [],
+    interruptions: [],
+    sessionEndAt: null,
+    sourceOverflow: false,
+    authority: null,
+  };
+}
+
 class RecoveryStore implements FeedbackGenerationStore {
   prepareCount = 0;
+  skippedPrepareCount = 0;
+  lastSkippedFenceEventId: string | null = null;
 
   constructor(public current: FeedbackGenerationRecord | null) {}
 
@@ -342,6 +456,34 @@ class RecoveryStore implements FeedbackGenerationStore {
       statusReason: null,
       processingStartedAt: null,
       dispatchStatus: "failed",
+      dispatchClaimedAt: null,
+      dispatchedAt: null,
+    };
+    return { prepared: true, record: { ...this.current } };
+  }
+
+  async prepareSkippedIntegrityRetry() {
+    if (
+      !this.current ||
+      this.current.status !== "skipped" ||
+      this.current.statusReason !== "transcript_integrity_degraded" ||
+      this.current.outcomeReason !== "transcript_integrity_degraded" ||
+      this.current.dispatchStatus !== "sent" ||
+      this.current.eventId === null
+    ) {
+      return { prepared: false, record: this.current };
+    }
+    this.skippedPrepareCount += 1;
+    this.lastSkippedFenceEventId = `feedback/recovery.fenced:${SESSION_ID}:2`;
+    this.current = {
+      ...this.current,
+      status: "pending",
+      statusReason: null,
+      outcomeReason: null,
+      completionTier: "partial",
+      processingStartedAt: null,
+      dispatchStatus: "failed",
+      eventId: this.lastSkippedFenceEventId,
       dispatchClaimedAt: null,
       dispatchedAt: null,
     };

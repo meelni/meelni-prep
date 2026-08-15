@@ -1,4 +1,5 @@
 export const FEEDBACK_GENERATION_EVENT_PREFIX = "feedback/generate.requested";
+export const FEEDBACK_RECOVERY_FENCE_PREFIX = "feedback/recovery.fenced";
 
 export function feedbackGenerationEventId(
   sessionId: string,

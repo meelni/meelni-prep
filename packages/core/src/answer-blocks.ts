@@ -319,6 +319,16 @@ export function deriveCandidateAnswerBlocks(
     }
 
     if (event.kind === "integrity_boundary") {
+      // An interviewer turn with no provider-confirmed heard prefix contains
+      // no prompt or candidate evidence. Keep it in sequence authority, but
+      // do not manufacture a boundary between the last verified prompt and a
+      // candidate continuation. Every other marker remains fail-closed below.
+      if (
+        event.speaker === "interviewer" &&
+        event.reason === "no_provider_confirmed_prefix"
+      ) {
+        continue;
+      }
       const boundaryKind =
         event.reason === "canonicalization_failed"
           ? "canonicalization_failure"
@@ -328,12 +338,7 @@ export function deriveCandidateAnswerBlocks(
         beforeEventId: null,
         boundaryEventId: event.eventId,
       });
-      if (
-        event.reason === "canonicalization_failed" ||
-        event.speaker === "user"
-      ) {
-        issues.push({ code: "integrity_boundary", eventId: event.eventId });
-      }
+      issues.push({ code: "integrity_boundary", eventId: event.eventId });
       currentPrompt = [];
       previousLedgerTurn = null;
       previousEvidenceTurn = null;

@@ -8,11 +8,18 @@ import {
   createDrizzleFeedbackGenerationStore,
   isFeedbackGenerationLeaseExpired,
   isFeedbackQueueLeaseExpired,
+  isSkippedIntegrityRecoveryCandidate,
   type FeedbackGenerationRecord,
   type FeedbackGenerationStore,
 } from "@/lib/db/feedback-generation-state";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
 import { getSessionById } from "@/lib/db/sessions";
+import { getFrozenFeedbackEvaluationEvidence } from "@/lib/db/transcripts";
+import {
+  evaluateSkippedFeedbackRecovery,
+  type SkippedFeedbackRecoveryEvaluation,
+} from "@/lib/evaluation/skipped-feedback-recovery";
+import type { FrozenCandidateAnswerBlockEvidenceSnapshot } from "@/lib/evaluation/session-validator";
 import {
   hasInterviewDeadlineRoomCleanupClaim,
   isInterviewDeadlineRoomCleanupAcknowledged,
@@ -46,6 +53,12 @@ export interface RecoverFeedbackGenerationDeps {
     tier: string;
   }): Promise<DispatchFeedbackGenerationResult>;
   repairMissing(input: RecoverFeedbackGenerationInput): Promise<boolean>;
+  getFrozenEvidence(
+    sessionId: string
+  ): Promise<FrozenCandidateAnswerBlockEvidenceSnapshot>;
+  evaluateSkippedRecovery(
+    evidence: FrozenCandidateAnswerBlockEvidenceSnapshot
+  ): SkippedFeedbackRecoveryEvaluation;
 }
 
 export type RecoverFeedbackGenerationResult =
@@ -98,8 +111,37 @@ export async function recoverFeedbackGenerationWorkflow(
     if (!generation) return { ok: false, reason: "not_found" };
   }
 
-  if (generation.status === "completed" || generation.status === "skipped") {
+  if (generation.status === "completed") {
     return terminalResult(generation);
+  }
+  if (generation.status === "skipped") {
+    if (
+      !deps.store.prepareSkippedIntegrityRetry ||
+      !isSkippedIntegrityRecoveryCandidate(generation)
+    ) {
+      return terminalResult(generation);
+    }
+    const evidence = await deps.getFrozenEvidence(input.sessionId);
+    const recovery = deps.evaluateSkippedRecovery(evidence);
+    if (!recovery.eligible) return terminalResult(generation);
+
+    const prepared = await deps.store.prepareSkippedIntegrityRetry({
+      sessionId: input.sessionId,
+    });
+    generation = prepared.record;
+    if (!generation) return { ok: false, reason: "not_found" };
+    if (generation.status === "completed" || generation.status === "skipped") {
+      return terminalResult(generation);
+    }
+    if (generation.status === "processing") {
+      return {
+        ok: true,
+        status: "processing",
+        disposition: "in_progress",
+        retryable: false,
+        dispatch: null,
+      };
+    }
   }
   if (
     generation.status === "processing" &&
@@ -201,6 +243,8 @@ export function createRecoverFeedbackGenerationDeps(): RecoverFeedbackGeneration
         : null;
     },
     dispatch: dispatchFeedbackGenerationWorkflow,
+    getFrozenEvidence: getFrozenFeedbackEvaluationEvidence,
+    evaluateSkippedRecovery: evaluateSkippedFeedbackRecovery,
     async repairMissing(input) {
       const result = await endInterviewSessionWorkflow({
         sessionId: input.sessionId,

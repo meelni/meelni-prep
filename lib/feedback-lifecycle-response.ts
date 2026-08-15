@@ -92,19 +92,28 @@ export function buildCompletedFeedbackLifecycleResponse(
   };
 }
 
-export function buildSkippedFeedbackLifecycleResponse(record: {
-  status: unknown;
-  outcomeReason: unknown;
-  completionTier: unknown;
-  creditSettlementAction?: unknown;
-  creditSettledAt?: unknown;
-}): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
+export function buildSkippedFeedbackLifecycleResponse(
+  record: {
+    status: unknown;
+    outcomeReason: unknown;
+    completionTier: unknown;
+    creditSettlementAction?: unknown;
+    creditSettledAt?: unknown;
+  },
+  options: {
+    reviewRecoveryAvailable?: boolean;
+  } = {}
+): Extract<FeedbackLifecycleResponse, { status: "skipped" }> | null {
   const classification = classifySkippedFeedbackLifecycle(record);
   if (!classification) return null;
 
+  const reviewRecoveryAvailable =
+    classification.outcomeReason === "transcript_integrity_degraded" &&
+    options.reviewRecoveryAvailable === true;
+
   const candidate = {
     status: "skipped",
-    retryable: false,
+    retryable: reviewRecoveryAvailable,
     details: {
       outcome: "unable_to_review",
       scoreWithheldReason:
@@ -113,12 +122,17 @@ export function buildSkippedFeedbackLifecycleResponse(record: {
           : "rubric_coverage",
       recovery:
         classification.outcomeReason === "transcript_integrity_degraded"
-          ? (record.creditSettlementAction === "refund" ||
-              record.creditSettlementAction === "release") &&
-            record.creditSettledAt !== null &&
-            record.creditSettledAt !== undefined
-            ? "credit_returned"
-            : "credit_recovery_in_progress"
+          ? reviewRecoveryAvailable
+            ? "review_recovery_available"
+            : (record.creditSettlementAction === "refund" ||
+                  record.creditSettlementAction === "release") &&
+                record.creditSettledAt !== null &&
+                record.creditSettledAt !== undefined
+              ? "credit_returned"
+              : record.creditSettledAt === null ||
+                  record.creditSettledAt === undefined
+                ? "credit_recovery_in_progress"
+                : null
           : "start_another_interview",
     },
   };

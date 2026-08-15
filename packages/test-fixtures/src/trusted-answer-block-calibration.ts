@@ -12,11 +12,12 @@ import {
 } from "./answer-blocks";
 
 export const TRUSTED_ANSWER_BLOCK_CALIBRATION_VERSION =
-  "trusted-answer-block-calibration.v1" as const;
+  "trusted-answer-block-calibration.v2" as const;
 
 export type TrustedAnswerBlockCalibrationFamily =
   | "segmentation"
   | "terminal_preserving_marker"
+  | "repeated_preserving_markers"
   | "candidate_marker"
   | "canonicalization_failure"
   | "sequence_gap"
@@ -106,6 +107,7 @@ export const TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES = [
     expectedTrustedResponseTexts: [answer.text],
     expectedExcludedAnswerBlockIds: ["answer-block:0002"],
   }),
+  repeatedPreservingMarkersCase(),
   failureCase(
     "candidate-marker",
     "candidate_marker",
@@ -220,6 +222,44 @@ export const TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES = [
     expectedExcludedAnswerBlockIds: [],
   }),
 ] as const satisfies readonly TrustedAnswerBlockCalibrationCase[];
+
+function repeatedPreservingMarkersCase(): TrustedAnswerBlockCalibrationCase {
+  // Synthetic shape based on the sanitized SAV-449 incident: safe
+  // interviewer markers recur mid-session and ordinary speech follows them.
+  const events: AnswerBlockLedgerEvent[] = [
+    turn(1, "interviewer", "Frame the product decision.", 0),
+    marker(2, "interviewer", "no_provider_confirmed_prefix", 900),
+    turn(
+      3,
+      "user",
+      "I would begin with working caregivers because the handoff failure repeats every week.",
+      1_000
+    ),
+    marker(4, "interviewer", "no_provider_confirmed_prefix", 1_900),
+    turn(5, "interviewer", "Which assumption would you test first?", 2_000),
+    marker(6, "interviewer", "no_provider_confirmed_prefix", 2_900),
+    turn(
+      7,
+      "user",
+      "I would test whether the coordination failure remains severe before building.",
+      3_000
+    ),
+    marker(8, "interviewer", "no_provider_confirmed_prefix", 3_900),
+    terminal(5_000),
+  ];
+  return calibrationCase({
+    id: "repeated-mid-session-preserving-markers",
+    family: "repeated_preserving_markers",
+    events,
+    authority: authority(events, "partial", "missing"),
+    expectedStatus: "verified_prefix",
+    expectedFailureReason: null,
+    expectedTrustedResponseTexts: [
+      "I would begin with working caregivers because the handoff failure repeats every week.",
+    ],
+    expectedExcludedAnswerBlockIds: ["answer-block:0002"],
+  });
+}
 
 function replayCase(conflicting: boolean): TrustedAnswerBlockCalibrationCase {
   const replay = {

@@ -1,5 +1,8 @@
 # Trusted closed answer-block authority delta
 
+Amended 2026-08-14 by SAV-449: the requirements below supersede the original
+single-terminal preserving-marker restriction.
+
 ## Requirement: trusted authority is derived from frozen canonical facts
 
 The system MUST project trusted blocks only from an exact supported frozen
@@ -31,19 +34,30 @@ Given an earlier block closed by an interviewer follow-up and a later open
 terminal answer with missing settlement, the projection MUST retain only the
 earlier trusted block and exclude the terminal tail.
 
-## Requirement: the preserving marker protects only prior closed blocks
+## Requirement: exact preserving markers are transparent sequence evidence
 
-Only the exact terminal `interviewer/no_provider_confirmed_prefix` marker MAY
-preserve prior independently closed blocks. The marker MUST NOT close the
-affected answer. Candidate markers, canonicalization failures, additional or
-non-terminal preserving markers, and markers timestamped before previously
-sequenced speech ends MUST fail closed.
+Only exact `interviewer/no_provider_confirmed_prefix` markers MAY preserve
+prompt/answer continuity. Each marker MUST advance the shared sequence, MUST
+carry no speech content, and MUST NOT close or split the affected answer.
+Repeated and mid-session preserving markers MUST NOT globally invalidate
+otherwise trusted blocks. Their presence MUST keep the snapshot partial and
+MUST NOT authorize an overall score. Candidate markers, canonicalization
+failures, malformed marker ordering, gaps, writer/cutoff conflicts, and replay
+conflicts MUST fail closed.
 
-### Scenario: terminal preserving marker
+### Scenario: repeated mid-session preserving markers
 
-Given one prior follow-up-closed block and one answer affected by the exact
-terminal preserving marker, the projection MUST return the prior block as a
-verified prefix and exclude the affected block.
+Given a prompt-bound candidate answer with repeated exact interviewer
+preserving markers between speech events, and a later accepted interviewer
+follow-up boundary, the projection MUST preserve answer continuity and MAY
+return that later-closed block in a verified prefix. It MUST keep the snapshot
+partial and MUST NOT authorize an overall score.
+
+### Scenario: preserving marker without later closure
+
+Given an answer followed by an exact preserving marker but no later accepted
+closure boundary, the marker MUST NOT manufacture closure and the open block
+MUST remain excluded.
 
 ## Requirement: trusted identity is projection-owned and segmentation-invariant
 

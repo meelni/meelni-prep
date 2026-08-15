@@ -4,6 +4,30 @@ Status: accepted
 
 Date: 2026-08-13
 
+## Amendment — 2026-08-14 (SAV-449)
+
+Production evidence showed that the original SAV-441 restriction to one final
+`interviewer/no_provider_confirmed_prefix` marker was stricter than the
+integrity fact represented by that marker. The marker proves only that no
+provider-confirmed interviewer prefix exists; it contains no speech content.
+
+This accepted amendment supersedes the single-terminal-marker restriction.
+Exact interviewer `no_provider_confirmed_prefix` markers are transparent to
+prompt/answer continuity while still advancing the shared writer sequence.
+They may repeat or occur mid-session without globally invalidating otherwise
+trusted blocks, and they provide no closure authority themselves. Their
+presence keeps the snapshot partial and prohibits an overall score. Candidate
+markers, canonicalization failure, sequence gaps, writer drift/degradation,
+malformed ordering, settlement/cutoff conflicts, and conflicting replay
+continuity remain fail-closed.
+
+The amendment also permits a narrow owner-scoped recovery for an already
+persisted late false-negative integrity skip. Recovery must revalidate the
+immutable frozen evidence under the current authority and find reviewable
+trusted blocks before a compare-and-set may requeue the existing review. It
+uses a fresh generation event but no new interview credit. All other terminal
+skips remain terminal.
+
 ## Context
 
 Meelni already accepts End Interview quickly, runs terminalization and feedback
@@ -53,9 +77,11 @@ prompt-bound, cutoff-safe, associated with a healthy writer generation, and
 logically closed by an accepted boundary.
 
 An unverified terminal tail may limit the session without tainting earlier
-trusted closed blocks. In particular, the exact terminal
-`interviewer/no_provider_confirmed_prefix` condition may constrain the tail
-while preserving prior candidate blocks. Candidate interruption markers,
+trusted closed blocks. In particular, exact interviewer
+`no_provider_confirmed_prefix` markers are content-free sequence evidence and
+are transparent to prompt/answer continuity. Repeated or mid-session markers
+do not globally invalidate candidate blocks, but keep the session partial and
+cannot authorize an overall score. Candidate interruption markers,
 canonicalization failures, sequence gaps, degraded writers, malformed
 boundaries, and post-cutoff evidence continue to fail closed.
 
@@ -69,9 +95,10 @@ one healthy writer identity/generation, its complete committed sequence, and an
 exact cutoff-matching terminal event. Interviewer follow-up and explicit
 section transition close the preceding prompt-bound answer. A terminal
 session boundary closes the final answer only with fully settled authority.
-The single exact terminal `interviewer/no_provider_confirmed_prefix` marker
-preserves earlier independently closed blocks but never closes the affected
-tail. Silence, input exhaustion, writer drift, and raw cutoff presence cannot
+An exact interviewer `no_provider_confirmed_prefix` marker neither closes nor
+splits an answer. Later verified speech may continue the same prompt-bound
+answer, which becomes trusted only if a later accepted boundary closes it.
+Silence, input exhaustion, writer drift, and raw cutoff presence cannot
 manufacture closure. The versioned trusted identity is emitted only by that
 projection and remains invariant across equivalent transcript segmentation.
 

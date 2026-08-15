@@ -115,10 +115,10 @@ test("every required boundary prevents candidate-fragment coalescing", () => {
       boundary: "interviewer_follow_up",
     },
     {
-      name: "interruption marker",
+      name: "candidate interruption marker",
       events: [
         first,
-        marker,
+        { ...marker, speaker: "user" },
         { ...second, sequence: 3, eventId: "synthetic-writer:3" },
       ],
       boundary: "interruption_marker",
@@ -183,7 +183,10 @@ test("every required boundary prevents candidate-fragment coalescing", () => {
       fixture.name
     );
     assert.equal(derived.blocks[0]!.response.length, 1, fixture.name);
-    if (fixture.name === "canonicalization failure") {
+    if (
+      fixture.name === "candidate interruption marker" ||
+      fixture.name === "canonicalization failure"
+    ) {
       assert.equal(derived.eligible, false, fixture.name);
     }
   }
@@ -209,6 +212,89 @@ test("candidate interruption markers fail closed while an interviewer no-prefix 
   assert.equal(
     deriveCandidateAnswerBlocks([first, { ...marker, speaker: "user" }])
       .eligible,
+    false
+  );
+});
+
+test("repeated interviewer no-prefix markers are transparent to prompt and answer continuity", () => {
+  const events: AnswerBlockLedgerEvent[] = [
+    createAnswerBlockTurn({
+      sequence: 1,
+      speaker: "interviewer",
+      text: "How would you choose the first customer?",
+      startedAtMs: 0,
+      endedAtMs: 800,
+      audioDurationMs: 800,
+    }),
+    {
+      kind: "integrity_boundary",
+      eventId: "synthetic-writer:2",
+      writerId: "synthetic-writer",
+      writerGeneration: 1,
+      sequence: 2,
+      speaker: "interviewer",
+      occurredAtMs: 900,
+      reason: "no_provider_confirmed_prefix",
+    },
+    createAnswerBlockTurn({
+      sequence: 3,
+      eventId: "synthetic-writer:3",
+      text: "I would begin with caregivers who coordinate weekly handoffs.",
+      startedAtMs: 1_000,
+      endedAtMs: 1_800,
+      audioDurationMs: 800,
+    }),
+    {
+      kind: "integrity_boundary",
+      eventId: "synthetic-writer:4",
+      writerId: "synthetic-writer",
+      writerGeneration: 1,
+      sequence: 4,
+      speaker: "interviewer",
+      occurredAtMs: 1_900,
+      reason: "no_provider_confirmed_prefix",
+    },
+    createAnswerBlockTurn({
+      sequence: 5,
+      eventId: "synthetic-writer:5",
+      text: "Then I would validate whether the failure repeats before building.",
+      startedAtMs: 2_000,
+      endedAtMs: 2_800,
+      audioDurationMs: 800,
+    }),
+    createAnswerBlockTurn({
+      sequence: 6,
+      eventId: "synthetic-writer:6",
+      speaker: "interviewer",
+      text: "What result would change your plan?",
+      startedAtMs: 3_000,
+      endedAtMs: 3_800,
+      audioDurationMs: 800,
+    }),
+    { kind: "session_end", occurredAtMs: 4_000 },
+  ];
+
+  const derived = deriveCandidateAnswerBlocks(events);
+
+  assert.equal(derived.eligible, true);
+  assert.deepEqual(derived.issues, []);
+  assert.deepEqual(
+    derived.blocks.map(({ promptText, responseText, closedBy }) => ({
+      promptText,
+      responseText,
+      closedBy,
+    })),
+    [
+      {
+        promptText: "How would you choose the first customer?",
+        responseText:
+          "I would begin with caregivers who coordinate weekly handoffs. Then I would validate whether the failure repeats before building.",
+        closedBy: "interviewer_follow_up",
+      },
+    ]
+  );
+  assert.equal(
+    derived.boundaries.some(({ kind }) => kind === "interruption_marker"),
     false
   );
 });
