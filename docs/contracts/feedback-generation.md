@@ -138,14 +138,6 @@ configuration, provider contract, response-validation, evidence-integrity,
 and fenced failures are non-retryable. Unknown validation failures fail closed
 instead of starting a second provider call.
 
-The authoritative generation worker uses the calibrated bounded-concurrency
-queue policy: at most eight feedback jobs may execute globally and at most one
-may execute for a given session. It has no global rate throttle. Queue delay
-still consumes the event-anchored deadline; the queue policy prevents an
-artificial rate window from admitting otherwise independent jobs only after
-their provider budget is exhausted. A stale or superseded event remains
-fenced by the exact dispatch identity regardless of queue admission order.
-
 Inngest retains two whole-function retries as the durable owner for transient
 pre-provider infrastructure and persistence failures. Successful durable step
 results are replayed: evaluation step IDs are stable, while the pre-evaluation
@@ -155,6 +147,15 @@ compare-and-set with the memoized validated evaluation and does not call the
 provider again. Policy-exhausted or permanent failures are converted to an
 Inngest non-retryable error. Terminal completed or skipped feedback remains
 authoritative throughout every replay.
+
+Every database value returned through an Inngest step must first be projected
+to an explicit JSON-safe snapshot. The generation claim exposes only the
+closed completion fields needed downstream plus `processingStartedAtMs` as a
+finite number. The workflow validates that primitive before provider work and
+uses it for processing-duration telemetry. It never calls `Date` methods on a
+step-returned value. Missing or malformed claim timing is a non-retryable
+persistence-contract failure, so deterministic step serialization drift cannot
+repeat a paid provider call.
 
 `meelni_feedback_generation_attempt` version 1 records only stage, local
 attempt number, outcome, closed failure class, bounded duration and remaining
