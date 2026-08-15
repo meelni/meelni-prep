@@ -421,6 +421,7 @@ async function runGenerateFeedbackWorkflow(
       async () => {
         const startedAtMs = deps.now().getTime();
         const capturedAttempts: CapturedFeedbackGenerationAttempt[] = [];
+        let evaluationReturned = false;
         try {
           const currentAttemptPlan = planFeedbackProviderAttempt({
             attempt,
@@ -458,6 +459,7 @@ async function runGenerateFeedbackWorkflow(
             }),
             currentAttemptPlan.requestTimeoutMs
           );
+          evaluationReturned = true;
           assertFeedbackGenerationBudget(
             deadlineAtMs,
             deps.now().getTime(),
@@ -499,12 +501,26 @@ async function runGenerateFeedbackWorkflow(
           if (deps.preserveEvaluatorFailuresForSyntheticCalibration === true) {
             throw error;
           }
-          if (!isClosedEvaluationFailure(error)) throw error;
+          const providerSucceeded =
+            evaluationReturned ||
+            lastSuccessfulProviderCompletion(capturedAttempts) !== null;
+          if (!isClosedEvaluationFailure(error) && !providerSucceeded) {
+            throw error;
+          }
           const completedAtMs = deps.now().getTime();
-          const failure = classifyFeedbackGenerationFailure(
+          const classifiedFailure = classifyFeedbackGenerationFailure(
             error,
             "validation"
           );
+          const failure = providerSucceeded
+            ? {
+                ...classifiedFailure,
+                stage: "validation" as const,
+                failureClass: "provider_contract" as const,
+                retryable: false,
+                retryAfterMs: null,
+              }
+            : classifiedFailure;
           const failureStartedAtMs =
             failure.stage === "validation"
               ? (lastSuccessfulProviderCompletion(capturedAttempts) ??
