@@ -138,6 +138,14 @@ configuration, provider contract, response-validation, evidence-integrity,
 and fenced failures are non-retryable. Unknown validation failures fail closed
 instead of starting a second provider call.
 
+The authoritative generation worker uses the calibrated bounded-concurrency
+queue policy: at most eight feedback jobs may execute globally and at most one
+may execute for a given session. It has no global rate throttle. Queue delay
+still consumes the event-anchored deadline; the queue policy prevents an
+artificial rate window from admitting otherwise independent jobs only after
+their provider budget is exhausted. A stale or superseded event remains
+fenced by the exact dispatch identity regardless of queue admission order.
+
 Inngest retains two whole-function retries as the durable owner for transient
 pre-provider infrastructure and persistence failures. Successful durable step
 results are replayed: evaluation step IDs are stable, while the pre-evaluation

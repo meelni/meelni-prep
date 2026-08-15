@@ -38,6 +38,15 @@ export interface FeedbackGenerationRequestedHandlerDeps {
   }): void;
 }
 
+export const FEEDBACK_GENERATION_QUEUE_CONFIG: {
+  concurrency: [
+    { limit: number },
+    { limit: number; key: "event.data.sessionId" },
+  ];
+} = {
+  concurrency: [{ limit: 8 }, { limit: 1, key: "event.data.sessionId" }],
+};
+
 export async function runFeedbackGenerationRequested(input: {
   eventId: string;
   requestedAtMs?: number;
@@ -109,8 +118,7 @@ export const generateFeedback = inngest.createFunction(
     id: "feedback-generate",
     name: "Generate Interview Feedback",
     retries: 2,
-    throttle: { limit: 10, period: "1m" },
-    concurrency: [{ limit: 1, key: "event.data.sessionId" }],
+    ...FEEDBACK_GENERATION_QUEUE_CONFIG,
     onFailure: async ({ event, step }) => {
       reportOperationalFailure({
         operation: "feedback_dispatch",
