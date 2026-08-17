@@ -3,7 +3,10 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { FeedbackLifecycleStatus } from "./feedback-lifecycle-status";
+import {
+  FeedbackLifecycleStatus,
+  FeedbackLoadingSkeleton,
+} from "./feedback-lifecycle-status";
 
 const SAVED_WORKSPACE = {
   version: "saved-interview.workspace.v1",
@@ -15,6 +18,26 @@ const SAVED_WORKSPACE = {
   },
   frozenTranscript: "ready",
 } as const;
+
+test("loading and standalone lifecycle updates use atomic polite status regions", () => {
+  const loading = renderToStaticMarkup(
+    React.createElement(FeedbackLoadingSkeleton)
+  );
+  const processing = renderToStaticMarkup(
+    React.createElement(FeedbackLifecycleStatus, {
+      state: { kind: "processing", retryable: false, delayed: false },
+      recovering: false,
+      recoveryError: null,
+      onRecover() {},
+    })
+  );
+
+  for (const status of [loading, processing]) {
+    assert.match(status, /role="status"/);
+    assert.match(status, /aria-live="polite"/);
+    assert.match(status, /aria-atomic="true"/);
+  }
+});
 
 test("processing keeps saved interview context and frozen transcript access visible", () => {
   const html = renderToStaticMarkup(

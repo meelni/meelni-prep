@@ -98,6 +98,7 @@ export function FeedbackLifecycleStatus({
       <FeedbackStatusPage
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         aria-busy="false"
         tone="warning"
         icon={<Clock3 className="h-8 w-8" aria-hidden="true" />}
@@ -137,6 +138,7 @@ export function FeedbackLifecycleStatus({
       <FeedbackStatusPage
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         aria-busy="true"
         tone={delayed ? "warning" : "info"}
         icon={
@@ -189,6 +191,7 @@ export function FeedbackLifecycleStatus({
       <FeedbackStatusPage
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         tone="warning"
         icon={<Clock3 className="h-8 w-8" aria-hidden="true" />}
         title="Feedback has not started"
@@ -229,6 +232,7 @@ export function FeedbackLifecycleStatus({
       <FeedbackStatusPage
         role="status"
         aria-live="polite"
+        aria-atomic="true"
         aria-busy="true"
         tone={state.delayed ? "warning" : "info"}
         icon={
@@ -308,6 +312,7 @@ export function FeedbackLifecycleStatus({
         <FeedbackStatusPage
           role="status"
           aria-live="polite"
+          aria-atomic="true"
           tone="warning"
           icon={<RefreshCw className="h-8 w-8" aria-hidden="true" />}
           title="Review ready to retry"
@@ -423,6 +428,7 @@ export function FeedbackLoadingSkeleton() {
     <FeedbackReviewShell
       role="status"
       aria-live="polite"
+      aria-atomic="true"
       aria-busy="true"
       title="Interview feedback"
       description="Loading your saved feedback."

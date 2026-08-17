@@ -1,5 +1,8 @@
 # Tooling
 
+For generated feedback UI inspection, use the build-excluded
+[Local Feedback Lab](./feedback-lab.md).
+
 ## Local Setup
 
 Meelni local and calibration tooling requires the exact Node version recorded
