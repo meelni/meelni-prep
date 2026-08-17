@@ -1,14 +1,13 @@
 import type { CompletedFeedbackView } from "./feedback-view-model";
 
 export const FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION =
-  "feedback-quality-signal.v1" as const;
+  "feedback-quality-signal.v2" as const;
 export const FEEDBACK_QUALITY_SIGNAL_RATE_LIMIT = 20 as const;
 export const FEEDBACK_QUALITY_SIGNAL_RATE_WINDOW_SECONDS = 60 * 60;
 export const FEEDBACK_QUALITY_MINIMUM_DISTINCT_USERS = 10 as const;
 
 export const FEEDBACK_QUALITY_OUTCOMES = [
-  "full_scorecard",
-  "partial_scorecard",
+  "scorecard",
   "coaching_review",
 ] as const;
 export type FeedbackQualityOutcome = (typeof FEEDBACK_QUALITY_OUTCOMES)[number];
@@ -63,7 +62,7 @@ export interface FeedbackQualitySignalView {
 export function deriveFeedbackQualityOutcome(
   feedback: CompletedFeedbackView
 ): FeedbackQualityOutcome | null {
-  if (feedback.kind === "dimension-coverage") return feedback.mode;
+  if (feedback.kind === "dimension-coverage") return feedback.outcome;
   if (feedback.kind === "evidence-limited") return "coaching_review";
   return null;
 }

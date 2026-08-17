@@ -1,5 +1,8 @@
 # Verified-prefix partial scorecards
 
+> Superseded in customer outcome policy by SAV-453. The trusted-prefix and
+> immutable-scope requirements remain; sparse customer scorecards do not.
+
 ## ADDED Requirements
 
 ### Requirement: Partial numerical evidence is trusted-prefix-only
@@ -28,16 +31,17 @@ projection MUST produce no provider evaluation and no numerical feedback.
   projection
 - **THEN** the invocation remains scoreless
 
-### Requirement: Partial scorecards are sparse and never overall-scored
+### Requirement: Verified-prefix results are complete or scoreless
 
-The system MUST persist and present scores only for sufficiently supported
-dimensions and MUST persist/present a null overall score for every verified-
-prefix partial snapshot.
+The system MUST present a Scorecard only when the verified-prefix projection
+has zero excluded candidate blocks and every weighted dimension is sufficiently
+supported. Otherwise it MUST present scoreless Coaching review.
 
 #### Scenario: Every dimension happens to be sufficiently supported
 
-- **WHEN** a partial verified prefix supports all configured dimensions
-- **THEN** the dimension scores MAY be shown but the overall score remains null
+- **WHEN** a partial verified prefix has zero excluded candidate blocks and
+  supports all configured dimensions
+- **THEN** every dimension score and the canonical overall are present
 
 ### Requirement: New rows are projection-bound and fail closed
 
@@ -59,9 +63,9 @@ and analytics behavior without rewrite.
 
 ### Requirement: Presentation explains verified scope safely
 
-The partial scorecard UI MUST explain in visible, candidate-safe language that
+The Coaching review UI MUST explain in visible, candidate-safe language that
 the excluded tail was not treated as negative evidence and only verified
 completed answers could support the scores or coaching shown. It MUST NOT claim
 that excluding unavailable information had no effect on which rubric dimensions
-were supportable. Partial scorecards MUST remain excluded from overall progress,
+were supportable. Coaching reviews MUST remain excluded from overall progress,
 trend, and insight claims.

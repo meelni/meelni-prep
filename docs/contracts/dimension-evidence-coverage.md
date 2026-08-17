@@ -52,18 +52,20 @@ not required. When numerical scoring is permitted, and only then, a
 `sufficient` dimension requires an integer score from 0 through 10. Partial
 and absent dimensions always have a null score.
 
-The server derives one customer outcome:
+The server derives one completed customer outcome:
 
-- `full_scorecard`: every core dimension is sufficient; every dimension has a
+- `scorecard`: every core dimension is sufficient; every dimension has a
   score and the canonical weighted overall is present;
-- `partial_scorecard`: at least one but not all core dimensions are
-  sufficient; only sufficient dimensions have scores and overall is null;
-- `coaching_review`: grounded usable evidence exists but no fair numerical
-  dimension score is supported, or the frozen row is qualitative-only; every
-  score and overall is null;
+- `coaching_review`: grounded usable evidence exists but no complete numerical
+  scorecard is supported, or the frozen row is qualitative-only; every
+  dimension score and overall is null;
 - unable to review: no usable answer or transcript integrity degradation. This
   remains the existing terminal skipped lifecycle and never invokes the
   provider.
+
+There is no new partial-scorecard reduction. Core validates any supported
+provider scores before discarding them when weighted coverage is incomplete;
+it never renormalizes or zero-fills a total.
 
 Provider refusal, timeout, malformed JSON, invalid selection, or parser
 failure is `generation_failed`; it is not translated into candidate
@@ -101,26 +103,28 @@ focused-practice, and feedback-quality reads must recompute the same projection
 from bounded frozen evidence and require exact canonical equality. A missing,
 forged, reordered, oversized, or inconsistent scope fails closed.
 
-A v2 result is always partial. It may expose a score only for a dimension with
-both configured facets grounded in a trusted block, and its overall score is
-always null even when every configured dimension happens to be sufficient. If
-no dimension supports a score, the same verified scope produces a scoreless
-coaching review. An empty or failed trusted projection does no provider work
-and exposes no numerical feedback.
+A v2 result may authorize Scorecard only when the recomputed trusted projection
+is healthy, settled, gap-free, covers every candidate answer block with
+`excludedTailBlockCount = 0`, and both configured facets are grounded for every
+weighted dimension. It then contains every dimension score and the canonical
+overall. A nonzero excluded tail or any incomplete dimension produces a
+scoreless Coaching review. An empty or failed trusted projection does no
+provider work and exposes no numerical feedback.
 
 New rows store the closed dimension-coverage version tuple, round, mode,
 bounded dimension JSON, and—only for verified-prefix v2—the bounded scope.
-Existing scalar score columns are sparse for partial scorecards and empty for
-coaching. Overall is populated only for complete v1 full scorecards. Legacy,
+Existing historical scalar score columns may be sparse and remain immutable;
+new Coaching rows are all-null. Overall is populated only for a validated
+Scorecard. Legacy,
 Feedback v2, evidence-limited v2, and dimension-coverage v1 completed rows
-remain readable and immutable; no backfill or reinterpretation is allowed.
+remain readable and immutable; historical sparse rows project scorelessly as
+Coaching review without backfill or rewrite.
 
 Dashboard/history, session-list APIs, insights, and attempt comparison consume
 only the strict authenticated presentation projection. Unavailable and
-coaching rows expose no scalar scores. Partial rows may expose only their
-sufficient dimension scores and never an overall. Numeric trends, aggregate
+coaching rows expose no scalar scores. Numeric trends, aggregate
 insights, and attempt deltas admit only validated historical/scored feedback or
-validated v3 full scorecards. Comparison does not derive citations from mutable
+validated complete Scorecards. Comparison does not derive citations from mutable
 transcript-row counts or row-length heuristics.
 
 ## Privacy and calibration
@@ -130,18 +134,19 @@ analytics, Linear, fixtures, or review metadata. Provider observability records
 only content-free round/block-count metadata and usage. All committed
 adversarial and calibration fixtures are fully synthetic.
 
-The provider-free `dimension-coverage-calibration.v1` corpus covers natural
+The provider-free `dimension-coverage-calibration.v2` corpus covers natural
 spoken answers, punctuation-poor STT, concise answers, filler, keyword salad,
 repeated-token stuffing, low-density engineered anchors, semantic absurdity,
 prompt injection, off-topic prose, sparse coverage, complete coverage for all
 rounds, and segmentation equivalence. Its exact synthetic case list is bound
 to SHA-256
-`f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3`.
+`c07585b49c43152e78f742bbdd029998644fd0794f3cbcac758a8cd55f63a565`.
 It validates closed outcomes and exact grounding without credentials or
 provider calls.
 
-The additive `verified-prefix-scorecard-calibration.v1` manifest composes the
+The additive `verified-prefix-scorecard-calibration.v2` manifest composes the
 trusted-authority and dimension-coverage corpora across historical full,
-verified-prefix partial, verified-prefix coaching, and authority-unavailable
-outcomes. Its exact synthetic case list is bound to SHA-256
-`195a9b9ae4b4347a97fa28f1d0b5a539ca005bc8d1f3469ee26c6832b8b82e04`.
+verified-prefix sparse coaching, verified-prefix coaching, and
+authority-unavailable outcomes. Its exact synthetic case list is bound to
+SHA-256
+`8b92c53988a3ead4903db7d284c6ff78d991b61b90ce4d79fa00c89c4013bfe4`.

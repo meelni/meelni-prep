@@ -1,5 +1,8 @@
 # Tasks
 
+> Historical completion record. SAV-453 supersedes sparse customer partial
+> scorecards without rewriting the SAV-440 rows created under this contract.
+
 - [x] Verify exact `origin/main`, bootstrap the worktree, start SAV-440, and
       record the bounded Linear handoff.
 - [x] Read the accepted program, frozen-evidence, answer-block, trusted-prefix,

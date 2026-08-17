@@ -1,5 +1,10 @@
 # SAV-440 verified-prefix partial scorecards
 
+> Historical artifact. SAV-453 supersedes sparse customer partial scorecards.
+> Verified-prefix scope remains a persisted authority binding; zero-excluded
+> complete scope may authorize Scorecard, while excluded/incomplete scope
+> projects as scoreless Coaching review.
+
 ## Why
 
 SAV-441 can now project a deterministic trusted prefix from a partial frozen

@@ -10,7 +10,7 @@ import {
 
 const signal = {
   contractVersion: FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION,
-  outcome: "partial_scorecard" as const,
+  outcome: "coaching_review" as const,
   response: "helpful" as const,
   reason: null,
   revision: 1,
@@ -125,7 +125,7 @@ describe("feedback quality owner route", () => {
     expect(read.status).toBe(200);
     expect(read.headers.get("Cache-Control")).toContain("no-store");
     expect(await read.json()).toEqual({
-      outcome: "partial_scorecard",
+      outcome: "coaching_review",
       signal: null,
     });
 
@@ -161,7 +161,7 @@ describe("feedback quality owner route", () => {
 
     vi.mocked(deps.repository.readOwned).mockResolvedValue({
       disposition: "available",
-      state: { outcome: "partial_scorecard", signal: null },
+      state: { outcome: "coaching_review", signal: null },
     });
     vi.mocked(deps.repository.writeOwned).mockRejectedValue(
       new Error("synthetic database failure")
@@ -179,7 +179,7 @@ describe("feedback quality owner route", () => {
   it("maps created and unchanged transitions without duplicate analytics", async () => {
     vi.mocked(deps.repository.writeOwned).mockResolvedValue({
       disposition: "created",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     const created = await handleWriteFeedbackQualitySignal(
       request(JSON.stringify(command(null))),
@@ -191,11 +191,11 @@ describe("feedback quality owner route", () => {
 
     vi.mocked(deps.repository.readOwned).mockResolvedValue({
       disposition: "available",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     vi.mocked(deps.repository.writeOwned).mockResolvedValue({
       disposition: "unchanged",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     const unchanged = await handleWriteFeedbackQualitySignal(
       request(JSON.stringify(command(null))),
@@ -209,7 +209,7 @@ describe("feedback quality owner route", () => {
   it("returns the authoritative owner-safe state on CAS conflict", async () => {
     vi.mocked(deps.repository.writeOwned).mockResolvedValue({
       disposition: "conflict",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     const response = await handleWriteFeedbackQualitySignal(
       request(JSON.stringify(command(null))),
@@ -219,7 +219,7 @@ describe("feedback quality owner route", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error: "feedback_quality_conflict",
-      outcome: "partial_scorecard",
+      outcome: "coaching_review",
       signal,
     });
     expect(deps.trackResponse).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe("feedback quality owner route", () => {
   it("keeps an applied first-party response when analytics fails", async () => {
     vi.mocked(deps.repository.writeOwned).mockResolvedValue({
       disposition: "created",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     deps.trackResponse = vi.fn(async () => {
       throw new Error("provider unavailable");
@@ -244,7 +244,7 @@ describe("feedback quality owner route", () => {
   it("does not emit after deletion wins between commit and delivery", async () => {
     vi.mocked(deps.repository.writeOwned).mockResolvedValue({
       disposition: "created",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     });
     vi.mocked(deps.isDeletionPending)
       .mockResolvedValueOnce(false)
@@ -271,11 +271,11 @@ function dependencies(): FeedbackQualityRouteDependencies {
     repository: {
       readOwned: vi.fn(async () => ({
         disposition: "available" as const,
-        state: { outcome: "partial_scorecard" as const, signal: null },
+        state: { outcome: "coaching_review" as const, signal: null },
       })),
       writeOwned: vi.fn(async () => ({
         disposition: "created" as const,
-        state: { outcome: "partial_scorecard" as const, signal },
+        state: { outcome: "coaching_review" as const, signal },
       })),
     },
     trackResponse: vi.fn(async () => undefined),

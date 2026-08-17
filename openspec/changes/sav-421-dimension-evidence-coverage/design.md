@@ -1,5 +1,10 @@
 # Design: Dimension evidence coverage
 
+> Amended by SAV-453. Coverage remains the internal evidence-reduction input,
+> but only a complete tuple is a customer Scorecard. Incomplete coverage now
+> reduces to scoreless Coaching review; historical partial rows are preserved
+> and projected through that same coaching contract.
+
 ## Integrity and evaluation units
 
 Canonical transcript events remain the immutable integrity and byte-level evidence ledger. `deriveCandidateAnswerBlocks` remains the only grouping implementation. Generation and authenticated reads reconstruct the same frozen answer blocks; neither path rewrites transcript rows.
@@ -26,16 +31,16 @@ It cannot return coverage, mode, overall score, confidence, narrative, quote tex
 
 A concise answer may support multiple facets in one answer block; coverage never requires multiple transcript rows or punctuation. When numerical evaluation is allowed, a sufficient dimension requires an integer score from 0 through 10, while partial and absent dimensions require `null`.
 
-- `full_scorecard`: all core dimensions are sufficient; canonical weighted overall is present.
-- `partial_scorecard`: at least one but not all core dimensions are sufficient; only sufficient dimensions are scored and overall is absent.
-- `coaching_review`: substantive frozen answer-block evidence exists but no fair numerical dimension is supported, or the frozen completion snapshot is qualitative-only; all scores and overall are absent.
+- `full_scorecard`: all core dimensions are sufficient; canonical weighted overall is present; the customer projection is `scorecard`.
+- `coaching_review`: any incomplete core-dimension coverage with substantive frozen answer-block evidence, or a qualitative-only frozen completion snapshot; every dimension score and overall are absent from the stored result and customer projection.
+- `partial_scorecard`: historical persisted compatibility only. Strict reads preserve the stored row, validate its supported numerical fields, and project it as scoreless `coaching_review`; new reductions never emit this mode.
 - `unable_to_review`: integrity or no-usable-answer terminal state, represented by the existing immutable skipped outcome rather than a completed provider result.
 
 Provider refusal, malformed output, or parser rejection remains a generation failure/retry lifecycle.
 
 ## Persistence and compatibility
 
-New completed writes use an additive schema tuple and store the server-derived mode plus bounded dimension coverage JSON. Existing scalar score columns remain useful only after strict presentation validation: sparse dimensions may be populated for partial scorecards, and overall is populated only for full scorecards. Dashboard, session-list, insights, and comparison consumers use the validated projection; unavailable/coaching scores are cleared, partial overall is cleared, and numeric trends or deltas admit only validated historical/scored rows or v3 full scorecards.
+New completed writes use an additive schema tuple and store the server-derived mode plus bounded dimension coverage JSON. Existing scalar score columns remain useful only after strict presentation validation: new scorecards populate every weighted dimension and the canonical overall, while new coaching reviews populate no numerical score columns. Dashboard, session-list, insights, and comparison consumers use the closed validated projection; only `scorecard` can enter numeric trends or deltas. Historical partial rows remain byte-for-byte stored and strictly validate their sparse numerical tuple before the customer projection strips every numerical field and returns `coaching_review`.
 
 Every v3 generation or read binds the persisted feedback round to the owning session round and requires the canonical frozen-evidence tuple: version 1, complete or partial state, cutoff, frozen timestamp, terminal lifecycle, and committed writer cutoffs that exactly cover every registered runtime writer and bind each committed event boundary before the session cutoff. Invalid metadata never reconstructs from a mutable fallback tail. A partial frozen snapshot forces qualitative-only evaluation and presentation, so persisted numerical scorecards over that snapshot fail closed even when internally self-consistent.
 

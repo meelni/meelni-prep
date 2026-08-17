@@ -183,12 +183,8 @@ function presentSessionListEntry<
     (kind) => kind === feedbackRecord.presentationKind
   );
   const closedKind = presentationKind ?? "unavailable";
-  const exposesDimensionScores =
-    closedKind === "scored" ||
-    closedKind === "full_scorecard" ||
-    closedKind === "partial_scorecard";
-  const exposesOverallScore =
-    closedKind === "scored" || closedKind === "full_scorecard";
+  const exposesDimensionScores = closedKind === "scorecard";
+  const exposesOverallScore = closedKind === "scorecard";
 
   return {
     ...sessionRecord,

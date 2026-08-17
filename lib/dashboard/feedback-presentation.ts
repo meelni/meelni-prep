@@ -19,10 +19,7 @@ import {
 } from "@meelni/core";
 
 export const DASHBOARD_FEEDBACK_PRESENTATION_KINDS = [
-  "scored",
-  "evidence_limited",
-  "full_scorecard",
-  "partial_scorecard",
+  "scorecard",
   "coaching_review",
   "unable_to_review",
   "unavailable",
@@ -151,14 +148,14 @@ export function classifyDashboardFeedbackPresentation(
       candidate.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) &&
     presented.kind === "dimension-coverage"
   ) {
-    return presented.mode;
+    return presented.outcome;
   }
 
   if (
     hasSupportedScoredMetadata(candidate) &&
     (presented.kind === "v2" || presented.kind === "legacy")
   ) {
-    return "scored";
+    return "scorecard";
   }
 
   if (
@@ -185,7 +182,7 @@ export function classifyDashboardFeedbackPresentation(
   return Array.isArray(drills) &&
     drills.length === 0 &&
     presented.kind === "evidence-limited"
-    ? "evidence_limited"
+    ? "coaching_review"
     : "unavailable";
 }
 

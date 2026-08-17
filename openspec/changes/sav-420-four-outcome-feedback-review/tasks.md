@@ -1,5 +1,8 @@
 # Tasks
 
+> Historical completion record. SAV-453 supersedes the four-outcome product
+> contract; completed SAV-420 implementation tasks remain shipped history.
+
 - [x] Audit current feedback, lifecycle, Dashboard/History, metrics, and
       accessibility presentation at `6db0b9c1ab6181b049135dff31dd5623ede16cfd`.
 - [x] Propose four-outcome product copy and accessibility behavior without

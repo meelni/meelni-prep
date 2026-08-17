@@ -1,5 +1,9 @@
 # SAV-415 feedback quality signals
 
+> Amended by SAV-453. The current quality contract is
+> `feedback-quality-signal.v2` and accepts only the closed customer outcomes
+> `scorecard | coaching_review`.
+
 ## Why
 
 Meelni has no durable first-party answer to whether an actionable feedback
@@ -10,8 +14,8 @@ response after an update.
 ## Outcome
 
 An authenticated review owner can create, revisit, and intentionally revise
-one closed helpfulness signal for a valid Full scorecard, Partial scorecard, or
-Coaching review. The signal is stored separately from immutable evaluator
+one closed helpfulness signal for a valid Scorecard or Coaching review. The
+signal is stored separately from immutable evaluator
 output, participates in account export/deletion, and can be aggregated only
 behind minimum-cohort safeguards.
 
@@ -20,7 +24,7 @@ behind minimum-cohort safeguards.
 - The strict SAV-420 completed-review presenter is the eligibility authority.
 - The client cannot submit an outcome, review identity, score, evidence, or
   content.
-- V1 accepts only closed response/reason enums and no free text.
+- V2 accepts only closed response/reason enums and no free text.
 - The API is owner-authenticated, non-enumerating, no-store, rate bounded, and
   compare-and-swap safe.
 - Optional analytics are content-free, explicitly consent-bound, and never the

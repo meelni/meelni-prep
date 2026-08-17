@@ -297,10 +297,7 @@ export function buildDashboardPracticeSummary(
                   "unable_to_review"
                 ? `Open the saved result for your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No performance conclusion was created.`
                 : getDashboardFeedbackReviewKind(latestReviewable.feedback) ===
-                      "evidence_limited" ||
-                    getDashboardFeedbackReviewKind(
-                      latestReviewable.feedback
-                    ) === "coaching_review"
+                    "coaching_review"
                   ? `Open the grounded observations from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview. No numerical score was inferred.`
                   : `Open the completed feedback from your latest ${formatRoundType(latestReviewable.roundType).toLowerCase()} interview.`,
           href: `/feedback/${latestReviewable.id}`,
@@ -452,10 +449,7 @@ export function buildHistorySummary(
   const topPattern = patterns[0] ?? null;
   const latestReady = rows.find((row) => row.feedbackHref);
   const latestScoredReady = rows.find(
-    (row) =>
-      (row.feedbackKind === "scored" ||
-        row.feedbackKind === "full_scorecard") &&
-      row.feedbackHref
+    (row) => row.feedbackKind === "scorecard" && row.feedbackHref
   );
   const nextReviewRow = topPattern ? latestScoredReady : latestReady;
 
@@ -565,31 +559,15 @@ function getFeedbackDisplay(
   focusArea: DashboardFocusArea | null
 ) {
   const reviewKind = getDashboardFeedbackReviewKind(feedback);
-  if (reviewKind === "scored") {
+  if (reviewKind === "scorecard") {
     return {
-      focusLabel: focusArea?.label || "Scored feedback",
-      scoreLabel: "Scored",
-      statusLabel: "Feedback ready",
+      focusLabel: focusArea?.label || "Scorecard",
+      scoreLabel: "Scorecard",
+      statusLabel: "Scorecard ready",
       feedbackState: "ready" as const,
     };
   }
-  if (reviewKind === "full_scorecard") {
-    return {
-      focusLabel: focusArea?.label || "Complete scorecard",
-      scoreLabel: "Full scorecard",
-      statusLabel: "Full scorecard ready",
-      feedbackState: "ready" as const,
-    };
-  }
-  if (reviewKind === "partial_scorecard") {
-    return {
-      focusLabel: "Scores for supported PM dimensions",
-      scoreLabel: "Partial scorecard",
-      statusLabel: "Partial scorecard ready",
-      feedbackState: "ready" as const,
-    };
-  }
-  if (reviewKind === "evidence_limited" || reviewKind === "coaching_review") {
+  if (reviewKind === "coaching_review") {
     return {
       focusLabel: "Grounded observations from your recorded answers",
       scoreLabel: "Coaching review",
@@ -655,16 +633,13 @@ function getDashboardFeedbackReviewKind(
   if (feedback?.presentationKind === "unavailable") return null;
   const score = getDashboardScoredFeedbackScore(feedback);
   if (
-    feedback?.presentationKind === "scored" ||
-    feedback?.presentationKind === "full_scorecard" ||
+    feedback?.presentationKind === "scorecard" ||
     (feedback?.presentationKind === undefined && score !== null)
   ) {
-    return score === null ? null : (feedback?.presentationKind ?? "scored");
+    return score === null ? null : (feedback?.presentationKind ?? "scorecard");
   }
   return score === null &&
-    (feedback?.presentationKind === "evidence_limited" ||
-      feedback?.presentationKind === "partial_scorecard" ||
-      feedback?.presentationKind === "coaching_review" ||
+    (feedback?.presentationKind === "coaching_review" ||
       feedback?.presentationKind === "unable_to_review")
     ? feedback.presentationKind
     : null;
@@ -674,8 +649,6 @@ function getDashboardScoredFeedbackScore(
   feedback: DashboardFeedback | null | undefined
 ): number | null {
   if (
-    feedback?.presentationKind === "evidence_limited" ||
-    feedback?.presentationKind === "partial_scorecard" ||
     feedback?.presentationKind === "coaching_review" ||
     feedback?.presentationKind === "unable_to_review" ||
     feedback?.presentationKind === "unavailable"

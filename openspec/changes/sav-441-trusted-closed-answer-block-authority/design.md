@@ -1,5 +1,9 @@
 # Design: Trusted closed answer-block authority
 
+> Amended 2026-08-17 by SAV-453: `verified_prefix` plus zero excluded candidate
+> blocks may authorize complete scorecard reduction downstream. This projection
+> still does not itself score or persist.
+
 Amended 2026-08-14 by SAV-449: this design supersedes the original
 single-terminal preserving-marker restriction.
 
@@ -47,9 +51,10 @@ preserving marker by role and reason. It advances the shared sequence but
 contains no speech evidence, so it neither closes nor splits the current
 prompt-bound answer. It may repeat and may occur between speech events. Later
 verified speech continues the same answer, which may become trusted only when
-an accepted later boundary closes it. Any preserving marker keeps the snapshot
-partial and the projection at most `verified_prefix`, so no overall score can
-be authorized. Candidate markers, every canonicalization failure, timestamps
+an accepted later boundary closes it. A preserving marker may keep the snapshot
+partial and the projection at `verified_prefix`; zero excluded candidate blocks
+may authorize complete scoring downstream. Candidate markers, every
+canonicalization failure, timestamps
 that precede already-sequenced speech, and other malformed preserving markers
 fail closed, as do gaps, writer/cutoff conflicts, and replay conflicts.
 

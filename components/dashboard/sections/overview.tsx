@@ -183,7 +183,7 @@ function RecentInterviewRow({
           {interview.focusLabel}
         </p>
       </div>
-      {interview.feedbackKind === "scored" ? (
+      {interview.feedbackKind === "scorecard" ? (
         <span className="text-dashboard-foreground shrink-0 font-mono font-semibold sm:text-right">
           {interview.scoreLabel}
         </span>
@@ -191,7 +191,7 @@ function RecentInterviewRow({
         <DashboardFeedbackStatus
           state={interview.feedbackState}
           label={
-            interview.feedbackKind === "evidence_limited"
+            interview.feedbackKind === "coaching_review"
               ? interview.statusLabel
               : interview.scoreLabel
           }

@@ -64,7 +64,7 @@ describe("GET /api/sessions pagination", () => {
           id: "session-1",
           feedback: {
             status: "completed",
-            presentationKind: "evidence_limited",
+            presentationKind: "coaching_review",
             overallScore: null,
             structureScore: null,
             clarityScore: null,
@@ -93,7 +93,7 @@ describe("GET /api/sessions pagination", () => {
     expect(response.status).toBe(200);
     expect(body.sessions[0].feedback).toEqual({
       status: "completed",
-      presentationKind: "evidence_limited",
+      presentationKind: "coaching_review",
       overallScore: null,
       structureScore: null,
       clarityScore: null,

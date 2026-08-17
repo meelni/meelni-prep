@@ -1016,7 +1016,7 @@ export const feedback = pgTable(
             ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
             ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
             ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
-            ${table.evaluationState} = 'partial'
+            ${table.evaluationState} IN ('full', 'partial')
           )
         ) AND
         length(trim(${table.modelVersion})) > 0
@@ -1045,9 +1045,18 @@ export const feedback = pgTable(
         ${table.verifiedPrefixScope} IS NULL
       ) OR (
         ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
-        ${table.evaluationState} = 'partial' AND
-        ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
-        ${table.overallScore} IS NULL AND
+        (
+          (
+            ${table.feedbackMode} = 'full_scorecard' AND
+            ${table.evaluationState} = 'full' AND
+            ${table.overallScore} IS NOT NULL AND
+            ${table.verifiedPrefixScope}->>'excludedTailBlockCount' = '0'
+          ) OR (
+            ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
+            ${table.evaluationState} = 'partial' AND
+            ${table.overallScore} IS NULL
+          )
+        ) AND
         ${table.verifiedPrefixScope} IS NOT NULL AND
         CASE
           WHEN jsonb_typeof(${table.verifiedPrefixScope}) IS NOT DISTINCT FROM 'object' THEN
@@ -1068,6 +1077,31 @@ export const feedback = pgTable(
             octet_length(${table.verifiedPrefixScope}::text) <= 128000
           ELSE false
         END
+      )`
+    ),
+    dimensionCoverageScoreTupleCheck: check(
+      "feedback_dimension_coverage_score_tuple_check",
+      sql`${table.schemaVersion} NOT IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') OR (
+        (
+          ${table.feedbackMode} = 'full_scorecard' AND
+          ${table.structureScore} IS NOT NULL AND
+          ${table.clarityScore} IS NOT NULL AND
+          ${table.insightScore} IS NOT NULL AND
+          ${table.communicationScore} IS NOT NULL AND
+          ${table.leadershipScore} IS NOT NULL AND
+          ${table.overallScore} IS NOT NULL
+        ) OR (
+          ${table.feedbackMode} = 'partial_scorecard' AND
+          ${table.overallScore} IS NULL
+        ) OR (
+          ${table.feedbackMode} = 'coaching_review' AND
+          ${table.structureScore} IS NULL AND
+          ${table.clarityScore} IS NULL AND
+          ${table.insightScore} IS NULL AND
+          ${table.communicationScore} IS NULL AND
+          ${table.leadershipScore} IS NULL AND
+          ${table.overallScore} IS NULL
+        )
       )`
     ),
     dispatchEventRequiredCheck: check(
@@ -1394,7 +1428,7 @@ export const feedbackQualitySignal = pgTable(
       .notNull(),
     contractVersion: text("contract_version").notNull(),
     reviewOutcome: text("review_outcome")
-      .$type<FeedbackQualityOutcome>()
+      .$type<FeedbackQualityOutcome | "full_scorecard" | "partial_scorecard">()
       .notNull(),
     response: text("response").$type<FeedbackQualityResponse>().notNull(),
     reason: text("reason").$type<FeedbackQualityReason>(),
@@ -1422,11 +1456,17 @@ export const feedbackQualitySignal = pgTable(
     }).onDelete("cascade"),
     contractCheck: check(
       "feedback_quality_signal_contract_check",
-      sql`${table.contractVersion} = 'feedback-quality-signal.v1'`
+      sql`${table.contractVersion} IN ('feedback-quality-signal.v1', 'feedback-quality-signal.v2')`
     ),
     outcomeCheck: check(
       "feedback_quality_signal_outcome_check",
-      sql`${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')`
+      sql`(
+        ${table.contractVersion} = 'feedback-quality-signal.v1' AND
+        ${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')
+      ) OR (
+        ${table.contractVersion} = 'feedback-quality-signal.v2' AND
+        ${table.reviewOutcome} IN ('scorecard', 'coaching_review')
+      )`
     ),
     responseCheck: check(
       "feedback_quality_signal_response_check",
@@ -1440,7 +1480,7 @@ export const feedbackQualitySignal = pgTable(
         ${table.response} = 'not_helpful' AND (
           ${table.reason} IS NULL OR
           ${table.reason} IN ('not_specific_enough', 'evidence_did_not_match', 'next_step_unclear', 'too_much_to_use') OR
-          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
+          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
           (${table.reviewOutcome} = 'coaching_review' AND ${table.reason} = 'score_withholding_unclear')
         )
       )`

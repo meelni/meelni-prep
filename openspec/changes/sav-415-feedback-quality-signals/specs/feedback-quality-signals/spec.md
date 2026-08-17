@@ -1,17 +1,19 @@
 # Feedback quality signals delta
 
+> SAV-453 amendment: the active mutation contract is v2 and consumes only the
+> closed `scorecard | coaching_review` customer outcome.
+
 ## Eligibility
 
 - The server SHALL derive review outcome from the strict completed-feedback
   presenter and SHALL NOT accept outcome from the client.
-- Only Full scorecard, Partial scorecard, and Coaching review SHALL accept a
-  quality signal.
+- Only Scorecard and Coaching review SHALL accept a quality signal.
 - Unable, historical, unavailable, malformed, missing, and cross-owner reviews
   SHALL create no signal and SHALL be non-enumerating.
 
 ## Closed mutation
 
-- V1 SHALL accept only `helpful | not_helpful` and the documented compatible
+- V2 SHALL accept only `helpful | not_helpful` and the documented compatible
   closed reason enum; it SHALL accept no free text or unknown field.
 - The evaluator feedback row SHALL remain immutable.
 - One owner/review row SHALL be enforced by the database.

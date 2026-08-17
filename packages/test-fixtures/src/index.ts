@@ -28,6 +28,7 @@ export * from "./dimension-coverage-calibration";
 export * from "./feedback-review-outcomes";
 export * from "./runtime-settlement-command";
 export * from "./trusted-answer-block-calibration";
+export * from "./total-scorecard-safe-markers";
 export * from "./verified-prefix-scorecard-calibration";
 
 export const FIXTURE_CLOCK = {
