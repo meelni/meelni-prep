@@ -480,8 +480,9 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
     fixture.id
   );
   if (
-    view.kind === "completed-coaching-review" ||
-    view.kind === "completed-scorecard"
+    (view.kind === "completed-coaching-review" ||
+      view.kind === "completed-scorecard") &&
+    view.feedback.kind === "dimension-coverage"
   ) {
     const grounded = Object.values(view.feedback.dimensions).flatMap(
       (dimension) => dimension.evidence
