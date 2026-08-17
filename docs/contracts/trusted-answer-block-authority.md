@@ -85,6 +85,8 @@ conflict returns `integrity_failure` with no trusted blocks or identities.
 `trusted-answer-block-projection.v1` returns:
 
 - `complete`, `verified_prefix`, `no_trusted_blocks`, or `integrity_failure`;
+- explicit `allowed | withheld` numerical-score authority, with `allowed`
+  requiring normalized `settled` writer state;
 - the original trusted `CandidateAnswerBlock` objects;
 - one closure-authority record per trusted block;
 - one `trusted-answer-block-identity.v1` record per trusted block;
@@ -113,9 +115,9 @@ partial snapshots. Unknown authority versions fail closed and never fall back
 to a historical or mutable transcript path.
 
 An exact preserving marker is not evidence that the snapshot is complete. It
-is content-free, so a verified-prefix projection with zero excluded candidate
-blocks may be complete for scoring authority downstream; any real exclusion
-remains scoreless.
+is content-free, so a settled verified-prefix projection with zero excluded
+candidate blocks may carry numerical authority downstream. Missing settlement
+or any real exclusion remains scoreless.
 
 SAV-453 owns evaluator reduction, total-required Scorecard policy, persistence,
 authenticated reads, and UI. This authority contract alone authorizes none of

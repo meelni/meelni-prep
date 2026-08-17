@@ -340,7 +340,7 @@ test("verified-prefix v2 coaching fully revalidates before focused practice", as
       harness.deps
     );
 
-    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.ok, true, `${outcome}: ${JSON.stringify(result)}`);
     if (!result.ok) continue;
     assert.equal(
       result.attempt.feedbackVersion.schemaVersion,
@@ -1414,7 +1414,7 @@ function verifiedPrefixSource(
           ? 2
           : 0;
     dimensions[dimension] = {
-      score: facetCount === 2 ? 8 : null,
+      score: null,
       evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[dimension].facets
         .slice(0, facetCount)
         .map((facet) => ({
@@ -1423,7 +1423,7 @@ function verifiedPrefixSource(
         })),
     };
   }
-  const result = parseDimensionCoverageProviderSelection(
+  const currentResult = parseDimensionCoverageProviderSelection(
     {
       schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
       promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
@@ -1435,10 +1435,26 @@ function verifiedPrefixSource(
       roundType: "product_sense",
       answerBlocks: projection.trustedBlocks,
       modelVersion: "synthetic-focused-practice-v2",
-      allowNumericalScores: outcome === "partial_scorecard",
+      allowNumericalScores: false,
       verifiedPrefixProjection: projection,
     }
   );
+  const result =
+    outcome === "partial_scorecard"
+      ? {
+          ...currentResult,
+          mode: "partial_scorecard" as const,
+          summary:
+            "Only PM dimensions supported by verified completed answers are scored; the unverified interview tail and overall score are excluded.",
+          dimensions: {
+            ...currentResult.dimensions,
+            structure: {
+              ...currentResult.dimensions.structure,
+              score: 8,
+            },
+          },
+        }
+      : currentResult;
   assert.equal(result.schemaVersion, "feedback.dimension-coverage.v2");
   const sessionId = `synthetic-focused-practice-v2-${outcome}`;
   const feedbackId = `synthetic-feedback-v2-${outcome}`;

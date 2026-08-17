@@ -29,6 +29,7 @@ test("practice summary recommends the weakest feedback dimension", () => {
       ...baseSession,
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "6.2",
         structureScore: 8.1,
         clarityScore: 7.4,
@@ -107,6 +108,7 @@ test("history summary turns sessions into review rows and repeated patterns", ()
       id: "session-1",
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "7.1",
         structureScore: 8,
         clarityScore: 7,
@@ -120,6 +122,7 @@ test("history summary turns sessions into review rows and repeated patterns", ()
       startedAt: "2026-07-03T12:00:00.000Z",
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "6.8",
         structureScore: 7,
         clarityScore: 6,
@@ -287,6 +290,28 @@ test("an unavailable completed score cannot enter dashboard progress", () => {
   assert.equal(practice.focusArea, null);
   assert.deepEqual(practice.progressSignal.bars, []);
   assert.deepEqual(history.patterns, []);
+  assert.equal(history.rows[0]?.feedbackHref, null);
+});
+
+test("numerical fields without a closed presentation kind remain unavailable", () => {
+  const unprojected = {
+    ...baseSession,
+    id: "unprojected-scored-completed",
+    feedback: {
+      status: "completed",
+      overallScore: "9.9",
+      structureScore: 9.9,
+      clarityScore: 9.9,
+      insightScore: 9.9,
+      communicationScore: 9.9,
+      leadershipScore: 9.9,
+    },
+  };
+  const practice = buildDashboardPracticeSummary([unprojected]);
+  const history = buildHistorySummary([unprojected]);
+  assert.equal(practice.progress.scoredInterviewCount, 0);
+  assert.equal(practice.progress.score, null);
+  assert.equal(history.rows[0]?.statusLabel, "Feedback unavailable");
   assert.equal(history.rows[0]?.feedbackHref, null);
 });
 

@@ -176,7 +176,7 @@ test("presents total-bearing historical v2 feedback without score coercion", () 
       retryable: false,
       feedback: full,
     }).kind,
-    "completed-full"
+    "completed-scorecard"
   );
 
   assert.equal(present(completed({ overallScore: "7.900" })).kind, "v2");
@@ -190,7 +190,7 @@ test("presents total-bearing historical v2 feedback without score coercion", () 
       retryable: false,
       feedback: partial,
     }).kind,
-    "completed-partial"
+    "completed-scorecard"
   );
   assert.equal(
     toFeedbackCustomerProjection({
@@ -259,7 +259,25 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
   assert.equal(decoded?.status, "completed");
   assert.equal(
     toFeedbackViewState(decoded!).kind,
-    "completed-evidence-limited"
+    "completed-coaching-review"
+  );
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: {
+        ...presented,
+        scores: {
+          structure: 8,
+          clarity: 8,
+          insight: 8,
+          communication: 8,
+          leadership: 8,
+          overall: 8,
+        },
+      },
+    }),
+    null
   );
 
   const providerCopy = structuredClone(presented);
@@ -476,8 +494,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
       improvements: [
         { dimension: "structure", text: "State the approach first" },
       ],
-      // Legacy feedback stored a separate model-authored overall score.
-      overallScore: "8.0",
+      overallScore: "7.9",
       rubricVersion: "1.0.0",
       schemaVersion: null,
       promptVersion: null,
@@ -488,7 +505,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
 
   assert.equal(legacy.kind, "legacy");
   if (legacy.kind !== "legacy") return;
-  assert.equal(legacy.scores.overall, 8);
+  assert.equal(legacy.scores.overall, 7.9);
   assert.deepEqual(legacy.improvements, ["State the approach first"]);
   assert.equal("suggestedExercises" in legacy, false);
   assert.equal(
@@ -497,7 +514,34 @@ test("presents validated legacy feedback only as an explicit historical variant"
       retryable: false,
       feedback: legacy,
     }).kind,
-    "completed-legacy"
+    "completed-scorecard"
+  );
+});
+
+test("fails closed instead of projecting a noncanonical historical total", () => {
+  const legacy = present(
+    completed({
+      strengths: ["Clear explanation"],
+      improvements: ["State the approach first"],
+      overallScore: "8.0",
+      rubricVersion: "1.0.0",
+      schemaVersion: null,
+      promptVersion: null,
+      modelVersion: null,
+      evaluationState: null,
+    })
+  );
+  assert.deepEqual(legacy, {
+    kind: "invalid",
+    reason: "incompatible_or_corrupt",
+  });
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "completed",
+      retryable: false,
+      feedback: legacy,
+    }),
+    null
   );
 });
 
@@ -1260,11 +1304,12 @@ test("zero-excluded verified-prefix coaching exposes no misleading tail claim", 
     ],
   });
   assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
   assert.equal(projection.excludedBlocks.length, 0);
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     dimensions[dimension] = {
-      score: dimension === "structure" ? 8 : null,
+      score: null,
       evidence:
         dimension === "structure"
           ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(

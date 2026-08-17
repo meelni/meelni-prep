@@ -527,6 +527,11 @@ function parseDimensionCoverageProviderSelectionWithPolicy(
         options.answerBlocks
       )
     : null;
+  const numericalScoresAuthorized =
+    options.allowNumericalScores &&
+    (policy.preserveHistoricalPartialMode ||
+      !options.verifiedPrefixProjection ||
+      options.verifiedPrefixProjection.numericalScoreAuthority === "allowed");
   const root = requireRecord(value);
   requireKeys(root, [
     "schemaVersion",
@@ -608,7 +613,7 @@ function parseDimensionCoverageProviderSelectionWithPolicy(
           : "sufficient";
     const score = parseNullableScore(rawDimension.score);
     if (
-      (options.allowNumericalScores && coverage === "sufficient") !==
+      (numericalScoresAuthorized && coverage === "sufficient") !==
       (score !== null)
     ) {
       throw new DimensionCoverageParseError("score_coverage_mismatch");
@@ -619,10 +624,10 @@ function parseDimensionCoverageProviderSelectionWithPolicy(
     (dimension) => dimensions[dimension].coverage === "sufficient"
   ).length;
   const historicalMode: DimensionCoverageFeedbackMode = verifiedPrefixScope
-    ? options.allowNumericalScores && sufficientCount > 0
+    ? numericalScoresAuthorized && sufficientCount > 0
       ? "partial_scorecard"
       : "coaching_review"
-    : !options.allowNumericalScores
+    : !numericalScoresAuthorized
       ? "coaching_review"
       : sufficientCount === FEEDBACK_DIMENSIONS.length
         ? "full_scorecard"
@@ -630,7 +635,7 @@ function parseDimensionCoverageProviderSelectionWithPolicy(
           ? "partial_scorecard"
           : "coaching_review";
   const scorecardEligible =
-    options.allowNumericalScores &&
+    numericalScoresAuthorized &&
     sufficientCount === FEEDBACK_DIMENSIONS.length &&
     (verifiedPrefixScope === null ||
       verifiedPrefixScope.excludedTailBlockCount === 0);

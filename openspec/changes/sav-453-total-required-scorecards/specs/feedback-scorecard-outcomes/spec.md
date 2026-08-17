@@ -38,6 +38,13 @@ total-score authority.
 - **THEN** they produce identical scores, overall, citations, and customer
   outcome
 
+#### Scenario: Missing settlement despite zero exclusions
+
+- **WHEN** a healthy partial authority has a gap-free verified prefix with zero
+  excluded candidate blocks but normalized settlement is missing
+- **THEN** numerical score authority is withheld and the result cannot be a
+  Scorecard
+
 ### Requirement: Excluded candidate evidence is scoreless coaching
 
 - **WHEN** a trusted projection excludes any real candidate tail block
@@ -64,3 +71,7 @@ Supported historical partial-scorecard rows MUST remain stored without rewrite.
 The read boundary MUST strictly validate their original versioned tuple and
 project them as scoreless Coaching review. Unknown or incoherent variants MUST
 remain unavailable.
+
+Historical scored rows MUST project as Scorecard only when the stored overall
+already equals the canonical weighted total. The read boundary MUST NOT rewrite
+or substitute a historical total.

@@ -362,21 +362,14 @@ export type FeedbackViewState =
       message: string;
       outcomeReason: "dispatch_failed";
     }
-  | { kind: "completed-full"; feedback: FeedbackV2View }
-  | { kind: "completed-partial"; feedback: FeedbackV2View }
-  | {
-      kind: "completed-evidence-limited";
-      feedback: FeedbackEvidenceLimitedView;
-    }
   | {
       kind: "completed-scorecard";
-      feedback: FeedbackDimensionCoverageScorecardView;
+      feedback: FeedbackScorecardView;
     }
   | {
       kind: "completed-coaching-review";
-      feedback: FeedbackDimensionCoverageCoachingView;
+      feedback: FeedbackCoachingReviewView;
     }
-  | { kind: "completed-legacy"; feedback: FeedbackLegacyView }
   | { kind: "completed-invalid" }
   | {
       kind: "failed-retryable";
@@ -606,33 +599,20 @@ export function toFeedbackViewState(
           }
         : { kind: "no-reviewable-answer", details: response.details };
     case "completed":
-      if (response.feedback.kind === "invalid") {
-        return { kind: "completed-invalid" };
-      }
-      if (response.feedback.kind === "dimension-coverage") {
-        if (response.feedback.outcome === "scorecard") {
-          return {
-            kind: "completed-scorecard",
-            feedback: response.feedback,
-          };
+      {
+        const projection = toFeedbackCustomerProjection(response);
+        if (!projection) return { kind: "completed-invalid" };
+        if (projection.outcome === "scorecard") {
+          return { kind: "completed-scorecard", feedback: projection.review };
+        }
+        if (projection.outcome !== "coaching_review") {
+          return { kind: "completed-invalid" };
         }
         return {
           kind: "completed-coaching-review",
-          feedback: response.feedback,
+          feedback: projection.review,
         };
       }
-      if (response.feedback.kind === "legacy") {
-        return { kind: "completed-legacy", feedback: response.feedback };
-      }
-      if (response.feedback.kind === "evidence-limited") {
-        return {
-          kind: "completed-evidence-limited",
-          feedback: response.feedback,
-        };
-      }
-      return response.feedback.evaluationState === "partial"
-        ? { kind: "completed-partial", feedback: response.feedback }
-        : { kind: "completed-full", feedback: response.feedback };
     default:
       return {
         kind: "unavailable",
@@ -791,6 +771,19 @@ function decodeCompletedFeedbackView(
   }
   if (value.kind === "evidence-limited") {
     const valid =
+      hasExactKeys(value, [
+        "kind",
+        "id",
+        "sessionId",
+        "summary",
+        "createdAt",
+        "nextPracticeRecommendation",
+        "presentationVersion",
+        "strengths",
+        "improvements",
+        "scoreWithheldReason",
+        "prioritizedPracticeFocus",
+      ]) &&
       isCompletedFeedbackIdentityBase(value) &&
       value.presentationVersion === FEEDBACK_REVIEW_PRESENTATION_VERSION &&
       isFeedbackScoreWithheldReason(value.scoreWithheldReason) &&
@@ -823,7 +816,19 @@ function decodeCompletedFeedbackView(
   }
   if (!isCompletedFeedbackBase(value)) return null;
   if (value.kind === "legacy") {
-    return value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
+    return hasExactKeys(value, [
+      "kind",
+      "id",
+      "sessionId",
+      "summary",
+      "createdAt",
+      "nextPracticeRecommendation",
+      "scores",
+      "rubricVersion",
+      "strengths",
+      "improvements",
+    ]) &&
+      value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
       isBoundedStringArray(
         value.strengths,
         10,
@@ -841,6 +846,22 @@ function decodeCompletedFeedbackView(
   }
   if (value.kind !== "v2") return null;
   if (
+    !hasExactKeys(value, [
+      "kind",
+      "id",
+      "sessionId",
+      "summary",
+      "createdAt",
+      "nextPracticeRecommendation",
+      "scores",
+      "evaluationState",
+      "schemaVersion",
+      "promptVersion",
+      "modelVersion",
+      "rubricVersion",
+      "strengths",
+      "improvements",
+    ]) ||
     value.schemaVersion !== FEEDBACK_SCHEMA_VERSION ||
     value.promptVersion !== FEEDBACK_PROMPT_VERSION ||
     value.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
@@ -1011,6 +1032,7 @@ function isCompletedFeedbackBase(value: Record<string, unknown>): boolean {
 function isFeedbackScoreView(value: unknown): value is FeedbackScoreView {
   if (!isRecord(value)) return false;
   return (
+    hasExactKeys(value, [...FEEDBACK_DIMENSIONS, "overall"]) &&
     [
       value.structure,
       value.clarity,
@@ -1049,6 +1071,15 @@ function isFeedbackFindingArray(
     value.every((entry) => {
       if (!isRecord(entry)) return false;
       return (
+        hasExactKeys(entry, [
+          "dimension",
+          "observation",
+          "nextStep",
+          "rubricVersion",
+          "confidence",
+          "transcriptRefs",
+          "evidence",
+        ]) &&
         typeof entry.dimension === "string" &&
         DIMENSIONS.has(entry.dimension as FeedbackDimension) &&
         isBoundedString(entry.observation, FEEDBACK_READ_LIMITS.findingText) &&
@@ -1070,6 +1101,7 @@ function isFeedbackFindingArray(
         entry.evidence.every(
           (evidence) =>
             isRecord(evidence) &&
+            hasExactKeys(evidence, ["turnRef", "quote"]) &&
             isBoundedString(
               evidence.turnRef,
               FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
@@ -1517,6 +1549,14 @@ function isEvidenceLimitedFindingViewArray(
     value.every((finding) => {
       if (
         !isRecord(finding) ||
+        !hasExactKeys(finding, [
+          "dimension",
+          "observation",
+          "citation",
+          "transcriptRef",
+          "nextStep",
+          "evidenceSupport",
+        ]) ||
         !DIMENSIONS.has(finding.dimension as FeedbackDimension) ||
         !isBoundedString(
           finding.observation,
@@ -1578,6 +1618,13 @@ function isEvidenceLimitedPracticeFocusView(
 ): value is FeedbackEvidenceLimitedPracticeFocusView {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      "dimension",
+      "title",
+      "guidance",
+      "citation",
+      "transcriptRef",
+    ]) &&
     DIMENSIONS.has(value.dimension as FeedbackDimension) &&
     isBoundedString(value.title, FEEDBACK_READ_LIMITS.findingText) &&
     isBoundedString(value.guidance, FEEDBACK_READ_LIMITS.findingText) &&
@@ -1641,16 +1688,17 @@ function parseLegacyFeedback(
 function parseLegacyScores(
   input: PersistedCompletedFeedback
 ): FeedbackScoreView {
-  return {
+  const dimensionScores: FeedbackV2Scores = {
     structure: requireScore(input.structureScore),
     clarity: requireScore(input.clarityScore),
     insight: requireScore(input.insightScore),
     communication: requireScore(input.communicationScore),
     leadership: requireScore(input.leadershipScore),
-    // Historical writes stored a separately model-authored overall score.
-    // Preserve it as historical data instead of applying the v2 weighting.
-    overall: requireNumberInRange(input.overallScore),
   };
+  const calculatedOverall = calculateOverallScore(dimensionScores);
+  const storedOverall = requireNumberInRange(input.overallScore);
+  if (storedOverall !== calculatedOverall) throw new Error("score mismatch");
+  return { ...dimensionScores, overall: storedOverall };
 }
 
 function parseScores(input: PersistedCompletedFeedback): FeedbackScoreView {

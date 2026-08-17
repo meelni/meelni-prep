@@ -237,7 +237,7 @@ function verifiedPrefixDashboardFixture() {
     FEEDBACK_DIMENSIONS.map((dimension) => [
       dimension,
       {
-        score: dimension === "structure" ? 8 : null,
+        score: null,
         evidence:
           dimension === "structure"
             ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(

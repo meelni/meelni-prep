@@ -75,6 +75,12 @@ account-identity lock and tombstone barrier. Account export includes only the
 closed current signal fields. Account deletion explicitly removes signal and
 rate rows before the feedback/session graph.
 
+Historical v1 rows remain immutable. Reads normalize `full_scorecard` to
+`scorecard` and `partial_scorecard` to scoreless `coaching_review`. A v1
+partial-scorecard `score_explanation_unclear` reason is omitted from the v2
+owner-safe view because score-only reasons cannot cross the coaching boundary;
+the persisted row is neither rewritten nor renormalized.
+
 ## Analytics
 
 Optional events contain only closed outcome/response/reason/action fields:

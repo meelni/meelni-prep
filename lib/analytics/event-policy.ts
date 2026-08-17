@@ -153,13 +153,11 @@ const PATH_KEYS = new Set(["destination", "page"]);
 const ERROR_KEYS = new Set(["error_code"]);
 const CLOSED_VALUES: Record<string, ReadonlySet<string>> = {
   "feedback_viewed.outcome": new Set([
-    "full_scorecard",
-    "partial_scorecard",
+    "scorecard",
     "coaching_review",
   ]),
   "feedback_helpfulness_responded.outcome": new Set([
-    "full_scorecard",
-    "partial_scorecard",
+    "scorecard",
     "coaching_review",
   ]),
   "feedback_helpfulness_responded.response": new Set([
@@ -175,10 +173,7 @@ const CLOSED_VALUES: Record<string, ReadonlySet<string>> = {
     "score_explanation_unclear",
     "score_withholding_unclear",
   ]),
-  "feedback_practice_started.outcome": new Set([
-    "partial_scorecard",
-    "coaching_review",
-  ]),
+  "feedback_practice_started.outcome": new Set(["coaching_review"]),
   "feedback_practice_started.practice_kind": new Set(["focused_practice"]),
 };
 
@@ -235,7 +230,7 @@ function isAtomicFeedbackQualityEventValid(
     return outcome === "coaching_review";
   }
   if (reason === "score_explanation_unclear") {
-    return outcome === "full_scorecard" || outcome === "partial_scorecard";
+    return outcome === "scorecard";
   }
   return true;
 }

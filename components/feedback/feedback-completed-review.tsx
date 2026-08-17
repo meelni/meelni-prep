@@ -307,11 +307,13 @@ export function CompletedV2Review({
 
   return (
     <FeedbackReviewShell
-      title="Interview feedback"
+      title="Scorecard"
       description="See the result, supporting evidence, and one focused next practice."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome="scorecard" />
       <div className="space-y-8">
+        <StatusPill tone="success">Scorecard</StatusPill>
         <StatusPill
           tone={partial ? "warning" : "success"}
           className={!partial ? "text-foreground" : undefined}
@@ -552,11 +554,13 @@ export function CompletedLegacyReview({
 }) {
   return (
     <FeedbackReviewShell
-      title="Historical feedback"
+      title="Scorecard"
       description="This review was created before transcript-linked feedback was introduced."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome="scorecard" />
       <div className="space-y-8">
+        <StatusPill tone="success">Scorecard</StatusPill>
         <FeedbackSectionCard title="Historical feedback format" tone="warning">
           <p className="text-muted-foreground leading-6">
             These saved notes do not include verifiable transcript evidence or

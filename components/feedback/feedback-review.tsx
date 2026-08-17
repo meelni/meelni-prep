@@ -288,28 +288,26 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     return <FeedbackLoadingSkeleton />;
   }
 
-  if (
-    viewState.kind === "completed-full" ||
-    viewState.kind === "completed-partial"
-  ) {
-    return (
-      <CompletedV2Review
-        feedback={viewState.feedback}
-        partial={viewState.kind === "completed-partial"}
-      />
-    );
-  }
-  if (viewState.kind === "completed-legacy") {
-    return <CompletedLegacyReview feedback={viewState.feedback} />;
-  }
-  if (viewState.kind === "completed-evidence-limited") {
-    return <CompletedEvidenceLimitedReview feedback={viewState.feedback} />;
-  }
-  if (
-    viewState.kind === "completed-scorecard" ||
-    viewState.kind === "completed-coaching-review"
-  ) {
+  if (viewState.kind === "completed-scorecard") {
+    if (viewState.feedback.kind === "v2") {
+      return (
+        <CompletedV2Review
+          feedback={viewState.feedback}
+          partial={viewState.feedback.evaluationState === "partial"}
+        />
+      );
+    }
+    if (viewState.feedback.kind === "legacy") {
+      return <CompletedLegacyReview feedback={viewState.feedback} />;
+    }
     return <CompletedDimensionCoverageReview feedback={viewState.feedback} />;
+  }
+  if (viewState.kind === "completed-coaching-review") {
+    return viewState.feedback.kind === "evidence-limited" ? (
+      <CompletedEvidenceLimitedReview feedback={viewState.feedback} />
+    ) : (
+      <CompletedDimensionCoverageReview feedback={viewState.feedback} />
+    );
   }
   return (
     <FeedbackLifecycleStatus
