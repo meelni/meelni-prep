@@ -4,11 +4,14 @@ import test from "node:test";
 
 import {
   SYNTHETIC_FEEDBACK_ARTIFACT_VERSION,
+  SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS,
   createSyntheticFeedbackScenarios,
   decodeSyntheticFeedbackArtifactV1,
   decodeSyntheticFeedbackManifestV1,
   type SyntheticFeedbackExpectedOutcome,
 } from "@meelni/test-fixtures";
+
+import { FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS } from "@/lib/evaluation/feedback-generation-policy";
 
 import {
   createSyntheticFeedbackBundle,
@@ -46,6 +49,10 @@ test("public scenario catalog is versioned, synthetic, and single-sourced", () =
       (scenario) =>
         scenario.schemaVersion === "meelni.synthetic-feedback.scenario.v1"
     )
+  );
+  assert.equal(
+    SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS,
+    FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS
   );
 });
 
@@ -100,6 +107,34 @@ test("artifact and manifest decoders fail closed", async () => {
     decodeSyntheticFeedbackArtifactV1({
       ...artifact,
       schemaVersion: "meelni.synthetic-feedback.artifact.v999",
+    }),
+    null
+  );
+  assert.equal(
+    decodeSyntheticFeedbackArtifactV1({
+      ...artifact,
+      diagnostics: {
+        ...artifact.diagnostics,
+        executionMode: "live_model_explicit_opt_in",
+        durableStepRoundTrips: [
+          "authorize-feedback-generation",
+          "claim-feedback-generation",
+          "fetch-feedback-answer-blocks",
+          "read-current-feedback-evaluation-1-execution-0",
+          "evaluate-feedback-attempt-1",
+          "wait-feedback-evaluation-retry-1",
+          "read-current-feedback-evaluation-2-execution-0",
+          "evaluate-feedback-attempt-2",
+          "wait-feedback-evaluation-retry-2",
+          "read-current-feedback-evaluation-3-execution-0",
+          "evaluate-feedback-attempt-3",
+          "wait-feedback-evaluation-retry-3",
+          "read-current-feedback-evaluation-4-execution-0",
+          "evaluate-feedback-attempt-4",
+          "complete-feedback-generation",
+          "authorize-feedback-generation",
+        ],
+      },
     }),
     null
   );
