@@ -43,7 +43,10 @@ import {
   prepareCandidateAnswerBlockEvidenceFromTurns,
   prepareTrustedCandidateAnswerBlockEvidenceFromFrozenSnapshot,
 } from "@/lib/evaluation/session-validator";
-import { buildCompletedFeedbackLifecycleResponse } from "@/lib/feedback-lifecycle-response";
+import {
+  buildCompletedFeedbackLifecycleResponse,
+  buildSkippedFeedbackLifecycleResponse,
+} from "@/lib/feedback-lifecycle-response";
 import {
   ingestTranscriptEvent,
   type PersistTranscriptEventResult,
@@ -351,7 +354,11 @@ export async function runFeedbackProductionScenario(
   });
 
   if (outcomeReason) {
-    const lifecycle = decodeClosedLifecycle(skippedResponse(outcomeReason));
+    const skippedLifecycle = buildSkippedFeedbackLifecycleResponse(
+      appliedCompletion.feedback
+    );
+    assert.ok(skippedLifecycle, "synthetic_skipped_lifecycle_invalid");
+    const lifecycle = decodeClosedLifecycle(skippedLifecycle);
     stages.push("api_view_model");
     return {
       lifecycle,
@@ -679,26 +686,6 @@ function syntheticScore(dimension: (typeof FEEDBACK_DIMENSIONS)[number]) {
     communication: 7,
     leadership: 8,
   }[dimension];
-}
-
-function skippedResponse(
-  outcomeReason: SkippedFeedbackOutcomeReason
-): FeedbackLifecycleResponse {
-  return {
-    status: "skipped",
-    retryable: false,
-    details: {
-      outcome: "unable_to_review",
-      scoreWithheldReason:
-        outcomeReason === "transcript_integrity_degraded"
-          ? "verified_evidence_integrity"
-          : "rubric_coverage",
-      recovery:
-        outcomeReason === "transcript_integrity_degraded"
-          ? "credit_recovery_in_progress"
-          : "start_another_interview",
-    },
-  };
 }
 
 function mutatePersistedResult(

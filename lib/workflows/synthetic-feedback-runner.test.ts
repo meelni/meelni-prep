@@ -129,7 +129,7 @@ test("artifact and manifest decoders fail closed", async () => {
       ...artifact,
       diagnostics: {
         ...artifact.diagnostics,
-        durableStepRoundTrips: ["candidate-answer-content"],
+        durableStepRoundTrips: ["authorize-feedback-generation"],
       },
     }),
     null
