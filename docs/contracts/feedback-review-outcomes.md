@@ -10,20 +10,24 @@ event, derived answer-block, or rubric-dimension coverage contracts.
 - Derived candidate answer blocks are the evaluation and presentation unit.
 - Equivalent semantic answers under different event segmentation must produce
   the same coverage, scores, mode, and customer outcome.
-- `feedback.dimension-coverage.v1` remains the complete/historical scoring
-  authority. The additive `feedback.dimension-coverage.v2` authority may score
-  a partial snapshot only from an exactly recomputed trusted closed-block
-  prefix. Presentation code cannot derive coverage from punctuation, grammar,
-  answer length, transcript rows, null scores, or provider fields.
+- `feedback.dimension-coverage.v1` and additive v2 remain persisted scoring
+  authorities. A v2 partial snapshot may authorize a complete Scorecard only
+  from an exactly recomputed trusted closed-block projection with zero excluded
+  candidate blocks and sufficient coverage for every weighted dimension.
+  Presentation code cannot derive coverage or outcome from punctuation,
+  grammar, answer length, transcript rows, null scores, or provider fields.
 
 ## Closed customer outcomes
 
-| Outcome           | Numerical result                                     | Customer explanation                                                                                       | Next action                                                                                                                             |
-| ----------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Full scorecard    | Every supported dimension and a valid overall        | Every PM rubric dimension had enough verified evidence                                                     | Review the observed scorecard and continue practice                                                                                     |
-| Partial scorecard | Supported dimensions only; never an overall          | Some rubric dimensions lacked enough verified coverage                                                     | Review supported scores and the dimensions labeled `Not enough evidence`                                                                |
-| Coaching review   | No dimension or overall scores                       | Grounded coaching exists, but reliable numerical coverage or complete verified-evidence integrity does not | Use one grounded prioritized practice focus                                                                                             |
-| Unable to review  | No scores, coaching claim, or performance conclusion | No reviewable candidate answer exists, or saved evidence integrity failed                                  | Retry the saved review when revalidation proves it recoverable; otherwise start another interview and show settled/pending credit truth |
+| Outcome          | Numerical result                                     | Customer explanation                                                        | Next action                                                                                                                             |
+| ---------------- | ---------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Scorecard        | Every weighted dimension and a valid canonical total | Every PM rubric dimension had enough verified evidence                      | Review the observed scorecard and continue practice                                                                                     |
+| Coaching review  | No dimension or overall score fields                 | Grounded coaching exists, but complete reliable numerical coverage does not | Use one grounded prioritized practice focus                                                                                             |
+| Unable to review | No scores, coaching claim, or performance conclusion | No reviewable candidate answer exists, or saved evidence integrity failed   | Retry the saved review when revalidation proves it recoverable; otherwise start another interview and show settled/pending credit truth |
+
+There is no customer-visible Partial scorecard. A supported historical partial
+row remains immutable and is strictly validated under its stored version, then
+projects as scoreless Coaching review.
 
 Coverage and integrity are different customer-safe reason families:
 
@@ -45,14 +49,13 @@ customer-safe `scoreWithheldReason`, and the customer-safe `recovery` state.
 The completed-feedback presenter may expose only:
 
 - the customer outcome and customer-safe withheld-reason family;
-- supported dimension scores and server-derived coverage labels;
+- all weighted dimension scores plus the canonical overall for Scorecard;
 - customer-facing facet labels, exact candidate citations, and opaque
   transcript navigation targets;
 - grounded coaching signals, visible evidence-support semantics, and exactly
   one prioritized practice focus;
-- for verified-prefix v2 only, the count of verified completed answers and the
-  semantic fact that the unfinished or unverified terminal tail stayed outside
-  the review; and
+- for verified-prefix v2 coaching only, the semantic fact that an unfinished
+  or unverified terminal tail stayed outside the review; and
 - customer-safe review or credit recovery state for terminal integrity
   failures.
 
@@ -60,17 +63,13 @@ It does not expose model, schema, prompt, rubric, facet, answer-block, provider,
 parser, settlement, or transcript-integrity codes. Historical supported review
 formats retain their explicit compatibility treatment.
 
-The verified-prefix explanation is visible text: Meelni reviewed only the
-completed answers it could verify. The unfinished or unverified end was not
-treated as negative evidence; only verified completed answers could support the
-scores or coaching shown. The UI does not claim that exclusion had no effect on
-which dimensions were supportable. It never exposes block identities, writer
-state, provider state, or a diagnostic excluded-block count. Historical v1
-partial/coaching reviews have no verified-prefix claim and remain readable
-without this card. Even when every individual dimension is supported, verified-
-prefix copy says the overall score is withheld because the complete saved
-interview was outside verified scope; it does not imply that another dimension
-was necessarily unscored.
+The verified-prefix explanation is visible for coaching with a real excluded
+tail: Meelni reviewed only the completed answers it could verify. The excluded
+end was not treated as negative evidence. The UI does not claim that exclusion
+had no effect on which dimensions were supportable and never exposes block
+identities, writer state, provider state, or a diagnostic excluded-block count.
+An exact safe marker with zero excluded candidate blocks produces no excluded-
+tail claim and may authorize Scorecard when every dimension is sufficient.
 
 ## Coaching and citations
 
@@ -99,10 +98,10 @@ false-negative integrity skip. The authenticated owner read may expose it only
 after the immutable frozen evidence revalidates under the current trusted
 answer-block authority and contains reviewable trusted blocks. The response is
 `retryable: true`; recovery requeues the same saved review and consumes no new
-interview credit. It does not promise scores: a snapshot containing an exact
-interviewer `no_provider_confirmed_prefix` marker remains partial and can
-produce only verified-prefix feedback with no overall score. If revalidation
-fails, the terminal skip stays closed and the UI offers no review retry.
+interview credit. It does not promise scores: core must still prove zero
+excluded candidate scope and complete weighted coverage before a Scorecard can
+result. If revalidation fails, the terminal skip stays closed and the UI offers
+no review retry.
 Separately modeled transient dispatch and generation failures retain their
 existing retry controls.
 
@@ -126,15 +125,14 @@ part of the customer response.
 
 ## History, Dashboard, and metrics
 
-History and Dashboard use `Full scorecard ready`, `Partial scorecard ready`,
-`Coaching review ready`, or `Unable to review` for these outcomes. Valid reviews
-remain reachable; malformed completed rows remain unavailable and unlinked.
+History and Dashboard use `Scorecard ready`, `Coaching review ready`, or
+`Unable to review`. Valid reviews remain reachable; malformed completed rows
+remain unavailable and unlinked.
 
-Only a completed review with a valid overall score enters current averages,
-trends, progress bars, comparisons, focus areas, or weakness patterns. Partial,
-coaching, unable, pending, failed, malformed, and missing results add no numeric
-value and no synthetic zero. A future dimension-specific metric may consume a
-supported partial dimension only if it preserves a supported-score denominator.
+Only a validated Scorecard with a canonical overall enters current averages,
+trends, progress bars, comparisons, focus areas, or weakness patterns.
+Coaching, unable, pending, failed, malformed, and missing results add no numeric
+value and no synthetic zero.
 
 Customer-facing overall scores use whole-number presentation everywhere,
 including comparison selectors and side-by-side detail. Comparison overall
@@ -145,7 +143,7 @@ score arithmetic remains unchanged.
 ## Accessibility and privacy
 
 - Outcome and reason are visible text and never depend on color alone.
-- Unsupported dimensions are text rows, not zero-valued meters.
+- Coaching has no dimension-score rows or zero-valued meters.
 - Reading order is outcome, reason, scorecard or coaching evidence, one focus,
   then transcript.
 - Recovery progress is polite status; terminal integrity failure is an alert.

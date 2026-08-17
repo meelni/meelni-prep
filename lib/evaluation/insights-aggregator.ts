@@ -107,8 +107,7 @@ export async function aggregateUserInsights(
   // Progress claims require a strictly presented legacy/v2/full scorecard.
   const completedSessions = sessions.filter(
     (session) =>
-      (session.feedback?.presentationKind === "scored" ||
-        session.feedback?.presentationKind === "full_scorecard") &&
+      session.feedback?.presentationKind === "scorecard" &&
       getCompletedFeedbackScore(session.feedback) !== null
   );
 

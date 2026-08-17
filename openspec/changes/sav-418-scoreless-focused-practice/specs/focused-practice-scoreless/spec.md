@@ -1,15 +1,19 @@
 # Scoreless focused-practice delta
 
+> SAV-453 amendment: supported historical partial rows are strictly validated
+> and reduced to the scoreless Coaching review customer outcome before this
+> contract consumes them.
+
 ### Requirement: Honest scoreless eligibility
 
 The system SHALL expose exactly one executable focused-practice path for a
-supported Partial scorecard or Coaching review without inventing a numerical
+supported Coaching review without inventing a numerical
 weakness.
 
-#### Scenario: Supported partial or coaching review
+#### Scenario: Supported coaching review
 
-- GIVEN a strict SAV-421/SAV-420 read produces a Partial scorecard or Coaching
-  review with a grounded practice focus
+- GIVEN a strict SAV-421/SAV-453 read produces a Coaching review with a
+  grounded practice focus
 - WHEN the owner starts focused practice
 - THEN the server selects one closed focus identity backed by accepted exact
   evidence
@@ -133,7 +137,7 @@ completion path and preserve a clear unavailable fallback.
 
 #### Scenario: Complete focused practice
 
-- GIVEN a supported Partial scorecard or Coaching review
+- GIVEN a supported Coaching review
 - WHEN the owner practices aloud and saves a bounded self-review
 - THEN the attempt becomes terminally completed
 - AND the page offers a return-to-interview action for the frozen source

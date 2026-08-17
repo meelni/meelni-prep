@@ -346,10 +346,10 @@ interface DashboardProperties {
     has_feedback: boolean;
   };
   feedback_viewed: {
-    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+    outcome: "scorecard" | "coaching_review";
   };
   feedback_helpfulness_responded: {
-    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+    outcome: "scorecard" | "coaching_review";
     response: "helpful" | "not_helpful";
     reason:
       | "not_provided"
@@ -361,7 +361,7 @@ interface DashboardProperties {
       | "score_withholding_unclear";
   };
   feedback_practice_started: {
-    outcome: "partial_scorecard" | "coaching_review";
+    outcome: "coaching_review";
     practice_kind: "focused_practice";
   };
   chart_interacted: {

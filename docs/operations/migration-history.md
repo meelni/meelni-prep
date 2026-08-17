@@ -47,10 +47,11 @@
 |    38 | `0038_sav_440_verified_prefix_partial_scorecards` |
 |    39 | `0039_sav_445_shadow_feedback_artifacts`          |
 |    40 | `0040_sav_448_managed_service_role_grants`        |
+|    41 | `0041_sav_453_total_required_scorecards`          |
 
 <!-- migration-journal:end -->
 
-This forty-one-entry inventory is generated from the same ordered contract as
+This forty-two-entry inventory is generated from the same ordered contract as
 `lib/db/migrations/meta/_journal.json`; the operations test fails if either the
 count, order, or tag changes without this section being updated.
 
@@ -480,3 +481,20 @@ evidence, evaluator settings, or feature flags. Clean local PostgreSQL already
 has the intended grants, so the migration is catalog-idempotent there; managed
 Supabase environments converge from their broader defaults to the same schema
 fingerprint. Rollback keeps the narrower grants in place.
+
+## Total-required customer scorecards
+
+Migration `0041_sav_453_total_required_scorecards` extends the exact
+dimension-coverage tuple so a verified-prefix result with zero excluded
+candidate blocks may store a complete `full_scorecard`, all weighted dimension
+scores, and the canonical overall. It adds a closed score-column constraint:
+new full scorecards require the complete numerical tuple, coaching rows require
+every numerical column to be null, and historical `partial_scorecard` rows keep
+their original sparse tuple with a null overall.
+
+The migration also admits `feedback-quality-signal.v2` with only `scorecard |
+coaching_review`, while retaining the exact v1 constraint for stored quality
+signals. It performs no update, backfill, renormalization, or row rewrite.
+Application reads strictly validate historical partial rows and remove their
+numerical fields only in the customer Coaching projection. Generating this
+migration source does not authorize applying it to Preview or Production.

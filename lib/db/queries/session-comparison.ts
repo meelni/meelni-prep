@@ -76,8 +76,7 @@ function isComparableSession(
   feedback: NonNullable<ValidatedComparisonSession["feedback"]>;
 } {
   return (
-    (session.feedback?.presentationKind === "scored" ||
-      session.feedback?.presentationKind === "full_scorecard") &&
+    session.feedback?.presentationKind === "scorecard" &&
     getCompletedFeedbackScore(session.feedback) !== null
   );
 }

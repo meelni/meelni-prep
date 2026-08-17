@@ -1,8 +1,8 @@
 export interface DashboardProgressFeedbackFixture {
   status: "pending" | "processing" | "completed" | "failed" | "skipped";
   presentationKind:
-    | "scored"
-    | "evidence_limited"
+    | "scorecard"
+    | "coaching_review"
     | "unable_to_review"
     | "unavailable";
   overallScore: string | number | null;
@@ -28,7 +28,7 @@ const completedSession: DashboardProgressSessionFixture = {
   endedAt: "2026-07-05T12:28:00.000Z",
   feedback: {
     status: "completed",
-    presentationKind: "scored",
+    presentationKind: "scorecard",
     overallScore: "6.2",
     structureScore: 8.1,
     clarityScore: 7.4,
@@ -94,7 +94,7 @@ const statusSessions: DashboardProgressSessionFixture[] = [
     endedAt: "2026-07-06T12:20:00.000Z",
     feedback: {
       status: "completed",
-      presentationKind: "evidence_limited",
+      presentationKind: "coaching_review",
       overallScore: null,
       insightScore: null,
     },

@@ -1,5 +1,9 @@
 # Design
 
+> Amended by SAV-453. The scoreless source path is `coaching_review`, including
+> strictly validated historical partial rows after customer projection. No
+> customer-visible Partial scorecard remains.
+
 ## Canonical source resolution
 
 The start workflow first resumes any existing owned attempt for the source
@@ -71,7 +75,8 @@ dimension label, lifecycle state, and candidate-authored self-review.
 
 ## UI and recovery
 
-Supported partial/coaching reviews render one focused-practice workspace after
+Supported coaching reviews, including historical partial rows projected as
+coaching, render one focused-practice workspace after
 the prioritized focus and before Transcript. Initial copy states that the
 server selected the grounded focus. Permanent source unavailability is
 distinguished from retryable transport/service failure. Completion preserves

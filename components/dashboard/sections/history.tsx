@@ -220,7 +220,7 @@ export const HistorySection = memo(function HistorySection({
                             label={row.statusLabel}
                           />
                           <span className="text-dashboard-muted block break-words">
-                            {row.feedbackKind === "scored" ? "Focus: " : ""}
+                            {row.feedbackKind === "scorecard" ? "Focus: " : ""}
                             {row.focusLabel}
                           </span>
                         </div>
@@ -336,7 +336,7 @@ function CompactHistoryRow({ row }: { row: HistorySummary["rows"][number] }) {
           />
         </div>
         <p className="text-dashboard-muted mt-2 leading-6 break-words">
-          {row.feedbackKind === "scored" ? "Focus: " : ""}
+          {row.feedbackKind === "scorecard" ? "Focus: " : ""}
           {row.focusLabel}
         </p>
       </div>

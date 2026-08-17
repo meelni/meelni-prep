@@ -20,8 +20,7 @@ import {
 } from "./answer-blocks";
 
 export const SYNTHETIC_FEEDBACK_REVIEW_OUTCOMES = [
-  "full_scorecard",
-  "partial_scorecard",
+  "scorecard",
   "coaching_review",
   "unable_to_review",
 ] as const;
@@ -41,7 +40,7 @@ export interface SyntheticFeedbackTranscriptVariant {
 
 export interface SyntheticDimensionPresentation {
   dimension: SyntheticFeedbackReviewDimension;
-  state: "scored" | "not_enough_evidence";
+  state: "scored" | "unscored";
   score: number | null;
 }
 
@@ -65,8 +64,7 @@ export interface SyntheticFeedbackReviewOutcomeFixture {
       | "review_recovery_available"
       | null;
     historyLabel:
-      | "Full scorecard ready"
-      | "Partial scorecard ready"
+      | "Scorecard ready"
       | "Coaching review ready"
       | "Unable to review";
     numericMetricContribution: {
@@ -83,29 +81,29 @@ const FULL_DIMENSIONS: SyntheticDimensionPresentation[] =
     score: 8,
   }));
 
-const PARTIAL_DIMENSIONS: SyntheticDimensionPresentation[] =
+const COACHING_DIMENSIONS: SyntheticDimensionPresentation[] =
   FEEDBACK_DIMENSIONS.map((dimension) => ({
     dimension,
-    state: dimension === "structure" ? "scored" : "not_enough_evidence",
-    score: dimension === "structure" ? 8 : null,
+    state: "unscored",
+    score: null,
   }));
 
 export function createSyntheticFeedbackReviewOutcomeFixtures(): SyntheticFeedbackReviewOutcomeFixture[] {
   return [
     {
-      id: "full-scorecard-equivalent-segmentation",
+      id: "scorecard-equivalent-segmentation",
       provenance: "fully_synthetic",
       sourceIntegrity: "verified",
       sourceVariants: coverageVariants("full_scorecard"),
       expected: {
-        outcome: "full_scorecard",
+        outcome: "scorecard",
         withheldReason: null,
         dimensions: FULL_DIMENSIONS,
         displayOverallScore: 8,
         exactCandidateCitation: firstSyntheticAnswer(),
         prioritizedPracticeFocus: false,
         recovery: "continue_practice",
-        historyLabel: "Full scorecard ready",
+        historyLabel: "Scorecard ready",
         numericMetricContribution: {
           overall: true,
           dimensions: [...FEEDBACK_DIMENSIONS],
@@ -113,19 +111,19 @@ export function createSyntheticFeedbackReviewOutcomeFixtures(): SyntheticFeedbac
       },
     },
     {
-      id: "partial-scorecard-supported-dimensions-only",
+      id: "incomplete-coverage-coaching",
       provenance: "fully_synthetic",
       sourceIntegrity: "verified",
       sourceVariants: coverageVariants("partial_scorecard"),
       expected: {
-        outcome: "partial_scorecard",
+        outcome: "coaching_review",
         withheldReason: "rubric_coverage",
-        dimensions: PARTIAL_DIMENSIONS,
+        dimensions: COACHING_DIMENSIONS,
         displayOverallScore: null,
         exactCandidateCitation: firstSyntheticAnswer(),
-        prioritizedPracticeFocus: false,
+        prioritizedPracticeFocus: true,
         recovery: "continue_practice",
-        historyLabel: "Partial scorecard ready",
+        historyLabel: "Coaching review ready",
         numericMetricContribution: { overall: false, dimensions: [] },
       },
     },

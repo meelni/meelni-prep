@@ -45,40 +45,38 @@ describe("FeedbackReviewAnalytics", () => {
   });
 
   it("emits once when consent predates the mount and the runtime becomes ready", () => {
-    const view = render(
-      <FeedbackReviewAnalytics outcome="partial_scorecard" />
-    );
+    const view = render(<FeedbackReviewAnalytics outcome="coaching_review" />);
     expect(mocks.track).not.toHaveBeenCalled();
 
     mocks.runtimeReady = true;
-    view.rerender(<FeedbackReviewAnalytics outcome="partial_scorecard" />);
-    view.rerender(<FeedbackReviewAnalytics outcome="partial_scorecard" />);
+    view.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
+    view.rerender(<FeedbackReviewAnalytics outcome="coaching_review" />);
     expect(mocks.track).toHaveBeenCalledTimes(1);
     expect(mocks.track).toHaveBeenCalledWith("feedback_viewed", {
-      outcome: "partial_scorecard",
+      outcome: "coaching_review",
     });
   });
 
   it("does not emit retroactively after consent is granted later", () => {
     mocks.consent.decision = "undecided";
-    const view = render(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+    const view = render(<FeedbackReviewAnalytics outcome="scorecard" />);
 
     mocks.consent.decision = "accepted";
     mocks.consent.consent.decidedAt = "2020-01-01T00:00:00.000Z";
     mocks.runtimeReady = true;
-    view.rerender(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+    view.rerender(<FeedbackReviewAnalytics outcome="scorecard" />);
     expect(mocks.track).not.toHaveBeenCalled();
   });
 
   it("does not replay a view after initially unresolved consent resolves", () => {
     mocks.consent.resolved = false;
     mocks.consent.resolvedForUserId = null;
-    const view = render(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+    const view = render(<FeedbackReviewAnalytics outcome="scorecard" />);
 
     mocks.consent.resolved = true;
     mocks.consent.resolvedForUserId = "synthetic-user-a";
     mocks.runtimeReady = true;
-    view.rerender(<FeedbackReviewAnalytics outcome="full_scorecard" />);
+    view.rerender(<FeedbackReviewAnalytics outcome="scorecard" />);
     expect(mocks.track).not.toHaveBeenCalled();
   });
 

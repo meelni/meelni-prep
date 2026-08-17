@@ -3,7 +3,11 @@ import {
   FEEDBACK_RUBRIC_VERSION,
   FEEDBACK_SCHEMA_VERSION,
   FEEDBACK_DIMENSIONS,
+  type FeedbackCoachingDimensionResultsView,
+  type FeedbackDimensionCoverageCoachingView,
+  type FeedbackDimensionCoverageScorecardView,
   type FeedbackDimensionCoverageView,
+  type FeedbackScorecardDimensionResultsView,
   type FeedbackV2View,
 } from "@meelni/core";
 import type {
@@ -27,8 +31,7 @@ export const verifiedPrefixPartialScorecardFeedback = {
   sessionId: "browser-qa-verified-prefix-partial",
   verifiedScope: {
     kind: "verified_prefix" as const,
-    reviewedAnswerCount: 1,
-    excludedTail: true,
+    excludedTail: true as const,
   },
 };
 export const verifiedPrefixCoachingReviewFeedback = {
@@ -37,8 +40,7 @@ export const verifiedPrefixCoachingReviewFeedback = {
   sessionId: "browser-qa-verified-prefix-coaching",
   verifiedScope: {
     kind: "verified_prefix" as const,
-    reviewedAnswerCount: 2,
-    excludedTail: true,
+    excludedTail: true as const,
   },
 };
 
@@ -53,7 +55,7 @@ export const dashboardSessions = [
     endedAt: "2026-07-17T17:30:00.000Z",
     feedback: {
       status: "completed",
-      presentationKind: "scored" as const,
+      presentationKind: "scorecard" as const,
       overallScore: "7.6",
       structureScore: 7,
       clarityScore: 8,
@@ -75,7 +77,7 @@ export const dashboardStatusSessions = [
     endedAt: "2026-07-22T17:30:00.000Z",
     feedback: {
       status: "completed",
-      presentationKind: "evidence_limited" as const,
+      presentationKind: "coaching_review" as const,
       overallScore: null,
     },
   },
@@ -128,7 +130,7 @@ export const analyticsSessions = [
     endedAt: "2026-07-10T17:30:00.000Z",
     feedback: {
       status: "completed",
-      presentationKind: "scored" as const,
+      presentationKind: "scorecard" as const,
       overallScore: "7.1",
       structureScore: 6.5,
       clarityScore: 7.5,
@@ -144,7 +146,7 @@ export const analyticsSessions = [
     endedAt: "2026-07-03T17:30:00.000Z",
     feedback: {
       status: "completed",
-      presentationKind: "scored" as const,
+      presentationKind: "scorecard" as const,
       overallScore: "6.6",
       structureScore: 6,
       clarityScore: 7,
@@ -177,48 +179,84 @@ export const analyticsInsights = {
 };
 
 function browserDimensionCoverageView(
+  kind: "full"
+): FeedbackDimensionCoverageScorecardView;
+function browserDimensionCoverageView(
+  kind: "partial" | "coaching"
+): FeedbackDimensionCoverageCoachingView;
+function browserDimensionCoverageView(
   kind: "full" | "partial" | "coaching"
 ): FeedbackDimensionCoverageView {
-  const dimensions = Object.fromEntries(
+  const scorecardDimensions = Object.fromEntries(
     FEEDBACK_DIMENSIONS.map((dimension) => {
-      const supported =
-        kind === "full" || (kind === "partial" && dimension === "structure");
-      const hasPartialEvidence = kind === "coaching" && dimension === "insight";
       return [
         dimension,
         {
-          coverage: supported
-            ? "sufficient"
-            : hasPartialEvidence
-              ? "partial"
-              : "absent",
-          score: kind !== "coaching" && supported ? 8 : null,
-          evidence:
-            supported || hasPartialEvidence
-              ? [
-                  {
-                    label:
-                      dimension === "structure"
-                        ? "Problem progression"
-                        : "Specific user need",
-                    citation: BROWSER_QA_CITATION,
-                    transcriptRef: evidenceTurn,
-                  },
-                  ...(supported
-                    ? [
-                        {
-                          label: "Decision support",
-                          citation: BROWSER_QA_CITATION,
-                          transcriptRef: evidenceTurn,
-                        },
-                      ]
-                    : []),
-                ]
-              : [],
+          coverage: "sufficient" as const,
+          score: 8,
+          evidence: [
+            {
+              label:
+                dimension === "structure"
+                  ? "Problem progression"
+                  : "Specific user need",
+              citation: BROWSER_QA_CITATION,
+              transcriptRef: evidenceTurn,
+            },
+            {
+              label: "Decision support",
+              citation: BROWSER_QA_CITATION,
+              transcriptRef: evidenceTurn,
+            },
+          ],
         },
       ];
     })
-  ) as FeedbackDimensionCoverageView["dimensions"];
+  ) as FeedbackScorecardDimensionResultsView;
+  if (kind === "full") {
+    return {
+      kind: "dimension-coverage",
+      id: "browser-qa-full",
+      sessionId: "browser-qa-full",
+      summary: "Synthetic browser QA review.",
+      presentationVersion: "feedback.review-outcome.v2",
+      outcome: "scorecard",
+      scores: {
+        structure: 8,
+        clarity: 8,
+        insight: 8,
+        communication: 8,
+        leadership: 8,
+        overall: 8,
+      },
+      dimensions: scorecardDimensions,
+      scoreWithheldReason: null,
+      coachingSignals: [],
+      prioritizedPracticeFocus: null,
+      verifiedScope: null,
+      createdAt: "2026-08-13T12:00:00.000Z",
+      nextPracticeRecommendation: null,
+    };
+  }
+  const dimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => [
+      dimension,
+      {
+        coverage:
+          dimension === "structure"
+            ? ("sufficient" as const)
+            : dimension === "insight"
+              ? ("partial" as const)
+              : ("absent" as const),
+        evidence:
+          dimension === "structure"
+            ? scorecardDimensions.structure.evidence
+            : dimension === "insight"
+              ? [scorecardDimensions.insight.evidence[0]!]
+              : [],
+      },
+    ])
+  ) as FeedbackCoachingDimensionResultsView;
   const coachingSignal = {
     dimension: "insight" as const,
     label: "Specific user need",
@@ -231,30 +269,21 @@ function browserDimensionCoverageView(
     id: `browser-qa-${kind}`,
     sessionId: `browser-qa-${kind}`,
     summary: "Synthetic browser QA review.",
-    presentationVersion: "feedback.review-outcome.v1",
-    mode:
-      kind === "full"
-        ? "full_scorecard"
-        : kind === "partial"
-          ? "partial_scorecard"
-          : "coaching_review",
+    presentationVersion: "feedback.review-outcome.v2",
+    outcome: "coaching_review",
     dimensions,
-    overallScore: kind === "full" ? 8 : null,
-    scoreWithheldReason: kind === "full" ? null : "rubric_coverage",
-    coachingSignals: kind === "coaching" ? [coachingSignal] : [],
-    prioritizedPracticeFocus:
-      kind === "coaching"
-        ? {
-            dimension: "insight",
-            title: "Specific user need",
-            guidance:
-              "Practice stating the user need in one clear sentence, then connect it to the next decision.",
-            rationale:
-              "This focus comes from one exact citation in this interview. It was not selected from a weakest score.",
-            citation: BROWSER_QA_CITATION,
-            transcriptRef: evidenceTurn,
-          }
-        : null,
+    scoreWithheldReason: "rubric_coverage",
+    coachingSignals: [coachingSignal],
+    prioritizedPracticeFocus: {
+      dimension: "insight",
+      title: "Specific user need",
+      guidance:
+        "Practice stating the user need in one clear sentence, then connect it to the next decision.",
+      rationale:
+        "This focus comes from one exact citation in this interview. It was not selected from a weakest score.",
+      citation: BROWSER_QA_CITATION,
+      transcriptRef: evidenceTurn,
+    },
     verifiedScope: null,
     createdAt: "2026-08-13T12:00:00.000Z",
     nextPracticeRecommendation: null,

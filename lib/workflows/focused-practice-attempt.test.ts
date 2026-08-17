@@ -302,7 +302,7 @@ test("server reconstruction ignores stored provider suggestion copy", async () =
   }
 });
 
-test("partial scorecards and coaching reviews create one scoreless grounded path", async () => {
+test("incomplete coverage and coaching reviews create one scoreless grounded path", async () => {
   for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
     const sourceFixture = dimensionCoverageSource(outcome);
     const harness = createHarness(sourceFixture);
@@ -319,7 +319,10 @@ test("partial scorecards and coaching reviews create one scoreless grounded path
       result.attempt.plan.contractVersion,
       "focused-practice-plan.v2"
     );
-    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(
+      result.attempt.feedbackVersion.reviewOutcome,
+      "coaching_review"
+    );
     assert.equal(harness.repository.attemptWrites, 1);
     assert.doesNotMatch(
       JSON.stringify(result.attempt.plan),
@@ -328,7 +331,7 @@ test("partial scorecards and coaching reviews create one scoreless grounded path
   }
 });
 
-test("verified-prefix v2 scorecards fully revalidate before focused practice", async () => {
+test("verified-prefix v2 coaching fully revalidates before focused practice", async () => {
   for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
     const sourceFixture = verifiedPrefixSource(outcome);
     const harness = createHarness(sourceFixture);
@@ -343,7 +346,10 @@ test("verified-prefix v2 scorecards fully revalidate before focused practice", a
       result.attempt.feedbackVersion.schemaVersion,
       "feedback.dimension-coverage.v2"
     );
-    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(
+      result.attempt.feedbackVersion.reviewOutcome,
+      "coaching_review"
+    );
     assert.equal(harness.repository.attemptWrites, 1);
   }
 
@@ -1297,7 +1303,13 @@ function dimensionCoverageSource(
   outcome: "full_scorecard" | "partial_scorecard" | "coaching_review"
 ): BoundedFocusedPracticeSource {
   const fixture = createSyntheticFeedbackReviewOutcomeFixtures().find(
-    (candidate) => candidate.expected.outcome === outcome
+    (candidate) =>
+      candidate.id ===
+      (outcome === "full_scorecard"
+        ? "scorecard-equivalent-segmentation"
+        : outcome === "partial_scorecard"
+          ? "incomplete-coverage-coaching"
+          : "coaching-review-rubric-coverage")
   );
   const variant = fixture?.sourceVariants[1];
   const result = variant?.coverageResult;

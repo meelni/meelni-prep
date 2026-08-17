@@ -3,9 +3,9 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains forty-one entries, from
+The current committed journal contains forty-two entries, from
 `0000_many_nocturne` through
-`0040_sav_448_managed_service_role_grants`. The migration-history inventory
+`0041_sav_453_total_required_scorecards`. The migration-history inventory
 is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -92,7 +92,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with forty-one
+six ledger entries. Expected post-migration status is `reconciled` with forty-two
 ledger entries, 42 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
@@ -105,8 +105,13 @@ focused-practice-attempt, durable-contact-submission, transcript-watermark,
 feedback-outcome, dimension-coverage, scoreless-focused-practice,
 feedback-quality, public-demo-preview-allowance,
 durable-runtime-settlement-command, feedback-stage-attempt, and
-verified-prefix-partial-scorecards, shadow-feedback-artifact, and managed
-service-role grant contract fingerprints. The shadow contract covers its immutable exact-key tuple,
+verified-prefix-partial-scorecards, shadow-feedback-artifact, managed
+service-role grant, and total-required-scorecard schema contract fingerprints.
+The total-required-scorecard contract is exported from
+`scripts/database-schema-contract.ts`; it admits complete verified-prefix
+scorecards only with zero excluded answer blocks and the full canonical score
+tuple, while preserving stored historical partial rows without rewriting them.
+The shadow contract covers its immutable exact-key tuple,
 content bounds, owner/session correlation, and least-privilege ACL.
 The managed-grant contract resets Supabase-applied defaults on the three new
 service-only feedback-loop tables before re-granting only their intended
@@ -209,8 +214,10 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 41`, and managed-service-role-grant schema fingerprint
-   `90ee1265eed98424299cf06a01e225ccb3905071e6295ff51e4652fa00b62985`.
+   `migrationCount: 42`, and the exact total-required-scorecard schema
+   fingerprint
+   `2275da50d525599642694689c989f787c6751de9f995a70abc03629a79844683`
+   exported by `scripts/database-schema-contract.ts`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state
    `reconciled` result alone is not deployment authorization.
@@ -228,6 +235,8 @@ deadline.
   updates, the old tier constraint, or non-unique indexes.
 - Preserve migration 0040's narrowed service-role grants during application
   rollback; broader managed-provider defaults are not a rollback target.
+- Preserve migration 0041's closed score-tuple constraints during application
+  rollback; historical partial rows remain valid and must not be rewritten.
 - If reconnect code is rolled back to process-local enforcement, keep the public
   relaunch gate paused until shared enforcement is restored.
 - Use provider point-in-time recovery only for an actual migration incident;

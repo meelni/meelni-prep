@@ -306,8 +306,7 @@ export function FeedbackReview({ sessionId }: { sessionId: string }) {
     return <CompletedEvidenceLimitedReview feedback={viewState.feedback} />;
   }
   if (
-    viewState.kind === "completed-full-scorecard" ||
-    viewState.kind === "completed-partial-scorecard" ||
+    viewState.kind === "completed-scorecard" ||
     viewState.kind === "completed-coaching-review"
   ) {
     return <CompletedDimensionCoverageReview feedback={viewState.feedback} />;

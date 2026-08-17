@@ -134,7 +134,7 @@ test("dashboard session mapping strips private evidence and emits one closed kin
     [evidenceTurn]
   );
 
-  assert.equal(mapped.feedback?.presentationKind, "scored");
+  assert.equal(mapped.feedback?.presentationKind, "scorecard");
   assert.equal("feedbackPresentationCandidate" in mapped, false);
   assert.equal("modelVersion" in (mapped.feedback ?? {}), false);
   assert.equal("strengthsJson" in (mapped.feedback ?? {}), false);

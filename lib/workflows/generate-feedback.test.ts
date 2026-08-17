@@ -1847,7 +1847,7 @@ test("legacy evidence-limited output fails before persistence on the new workflo
   assert.notEqual(store.current.status, "skipped");
 });
 
-test("persists an exact-grounded sparse dimension scorecard through the production workflow contract", async () => {
+test("persists exact-grounded sparse coaching through the production workflow contract", async () => {
   const store = new MemoryGenerationStore(record());
   const blocks = deriveCandidateAnswerBlocks(
     createAnswerBlockSegmentationFixture(2).events
@@ -1907,7 +1907,7 @@ test("persists an exact-grounded sparse dimension scorecard through the producti
   assert.equal(store.completedScore, null);
 });
 
-test("verified-prefix partial generation scores only trusted blocks and rejects forged scope", async () => {
+test("verified-prefix sparse generation stays scoreless and rejects forged scope", async () => {
   const events = createAnswerBlockSegmentationFixture(1).events;
   const projection = projectTrustedClosedAnswerBlocks(events, {
     contractVersion: "frozen-answer-block-authority.v1",

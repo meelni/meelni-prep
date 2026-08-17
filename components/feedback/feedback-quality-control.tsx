@@ -375,11 +375,7 @@ function parseConflictState(value: unknown): FeedbackQualityOwnedState | null {
 }
 
 function isQualityOutcome(value: unknown): value is FeedbackQualityOutcome {
-  return (
-    value === "full_scorecard" ||
-    value === "partial_scorecard" ||
-    value === "coaching_review"
-  );
+  return value === "scorecard" || value === "coaching_review";
 }
 
 function hasExactKeys(

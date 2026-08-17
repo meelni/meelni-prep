@@ -200,6 +200,8 @@ export function createDrizzleFeedbackQualitySignalRepository(
           const updatedRows = await tx
             .update(feedbackQualitySignal)
             .set({
+              contractVersion: input.command.contractVersion,
+              reviewOutcome: source.outcome,
               response: input.command.response,
               reason: input.command.reason,
               revision: current.revision + 1,
@@ -260,15 +262,27 @@ export function hydrateFeedbackQualitySignalRow(
   row: FeedbackQualitySignalRow | undefined
 ): FeedbackQualitySignalView | null {
   if (!row) return null;
+  const outcome = normalizePersistedFeedbackQualityOutcome(row.reviewOutcome);
+  if (!outcome) return null;
   return parseFeedbackQualitySignalView({
-    contractVersion: row.contractVersion,
-    outcome: row.reviewOutcome,
+    contractVersion: "feedback-quality-signal.v2",
+    outcome,
     response: row.response,
     reason: row.reason,
     revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+}
+
+export function normalizePersistedFeedbackQualityOutcome(
+  value: FeedbackQualitySignalRow["reviewOutcome"]
+): FeedbackQualityOutcome | null {
+  if (value === "scorecard" || value === "full_scorecard") return "scorecard";
+  if (value === "coaching_review" || value === "partial_scorecard") {
+    return "coaching_review";
+  }
+  return null;
 }
 
 async function loadOwnedQualitySource(

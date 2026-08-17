@@ -1,5 +1,10 @@
 # Design: Verified-prefix partial scorecards
 
+> Historical design amended by SAV-453. New verified-prefix results expose
+> either a complete total-bearing Scorecard or scoreless Coaching review.
+> Existing sparse rows remain immutable and are validated before scoreless
+> Coaching projection.
+
 ## Contract selection
 
 Existing `feedback.dimension-coverage.v1` rows and complete-session writes keep
@@ -16,10 +21,10 @@ excluded tail blocks. It contains no transcript text or provider metadata.
 ## Numerical policy
 
 Only v2 trusted-prefix blocks can support numerical scores on a partial frozen
-snapshot. A dimension receives a score only when both configured facets cite a
-trusted block. Unsupported dimensions remain null. A verified-prefix result is
-always `partial` and its overall score is always null, including the defensive
-case where the provider finds sufficient evidence for every dimension.
+snapshot. Scorecard requires zero excluded candidate blocks and sufficient
+trusted coverage for every weighted dimension; it includes the canonical
+overall. A nonzero excluded tail or any unsupported dimension reduces to
+scoreless Coaching review.
 
 Partial completion records retain the durable `evidence_limited_only`
 constraint because it remains the safe default when authority is absent. An

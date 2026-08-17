@@ -180,7 +180,7 @@ test("quality controls accept only a recomputed exact verified-prefix source", (
 
   assert.equal(
     deriveFeedbackQualityOutcomeFromSource(source, presentation),
-    "partial_scorecard"
+    "coaching_review"
   );
   assert.equal(
     deriveFeedbackQualityOutcomeFromSource(

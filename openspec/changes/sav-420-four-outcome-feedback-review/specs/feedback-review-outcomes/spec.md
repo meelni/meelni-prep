@@ -1,9 +1,14 @@
 # Feedback review outcomes delta
 
+> Superseded in part by SAV-453. Current customer outcomes are Scorecard,
+> Coaching review, and Unable to review. The Partial scorecard requirements
+> below apply only as historical record; compatible stored partial rows project
+> scorelessly as Coaching review.
+
 ## Outcome classification
 
-- The server SHALL classify every supported terminal review as exactly Full
-  scorecard, Partial scorecard, Coaching review, or Unable to review.
+- The server SHALL classify every supported terminal review as exactly
+  Scorecard, Coaching review, or Unable to review.
 - The client SHALL NOT infer an outcome or withheld reason from absent scores,
   transcript rows, punctuation, grammar, provider values, or internal codes.
 - Equivalent transcript segmentations that produce equivalent derived answer
@@ -13,11 +18,10 @@
 
 ## Numerical presentation
 
-- A Full scorecard SHALL show every weighted rubric-dimension score and MAY
-  show a canonically supported overall score.
-- A Partial scorecard SHALL show numbers only for supported dimensions, SHALL
-  label every unsupported dimension `Not enough evidence`, and SHALL NOT show
-  an overall score.
+- A Scorecard SHALL show every weighted rubric-dimension score and the
+  canonically supported overall score.
+- Incomplete weighted coverage SHALL produce Coaching review with no dimension
+  or overall score fields.
 - Coaching review and Unable to review SHALL NOT show a dimension score,
   overall score, pseudo-score, readiness band, or inferred level.
 - User-visible overall precision SHALL be whole-number unless a later accepted
@@ -60,15 +64,15 @@
 
 ## Dashboard, History, and metrics
 
-- Dashboard and History SHALL use the four customer outcome labels and SHALL
+- Dashboard and History SHALL use the three customer outcome labels and SHALL
   keep every valid completed review reachable.
 - Overall averages, trends, comparisons, and progress claims SHALL include only
   results with a valid overall score.
 - Coaching and Unable outcomes SHALL contribute no numerical value or missing
   denominator entry.
-- A Partial scorecard's supported dimension MAY contribute only to a
-  dimension-specific metric that explicitly uses supported-score denominators;
-  unsupported dimensions SHALL NOT be represented as zero or another score.
+- Historical partial rows SHALL NOT contribute numerical values after their
+  scoreless Coaching projection; unsupported dimensions SHALL NOT be
+  represented as zero or another score.
 
 ## Accessibility and responsive behavior
 
