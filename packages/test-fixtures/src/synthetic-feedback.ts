@@ -41,12 +41,14 @@ export const SYNTHETIC_FEEDBACK_SKIPPED_STAGES = [
 ] as const;
 
 export const SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS = [
+  "dispatch-feedback-generation-event",
   "authorize-feedback-generation",
   "claim-feedback-generation",
   "fetch-feedback-answer-blocks",
   "read-current-feedback-evaluation-1-execution-0",
   "evaluate-feedback-attempt-1",
   "complete-feedback-generation",
+  "trigger-insights-update",
   "authorize-feedback-generation",
 ] as const;
 export const SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS = 3;
@@ -193,6 +195,7 @@ export function decodeSyntheticFeedbackArtifactV1(
     !jsonEqual(customer.view, expectedView) ||
     value.outcome !== outcome ||
     scenario.expectedOutcome !== outcome ||
+    !isArtifactCatalogCoherent(catalogScenario, customer, diagnostics) ||
     !isArtifactExecutionCoherent(value.stages, customer, diagnostics)
   ) {
     return null;
@@ -431,30 +434,62 @@ function isArtifactExecutionCoherent(
   );
 }
 
+function isArtifactCatalogCoherent(
+  scenario: SyntheticFeedbackScenarioV1,
+  customer: SyntheticFeedbackArtifactV1["customer"],
+  diagnostics: SyntheticFeedbackArtifactV1["diagnostics"]
+): boolean {
+  const fixture = scenario.fixture;
+  if (
+    diagnostics.replay.transcriptEvent !==
+      (fixture.events.length > 0 ? "existing" : "not_available") ||
+    diagnostics.replay.interruptionMarker !==
+      (fixture.markers.length > 0 ? "existing" : "not_available")
+  ) {
+    return false;
+  }
+
+  if (customer.lifecycle.status === "skipped") {
+    return fixture.expectedOutcome === "no_reviewable_answer"
+      ? customer.lifecycle.details.scoreWithheldReason === "rubric_coverage"
+      : fixture.expectedOutcome === "transcript_integrity_degraded" &&
+          customer.lifecycle.details.scoreWithheldReason ===
+            "verified_evidence_integrity";
+  }
+
+  if (customer.lifecycle.status !== "completed") return false;
+  if (customer.lifecycle.feedback.kind === "invalid") {
+    return scenario.persistedResultMutation === "unknown_schema_version";
+  }
+  return (
+    scenario.persistedResultMutation === "none" &&
+    customer.lifecycle.feedback.sessionId === fixture.sessionId
+  );
+}
+
 function isCoherentGeneratedDurableTrace(
   steps: readonly string[],
   executionMode: SyntheticFeedbackArtifactV1["diagnostics"]["executionMode"]
 ): boolean {
   if (executionMode === "deterministic_provider_free") {
-    return jsonEqual(
-      steps,
-      SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS
-    );
+    return jsonEqual(steps, SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS);
   }
   if (
     steps.length < SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS.length ||
-    steps[0] !== "authorize-feedback-generation" ||
-    steps[1] !== "claim-feedback-generation" ||
-    steps[2] !== "fetch-feedback-answer-blocks" ||
-    steps.at(-2) !== "complete-feedback-generation" ||
+    steps[0] !== "dispatch-feedback-generation-event" ||
+    steps[1] !== "authorize-feedback-generation" ||
+    steps[2] !== "claim-feedback-generation" ||
+    steps[3] !== "fetch-feedback-answer-blocks" ||
+    steps.at(-3) !== "complete-feedback-generation" ||
+    steps.at(-2) !== "trigger-insights-update" ||
     steps.at(-1) !== "authorize-feedback-generation"
   ) {
     return false;
   }
 
-  let cursor = 3;
+  let cursor = 4;
   let attempt = 1;
-  const suffixStart = steps.length - 2;
+  const suffixStart = steps.length - 3;
   while (cursor < suffixStart) {
     if (attempt > SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS) return false;
     if (
@@ -494,8 +529,10 @@ function isDurableStepRoundTrips(value: unknown): value is string[] {
         (/^(?:authorize|claim|fetch|complete)-feedback-generation$/.test(
           item
         ) ||
+          item === "dispatch-feedback-generation-event" ||
           item === "fetch-feedback-answer-blocks" ||
           item === "read-fenced-feedback-generation" ||
+          item === "trigger-insights-update" ||
           /^read-current-feedback-evaluation-[1-9][0-9]*-execution-[0-9]+$/.test(
             item
           ) ||

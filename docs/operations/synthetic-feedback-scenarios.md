@@ -51,6 +51,11 @@ by core. Content-free diagnostics are stored separately from that lifecycle and
 projection. The manifest records only scenario ID, expected outcome, stages,
 file name, and SHA-256 digest.
 
+Artifact decoding also binds the lifecycle session, skipped reason family, and
+replay availability to the selected catalog fixture. A lifecycle or diagnostics
+payload copied from another scenario therefore fails closed even when both
+scenarios share the same customer outcome.
+
 The only supported customer outcomes come from core's
 `toFeedbackCustomerProjection(FeedbackLifecycleResponse)`:
 `scorecard`, `coaching_review`, or `unable_to_review`. A `null` core projection
@@ -68,7 +73,9 @@ marker ingestion, runtime settlement, frozen evidence, interview end, durable
 dispatch, generation handler, evaluation parser, immutable persistence,
 lifecycle presenter, and core customer projection used by the application.
 Each durable generation step crosses a JSON serialize/parse round trip so
-non-durable values fail during the run.
+non-durable values fail during the run. That trace includes the complete initial
+generation-dispatch event and the complete post-feedback insights event, not
+only `step.run` results.
 
 The bundled evaluator implements the existing rubric and dimension-coverage
 provider-selection contract deterministically. It does not call a provider and
