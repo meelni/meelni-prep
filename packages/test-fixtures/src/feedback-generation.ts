@@ -4,6 +4,7 @@ import type {
   TranscriptRuntimeSettlement,
   TranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
+import type { FeedbackCustomerProjection } from "@meelni/core";
 import writerSequence6m14 from "../writer-sequence-6m14.json";
 
 export type FeedbackGoldenRoundType =
@@ -28,6 +29,15 @@ export interface FeedbackGoldenPathFixture {
     | "feedback_generated"
     | "no_reviewable_answer"
     | "transcript_integrity_degraded";
+  syntheticScenario?: {
+    title: string;
+    expectedCustomerOutcome:
+      | FeedbackCustomerProjection["outcome"]
+      | "unavailable";
+    evaluatorCoverage?: "complete" | "sparse";
+    persistedResultMutation?: "unknown_schema_version";
+    equivalenceGroup?: string;
+  };
 }
 
 const USER_ID = "00000000-0000-4000-8000-000000000397";
@@ -85,6 +95,7 @@ function createFixture(input: {
   interviewerOnlyTurns?: number;
   answerSegmentCount?: number;
   closeFinalAnswerAfterMarkers?: boolean;
+  syntheticScenario?: FeedbackGoldenPathFixture["syntheticScenario"];
 }): FeedbackGoldenPathFixture {
   const sessionId = `00000000-0000-4000-8000-${input.sessionSuffix.padStart(12, "0")}`;
   const writerId = `writer:${input.id}`;
@@ -251,6 +262,9 @@ function createFixture(input: {
         : candidateAnswers.length === 0
           ? "no_reviewable_answer"
           : "feedback_generated",
+    ...(input.syntheticScenario
+      ? { syntheticScenario: input.syntheticScenario }
+      : {}),
   };
 }
 
@@ -296,6 +310,11 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       sessionSuffix: "397001",
       roundType: "product_sense",
       durationMs: 374_000,
+      syntheticScenario: {
+        title: "Complete product-sense scorecard",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "complete-product-sense-authority",
+      },
     }),
     createFixture({
       id: "short-rich",
@@ -318,6 +337,10 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       roundType: "behavioral",
       answers: [],
       durationMs: 20_000,
+      syntheticScenario: {
+        title: "No reviewable candidate answer",
+        expectedCustomerOutcome: "unable_to_review",
+      },
     }),
     createFixture({
       id: "turn-marker-6m14",
@@ -338,6 +361,10 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       answers: [ANSWERS.strategy[0]!],
       durationMs: 90_000,
       corrupt: true,
+      syntheticScenario: {
+        title: "Strict transcript integrity failure",
+        expectedCustomerOutcome: "unable_to_review",
+      },
     }),
     createFixture({
       id: "spoken-evidence-limited",
@@ -410,6 +437,11 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
         count: 3,
       },
       closeFinalAnswerAfterMarkers: true,
+      syntheticScenario: {
+        title: "Repeated safe markers with complete trusted scope",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "complete-product-sense-authority",
+      },
     }),
     createFixture({
       id: "excluded-unverified-tail",
@@ -417,6 +449,10 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       roundType: "product_sense",
       durationMs: 300_000,
       missingSettlement: true,
+      syntheticScenario: {
+        title: "Excluded unverified candidate tail",
+        expectedCustomerOutcome: "coaching_review",
+      },
     }),
     createFixture({
       id: "segmentation-equivalent-1",
@@ -425,6 +461,11 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       answers: [ANSWERS.product_sense[0]!],
       answerSegmentCount: 1,
       durationMs: 90_000,
+      syntheticScenario: {
+        title: "Equivalent answer in one segment",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "answer-segmentation",
+      },
     }),
     createFixture({
       id: "segmentation-equivalent-5",
@@ -433,24 +474,43 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       answers: [ANSWERS.product_sense[0]!],
       answerSegmentCount: 5,
       durationMs: 90_000,
+      syntheticScenario: {
+        title: "Equivalent answer in five segments",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "answer-segmentation",
+      },
     }),
     createFixture({
       id: "replay-idempotency",
       sessionSuffix: "397019",
       roundType: "execution",
       durationMs: 300_000,
+      syntheticScenario: {
+        title: "Replay and terminal persistence idempotency",
+        expectedCustomerOutcome: "scorecard",
+      },
     }),
     createFixture({
       id: "trustworthy-sparse-coverage",
       sessionSuffix: "397020",
       roundType: "product_sense",
       durationMs: 300_000,
+      syntheticScenario: {
+        title: "Trustworthy evidence with sparse rubric coverage",
+        expectedCustomerOutcome: "coaching_review",
+        evaluatorCoverage: "sparse",
+      },
     }),
     createFixture({
       id: "malformed-persisted-result",
       sessionSuffix: "397021",
       roundType: "strategy",
       durationMs: 300_000,
+      syntheticScenario: {
+        title: "Unknown persisted result schema",
+        expectedCustomerOutcome: "unavailable",
+        persistedResultMutation: "unknown_schema_version",
+      },
     }),
     ...(["behavioral", "strategy", "execution"] as const).map(
       (roundType, index) =>

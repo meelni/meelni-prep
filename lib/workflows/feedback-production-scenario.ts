@@ -25,7 +25,11 @@ import {
   type SkippedFeedbackOutcomeReason,
   type TrustedAnswerBlockProjection,
 } from "@meelni/core";
-import type { FeedbackGoldenPathFixture } from "@meelni/test-fixtures";
+import {
+  SYNTHETIC_FEEDBACK_GENERATED_STAGES,
+  type FeedbackGoldenPathFixture,
+  type SyntheticFeedbackStage,
+} from "@meelni/test-fixtures";
 
 import type { FeedbackGenerationRecord } from "@/lib/db/feedback-generation-state";
 import type { FeedbackGenerationStore } from "@/lib/db/feedback-generation-state";
@@ -67,21 +71,10 @@ import {
 
 const SYNTHETIC_NOW = new Date("2026-08-09T17:58:53.000Z");
 
-export const FEEDBACK_PRODUCTION_SCENARIO_STAGES = [
-  "writer_registration",
-  "transcript_ingest",
-  "marker_ingest",
-  "settlement_ingest",
-  "end_frozen_evidence",
-  "durable_dispatch",
-  "evaluator",
-  "immutable_persistence",
-  "inngest_handler",
-  "api_view_model",
-] as const;
+export const FEEDBACK_PRODUCTION_SCENARIO_STAGES =
+  SYNTHETIC_FEEDBACK_GENERATED_STAGES;
 
-export type FeedbackProductionScenarioStage =
-  (typeof FEEDBACK_PRODUCTION_SCENARIO_STAGES)[number];
+export type FeedbackProductionScenarioStage = SyntheticFeedbackStage;
 
 export type SyntheticFeedbackEvaluationCoverage = "complete" | "sparse";
 
