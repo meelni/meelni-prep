@@ -85,6 +85,51 @@ test("successful malformed responses remain unsupported lifecycle responses", ()
   );
 });
 
+test("successful legacy responses require the canonical weighted total", () => {
+  const feedback = {
+    kind: "legacy",
+    id: "synthetic-feedback-legacy",
+    sessionId: "synthetic-session-legacy",
+    summary: "A fully synthetic historical feedback summary.",
+    createdAt: "2026-08-17T12:00:00.000Z",
+    nextPracticeRecommendation: null,
+    scores: {
+      structure: 8,
+      clarity: 7,
+      insight: 9,
+      communication: 8,
+      leadership: 7,
+      overall: 7.9,
+    },
+    rubricVersion: "1.0.0",
+    strengths: ["A fully synthetic strength."],
+    improvements: ["A fully synthetic improvement."],
+  };
+
+  assert.equal(
+    decodeFeedbackHttpResponseOrThrow(
+      { ok: true, status: 200 },
+      { status: "completed", retryable: false, feedback }
+    ).status,
+    "completed"
+  );
+  assert.throws(
+    () =>
+      decodeFeedbackHttpResponseOrThrow(
+        { ok: true, status: 200 },
+        {
+          status: "completed",
+          retryable: false,
+          feedback: {
+            ...feedback,
+            scores: { ...feedback.scores, overall: 8 },
+          },
+        }
+      ),
+    /unsupported response/
+  );
+});
+
 test("network failures are classified as retryable transport failures", () => {
   assert.deepEqual(toFeedbackTransportFailure(new TypeError("fetch failed")), {
     message:

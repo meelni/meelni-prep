@@ -829,6 +829,7 @@ function decodeCompletedFeedbackView(
       "improvements",
     ]) &&
       value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
+      hasCanonicalV2Overall(value.scores) &&
       isBoundedStringArray(
         value.strengths,
         10,
