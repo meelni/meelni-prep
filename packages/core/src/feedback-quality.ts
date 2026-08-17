@@ -1,4 +1,7 @@
-import type { CompletedFeedbackView } from "./feedback-view-model";
+import {
+  toFeedbackCustomerProjection,
+  type CompletedFeedbackView,
+} from "./feedback-view-model";
 
 export const FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION =
   "feedback-quality-signal.v2" as const;
@@ -62,9 +65,21 @@ export interface FeedbackQualitySignalView {
 export function deriveFeedbackQualityOutcome(
   feedback: CompletedFeedbackView
 ): FeedbackQualityOutcome | null {
-  if (feedback.kind === "dimension-coverage") return feedback.outcome;
-  if (feedback.kind === "evidence-limited") return "coaching_review";
-  return null;
+  if (
+    feedback.kind !== "dimension-coverage" &&
+    feedback.kind !== "evidence-limited"
+  ) {
+    return null;
+  }
+  const projection = toFeedbackCustomerProjection({
+    status: "completed",
+    retryable: false,
+    feedback,
+  });
+  return projection?.outcome === "scorecard" ||
+    projection?.outcome === "coaching_review"
+    ? projection.outcome
+    : null;
 }
 
 export function parseFeedbackQualitySignalCommand(

@@ -12,7 +12,9 @@ import {
   LEGACY_FEEDBACK_RUBRIC_VERSION,
   parseRubricScore,
   presentCompletedFeedback,
+  toFeedbackCustomerProjection,
   type CandidateAnswerBlock,
+  type CompletedFeedbackView,
   type PersistedFeedbackEvidenceTurn,
   type RoundType,
   type TrustedAnswerBlockProjection,
@@ -148,14 +150,14 @@ export function classifyDashboardFeedbackPresentation(
       candidate.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION) &&
     presented.kind === "dimension-coverage"
   ) {
-    return presented.outcome;
+    return projectCompletedDashboardOutcome(presented);
   }
 
   if (
     hasSupportedScoredMetadata(candidate) &&
     (presented.kind === "v2" || presented.kind === "legacy")
   ) {
-    return "scorecard";
+    return projectCompletedDashboardOutcome(presented);
   }
 
   if (
@@ -182,8 +184,19 @@ export function classifyDashboardFeedbackPresentation(
   return Array.isArray(drills) &&
     drills.length === 0 &&
     presented.kind === "evidence-limited"
-    ? "coaching_review"
+    ? projectCompletedDashboardOutcome(presented)
     : "unavailable";
+}
+
+function projectCompletedDashboardOutcome(
+  feedback: CompletedFeedbackView
+): DashboardFeedbackPresentationKind {
+  const projection = toFeedbackCustomerProjection({
+    status: "completed",
+    retryable: false,
+    feedback,
+  });
+  return projection?.outcome ?? "unavailable";
 }
 
 function hasSupportedScoredMetadata(

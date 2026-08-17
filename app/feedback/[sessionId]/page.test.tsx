@@ -26,6 +26,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => navigation,
 }));
 
+vi.mock("@/components/feedback/feedback-review-analytics", () => ({
+  FeedbackReviewAnalytics: () => null,
+}));
+
 import FeedbackPage from "./page";
 
 describe("feedback transcript read states", () => {

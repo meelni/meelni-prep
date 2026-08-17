@@ -82,7 +82,11 @@ test("verified-prefix calibration produces only the adjudicated outcome", () => 
     if (verifiedPrefix) assert.equal(projection.status, "verified_prefix");
 
     const result = parseDimensionCoverageProviderSelection(
-      selection(coverageCase, projection.trustedBlocks[0].answerBlockId),
+      selection(
+        coverageCase,
+        projection.trustedBlocks[0].answerBlockId,
+        !verifiedPrefix || projection.numericalScoreAuthority === "allowed"
+      ),
       {
         roundType: coverageCase.roundType,
         answerBlocks: projection.trustedBlocks,
@@ -109,14 +113,15 @@ test("verified-prefix calibration produces only the adjudicated outcome", () => 
 
 function selection(
   entry: (typeof DIMENSION_COVERAGE_CALIBRATION_CASES)[number],
-  answerBlockRef: string
+  answerBlockRef: string,
+  allowNumericalScores: boolean
 ): DimensionCoverageProviderSelection {
   assert.ok(entry.facetCounts);
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     const facetCount = entry.facetCounts[dimension];
     dimensions[dimension] = {
-      score: facetCount === 2 ? 8 : null,
+      score: allowNumericalScores && facetCount === 2 ? 8 : null,
       evidence: ROUND_DIMENSION_COVERAGE_CONFIG[entry.roundType][
         dimension
       ].facets

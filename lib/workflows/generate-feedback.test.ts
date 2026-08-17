@@ -1907,7 +1907,7 @@ test("persists exact-grounded sparse coaching through the production workflow co
   assert.equal(store.completedScore, null);
 });
 
-test("verified-prefix sparse generation stays scoreless and rejects forged scope", async () => {
+test("unsettled verified-prefix generation with no exclusions withholds scores and rejects forged scope", async () => {
   const events = createAnswerBlockSegmentationFixture(1).events;
   const projection = projectTrustedClosedAnswerBlocks(events, {
     contractVersion: "frozen-answer-block-authority.v1",
@@ -1925,10 +1925,11 @@ test("verified-prefix sparse generation stays scoreless and rejects forged scope
     ],
   });
   assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     dimensions[dimension] = {
-      score: dimension === "structure" ? 7 : null,
+      score: null,
       evidence:
         dimension === "structure"
           ? ROUND_DIMENSION_COVERAGE_CONFIG.strategy.structure.facets.map(
@@ -1952,7 +1953,7 @@ test("verified-prefix sparse generation stays scoreless and rejects forged scope
       roundType: "strategy",
       answerBlocks: projection.trustedBlocks,
       modelVersion: "synthetic-workflow-verified-prefix",
-      allowNumericalScores: true,
+      allowNumericalScores: false,
       verifiedPrefixProjection: projection,
     }
   );
@@ -1983,7 +1984,7 @@ test("verified-prefix sparse generation stays scoreless and rejects forged scope
     requireDimensionCoverage: true,
     async evaluate(input) {
       assert.deepEqual(input.answerBlocks, projection.trustedBlocks);
-      assert.equal(input.allowNumericalScores, true);
+      assert.equal(input.allowNumericalScores, false);
       assert.deepEqual(input.verifiedPrefixProjection, projection);
       return expected;
     },

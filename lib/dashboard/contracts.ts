@@ -630,13 +630,9 @@ function getFeedbackDisplay(
 function getDashboardFeedbackReviewKind(
   feedback: DashboardFeedback | null | undefined
 ): Exclude<DashboardFeedbackPresentationKind, "unavailable"> | null {
-  if (feedback?.presentationKind === "unavailable") return null;
   const score = getDashboardScoredFeedbackScore(feedback);
-  if (
-    feedback?.presentationKind === "scorecard" ||
-    (feedback?.presentationKind === undefined && score !== null)
-  ) {
-    return score === null ? null : (feedback?.presentationKind ?? "scorecard");
+  if (feedback?.presentationKind === "scorecard") {
+    return score === null ? null : "scorecard";
   }
   return score === null &&
     (feedback?.presentationKind === "coaching_review" ||
@@ -648,14 +644,9 @@ function getDashboardFeedbackReviewKind(
 function getDashboardScoredFeedbackScore(
   feedback: DashboardFeedback | null | undefined
 ): number | null {
-  if (
-    feedback?.presentationKind === "coaching_review" ||
-    feedback?.presentationKind === "unable_to_review" ||
-    feedback?.presentationKind === "unavailable"
-  ) {
-    return null;
-  }
-  return getCompletedFeedbackScore(feedback);
+  return feedback?.presentationKind === "scorecard"
+    ? getCompletedFeedbackScore(feedback)
+    : null;
 }
 
 function getProgressSignalDescription(scores: number[]) {

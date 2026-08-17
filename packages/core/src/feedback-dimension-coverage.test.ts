@@ -86,6 +86,7 @@ test("repeated safe markers with complete trusted scope preserve one canonical s
     );
     assert.equal(fixture.provenance, "fully_synthetic");
     assert.equal(projection.status, "verified_prefix");
+    assert.equal(projection.numericalScoreAuthority, "allowed");
     assert.equal(projection.failureReason, null);
     assert.deepEqual(projection.excludedBlocks, []);
     assert.deepEqual(
@@ -137,6 +138,53 @@ test("repeated safe markers with complete trusted scope preserve one canonical s
   });
 
   assert.deepEqual(results[1], results[0]);
+});
+
+test("missing settlement with a gap-free all-dimension prefix cannot produce a scorecard", () => {
+  const fixture = createTotalScorecardSafeMarkerFixture(false);
+  fixture.authority.writers[0]!.settlementState = "missing";
+  const projection = projectTrustedClosedAnswerBlocks(
+    fixture.events,
+    fixture.authority
+  );
+  assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
+  assert.deepEqual(projection.excludedBlocks, []);
+
+  const scored = selection(
+    "product_sense",
+    projection.trustedBlocks[0]!.answerBlockId,
+    "full"
+  );
+  assert.throws(
+    () =>
+      parseDimensionCoverageProviderSelection(scored, {
+        roundType: "product_sense",
+        answerBlocks: projection.trustedBlocks,
+        modelVersion: MODEL,
+        allowNumericalScores: true,
+        verifiedPrefixProjection: projection,
+      }),
+    /score_coverage_mismatch/
+  );
+
+  const coaching = parseDimensionCoverageProviderSelection(
+    selection(
+      "product_sense",
+      projection.trustedBlocks[0]!.answerBlockId,
+      "full",
+      null
+    ),
+    {
+      roundType: "product_sense",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: MODEL,
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+  assert.equal(coaching.mode, "coaching_review");
+  assert.equal(coaching.overallScore, null);
 });
 
 test("incomplete weighted coverage produces a wholly scoreless coaching review", () => {
@@ -212,7 +260,7 @@ test("verified-prefix excluded tails bind identities and remain scoreless coachi
   const projection = verifiedPrefixProjection();
   const blocks = projection.trustedBlocks;
   const result = parseDimensionCoverageProviderSelection(
-    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    selection("product_sense", blocks[0]!.answerBlockId, "full", null),
     {
       roundType: "product_sense",
       answerBlocks: blocks,
@@ -261,7 +309,7 @@ test("verified-prefix persistence rejects forged scope, untrusted blocks, and no
   const projection = verifiedPrefixProjection();
   const blocks = projection.trustedBlocks;
   const result = parseDimensionCoverageProviderSelection(
-    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    selection("product_sense", blocks[0]!.answerBlockId, "full", null),
     {
       roundType: "product_sense",
       answerBlocks: blocks,

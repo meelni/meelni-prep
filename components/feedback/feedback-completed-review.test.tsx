@@ -136,6 +136,7 @@ test("completed v2 review hides technical version metadata", () => {
   const html = renderToStaticMarkup(
     React.createElement(CompletedV2Review, { feedback, partial: false })
   );
+  assert.match(html, /Scorecard/);
   assert.match(html, /Transcript evidence/);
   assert.match(html, /Next action/);
   assert.match(html, /Focused practice/);
@@ -253,12 +254,12 @@ test("evidence-limited review renders server templates and exact quantitative ci
   );
 });
 
-test("legacy review stays explicitly historical", () => {
+test("legacy compatibility renders under the closed Scorecard outcome", () => {
   const feedback: FeedbackLegacyView = {
     kind: "legacy",
     id: "feedback-legacy",
     sessionId: "session-legacy",
-    scores: { ...scores, overall: 8 },
+    scores,
     summary: "Historical summary",
     strengths: ["Clear answer"],
     improvements: ["State the approach first"],
@@ -269,7 +270,8 @@ test("legacy review stays explicitly historical", () => {
   const html = renderToStaticMarkup(
     React.createElement(CompletedLegacyReview, { feedback })
   );
-  assert.match(html, /Historical feedback/);
+  assert.match(html, /Scorecard/);
+  assert.match(html, /Historical feedback format/);
   assert.match(html, /do not include verifiable transcript evidence/);
 });
 

@@ -262,17 +262,60 @@ export function hydrateFeedbackQualitySignalRow(
   row: FeedbackQualitySignalRow | undefined
 ): FeedbackQualitySignalView | null {
   if (!row) return null;
-  const outcome = normalizePersistedFeedbackQualityOutcome(row.reviewOutcome);
-  if (!outcome) return null;
+  const normalized = normalizePersistedFeedbackQualitySignal(row);
+  if (!normalized) return null;
   return parseFeedbackQualitySignalView({
     contractVersion: "feedback-quality-signal.v2",
-    outcome,
+    outcome: normalized.outcome,
     response: row.response,
-    reason: row.reason,
+    reason: normalized.reason,
     revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+}
+
+function normalizePersistedFeedbackQualitySignal(
+  row: FeedbackQualitySignalRow
+): { outcome: FeedbackQualityOutcome; reason: typeof row.reason } | null {
+  const outcome = normalizePersistedFeedbackQualityOutcome(row.reviewOutcome);
+  if (!outcome) return null;
+  if (row.contractVersion === "feedback-quality-signal.v2") {
+    if (
+      row.reviewOutcome !== "scorecard" &&
+      row.reviewOutcome !== "coaching_review"
+    ) {
+      return null;
+    }
+    return { outcome, reason: row.reason };
+  }
+  if (row.contractVersion !== "feedback-quality-signal.v1") return null;
+  if (
+    row.reviewOutcome !== "full_scorecard" &&
+    row.reviewOutcome !== "partial_scorecard" &&
+    row.reviewOutcome !== "coaching_review"
+  ) {
+    return null;
+  }
+  if (row.response === "helpful") {
+    return row.reason === null ? { outcome, reason: null } : null;
+  }
+  if (row.reason === "score_withholding_unclear") {
+    return row.reviewOutcome === "coaching_review"
+      ? { outcome, reason: row.reason }
+      : null;
+  }
+  if (row.reason === "score_explanation_unclear") {
+    if (row.reviewOutcome === "full_scorecard") {
+      return { outcome, reason: row.reason };
+    }
+    // Historical partial scorecards now present as scoreless coaching. Keep
+    // the stored v1 row immutable while omitting its score-only reason.
+    return row.reviewOutcome === "partial_scorecard"
+      ? { outcome, reason: null }
+      : null;
+  }
+  return { outcome, reason: row.reason };
 }
 
 export function normalizePersistedFeedbackQualityOutcome(

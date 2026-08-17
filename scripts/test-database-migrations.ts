@@ -10693,7 +10693,10 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.ok(decoded);
   const view = core.toFeedbackViewState(decoded);
   assert.equal(view.kind, "completed-coaching-review");
-  if (view.kind !== "completed-coaching-review") {
+  if (
+    view.kind !== "completed-coaching-review" ||
+    view.feedback.kind !== "dimension-coverage"
+  ) {
     throw new Error("database golden path lost coaching review view state");
   }
   assert.equal(view.feedback.dimensions.structure.coverage, "sufficient");

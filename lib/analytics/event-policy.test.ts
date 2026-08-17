@@ -10,12 +10,12 @@ import {
 test("feedback quality analytics admits only closed content-free fields", () => {
   assert.deepEqual(
     sanitizeAnalyticsEventProperties("feedback_viewed", {
-      outcome: "partial_scorecard",
+      outcome: "scorecard",
       session_id: "00000000-0000-4000-8000-000000000001",
       overall_score: 9,
       transcript: "synthetic answer content",
     }),
-    { outcome: "partial_scorecard" }
+    { outcome: "scorecard" }
   );
   assert.deepEqual(
     sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
@@ -53,6 +53,24 @@ test("feedback quality analytics admits only closed content-free fields", () => 
       reason: "score_explanation_unclear",
     }),
     null
+  );
+  assert.equal(
+    sanitizeAnalyticsEventProperties("feedback_viewed", {
+      outcome: "partial_scorecard",
+    }),
+    null
+  );
+  assert.deepEqual(
+    sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {
+      outcome: "scorecard",
+      response: "not_helpful",
+      reason: "score_explanation_unclear",
+    }),
+    {
+      outcome: "scorecard",
+      response: "not_helpful",
+      reason: "score_explanation_unclear",
+    }
   );
   assert.equal(
     sanitizeAnalyticsEventProperties("feedback_helpfulness_responded", {

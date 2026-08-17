@@ -357,7 +357,7 @@ async function runGenerateFeedbackWorkflow(
       ? evidence.trustedProjection
       : undefined;
   const allowNumericalScores =
-    verifiedPrefixProjection !== undefined ||
+    verifiedPrefixProjection?.numericalScoreAuthority === "allowed" ||
     (evidence.snapshotState !== "partial" &&
       claimed.completionStats?.feedbackModeConstraint !==
         "evidence_limited_only");

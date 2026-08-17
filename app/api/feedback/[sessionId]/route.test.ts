@@ -825,7 +825,7 @@ describe("/api/feedback/[sessionId]", () => {
         insightScore: 9,
         communicationScore: 8,
         leadershipScore: 7,
-        overallScore: "8.0",
+        overallScore: "7.9",
         strengths: ["Clear answer"],
         improvements: ["State the approach first"],
         drills: [],

@@ -638,14 +638,15 @@ presenter in `packages/core/src/feedback-view-model.ts` produces exactly one of:
   event IDs and exact quotes resolve against current canonical persisted user
   turns for the same owner-scoped session;
 - validated `legacy`, with a completely absent v2 tuple, explicitly bounded
-  historical strings, complete in-range scores, and an explicit historical
-  feedback label;
+  historical strings, complete in-range scores, and a stored overall that
+  exactly matches the canonical weighting;
 - `invalid`, which contains no scores or findings and is shown as unavailable.
 
 The read boundary accepts only the exact historical `1.0.0` rubric marker.
-Unknown historical rubric versions fail closed. Legacy feedback preserves its
-separately stored overall score; it is not reweighted using v2 rules and is
-never described as transcript-grounded.
+Unknown historical rubric versions fail closed. The read boundary never
+rewrites or substitutes a legacy total: it verifies the separately stored
+overall against the canonical weighting and makes a mismatch unavailable.
+Validated legacy notes are never described as transcript-grounded.
 
 For v2, the authenticated API loads only canonical candidate-turn fields needed
 for verification: event ID, speaker, text, and transcript contract version. The

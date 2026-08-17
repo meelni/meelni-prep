@@ -60,8 +60,9 @@ The completed-feedback presenter may expose only:
   failures.
 
 It does not expose model, schema, prompt, rubric, facet, answer-block, provider,
-parser, settlement, or transcript-integrity codes. Historical supported review
-formats retain their explicit compatibility treatment.
+parser, settlement, or transcript-integrity codes. A supported historical
+scored format appears under the same Scorecard outcome only after its stored
+overall is proven equal to the canonical weighted total.
 
 The verified-prefix explanation is visible for coaching with a real excluded
 tail: Meelni reviewed only the completed answers it could verify. The excluded
@@ -69,7 +70,9 @@ end was not treated as negative evidence. The UI does not claim that exclusion
 had no effect on which dimensions were supportable and never exposes block
 identities, writer state, provider state, or a diagnostic excluded-block count.
 An exact safe marker with zero excluded candidate blocks produces no excluded-
-tail claim and may authorize Scorecard when every dimension is sufficient.
+tail claim. It may authorize Scorecard only when normalized writer settlement
+is also `settled` and every dimension is sufficient; missing settlement keeps
+the same trusted prefix qualitative and scoreless.
 
 ## Coaching and citations
 

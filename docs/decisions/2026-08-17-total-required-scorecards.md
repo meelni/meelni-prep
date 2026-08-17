@@ -30,6 +30,11 @@ partial solely because exact safe markers were present. A real excluded or
 unverified candidate tail, incomplete weighted-dimension coverage, or another
 bounded evidence limitation produces scoreless coaching.
 
+The normalized trusted projection carries explicit numerical-score authority.
+Only a healthy writer with `settled` settlement may carry `allowed`; missing
+settlement is `withheld` even when the verified prefix is gap-free and excludes
+no candidate blocks.
+
 Candidate markers, canonicalization failures, replay conflicts, sequence gaps,
 writer or cutoff conflicts, corrupt persistence, and no-reviewable-answer
 states retain their strict fail-closed Unable behavior.
@@ -46,6 +51,9 @@ are revalidated under their original versioned contract, then projected as a
 scoreless Coaching review. Their sparse stored dimension values do not cross
 the customer boundary and are not rewritten, renormalized, or admitted to
 overall aggregates. Unknown or incoherent rows remain unavailable.
+Supported historical scored rows appear as Scorecard only when their stored
+overall already matches the canonical weighted total. Reads never repair,
+replace, or rewrite that value.
 
 ## Consequences
 

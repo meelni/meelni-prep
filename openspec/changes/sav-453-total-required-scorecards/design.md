@@ -18,7 +18,9 @@ An exact safe interviewer marker does not itself exclude a candidate block. A
 `verified_prefix` projection with zero excluded blocks may therefore authorize
 Scorecard when the writer is healthy and settled, the sequence and cutoff are
 coherent, and all dimensions are sufficient. A nonzero excluded-block count
-forces Coaching review. Integrity failures never reach evaluation.
+forces Coaching review. The normalized projection carries explicit numerical
+score authority: missing settlement is `withheld` even when the verified prefix
+has zero exclusions. Integrity failures never reach evaluation.
 
 ## Public projection
 
@@ -47,7 +49,9 @@ slice does not apply it.
 Historical partial rows are not rewritten. Reads validate their original mode,
 sparse scores, exact evidence, and scope, then discard the sparse numerical
 fields while producing the closed Coaching review projection. Corrupt or
-incoherent tuples remain unavailable.
+incoherent tuples remain unavailable. Historical scored rows project as
+Scorecard only when their stored overall already equals the canonical weighted
+total; reads never repair or replace that stored value.
 
 ## Consumers
 
