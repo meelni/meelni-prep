@@ -70,9 +70,12 @@ answer and an accepted later boundary may close it normally. Repeated or
 mid-session preserving markers do not globally invalidate otherwise trusted
 blocks.
 
-The presence of any preserving marker keeps the frozen snapshot partial and
-the projection at most `verified_prefix`; it can never authorize an overall
-score. A marker timestamp before previously sequenced speech ends is malformed.
+The presence of any preserving marker may keep the frozen snapshot partial and
+the projection at `verified_prefix`, but the marker alone does not suppress
+complete numerical authority. A healthy settled gap-free projection with zero
+excluded candidate blocks may authorize Scorecard reduction downstream when
+every weighted dimension is sufficient. A marker timestamp before previously
+sequenced speech ends is malformed.
 A candidate marker, any `canonicalization_failed` marker, sequence gap,
 conflicting replay, writer drift/degradation, malformed marker, or cutoff
 conflict returns `integrity_failure` with no trusted blocks or identities.
@@ -82,6 +85,8 @@ conflict returns `integrity_failure` with no trusted blocks or identities.
 `trusted-answer-block-projection.v1` returns:
 
 - `complete`, `verified_prefix`, `no_trusted_blocks`, or `integrity_failure`;
+- explicit `allowed | withheld` numerical-score authority, with `allowed`
+  requiring normalized `settled` writer state;
 - the original trusted `CandidateAnswerBlock` objects;
 - one closure-authority record per trusted block;
 - one `trusted-answer-block-identity.v1` record per trusted block;
@@ -109,9 +114,11 @@ v2 corpus, or qualitative-only behavior outside the verified-prefix path for
 partial snapshots. Unknown authority versions fail closed and never fall back
 to a historical or mutable transcript path.
 
-An exact preserving marker is not evidence that the snapshot is complete; its
-only scoring-capable result remains a verified prefix with no overall score.
+An exact preserving marker is not evidence that the snapshot is complete. It
+is content-free, so a settled verified-prefix projection with zero excluded
+candidate blocks may carry numerical authority downstream. Missing settlement
+or any real exclusion remains scoreless.
 
-SAV-440 separately owns any evaluator wiring, sparse supported dimension
-scores, `overallScore = null` policy, persistence, authenticated reads, and UI.
-This contract alone authorizes none of those behaviors.
+SAV-453 owns evaluator reduction, total-required Scorecard policy, persistence,
+authenticated reads, and UI. This authority contract alone authorizes none of
+those behaviors.

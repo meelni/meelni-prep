@@ -85,7 +85,18 @@ test("orientation script returns bounded repository and product truth", () => {
   assert.match(output.repository.head, /^[0-9a-f]{40}$/);
   assert.equal(typeof output.repository.clean, "boolean");
   assert.ok(Array.isArray(output.repository.changedPaths.items));
-  assert.equal(output.repository.changedPaths.truncated, false);
+  assert.equal(typeof output.repository.changedPaths.truncated, "boolean");
+  assert.ok(
+    output.repository.changedPaths.items.length <= 32,
+    "changed-path previews must remain capped at 32 items"
+  );
+  assert.equal(
+    output.repository.changedPaths.truncated,
+    output.repository.changedPaths.count >
+      output.repository.changedPaths.items.length ||
+      output.repository.changedPaths.valuesTruncated > 0,
+    "truncated is the explicit marker for path overflow or bounded values"
+  );
   assert.equal(output.productTruth.category, "live PM interview practice");
   assert.ok(output.skills.items.includes("meelni-start"));
   assert.equal(output.skills.truncated, false);
@@ -219,8 +230,14 @@ test("orientation enforces its byte budget for adversarial repository metadata",
     assert.ok(Buffer.byteLength(rawOutput) <= output.serialization.maxBytes);
     assert.equal(output.serialization.truncated, true);
     assert.equal(output.repository.changedPaths.count, 41);
+    assert.equal(output.repository.changedPaths.items.length, 32);
     assert.equal(output.repository.changedPaths.truncated, true);
-    assert.ok(output.repository.changedPaths.valuesTruncated >= 1);
+    assert.equal(
+      output.repository.changedPaths.count -
+        output.repository.changedPaths.items.length,
+      9
+    );
+    assert.equal(output.repository.changedPaths.valuesTruncated, 1);
     assert.equal(output.activeOpenSpecChanges.count, 40);
     assert.equal(output.activeOpenSpecChanges.truncated, true);
     assert.equal(output.currentDecisions.count, 40);

@@ -14,7 +14,7 @@ test("practice analytics accepts only the closed v2 review outcome", () => {
       contractVersion: "focused-practice-attempt.v2",
       feedbackVersion: { reviewOutcome: "partial_scorecard" },
     } as never),
-    "partial_scorecard"
+    "coaching_review"
   );
   assert.equal(
     readFocusedPracticeReviewOutcome({
@@ -55,7 +55,7 @@ test("deletion intent suppresses both post-commit quality events", async () => {
     await trackFeedbackHelpfulnessResponded(
       {
         userId: "synthetic-user",
-        outcome: "partial_scorecard",
+        outcome: "coaching_review",
         response: "helpful",
         reason: null,
       },

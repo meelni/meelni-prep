@@ -84,9 +84,10 @@ test("SAV-418 shows a stable unavailable fallback and reflows at 200%", async ({
   await page.goto(harness("feedback-focused-practice-unavailable"));
   await page.getByRole("button", { name: "Start focused practice" }).click();
 
-  await expect(page.getByRole("alert")).toContainText(
-    "Focused practice is not available for this review"
-  );
+  const unavailableAlert = page.getByRole("alert").filter({
+    hasText: "Focused practice is not available for this review",
+  });
+  await expect(unavailableAlert).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Start focused practice" })
@@ -96,7 +97,7 @@ test("SAV-418 shows a stable unavailable fallback and reflows at 200%", async ({
   // A 195 CSS-pixel layout viewport exercises the same reflow pressure as a
   // 390px viewport at 200% browser zoom without relying on browser chrome.
   await page.setViewportSize({ width: 195, height: 422 });
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(unavailableAlert).toBeVisible();
   await expectNoHorizontalScroll(page);
   activity.assertClean();
 });

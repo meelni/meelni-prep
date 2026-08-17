@@ -148,8 +148,8 @@ Loopback HTTP is accepted only for local development.
 
 1. Keep `MEELNI_REACTIVATION_DEFAULT=false` and the Statsig relaunch gate off.
 2. Apply the complete committed chain through
-   `0040_sav_448_managed_service_role_grants` and require the forty-one-entry schema
-   preflight.
+   `0041_sav_453_total_required_scorecards` and require the forty-two-entry
+   schema preflight.
 3. Deploy the web route and room-metadata writer before the Python runtime.
 4. Deploy the Python runtime through the guarded wrapper with an external,
    owner-only secrets file containing

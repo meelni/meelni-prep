@@ -22,7 +22,7 @@ import { calculateValidatedSessionFromTurns } from "./session-validator";
 test("synthetic dimension-coverage calibration manifest is broad and round-complete", () => {
   assert.equal(
     DIMENSION_COVERAGE_CALIBRATION_VERSION,
-    "dimension-coverage-calibration.v1"
+    "dimension-coverage-calibration.v2"
   );
   assert.equal(
     new Set(DIMENSION_COVERAGE_CALIBRATION_CASES.map((entry) => entry.id)).size,
@@ -70,7 +70,7 @@ test("synthetic dimension-coverage corpus is hash-bound", () => {
     createHash("sha256")
       .update(JSON.stringify(DIMENSION_COVERAGE_CALIBRATION_CASES))
       .digest("hex"),
-    "f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3"
+    "c07585b49c43152e78f742bbdd029998644fd0794f3cbcac758a8cd55f63a565"
   );
 });
 

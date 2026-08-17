@@ -170,7 +170,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "senior" },
         feedback: {
           status: "completed",
-          presentationKind: "scored",
+          presentationKind: "scorecard",
           overallScore: "8",
           ...feedbackScores,
         },
@@ -212,7 +212,7 @@ describe("aggregateUserInsights", () => {
         config: { difficulty: "junior" },
         feedback: {
           status: "completed",
-          presentationKind: "scored",
+          presentationKind: "scorecard",
           overallScore: "6",
           ...feedbackScores,
         },

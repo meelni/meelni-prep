@@ -825,7 +825,7 @@ describe("/api/feedback/[sessionId]", () => {
         insightScore: 9,
         communicationScore: 8,
         leadershipScore: 7,
-        overallScore: "8.0",
+        overallScore: "7.9",
         strengths: ["Clear answer"],
         improvements: ["State the approach first"],
         drills: [],
@@ -1034,15 +1034,18 @@ describe("/api/feedback/[sessionId]", () => {
 
     expect(response.status).toBe(200);
     expect(getFeedbackEvidenceTurns).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       status: "completed",
       feedback: {
         kind: "dimension-coverage",
-        mode: "coaching_review",
-        overallScore: null,
+        outcome: "coaching_review",
         scoreWithheldReason: "verified_evidence_integrity",
       },
     });
+    expect(payload.feedback).not.toHaveProperty("scores");
+    expect(payload.feedback).not.toHaveProperty("overallScore");
+    expect(payload.feedback).not.toHaveProperty("mode");
   });
 
   it.each(["refund", "release"] as const)(

@@ -14,7 +14,7 @@ import {
 
 const signal: FeedbackQualitySignalView = {
   contractVersion: FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION,
-  outcome: "partial_scorecard",
+  outcome: "coaching_review",
   response: "helpful",
   reason: null,
   revision: 1,
@@ -31,7 +31,7 @@ test("read is deletion fenced before and after owner lookup", async () => {
       repository: {
         readOwned: async () => ({
           disposition: "available",
-          state: { outcome: "partial_scorecard", signal },
+          state: { outcome: "coaching_review", signal },
         }),
         writeOwned: async () => {
           throw new Error("not used");
@@ -54,7 +54,7 @@ test("write rejects an outcome-incompatible closed reason before mutation", asyn
       command: {
         contractVersion: FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION,
         response: "not_helpful",
-        reason: "score_withholding_unclear",
+        reason: "score_explanation_unclear",
         expectedRevision: null,
       },
     },
@@ -76,7 +76,7 @@ test("write preserves created, unchanged, updated, and conflict dispositions", a
       dependencies({
         writeOwned: async () => ({
           disposition,
-          state: { outcome: "partial_scorecard", signal },
+          state: { outcome: "coaching_review", signal },
         }),
       })
     );
@@ -88,14 +88,14 @@ test("write preserves created, unchanged, updated, and conflict dispositions", a
     dependencies({
       writeOwned: async () => ({
         disposition: "conflict",
-        state: { outcome: "partial_scorecard", signal },
+        state: { outcome: "coaching_review", signal },
       }),
     })
   );
   assert.deepEqual(conflict, {
     ok: false,
     reason: "conflict",
-    state: { outcome: "partial_scorecard", signal },
+    state: { outcome: "coaching_review", signal },
   });
 });
 
@@ -130,11 +130,11 @@ function dependencies(
   const repository: FeedbackQualitySignalRepository = {
     readOwned: async () => ({
       disposition: "available",
-      state: { outcome: "partial_scorecard", signal: null },
+      state: { outcome: "coaching_review", signal: null },
     }),
     writeOwned: async () => ({
       disposition: "created",
-      state: { outcome: "partial_scorecard", signal },
+      state: { outcome: "coaching_review", signal },
     }),
     ...overrides,
   };

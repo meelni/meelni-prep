@@ -683,12 +683,8 @@ export function toDashboardSession<T extends DashboardSessionRow>(
         answerEvidence.verifiedPrefixProjection
       )
     : "unavailable";
-  const exposesDimensionScores =
-    presentationKind === "scored" ||
-    presentationKind === "full_scorecard" ||
-    presentationKind === "partial_scorecard";
-  const exposesOverallScore =
-    presentationKind === "scored" || presentationKind === "full_scorecard";
+  const exposesDimensionScores = presentationKind === "scorecard";
+  const exposesOverallScore = presentationKind === "scorecard";
 
   return {
     ...session,

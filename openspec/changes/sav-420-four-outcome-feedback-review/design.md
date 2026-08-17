@@ -1,5 +1,9 @@
 # Design
 
+> Historical design. SAV-453 supersedes Partial scorecard and renames Full
+> scorecard to Scorecard. The current customer boundary exposes a score only
+> when every weighted dimension and the canonical overall are present.
+
 ## Outcome boundary
 
 SAV-421 owns the canonical coverage and scoring result. SAV-420 consumes one

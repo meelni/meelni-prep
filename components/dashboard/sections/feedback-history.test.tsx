@@ -21,7 +21,7 @@ const evidenceLimitedSession: Session = {
   endedAt: "2026-08-12T12:06:00.000Z",
   feedback: {
     status: "completed",
-    presentationKind: "evidence_limited",
+    presentationKind: "coaching_review",
     overallScore: null,
     structureScore: null,
     clarityScore: null,

@@ -24,7 +24,7 @@ No calibration path connects to the application database.
 New `feedback.dimension-coverage.v1` evaluation has a separate provider-free
 synthetic artifact,
 `packages/test-fixtures/src/dimension-coverage-calibration.ts`, versioned as
-`dimension-coverage-calibration.v1`. It validates the closed reducer and
+`dimension-coverage-calibration.v2`. It validates the total-required closed reducer and
 integrity boundary for natural spoken answers, punctuation-poor STT, concise
 answers, filler, keyword salad, prompt injection, off-topic prose, sparse
 coverage, repeated-token stuffing, low-density engineered anchors, semantic
@@ -34,7 +34,7 @@ verifies identical coverage, scores, mode, citations, and persistence under
 
 `npm run test:calibration` executes the provider-free v3 matrix directly. The
 test binds the exact synthetic corpus to SHA-256
-`f541cd462e6db78aa3713860c219794303ca37e640379b5ea8fb8adf89e1f7d3`,
+`c07585b49c43152e78f742bbdd029998644fd0794f3cbcac758a8cd55f63a565`,
 while the attested calibration runtime bundle includes the fixture module in
 its source inventory. Any corpus change must update both the adjudicated
 expectations and the explicit hash rather than silently changing the acceptance

@@ -288,6 +288,13 @@
       "when": 1786753532369,
       "tag": "0040_sav_448_managed_service_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786999756652,
+      "tag": "0041_sav_453_total_required_scorecards",
+      "breakpoints": true
     }
   ]
 }

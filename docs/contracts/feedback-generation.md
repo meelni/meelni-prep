@@ -39,11 +39,13 @@ only integrity authority.
 New evaluations use
 [`feedback.dimension-coverage.v1`](./dimension-evidence-coverage.md). The
 provider selects only closed round-specific rubric facets and supplied answer-
-block aliases. Core derives `sufficient | partial | absent` coverage, sparse
-dimension scores, the result mode, exact evidence text, and any overall score.
-Numerical scores require sufficient rubric-facet coverage, not a number of
-strict scoreable answers. Legacy completed v2 and evidence-limited v2 rows keep
-their existing immutable read paths.
+block aliases. Core derives `sufficient | partial | absent` coverage, the
+closed result mode, exact evidence text, and any overall score. Numerical
+scores require sufficient rubric-facet coverage for every weighted dimension,
+not a number of strict scoreable answers. Incomplete weighted coverage reduces
+to all-null Coaching review; core never renormalizes or zero-fills a total.
+Legacy completed v2 and evidence-limited v2 rows keep their existing immutable
+read paths.
 
 A frozen session with no trustworthy reviewable candidate answer becomes
 `no_reviewable_answer`. A degrading marker, writer gap, degraded settlement,
@@ -67,10 +69,13 @@ runtime settlement is frozen with the durable
 `evidence_limited_only` feedback-mode constraint. New evaluation may still
 record grounded facet coverage. Core keeps that invocation scoreless unless
 the server recomputes an exact `verified_prefix` trusted-answer projection.
-That projection supersedes the legacy qualitative-only constraint only for its
-trusted blocks: supported dimension scores may be present, but overall remains
-absent. The Python runtime uses the same exact role/reason rule, so the
-preserving marker alone does not manufacture degradation or scoreability.
+That projection supersedes the legacy qualitative-only constraint only when it
+is healthy, settled, gap-free, covers every candidate answer block with zero
+exclusions, and all weighted dimensions are sufficient. Only then may core emit
+all dimension scores plus the canonical overall. A real excluded tail or any
+incomplete dimension reduces the invocation to all-null Coaching review. The
+Python runtime uses the same exact role/reason rule, so the preserving marker
+alone does not manufacture degradation or scoreability.
 
 ## Event fencing
 
@@ -102,8 +107,8 @@ a fresh attempt event. Concurrent calls converge on the same requeued work.
 Failure to revalidate leaves the terminal skip unchanged.
 
 Requeueing evaluates the already-consumed interview and performs no credit
-debit, grant, refund, release, or other credit mutation. The preserving-marker
-snapshot remains partial, so recovery cannot produce an overall score.
+debit, grant, refund, release, or other credit mutation. Recovery does not
+promise a score; core must independently prove the complete Scorecard contract.
 
 Pending dispatches, failed dispatches, and expired sending leases can be
 dispatched. Active generation and active sending leases report

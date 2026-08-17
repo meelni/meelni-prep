@@ -22,7 +22,7 @@ import {
 test("verified-prefix scorecard calibration is synthetic and outcome-complete", () => {
   assert.equal(
     VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION,
-    "verified-prefix-scorecard-calibration.v1"
+    "verified-prefix-scorecard-calibration.v2"
   );
   assert.equal(
     new Set(VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES.map(({ id }) => id))
@@ -35,7 +35,7 @@ test("verified-prefix scorecard calibration is synthetic and outcome-complete", 
     ),
     new Set([
       "historical_full",
-      "verified_prefix_partial",
+      "verified_prefix_sparse",
       "verified_prefix_coaching",
       "authority_unavailable",
     ])
@@ -52,7 +52,7 @@ test("verified-prefix scorecard calibration corpus is hash-bound", () => {
     createHash("sha256")
       .update(JSON.stringify(VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES))
       .digest("hex"),
-    "195a9b9ae4b4347a97fa28f1d0b5a539ca005bc8d1f3469ee26c6832b8b82e04"
+    "8b92c53988a3ead4903db7d284c6ff78d991b61b90ce4d79fa00c89c4013bfe4"
   );
 });
 
@@ -82,7 +82,11 @@ test("verified-prefix calibration produces only the adjudicated outcome", () => 
     if (verifiedPrefix) assert.equal(projection.status, "verified_prefix");
 
     const result = parseDimensionCoverageProviderSelection(
-      selection(coverageCase, projection.trustedBlocks[0].answerBlockId),
+      selection(
+        coverageCase,
+        projection.trustedBlocks[0].answerBlockId,
+        !verifiedPrefix || projection.numericalScoreAuthority === "allowed"
+      ),
       {
         roundType: coverageCase.roundType,
         answerBlocks: projection.trustedBlocks,
@@ -109,14 +113,15 @@ test("verified-prefix calibration produces only the adjudicated outcome", () => 
 
 function selection(
   entry: (typeof DIMENSION_COVERAGE_CALIBRATION_CASES)[number],
-  answerBlockRef: string
+  answerBlockRef: string,
+  allowNumericalScores: boolean
 ): DimensionCoverageProviderSelection {
   assert.ok(entry.facetCounts);
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     const facetCount = entry.facetCounts[dimension];
     dimensions[dimension] = {
-      score: facetCount === 2 ? 8 : null,
+      score: allowNumericalScores && facetCount === 2 ? 8 : null,
       evidence: ROUND_DIMENSION_COVERAGE_CONFIG[entry.roundType][
         dimension
       ].facets

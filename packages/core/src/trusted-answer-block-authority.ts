@@ -83,6 +83,7 @@ export type TrustedAnswerBlockProjectionStatus =
 export interface TrustedAnswerBlockProjection {
   contractVersion: typeof TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION;
   status: TrustedAnswerBlockProjectionStatus;
+  numericalScoreAuthority: "allowed" | "withheld";
   trustedBlocks: CandidateAnswerBlock[];
   trustedBlockIdentities: TrustedAnswerBlockIdentity[];
   closureAuthorities: TrustedAnswerBlockClosureAuthority[];
@@ -185,6 +186,7 @@ export function projectTrustedClosedAnswerBlocks(
     return {
       contractVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
       status: "no_trusted_blocks",
+      numericalScoreAuthority: "withheld",
       trustedBlocks,
       trustedBlockIdentities,
       closureAuthorities,
@@ -202,6 +204,8 @@ export function projectTrustedClosedAnswerBlocks(
   return {
     contractVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
     status: complete ? "complete" : "verified_prefix",
+    numericalScoreAuthority:
+      writer.settlementState === "settled" ? "allowed" : "withheld",
     trustedBlocks,
     trustedBlockIdentities,
     closureAuthorities,
@@ -413,6 +417,7 @@ function failedProjection(
   return {
     contractVersion: TRUSTED_ANSWER_BLOCK_PROJECTION_VERSION,
     status: "integrity_failure",
+    numericalScoreAuthority: "withheld",
     trustedBlocks: [],
     trustedBlockIdentities: [],
     closureAuthorities: [],

@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { FEEDBACK_DIMENSIONS } from "@meelni/core";
 import type {
   FeedbackDimension,
+  FeedbackDimensionCoverageCoachingView,
   FeedbackDimensionCoverageView,
   FeedbackEvidenceLimitedView,
   FeedbackScoreWithheldReason,
@@ -49,16 +50,8 @@ export function CompletedDimensionCoverageReview({
   feedback: FeedbackDimensionCoverageView;
 }) {
   const transcript = useEvidenceTranscript(feedback.sessionId);
-  const isFull = feedback.mode === "full_scorecard";
-  const isPartial = feedback.mode === "partial_scorecard";
-  const isVerifiedPrefix = feedback.verifiedScope !== null;
-  const outcomeLabel = isFull
-    ? "Full scorecard"
-    : isPartial
-      ? "Partial scorecard"
-      : "Coaching review";
 
-  if (feedback.mode === "coaching_review") {
+  if (feedback.outcome === "coaching_review") {
     return (
       <FeedbackReviewShell
         title="Coaching review"
@@ -173,68 +166,43 @@ export function CompletedDimensionCoverageReview({
 
   return (
     <FeedbackReviewShell
-      title={outcomeLabel}
+      title="Scorecard"
       description="Observed practice scores grounded in verified PM-rubric evidence from this interview."
       action={<FeedbackDashboardLink />}
     >
-      <FeedbackReviewAnalytics outcome={feedback.mode} />
+      <FeedbackReviewAnalytics outcome="scorecard" />
       <div className="space-y-8">
-        <StatusPill
-          tone={isFull ? "success" : isPartial ? "warning" : "muted"}
-          className={isFull ? "text-foreground" : undefined}
-        >
-          {outcomeLabel}
+        <StatusPill tone="success" className="text-foreground">
+          Scorecard
         </StatusPill>
 
-        <FeedbackSectionCard
-          title={
-            isFull
-              ? "What this scorecard means"
-              : "Why some scores are withheld"
-          }
-          tone={isFull ? "success" : "warning"}
-        >
+        <FeedbackSectionCard title="What this scorecard means" tone="success">
           <p className="text-muted-foreground leading-6">
-            {isFull
-              ? "Every PM rubric dimension had enough verified evidence for an observed practice score. These scores describe this interview, not a hiring decision."
-              : isVerifiedPrefix
-                ? "Individual scores use only verified completed answers. Any dimension without enough verified support remains unscored. An overall score is withheld because the complete saved interview was outside the verified scope."
-                : "Some PM rubric dimensions had enough verified evidence for an observed practice score. Other dimensions are unscored because this interview did not cover enough evidence for them—not because the performance was poor."}
+            Every PM rubric dimension had enough verified evidence for an
+            observed practice score. These scores describe this interview, not a
+            hiring decision.
           </p>
         </FeedbackSectionCard>
 
-        {feedback.verifiedScope && (
-          <VerifiedPrefixScopeCard scope={feedback.verifiedScope} />
-        )}
-
         <FeedbackSectionCard
           title="Observed practice scores"
-          description={
-            isFull
-              ? "Scores are shown only where verified evidence supports the PM rubric."
-              : isVerifiedPrefix
-                ? "Only verified completed answers could support the individual scores shown. The complete saved interview was outside verified scope, so no overall score is shown."
-                : "An overall score needs supported evidence across every PM rubric dimension."
-          }
+          description="Every weighted dimension and the overall total are grounded in verified PM-rubric evidence."
           icon={<ClipboardCheck className="h-5 w-5" aria-hidden="true" />}
           contentClassName="space-y-5"
         >
-          {isFull && feedback.overallScore !== null && (
-            <div className="border-border mb-2 border-b pb-5">
-              <p className="text-primary font-mono text-5xl leading-none font-bold sm:text-6xl">
-                {Math.round(feedback.overallScore)}
-              </p>
-              <p className="text-foreground mt-2 text-sm font-semibold">
-                Overall score
-              </p>
-              <p className="text-muted-foreground mt-1 text-xs">out of 10</p>
-            </div>
-          )}
+          <div className="border-border mb-2 border-b pb-5">
+            <p className="text-primary font-mono text-5xl leading-none font-bold sm:text-6xl">
+              {Math.round(feedback.scores.overall)}
+            </p>
+            <p className="text-foreground mt-2 text-sm font-semibold">
+              Overall score
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">out of 10</p>
+          </div>
 
           <dl className="space-y-4">
             {FEEDBACK_DIMENSIONS.map((dimension) => {
               const result = feedback.dimensions[dimension];
-              const supported = result.score !== null;
               return (
                 <div
                   key={dimension}
@@ -242,20 +210,12 @@ export function CompletedDimensionCoverageReview({
                 >
                   <dt className="text-foreground flex min-w-0 flex-wrap items-center gap-2 font-medium">
                     {DIMENSION_LABELS[dimension]}
-                    <StatusPill tone={supported ? "success" : "muted"}>
-                      {supported ? "Supported" : "Not enough evidence"}
-                    </StatusPill>
+                    <StatusPill tone="success">Supported</StatusPill>
                   </dt>
                   <dd>
-                    {supported ? (
-                      <span className="font-mono font-semibold">
-                        {result.score}/10
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">
-                        Not enough evidence
-                      </span>
-                    )}
+                    <span className="font-mono font-semibold">
+                      {result.score}/10
+                    </span>
                   </dd>
 
                   {result.evidence.length > 0 ? (
@@ -294,13 +254,9 @@ export function CompletedDimensionCoverageReview({
           </dl>
         </FeedbackSectionCard>
 
-        {isPartial && (
-          <FocusedPracticeWorkspace sourceSessionId={feedback.sessionId} />
-        )}
-
         <FeedbackQualityControl
           sessionId={feedback.sessionId}
-          outcome={feedback.mode}
+          outcome="scorecard"
         />
 
         <FeedbackTranscriptSection
@@ -320,22 +276,19 @@ export function CompletedDimensionCoverageReview({
 function VerifiedPrefixScopeCard({
   scope,
 }: {
-  scope: NonNullable<FeedbackDimensionCoverageView["verifiedScope"]>;
+  scope: NonNullable<FeedbackDimensionCoverageCoachingView["verifiedScope"]>;
 }) {
-  const answerLabel = scope.reviewedAnswerCount === 1 ? "answer" : "answers";
-
   return (
     <FeedbackSectionCard title="Verified interview scope" tone="info">
       <div className="space-y-2">
         <p className="text-foreground leading-6">
-          Meelni reviewed only the {scope.reviewedAnswerCount} completed{" "}
-          {answerLabel} it could verify.
+          Meelni reviewed only the completed answers it could verify.
         </p>
         {scope.excludedTail && (
           <p className="text-muted-foreground leading-6">
             The unfinished or unverified end of the interview stayed outside
             this review. It was not treated as negative evidence; only verified
-            completed answers could support the scores or coaching shown.
+            completed answers could support the coaching shown.
           </p>
         )}
       </div>
@@ -354,11 +307,13 @@ export function CompletedV2Review({
 
   return (
     <FeedbackReviewShell
-      title="Interview feedback"
+      title="Scorecard"
       description="See the result, supporting evidence, and one focused next practice."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome="scorecard" />
       <div className="space-y-8">
+        <StatusPill tone="success">Scorecard</StatusPill>
         <StatusPill
           tone={partial ? "warning" : "success"}
           className={!partial ? "text-foreground" : undefined}
@@ -599,11 +554,13 @@ export function CompletedLegacyReview({
 }) {
   return (
     <FeedbackReviewShell
-      title="Historical feedback"
+      title="Scorecard"
       description="This review was created before transcript-linked feedback was introduced."
       action={<FeedbackDashboardLink />}
     >
+      <FeedbackReviewAnalytics outcome="scorecard" />
       <div className="space-y-8">
+        <StatusPill tone="success">Scorecard</StatusPill>
         <FeedbackSectionCard title="Historical feedback format" tone="warning">
           <p className="text-muted-foreground leading-6">
             These saved notes do not include verifiable transcript evidence or

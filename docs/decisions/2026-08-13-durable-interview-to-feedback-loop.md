@@ -4,6 +4,17 @@ Status: accepted
 
 Date: 2026-08-13
 
+## Amendment — 2026-08-17 (SAV-453)
+
+[Require A Total For Every Customer Scorecard](2026-08-17-total-required-scorecards.md)
+supersedes this decision's partial-scorecard and safe-marker overall policy.
+Exact safe interviewer markers remain transparent sequence evidence. When a
+healthy settled gap-free trusted projection covers every candidate answer
+block with zero exclusions, the marker alone no longer suppresses complete
+scorecard authority. Any real excluded tail or incomplete weighted coverage
+produces scoreless Coaching review. Settlement, recovery, latency, and shadow
+evaluation decisions below remain accepted.
+
 ## Amendment — 2026-08-14 (SAV-449)
 
 Production evidence showed that the original SAV-441 restriction to one final
@@ -85,10 +96,12 @@ cannot authorize an overall score. Candidate interruption markers,
 canonicalization failures, sequence gaps, degraded writers, malformed
 boundaries, and post-cutoff evidence continue to fail closed.
 
-The authoritative batch evaluator may return supported dimension scores from
-trusted closed blocks in a partial session. Unsupported dimensions remain
-scoreless and every partial scorecard has `overallScore = null`. The server may
-not extrapolate a whole-interview score from a verified prefix.
+The authoritative batch evaluator may return supported internal dimension
+evidence from trusted closed blocks in a partial session. Under SAV-453, a
+customer scorecard is eligible only when every weighted dimension and the
+stored canonical total are present; all incomplete numerical coverage reduces
+to scoreless coaching. The server may not extrapolate, synthesize, or
+renormalize a whole-interview score from a verified prefix.
 
 SAV-441 makes the closure boundary exact. The frozen projection must contain
 one healthy writer identity/generation, its complete committed sequence, and an

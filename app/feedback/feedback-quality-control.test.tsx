@@ -42,7 +42,7 @@ describe("FeedbackQualityControl", () => {
     render(
       <FeedbackQualityControl
         sessionId="synthetic-session"
-        outcome="partial_scorecard"
+        outcome="coaching_review"
       />
     );
 
@@ -60,7 +60,7 @@ describe("FeedbackQualityControl", () => {
     await screen.findByText("Response saved.");
     const request = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual({
-      contractVersion: "feedback-quality-signal.v1",
+      contractVersion: "feedback-quality-signal.v2",
       response: "not_helpful",
       reason: "next_step_unclear",
       expectedRevision: null,
@@ -99,7 +99,7 @@ describe("FeedbackQualityControl", () => {
     render(
       <FeedbackQualityControl
         sessionId="synthetic-session"
-        outcome="partial_scorecard"
+        outcome="coaching_review"
       />
     );
     fireEvent.click(await screen.findByRole("button", { name: "Not helpful" }));
@@ -164,7 +164,7 @@ describe("FeedbackQualityControl", () => {
     ).toBe(null);
     expect(
       parseOwnedState({
-        outcome: "full_scorecard",
+        outcome: "scorecard",
         signal: signal({
           outcome: "coaching_review",
           response: "helpful",
@@ -176,25 +176,22 @@ describe("FeedbackQualityControl", () => {
 
 function ownedState(
   saved: ReturnType<typeof signal> | null,
-  outcome:
-    | "full_scorecard"
-    | "partial_scorecard"
-    | "coaching_review" = "partial_scorecard"
+  outcome: "scorecard" | "coaching_review" = "coaching_review"
 ) {
   return { outcome, signal: saved };
 }
 
 function signal(
   overrides: Partial<{
-    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+    outcome: "scorecard" | "coaching_review";
     response: "helpful" | "not_helpful";
     reason: "next_step_unclear" | "score_withholding_unclear" | null;
     revision: number;
   }> = {}
 ) {
   return {
-    contractVersion: "feedback-quality-signal.v1",
-    outcome: overrides.outcome ?? "partial_scorecard",
+    contractVersion: "feedback-quality-signal.v2",
+    outcome: overrides.outcome ?? "coaching_review",
     response: overrides.response ?? "helpful",
     reason: overrides.reason ?? null,
     revision: overrides.revision ?? 1,

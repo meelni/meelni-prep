@@ -200,6 +200,8 @@ export function createDrizzleFeedbackQualitySignalRepository(
           const updatedRows = await tx
             .update(feedbackQualitySignal)
             .set({
+              contractVersion: input.command.contractVersion,
+              reviewOutcome: source.outcome,
               response: input.command.response,
               reason: input.command.reason,
               revision: current.revision + 1,
@@ -260,15 +262,70 @@ export function hydrateFeedbackQualitySignalRow(
   row: FeedbackQualitySignalRow | undefined
 ): FeedbackQualitySignalView | null {
   if (!row) return null;
+  const normalized = normalizePersistedFeedbackQualitySignal(row);
+  if (!normalized) return null;
   return parseFeedbackQualitySignalView({
-    contractVersion: row.contractVersion,
-    outcome: row.reviewOutcome,
+    contractVersion: "feedback-quality-signal.v2",
+    outcome: normalized.outcome,
     response: row.response,
-    reason: row.reason,
+    reason: normalized.reason,
     revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+}
+
+function normalizePersistedFeedbackQualitySignal(
+  row: FeedbackQualitySignalRow
+): { outcome: FeedbackQualityOutcome; reason: typeof row.reason } | null {
+  const outcome = normalizePersistedFeedbackQualityOutcome(row.reviewOutcome);
+  if (!outcome) return null;
+  if (row.contractVersion === "feedback-quality-signal.v2") {
+    if (
+      row.reviewOutcome !== "scorecard" &&
+      row.reviewOutcome !== "coaching_review"
+    ) {
+      return null;
+    }
+    return { outcome, reason: row.reason };
+  }
+  if (row.contractVersion !== "feedback-quality-signal.v1") return null;
+  if (
+    row.reviewOutcome !== "full_scorecard" &&
+    row.reviewOutcome !== "partial_scorecard" &&
+    row.reviewOutcome !== "coaching_review"
+  ) {
+    return null;
+  }
+  if (row.response === "helpful") {
+    return row.reason === null ? { outcome, reason: null } : null;
+  }
+  if (row.reason === "score_withholding_unclear") {
+    return row.reviewOutcome === "coaching_review"
+      ? { outcome, reason: row.reason }
+      : null;
+  }
+  if (row.reason === "score_explanation_unclear") {
+    if (row.reviewOutcome === "full_scorecard") {
+      return { outcome, reason: row.reason };
+    }
+    // Historical partial scorecards now present as scoreless coaching. Keep
+    // the stored v1 row immutable while omitting its score-only reason.
+    return row.reviewOutcome === "partial_scorecard"
+      ? { outcome, reason: null }
+      : null;
+  }
+  return { outcome, reason: row.reason };
+}
+
+export function normalizePersistedFeedbackQualityOutcome(
+  value: FeedbackQualitySignalRow["reviewOutcome"]
+): FeedbackQualityOutcome | null {
+  if (value === "scorecard" || value === "full_scorecard") return "scorecard";
+  if (value === "coaching_review" || value === "partial_scorecard") {
+    return "coaching_review";
+  }
+  return null;
 }
 
 async function loadOwnedQualitySource(

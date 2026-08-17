@@ -75,8 +75,9 @@ truth.
 - Every command, acknowledgement, generation claim, and evaluation artifact is
   idempotent and fenced against stale writers or events.
 - Only trusted closed candidate blocks can support evaluation.
-- Partial scorecards may contain sparse dimension scores but never an overall
-  score.
+- Every customer scorecard contains every weighted dimension score and the
+  stored canonical total. Incomplete numerical coverage reduces to scoreless
+  coaching; no consumer synthesizes or renormalizes a total.
 - No session duration, turn count, provider prose, or unverified tail can
   manufacture evidence.
 - Candidate markers, canonicalization failures, gaps, degraded writers,

@@ -5,6 +5,7 @@ import {
   ANSWER_BLOCK_SEGMENT_COUNTS,
   TRUSTED_ANSWER_BLOCK_CALIBRATION_CASES,
   createAnswerBlockSegmentationFixture,
+  createTotalScorecardSafeMarkerFixture,
 } from "@meelni/test-fixtures";
 import { deriveCandidateAnswerBlocks } from "./answer-blocks";
 import { projectTrustedClosedAnswerBlocks } from "./trusted-answer-block-authority";
@@ -76,7 +77,117 @@ test("complete configured coverage produces a full scorecard and canonical overa
   }
 });
 
-test("partial scorecards score only sufficient dimensions and never overall", () => {
+test("repeated safe markers with complete trusted scope preserve one canonical scorecard", () => {
+  const results = [false, true].map((repeatedSafeMarkers) => {
+    const fixture = createTotalScorecardSafeMarkerFixture(repeatedSafeMarkers);
+    const projection = projectTrustedClosedAnswerBlocks(
+      fixture.events,
+      fixture.authority
+    );
+    assert.equal(fixture.provenance, "fully_synthetic");
+    assert.equal(projection.status, "verified_prefix");
+    assert.equal(projection.numericalScoreAuthority, "allowed");
+    assert.equal(projection.failureReason, null);
+    assert.deepEqual(projection.excludedBlocks, []);
+    assert.deepEqual(
+      projection.trustedBlocks.map(({ responseText }) => responseText),
+      fixture.expectedResponseTexts
+    );
+
+    const scores: Record<FeedbackDimension, number> = {
+      structure: 8,
+      clarity: 7,
+      insight: 9,
+      communication: 8,
+      leadership: 7,
+    };
+    const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+    for (const [index, dimension] of FEEDBACK_DIMENSIONS.entries()) {
+      dimensions[dimension] = {
+        score: scores[dimension],
+        evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[
+          dimension
+        ].facets.map((facet) => ({
+          facetCode: facet.code,
+          answerBlockRef: projection.trustedBlocks[index]!.answerBlockId,
+        })),
+      };
+    }
+    const result = parseDimensionCoverageProviderSelection(
+      {
+        schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+        rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+        roundType: "product_sense",
+        dimensions,
+      },
+      {
+        roundType: "product_sense",
+        answerBlocks: projection.trustedBlocks,
+        modelVersion: "synthetic-safe-marker-evaluator-v1",
+        allowNumericalScores: true,
+        verifiedPrefixProjection: projection,
+      }
+    );
+    assertVerifiedPrefixResult(result);
+    assert.equal(result.mode, "full_scorecard");
+    assert.equal(result.evaluationState, "full");
+    assert.equal(result.overallScore, 7.9);
+    assert.equal(result.verifiedPrefixScope.excludedTailBlockCount, 0);
+    return result;
+  });
+
+  assert.deepEqual(results[1], results[0]);
+});
+
+test("missing settlement with a gap-free all-dimension prefix cannot produce a scorecard", () => {
+  const fixture = createTotalScorecardSafeMarkerFixture(false);
+  fixture.authority.writers[0]!.settlementState = "missing";
+  const projection = projectTrustedClosedAnswerBlocks(
+    fixture.events,
+    fixture.authority
+  );
+  assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
+  assert.deepEqual(projection.excludedBlocks, []);
+
+  const scored = selection(
+    "product_sense",
+    projection.trustedBlocks[0]!.answerBlockId,
+    "full"
+  );
+  assert.throws(
+    () =>
+      parseDimensionCoverageProviderSelection(scored, {
+        roundType: "product_sense",
+        answerBlocks: projection.trustedBlocks,
+        modelVersion: MODEL,
+        allowNumericalScores: true,
+        verifiedPrefixProjection: projection,
+      }),
+    /score_coverage_mismatch/
+  );
+
+  const coaching = parseDimensionCoverageProviderSelection(
+    selection(
+      "product_sense",
+      projection.trustedBlocks[0]!.answerBlockId,
+      "full",
+      null
+    ),
+    {
+      roundType: "product_sense",
+      answerBlocks: projection.trustedBlocks,
+      modelVersion: MODEL,
+      allowNumericalScores: true,
+      verifiedPrefixProjection: projection,
+    }
+  );
+  assert.equal(coaching.mode, "coaching_review");
+  assert.equal(coaching.overallScore, null);
+});
+
+test("incomplete weighted coverage produces a wholly scoreless coaching review", () => {
   const blocks = answerBlocks(1);
   const value = selection("execution", blocks[0]!.answerBlockId, "absent");
   value.dimensions.structure = dimensionSelection(
@@ -99,10 +210,10 @@ test("partial scorecards score only sufficient dimensions and never overall", ()
     modelVersion: MODEL,
     allowNumericalScores: true,
   });
-  assert.equal(result.mode, "partial_scorecard");
+  assert.equal(result.mode, "coaching_review");
   assert.equal(result.overallScore, null);
   assert.equal(result.dimensions.structure.coverage, "sufficient");
-  assert.equal(result.dimensions.structure.score, 7);
+  assert.equal(result.dimensions.structure.score, null);
   assert.equal(result.dimensions.insight.coverage, "partial");
   assert.equal(result.dimensions.insight.score, null);
   assert.equal(result.dimensions.clarity.coverage, "absent");
@@ -145,11 +256,11 @@ test("qualitative-only frozen evidence remains coaching even with sufficient fac
   assert.equal(result.dimensions.structure.score, null);
 });
 
-test("verified-prefix partial scorecards bind trusted identities and never compute overall", () => {
+test("verified-prefix excluded tails bind identities and remain scoreless coaching", () => {
   const projection = verifiedPrefixProjection();
   const blocks = projection.trustedBlocks;
   const result = parseDimensionCoverageProviderSelection(
-    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    selection("product_sense", blocks[0]!.answerBlockId, "full", null),
     {
       roundType: "product_sense",
       answerBlocks: blocks,
@@ -161,8 +272,11 @@ test("verified-prefix partial scorecards bind trusted identities and never compu
 
   assertVerifiedPrefixResult(result);
   assert.equal(result.evaluationState, "partial");
-  assert.equal(result.mode, "partial_scorecard");
+  assert.equal(result.mode, "coaching_review");
   assert.equal(result.overallScore, null);
+  for (const dimension of FEEDBACK_DIMENSIONS) {
+    assert.equal(result.dimensions[dimension].score, null);
+  }
   assert.deepEqual(result.verifiedPrefixScope, {
     contractVersion: FEEDBACK_VERIFIED_PREFIX_SCOPE_VERSION,
     projectionVersion: projection.contractVersion,
@@ -195,7 +309,7 @@ test("verified-prefix persistence rejects forged scope, untrusted blocks, and no
   const projection = verifiedPrefixProjection();
   const blocks = projection.trustedBlocks;
   const result = parseDimensionCoverageProviderSelection(
-    selection("product_sense", blocks[0]!.answerBlockId, "full"),
+    selection("product_sense", blocks[0]!.answerBlockId, "full", null),
     {
       roundType: "product_sense",
       answerBlocks: blocks,
@@ -211,6 +325,7 @@ test("verified-prefix persistence rejects forged scope, untrusted blocks, and no
     parsePersistedDimensionCoverageFeedback(result, {
       answerBlocks: blocks,
       verifiedPrefixProjection: projection,
+      allowNumericalScores: true,
     }),
     result
   );

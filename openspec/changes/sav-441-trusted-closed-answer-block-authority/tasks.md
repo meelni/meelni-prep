@@ -1,5 +1,8 @@
 # Tasks
 
+> Historical completion record. SAV-453 amends only downstream total authority;
+> SAV-441 projection and integrity tasks remain recorded as completed.
+
 - [x] Verify SAV-442 merge and start from exact `origin/main`.
 - [x] Move SAV-441 to In Progress and record the bounded start handoff.
 - [x] Record task intake, accepted decision precision, contract, and OpenSpec.

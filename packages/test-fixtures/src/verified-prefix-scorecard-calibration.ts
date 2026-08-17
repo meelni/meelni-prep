@@ -1,9 +1,9 @@
 export const VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION =
-  "verified-prefix-scorecard-calibration.v1" as const;
+  "verified-prefix-scorecard-calibration.v2" as const;
 
 export type VerifiedPrefixScorecardCalibrationFamily =
   | "historical_full"
-  | "verified_prefix_partial"
+  | "verified_prefix_sparse"
   | "verified_prefix_coaching"
   | "authority_unavailable";
 
@@ -16,7 +16,6 @@ export interface VerifiedPrefixScorecardCalibrationCase {
   coverageCaseId: string | null;
   expectedOutcome:
     | "full_scorecard"
-    | "partial_scorecard"
     | "coaching_review"
     | "unable_to_review_integrity";
 }
@@ -30,11 +29,11 @@ export const VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES = [
     "full_scorecard"
   ),
   calibrationCase(
-    "verified-prefix-sparse-scorecard",
-    "verified_prefix_partial",
+    "verified-prefix-sparse-coaching",
+    "verified_prefix_sparse",
     "terminal-preserving-marker",
     "spoken-product-choice",
-    "partial_scorecard"
+    "coaching_review"
   ),
   calibrationCase(
     "verified-prefix-coaching-only",

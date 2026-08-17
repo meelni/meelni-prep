@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { FeedbackQualityOutcome } from "@meelni/core";
 
 import { trackFeedbackHelpfulnessResponded } from "@/lib/analytics/feedback-quality";
 import { hasAccountDeletionTombstone } from "@/lib/db/account-deletions";
@@ -34,7 +35,7 @@ export interface FeedbackQualityRouteDependencies
   consumeRateLimit(userId: string): Promise<FeedbackQualityRateLimitDecision>;
   trackResponse(input: {
     userId: string;
-    outcome: "full_scorecard" | "partial_scorecard" | "coaching_review";
+    outcome: FeedbackQualityOutcome;
     response: "helpful" | "not_helpful";
     reason:
       | "not_specific_enough"

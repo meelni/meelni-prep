@@ -5,7 +5,7 @@ import type {
 } from "@meelni/core";
 
 export const DIMENSION_COVERAGE_CALIBRATION_VERSION =
-  "dimension-coverage-calibration.v1" as const;
+  "dimension-coverage-calibration.v2" as const;
 
 export type DimensionCoverageCalibrationFamily =
   | "natural_spoken_answer"
@@ -49,7 +49,7 @@ export const DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "natural_spoken_answer",
     "product_sense",
     "So I think I would start with working parents because the handoff problem happens every week, and then I would test a shared plan before adding reminders.",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 2, clarity: 1, insight: 2, communication: 1 }
   ),
   calibrationCase(
@@ -57,7 +57,7 @@ export const DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "punctuation_poor_stt",
     "execution",
     "first verify the delayed queue then give one owner the rollback decision measure recovery time and stop the rollout if customer errors rise",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 2, clarity: 1, insight: 2, leadership: 2 }
   ),
   calibrationCase(
@@ -129,7 +129,7 @@ export const DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "sparse_coverage",
     "behavioral",
     "I owned the launch decision and aligned design with engineering, but I did not measure the result or explain what I learned.",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 1, clarity: 1, leadership: 2 }
   ),
   ...(["product_sense", "execution", "behavioral", "strategy"] as const).map(

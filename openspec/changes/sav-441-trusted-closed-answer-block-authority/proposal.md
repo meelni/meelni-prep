@@ -1,5 +1,9 @@
 # SAV-441 trusted closed answer-block authority
 
+> Amended 2026-08-17 by SAV-453: repeated exact safe markers still keep the
+> snapshot label partial, but no longer suppress a total when trusted scope has
+> zero excluded candidate blocks and all weighted dimensions are sufficient.
+
 Amended 2026-08-14 by SAV-449: the original single-terminal preserving-marker
 restriction is superseded by the exact role/reason behavior below.
 
@@ -22,8 +26,9 @@ can consume a verified prefix.
   prefix with explicit closure provenance.
 - Treat exact interviewer `no_provider_confirmed_prefix` markers as
   content-free sequence evidence that neither closes nor splits an answer.
-  Repeated and mid-session occurrences preserve prompt/answer continuity while
-  keeping the snapshot partial and prohibiting an overall score.
+  Repeated and mid-session occurrences preserve prompt/answer continuity; the
+  marker alone does not prohibit an overall when downstream authority proves
+  zero exclusions and complete weighted coverage.
 - Fail closed for candidate/canonicalization markers, malformed marker
   ordering, gaps, replay conflicts, writer drift/degradation, cutoff conflicts,
   malformed inputs, and unknown versions.

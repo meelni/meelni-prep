@@ -1,15 +1,19 @@
 # SAV-418 scoreless focused practice
 
+> Amended by SAV-453. The current customer outcome is Coaching review for all
+> supported scoreless sources, including strictly validated historical partial
+> rows.
+
 ## Why
 
-SAV-420 now presents every supported terminal review as a Full scorecard,
-Partial scorecard, Coaching review, or Unable to review. Existing durable
+SAV-453 presents every supported terminal review as a Scorecard, Coaching
+review, or Unable to review. Existing durable
 focused practice accepts only scored Feedback v2 and therefore cannot execute
-the prioritized focus shown for canonical partial/coaching outcomes.
+the prioritized focus shown for canonical scoreless coaching outcomes.
 
 ## Outcome
 
-Every supported partial scorecard or coaching review can create, resume,
+Every supported coaching review can create, resume,
 complete, and revisit exactly one provider-free focused-practice attempt. The
 attempt uses the same strict server-selected grounded focus as the review,
 never manufactures a weakest score, and keeps candidate-authored completion a
