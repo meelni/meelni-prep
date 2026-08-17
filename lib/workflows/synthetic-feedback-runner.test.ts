@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   SYNTHETIC_FEEDBACK_ARTIFACT_VERSION,
+  SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS,
   SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS,
   createSyntheticFeedbackScenarios,
   decodeSyntheticFeedbackArtifactV1,
@@ -80,6 +81,12 @@ test("provider-free matrix emits deterministic terminal artifacts and manifest",
       artifact.diagnostics.executionMode,
       "deterministic_provider_free"
     );
+    if (artifact.customer.lifecycle.status === "completed") {
+      assert.deepEqual(
+        artifact.diagnostics.durableStepRoundTrips,
+        SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS
+      );
+    }
     assert.equal(
       entry.artifactSha256,
       createHash("sha256").update(entry.artifactJson).digest("hex")
@@ -116,32 +123,79 @@ test("artifact and manifest decoders fail closed", async () => {
       diagnostics: {
         ...artifact.diagnostics,
         executionMode: "live_model_explicit_opt_in",
-        durableStepRoundTrips: [
-          "authorize-feedback-generation",
-          "claim-feedback-generation",
-          "fetch-feedback-answer-blocks",
-          "read-current-feedback-evaluation-1-execution-0",
-          "evaluate-feedback-attempt-1",
-          "wait-feedback-evaluation-retry-1",
-          "read-current-feedback-evaluation-2-execution-0",
-          "evaluate-feedback-attempt-2",
-          "wait-feedback-evaluation-retry-2",
-          "read-current-feedback-evaluation-3-execution-0",
-          "evaluate-feedback-attempt-3",
-          "wait-feedback-evaluation-retry-3",
-          "read-current-feedback-evaluation-4-execution-0",
-          "evaluate-feedback-attempt-4",
-          "complete-feedback-generation",
-          "authorize-feedback-generation",
-        ],
+        durableStepRoundTrips: liveAttemptTrace(4),
       },
     }),
     null
+  );
+  assert.ok(
+    decodeSyntheticFeedbackArtifactV1({
+      ...artifact,
+      diagnostics: {
+        ...artifact.diagnostics,
+        executionMode: "live_model_explicit_opt_in",
+        durableStepRoundTrips: liveAttemptTrace(3),
+      },
+    })
   );
   assert.equal(
     decodeSyntheticFeedbackArtifactV1({
       ...artifact,
       outcome: "coaching_review",
+    }),
+    null
+  );
+
+  const provenanceBundle = await createSyntheticFeedbackBundle([
+    "corrupt",
+    "no-answer",
+    "normal-product-sense",
+    "replay-idempotency",
+  ]);
+  const provenanceArtifacts = new Map(
+    provenanceBundle.artifacts.map((entry) => [
+      entry.artifact.scenario.id,
+      entry.artifact,
+    ])
+  );
+  const corrupt = provenanceArtifacts.get("corrupt");
+  const noAnswer = provenanceArtifacts.get("no-answer");
+  const normal = provenanceArtifacts.get("normal-product-sense");
+  const replay = provenanceArtifacts.get("replay-idempotency");
+  assert.ok(corrupt && noAnswer && normal && replay);
+  assert.equal(
+    decodeSyntheticFeedbackArtifactV1({
+      ...corrupt,
+      customer: noAnswer.customer,
+      diagnostics: noAnswer.diagnostics,
+    }),
+    null
+  );
+  assert.equal(
+    decodeSyntheticFeedbackArtifactV1({
+      ...corrupt,
+      customer: noAnswer.customer,
+    }),
+    null
+  );
+  assert.equal(
+    decodeSyntheticFeedbackArtifactV1({
+      ...normal,
+      customer: replay.customer,
+      diagnostics: replay.diagnostics,
+    }),
+    null
+  );
+  assert.equal(
+    decodeSyntheticFeedbackArtifactV1({
+      ...normal,
+      diagnostics: {
+        ...normal.diagnostics,
+        replay: {
+          ...normal.diagnostics.replay,
+          transcriptEvent: "not_available",
+        },
+      },
     }),
     null
   );
@@ -250,6 +304,30 @@ function scorecardSemanticSignature(value: unknown): unknown {
   assert.ok(isRecord(value.review));
   assert.equal(value.review.kind, "dimension-coverage");
   return removeIdentityFields(value.review);
+}
+
+function liveAttemptTrace(attempts: number): string[] {
+  const trace = [
+    "dispatch-feedback-generation-event",
+    "authorize-feedback-generation",
+    "claim-feedback-generation",
+    "fetch-feedback-answer-blocks",
+  ];
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    trace.push(
+      `read-current-feedback-evaluation-${attempt}-execution-0`,
+      `evaluate-feedback-attempt-${attempt}`
+    );
+    if (attempt < attempts) {
+      trace.push(`wait-feedback-evaluation-retry-${attempt}`);
+    }
+  }
+  return [
+    ...trace,
+    "complete-feedback-generation",
+    "trigger-insights-update",
+    "authorize-feedback-generation",
+  ];
 }
 
 function removeIdentityFields(value: unknown): unknown {

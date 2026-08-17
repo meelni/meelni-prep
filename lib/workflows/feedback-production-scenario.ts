@@ -378,8 +378,15 @@ export async function runFeedbackProductionScenario(
     };
   }
 
-  const sent: Array<{ id: string; data: unknown }> = [];
-  const dispatchDeps = createDispatchDeps(generationStore, sent);
+  const sent: Array<Parameters<DispatchFeedbackGenerationDeps["send"]>[0]> = [];
+  const insightsEvents: Array<
+    Parameters<FeedbackGenerationSteps["sendInsights"]>[0]
+  > = [];
+  const dispatchDeps = createDispatchDeps(
+    generationStore,
+    sent,
+    durableStepRoundTrips
+  );
   const dispatched = await dispatchFeedbackGenerationWorkflow(
     {
       sessionId: fixture.sessionId,
@@ -410,10 +417,19 @@ export async function runFeedbackProductionScenario(
       durableStepRoundTrips.push(name);
       return jsonRoundTrip(value, name);
     },
-    async sleep(name) {
+    async sleep(name, durationMs) {
+      jsonRoundTrip({ name, durationMs }, name);
       durableStepRoundTrips.push(name);
     },
-    async sendInsights() {},
+    async sendInsights(event) {
+      insightsEvents.push(
+        roundTripDurableEvent(
+          event,
+          "trigger-insights-update",
+          durableStepRoundTrips
+        )
+      );
+    },
   };
   const handlerDeps: FeedbackGenerationRequestedHandlerDeps = {
     now: () => SYNTHETIC_NOW.getTime(),
@@ -439,6 +455,7 @@ export async function runFeedbackProductionScenario(
   });
   assert.equal(handled.status, "completed");
   assert.equal(generationStore.completeCount, 1);
+  assert.equal(insightsEvents.length, 1);
   stages.push("immutable_persistence", "inngest_handler");
   const duplicateRun = await runFeedbackGenerationRequested({
     eventId,
@@ -448,6 +465,7 @@ export async function runFeedbackProductionScenario(
   });
   assert.equal(duplicateRun.disposition, "already_terminal");
   assert.equal(generationStore.completeCount, 1);
+  assert.equal(insightsEvents.length, 1);
 
   const lateFailureApplied = await failFeedbackGenerationWorkflow(
     {
@@ -711,6 +729,16 @@ function jsonRoundTrip<T>(value: T, stepName: string): T {
     throw new Error(`synthetic_durable_step_not_json:${stepName}`);
   }
   return JSON.parse(serialized) as T;
+}
+
+function roundTripDurableEvent<T>(
+  value: T,
+  stepName: string,
+  durableStepRoundTrips: string[]
+): T {
+  const roundTripped = jsonRoundTrip(value, stepName);
+  durableStepRoundTrips.push(stepName);
+  return roundTripped;
 }
 
 class MemoryEvidenceStore {
@@ -1012,7 +1040,8 @@ class MemoryGenerationStore implements FeedbackGenerationStore {
 
 function createDispatchDeps(
   store: MemoryGenerationStore,
-  sent: Array<{ id: string; data: unknown }>
+  sent: Array<Parameters<DispatchFeedbackGenerationDeps["send"]>[0]>,
+  durableStepRoundTrips: string[]
 ): DispatchFeedbackGenerationDeps {
   const dispatchStore: DispatchFeedbackGenerationDeps["store"] = {
     async get() {
@@ -1064,7 +1093,13 @@ function createDispatchDeps(
     now: () => SYNTHETIC_NOW,
     reportFailure() {},
     async send(event) {
-      sent.push({ id: event.id, data: event.data });
+      sent.push(
+        roundTripDurableEvent(
+          event,
+          "dispatch-feedback-generation-event",
+          durableStepRoundTrips
+        )
+      );
     },
   };
 }
