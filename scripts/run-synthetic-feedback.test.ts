@@ -16,7 +16,7 @@ import test from "node:test";
 import {
   decodeSyntheticFeedbackArtifactV1,
   decodeSyntheticFeedbackManifestV1,
-} from "@meelni/test-fixtures";
+} from "@meelni/test-fixtures/synthetic-feedback";
 
 import { runSyntheticFeedbackCli } from "./run-synthetic-feedback";
 

@@ -11,7 +11,7 @@ import {
 import { dirname, parse, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures";
+import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures/synthetic-feedback";
 
 import { createSyntheticFeedbackBundle } from "@/lib/workflows/synthetic-feedback-runner";
 

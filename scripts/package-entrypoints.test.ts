@@ -116,6 +116,10 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   const agent = await import("@meelni/agent");
   const integrations = await import("@meelni/integrations");
   const opik = await import("@meelni/integrations/opik");
+  const testFixtures = await import("@meelni/test-fixtures");
+  const syntheticFeedback = await import(
+    "@meelni/test-fixtures/synthetic-feedback"
+  );
 
   assert.equal(typeof core.buildFullConfig, "function");
   assert.equal(typeof core.calculateOverallScore, "function");
@@ -129,6 +133,15 @@ test("workspace package entrypoints expose named contracts to dynamic imports", 
   assert.equal(typeof integrations.buildInterviewRoomName, "function");
   assert.equal(typeof integrations.getLiveKitEnvironment, "function");
   assert.equal(typeof opik.startOpikFeedbackEvaluationTrace, "function");
+  assert.equal("createSyntheticFeedbackScenarios" in testFixtures, false);
+  assert.equal(
+    typeof syntheticFeedback.createSyntheticFeedbackScenarios,
+    "function"
+  );
+  assert.equal(
+    typeof syntheticFeedback.decodeSyntheticFeedbackArtifactV1,
+    "function"
+  );
 });
 
 test("server transcript persistence has no direct mutation bypass", async () => {

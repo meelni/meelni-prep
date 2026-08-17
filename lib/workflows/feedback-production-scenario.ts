@@ -25,11 +25,11 @@ import {
   type SkippedFeedbackOutcomeReason,
   type TrustedAnswerBlockProjection,
 } from "@meelni/core";
+import type { FeedbackGoldenPathFixture } from "@meelni/test-fixtures";
 import {
   SYNTHETIC_FEEDBACK_GENERATED_STAGES,
-  type FeedbackGoldenPathFixture,
   type SyntheticFeedbackStage,
-} from "@meelni/test-fixtures";
+} from "@meelni/test-fixtures/synthetic-feedback";
 
 import type { FeedbackGenerationRecord } from "@/lib/db/feedback-generation-state";
 import type { FeedbackGenerationStore } from "@/lib/db/feedback-generation-state";
