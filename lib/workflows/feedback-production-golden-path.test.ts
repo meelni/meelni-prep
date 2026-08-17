@@ -475,15 +475,13 @@ async function runFixture(fixture: FeedbackGoldenPathFixture) {
   assert.ok(decoded && decoded.status === "completed", fixture.id);
   const view = toFeedbackViewState(decoded);
   assert.ok(
-    view.kind === "completed-full-scorecard" ||
-      view.kind === "completed-partial-scorecard" ||
+    view.kind === "completed-scorecard" ||
       view.kind === "completed-coaching-review",
     fixture.id
   );
   if (
-    view.kind === "completed-partial-scorecard" ||
     view.kind === "completed-coaching-review" ||
-    view.kind === "completed-full-scorecard"
+    view.kind === "completed-scorecard"
   ) {
     const grounded = Object.values(view.feedback.dimensions).flatMap(
       (dimension) => dimension.evidence
