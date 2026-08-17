@@ -191,15 +191,13 @@ test("artifact and manifest decoders fail closed", async () => {
 });
 
 test("equivalent segmentations and safe-marker authority preserve scorecard semantics", async () => {
-  const scenarios = createSyntheticFeedbackScenarios();
-  const byId = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
   const artifacts = await Promise.all(
     [
       "segmentation-equivalent-1",
       "segmentation-equivalent-5",
       "normal-product-sense",
       "repeated-safe-markers-complete-scope",
-    ].map((id) => runSyntheticFeedbackScenario(byId.get(id)!))
+    ].map((id) => runSyntheticFeedbackScenario(id))
   );
 
   assert.deepEqual(

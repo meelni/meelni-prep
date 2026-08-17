@@ -1,5 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { parse, resolve, join } from "node:path";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, parse, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures";
@@ -41,18 +50,15 @@ export async function runSyntheticFeedbackCli(
     }
 
     const bundle = await createSyntheticFeedbackBundle(parsed.scenarioIds);
-    await mkdir(outputDirectory, { recursive: true });
-    for (const entry of bundle.artifacts) {
-      await writeFile(
-        join(outputDirectory, entry.artifactFile),
-        entry.artifactJson,
-        "utf8"
-      );
-    }
-    await writeFile(
-      join(outputDirectory, "manifest.json"),
-      bundle.manifestJson,
-      "utf8"
+    await publishSyntheticFeedbackFiles(
+      outputDirectory,
+      [
+        ...bundle.artifacts.map((entry) => ({
+          name: entry.artifactFile,
+          content: entry.artifactJson,
+        })),
+        { name: "manifest.json", content: bundle.manifestJson },
+      ].sort((left, right) => left.name.localeCompare(right.name))
     );
     io.writeOut(
       `${JSON.stringify(
@@ -77,6 +83,89 @@ export async function runSyntheticFeedbackCli(
     );
     return 1;
   }
+}
+
+async function publishSyntheticFeedbackFiles(
+  outputDirectory: string,
+  files: readonly { name: string; content: string }[]
+): Promise<void> {
+  try {
+    if (await existingOutputMatches(outputDirectory, files)) return;
+    const parentDirectory = dirname(outputDirectory);
+    await mkdir(parentDirectory, { recursive: true });
+    const stagingDirectory = await mkdtemp(
+      join(parentDirectory, ".meelni-synthetic-feedback-")
+    );
+    let published = false;
+    try {
+      for (const file of files) {
+        await writeFile(join(stagingDirectory, file.name), file.content, {
+          encoding: "utf8",
+          flag: "wx",
+        });
+      }
+      try {
+        await rename(stagingDirectory, outputDirectory);
+        published = true;
+      } catch (error) {
+        if (await existingOutputMatches(outputDirectory, files)) return;
+        throw error;
+      }
+    } finally {
+      if (!published) {
+        await rm(stagingDirectory, { recursive: true, force: true });
+      }
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "synthetic_feedback_output_conflict"
+    ) {
+      throw error;
+    }
+    throw new Error("synthetic_feedback_output_write_failed");
+  }
+}
+
+async function existingOutputMatches(
+  outputDirectory: string,
+  files: readonly { name: string; content: string }[]
+): Promise<boolean> {
+  let outputStats;
+  try {
+    outputStats = await lstat(outputDirectory);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return false;
+    throw error;
+  }
+  if (outputStats.isSymbolicLink() || !outputStats.isDirectory()) {
+    throw new Error("synthetic_feedback_output_conflict");
+  }
+
+  const expectedNames = files.map((file) => file.name).sort();
+  const actualNames = (await readdir(outputDirectory)).sort();
+  if (
+    expectedNames.length !== actualNames.length ||
+    expectedNames.some((name, index) => name !== actualNames[index])
+  ) {
+    throw new Error("synthetic_feedback_output_conflict");
+  }
+
+  for (const file of files) {
+    const filePath = join(outputDirectory, file.name);
+    const fileStats = await lstat(filePath);
+    if (fileStats.isSymbolicLink() || !fileStats.isFile()) {
+      throw new Error("synthetic_feedback_output_conflict");
+    }
+    if ((await readFile(filePath, "utf8")) !== file.content) {
+      throw new Error("synthetic_feedback_output_conflict");
+    }
+  }
+  return true;
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function parseRunArguments(args: readonly string[]): {

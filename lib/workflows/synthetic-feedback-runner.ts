@@ -35,9 +35,10 @@ export interface SyntheticFeedbackBundleV1 {
 }
 
 export async function runSyntheticFeedbackScenario(
-  scenario: SyntheticFeedbackScenarioV1,
+  scenarioId: string,
   options: RunSyntheticFeedbackOptions = {}
 ): Promise<SyntheticFeedbackArtifactV1> {
+  const scenario = findSyntheticFeedbackScenario(scenarioId);
   const result = await runFeedbackProductionScenario(scenario.fixture, {
     evaluatorCoverage: scenario.evaluatorCoverage,
     ...(scenario.persistedResultMutation === "unknown_schema_version"
@@ -93,7 +94,7 @@ export async function createSyntheticFeedbackBundle(
     : catalog.map((scenario) => scenario.id).sort();
   const selected = selectedIds.map((id) => {
     const scenario = byId.get(id);
-    if (!scenario) throw new Error(`unknown_synthetic_feedback_scenario:${id}`);
+    if (!scenario) throw new Error("unknown_synthetic_feedback_scenario");
     return scenario;
   });
   if (selected.length === 0) {
@@ -102,7 +103,7 @@ export async function createSyntheticFeedbackBundle(
 
   const artifacts: SyntheticFeedbackBundleV1["artifacts"] = [];
   for (const scenario of selected) {
-    const artifact = await runSyntheticFeedbackScenario(scenario, options);
+    const artifact = await runSyntheticFeedbackScenario(scenario.id, options);
     const artifactJson = serializeSyntheticFeedbackJson(artifact);
     artifacts.push({
       artifact,
@@ -131,6 +132,16 @@ export async function createSyntheticFeedbackBundle(
     manifest,
     manifestJson: serializeSyntheticFeedbackJson(manifest),
   };
+}
+
+function findSyntheticFeedbackScenario(
+  scenarioId: string
+): SyntheticFeedbackScenarioV1 {
+  const scenario = createSyntheticFeedbackScenarios().find(
+    (candidate) => candidate.id === scenarioId
+  );
+  if (!scenario) throw new Error("unknown_synthetic_feedback_scenario");
+  return scenario;
 }
 
 export function serializeSyntheticFeedbackJson(value: unknown): string {
