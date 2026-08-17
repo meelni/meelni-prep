@@ -108,26 +108,30 @@ test("SAV-415 keeps reasons outcome-bound and hides unavailable outcomes", async
 }) => {
   const activity = await installBrowserActivityGuard(page, "harness");
 
-  await page.goto(harness("feedback-coaching-review"));
+  await page.goto(harness("feedback-full-scorecard"));
   await page.getByRole("button", { name: "Not helpful", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "The score explanation was unclear" })
+  ).toBeVisible();
   await expect(
     page.getByRole("radio", {
       name: "Why scores were withheld was unclear",
     })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("radio", { name: "The score explanation was unclear" })
   ).toHaveCount(0);
 
   await page.goto(harness("feedback-partial-scorecard"));
-  await page.getByRole("button", { name: "Not helpful", exact: true }).click();
   await expect(
-    page.getByRole("radio", { name: "The score explanation was unclear" })
+    page.getByRole("heading", { name: "Coaching review" })
   ).toBeVisible();
+  await expect(page.getByText("Overall score", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Not helpful", exact: true }).click();
   await expect(
     page.getByRole("radio", {
       name: "Why scores were withheld was unclear",
     })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "The score explanation was unclear" })
   ).toHaveCount(0);
 
   for (const scenario of ["feedback-insufficient", "feedback-integrity"]) {
