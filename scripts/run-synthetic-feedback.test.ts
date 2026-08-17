@@ -102,4 +102,12 @@ test("run command rejects unknown scenarios and filesystem-root output", async (
     1
   );
   assert.match(errors.at(-1) ?? "", /cannot_be_filesystem_root/);
+  assert.equal(
+    await runSyntheticFeedbackCli(
+      ["run", "normal-product-sense", "--output", "--misspelled-flag"],
+      io
+    ),
+    1
+  );
+  assert.match(errors.at(-1) ?? "", /usage: feedback:synthetic/);
 });

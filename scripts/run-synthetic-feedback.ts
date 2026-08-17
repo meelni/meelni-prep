@@ -95,7 +95,9 @@ function parseRunArguments(args: readonly string[]): {
     }
     if (value === "--output") {
       const directory = args[index + 1];
-      if (!directory || outputDirectory) throw usageError();
+      if (!directory || directory.startsWith("--") || outputDirectory) {
+        throw usageError();
+      }
       outputDirectory = directory;
       index += 1;
       continue;

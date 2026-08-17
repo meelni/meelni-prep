@@ -40,6 +40,16 @@ export const SYNTHETIC_FEEDBACK_SKIPPED_STAGES = [
   "api_view_model",
 ] as const;
 
+export const SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS = [
+  "authorize-feedback-generation",
+  "claim-feedback-generation",
+  "fetch-feedback-answer-blocks",
+  "read-current-feedback-evaluation-1-execution-0",
+  "evaluate-feedback-attempt-1",
+  "complete-feedback-generation",
+  "authorize-feedback-generation",
+] as const;
+
 export type SyntheticFeedbackStage =
   (typeof SYNTHETIC_FEEDBACK_GENERATED_STAGES)[number];
 export type SyntheticFeedbackExpectedOutcome =
@@ -409,12 +419,59 @@ function isArtifactExecutionCoherent(
   }
   return (
     customer.lifecycle.status === "completed" &&
-    diagnostics.durableStepRoundTrips.length > 0 &&
+    isCoherentGeneratedDurableTrace(
+      diagnostics.durableStepRoundTrips,
+      diagnostics.executionMode
+    ) &&
     diagnostics.replay.dispatch === "already_sent" &&
     diagnostics.replay.generation === "already_terminal" &&
     diagnostics.replay.lateFailureApplied === false &&
     diagnostics.replay.persistenceWrites === 1
   );
+}
+
+function isCoherentGeneratedDurableTrace(
+  steps: readonly string[],
+  executionMode: SyntheticFeedbackArtifactV1["diagnostics"]["executionMode"]
+): boolean {
+  if (executionMode === "deterministic_provider_free") {
+    return jsonEqual(
+      steps,
+      SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS
+    );
+  }
+  if (
+    steps.length < SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS.length ||
+    steps[0] !== "authorize-feedback-generation" ||
+    steps[1] !== "claim-feedback-generation" ||
+    steps[2] !== "fetch-feedback-answer-blocks" ||
+    steps.at(-2) !== "complete-feedback-generation" ||
+    steps.at(-1) !== "authorize-feedback-generation"
+  ) {
+    return false;
+  }
+
+  let cursor = 3;
+  let attempt = 1;
+  const suffixStart = steps.length - 2;
+  while (cursor < suffixStart) {
+    if (
+      steps[cursor] !==
+        `read-current-feedback-evaluation-${attempt}-execution-0` ||
+      steps[cursor + 1] !== `evaluate-feedback-attempt-${attempt}`
+    ) {
+      return false;
+    }
+    cursor += 2;
+    if (cursor < suffixStart) {
+      if (steps[cursor] === `wait-feedback-evaluation-retry-${attempt}`) {
+        cursor += 1;
+        if (cursor >= suffixStart) return false;
+      }
+      attempt += 1;
+    }
+  }
+  return cursor === suffixStart;
 }
 
 function isScenarioId(value: unknown): value is string {
