@@ -414,6 +414,12 @@ provider-free bakeoff replays synthetic calibration outputs and pure queue
 assumptions only; it cannot change runtime configuration or authorize a
 provider/model/tier, spend, Production action, or default activation.
 
+## Synthetic Feedback Scenarios
+
+Run terminal production-shaped feedback scenarios locally with the documented
+provider-free list/run commands and versioned artifact contract in the
+[Synthetic Feedback Scenarios runbook](./synthetic-feedback-scenarios.md).
+
 ## Validation
 
 Use targeted validation while the monorepo migration is in progress:
