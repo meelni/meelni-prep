@@ -6681,6 +6681,7 @@ function parseDimensionCoverageProviderSelectionWithPolicy(value, options, polic
     options.verifiedPrefixProjection,
     options.answerBlocks
   ) : null;
+  const numericalScoresAuthorized = options.allowNumericalScores && (policy.preserveHistoricalPartialMode || !options.verifiedPrefixProjection || options.verifiedPrefixProjection.numericalScoreAuthority === "allowed");
   const root = requireRecord2(value);
   requireKeys(root, [
     "schemaVersion",
@@ -6745,7 +6746,7 @@ function parseDimensionCoverageProviderSelectionWithPolicy(value, options, polic
     );
     const coverage = selectedFacets.size === 0 ? "absent" : selectedFacets.size === 1 ? "partial" : "sufficient";
     const score = parseNullableScore(rawDimension.score);
-    if ((options.allowNumericalScores && coverage === "sufficient") !== (score !== null)) {
+    if ((numericalScoresAuthorized && coverage === "sufficient") !== (score !== null)) {
       throw new DimensionCoverageParseError("score_coverage_mismatch");
     }
     dimensions[dimension] = { coverage, score, evidence };
@@ -6753,8 +6754,8 @@ function parseDimensionCoverageProviderSelectionWithPolicy(value, options, polic
   const sufficientCount = FEEDBACK_DIMENSIONS.filter(
     (dimension) => dimensions[dimension].coverage === "sufficient"
   ).length;
-  const historicalMode = verifiedPrefixScope ? options.allowNumericalScores && sufficientCount > 0 ? "partial_scorecard" : "coaching_review" : !options.allowNumericalScores ? "coaching_review" : sufficientCount === FEEDBACK_DIMENSIONS.length ? "full_scorecard" : sufficientCount > 0 ? "partial_scorecard" : "coaching_review";
-  const scorecardEligible = options.allowNumericalScores && sufficientCount === FEEDBACK_DIMENSIONS.length && (verifiedPrefixScope === null || verifiedPrefixScope.excludedTailBlockCount === 0);
+  const historicalMode = verifiedPrefixScope ? numericalScoresAuthorized && sufficientCount > 0 ? "partial_scorecard" : "coaching_review" : !numericalScoresAuthorized ? "coaching_review" : sufficientCount === FEEDBACK_DIMENSIONS.length ? "full_scorecard" : sufficientCount > 0 ? "partial_scorecard" : "coaching_review";
+  const scorecardEligible = numericalScoresAuthorized && sufficientCount === FEEDBACK_DIMENSIONS.length && (verifiedPrefixScope === null || verifiedPrefixScope.excludedTailBlockCount === 0);
   const mode = policy.preserveHistoricalPartialMode && historicalMode === "partial_scorecard" ? "partial_scorecard" : scorecardEligible ? "full_scorecard" : "coaching_review";
   if (mode === "coaching_review") {
     for (const dimension of FEEDBACK_DIMENSIONS) {
@@ -32862,7 +32863,7 @@ async function runGenerateFeedbackWorkflow(input, deps) {
   const roundType = authorization.session.roundType;
   await assertAccountIsActive(input.userId, deps);
   const verifiedPrefixProjection = evidence.snapshotState === "partial" && evidence.trustedProjection?.status === "verified_prefix" ? evidence.trustedProjection : void 0;
-  const allowNumericalScores = verifiedPrefixProjection !== void 0 || evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+  const allowNumericalScores = verifiedPrefixProjection?.numericalScoreAuthority === "allowed" || evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
   let evaluated = null;
   let attempt = 1;
   let plan = planFeedbackProviderAttempt({
