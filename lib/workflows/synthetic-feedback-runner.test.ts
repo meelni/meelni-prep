@@ -9,7 +9,7 @@ import {
   decodeSyntheticFeedbackArtifactV1,
   decodeSyntheticFeedbackManifestV1,
   type SyntheticFeedbackExpectedOutcome,
-} from "@meelni/test-fixtures";
+} from "@meelni/test-fixtures/synthetic-feedback";
 
 import { FEEDBACK_GENERATION_MAX_PROVIDER_ATTEMPTS } from "@/lib/evaluation/feedback-generation-policy";
 

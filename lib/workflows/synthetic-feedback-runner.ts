@@ -12,7 +12,7 @@ import {
   type SyntheticFeedbackArtifactV1,
   type SyntheticFeedbackManifestV1,
   type SyntheticFeedbackScenarioV1,
-} from "@meelni/test-fixtures";
+} from "@meelni/test-fixtures/synthetic-feedback";
 
 import {
   runFeedbackProductionScenario,

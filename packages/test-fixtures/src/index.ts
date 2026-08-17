@@ -22,7 +22,6 @@ export * from "./focused-practice-plan";
 export * from "./focused-practice-attempt";
 export * from "./evaluation-validation";
 export * from "./feedback-generation";
-export * from "./synthetic-feedback";
 export * from "./evaluation-calibration";
 export * from "./answer-blocks";
 export * from "./dimension-coverage-calibration";

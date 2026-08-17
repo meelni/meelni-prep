@@ -33,7 +33,7 @@ nonempty output instead of overwriting it.
 
 ## Stable artifact boundary
 
-The public `@meelni/test-fixtures` entrypoint exports these version-one
+The public `@meelni/test-fixtures/synthetic-feedback` entrypoint exports these version-one
 contracts and fail-closed decoders:
 
 - `SyntheticFeedbackScenarioV1`
