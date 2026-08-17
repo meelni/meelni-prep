@@ -1,12 +1,15 @@
 # Design
 
+> SAV-453 amendment: customer eligibility is `scorecard | coaching_review`.
+> Supported historical partial rows reduce to scoreless coaching after strict
+> source validation; no stored feedback row is rewritten.
+
 ## Eligibility and outcome
 
 The database adapter reconstructs the same bounded source aggregate used by
 the trusted completed-feedback path. Core presentation must return one of:
 
-- dimension-coverage `full_scorecard`;
-- dimension-coverage `partial_scorecard`;
+- dimension-coverage `scorecard`;
 - dimension-coverage `coaching_review`; or
 - the supported evidence-limited presentation, mapped to
   `coaching_review`.
@@ -17,13 +20,13 @@ coverage outcome for an older row.
 
 ## Closed signal
 
-Version `feedback-quality-signal.v1` stores `helpful | not_helpful`.
+Version `feedback-quality-signal.v2` stores `helpful | not_helpful`.
 `helpful` requires a null reason. `not_helpful` permits null or one compatible
 reason:
 
 - common: `not_specific_enough`, `evidence_did_not_match`,
   `next_step_unclear`, `too_much_to_use`;
-- full/partial only: `score_explanation_unclear`;
+- scorecard only: `score_explanation_unclear`;
 - coaching only: `score_withholding_unclear`.
 
 No `other`, comment, details, metadata, or arbitrary text field exists.

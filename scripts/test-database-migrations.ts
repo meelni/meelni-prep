@@ -51,6 +51,7 @@ import {
   VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
   SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
   MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
+  TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
   getDatabaseSchemaContract,
   getDatabasePreMigrationContract,
   INTERVIEW_RECONNECT_SCHEMA_FINGERPRINT,
@@ -334,7 +335,10 @@ async function run() {
     const cleanContract = await getStableStartDatabaseSchemaContract(clean);
     const cleanFingerprint = databaseSchemaFingerprint(cleanContract);
     console.log(`Schema contract fingerprint: ${cleanFingerprint}`);
-    assert.equal(cleanFingerprint, SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT);
+    assert.equal(
+      cleanFingerprint,
+      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
+    );
     const migrationCountBefore = await migrationCount(clean);
     await migrate(drizzle(clean), { migrationsFolder: MIGRATIONS });
     assert.equal(await migrationCount(clean), migrationCountBefore);
@@ -536,9 +540,10 @@ async function run() {
         VERIFIED_PREFIX_PARTIAL_SCORECARDS_SCHEMA_FINGERPRINT,
         SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT,
         MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT,
+        TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT,
       ];
       let reconnectApplied: MigrationPreflightResult | null = null;
-      for (let maxIndex = 18; maxIndex <= 40; maxIndex += 1) {
+      for (let maxIndex = 18; maxIndex <= 41; maxIndex += 1) {
         const rollingFolder = await createMigrationFolderThrough(maxIndex);
         try {
           await migrate(drizzle(upgrade), {
@@ -558,7 +563,7 @@ async function run() {
           assert.equal(strictRollingPreflight.status, 1);
           assert.match(
             `${strictRollingPreflight.stdout}\n${strictRollingPreflight.stderr}`,
-            /Strict launch preflight requires the exact latest migration count 41; found 22/
+            /Strict launch preflight requires the exact latest migration count 42; found 22/
           );
           await upgrade.unsafe(`
             GRANT ALL ON TABLE
@@ -884,7 +889,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
         ORDER BY created_at
       `;
       await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-      assert.equal(await migrationCount(sql), 41);
+      assert.equal(await migrationCount(sql), 42);
     } finally {
       await sql`
         ALTER TABLE transcript_runtime_writer OWNER TO CURRENT_USER
@@ -948,7 +953,7 @@ async function verifyHistoricalPreviewReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
+      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
     );
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(finalPreflight.previewTailLineage, "historical_preview");
@@ -1193,7 +1198,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     assert.equal(strictBeforePublicDemo.status, 1);
     assert.match(
       `${strictBeforePublicDemo.stdout}\n${strictBeforePublicDemo.stderr}`,
-      /exact latest migration count 41; found 25/
+      /exact latest migration count 42; found 25/
     );
 
     const genericRows = await sql<
@@ -1292,12 +1297,9 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
     await sql.unsafe(reconciliationSql);
 
     await migrate(drizzle(sql), { migrationsFolder: MIGRATIONS });
-    assert.equal(await migrationCount(sql), 41);
+    assert.equal(await migrationCount(sql), 42);
     const finalPreflight = runPreflight(databaseUrl, true, "reconciled")!;
-    assert.equal(
-      finalPreflight.startingContract,
-      "managed_service_role_grants"
-    );
+    assert.equal(finalPreflight.startingContract, "total_required_scorecards");
     assert.equal(finalPreflight.migrationLineage, "legacy_runtime_settlement");
     assert.equal(finalPreflight.runtimeSettlementReconciliationPending, false);
     assert.equal(finalPreflight.tables, 42);
@@ -1306,7 +1308,7 @@ async function verifyRuntimeSettlementReconciliation(databaseUrl: string) {
       databaseSchemaFingerprint(
         await getStableStartDatabaseSchemaContract(sql)
       ),
-      SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT
+      TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT
     );
 
     const strictPreflight = runStrictPreflight(databaseUrl);
@@ -6681,7 +6683,7 @@ async function verifyProviderCreditRecovery(
     const refundedPreflight = runPreflight(databaseUrl, true, "reconciled")!;
     assert.equal(
       refundedPreflight.startingContract,
-      "managed_service_role_grants"
+      "total_required_scorecards"
     );
     assert.equal(
       refundedPreflight.stableStartIntegrity.usable_without_consume,
@@ -7693,6 +7695,29 @@ async function verifyFeedbackQualityPersistence(
   );
   await assert.rejects(
     () => sql`
+      UPDATE feedback_quality_signal
+      SET contract_version = 'feedback-quality-signal.v2'
+      WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+    `,
+    /feedback_quality_signal_outcome_check/
+  );
+  await sql`
+    UPDATE feedback_quality_signal
+    SET contract_version = 'feedback-quality-signal.v2',
+        review_outcome = 'coaching_review',
+        reason = 'score_withholding_unclear'
+    WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+  `;
+  await assert.rejects(
+    () => sql`
+      UPDATE feedback_quality_signal
+      SET reason = 'score_explanation_unclear'
+      WHERE user_id = ${FEEDBACK_QUALITY_USER}::uuid
+    `,
+    /feedback_quality_signal_selection_check/
+  );
+  await assert.rejects(
+    () => sql`
       INSERT INTO feedback_quality_signal (
         user_id, session_id, feedback_id, contract_version,
         review_outcome, response, reason
@@ -7932,9 +7957,9 @@ async function verifyFeedbackQualityPersistence(
         await createDrizzleFeedbackQualitySignalRepository().writeOwned({
           userId: FEEDBACK_QUALITY_DELETION_USER,
           sessionId: FEEDBACK_QUALITY_DELETION_SESSION,
-          outcome: "full_scorecard",
+          outcome: "scorecard",
           command: {
-            contractVersion: "feedback-quality-signal.v1",
+            contractVersion: "feedback-quality-signal.v2",
             response: "helpful",
             reason: null,
             expectedRevision: null,
@@ -8716,7 +8741,7 @@ async function verifyFeedbackStageAttemptPersistence(
 }
 
 async function verifyDatabase(sql: postgres.Sql) {
-  assert.equal(await migrationCount(sql), 41);
+  assert.equal(await migrationCount(sql), 42);
 
   const tables = await sql<{ table_name: string }[]>`
     SELECT table_name
@@ -9759,6 +9784,11 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       prompt_version: string | null;
       model_version: string | null;
       evaluation_state: string | null;
+      structure_score: number | null;
+      clarity_score: number | null;
+      insight_score: number | null;
+      communication_score: number | null;
+      leadership_score: number | null;
       overall_score: string | null;
       feedback_mode: string | null;
       feedback_round_type: string | null;
@@ -9767,8 +9797,9 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
     }[]
   >`
     SELECT schema_version, prompt_version, model_version, evaluation_state,
-      overall_score, feedback_mode, feedback_round_type, dimension_coverage,
-      verified_prefix_scope
+      structure_score, clarity_score, insight_score, communication_score,
+      leadership_score, overall_score, feedback_mode, feedback_round_type,
+      dimension_coverage, verified_prefix_scope
     FROM feedback
     WHERE id = ${legacy.id}::uuid
   `;
@@ -10014,13 +10045,95 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       /feedback_verified_prefix_scope_tuple_check/
     );
     await assert.rejects(
-      tx.savepoint("verified_prefix_overall_forbidden", async (savepoint) => {
+      tx.savepoint("historical_partial_overall_forbidden", async (savepoint) => {
         await savepoint`
           UPDATE feedback SET overall_score = 8
           WHERE id = ${legacy.id}::uuid
         `;
       }),
+      /feedback_dimension_coverage_score_tuple_check/
+    );
+    await tx`
+      UPDATE feedback
+      SET evaluation_state = 'full',
+          feedback_mode = 'full_scorecard',
+          dimension_coverage = ${JSON.stringify({
+            structure: { score: 8, coverage: "sufficient", evidence: [] },
+            clarity: { score: 7, coverage: "sufficient", evidence: [] },
+            insight: { score: 9, coverage: "sufficient", evidence: [] },
+            communication: {
+              score: 8,
+              coverage: "sufficient",
+              evidence: [],
+            },
+            leadership: { score: 7, coverage: "sufficient", evidence: [] },
+          })}::jsonb,
+          structure_score = 8,
+          clarity_score = 7,
+          insight_score = 9,
+          communication_score = 8,
+          leadership_score = 7,
+          overall_score = 7.9
+      WHERE id = ${legacy.id}::uuid
+    `;
+    const [completeVerifiedPrefixScorecard] = await tx<
+      {
+        feedback_mode: string;
+        evaluation_state: string;
+        overall_score: string;
+      }[]
+    >`
+      SELECT feedback_mode, evaluation_state, overall_score
+      FROM feedback
+      WHERE id = ${legacy.id}::uuid
+    `;
+    assert.deepEqual(completeVerifiedPrefixScorecard, {
+      feedback_mode: "full_scorecard",
+      evaluation_state: "full",
+      overall_score: "7.9",
+    });
+    await assert.rejects(
+      tx.savepoint("scorecard_dimension_required", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback SET clarity_score = NULL
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_dimension_coverage_score_tuple_check/
+    );
+    await assert.rejects(
+      tx.savepoint("scorecard_excluded_tail_forbidden", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback
+          SET verified_prefix_scope = ${JSON.stringify({
+            ...verifiedPrefixScope,
+            excludedTailBlockCount: 1,
+          })}::jsonb
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
       /feedback_verified_prefix_scope_tuple_check/
+    );
+    await tx`
+      UPDATE feedback
+      SET evaluation_state = 'partial',
+          feedback_mode = 'coaching_review',
+          structure_score = NULL,
+          clarity_score = NULL,
+          insight_score = NULL,
+          communication_score = NULL,
+          leadership_score = NULL,
+          overall_score = NULL
+      WHERE id = ${legacy.id}::uuid
+    `;
+    await assert.rejects(
+      tx.savepoint("coaching_scores_forbidden", async (savepoint) => {
+        await savepoint`
+          UPDATE feedback SET structure_score = 8
+          WHERE id = ${legacy.id}::uuid
+        `;
+      }),
+      /feedback_dimension_coverage_score_tuple_check/
     );
     await tx`
       UPDATE feedback
@@ -10033,6 +10146,11 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
           feedback_round_type = NULL,
           dimension_coverage = NULL,
           verified_prefix_scope = NULL,
+          structure_score = ${legacyBefore!.structure_score},
+          clarity_score = ${legacyBefore!.clarity_score},
+          insight_score = ${legacyBefore!.insight_score},
+          communication_score = ${legacyBefore!.communication_score},
+          leadership_score = ${legacyBefore!.leadership_score},
           overall_score = ${legacyBefore!.overall_score}
       WHERE id = ${legacy.id}::uuid
     `;
@@ -10045,6 +10163,11 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
       model_version: string | null;
       evaluation_state: string | null;
       rubric_version: string;
+      structure_score: number | null;
+      clarity_score: number | null;
+      insight_score: number | null;
+      communication_score: number | null;
+      leadership_score: number | null;
       overall_score: string | null;
       feedback_mode: string | null;
       feedback_round_type: string | null;
@@ -10053,8 +10176,9 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
     }[]
   >`
     SELECT schema_version, prompt_version, model_version, evaluation_state,
-      rubric_version, overall_score, feedback_mode, feedback_round_type,
-      dimension_coverage, verified_prefix_scope
+      rubric_version, structure_score, clarity_score, insight_score,
+      communication_score, leadership_score, overall_score, feedback_mode,
+      feedback_round_type, dimension_coverage, verified_prefix_scope
     FROM feedback
     WHERE id = ${legacy.id}::uuid
   `;
@@ -10064,6 +10188,11 @@ async function verifyFeedbackV2VersionTuple(sql: postgres.Sql) {
     model_version: null,
     evaluation_state: null,
     rubric_version: "1.0.0",
+    structure_score: legacyBefore!.structure_score,
+    clarity_score: legacyBefore!.clarity_score,
+    insight_score: legacyBefore!.insight_score,
+    communication_score: legacyBefore!.communication_score,
+    leadership_score: legacyBefore!.leadership_score,
     overall_score: legacyBefore!.overall_score,
     feedback_mode: null,
     feedback_round_type: null,
@@ -10480,7 +10609,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   assert.equal(persistedBeforeLateFailure.outcomeReason, "feedback_generated");
   assert.equal(persistedBeforeLateFailure.evaluationState, "partial");
   assert.equal(persistedBeforeLateFailure.overallScore, null);
-  assert.equal(persistedBeforeLateFailure.feedbackMode, "partial_scorecard");
+  assert.equal(persistedBeforeLateFailure.feedbackMode, "coaching_review");
   assert.equal(persistedBeforeLateFailure.feedbackRoundType, "product_sense");
   assert.equal(
     (
@@ -10497,7 +10626,7 @@ async function verifyFeedbackProductionDatabaseLifecycle(
         structure?: { score?: number | null };
       }
     ).structure?.score,
-    7
+    null
   );
   assert.equal(
     (
@@ -10555,20 +10684,23 @@ async function verifyFeedbackProductionDatabaseLifecycle(
   );
   assert.equal(apiPayload.feedback.kind, "dimension-coverage");
   if (apiPayload.feedback.kind === "dimension-coverage") {
-    assert.equal(apiPayload.feedback.mode, "partial_scorecard");
-    assert.equal(apiPayload.feedback.overallScore, null);
-    assert.equal(apiPayload.feedback.dimensions.structure.score, 7);
-    assert.equal(apiPayload.feedback.dimensions.clarity.score, null);
+    assert.equal(apiPayload.feedback.outcome, "coaching_review");
+    assert.equal("scores" in apiPayload.feedback, false);
+    assert.equal("score" in apiPayload.feedback.dimensions.structure, false);
+    assert.equal("score" in apiPayload.feedback.dimensions.clarity, false);
   }
   const decoded = core.decodeFeedbackLifecycleResponse(apiPayload);
   assert.ok(decoded);
   const view = core.toFeedbackViewState(decoded);
-  assert.equal(view.kind, "completed-partial-scorecard");
-  if (view.kind !== "completed-partial-scorecard") {
-    throw new Error("database golden path lost partial scorecard view state");
+  assert.equal(view.kind, "completed-coaching-review");
+  if (
+    view.kind !== "completed-coaching-review" ||
+    view.feedback.kind !== "dimension-coverage"
+  ) {
+    throw new Error("database golden path lost coaching review view state");
   }
   assert.equal(view.feedback.dimensions.structure.coverage, "sufficient");
-  assert.equal(view.feedback.dimensions.structure.score, 7);
+  assert.equal("score" in view.feedback.dimensions.structure, false);
   assert.equal(view.feedback.dimensions.structure.evidence.length, 2);
   assert.equal(
     view.feedback.dimensions.structure.evidence[0]?.citation,

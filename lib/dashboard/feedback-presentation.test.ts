@@ -187,7 +187,10 @@ function dimensionCoverageCandidate(
       allowNumericalScores: true,
     }
   );
-  assert.equal(result.mode, mode);
+  assert.equal(
+    result.mode,
+    mode === "full_scorecard" ? "full_scorecard" : "coaching_review"
+  );
   return candidate({
     completionTier: "partial",
     overallScore:
@@ -234,7 +237,7 @@ function verifiedPrefixDashboardFixture() {
     FEEDBACK_DIMENSIONS.map((dimension) => [
       dimension,
       {
-        score: dimension === "structure" ? 8 : null,
+        score: null,
         evidence:
           dimension === "structure"
             ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(
@@ -291,18 +294,18 @@ function verifiedPrefixDashboardFixture() {
   };
 }
 
-test("classifies valid completed scored and evidence-limited reviews", () => {
+test("classifies valid completed scorecard and coaching reviews", () => {
   assert.equal(
     classifyDashboardFeedbackPresentation(scoredCandidate(), transcript),
-    "scored"
+    "scorecard"
   );
   assert.equal(
     classifyDashboardFeedbackPresentation(candidate(), transcript),
-    "evidence_limited"
+    "coaching_review"
   );
 });
 
-test("keeps full, partial, and coaching dimension-coverage reviews reachable", () => {
+test("keeps scorecard and scoreless coaching dimension-coverage reviews reachable", () => {
   for (const mode of [
     "full_scorecard",
     "partial_scorecard",
@@ -316,7 +319,7 @@ test("keeps full, partial, and coaching dimension-coverage reviews reachable", (
         "product_sense",
         "complete"
       ),
-      mode
+      mode === "full_scorecard" ? "scorecard" : "coaching_review"
     );
   }
 });
@@ -332,7 +335,7 @@ test("keeps verified-prefix history reachable only after exact projection revali
       "partial",
       fixture.projection
     ),
-    "partial_scorecard"
+    "coaching_review"
   );
   assert.equal(
     classifyDashboardFeedbackPresentation(
@@ -397,7 +400,7 @@ test("dimension-coverage dashboard binds the owning round and snapshot score pol
       "product_sense",
       "partial"
     ),
-    "unavailable"
+    "coaching_review"
   );
   assert.equal(
     classifyDashboardFeedbackPresentation(
@@ -431,7 +434,7 @@ test("keeps supported legacy scores reachable without accepting unknown scored t
     drillsJson: JSON.stringify(["Practice a concise opening."]),
     summary: "A valid historical review.",
   });
-  assert.equal(classifyDashboardFeedbackPresentation(legacy, []), "scored");
+  assert.equal(classifyDashboardFeedbackPresentation(legacy, []), "scorecard");
 
   for (const overrides of [
     { rubricVersion: "unknown-legacy-rubric" },

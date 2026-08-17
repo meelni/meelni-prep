@@ -9,13 +9,13 @@ improvement.
 
 A feedback record contributes to progress only when all conditions are true:
 
-1. The server-owned presentation kind is `scored` or `full_scorecard`, proving
-   a supported complete score tuple with a valid overall.
+1. The server-owned presentation kind is `scorecard`, proving a supported
+   complete score tuple with every weighted dimension and a canonical total.
 2. `feedback.status` is exactly `completed`.
 3. `feedback.overallScore` is a finite number from 0 through 10.
 
-Partial scorecards, coaching reviews, unable outcomes, pending, processing,
-failed, missing, malformed, out-of-range, and otherwise unscored feedback never
+Coaching reviews, unable outcomes, pending, processing, failed, missing,
+malformed, out-of-range, and otherwise unscored feedback never
 contribute to score averages, trend bars, focus areas, weakness patterns, or
 analytics evidence. A score-like value stored on any ineligible record remains
 ineligible.
@@ -41,9 +41,8 @@ score labels keep the source 0–10 rubric scale.
 
 - `pending` or `processing`: Feedback processing / Not scored yet.
 - `failed`: Feedback failed / Not scored.
-- Full scorecard: Full scorecard ready / Full scorecard, with a review link.
-- Partial scorecard: Partial scorecard ready / Partial scorecard, with a review
-  link and no overall-score substitution.
+- Scorecard: Scorecard ready / Scorecard, with a review link and canonical
+  total.
 - Coaching review, including supported historical evidence-limited rows:
   Coaching review ready / Coaching review, with a review link.
 - no-reviewable-answer or integrity terminal result: Unable to review / No
@@ -53,11 +52,13 @@ score labels keep the source 0–10 rubric scale.
 - missing feedback: Not scored.
 - eligible completed scored feedback: exact score and feedback-review link.
 
-The sessions persistence adapter owns a closed presentation discriminator:
-`scored`, `evidence_limited`, `full_scorecard`, `partial_scorecard`,
-`coaching_review`, `unable_to_review`, or `unavailable`. New scorecard modes
-require the exact accepted dimension-coverage provenance and eligible frozen
-answer blocks. Historical evidence-limited reviewability still requires its
+The sessions persistence adapter owns the closed presentation discriminator
+`scorecard | coaching_review | unable_to_review | unavailable`. Scorecard
+presentation requires the exact accepted dimension-coverage provenance,
+eligible frozen answer blocks, every weighted dimension score, and the stored
+canonical total. Supported historical partial and evidence-limited rows are
+strictly revalidated and projected as scoreless `coaching_review`; their stored
+rows are not rewritten. Historical evidence-limited reviewability still requires its
 exact accepted provenance, all score columns null, empty drills, bounded
 server-owned content, and exact canonical quote/reference support. Scored
 historical reviewability requires a supported tuple with complete coherent
@@ -100,9 +101,9 @@ fallback, not a personalized fit claim.
 - `@meelni/test-fixtures` supplies zero, one, many, and every-feedback-status
   regression scenarios.
 - Behavior tests must prove that score-ineligible records cannot affect scores,
-  progress bars, focus areas, or patterns, while valid partial/coaching/unable
-  outcomes remain honestly labeled and invalid/corrupt completed rows do not
-  become reachable.
+  progress bars, focus areas, or patterns, while valid coaching/unable outcomes
+  remain honestly labeled and invalid/corrupt completed rows do not become
+  reachable.
 
 `session_history_viewed.has_feedback` reports only whether at least one
 reviewable link is present. It includes valid scoreless reviews without adding

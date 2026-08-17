@@ -65,6 +65,10 @@ export const SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT =
 // least-privilege catalog already produced by a clean local migration.
 export const MANAGED_SERVICE_ROLE_GRANTS_SCHEMA_FINGERPRINT =
   SHADOW_FEEDBACK_ARTIFACT_SCHEMA_FINGERPRINT;
+// Refreshed by the clean PostgreSQL migration acceptance test after the
+// dimension-coverage score tuple closes around total-bearing scorecards.
+export const TOTAL_REQUIRED_SCORECARDS_SCHEMA_FINGERPRINT =
+  "2275da50d525599642694689c989f787c6751de9f995a70abc03629a79844683";
 // Refreshed by the clean PostgreSQL migration acceptance test whenever the
 // canonical migration lineage changes.
 export const QUESTION_PROVENANCE_SCHEMA_FINGERPRINT =

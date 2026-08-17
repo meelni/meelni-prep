@@ -12,6 +12,7 @@ import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseCalibrationRuntimeManifest } from "../lib/evaluation/calibration-live-startup.mjs";
 import { assertPinnedNodeVersion } from "./node-version.mjs";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,6 +98,7 @@ const manifest = {
   externalImports,
   inputCount: Object.keys(result.metafile.inputs).length,
 };
+parseCalibrationRuntimeManifest(manifest);
 const serializedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
 
 if (process.argv.length === 3 && process.argv[2] === "--write") {

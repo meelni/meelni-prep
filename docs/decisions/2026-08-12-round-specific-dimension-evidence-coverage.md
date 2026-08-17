@@ -4,6 +4,12 @@ Status: accepted
 
 Date: 2026-08-12
 
+Amended on 2026-08-17 by
+[Require A Total For Every Customer Scorecard](2026-08-17-total-required-scorecards.md).
+The round-specific facet and coverage derivation below remains accepted. Its
+partial-scorecard reduction and presentation policy is superseded: incomplete
+weighted coverage now produces scoreless Coaching review.
+
 ## Decision
 
 Meelni scores post-interview feedback from round-specific PM-rubric dimension
@@ -16,11 +22,10 @@ configured facet plus nullable dimension scores. The provider adapter maps
 those slots into closed facet-code selections; core resolves exact candidate
 evidence and derives coverage, result mode, overall score, summary, and
 persisted presentation. Coverage is `absent`, `partial`, or `sufficient`. A
-full scorecard requires sufficient coverage for every core dimension. A
-partial scorecard scores only sufficient dimensions and has no overall.
-Grounded usable evidence without a fair numerical dimension produces a
-scoreless coaching review. No usable answer and transcript integrity
-degradation remain the only unable-to-review states.
+Scorecard requires sufficient coverage and a score for every weighted core
+dimension plus the canonical overall. Any incomplete weighted coverage with
+grounded usable evidence produces a scoreless Coaching review. No usable
+answer and transcript integrity degradation remain the only Unable states.
 
 Equivalent semantic answers under different event segmentation must have
 identical coverage, scores, mode, citations, and persistence. Canonical events
@@ -35,8 +40,9 @@ evaluation/presentation abstraction.
 - Provider prose, quote text, confidence, coverage, mode, overall, and event IDs
   are rejected.
 - Existing v1/v2/evidence-limited completed rows remain readable and immutable.
-- New partial rows use sparse scalar scores; numerical aggregate consumers
-  continue to require overall and exclude partial/coaching rows.
+- New incomplete-coverage rows are scoreless; numerical aggregate consumers
+  continue to require a validated canonical overall. Historical sparse rows
+  remain immutable and project as Coaching review.
 - All adversarial and calibration fixtures are synthetic. No provider or
   Production action is authorized by this decision.
 

@@ -45,7 +45,7 @@ import {
 
 export const LEGACY_FEEDBACK_RUBRIC_VERSION = "1.0.0" as const;
 export const FEEDBACK_REVIEW_PRESENTATION_VERSION =
-  "feedback.review-outcome.v1" as const;
+  "feedback.review-outcome.v2" as const;
 
 export interface PersistedCompletedFeedback {
   id: unknown;
@@ -135,6 +135,27 @@ export type FeedbackDimensionResultsView = Record<
   FeedbackDimensionResultView
 >;
 
+export interface FeedbackCoachingDimensionResultView {
+  coverage: "sufficient" | "partial" | "absent";
+  evidence: FeedbackDimensionEvidenceView[];
+}
+
+export type FeedbackCoachingDimensionResultsView = Record<
+  FeedbackDimension,
+  FeedbackCoachingDimensionResultView
+>;
+
+export interface FeedbackScorecardDimensionResultView {
+  coverage: "sufficient";
+  score: number;
+  evidence: FeedbackDimensionEvidenceView[];
+}
+
+export type FeedbackScorecardDimensionResultsView = Record<
+  FeedbackDimension,
+  FeedbackScorecardDimensionResultView
+>;
+
 export interface FeedbackEvidenceLimitedPracticeFocusView {
   dimension: FeedbackDimension;
   title: string;
@@ -201,22 +222,46 @@ export interface FeedbackEvidenceLimitedView
   prioritizedPracticeFocus: FeedbackEvidenceLimitedPracticeFocusView;
 }
 
-export interface FeedbackDimensionCoverageView
+interface FeedbackDimensionCoverageViewBase
   extends CompletedFeedbackIdentityBase {
   kind: "dimension-coverage";
   presentationVersion: typeof FEEDBACK_REVIEW_PRESENTATION_VERSION;
-  mode: DimensionCoverageFeedbackMode;
-  dimensions: FeedbackDimensionResultsView;
-  overallScore: number | null;
-  scoreWithheldReason: FeedbackScoreWithheldReason | null;
   coachingSignals: FeedbackCoachingSignalView[];
   prioritizedPracticeFocus: FeedbackPracticeFocusView | null;
   verifiedScope: {
     kind: "verified_prefix";
-    reviewedAnswerCount: number;
-    excludedTail: boolean;
+    excludedTail: true;
   } | null;
 }
+
+export interface FeedbackDimensionCoverageScorecardView
+  extends FeedbackDimensionCoverageViewBase {
+  outcome: "scorecard";
+  scores: FeedbackScoreView;
+  dimensions: FeedbackScorecardDimensionResultsView;
+  scoreWithheldReason: null;
+  verifiedScope: null;
+}
+
+export interface FeedbackDimensionCoverageCoachingView
+  extends FeedbackDimensionCoverageViewBase {
+  outcome: "coaching_review";
+  dimensions: FeedbackCoachingDimensionResultsView;
+  scoreWithheldReason: FeedbackScoreWithheldReason;
+}
+
+export type FeedbackDimensionCoverageView =
+  | FeedbackDimensionCoverageScorecardView
+  | FeedbackDimensionCoverageCoachingView;
+
+export type FeedbackScorecardView =
+  | FeedbackV2View
+  | FeedbackDimensionCoverageScorecardView
+  | FeedbackLegacyView;
+
+export type FeedbackCoachingReviewView =
+  | FeedbackEvidenceLimitedView
+  | FeedbackDimensionCoverageCoachingView;
 
 export interface FeedbackInvalidView {
   kind: "invalid";
@@ -240,6 +285,15 @@ export interface SkippedFeedbackDetails {
     | "review_recovery_available"
     | null;
 }
+
+export type FeedbackCustomerProjection =
+  | { outcome: "scorecard"; review: FeedbackScorecardView }
+  | { outcome: "coaching_review"; review: FeedbackCoachingReviewView }
+  | {
+      outcome: "unable_to_review";
+      scoreWithheldReason: FeedbackScoreWithheldReason;
+      recovery: SkippedFeedbackDetails["recovery"];
+    };
 
 export type FeedbackLifecycleResponse = (
   | { status: "missing"; retryable: true; message?: string }
@@ -308,25 +362,14 @@ export type FeedbackViewState =
       message: string;
       outcomeReason: "dispatch_failed";
     }
-  | { kind: "completed-full"; feedback: FeedbackV2View }
-  | { kind: "completed-partial"; feedback: FeedbackV2View }
   | {
-      kind: "completed-evidence-limited";
-      feedback: FeedbackEvidenceLimitedView;
-    }
-  | {
-      kind: "completed-full-scorecard";
-      feedback: FeedbackDimensionCoverageView;
-    }
-  | {
-      kind: "completed-partial-scorecard";
-      feedback: FeedbackDimensionCoverageView;
+      kind: "completed-scorecard";
+      feedback: FeedbackScorecardView;
     }
   | {
       kind: "completed-coaching-review";
-      feedback: FeedbackDimensionCoverageView;
+      feedback: FeedbackCoachingReviewView;
     }
-  | { kind: "completed-legacy"; feedback: FeedbackLegacyView }
   | { kind: "completed-invalid" }
   | {
       kind: "failed-retryable";
@@ -465,6 +508,34 @@ export function parsePersistedFeedbackV2(
   };
 }
 
+/**
+ * Reduce a strictly decoded terminal lifecycle response to the only customer
+ * outcomes. Transient states and invalid completed payloads have no terminal
+ * customer projection and remain fail-closed in the lifecycle UI.
+ */
+export function toFeedbackCustomerProjection(
+  response: FeedbackLifecycleResponse
+): FeedbackCustomerProjection | null {
+  if (response.status === "skipped") {
+    return {
+      outcome: "unable_to_review",
+      scoreWithheldReason: response.details.scoreWithheldReason,
+      recovery: response.details.recovery,
+    };
+  }
+  if (response.status !== "completed" || response.feedback.kind === "invalid") {
+    return null;
+  }
+  if (
+    response.feedback.kind === "evidence-limited" ||
+    (response.feedback.kind === "dimension-coverage" &&
+      response.feedback.outcome === "coaching_review")
+  ) {
+    return { outcome: "coaching_review", review: response.feedback };
+  }
+  return { outcome: "scorecard", review: response.feedback };
+}
+
 export function toFeedbackViewState(
   response: FeedbackLifecycleResponse
 ): FeedbackViewState {
@@ -528,39 +599,20 @@ export function toFeedbackViewState(
           }
         : { kind: "no-reviewable-answer", details: response.details };
     case "completed":
-      if (response.feedback.kind === "invalid") {
-        return { kind: "completed-invalid" };
-      }
-      if (response.feedback.kind === "dimension-coverage") {
-        if (response.feedback.mode === "full_scorecard") {
-          return {
-            kind: "completed-full-scorecard",
-            feedback: response.feedback,
-          };
+      {
+        const projection = toFeedbackCustomerProjection(response);
+        if (!projection) return { kind: "completed-invalid" };
+        if (projection.outcome === "scorecard") {
+          return { kind: "completed-scorecard", feedback: projection.review };
         }
-        if (response.feedback.mode === "partial_scorecard") {
-          return {
-            kind: "completed-partial-scorecard",
-            feedback: response.feedback,
-          };
+        if (projection.outcome !== "coaching_review") {
+          return { kind: "completed-invalid" };
         }
         return {
           kind: "completed-coaching-review",
-          feedback: response.feedback,
+          feedback: projection.review,
         };
       }
-      if (response.feedback.kind === "legacy") {
-        return { kind: "completed-legacy", feedback: response.feedback };
-      }
-      if (response.feedback.kind === "evidence-limited") {
-        return {
-          kind: "completed-evidence-limited",
-          feedback: response.feedback,
-        };
-      }
-      return response.feedback.evaluationState === "partial"
-        ? { kind: "completed-partial", feedback: response.feedback }
-        : { kind: "completed-full", feedback: response.feedback };
     default:
       return {
         kind: "unavailable",
@@ -719,6 +771,19 @@ function decodeCompletedFeedbackView(
   }
   if (value.kind === "evidence-limited") {
     const valid =
+      hasExactKeys(value, [
+        "kind",
+        "id",
+        "sessionId",
+        "summary",
+        "createdAt",
+        "nextPracticeRecommendation",
+        "presentationVersion",
+        "strengths",
+        "improvements",
+        "scoreWithheldReason",
+        "prioritizedPracticeFocus",
+      ]) &&
       isCompletedFeedbackIdentityBase(value) &&
       value.presentationVersion === FEEDBACK_REVIEW_PRESENTATION_VERSION &&
       isFeedbackScoreWithheldReason(value.scoreWithheldReason) &&
@@ -751,7 +816,20 @@ function decodeCompletedFeedbackView(
   }
   if (!isCompletedFeedbackBase(value)) return null;
   if (value.kind === "legacy") {
-    return value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
+    return hasExactKeys(value, [
+      "kind",
+      "id",
+      "sessionId",
+      "summary",
+      "createdAt",
+      "nextPracticeRecommendation",
+      "scores",
+      "rubricVersion",
+      "strengths",
+      "improvements",
+    ]) &&
+      value.rubricVersion === LEGACY_FEEDBACK_RUBRIC_VERSION &&
+      hasCanonicalV2Overall(value.scores) &&
       isBoundedStringArray(
         value.strengths,
         10,
@@ -769,6 +847,22 @@ function decodeCompletedFeedbackView(
   }
   if (value.kind !== "v2") return null;
   if (
+    !hasExactKeys(value, [
+      "kind",
+      "id",
+      "sessionId",
+      "summary",
+      "createdAt",
+      "nextPracticeRecommendation",
+      "scores",
+      "evaluationState",
+      "schemaVersion",
+      "promptVersion",
+      "modelVersion",
+      "rubricVersion",
+      "strengths",
+      "improvements",
+    ]) ||
     value.schemaVersion !== FEEDBACK_SCHEMA_VERSION ||
     value.promptVersion !== FEEDBACK_PROMPT_VERSION ||
     value.rubricVersion !== FEEDBACK_RUBRIC_VERSION ||
@@ -786,11 +880,28 @@ function decodeCompletedFeedbackView(
 function isDimensionCoverageFeedbackView(
   value: Record<string, unknown>
 ): boolean {
+  const expectedRootKeys = [
+    "kind",
+    "id",
+    "sessionId",
+    "summary",
+    "presentationVersion",
+    "outcome",
+    "dimensions",
+    "scoreWithheldReason",
+    "coachingSignals",
+    "prioritizedPracticeFocus",
+    "verifiedScope",
+    "createdAt",
+    "nextPracticeRecommendation",
+    ...(value.outcome === "scorecard" ? ["scores"] : []),
+  ];
   if (
+    !hasExactKeys(value, expectedRootKeys) ||
     value.presentationVersion !== FEEDBACK_REVIEW_PRESENTATION_VERSION ||
-    (value.mode !== "full_scorecard" &&
-      value.mode !== "partial_scorecard" &&
-      value.mode !== "coaching_review") ||
+    (value.outcome !== "scorecard" && value.outcome !== "coaching_review") ||
+    "mode" in value ||
+    "overallScore" in value ||
     !isRecord(value.dimensions)
   ) {
     return false;
@@ -801,11 +912,8 @@ function isDimensionCoverageFeedbackView(
     verifiedScope !== null &&
     (!isRecord(verifiedScope) ||
       verifiedScope.kind !== "verified_prefix" ||
-      !Number.isSafeInteger(verifiedScope.reviewedAnswerCount) ||
-      (verifiedScope.reviewedAnswerCount as number) <= 0 ||
-      (verifiedScope.reviewedAnswerCount as number) > 1_000 ||
-      typeof verifiedScope.excludedTail !== "boolean" ||
-      Object.keys(verifiedScope).length !== 3)
+      verifiedScope.excludedTail !== true ||
+      Object.keys(verifiedScope).length !== 2)
   ) {
     return false;
   }
@@ -817,10 +925,16 @@ function isDimensionCoverageFeedbackView(
   }
   let sufficientCount = 0;
   const numericScores: Partial<Record<FeedbackDimension, number>> = {};
+  const normalizedDimensions = {} as FeedbackDimensionResultsView;
   for (const dimension of FEEDBACK_DIMENSIONS) {
     const candidate = dimensions[dimension];
     if (!isRecord(candidate) || !Array.isArray(candidate.evidence))
       return false;
+    const expectedKeys =
+      value.outcome === "scorecard"
+        ? ["coverage", "evidence", "score"]
+        : ["coverage", "evidence"];
+    if (!hasExactKeys(candidate, expectedKeys)) return false;
     const expectedCount =
       candidate.coverage === "absent"
         ? 0
@@ -834,6 +948,7 @@ function isDimensionCoverageFeedbackView(
     for (const item of candidate.evidence) {
       if (
         !isRecord(item) ||
+        !hasExactKeys(item, ["label", "citation", "transcriptRef"]) ||
         !isBoundedString(item.label, 256) ||
         !isBoundedString(item.citation, 32_000) ||
         !isBoundedString(
@@ -847,28 +962,31 @@ function isDimensionCoverageFeedbackView(
       facets.add(item.label);
     }
     if (candidate.coverage === "sufficient") sufficientCount += 1;
-    if (candidate.score !== null) {
-      if (!isDimensionScore(candidate.score)) return false;
+    if (value.outcome === "scorecard") {
+      if (
+        candidate.coverage !== "sufficient" ||
+        !isDimensionScore(candidate.score)
+      ) {
+        return false;
+      }
       numericScores[dimension] = candidate.score as number;
     }
-    if (
-      value.mode !== "coaching_review" &&
-      (candidate.coverage === "sufficient") !== (candidate.score !== null)
-    ) {
-      return false;
-    }
-    if (value.mode === "coaching_review" && candidate.score !== null) {
-      return false;
-    }
+    normalizedDimensions[dimension] = {
+      coverage: candidate.coverage as FeedbackDimensionResultView["coverage"],
+      score: value.outcome === "scorecard" ? (candidate.score as number) : null,
+      evidence: candidate.evidence as FeedbackDimensionEvidenceView[],
+    };
   }
-  if (value.mode === "full_scorecard") {
+  if (value.outcome === "scorecard") {
     if (
-      !(
-        sufficientCount === FEEDBACK_DIMENSIONS.length &&
-        isScore(value.overallScore) &&
-        calculateOverallScore(
-          numericScores as Record<FeedbackDimension, number>
-        ) === (value.overallScore as number)
+      sufficientCount !== FEEDBACK_DIMENSIONS.length ||
+      !isRecord(value.scores) ||
+      !hasExactKeys(value.scores, [...FEEDBACK_DIMENSIONS, "overall"]) ||
+      !hasCanonicalV2Overall(value.scores) ||
+      FEEDBACK_DIMENSIONS.some(
+        (dimension) =>
+          (value.scores as FeedbackScoreView)[dimension] !==
+          numericScores[dimension]
       ) ||
       value.scoreWithheldReason !== null ||
       verifiedScope !== null
@@ -876,20 +994,8 @@ function isDimensionCoverageFeedbackView(
       return false;
     }
   } else {
-    if (value.overallScore !== null) {
-      return false;
-    }
     if (
-      value.mode === "partial_scorecard" &&
-      (sufficientCount === 0 ||
-        (sufficientCount === FEEDBACK_DIMENSIONS.length &&
-          verifiedScope === null) ||
-        value.scoreWithheldReason !== "rubric_coverage")
-    ) {
-      return false;
-    }
-    if (
-      value.mode === "coaching_review" &&
+      "scores" in value ||
       !isFeedbackScoreWithheldReason(value.scoreWithheldReason)
     ) {
       return false;
@@ -897,8 +1003,8 @@ function isDimensionCoverageFeedbackView(
   }
 
   const expectedCoaching = buildDimensionCoverageCoachingPresentation(
-    dimensions as FeedbackDimensionResultsView,
-    value.mode as DimensionCoverageFeedbackMode
+    normalizedDimensions,
+    value.outcome === "scorecard" ? "full_scorecard" : "coaching_review"
   );
   return (
     sameJson(value.coachingSignals, expectedCoaching.signals) &&
@@ -927,6 +1033,7 @@ function isCompletedFeedbackBase(value: Record<string, unknown>): boolean {
 function isFeedbackScoreView(value: unknown): value is FeedbackScoreView {
   if (!isRecord(value)) return false;
   return (
+    hasExactKeys(value, [...FEEDBACK_DIMENSIONS, "overall"]) &&
     [
       value.structure,
       value.clarity,
@@ -965,6 +1072,15 @@ function isFeedbackFindingArray(
     value.every((entry) => {
       if (!isRecord(entry)) return false;
       return (
+        hasExactKeys(entry, [
+          "dimension",
+          "observation",
+          "nextStep",
+          "rubricVersion",
+          "confidence",
+          "transcriptRefs",
+          "evidence",
+        ]) &&
         typeof entry.dimension === "string" &&
         DIMENSIONS.has(entry.dimension as FeedbackDimension) &&
         isBoundedString(entry.observation, FEEDBACK_READ_LIMITS.findingText) &&
@@ -986,6 +1102,7 @@ function isFeedbackFindingArray(
         entry.evidence.every(
           (evidence) =>
             isRecord(evidence) &&
+            hasExactKeys(evidence, ["turnRef", "quote"]) &&
             isBoundedString(
               evidence.turnRef,
               FEEDBACK_READ_LIMITS.evidenceTurnIdentifier
@@ -1097,6 +1214,13 @@ function parseDimensionCoverageFeedbackView(
   frozenEvidenceState: "complete" | "partial",
   verifiedPrefixProjection?: TrustedAnswerBlockProjection
 ): FeedbackDimensionCoverageView {
+  if (
+    input.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION &&
+    frozenEvidenceState === "partial" &&
+    input.feedbackMode !== "coaching_review"
+  ) {
+    throw new Error("partial evidence requires verified-prefix authority");
+  }
   const overallScore =
     input.overallScore === null
       ? null
@@ -1120,9 +1244,9 @@ function parseDimensionCoverageFeedbackView(
     {
       answerBlocks,
       allowNumericalScores:
-        input.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
-          ? input.feedbackMode !== "coaching_review"
-          : frozenEvidenceState === "complete",
+        input.feedbackMode !== "coaching_review" &&
+        (input.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION ||
+          frozenEvidenceState === "complete"),
       ...(verifiedPrefixProjection ? { verifiedPrefixProjection } : {}),
     }
   );
@@ -1157,11 +1281,11 @@ function parseDimensionCoverageFeedbackView(
   const dimensions = toDimensionResultsView(feedback.dimensions, answerBlocks);
   const coaching = buildDimensionCoverageCoachingPresentation(
     dimensions,
-    feedback.mode,
+    feedback.mode === "full_scorecard" ? "full_scorecard" : "coaching_review",
     selectDimensionCoveragePracticeFocus(feedback),
     answerBlocks
   );
-  return {
+  const base = {
     kind: "dimension-coverage",
     id: requireBoundedString(input.id, FEEDBACK_READ_LIMITS.identifier),
     sessionId: requireBoundedString(
@@ -1170,22 +1294,66 @@ function parseDimensionCoverageFeedbackView(
     ),
     summary: feedback.summary,
     presentationVersion: FEEDBACK_REVIEW_PRESENTATION_VERSION,
-    mode: feedback.mode,
-    dimensions,
-    overallScore: feedback.overallScore,
-    scoreWithheldReason,
     coachingSignals: coaching.signals,
     prioritizedPracticeFocus: coaching.practiceFocus,
-    verifiedScope: isVerifiedPrefix
-      ? {
-          kind: "verified_prefix",
-          reviewedAnswerCount:
-            feedback.verifiedPrefixScope.trustedBlockIdentities.length,
-          excludedTail: true,
-        }
-      : null,
     createdAt: requireDateString(input.createdAt),
     nextPracticeRecommendation: null,
+  } as const;
+  if (feedback.mode === "full_scorecard") {
+    if (feedback.overallScore === null || scoreWithheldReason !== null) {
+      throw new Error("complete scorecard invariant failed");
+    }
+    const scores: FeedbackScoreView = {
+      structure: requireScore(dimensions.structure.score),
+      clarity: requireScore(dimensions.clarity.score),
+      insight: requireScore(dimensions.insight.score),
+      communication: requireScore(dimensions.communication.score),
+      leadership: requireScore(dimensions.leadership.score),
+      overall: feedback.overallScore,
+    };
+    const scorecardDimensions = {} as FeedbackScorecardDimensionResultsView;
+    for (const dimension of FEEDBACK_DIMENSIONS) {
+      const result = dimensions[dimension];
+      if (result.coverage !== "sufficient") {
+        throw new Error("complete scorecard coverage invariant failed");
+      }
+      scorecardDimensions[dimension] = {
+        coverage: "sufficient",
+        score: requireScore(result.score),
+        evidence: result.evidence,
+      };
+    }
+    return {
+      ...base,
+      outcome: "scorecard",
+      scores,
+      dimensions: scorecardDimensions,
+      scoreWithheldReason: null,
+      verifiedScope: null,
+    };
+  }
+  if (scoreWithheldReason === null) {
+    throw new Error("coaching reason required");
+  }
+  const coachingDimensions = Object.fromEntries(
+    FEEDBACK_DIMENSIONS.map((dimension) => [
+      dimension,
+      {
+        coverage: dimensions[dimension].coverage,
+        evidence: dimensions[dimension].evidence,
+      },
+    ])
+  ) as unknown as FeedbackCoachingDimensionResultsView;
+  return {
+    ...base,
+    outcome: "coaching_review",
+    dimensions: coachingDimensions,
+    scoreWithheldReason,
+    verifiedScope:
+      isVerifiedPrefix &&
+      feedback.verifiedPrefixScope.excludedTailBlockCount > 0
+        ? { kind: "verified_prefix", excludedTail: true }
+        : null,
   };
 }
 
@@ -1280,7 +1448,7 @@ function buildDimensionCoverageCoachingPresentation(
     return { signals: [], practiceFocus: null };
   }
 
-  const signals = FEEDBACK_DIMENSIONS.flatMap((dimension) =>
+  const allSignals = FEEDBACK_DIMENSIONS.flatMap((dimension) =>
     dimensions[dimension].evidence.map((evidence) => ({
       dimension,
       label: evidence.label,
@@ -1288,7 +1456,12 @@ function buildDimensionCoverageCoachingPresentation(
       transcriptRef: evidence.transcriptRef,
       evidenceSupport: "exact_candidate_citation" as const,
     }))
-  ).slice(0, 3);
+  );
+  const signals = allSignals.slice(0, 3);
+  const fallbackFocus =
+    allSignals.find(
+      (signal) => dimensions[signal.dimension].coverage === "partial"
+    ) ?? signals[0];
   const selectedBlock = selectedSource
     ? answerBlocks.find(
         (block) => block.answerBlockId === selectedSource.answerBlockRef
@@ -1300,14 +1473,16 @@ function buildDimensionCoverageCoachingPresentation(
     selectedTranscriptRef &&
     selectedBlock.responseText === selectedSource.evidenceText
       ? {
-          label: selectedSource.facetLabel,
           citation: selectedSource.evidenceText,
           transcriptRef: selectedTranscriptRef,
         }
       : null;
-  const selectedEvidence = selectedSource ? exactSelectedEvidence : signals[0];
-  const selectedDimension = selectedSource?.dimension ?? signals[0]?.dimension;
-  const selectedTitle = selectedSource?.facetLabel ?? signals[0]?.label;
+  const selectedEvidence = selectedSource
+    ? exactSelectedEvidence
+    : fallbackFocus;
+  const selectedDimension =
+    selectedSource?.dimension ?? fallbackFocus?.dimension;
+  const selectedTitle = selectedSource?.facetLabel ?? fallbackFocus?.label;
   if (!selectedDimension || !selectedTitle || !selectedEvidence) {
     throw new Error("coaching presentation requires grounded evidence");
   }
@@ -1375,6 +1550,14 @@ function isEvidenceLimitedFindingViewArray(
     value.every((finding) => {
       if (
         !isRecord(finding) ||
+        !hasExactKeys(finding, [
+          "dimension",
+          "observation",
+          "citation",
+          "transcriptRef",
+          "nextStep",
+          "evidenceSupport",
+        ]) ||
         !DIMENSIONS.has(finding.dimension as FeedbackDimension) ||
         !isBoundedString(
           finding.observation,
@@ -1436,6 +1619,13 @@ function isEvidenceLimitedPracticeFocusView(
 ): value is FeedbackEvidenceLimitedPracticeFocusView {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      "dimension",
+      "title",
+      "guidance",
+      "citation",
+      "transcriptRef",
+    ]) &&
     DIMENSIONS.has(value.dimension as FeedbackDimension) &&
     isBoundedString(value.title, FEEDBACK_READ_LIMITS.findingText) &&
     isBoundedString(value.guidance, FEEDBACK_READ_LIMITS.findingText) &&
@@ -1499,16 +1689,17 @@ function parseLegacyFeedback(
 function parseLegacyScores(
   input: PersistedCompletedFeedback
 ): FeedbackScoreView {
-  return {
+  const dimensionScores: FeedbackV2Scores = {
     structure: requireScore(input.structureScore),
     clarity: requireScore(input.clarityScore),
     insight: requireScore(input.insightScore),
     communication: requireScore(input.communicationScore),
     leadership: requireScore(input.leadershipScore),
-    // Historical writes stored a separately model-authored overall score.
-    // Preserve it as historical data instead of applying the v2 weighting.
-    overall: requireNumberInRange(input.overallScore),
   };
+  const calculatedOverall = calculateOverallScore(dimensionScores);
+  const storedOverall = requireNumberInRange(input.overallScore);
+  if (storedOverall !== calculatedOverall) throw new Error("score mismatch");
+  return { ...dimensionScores, overall: storedOverall };
 }
 
 function parseScores(input: PersistedCompletedFeedback): FeedbackScoreView {
@@ -1710,6 +1901,18 @@ function requireExactKeys(
   if (Object.keys(value).some((key) => !expected.has(key))) {
     throw new Error("unknown field");
   }
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
 }
 
 function requireExact(value: unknown, expected: string): void {

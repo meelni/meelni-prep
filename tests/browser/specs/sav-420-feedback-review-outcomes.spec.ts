@@ -16,7 +16,7 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 1280, height: 900 },
 ]) {
-  test(`SAV-420 presents four honest outcomes at ${viewport.width}px`, async ({
+  test(`SAV-420 presents three closed outcomes at ${viewport.width}px`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -24,7 +24,7 @@ for (const viewport of [
 
     await page.goto(harness("feedback-full-scorecard"));
     await expect(
-      page.getByRole("heading", { name: "Full scorecard" })
+      page.getByRole("heading", { name: "Scorecard", exact: true })
     ).toBeVisible();
     await expect(
       page.getByText("Overall score", { exact: true })
@@ -34,11 +34,12 @@ for (const viewport of [
 
     await page.goto(harness("feedback-partial-scorecard"));
     await expect(
-      page.getByRole("heading", { name: "Partial scorecard" })
+      page.getByRole("heading", { name: "Coaching review" })
     ).toBeVisible();
     await expect(
-      page.getByText("Not enough evidence", { exact: true }).first()
+      page.getByRole("heading", { name: "Why there are no scores" })
     ).toBeVisible();
+    await expect(page.getByText("Partial scorecard")).toHaveCount(0);
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(
       0
     );
@@ -49,14 +50,17 @@ for (const viewport of [
 
     await page.goto(harness("feedback-verified-prefix-partial-scorecard"));
     await expect(
+      page.getByRole("heading", { name: "Coaching review" })
+    ).toBeVisible();
+    await expect(
       page.getByRole("heading", { name: "Verified interview scope" })
     ).toBeVisible();
     await expect(
-      page.getByText(/only the 1 completed answer it could verify/i)
+      page.getByText(/only the completed answers it could verify/i)
     ).toBeVisible();
     await expect(
       page.getByText(
-        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+        /was not treated as negative evidence; only verified completed answers could support the coaching shown/i
       )
     ).toBeVisible();
     await expectNoHorizontalScroll(page);
@@ -89,11 +93,11 @@ for (const viewport of [
       page.getByRole("heading", { name: "Verified interview scope" })
     ).toBeVisible();
     await expect(
-      page.getByText(/only the 2 completed answers it could verify/i)
+      page.getByText(/only the completed answers it could verify/i)
     ).toBeVisible();
     await expect(
       page.getByText(
-        /was not treated as negative evidence; only verified completed answers could support the scores or coaching shown/i
+        /was not treated as negative evidence; only verified completed answers could support the coaching shown/i
       )
     ).toBeVisible();
     await expect(page.getByText("Overall score", { exact: true })).toHaveCount(

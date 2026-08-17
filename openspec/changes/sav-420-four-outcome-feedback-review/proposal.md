@@ -1,5 +1,9 @@
 # SAV-420 four-outcome feedback review
 
+> Historical artifact. SAV-453 supersedes the four-outcome policy with
+> Scorecard, Coaching review, and Unable to review. Supported historical partial
+> rows remain immutable but project scorelessly as Coaching review.
+
 ## Why
 
 The current feedback presentation equates a completed numerical review with a

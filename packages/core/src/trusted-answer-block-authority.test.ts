@@ -154,6 +154,7 @@ test("a terminal preserving interviewer marker protects only earlier closed bloc
   );
 
   assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
   assert.deepEqual(
     projection.trustedBlocks.map(({ answerBlockId }) => answerBlockId),
     ["answer-block:0001"]
@@ -180,6 +181,7 @@ test("the preserving marker never manufactures closure for the affected tail", (
   );
 
   assert.equal(projection.status, "no_trusted_blocks");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
   assert.deepEqual(projection.trustedBlocks, []);
   assert.deepEqual(projection.trustedBlockIdentities, []);
   assert.deepEqual(projection.closureAuthorities, []);

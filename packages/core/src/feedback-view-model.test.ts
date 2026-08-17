@@ -6,6 +6,7 @@ import {
   getFeedbackConfidenceLabel,
   parsePersistedFeedbackV2,
   presentCompletedFeedback,
+  toFeedbackCustomerProjection,
   toFeedbackViewState,
   type FeedbackLifecycleResponse,
   type PersistedCompletedFeedback,
@@ -33,6 +34,7 @@ import { deriveCandidateAnswerBlocks } from "./answer-blocks";
 import {
   createAnswerBlockSegmentationFixture,
   createAnswerBlockTurn,
+  createTotalScorecardSafeMarkerFixture,
 } from "@meelni/test-fixtures";
 import { projectTrustedClosedAnswerBlocks } from "./trusted-answer-block-authority";
 
@@ -161,7 +163,7 @@ function evidenceLimitedCompleted(
   });
 }
 
-test("presents strict full and partial v2 feedback without score coercion", () => {
+test("presents total-bearing historical v2 feedback without score coercion", () => {
   const full = present(completed());
   assert.equal(full.kind, "v2");
   if (full.kind !== "v2") return;
@@ -174,7 +176,7 @@ test("presents strict full and partial v2 feedback without score coercion", () =
       retryable: false,
       feedback: full,
     }).kind,
-    "completed-full"
+    "completed-scorecard"
   );
 
   assert.equal(present(completed({ overallScore: "7.900" })).kind, "v2");
@@ -188,7 +190,49 @@ test("presents strict full and partial v2 feedback without score coercion", () =
       retryable: false,
       feedback: partial,
     }).kind,
-    "completed-partial"
+    "completed-scorecard"
+  );
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "completed",
+      retryable: false,
+      feedback: partial,
+    })?.outcome,
+    "scorecard"
+  );
+});
+
+test("customer projection exposes only closed terminal outcomes", () => {
+  assert.deepEqual(
+    toFeedbackCustomerProjection({
+      status: "skipped",
+      retryable: false,
+      details: {
+        outcome: "unable_to_review",
+        scoreWithheldReason: "verified_evidence_integrity",
+        recovery: "credit_returned",
+      },
+    }),
+    {
+      outcome: "unable_to_review",
+      scoreWithheldReason: "verified_evidence_integrity",
+      recovery: "credit_returned",
+    }
+  );
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "pending",
+      retryable: true,
+    }),
+    null
+  );
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "completed",
+      retryable: false,
+      feedback: { kind: "invalid", reason: "incompatible_or_corrupt" },
+    }),
+    null
   );
 });
 
@@ -215,7 +259,25 @@ test("presents and decodes only server-owned evidence-limited templates", () => 
   assert.equal(decoded?.status, "completed");
   assert.equal(
     toFeedbackViewState(decoded!).kind,
-    "completed-evidence-limited"
+    "completed-coaching-review"
+  );
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: {
+        ...presented,
+        scores: {
+          structure: 8,
+          clarity: 8,
+          insight: 8,
+          communication: 8,
+          leadership: 8,
+          overall: 8,
+        },
+      },
+    }),
+    null
   );
 
   const providerCopy = structuredClone(presented);
@@ -432,8 +494,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
       improvements: [
         { dimension: "structure", text: "State the approach first" },
       ],
-      // Legacy feedback stored a separate model-authored overall score.
-      overallScore: "8.0",
+      overallScore: "7.9",
       rubricVersion: "1.0.0",
       schemaVersion: null,
       promptVersion: null,
@@ -444,7 +505,7 @@ test("presents validated legacy feedback only as an explicit historical variant"
 
   assert.equal(legacy.kind, "legacy");
   if (legacy.kind !== "legacy") return;
-  assert.equal(legacy.scores.overall, 8);
+  assert.equal(legacy.scores.overall, 7.9);
   assert.deepEqual(legacy.improvements, ["State the approach first"]);
   assert.equal("suggestedExercises" in legacy, false);
   assert.equal(
@@ -453,7 +514,34 @@ test("presents validated legacy feedback only as an explicit historical variant"
       retryable: false,
       feedback: legacy,
     }).kind,
-    "completed-legacy"
+    "completed-scorecard"
+  );
+});
+
+test("fails closed instead of projecting a noncanonical historical total", () => {
+  const legacy = present(
+    completed({
+      strengths: ["Clear explanation"],
+      improvements: ["State the approach first"],
+      overallScore: "8.0",
+      rubricVersion: "1.0.0",
+      schemaVersion: null,
+      promptVersion: null,
+      modelVersion: null,
+      evaluationState: null,
+    })
+  );
+  assert.deepEqual(legacy, {
+    kind: "invalid",
+    reason: "incompatible_or_corrupt",
+  });
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "completed",
+      retryable: false,
+      feedback: legacy,
+    }),
+    null
   );
 });
 
@@ -895,7 +983,7 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
     }
   );
   const persisted = completed({
-    structureScore: 7,
+    structureScore: null,
     clarityScore: null,
     insightScore: null,
     communicationScore: null,
@@ -923,13 +1011,13 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
 
   assert.equal(view.kind, "dimension-coverage");
   if (view.kind !== "dimension-coverage") return;
-  assert.equal(view.mode, "partial_scorecard");
-  assert.equal(view.overallScore, null);
-  assert.equal(view.dimensions.structure.score, 7);
-  assert.equal(view.dimensions.insight.score, null);
+  assert.equal(view.outcome, "coaching_review");
+  assert.equal("scores" in view, false);
+  assert.equal("score" in view.dimensions.structure, false);
+  assert.equal("score" in view.dimensions.insight, false);
   assert.equal(view.scoreWithheldReason, "rubric_coverage");
-  assert.equal(view.coachingSignals.length, 0);
-  assert.equal(view.prioritizedPracticeFocus, null);
+  assert.equal(view.coachingSignals.length, 3);
+  assert.equal(view.prioritizedPracticeFocus?.dimension, "insight");
   assert.equal("facetCode" in view.dimensions.structure.evidence[0]!, false);
   assert.equal(
     "answerBlockRef" in view.dimensions.structure.evidence[0]!,
@@ -955,8 +1043,35 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
     }).kind,
     "invalid"
   );
+  const partialEvidenceView = presentCompletedFeedback(persisted, {
+    evidenceTurns: [],
+    answerBlocks: blocks,
+    expectedRoundType: "product_sense",
+    frozenEvidenceState: "partial",
+  });
+  assert.equal(partialEvidenceView.kind, "dimension-coverage");
+  if (partialEvidenceView.kind !== "dimension-coverage") return;
+  assert.equal(partialEvidenceView.outcome, "coaching_review");
   assert.equal(
-    presentCompletedFeedback(persisted, {
+    partialEvidenceView.scoreWithheldReason,
+    "verified_evidence_integrity"
+  );
+  assert.equal("scores" in partialEvidenceView, false);
+  assert.equal("score" in partialEvidenceView.dimensions.structure, false);
+
+  const historicalPartialWithoutAuthority = completed({
+    ...persisted,
+    structureScore: 7,
+    summary:
+      "Only PM dimensions with sufficient grounded evidence are scored; unsupported dimensions and the overall score are withheld.",
+    feedbackMode: "partial_scorecard",
+    dimensionCoverage: {
+      ...result.dimensions,
+      structure: { ...result.dimensions.structure, score: 7 },
+    },
+  });
+  assert.equal(
+    presentCompletedFeedback(historicalPartialWithoutAuthority, {
       evidenceTurns: [],
       answerBlocks: blocks,
       expectedRoundType: "product_sense",
@@ -964,6 +1079,32 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
     }).kind,
     "invalid"
   );
+  const storedHistoricalPartial = structuredClone(
+    historicalPartialWithoutAuthority
+  );
+  const historicalCoachingView = presentCompletedFeedback(
+    historicalPartialWithoutAuthority,
+    {
+      evidenceTurns: [],
+      answerBlocks: blocks,
+      expectedRoundType: "product_sense",
+      frozenEvidenceState: "complete",
+    }
+  );
+  assert.equal(historicalCoachingView.kind, "dimension-coverage");
+  if (historicalCoachingView.kind !== "dimension-coverage") return;
+  assert.equal(historicalCoachingView.outcome, "coaching_review");
+  assert.equal("scores" in historicalCoachingView, false);
+  assert.equal("score" in historicalCoachingView.dimensions.structure, false);
+  assert.equal(
+    toFeedbackCustomerProjection({
+      status: "completed",
+      retryable: false,
+      feedback: historicalCoachingView,
+    })?.outcome,
+    "coaching_review"
+  );
+  assert.deepEqual(historicalPartialWithoutAuthority, storedHistoricalPartial);
   assert.equal(
     decodeFeedbackLifecycleResponse({
       status: "completed",
@@ -973,16 +1114,150 @@ test("presents and runtime-decodes exact-grounded dimension coverage", () => {
     "completed"
   );
   assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: { ...view, overallScore: 7 },
+    }),
+    null
+  );
+  assert.equal(
+    decodeFeedbackLifecycleResponse({
+      status: "completed",
+      retryable: false,
+      feedback: {
+        ...view,
+        dimensions: {
+          ...view.dimensions,
+          structure: { ...view.dimensions.structure, score: 7 },
+        },
+      },
+    }),
+    null
+  );
+  assert.equal(
     toFeedbackViewState({
       status: "completed",
       retryable: false,
       feedback: view,
     }).kind,
-    "completed-partial-scorecard"
+    "completed-coaching-review"
   );
 });
 
-test("verified-prefix presentation always explains the excluded terminal tail", () => {
+test("repeated safe markers present the same closed customer scorecard as no markers", () => {
+  const views = [false, true].map((repeatedSafeMarkers) => {
+    const fixture = createTotalScorecardSafeMarkerFixture(repeatedSafeMarkers);
+    const trusted = projectTrustedClosedAnswerBlocks(
+      fixture.events,
+      fixture.authority
+    );
+    assert.equal(trusted.status, "verified_prefix");
+    assert.deepEqual(trusted.excludedBlocks, []);
+
+    const scoreByDimension = {
+      structure: 8,
+      clarity: 7,
+      insight: 9,
+      communication: 8,
+      leadership: 7,
+    } as const;
+    const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
+    for (const [index, dimension] of FEEDBACK_DIMENSIONS.entries()) {
+      dimensions[dimension] = {
+        score: scoreByDimension[dimension],
+        evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[
+          dimension
+        ].facets.map((facet) => ({
+          facetCode: facet.code,
+          answerBlockRef: trusted.trustedBlocks[index]!.answerBlockId,
+        })),
+      };
+    }
+    const result = parseDimensionCoverageProviderSelection(
+      {
+        schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
+        promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
+        rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
+        roundType: "product_sense",
+        dimensions,
+      },
+      {
+        roundType: "product_sense",
+        answerBlocks: trusted.trustedBlocks,
+        modelVersion: "synthetic-safe-marker-presenter-v1",
+        allowNumericalScores: true,
+        verifiedPrefixProjection: trusted,
+      }
+    );
+    assert.equal(result.mode, "full_scorecard");
+    const view = presentCompletedFeedback(
+      completed({
+        structureScore: result.dimensions.structure.score,
+        clarityScore: result.dimensions.clarity.score,
+        insightScore: result.dimensions.insight.score,
+        communicationScore: result.dimensions.communication.score,
+        leadershipScore: result.dimensions.leadership.score,
+        overallScore: result.overallScore,
+        strengths: null,
+        improvements: null,
+        drills: [],
+        summary: result.summary,
+        rubricVersion: result.rubricVersion,
+        schemaVersion: result.schemaVersion,
+        promptVersion: result.promptVersion,
+        modelVersion: result.modelVersion,
+        evaluationState: result.evaluationState,
+        feedbackMode: result.mode,
+        feedbackRoundType: result.roundType,
+        dimensionCoverage: result.dimensions,
+        verifiedPrefixScope:
+          result.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION
+            ? result.verifiedPrefixScope
+            : null,
+      }),
+      {
+        evidenceTurns: [],
+        answerBlocks: trusted.trustedBlocks,
+        expectedRoundType: "product_sense",
+        frozenEvidenceState: "partial",
+        verifiedPrefixProjection: trusted,
+      }
+    );
+    assert.equal(view.kind, "dimension-coverage");
+    if (view.kind !== "dimension-coverage") throw new Error("invalid view");
+    assert.equal(view.outcome, "scorecard");
+    if (view.outcome !== "scorecard") throw new Error("scorecard required");
+    assert.equal(view.scores.overall, 7.9);
+    assert.equal(view.verifiedScope, null);
+    assert.equal("mode" in view, false);
+    assert.equal("overallScore" in view, false);
+    assert.equal(
+      toFeedbackCustomerProjection({
+        status: "completed",
+        retryable: false,
+        feedback: view,
+      })?.outcome,
+      "scorecard"
+    );
+    assert.equal(
+      decodeFeedbackLifecycleResponse({
+        status: "completed",
+        retryable: false,
+        feedback: {
+          ...view,
+          scores: { ...view.scores, normalizedTotal: 7.9 },
+        },
+      }),
+      null
+    );
+    return view;
+  });
+
+  assert.deepEqual(views[1], views[0]);
+});
+
+test("zero-excluded verified-prefix coaching exposes no misleading tail claim", () => {
   const events = [
     createAnswerBlockTurn({
       eventId: "synthetic-writer:1",
@@ -1029,11 +1304,12 @@ test("verified-prefix presentation always explains the excluded terminal tail", 
     ],
   });
   assert.equal(projection.status, "verified_prefix");
+  assert.equal(projection.numericalScoreAuthority, "withheld");
   assert.equal(projection.excludedBlocks.length, 0);
   const dimensions = {} as DimensionCoverageProviderSelection["dimensions"];
   for (const dimension of FEEDBACK_DIMENSIONS) {
     dimensions[dimension] = {
-      score: dimension === "structure" ? 8 : null,
+      score: null,
       evidence:
         dimension === "structure"
           ? ROUND_DIMENSION_COVERAGE_CONFIG.product_sense.structure.facets.map(
@@ -1067,7 +1343,7 @@ test("verified-prefix presentation always explains the excluded terminal tail", 
   }
   const view = presentCompletedFeedback(
     completed({
-      structureScore: 8,
+      structureScore: null,
       clarityScore: null,
       insightScore: null,
       communicationScore: null,
@@ -1098,11 +1374,9 @@ test("verified-prefix presentation always explains the excluded terminal tail", 
 
   assert.equal(view.kind, "dimension-coverage");
   if (view.kind !== "dimension-coverage") return;
-  assert.deepEqual(view.verifiedScope, {
-    kind: "verified_prefix",
-    reviewedAnswerCount: 1,
-    excludedTail: true,
-  });
+  assert.equal(view.outcome, "coaching_review");
+  assert.equal(view.verifiedScope, null);
+  assert.equal("score" in view.dimensions.structure, false);
   assert.ok(
     decodeFeedbackLifecycleResponse({
       status: "completed",

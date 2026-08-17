@@ -406,9 +406,6 @@ export interface VerifiedPrefixFeedbackScopeV1 {
 export interface VerifiedPrefixDimensionCoverageFeedbackResult
   extends DimensionCoverageFeedbackResultBase {
   schemaVersion: typeof FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
-  evaluationState: "partial";
-  mode: Exclude<DimensionCoverageFeedbackMode, "full_scorecard">;
-  overallScore: null;
   verifiedPrefixScope: VerifiedPrefixFeedbackScopeV1;
 }
 
@@ -427,8 +424,8 @@ export interface DimensionCoveragePracticeFocusSource {
 
 /**
  * Select one grounded SAV-420 practice focus without consulting scores.
- * Partial scorecards prefer a grounded incomplete dimension; coaching keeps
- * the canonical dimension/facet/answer-block order used by presentation.
+ * Scoreless coaching prefers a grounded incomplete dimension, then uses the
+ * canonical dimension/facet/answer-block order used by presentation.
  */
 export function selectDimensionCoveragePracticeFocus(
   feedback: DimensionCoverageFeedbackResult
@@ -454,7 +451,8 @@ export function selectDimensionCoveragePracticeFocus(
   });
   candidates.sort(
     (left, right) =>
-      (feedback.mode === "partial_scorecard"
+      (feedback.mode === "partial_scorecard" ||
+      feedback.mode === "coaching_review"
         ? coveragePracticePriority(left.coverage) -
           coveragePracticePriority(right.coverage)
         : 0) ||
@@ -507,12 +505,33 @@ export function parseDimensionCoverageProviderSelection(
     verifiedPrefixProjection?: TrustedAnswerBlockProjection;
   }
 ): DimensionCoverageFeedbackResult {
+  return parseDimensionCoverageProviderSelectionWithPolicy(value, options, {
+    preserveHistoricalPartialMode: false,
+  });
+}
+
+function parseDimensionCoverageProviderSelectionWithPolicy(
+  value: unknown,
+  options: {
+    roundType: RoundType;
+    answerBlocks: readonly CandidateAnswerBlock[];
+    modelVersion: string;
+    allowNumericalScores: boolean;
+    verifiedPrefixProjection?: TrustedAnswerBlockProjection;
+  },
+  policy: { preserveHistoricalPartialMode: boolean }
+): DimensionCoverageFeedbackResult {
   const verifiedPrefixScope = options.verifiedPrefixProjection
     ? scopeFromVerifiedPrefixProjection(
         options.verifiedPrefixProjection,
         options.answerBlocks
       )
     : null;
+  const numericalScoresAuthorized =
+    options.allowNumericalScores &&
+    (policy.preserveHistoricalPartialMode ||
+      !options.verifiedPrefixProjection ||
+      options.verifiedPrefixProjection.numericalScoreAuthority === "allowed");
   const root = requireRecord(value);
   requireKeys(root, [
     "schemaVersion",
@@ -594,7 +613,7 @@ export function parseDimensionCoverageProviderSelection(
           : "sufficient";
     const score = parseNullableScore(rawDimension.score);
     if (
-      (options.allowNumericalScores && coverage === "sufficient") !==
+      (numericalScoresAuthorized && coverage === "sufficient") !==
       (score !== null)
     ) {
       throw new DimensionCoverageParseError("score_coverage_mismatch");
@@ -604,17 +623,34 @@ export function parseDimensionCoverageProviderSelection(
   const sufficientCount = FEEDBACK_DIMENSIONS.filter(
     (dimension) => dimensions[dimension].coverage === "sufficient"
   ).length;
-  const mode: DimensionCoverageFeedbackMode = verifiedPrefixScope
-    ? options.allowNumericalScores && sufficientCount > 0
+  const historicalMode: DimensionCoverageFeedbackMode = verifiedPrefixScope
+    ? numericalScoresAuthorized && sufficientCount > 0
       ? "partial_scorecard"
       : "coaching_review"
-    : !options.allowNumericalScores
+    : !numericalScoresAuthorized
       ? "coaching_review"
       : sufficientCount === FEEDBACK_DIMENSIONS.length
         ? "full_scorecard"
         : sufficientCount > 0
           ? "partial_scorecard"
           : "coaching_review";
+  const scorecardEligible =
+    numericalScoresAuthorized &&
+    sufficientCount === FEEDBACK_DIMENSIONS.length &&
+    (verifiedPrefixScope === null ||
+      verifiedPrefixScope.excludedTailBlockCount === 0);
+  const mode: DimensionCoverageFeedbackMode =
+    policy.preserveHistoricalPartialMode &&
+    historicalMode === "partial_scorecard"
+      ? "partial_scorecard"
+      : scorecardEligible
+        ? "full_scorecard"
+        : "coaching_review";
+  if (mode === "coaching_review") {
+    for (const dimension of FEEDBACK_DIMENSIONS) {
+      dimensions[dimension] = { ...dimensions[dimension], score: null };
+    }
+  }
   const overallScore =
     mode === "full_scorecard"
       ? calculateOverallScore({
@@ -632,10 +668,10 @@ export function parseDimensionCoverageProviderSelection(
         rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
         modelVersion,
         roundType: options.roundType,
-        evaluationState: "partial",
-        mode: mode as Exclude<DimensionCoverageFeedbackMode, "full_scorecard">,
+        evaluationState: mode === "full_scorecard" ? "full" : "partial",
+        mode,
         dimensions,
-        overallScore: null,
+        overallScore,
         summary: summaryForMode(mode, true),
         verifiedPrefixScope,
       }
@@ -718,7 +754,7 @@ export function parsePersistedDimensionCoverageFeedback(
       }),
     };
   }
-  const derived = parseDimensionCoverageProviderSelection(
+  const derived = parseDimensionCoverageProviderSelectionWithPolicy(
     {
       schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
       promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
@@ -732,11 +768,14 @@ export function parsePersistedDimensionCoverageFeedback(
       modelVersion:
         typeof root.modelVersion === "string" ? root.modelVersion : "",
       allowNumericalScores:
-        options.allowNumericalScores ?? mode !== "coaching_review",
+        mode === "coaching_review"
+          ? false
+          : (options.allowNumericalScores ?? true),
       ...(verifiedPrefix
         ? { verifiedPrefixProjection: options.verifiedPrefixProjection }
         : {}),
-    }
+    },
+    { preserveHistoricalPartialMode: mode === "partial_scorecard" }
   );
   const boundedRoot = persistedVerifiedPrefixScope
     ? { ...root, verifiedPrefixScope: persistedVerifiedPrefixScope }

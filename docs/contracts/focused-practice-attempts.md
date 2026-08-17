@@ -20,7 +20,8 @@ The pure lifecycle is owned by `packages/core/src/focused-practice-attempt.ts`. 
 Changing the immutable snapshot, completion semantics, response kinds, or self-review meaning requires a new contract version. A completed v1 attempt cannot be reopened or overwritten.
 
 V1 remains the exact scored Feedback v2 compatibility path. V2 is admitted
-only for canonical partial scorecards and coaching reviews. It snapshots a
+only for canonical scoreless coaching reviews, including strictly validated
+historical partial rows projected as coaching. It snapshots a
 closed grounded focus identity and exact candidate evidence without adding a
 weakest-dimension score, overall score, or numerical fallback. Full
 dimension-coverage scorecards do not synthesize an improvement; existing
@@ -50,9 +51,9 @@ The workflow then:
 For v2, the trusted pass consumes only SAV-420's strict evidence-limited or
 dimension-coverage result. Selection is server-owned and stable across
 provider ordering: canonical dimension order, then closed action/signal or
-facet identity, then canonical evidence identity. Dimension-coverage partial
-reviews prefer a grounded partially covered dimension before a sufficiently
-covered dimension. Coaching reviews select only a grounded supported
+facet identity, then canonical evidence identity. Historical partial sources
+prefer a grounded partially covered dimension before a sufficiently covered
+dimension after they have been reduced to coaching. Coaching reviews select only a grounded supported
 dimension. The client cannot submit any focus, action, signal, facet, answer
 block, citation, or exercise copy.
 
@@ -77,7 +78,7 @@ between selection and insertion fails closed without a write. Once created,
 later source changes do not rewrite the attempt and retries return the exact
 frozen snapshot.
 
-Every repository-hydrated attempt is decoded against the exact v1 shape before it can be returned or transitioned. The decoder verifies canonical timestamps, lifecycle/state relationships, Feedback full/partial provenance, deterministic recommendation and template identities, exact versioned template copy, plan and finding consistency, and terminal self-review provenance, then rebuilds a frozen value. The workflow also binds every decoded result back to the requested owner, source, and attempt identity before returning it. Corrupt rows, unknown versions, extra fields, disposition/state contradictions, and wrong-row adapter results fail closed.
+Every repository-hydrated attempt is decoded against the exact v1 shape before it can be returned or transitioned. The decoder verifies canonical timestamps, lifecycle/state relationships, historical Feedback full/partial provenance, deterministic recommendation and template identities, exact versioned template copy, plan and finding consistency, and terminal self-review provenance, then rebuilds a frozen value. The workflow also binds every decoded result back to the requested owner, source, and attempt identity before returning it. Corrupt rows, unknown versions, extra fields, disposition/state contradictions, and wrong-row adapter results fail closed.
 
 ## Completion boundary
 
@@ -134,8 +135,9 @@ This integration adds no model call, LiveKit room, Inngest job, credit mutation,
 provider/environment action, or relaunch-flag change. SAV-415 adds one optional,
 consent-bound, content-free `feedback_practice_started` event only after a v2
 attempt durably returns `created`; resume and completion emit nothing. The
-feedback workspace offers exactly one path for every valid partial scorecard
-or coaching review, with retryable transport/conflict states and a clear
+feedback workspace offers exactly one path for every valid coaching review,
+including a supported historical partial row, with retryable
+transport/conflict states and a clear
 permanent unavailable fallback. Completion offers a question-bound return to
 another mock interview. Starting focused practice does not start an interview,
 use another credit, create a model evaluation, or claim interview readiness.

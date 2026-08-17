@@ -7,10 +7,10 @@ import {
 } from "./session-comparison";
 import type { DashboardFeedbackPresentationKind } from "@/lib/dashboard/feedback-presentation";
 
-test("comparison admits only canonical scored and full-scorecard projections", () => {
-  const full = session("full", "full_scorecard", 8);
-  const scored = session("scored", "scored", 7);
-  const partial = session("partial", "partial_scorecard", 9);
+test("comparison admits only canonical scorecard projections", () => {
+  const full = session("full", "scorecard", 8);
+  const scored = session("scored", "scorecard", 7);
+  const partial = session("partial", "coaching_review", 9);
   const coaching = session("coaching", "coaching_review", 9);
   const unavailable = session("unavailable", "unavailable", 10);
 
@@ -38,9 +38,9 @@ test("comparison admits only canonical scored and full-scorecard projections", (
 });
 
 test("comparison refuses cross-round and same-session progress claims", () => {
-  const first = session("first", "scored", 6);
+  const first = session("first", "scorecard", 6);
   const otherRound = {
-    ...session("second", "full_scorecard", 8),
+    ...session("second", "scorecard", 8),
     roundType: "strategy",
   };
 

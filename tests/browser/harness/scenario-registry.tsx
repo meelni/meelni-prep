@@ -265,13 +265,7 @@ function FeedbackPartialScenario() {
 
 type FeedbackLifecycleScenarioState = Exclude<
   FeedbackViewState,
-  | { kind: "completed-full" }
-  | { kind: "completed-partial" }
-  | { kind: "completed-evidence-limited" }
-  | { kind: "completed-full-scorecard" }
-  | { kind: "completed-partial-scorecard" }
-  | { kind: "completed-coaching-review" }
-  | { kind: "completed-legacy" }
+  { kind: "completed-scorecard" } | { kind: "completed-coaching-review" }
 >;
 
 function FeedbackLifecycleScenario({

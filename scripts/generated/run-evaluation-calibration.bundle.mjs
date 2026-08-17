@@ -6676,11 +6676,12 @@ var DimensionCoverageParseError = class extends Error {
 function isDimensionCoverageFeedbackResult(value) {
   return value.schemaVersion === FEEDBACK_DIMENSION_COVERAGE_SCHEMA_VERSION || value.schemaVersion === FEEDBACK_VERIFIED_PREFIX_SCHEMA_VERSION;
 }
-function parseDimensionCoverageProviderSelection(value, options) {
+function parseDimensionCoverageProviderSelectionWithPolicy(value, options, policy) {
   const verifiedPrefixScope = options.verifiedPrefixProjection ? scopeFromVerifiedPrefixProjection(
     options.verifiedPrefixProjection,
     options.answerBlocks
   ) : null;
+  const numericalScoresAuthorized = options.allowNumericalScores && (policy.preserveHistoricalPartialMode || !options.verifiedPrefixProjection || options.verifiedPrefixProjection.numericalScoreAuthority === "allowed");
   const root = requireRecord2(value);
   requireKeys(root, [
     "schemaVersion",
@@ -6745,7 +6746,7 @@ function parseDimensionCoverageProviderSelection(value, options) {
     );
     const coverage = selectedFacets.size === 0 ? "absent" : selectedFacets.size === 1 ? "partial" : "sufficient";
     const score = parseNullableScore(rawDimension.score);
-    if ((options.allowNumericalScores && coverage === "sufficient") !== (score !== null)) {
+    if ((numericalScoresAuthorized && coverage === "sufficient") !== (score !== null)) {
       throw new DimensionCoverageParseError("score_coverage_mismatch");
     }
     dimensions[dimension] = { coverage, score, evidence };
@@ -6753,7 +6754,14 @@ function parseDimensionCoverageProviderSelection(value, options) {
   const sufficientCount = FEEDBACK_DIMENSIONS.filter(
     (dimension) => dimensions[dimension].coverage === "sufficient"
   ).length;
-  const mode = verifiedPrefixScope ? options.allowNumericalScores && sufficientCount > 0 ? "partial_scorecard" : "coaching_review" : !options.allowNumericalScores ? "coaching_review" : sufficientCount === FEEDBACK_DIMENSIONS.length ? "full_scorecard" : sufficientCount > 0 ? "partial_scorecard" : "coaching_review";
+  const historicalMode = verifiedPrefixScope ? numericalScoresAuthorized && sufficientCount > 0 ? "partial_scorecard" : "coaching_review" : !numericalScoresAuthorized ? "coaching_review" : sufficientCount === FEEDBACK_DIMENSIONS.length ? "full_scorecard" : sufficientCount > 0 ? "partial_scorecard" : "coaching_review";
+  const scorecardEligible = numericalScoresAuthorized && sufficientCount === FEEDBACK_DIMENSIONS.length && (verifiedPrefixScope === null || verifiedPrefixScope.excludedTailBlockCount === 0);
+  const mode = policy.preserveHistoricalPartialMode && historicalMode === "partial_scorecard" ? "partial_scorecard" : scorecardEligible ? "full_scorecard" : "coaching_review";
+  if (mode === "coaching_review") {
+    for (const dimension of FEEDBACK_DIMENSIONS) {
+      dimensions[dimension] = { ...dimensions[dimension], score: null };
+    }
+  }
   const overallScore = mode === "full_scorecard" ? calculateOverallScore({
     structure: dimensions.structure.score,
     clarity: dimensions.clarity.score,
@@ -6767,10 +6775,10 @@ function parseDimensionCoverageProviderSelection(value, options) {
     rubricVersion: FEEDBACK_DIMENSION_COVERAGE_RUBRIC_VERSION,
     modelVersion,
     roundType: options.roundType,
-    evaluationState: "partial",
+    evaluationState: mode === "full_scorecard" ? "full" : "partial",
     mode,
     dimensions,
-    overallScore: null,
+    overallScore,
     summary: summaryForMode(mode, true),
     verifiedPrefixScope
   } : {
@@ -6835,7 +6843,7 @@ function parsePersistedDimensionCoverageFeedback(value, options) {
       })
     };
   }
-  const derived = parseDimensionCoverageProviderSelection(
+  const derived = parseDimensionCoverageProviderSelectionWithPolicy(
     {
       schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
       promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
@@ -6847,9 +6855,10 @@ function parsePersistedDimensionCoverageFeedback(value, options) {
       roundType,
       answerBlocks: options.answerBlocks,
       modelVersion: typeof root.modelVersion === "string" ? root.modelVersion : "",
-      allowNumericalScores: options.allowNumericalScores ?? mode !== "coaching_review",
+      allowNumericalScores: mode === "coaching_review" ? false : options.allowNumericalScores ?? true,
       ...verifiedPrefix ? { verifiedPrefixProjection: options.verifiedPrefixProjection } : {}
-    }
+    },
+    { preserveHistoricalPartialMode: mode === "partial_scorecard" }
   );
   const boundedRoot = persistedVerifiedPrefixScope ? { ...root, verifiedPrefixScope: persistedVerifiedPrefixScope } : root;
   if (canonicalJson(derived) !== canonicalJson(boundedRoot)) {
@@ -7000,8 +7009,7 @@ var FEEDBACK_OUTCOME_REASON_SET = new Set(FEEDBACK_OUTCOME_REASONS);
 // packages/core/src/feedback-quality.ts
 var FEEDBACK_QUALITY_SIGNAL_RATE_WINDOW_SECONDS = 60 * 60;
 var FEEDBACK_QUALITY_OUTCOMES = [
-  "full_scorecard",
-  "partial_scorecard",
+  "scorecard",
   "coaching_review"
 ];
 var FEEDBACK_QUALITY_RESPONSES = ["helpful", "not_helpful"];
@@ -9109,7 +9117,7 @@ function splitWords(text2, count) {
 }
 
 // packages/test-fixtures/src/dimension-coverage-calibration.ts
-var DIMENSION_COVERAGE_CALIBRATION_VERSION = "dimension-coverage-calibration.v1";
+var DIMENSION_COVERAGE_CALIBRATION_VERSION = "dimension-coverage-calibration.v2";
 var absent = {
   structure: 0,
   clarity: 0,
@@ -9123,7 +9131,7 @@ var DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "natural_spoken_answer",
     "product_sense",
     "So I think I would start with working parents because the handoff problem happens every week, and then I would test a shared plan before adding reminders.",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 2, clarity: 1, insight: 2, communication: 1 }
   ),
   calibrationCase(
@@ -9131,7 +9139,7 @@ var DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "punctuation_poor_stt",
     "execution",
     "first verify the delayed queue then give one owner the rollback decision measure recovery time and stop the rollout if customer errors rise",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 2, clarity: 1, insight: 2, leadership: 2 }
   ),
   calibrationCase(
@@ -9203,7 +9211,7 @@ var DIMENSION_COVERAGE_CALIBRATION_CASES = [
     "sparse_coverage",
     "behavioral",
     "I owned the launch decision and aligned design with engineering, but I did not measure the result or explain what I learned.",
-    "partial_scorecard",
+    "coaching_review",
     { ...absent, structure: 1, clarity: 1, leadership: 2 }
   ),
   ...["product_sense", "execution", "behavioral", "strategy"].map(
@@ -9251,10 +9259,10 @@ var FULL_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
   state: "scored",
   score: 8
 }));
-var PARTIAL_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
+var COACHING_DIMENSIONS = FEEDBACK_DIMENSIONS.map((dimension) => ({
   dimension,
-  state: dimension === "structure" ? "scored" : "not_enough_evidence",
-  score: dimension === "structure" ? 8 : null
+  state: "unscored",
+  score: null
 }));
 
 // packages/test-fixtures/src/runtime-settlement-command.ts
@@ -9608,7 +9616,7 @@ function terminal(occurredAtMs) {
 }
 
 // packages/test-fixtures/src/verified-prefix-scorecard-calibration.ts
-var VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION = "verified-prefix-scorecard-calibration.v1";
+var VERIFIED_PREFIX_SCORECARD_CALIBRATION_VERSION = "verified-prefix-scorecard-calibration.v2";
 var VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES = [
   calibrationCase3(
     "historical-complete-scorecard",
@@ -9618,11 +9626,11 @@ var VERIFIED_PREFIX_SCORECARD_CALIBRATION_CASES = [
     "full_scorecard"
   ),
   calibrationCase3(
-    "verified-prefix-sparse-scorecard",
-    "verified_prefix_partial",
+    "verified-prefix-sparse-coaching",
+    "verified_prefix_sparse",
     "terminal-preserving-marker",
     "spoken-product-choice",
-    "partial_scorecard"
+    "coaching_review"
   ),
   calibrationCase3(
     "verified-prefix-coaching-only",
@@ -20875,7 +20883,7 @@ var feedback = pgTable(
             ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
             ${table.promptVersion} = 'feedback.prompt.dimension-coverage.v1' AND
             ${table.rubricVersion} = 'pm-feedback-rubric.v3' AND
-            ${table.evaluationState} = 'partial'
+            ${table.evaluationState} IN ('full', 'partial')
           )
         ) AND
         length(trim(${table.modelVersion})) > 0
@@ -20904,9 +20912,18 @@ var feedback = pgTable(
         ${table.verifiedPrefixScope} IS NULL
       ) OR (
         ${table.schemaVersion} = 'feedback.dimension-coverage.v2' AND
-        ${table.evaluationState} = 'partial' AND
-        ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
-        ${table.overallScore} IS NULL AND
+        (
+          (
+            ${table.feedbackMode} = 'full_scorecard' AND
+            ${table.evaluationState} = 'full' AND
+            ${table.overallScore} IS NOT NULL AND
+            ${table.verifiedPrefixScope}->>'excludedTailBlockCount' = '0'
+          ) OR (
+            ${table.feedbackMode} IN ('partial_scorecard', 'coaching_review') AND
+            ${table.evaluationState} = 'partial' AND
+            ${table.overallScore} IS NULL
+          )
+        ) AND
         ${table.verifiedPrefixScope} IS NOT NULL AND
         CASE
           WHEN jsonb_typeof(${table.verifiedPrefixScope}) IS NOT DISTINCT FROM 'object' THEN
@@ -20927,6 +20944,31 @@ var feedback = pgTable(
             octet_length(${table.verifiedPrefixScope}::text) <= 128000
           ELSE false
         END
+      )`
+    ),
+    dimensionCoverageScoreTupleCheck: check(
+      "feedback_dimension_coverage_score_tuple_check",
+      sql`${table.schemaVersion} NOT IN ('feedback.dimension-coverage.v1', 'feedback.dimension-coverage.v2') OR (
+        (
+          ${table.feedbackMode} = 'full_scorecard' AND
+          ${table.structureScore} IS NOT NULL AND
+          ${table.clarityScore} IS NOT NULL AND
+          ${table.insightScore} IS NOT NULL AND
+          ${table.communicationScore} IS NOT NULL AND
+          ${table.leadershipScore} IS NOT NULL AND
+          ${table.overallScore} IS NOT NULL
+        ) OR (
+          ${table.feedbackMode} = 'partial_scorecard' AND
+          ${table.overallScore} IS NULL
+        ) OR (
+          ${table.feedbackMode} = 'coaching_review' AND
+          ${table.structureScore} IS NULL AND
+          ${table.clarityScore} IS NULL AND
+          ${table.insightScore} IS NULL AND
+          ${table.communicationScore} IS NULL AND
+          ${table.leadershipScore} IS NULL AND
+          ${table.overallScore} IS NULL
+        )
       )`
     ),
     dispatchEventRequiredCheck: check(
@@ -21217,11 +21259,17 @@ var feedbackQualitySignal = pgTable(
     }).onDelete("cascade"),
     contractCheck: check(
       "feedback_quality_signal_contract_check",
-      sql`${table.contractVersion} = 'feedback-quality-signal.v1'`
+      sql`${table.contractVersion} IN ('feedback-quality-signal.v1', 'feedback-quality-signal.v2')`
     ),
     outcomeCheck: check(
       "feedback_quality_signal_outcome_check",
-      sql`${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')`
+      sql`(
+        ${table.contractVersion} = 'feedback-quality-signal.v1' AND
+        ${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'coaching_review')
+      ) OR (
+        ${table.contractVersion} = 'feedback-quality-signal.v2' AND
+        ${table.reviewOutcome} IN ('scorecard', 'coaching_review')
+      )`
     ),
     responseCheck: check(
       "feedback_quality_signal_response_check",
@@ -21235,7 +21283,7 @@ var feedbackQualitySignal = pgTable(
         ${table.response} = 'not_helpful' AND (
           ${table.reason} IS NULL OR
           ${table.reason} IN ('not_specific_enough', 'evidence_did_not_match', 'next_step_unclear', 'too_much_to_use') OR
-          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
+          (${table.reviewOutcome} IN ('full_scorecard', 'partial_scorecard', 'scorecard') AND ${table.reason} = 'score_explanation_unclear') OR
           (${table.reviewOutcome} = 'coaching_review' AND ${table.reason} = 'score_withholding_unclear')
         )
       )`
@@ -32815,7 +32863,7 @@ async function runGenerateFeedbackWorkflow(input, deps) {
   const roundType = authorization.session.roundType;
   await assertAccountIsActive(input.userId, deps);
   const verifiedPrefixProjection = evidence.snapshotState === "partial" && evidence.trustedProjection?.status === "verified_prefix" ? evidence.trustedProjection : void 0;
-  const allowNumericalScores = verifiedPrefixProjection !== void 0 || evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
+  const allowNumericalScores = verifiedPrefixProjection?.numericalScoreAuthority === "allowed" || evidence.snapshotState !== "partial" && claimed.completionStats?.feedbackModeConstraint !== "evidence_limited_only";
   let evaluated = null;
   let attempt = 1;
   let plan = planFeedbackProviderAttempt({

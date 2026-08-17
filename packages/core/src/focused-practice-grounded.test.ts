@@ -107,7 +107,7 @@ test("closed evidence-limited ordering produces one scoreless plan without provi
   assert.doesNotMatch(serialized, /provider-authored exercise/);
 });
 
-test("partial and coaching coverage select invariant grounded practice semantics", () => {
+test("scoreless coaching coverage selects invariant grounded practice semantics", () => {
   const projections = ANSWER_BLOCK_SEGMENT_COUNTS.map((segmentCount) => {
     const blocks = deriveCandidateAnswerBlocks(
       createAnswerBlockSegmentationFixture(segmentCount).events
@@ -163,7 +163,7 @@ test("partial and coaching coverage select invariant grounded practice semantics
   for (const projection of projections.slice(1)) {
     assert.deepEqual(projection, projections[0]);
   }
-  assert.equal(projections[0]!.mode, "partial_scorecard");
+  assert.equal(projections[0]!.mode, "coaching_review");
   assert.equal(projections[0]!.selected.coverage, "partial");
   assert.equal(projections[0]!.selected.dimension, "insight");
 });

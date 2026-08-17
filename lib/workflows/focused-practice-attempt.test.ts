@@ -302,7 +302,7 @@ test("server reconstruction ignores stored provider suggestion copy", async () =
   }
 });
 
-test("partial scorecards and coaching reviews create one scoreless grounded path", async () => {
+test("incomplete coverage and coaching reviews create one scoreless grounded path", async () => {
   for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
     const sourceFixture = dimensionCoverageSource(outcome);
     const harness = createHarness(sourceFixture);
@@ -319,7 +319,10 @@ test("partial scorecards and coaching reviews create one scoreless grounded path
       result.attempt.plan.contractVersion,
       "focused-practice-plan.v2"
     );
-    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(
+      result.attempt.feedbackVersion.reviewOutcome,
+      "coaching_review"
+    );
     assert.equal(harness.repository.attemptWrites, 1);
     assert.doesNotMatch(
       JSON.stringify(result.attempt.plan),
@@ -328,7 +331,7 @@ test("partial scorecards and coaching reviews create one scoreless grounded path
   }
 });
 
-test("verified-prefix v2 scorecards fully revalidate before focused practice", async () => {
+test("verified-prefix v2 coaching fully revalidates before focused practice", async () => {
   for (const outcome of ["partial_scorecard", "coaching_review"] as const) {
     const sourceFixture = verifiedPrefixSource(outcome);
     const harness = createHarness(sourceFixture);
@@ -337,13 +340,16 @@ test("verified-prefix v2 scorecards fully revalidate before focused practice", a
       harness.deps
     );
 
-    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.ok, true, `${outcome}: ${JSON.stringify(result)}`);
     if (!result.ok) continue;
     assert.equal(
       result.attempt.feedbackVersion.schemaVersion,
       "feedback.dimension-coverage.v2"
     );
-    assert.equal(result.attempt.feedbackVersion.reviewOutcome, outcome);
+    assert.equal(
+      result.attempt.feedbackVersion.reviewOutcome,
+      "coaching_review"
+    );
     assert.equal(harness.repository.attemptWrites, 1);
   }
 
@@ -1297,7 +1303,13 @@ function dimensionCoverageSource(
   outcome: "full_scorecard" | "partial_scorecard" | "coaching_review"
 ): BoundedFocusedPracticeSource {
   const fixture = createSyntheticFeedbackReviewOutcomeFixtures().find(
-    (candidate) => candidate.expected.outcome === outcome
+    (candidate) =>
+      candidate.id ===
+      (outcome === "full_scorecard"
+        ? "scorecard-equivalent-segmentation"
+        : outcome === "partial_scorecard"
+          ? "incomplete-coverage-coaching"
+          : "coaching-review-rubric-coverage")
   );
   const variant = fixture?.sourceVariants[1];
   const result = variant?.coverageResult;
@@ -1402,7 +1414,7 @@ function verifiedPrefixSource(
           ? 2
           : 0;
     dimensions[dimension] = {
-      score: facetCount === 2 ? 8 : null,
+      score: null,
       evidence: ROUND_DIMENSION_COVERAGE_CONFIG.product_sense[dimension].facets
         .slice(0, facetCount)
         .map((facet) => ({
@@ -1411,7 +1423,7 @@ function verifiedPrefixSource(
         })),
     };
   }
-  const result = parseDimensionCoverageProviderSelection(
+  const currentResult = parseDimensionCoverageProviderSelection(
     {
       schemaVersion: FEEDBACK_DIMENSION_COVERAGE_SELECTION_SCHEMA_VERSION,
       promptVersion: FEEDBACK_DIMENSION_COVERAGE_PROMPT_VERSION,
@@ -1423,10 +1435,26 @@ function verifiedPrefixSource(
       roundType: "product_sense",
       answerBlocks: projection.trustedBlocks,
       modelVersion: "synthetic-focused-practice-v2",
-      allowNumericalScores: outcome === "partial_scorecard",
+      allowNumericalScores: false,
       verifiedPrefixProjection: projection,
     }
   );
+  const result =
+    outcome === "partial_scorecard"
+      ? {
+          ...currentResult,
+          mode: "partial_scorecard" as const,
+          summary:
+            "Only PM dimensions supported by verified completed answers are scored; the unverified interview tail and overall score are excluded.",
+          dimensions: {
+            ...currentResult.dimensions,
+            structure: {
+              ...currentResult.dimensions.structure,
+              score: 8,
+            },
+          },
+        }
+      : currentResult;
   assert.equal(result.schemaVersion, "feedback.dimension-coverage.v2");
   const sessionId = `synthetic-focused-practice-v2-${outcome}`;
   const feedbackId = `synthetic-feedback-v2-${outcome}`;

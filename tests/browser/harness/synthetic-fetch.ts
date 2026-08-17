@@ -11,12 +11,9 @@ const nativeFetch = window.fetch.bind(window);
 let comparisonRequests = 0;
 let focusedPracticeCompleted = false;
 const bookmarkedQuestionIds = new Set<string>();
-type SyntheticQualityOutcome =
-  | "full_scorecard"
-  | "partial_scorecard"
-  | "coaching_review";
+type SyntheticQualityOutcome = "scorecard" | "coaching_review";
 type SyntheticQualitySignal = {
-  contractVersion: "feedback-quality-signal.v1";
+  contractVersion: "feedback-quality-signal.v2";
   outcome: SyntheticQualityOutcome;
   response: "helpful" | "not_helpful";
   reason:
@@ -165,7 +162,7 @@ export function installSyntheticFetch() {
               })
             : {};
         if (
-          body.contractVersion !== "feedback-quality-signal.v1" ||
+          body.contractVersion !== "feedback-quality-signal.v2" ||
           (body.response !== "helpful" && body.response !== "not_helpful")
         ) {
           return json({ error: "invalid_request" }, 400);
@@ -187,7 +184,7 @@ export function installSyntheticFetch() {
           );
         }
         const saved: SyntheticQualitySignal = {
-          contractVersion: "feedback-quality-signal.v1",
+          contractVersion: "feedback-quality-signal.v2",
           outcome,
           response: body.response,
           reason: body.reason ?? null,
@@ -274,8 +271,8 @@ export function installSyntheticFetch() {
 function qualityOutcomeForSession(
   sessionId: string
 ): SyntheticQualityOutcome | null {
-  if (sessionId === "browser-qa-full") return "full_scorecard";
-  if (sessionId === "browser-qa-partial") return "partial_scorecard";
+  if (sessionId === "browser-qa-full") return "scorecard";
+  if (sessionId === "browser-qa-partial") return "coaching_review";
   if (sessionId === "browser-qa-coaching") return "coaching_review";
   return null;
 }

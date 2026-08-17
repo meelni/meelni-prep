@@ -1,6 +1,6 @@
 # Feedback Quality Signals
 
-Status: `feedback-quality-signal.v1`
+Status: `feedback-quality-signal.v2`
 
 ## Purpose
 
@@ -16,13 +16,13 @@ change quality-signal eligibility or its server-derived outcome.
 
 ## Eligibility
 
-Valid dimension-coverage Full scorecards, Partial scorecards, and Coaching
-reviews are eligible. The supported evidence-limited presentation is a
+Valid dimension-coverage Scorecards and Coaching reviews are eligible. The
+supported historical partial or evidence-limited presentation is a scoreless
 Coaching review. Unable, missing, pending, failed, skipped, corrupt,
 unsupported, historical v1, and historical scored v2 rows are ineligible and
 receive the same non-enumerating absence behavior.
 
-## Closed v1 values
+## Closed v2 values
 
 Response is `helpful | not_helpful`. Helpful requires a null reason. Not
 helpful permits null or one closed compatible reason:
@@ -31,7 +31,7 @@ helpful permits null or one closed compatible reason:
 - `evidence_did_not_match`
 - `next_step_unclear`
 - `too_much_to_use`
-- `score_explanation_unclear` for Full/Partial only
+- `score_explanation_unclear` for Scorecard only
 - `score_withholding_unclear` for Coaching only
 
 No free-text, other, comment, details, or metadata field exists. Contract
@@ -45,7 +45,7 @@ server-derived outcome and current signal or null. PUT accepts exactly:
 
 ```json
 {
-  "contractVersion": "feedback-quality-signal.v1",
+  "contractVersion": "feedback-quality-signal.v2",
   "response": "helpful",
   "reason": null,
   "expectedRevision": null
@@ -74,6 +74,12 @@ have no direct table grant. Writes are server owned. Mutations share the
 account-identity lock and tombstone barrier. Account export includes only the
 closed current signal fields. Account deletion explicitly removes signal and
 rate rows before the feedback/session graph.
+
+Historical v1 rows remain immutable. Reads normalize `full_scorecard` to
+`scorecard` and `partial_scorecard` to scoreless `coaching_review`. A v1
+partial-scorecard `score_explanation_unclear` reason is omitted from the v2
+owner-safe view because score-only reasons cannot cross the coaching boundary;
+the persisted row is neither rewritten nor renormalized.
 
 ## Analytics
 

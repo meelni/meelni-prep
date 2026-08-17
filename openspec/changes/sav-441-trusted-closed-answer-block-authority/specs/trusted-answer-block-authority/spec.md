@@ -1,5 +1,9 @@
 # Trusted closed answer-block authority delta
 
+> Amended 2026-08-17 by SAV-453: exact safe markers remain transparent sequence
+> evidence and no longer suppress downstream total authority when the trusted
+> projection has zero excluded candidate blocks and complete weighted coverage.
+
 Amended 2026-08-14 by SAV-449: the requirements below supersede the original
 single-terminal preserving-marker restriction.
 
@@ -40,8 +44,8 @@ Only exact `interviewer/no_provider_confirmed_prefix` markers MAY preserve
 prompt/answer continuity. Each marker MUST advance the shared sequence, MUST
 carry no speech content, and MUST NOT close or split the affected answer.
 Repeated and mid-session preserving markers MUST NOT globally invalidate
-otherwise trusted blocks. Their presence MUST keep the snapshot partial and
-MUST NOT authorize an overall score. Candidate markers, canonicalization
+otherwise trusted blocks. Their presence MAY keep the snapshot partial, but
+MUST NOT by itself suppress an overall score. Candidate markers, canonicalization
 failures, malformed marker ordering, gaps, writer/cutoff conflicts, and replay
 conflicts MUST fail closed.
 
@@ -50,8 +54,9 @@ conflicts MUST fail closed.
 Given a prompt-bound candidate answer with repeated exact interviewer
 preserving markers between speech events, and a later accepted interviewer
 follow-up boundary, the projection MUST preserve answer continuity and MAY
-return that later-closed block in a verified prefix. It MUST keep the snapshot
-partial and MUST NOT authorize an overall score.
+return that later-closed block in a verified prefix. Downstream scoring MAY
+authorize an overall only when the projection excludes no candidate blocks and
+every weighted dimension is sufficiently supported.
 
 ### Scenario: preserving marker without later closure
 

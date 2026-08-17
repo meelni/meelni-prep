@@ -7,7 +7,7 @@ import {
   createSyntheticFeedbackReviewOutcomeFixtures,
 } from "./feedback-review-outcomes";
 
-test("synthetic fixtures cover all four customer outcomes and both withheld-reason families", () => {
+test("synthetic fixtures cover all three customer outcomes and both withheld-reason families", () => {
   const fixtures = createSyntheticFeedbackReviewOutcomeFixtures();
   assert.deepEqual(
     [...new Set(fixtures.map((fixture) => fixture.expected.outcome))].sort(),
@@ -49,38 +49,44 @@ test("SAV-369 equivalent transcript segmentation preserves SAV-421 coverage and 
   }
 });
 
-test("full and partial scorecards show only supported numerical results", () => {
+test("scorecards are complete while incomplete coverage stays scoreless", () => {
   const fixtures = createSyntheticFeedbackReviewOutcomeFixtures();
-  const full = fixtures.find(
-    (fixture) => fixture.expected.outcome === "full_scorecard"
+  const scorecard = fixtures.find(
+    (fixture) => fixture.expected.outcome === "scorecard"
   )!;
-  const partial = fixtures.find(
-    (fixture) => fixture.expected.outcome === "partial_scorecard"
+  const incomplete = fixtures.find(
+    (fixture) => fixture.id === "incomplete-coverage-coaching"
   )!;
 
   assert.deepEqual(
-    full.expected.dimensions.map((entry) => entry.dimension),
+    scorecard.expected.dimensions.map((entry) => entry.dimension),
     SYNTHETIC_FEEDBACK_REVIEW_DIMENSIONS
   );
   assert.ok(
-    full.expected.dimensions.every(
+    scorecard.expected.dimensions.every(
       (entry) => entry.state === "scored" && entry.score !== null
     )
   );
-  assert.equal(full.sourceVariants[0]!.coverageResult?.mode, "full_scorecard");
-  assert.equal(full.expected.displayOverallScore, 8);
-  assert.equal(full.expected.numericMetricContribution.overall, true);
+  assert.equal(
+    scorecard.sourceVariants[0]!.coverageResult?.mode,
+    "full_scorecard"
+  );
+  assert.equal(scorecard.expected.displayOverallScore, 8);
+  assert.equal(scorecard.expected.numericMetricContribution.overall, true);
 
   assert.equal(
-    partial.sourceVariants[0]!.coverageResult?.mode,
-    "partial_scorecard"
+    incomplete.sourceVariants[0]!.coverageResult?.mode,
+    "coaching_review"
   );
-  assert.equal(partial.expected.displayOverallScore, null);
-  assert.equal(partial.expected.numericMetricContribution.overall, false);
-  assert.deepEqual(partial.expected.numericMetricContribution.dimensions, []);
+  assert.equal(incomplete.expected.displayOverallScore, null);
+  assert.equal(incomplete.expected.numericMetricContribution.overall, false);
+  assert.deepEqual(
+    incomplete.expected.numericMetricContribution.dimensions,
+    []
+  );
   assert.ok(
-    partial.expected.dimensions.some(
-      (entry) => entry.state === "not_enough_evidence" && entry.score === null
+    incomplete.expected.dimensions.every(
+      (entry) => entry.state === "unscored" && entry.score === null
     )
   );
 });
@@ -89,7 +95,7 @@ test("coaching fixtures are grounded, scoreless, and reason-specific", () => {
   const coaching = createSyntheticFeedbackReviewOutcomeFixtures().filter(
     (fixture) => fixture.expected.outcome === "coaching_review"
   );
-  assert.equal(coaching.length, 2);
+  assert.equal(coaching.length, 3);
   for (const fixture of coaching) {
     assert.equal(
       fixture.sourceVariants[0]!.coverageResult?.mode,

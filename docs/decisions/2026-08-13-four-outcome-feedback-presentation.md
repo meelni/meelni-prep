@@ -1,8 +1,11 @@
 # Four-Outcome Feedback Presentation
 
-Status: accepted
+Status: superseded by [Require A Total For Every Customer Scorecard](2026-08-17-total-required-scorecards.md)
 
 Date: 2026-08-13
+
+Superseded on 2026-08-17 by SAV-453. This file preserves the historical
+four-outcome decision; it is not the current customer outcome contract.
 
 ## Decision
 

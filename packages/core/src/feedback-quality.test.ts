@@ -11,7 +11,7 @@ import {
   type FeedbackQualityAggregateInput,
 } from "./feedback-quality";
 
-test("quality commands accept only the exact closed v1 shape", () => {
+test("quality commands accept only the exact closed v2 shape", () => {
   assert.deepEqual(
     parseFeedbackQualitySignalCommand({
       contractVersion: FEEDBACK_QUALITY_SIGNAL_CONTRACT_VERSION,
@@ -59,12 +59,12 @@ test("quality commands accept only the exact closed v1 shape", () => {
 
 test("quality reason compatibility is outcome and response aware", () => {
   assert.equal(
-    isFeedbackQualitySelectionValid("full_scorecard", "helpful", null),
+    isFeedbackQualitySelectionValid("scorecard", "helpful", null),
     true
   );
   assert.equal(
     isFeedbackQualitySelectionValid(
-      "full_scorecard",
+      "scorecard",
       "not_helpful",
       "score_explanation_unclear"
     ),
@@ -80,7 +80,7 @@ test("quality reason compatibility is outcome and response aware", () => {
   );
   assert.equal(
     isFeedbackQualitySelectionValid(
-      "partial_scorecard",
+      "scorecard",
       "not_helpful",
       "score_withholding_unclear"
     ),
@@ -100,9 +100,9 @@ test("quality eligibility consumes canonical presentation kinds only", () => {
   assert.equal(
     deriveFeedbackQualityOutcome({
       kind: "dimension-coverage",
-      mode: "partial_scorecard",
+      outcome: "coaching_review",
     } as never),
-    "partial_scorecard"
+    "coaching_review"
   );
   assert.equal(
     deriveFeedbackQualityOutcome({ kind: "evidence-limited" } as never),
@@ -144,7 +144,7 @@ test("aggregates suppress a whole outcome when one complement has nine users", (
   for (let index = 0; index < 10; index += 1) {
     rows.push({
       userKey: `helpful-${index}`,
-      outcome: "full_scorecard",
+      outcome: "scorecard",
       response: "helpful",
       reason: null,
     });
@@ -152,7 +152,7 @@ test("aggregates suppress a whole outcome when one complement has nine users", (
   for (let index = 0; index < 9; index += 1) {
     rows.push({
       userKey: `unclear-${index}`,
-      outcome: "full_scorecard",
+      outcome: "scorecard",
       response: "not_helpful",
       reason: "next_step_unclear",
     });
@@ -161,7 +161,7 @@ test("aggregates suppress a whole outcome when one complement has nine users", (
 
   rows.push({
     userKey: "unclear-9",
-    outcome: "full_scorecard",
+    outcome: "scorecard",
     response: "not_helpful",
     reason: "next_step_unclear",
   });
@@ -184,7 +184,7 @@ test("repeated reviews count once for the privacy threshold", () => {
 test("the aggregate privacy threshold cannot be weakened by a caller", () => {
   const sparseRows = Array.from({ length: 9 }, (_, index) => ({
     userKey: `owner-${index}`,
-    outcome: "partial_scorecard" as const,
+    outcome: "scorecard" as const,
     response: "helpful" as const,
     reason: null,
   }));

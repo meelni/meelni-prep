@@ -50,7 +50,7 @@ export async function trackFocusedPracticeStarted(
 
 export function readFocusedPracticeReviewOutcome(
   attempt: AnyFocusedPracticeAttempt
-): "partial_scorecard" | "coaching_review" | null {
+): "coaching_review" | null {
   if (
     attempt.contractVersion !== "focused-practice-attempt.v2" ||
     !("reviewOutcome" in attempt.feedbackVersion)
@@ -59,7 +59,7 @@ export function readFocusedPracticeReviewOutcome(
   }
   return attempt.feedbackVersion.reviewOutcome === "partial_scorecard" ||
     attempt.feedbackVersion.reviewOutcome === "coaching_review"
-    ? attempt.feedbackVersion.reviewOutcome
+    ? "coaching_review"
     : null;
 }
 

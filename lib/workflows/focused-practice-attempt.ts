@@ -355,8 +355,7 @@ function constructFocusedPracticeAttempt(
     } else {
       if (
         presentation.kind !== "dimension-coverage" ||
-        (presentation.mode !== "partial_scorecard" &&
-          presentation.mode !== "coaching_review") ||
+        presentation.outcome !== "coaching_review" ||
         !presentation.scoreWithheldReason ||
         !source.frozenEvidenceState
       ) {
@@ -390,7 +389,7 @@ function constructFocusedPracticeAttempt(
             : {}),
         }
       );
-      if (feedback.mode !== presentation.mode) {
+      if (feedback.mode === "full_scorecard") {
         return { ok: false, reason: "source_integrity_invalid" };
       }
       resolved = resolveDimensionCoverageFocusedPracticeSource(
@@ -403,7 +402,7 @@ function constructFocusedPracticeAttempt(
         rubricVersion: feedback.rubricVersion,
         modelVersion: feedback.modelVersion,
         evaluationState: "partial" as const,
-        reviewOutcome: feedback.mode,
+        reviewOutcome: "coaching_review" as const,
         scoreWithheldReason: presentation.scoreWithheldReason,
         sourceFingerprint: source.sourceFingerprint,
       };

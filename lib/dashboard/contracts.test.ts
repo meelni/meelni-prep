@@ -29,6 +29,7 @@ test("practice summary recommends the weakest feedback dimension", () => {
       ...baseSession,
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "6.2",
         structureScore: 8.1,
         clarityScore: 7.4,
@@ -107,6 +108,7 @@ test("history summary turns sessions into review rows and repeated patterns", ()
       id: "session-1",
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "7.1",
         structureScore: 8,
         clarityScore: 7,
@@ -120,6 +122,7 @@ test("history summary turns sessions into review rows and repeated patterns", ()
       startedAt: "2026-07-03T12:00:00.000Z",
       feedback: {
         status: "completed",
+        presentationKind: "scorecard",
         overallScore: "6.8",
         structureScore: 7,
         clarityScore: 6,
@@ -290,6 +293,28 @@ test("an unavailable completed score cannot enter dashboard progress", () => {
   assert.equal(history.rows[0]?.feedbackHref, null);
 });
 
+test("numerical fields without a closed presentation kind remain unavailable", () => {
+  const unprojected = {
+    ...baseSession,
+    id: "unprojected-scored-completed",
+    feedback: {
+      status: "completed",
+      overallScore: "9.9",
+      structureScore: 9.9,
+      clarityScore: 9.9,
+      insightScore: 9.9,
+      communicationScore: 9.9,
+      leadershipScore: 9.9,
+    },
+  };
+  const practice = buildDashboardPracticeSummary([unprojected]);
+  const history = buildHistorySummary([unprojected]);
+  assert.equal(practice.progress.scoredInterviewCount, 0);
+  assert.equal(practice.progress.score, null);
+  assert.equal(history.rows[0]?.statusLabel, "Feedback unavailable");
+  assert.equal(history.rows[0]?.feedbackHref, null);
+});
+
 test("scoreless reviewability stays separate from scored progress evidence", () => {
   const { everyFeedbackStatus } = createDashboardProgressFixtures();
   const evidenceLimited = everyFeedbackStatus.find(
@@ -343,7 +368,7 @@ test("a scoreless-only history keeps feedback reachable without inventing patter
   );
 });
 
-test("dimension-coverage reviews stay reachable while only full scorecards enter progress", () => {
+test("coaching reviews stay reachable while only scorecards enter progress", () => {
   const sessions = [
     {
       ...baseSession,
@@ -357,22 +382,21 @@ test("dimension-coverage reviews stay reachable while only full scorecards enter
     },
     {
       ...baseSession,
-      id: "partial-scorecard",
+      id: "historical-partial",
       startedAt: "2026-07-11T12:00:00.000Z",
       feedback: {
         status: "completed",
-        presentationKind: "partial_scorecard" as const,
+        presentationKind: "coaching_review" as const,
         overallScore: null,
-        structureScore: 8,
       },
     },
     {
       ...baseSession,
-      id: "full-scorecard",
+      id: "scorecard",
       startedAt: "2026-07-10T12:00:00.000Z",
       feedback: {
         status: "completed",
-        presentationKind: "full_scorecard" as const,
+        presentationKind: "scorecard" as const,
         overallScore: "8.0",
         structureScore: 8,
         clarityScore: 8,
@@ -396,23 +420,20 @@ test("dimension-coverage reviews stay reachable while only full scorecards enter
   assert.equal(history.patterns[0]?.count, 1);
   assert.equal(practice.lastFeedback?.href, "/feedback/coaching-review");
   assert.match(practice.lastFeedback?.summary ?? "", /No numerical score/);
-  assert.equal(history.nextReview.feedbackHref, "/feedback/full-scorecard");
+  assert.equal(history.nextReview.feedbackHref, "/feedback/scorecard");
   assert.equal(
-    rows.get("partial-scorecard")?.statusLabel,
-    "Partial scorecard ready"
+    rows.get("historical-partial")?.statusLabel,
+    "Coaching review ready"
   );
   assert.equal(
-    rows.get("partial-scorecard")?.feedbackHref,
-    "/feedback/partial-scorecard"
+    rows.get("historical-partial")?.feedbackHref,
+    "/feedback/historical-partial"
   );
   assert.equal(
     rows.get("coaching-review")?.feedbackHref,
     "/feedback/coaching-review"
   );
-  assert.equal(
-    rows.get("full-scorecard")?.feedbackHref,
-    "/feedback/full-scorecard"
-  );
+  assert.equal(rows.get("scorecard")?.feedbackHref, "/feedback/scorecard");
 });
 
 test("completed null-score rows require the server-owned presentation kind", () => {
