@@ -108,6 +108,7 @@ test("the direct calibration builder fails before writing under a mismatched run
     resolve(tmpdir(), "meelni-node-version-builder-")
   );
   const scriptsRoot = resolve(temporaryRoot, "scripts");
+  const evaluationRoot = resolve(temporaryRoot, "lib/evaluation");
   const sentinelPath = resolve(
     scriptsRoot,
     "generated/run-evaluation-calibration.bundle.mjs"
@@ -115,6 +116,7 @@ test("the direct calibration builder fails before writing under a mismatched run
 
   try {
     mkdirSync(dirname(sentinelPath), { recursive: true });
+    mkdirSync(evaluationRoot, { recursive: true });
     cpSync(
       resolve(repoRoot, "scripts/build-evaluation-calibration-runtime.mjs"),
       resolve(scriptsRoot, "build-evaluation-calibration-runtime.mjs")
@@ -122,6 +124,10 @@ test("the direct calibration builder fails before writing under a mismatched run
     cpSync(
       resolve(repoRoot, "scripts/node-version.mjs"),
       resolve(scriptsRoot, "node-version.mjs")
+    );
+    cpSync(
+      resolve(repoRoot, "lib/evaluation/calibration-live-startup.mjs"),
+      resolve(evaluationRoot, "calibration-live-startup.mjs")
     );
     writeFileSync(resolve(temporaryRoot, ".node-version"), "20.10.0\n");
     writeFileSync(sentinelPath, "do-not-replace\n");
