@@ -49,6 +49,7 @@ export const SYNTHETIC_FEEDBACK_DETERMINISTIC_DURABLE_STEPS = [
   "complete-feedback-generation",
   "authorize-feedback-generation",
 ] as const;
+export const SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS = 3;
 
 export type SyntheticFeedbackStage =
   (typeof SYNTHETIC_FEEDBACK_GENERATED_STAGES)[number];
@@ -455,6 +456,7 @@ function isCoherentGeneratedDurableTrace(
   let attempt = 1;
   const suffixStart = steps.length - 2;
   while (cursor < suffixStart) {
+    if (attempt > SYNTHETIC_FEEDBACK_MAX_LIVE_ATTEMPTS) return false;
     if (
       steps[cursor] !==
         `read-current-feedback-evaluation-${attempt}-execution-0` ||
