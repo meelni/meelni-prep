@@ -27,7 +27,9 @@ When `--output` is omitted, artifacts are written beneath
 `.artifacts/synthetic-feedback/v1/`, which is gitignored. A successful run
 writes one `*.json` artifact per selected scenario and a `manifest.json` for
 that exact selection. Re-running the same selection at the same code revision
-produces byte-identical files.
+reuses byte-identical files. A different selection or changed output must use a
+fresh directory: the command refuses symlinked, non-identical, or otherwise
+nonempty output instead of overwriting it.
 
 ## Stable artifact boundary
 

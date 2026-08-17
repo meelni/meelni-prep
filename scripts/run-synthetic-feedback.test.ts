@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -33,10 +41,11 @@ test("list command exposes deterministic scenario metadata without running", asy
 });
 
 test("run command writes a decodable artifact and hash-bound manifest", async (t) => {
-  const outputDirectory = await mkdtemp(
+  const temporaryRoot = await mkdtemp(
     join(tmpdir(), "meelni-synthetic-feedback-")
   );
-  t.after(() => rm(outputDirectory, { recursive: true, force: true }));
+  const outputDirectory = join(temporaryRoot, "output");
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
   const outputs: string[] = [];
   const errors: string[] = [];
   const args = ["run", "normal-product-sense", "--output", outputDirectory];
@@ -110,4 +119,45 @@ test("run command rejects unknown scenarios and filesystem-root output", async (
     1
   );
   assert.match(errors.at(-1) ?? "", /usage: feedback:synthetic/);
+});
+
+test("run command preserves mismatched output and rejects symlinks", async (t) => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "meelni-synthetic-feedback-safety-")
+  );
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const errors: string[] = [];
+  const io = {
+    cwd: process.cwd(),
+    writeOut: () => undefined,
+    writeError: (value: string) => errors.push(value),
+  };
+
+  const mismatchedOutput = join(temporaryRoot, "mismatched");
+  await mkdir(mismatchedOutput);
+  const existingManifest = join(mismatchedOutput, "manifest.json");
+  await writeFile(existingManifest, "preserve-me\n", "utf8");
+  assert.equal(
+    await runSyntheticFeedbackCli(
+      ["run", "normal-product-sense", "--output", mismatchedOutput],
+      io
+    ),
+    1
+  );
+  assert.equal(await readFile(existingManifest, "utf8"), "preserve-me\n");
+  assert.match(errors.at(-1) ?? "", /synthetic_feedback_output_conflict/);
+
+  const symlinkTarget = join(temporaryRoot, "symlink-target");
+  const symlinkOutput = join(temporaryRoot, "symlink-output");
+  await mkdir(symlinkTarget);
+  await symlink(symlinkTarget, symlinkOutput, "dir");
+  assert.equal(
+    await runSyntheticFeedbackCli(
+      ["run", "normal-product-sense", "--output", symlinkOutput],
+      io
+    ),
+    1
+  );
+  assert.deepEqual(await readdir(symlinkTarget), []);
+  assert.match(errors.at(-1) ?? "", /synthetic_feedback_output_conflict/);
 });
