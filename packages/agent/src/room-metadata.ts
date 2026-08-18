@@ -7,6 +7,11 @@ import {
   type QuestionPreference,
   type RoundType,
 } from "@meelni/core";
+import {
+  isInterviewBriefV2,
+  resolveOptionalInterviewBriefV2,
+  type InterviewBriefV2,
+} from "./interviewer-contracts";
 
 export type InterviewFeedbackMode = "real_time" | "end_only" | "silent";
 
@@ -52,6 +57,7 @@ export interface InterviewRoomMetadata {
   mode?: InterviewMode;
   config: InterviewRuntimeConfig;
   question: InterviewRoomQuestion | null;
+  interview_brief?: InterviewBriefV2;
 }
 
 export type InterviewRoomMetadataInput = Omit<
@@ -73,6 +79,7 @@ export class InterviewRoomMetadataError extends Error {
       | "invalid_transcript_ingest_url"
       | "invalid_deadline"
       | "invalid_round_type"
+      | "invalid_interview_brief"
   ) {
     super(`Invalid interview room metadata: ${code}`);
     this.name = "InterviewRoomMetadataError";
@@ -191,18 +198,39 @@ export function buildInterviewRoomMetadata(
     metadata.transcript_ingest_url
   );
 
+  const normalizedQuestion = metadata.question
+    ? normalizeQuestion(metadata.question)
+    : null;
+  const normalizedDeadline = normalizeDeadlineAt(metadata.deadline_at);
+  const normalizedConfig = {
+    ...metadata.config,
+    feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
+  };
+  const interviewBrief = metadata.interview_brief;
+  if (
+    interviewBrief !== undefined &&
+    (!isInterviewBriefV2(interviewBrief) ||
+      !isInterviewBriefCompatibleWithRoom(interviewBrief, {
+        session_id: metadata.session_id,
+        deadline_at: normalizedDeadline,
+        round_type: metadata.round_type,
+        config: normalizedConfig,
+        question: normalizedQuestion,
+      }))
+  ) {
+    throw new InterviewRoomMetadataError("invalid_interview_brief");
+  }
+
   return {
     ...metadata,
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: metadata.session_id,
     candidate_identity: metadata.candidate_identity?.trim(),
     transcript_ingest_url: transcriptIngestUrl,
-    deadline_at: normalizeDeadlineAt(metadata.deadline_at),
-    config: {
-      ...metadata.config,
-      feedback_mode: DEFAULT_INTERVIEW_RUNTIME_CONFIG.feedback_mode,
-    },
-    question: metadata.question ? normalizeQuestion(metadata.question) : null,
+    deadline_at: normalizedDeadline,
+    config: normalizedConfig,
+    question: normalizedQuestion,
+    ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
   };
 }
 
@@ -239,6 +267,28 @@ export function parseInterviewRoomMetadata(
     throw new InterviewRoomMetadataError("invalid_round_type");
   }
 
+  const normalizedDeadline = normalizeDeadlineAt(parsed.deadline_at);
+  const normalizedConfig = normalizeInterviewRuntimeConfig(
+    isRecord(parsed.config) ? parsed.config : undefined
+  );
+  const normalizedQuestion = isRecord(parsed.question)
+    ? normalizeQuestion(parsed.question)
+    : null;
+  const briefResolution = resolveOptionalInterviewBriefV2(
+    parsed.interview_brief
+  );
+  const interviewBrief =
+    briefResolution.mode === "brief_v2" &&
+    isInterviewBriefCompatibleWithRoom(briefResolution.brief, {
+      session_id: parsed.session_id,
+      deadline_at: normalizedDeadline,
+      round_type: parsed.round_type,
+      config: normalizedConfig,
+      question: normalizedQuestion,
+    })
+      ? briefResolution.brief
+      : undefined;
+
   return buildInterviewRoomMetadata({
     contract_version: INTERVIEW_ROOM_METADATA_CONTRACT_VERSION,
     session_id: parsed.session_id,
@@ -248,18 +298,15 @@ export function parseInterviewRoomMetadata(
     transcript_ingest_url: normalizeTranscriptIngestUrl(
       parsed.transcript_ingest_url
     ),
-    deadline_at: normalizeDeadlineAt(parsed.deadline_at),
+    deadline_at: normalizedDeadline,
     round_type: parsed.round_type,
     mode:
       parsed.mode === "text" || parsed.mode === "voice_video"
         ? parsed.mode
         : undefined,
-    config: normalizeInterviewRuntimeConfig(
-      isRecord(parsed.config) ? parsed.config : undefined
-    ),
-    question: isRecord(parsed.question)
-      ? normalizeQuestion(parsed.question)
-      : null,
+    config: normalizedConfig,
+    question: normalizedQuestion,
+    ...(interviewBrief ? { interview_brief: interviewBrief } : {}),
   });
 }
 
@@ -318,6 +365,28 @@ function normalizeQuestion(
         ? { askedAt: question.askedAt.toISOString() }
         : {}),
   };
+}
+
+function isInterviewBriefCompatibleWithRoom(
+  brief: InterviewBriefV2,
+  room: Pick<
+    InterviewRoomMetadata,
+    "session_id" | "deadline_at" | "round_type" | "config" | "question"
+  >
+): boolean {
+  return (
+    room.deadline_at !== null &&
+    room.question !== null &&
+    brief.session_id === room.session_id &&
+    brief.deadline_at === room.deadline_at &&
+    brief.round_type === room.round_type &&
+    brief.difficulty === room.config.difficulty &&
+    brief.duration_minutes === room.config.duration &&
+    brief.selected_question.id === room.question.id &&
+    brief.selected_question.text === room.question.text &&
+    brief.selected_question.company === room.question.company &&
+    brief.selected_question.type === room.question.type
+  );
 }
 
 function normalizeDeadlineAt(value: unknown): string | null {
