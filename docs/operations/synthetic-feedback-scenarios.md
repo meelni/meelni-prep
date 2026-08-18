@@ -29,7 +29,11 @@ writes one `*.json` artifact per selected scenario and a `manifest.json` for
 that exact selection. Re-running the same selection at the same code revision
 reuses byte-identical files. A different selection or changed output must use a
 fresh directory: the command refuses symlinked, non-identical, or otherwise
-nonempty output instead of overwriting it.
+nonempty output instead of overwriting it. Publication claims a new destination
+directory exclusively before writing files; it never replaces a concurrently
+created filesystem entry. A write failure after that claim may leave a partial
+directory, which is intentionally fail-closed and must be inspected or removed
+before retrying.
 
 ## Stable artifact boundary
 
@@ -72,6 +76,11 @@ The reusable scenario workflow traverses the same transcript writer, event and
 marker ingestion, runtime settlement, frozen evidence, interview end, durable
 dispatch, generation handler, evaluation parser, immutable persistence,
 lifecycle presenter, and core customer projection used by the application.
+The runner loads that Production-shaped module only for a run and masks
+inherited database, Inngest, provider, and observability configuration during
+module initialization. Listing scenarios never loads it, default Production
+adapters are never invoked, and the reviewed calibration runtime graph remains
+unchanged.
 Each durable generation step crosses a JSON serialize/parse round trip so
 non-durable values fail during the run. That trace includes the complete initial
 generation-dispatch event and the complete post-feedback insights event, not
