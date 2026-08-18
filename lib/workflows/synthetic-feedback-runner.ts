@@ -31,7 +31,17 @@ let productionScenarioModulePromise:
 
 export interface RunSyntheticFeedbackOptions {
   evaluator?: SyntheticFeedbackEvaluatorAdapter;
+  workerEnvironment?: SyntheticFeedbackWorkerEnvironment;
 }
+
+export type SyntheticFeedbackWorkerEnvironment =
+  | Readonly<{ NODE_ENV: "test"; TZ: "UTC" }>
+  | Readonly<{
+      MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD: "1";
+      NODE_ENV: "test";
+      NODE_OPTIONS: string;
+      TZ: "UTC";
+    }>;
 
 export interface SyntheticFeedbackBundleV1 {
   artifacts: Array<{
@@ -52,7 +62,7 @@ export async function runSyntheticFeedbackScenario(
   const result = options.evaluator
     ? await runWithExplicitEvaluator(scenario, options.evaluator)
     : mustGetWorkerResult(
-        await runProviderFreeWorker([scenario.id]),
+        await runProviderFreeWorker([scenario.id], options.workerEnvironment),
         scenario.id
       );
   return createSyntheticFeedbackArtifact(scenario, result);
@@ -120,7 +130,10 @@ export async function createSyntheticFeedbackBundle(
   const artifacts: SyntheticFeedbackBundleV1["artifacts"] = [];
   const workerResults = options.evaluator
     ? null
-    : await runProviderFreeWorker(selected.map((scenario) => scenario.id));
+    : await runProviderFreeWorker(
+        selected.map((scenario) => scenario.id),
+        options.workerEnvironment
+      );
   for (const scenario of selected) {
     const artifact = workerResults
       ? createSyntheticFeedbackArtifact(
@@ -201,7 +214,8 @@ async function runWithExplicitEvaluator(
 }
 
 function runProviderFreeWorker(
-  scenarioIds: readonly string[]
+  scenarioIds: readonly string[],
+  workerEnvironment?: SyntheticFeedbackWorkerEnvironment
 ): Promise<Map<string, FeedbackProductionScenarioResult>> {
   const workerPath = fileURLToPath(
     new URL("./synthetic-feedback-worker.ts", import.meta.url)
@@ -214,7 +228,7 @@ function runProviderFreeWorker(
       {
         cwd: repositoryRoot,
         encoding: "utf8",
-        env: { NODE_ENV: "test", TZ: "UTC" },
+        env: normalizeSyntheticFeedbackWorkerEnvironment(workerEnvironment),
         maxBuffer: 5 * 1024 * 1024,
       },
       (error, stdout) => {
@@ -249,6 +263,30 @@ function runProviderFreeWorker(
       }
     );
   });
+}
+
+function normalizeSyntheticFeedbackWorkerEnvironment(
+  value?: SyntheticFeedbackWorkerEnvironment
+): NodeJS.ProcessEnv {
+  if (!value) return { NODE_ENV: "test", TZ: "UTC" };
+  const keys = Object.keys(value).sort();
+  const guarded = "NODE_OPTIONS" in value;
+  if (
+    value.NODE_ENV !== "test" ||
+    value.TZ !== "UTC" ||
+    (keys.length === 2 && keys.join(",") !== "NODE_ENV,TZ") ||
+    (keys.length === 4 &&
+      (keys.join(",") !==
+        "MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD,NODE_ENV,NODE_OPTIONS,TZ" ||
+        !guarded ||
+        value.MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD !== "1" ||
+        typeof value.NODE_OPTIONS !== "string" ||
+        value.NODE_OPTIONS.length === 0)) ||
+    (keys.length !== 2 && keys.length !== 4)
+  ) {
+    throw new Error("synthetic_feedback_worker_environment_invalid");
+  }
+  return { ...value };
 }
 
 function mustGetWorkerResult(

@@ -8,6 +8,7 @@ void main().catch(() => {
 });
 
 async function main(): Promise<void> {
+  assertRequiredEgressGuard();
   const scenarioIds = decodeScenarioIds(process.argv[2]);
   const catalog = createSyntheticFeedbackScenarios();
   const byId = new Map(catalog.map((scenario) => [scenario.id, scenario]));
@@ -24,6 +25,17 @@ async function main(): Promise<void> {
     entries.push({ scenarioId, result });
   }
   process.stdout.write(JSON.stringify(entries));
+}
+
+function assertRequiredEgressGuard(): void {
+  if (
+    process.env.MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD === "1" &&
+    (globalThis as Record<symbol, unknown>)[
+      Symbol.for("meelni.browser-qa.egress-guard")
+    ] !== true
+  ) {
+    throw new Error("synthetic_feedback_egress_guard_missing");
+  }
 }
 
 function decodeScenarioIds(value: string | undefined): string[] {

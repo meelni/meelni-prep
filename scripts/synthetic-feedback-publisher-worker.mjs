@@ -9,6 +9,7 @@ void main().catch(() => {
 });
 
 async function main() {
+  assertRequiredEgressGuard();
   const mode = decodeMode(process.argv[2]);
   const expectedDev = decodeIdentity(process.argv[3]);
   const expectedIno = decodeIdentity(process.argv[4]);
@@ -32,6 +33,15 @@ async function main() {
       encoding: "utf8",
       flag: "wx",
     });
+  }
+}
+
+function assertRequiredEgressGuard() {
+  if (
+    process.env.MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD === "1" &&
+    globalThis[Symbol.for("meelni.browser-qa.egress-guard")] !== true
+  ) {
+    throw new Error("synthetic_feedback_egress_guard_missing");
   }
 }
 

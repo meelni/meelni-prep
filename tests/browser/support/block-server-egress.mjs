@@ -2,6 +2,9 @@ import http from "node:http";
 import https from "node:https";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+const EGRESS_GUARD_MARKER = Symbol.for("meelni.browser-qa.egress-guard");
+
+globalThis[EGRESS_GUARD_MARKER] = true;
 
 function hostnameFromRequest(input) {
   if (input instanceof URL) return input.hostname;
