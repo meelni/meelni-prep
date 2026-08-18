@@ -40,6 +40,152 @@ test("createDrizzleCreditLedgerStore exposes the credit ledger store contract", 
   assert.equal(typeof store.withUserTransaction, "function");
 });
 
+test("production Drizzle integrity snapshots stay bounded and retain linked corruption", async (t) => {
+  const timestamp = new Date("2026-08-01T00:00:00.000Z");
+  const reservationRow = {
+    id: "reservation-user-1",
+    userId: "user-1",
+    reservationKey: "session:adapter-snapshot",
+    status: "active",
+    credits: 1,
+    sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
+    expiresAt: timestamp,
+    metadata: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const grantRow = {
+    id: "grant-user-1",
+    userId: "user-1",
+    catalogId: "starter",
+    source: "rollover",
+    sourceId: "renewal:adapter-snapshot",
+    idempotencyKey: "rollover:adapter-snapshot",
+    originalCredits: 2,
+    remainingCredits: 1,
+    reservedCredits: 1,
+    expiresAt: timestamp,
+    rolloverEligible: false,
+    rolloverSourceGrantId: "source-grant",
+    revokedAt: null,
+    revocationKey: null,
+    metadata: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const allocationRow = {
+    id: "allocation-cross-user",
+    reservationId: reservationRow.id,
+    grantId: "grant-user-2",
+    credits: 1,
+    revokedCredits: 0,
+    createdAt: timestamp,
+  };
+  const transactionRow = {
+    id: "transaction-cross-user",
+    userId: "user-2",
+    grantId: allocationRow.grantId,
+    reservationId: reservationRow.id,
+    type: "reserve",
+    credits: 1,
+    idempotencyKey: "reserve:adapter-snapshot:grant-user-2",
+    sourceId: null,
+    balanceAfter: 0,
+    metadata: null,
+    createdAt: timestamp,
+  };
+  const rolloverLotRow = {
+    id: "rollover-lot-cross-user",
+    userId: "user-2",
+    rolloverGrantId: grantRow.id,
+    sourceGrantId: "source-grant",
+    originalCredits: 2,
+    remainingCredits: 1,
+    reservedCredits: 1,
+    consumedCredits: 0,
+    revokedCredits: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const rolloverLotAllocationRow = {
+    id: "rollover-lot-allocation-cross-user",
+    reservationGrantId: allocationRow.id,
+    rolloverLotId: rolloverLotRow.id,
+    credits: 1,
+    revokedCredits: 0,
+    createdAt: timestamp,
+  };
+
+  for (const scope of ["full", "active"] as const) {
+    await t.test(scope, async () => {
+      let selects = 0;
+      let lockedSelects = 0;
+      const store = createDrizzleCreditLedgerStore(
+        createScopedLedgerDatabase({
+          selectRows: [
+            [reservationRow],
+            [grantRow],
+            [allocationRow],
+            [transactionRow],
+            [rolloverLotRow],
+            [rolloverLotAllocationRow],
+          ],
+          onQuery: () => {
+            selects += 1;
+          },
+          onForUpdate: () => {
+            lockedSelects += 1;
+          },
+        })
+      );
+
+      const snapshot = await store.withUserTransaction(
+        "user-1",
+        (transaction) =>
+          scope === "full"
+            ? transaction.getUserReservationIntegritySnapshotForUpdate("user-1")
+            : transaction.getActiveUserReservationIntegritySnapshotForUpdate(
+                "user-1"
+              )
+      );
+
+      assert.equal(selects, 8);
+      assert.equal(lockedSelects, 7);
+      assert.equal(snapshot.reservations[0]?.userId, "user-1");
+      assert.equal(snapshot.allocations[0]?.grantId, "grant-user-2");
+      assert.equal(snapshot.transactions[0]?.userId, "user-2");
+      assert.equal(snapshot.rolloverLots[0]?.userId, "user-2");
+      assert.equal(
+        snapshot.rolloverLotAllocations[0]?.rolloverLotId,
+        rolloverLotRow.id
+      );
+
+      let rejectedScopeSelects = 0;
+      const scopedStore = createDrizzleCreditLedgerStore(
+        createScopedLedgerDatabase({
+          selectRows: [],
+          onQuery: () => {
+            rejectedScopeSelects += 1;
+          },
+        })
+      );
+      await assert.rejects(
+        scopedStore.withUserTransaction("user-1", (transaction) =>
+          scope === "full"
+            ? transaction.getUserReservationIntegritySnapshotForUpdate("user-2")
+            : transaction.getActiveUserReservationIntegritySnapshotForUpdate(
+                "user-2"
+              )
+        ),
+        /credit_ledger_user_scope_mismatch/
+      );
+      assert.equal(rejectedScopeSelects, 2);
+    });
+  }
+});
+
 test("production transaction clock is read after the user lock and rejects invalid database time", async () => {
   function clockDatabase(value: unknown) {
     return {
@@ -2935,6 +3081,419 @@ test("concurrent distinct reservations cannot spend the same last credit", async
   });
 });
 
+test("reservation launch keeps terminal-history validation to a fixed store snapshot", async () => {
+  const baseStore = createMemoryCreditLedgerStore();
+  const seedLedger = createCreditLedgerService({ store: baseStore });
+  await seedLedger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:terminal-history",
+  });
+
+  for (let index = 0; index < 64; index += 1) {
+    const reservationKey = `session:terminal-history:${index}`;
+    await seedLedger.reserveCredit({
+      userId: "user-1",
+      reservationKey,
+    });
+    await seedLedger.releaseReservation({
+      reservationKey,
+      idempotencyKey: `release:terminal-history:${index}`,
+    });
+  }
+
+  const reads = {
+    fullSnapshot: 0,
+    activeSnapshot: 0,
+    allReservations: 0,
+    allocations: 0,
+    terminalTransactions: 0,
+  };
+  const instrumentedStore: CreditLedgerStore = {
+    ...baseStore,
+    async withUserTransaction(userId, work) {
+      return baseStore.withUserTransaction(userId, (transaction) =>
+        work({
+          ...transaction,
+          async getUserReservationIntegritySnapshotForUpdate(candidateUserId) {
+            reads.fullSnapshot += 1;
+            return transaction.getUserReservationIntegritySnapshotForUpdate(
+              candidateUserId
+            );
+          },
+          async getActiveUserReservationIntegritySnapshotForUpdate(
+            candidateUserId
+          ) {
+            reads.activeSnapshot += 1;
+            return transaction.getActiveUserReservationIntegritySnapshotForUpdate(
+              candidateUserId
+            );
+          },
+          async listUserReservationsForUpdate(candidateUserId) {
+            reads.allReservations += 1;
+            return transaction.listUserReservationsForUpdate(candidateUserId);
+          },
+          async listAllocationsForUpdate(reservationId) {
+            reads.allocations += 1;
+            return transaction.listAllocationsForUpdate(reservationId);
+          },
+          async listTerminalTransactionsByReservationForUpdate(reservationId) {
+            reads.terminalTransactions += 1;
+            return transaction.listTerminalTransactionsByReservationForUpdate(
+              reservationId
+            );
+          },
+        })
+      );
+    },
+  };
+  const ledger = createCreditLedgerService({ store: instrumentedStore });
+
+  const launched = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:after-terminal-history",
+  });
+
+  assert.equal(launched.reservation.status, "active");
+  assert.deepEqual(reads, {
+    fullSnapshot: 1,
+    activeSnapshot: 1,
+    allReservations: 0,
+    allocations: 0,
+    terminalTransactions: 0,
+  });
+});
+
+test("reservation launch keeps many active rollover reservations on fixed snapshots", async () => {
+  const baseStore = createMemoryCreditLedgerStore();
+  const now = new Date("2026-07-10T12:00:00.000Z");
+  baseStore.setCurrentTime(now);
+  const seedLedger = createCreditLedgerService({
+    store: baseStore,
+    now: () => now,
+  });
+  await seedLedger.grantCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    source: "subscription_renewal",
+    idempotencyKey: "renewal:active-snapshot:prior",
+    includedCredits: 12,
+  });
+  const renewal = await seedLedger.renewSubscriptionCredits({
+    userId: "user-1",
+    catalogId: "pro",
+    sourceId: "renewal:active-snapshot:current",
+    renewalIdempotencyKey: "renewal:active-snapshot:current",
+    rolloverIdempotencyKey: "rollover:active-snapshot",
+  });
+  assert.ok(renewal.rolloverGrant);
+
+  for (let index = 0; index < 8; index += 1) {
+    const reserved = await seedLedger.reserveCredit({
+      userId: "user-1",
+      reservationKey: `session:active-rollover:${index}`,
+    });
+    assert.equal(reserved.allocations[0]?.grantId, renewal.rolloverGrant.id);
+  }
+
+  const reads = {
+    fullSnapshot: 0,
+    activeSnapshot: 0,
+    allReservations: 0,
+    allocations: 0,
+    terminalTransactions: 0,
+    rolloverLots: 0,
+    rolloverLotAllocations: 0,
+  };
+  const instrumentedStore: CreditLedgerStore = {
+    ...baseStore,
+    async withUserTransaction(userId, work) {
+      return baseStore.withUserTransaction(userId, (transaction) =>
+        work({
+          ...transaction,
+          async getUserReservationIntegritySnapshotForUpdate(candidateUserId) {
+            reads.fullSnapshot += 1;
+            return transaction.getUserReservationIntegritySnapshotForUpdate(
+              candidateUserId
+            );
+          },
+          async getActiveUserReservationIntegritySnapshotForUpdate(
+            candidateUserId
+          ) {
+            reads.activeSnapshot += 1;
+            const snapshot =
+              await transaction.getActiveUserReservationIntegritySnapshotForUpdate(
+                candidateUserId
+              );
+            assert.equal(snapshot.reservations.length, 9);
+            assert.ok(snapshot.rolloverLots.length > 0);
+            assert.ok(snapshot.rolloverLotAllocations.length > 0);
+            return snapshot;
+          },
+          async listUserReservationsForUpdate(candidateUserId) {
+            reads.allReservations += 1;
+            return transaction.listUserReservationsForUpdate(candidateUserId);
+          },
+          async listAllocationsForUpdate(reservationId) {
+            reads.allocations += 1;
+            return transaction.listAllocationsForUpdate(reservationId);
+          },
+          async listTerminalTransactionsByReservationForUpdate(reservationId) {
+            reads.terminalTransactions += 1;
+            return transaction.listTerminalTransactionsByReservationForUpdate(
+              reservationId
+            );
+          },
+          async listRolloverLotsForGrantForUpdate(grantId) {
+            reads.rolloverLots += 1;
+            return transaction.listRolloverLotsForGrantForUpdate(grantId);
+          },
+          async listRolloverLotAllocationsForReservationGrantForUpdate(
+            reservationGrantId
+          ) {
+            reads.rolloverLotAllocations += 1;
+            return transaction.listRolloverLotAllocationsForReservationGrantForUpdate(
+              reservationGrantId
+            );
+          },
+        })
+      );
+    },
+  };
+  const ledger = createCreditLedgerService({
+    store: instrumentedStore,
+    now: () => now,
+  });
+
+  const launched = await ledger.reserveCredit({
+    userId: "user-1",
+    reservationKey: "session:after-active-rollover-history",
+  });
+
+  assert.equal(launched.allocations[0]?.grantId, renewal.rolloverGrant.id);
+  assert.deepEqual(reads, {
+    fullSnapshot: 1,
+    activeSnapshot: 1,
+    allReservations: 0,
+    allocations: 0,
+    terminalTransactions: 0,
+    rolloverLots: 2,
+    rolloverLotAllocations: 0,
+  });
+});
+
+test("reservation launch rejects missing terminal settlement evidence", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  const grant = await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:missing-terminal-evidence",
+  });
+  const reservation = await store.createReservation({
+    userId: "user-1",
+    reservationKey: "session:missing-terminal-evidence",
+    status: "released",
+    credits: 1,
+    sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
+    expiresAt: new Date("2026-08-01T00:00:00.000Z"),
+    metadata: null,
+  });
+  const allocation = await store.createAllocation({
+    reservationId: reservation.id,
+    grantId: grant.grant.id,
+    credits: 1,
+  });
+  await store.createTransaction({
+    userId: "user-1",
+    grantId: grant.grant.id,
+    reservationId: reservation.id,
+    type: "reserve",
+    credits: 1,
+    idempotencyKey: `reserve:${reservation.reservationKey}:${grant.grant.id}`,
+    sourceId: null,
+    balanceAfter: 0,
+    metadata: null,
+  });
+
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:blocked-by-missing-terminal-evidence",
+      }),
+    /credit_ledger_reconciliation_required/
+  );
+  assert.ok(allocation);
+  assert.equal(
+    await store.findReservationByKey(
+      "session:blocked-by-missing-terminal-evidence"
+    ),
+    null
+  );
+});
+
+test("reservation launch rejects incomplete unrelated active evidence", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "trial",
+    source: "trial",
+    idempotencyKey: "trial:incomplete-unrelated-active",
+  });
+  await store.createReservation({
+    userId: "user-1",
+    reservationKey: "session:incomplete-unrelated-active",
+    status: "active",
+    credits: 1,
+    sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
+    expiresAt: new Date("2026-08-01T00:00:00.000Z"),
+    metadata: null,
+  });
+
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:blocked-by-incomplete-active",
+      }),
+    /credit_reservation_incomplete/
+  );
+  assert.equal(
+    await store.findReservationByKey("session:blocked-by-incomplete-active"),
+    null
+  );
+});
+
+test("reservation launch snapshot retains cross-user allocation corruption", async () => {
+  const store = createMemoryCreditLedgerStore();
+  const ledger = createCreditLedgerService({ store });
+  await ledger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:cross-user-owner",
+  });
+  const foreignGrant = await ledger.grantCredits({
+    userId: "user-2",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:cross-user-foreign",
+  });
+  const reservation = await store.createReservation({
+    userId: "user-1",
+    reservationKey: "session:cross-user-allocation",
+    status: "active",
+    credits: 1,
+    sessionId: null,
+    startContractVersion: 0,
+    startAttemptId: null,
+    expiresAt: new Date("2026-08-01T00:00:00.000Z"),
+    metadata: null,
+  });
+  await store.createAllocation({
+    reservationId: reservation.id,
+    grantId: foreignGrant.grant.id,
+    credits: 1,
+  });
+  await store.createTransaction({
+    userId: "user-1",
+    grantId: foreignGrant.grant.id,
+    reservationId: reservation.id,
+    type: "reserve",
+    credits: 1,
+    idempotencyKey: `reserve:${reservation.reservationKey}:${foreignGrant.grant.id}`,
+    sourceId: null,
+    balanceAfter: 0,
+    metadata: null,
+  });
+
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:blocked-by-cross-user-allocation",
+      }),
+    /credit_ledger_reconciliation_required/
+  );
+  assert.equal(
+    await store.findReservationByKey(
+      "session:blocked-by-cross-user-allocation"
+    ),
+    null
+  );
+});
+
+test("reservation launch postcheck rejects terminal evidence added to an active reservation", async () => {
+  const baseStore = createMemoryCreditLedgerStore();
+  const seedLedger = createCreditLedgerService({ store: baseStore });
+  await seedLedger.grantCredits({
+    userId: "user-1",
+    catalogId: "interview_pass",
+    source: "checkout",
+    idempotencyKey: "checkout:active-terminal-postcheck",
+  });
+  let injectTerminalEvidence = true;
+  const faultStore: CreditLedgerStore = {
+    ...baseStore,
+    async withUserTransaction(userId, work) {
+      return baseStore.withUserTransaction(userId, (transaction) =>
+        work({
+          ...transaction,
+          async createTransaction(input) {
+            const created = await transaction.createTransaction(input);
+            if (
+              injectTerminalEvidence &&
+              input.type === "reserve" &&
+              input.reservationId !== null &&
+              input.grantId !== null
+            ) {
+              injectTerminalEvidence = false;
+              await transaction.createTransaction({
+                userId: input.userId,
+                grantId: null,
+                reservationId: input.reservationId,
+                type: "release",
+                credits: input.credits,
+                idempotencyKey: "release:injected-active-terminal",
+                sourceId: input.sourceId,
+                balanceAfter: null,
+                metadata: {
+                  allocations: [
+                    { grantId: input.grantId, credits: input.credits },
+                  ],
+                },
+              });
+            }
+            return created;
+          },
+        })
+      );
+    },
+  };
+  const ledger = createCreditLedgerService({ store: faultStore });
+
+  await assert.rejects(
+    () =>
+      ledger.reserveCredit({
+        userId: "user-1",
+        reservationKey: "session:active-terminal-postcheck",
+      }),
+    /credit_ledger_reconciliation_required/
+  );
+  assert.equal(
+    await baseStore.findReservationByKey("session:active-terminal-postcheck"),
+    null
+  );
+});
+
 test("a write failure rolls back the complete reservation mutation", async () => {
   const baseStore = createMemoryCreditLedgerStore();
   const baseLedger = createCreditLedgerService({
@@ -3318,6 +3877,7 @@ function createScopedLedgerDatabase({
   onCommit = () => {},
   onRollback = () => {},
   onWrite = () => {},
+  onForUpdate = () => {},
 }: {
   selectRows: Array<unknown[] | Promise<unknown[]>>;
   insertRows?: unknown[][];
@@ -3325,6 +3885,7 @@ function createScopedLedgerDatabase({
   onCommit?: () => void;
   onRollback?: () => void;
   onWrite?: () => void;
+  onForUpdate?: () => void;
 }) {
   return {
     async transaction(
@@ -3351,6 +3912,7 @@ function createScopedLedgerDatabase({
               return builder;
             },
             async for() {
+              onForUpdate();
               return rows;
             },
             then: result.then.bind(result),
@@ -3445,6 +4007,9 @@ function closedTransactionOperations(transaction: CreditLedgerTransaction) {
     () => transaction.listUserGrants("user-1"),
     () => transaction.listUserGrantsForUpdate("user-1"),
     () => transaction.listUserReservationsForUpdate("user-1"),
+    () => transaction.getUserReservationIntegritySnapshotForUpdate("user-1"),
+    () =>
+      transaction.getActiveUserReservationIntegritySnapshotForUpdate("user-1"),
     () =>
       transaction.updateGrantBalances("closed-grant-id", {
         remainingCredits: 0,
