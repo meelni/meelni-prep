@@ -30,10 +30,13 @@ that exact selection. Re-running the same selection at the same code revision
 reuses byte-identical files. A different selection or changed output must use a
 fresh directory: the command refuses symlinked, non-identical, or otherwise
 nonempty output instead of overwriting it. Publication claims a new destination
-directory exclusively before writing files; it never replaces a concurrently
-created filesystem entry. A write failure after that claim may leave a partial
-directory, which is intentionally fail-closed and must be inspected or removed
-before retrying.
+directory exclusively before writing files. A minimal child writer pins that
+claimed directory as its working directory and verifies its device/inode before
+accepting file bytes, so replacing the output path with a symlink cannot redirect
+later files. The parent revalidates the directory identity before reporting
+success. Publication never replaces a concurrently created filesystem entry. A
+write failure after the claim may leave a partial or displaced directory, which
+is intentionally fail-closed and must be inspected or removed before retrying.
 
 ## Stable artifact boundary
 

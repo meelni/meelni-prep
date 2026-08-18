@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -185,4 +186,38 @@ test("publication never replaces a concurrently claimed empty directory", async 
     /synthetic_feedback_output_conflict/
   );
   assert.deepEqual(await readdir(outputDirectory), []);
+});
+
+test("publication stays bound to its claimed directory after a path swap", async (t) => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "meelni-synthetic-feedback-path-swap-")
+  );
+  const outputDirectory = join(temporaryRoot, "output");
+  const displacedDirectory = join(temporaryRoot, "claimed-output");
+  const symlinkTarget = join(temporaryRoot, "symlink-target");
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  await mkdir(symlinkTarget);
+
+  await assert.rejects(
+    publishSyntheticFeedbackFiles(
+      outputDirectory,
+      [
+        { name: "artifact.json", content: "{}\n" },
+        { name: "manifest.json", content: "{}\n" },
+      ],
+      {
+        afterPublisherReady: async () => {
+          await rename(outputDirectory, displacedDirectory);
+          await symlink(symlinkTarget, outputDirectory, "dir");
+        },
+      }
+    ),
+    /synthetic_feedback_output_(?:conflict|write_failed)/
+  );
+
+  assert.deepEqual(await readdir(symlinkTarget), []);
+  assert.deepEqual((await readdir(displacedDirectory)).sort(), [
+    "artifact.json",
+    "manifest.json",
+  ]);
 });
