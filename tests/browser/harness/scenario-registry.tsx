@@ -39,6 +39,7 @@ import {
   verifiedPrefixCoachingReviewFeedback,
   verifiedPrefixPartialScorecardFeedback,
 } from "./fixtures";
+import { FeedbackLab } from "./feedback-lab";
 
 export const HARNESS_SCENARIOS = [
   "explore",
@@ -50,6 +51,7 @@ export const HARNESS_SCENARIOS = [
   "new-interview",
   "interview",
   "feedback",
+  "feedback-lab",
   "feedback-partial",
   "feedback-full-scorecard",
   "feedback-partial-scorecard",
@@ -365,6 +367,8 @@ export function BrowserQaScenario({ scenario }: { scenario: string | null }) {
       return <InterviewScenario />;
     case "feedback":
       return <FeedbackScenario />;
+    case "feedback-lab":
+      return <FeedbackLab />;
     case "feedback-partial":
       return <FeedbackPartialScenario />;
     case "feedback-full-scorecard":
