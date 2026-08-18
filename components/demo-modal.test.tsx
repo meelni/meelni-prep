@@ -35,9 +35,17 @@ vi.mock("livekit-client", () => ({
   Track: { Source: { Microphone: "microphone" } },
 }));
 
-vi.mock("@/components/ui/orb", () => ({ Orb: () => <div /> }));
-vi.mock("@/components/ui/animated-bars", () => ({
-  AnimatedBars: () => <div aria-hidden="true" />,
+vi.mock("@/components/agents-ui/agent-voice-visualizer", () => ({
+  AgentVoiceVisualizer: ({
+    state,
+    statusLabel,
+  }: {
+    state: string;
+    statusLabel?: string;
+  }) => <div data-state={state}>{statusLabel}</div>,
+  AgentVoiceVisualizerMark: () => (
+    <div data-testid="agent-voice-visualizer-mark" aria-hidden="true" />
+  ),
 }));
 vi.mock("@/components/ui/checkered-background", () => ({
   default: () => <div aria-hidden="true" />,
@@ -119,6 +127,15 @@ describe("DemoModal", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(demoTrigger).toHaveFocus();
     expect(primaryLink).not.toHaveFocus();
+  });
+
+  it("uses the shared voice visualizer family as a decorative hero mark", () => {
+    render(<Hero />);
+
+    expect(screen.getByTestId("agent-voice-visualizer-mark")).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    );
   });
 
   it("does not open or request a demo token while relaunch is paused", async () => {

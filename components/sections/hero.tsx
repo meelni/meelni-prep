@@ -1,7 +1,7 @@
 "use client";
 
 import { Section } from "@/components/section";
-import { AnimatedBars } from "@/components/ui/animated-bars";
+import { AgentVoiceVisualizerMark } from "@/components/agents-ui/agent-voice-visualizer";
 import { Button } from "@/components/ui/button";
 import CheckeredBackground from "@/components/ui/checkered-background";
 import { DemoModal } from "@/components/demo-modal";
@@ -109,7 +109,7 @@ export function Hero() {
               className="relative z-10 flex items-center justify-center"
               aria-hidden="true"
             >
-              <AnimatedBars barCount={60} />
+              <AgentVoiceVisualizerMark className="h-[280px] w-[280px]" />
             </motion.div>
           </div>
         </div>
