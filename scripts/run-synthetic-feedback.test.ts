@@ -221,3 +221,35 @@ test("publication stays bound to its claimed directory after a path swap", async
     "manifest.json",
   ]);
 });
+
+test("idempotent reuse revalidates its pinned directory before success", async (t) => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "meelni-synthetic-feedback-reuse-swap-")
+  );
+  const outputDirectory = join(temporaryRoot, "output");
+  const displacedDirectory = join(temporaryRoot, "validated-output");
+  const symlinkTarget = join(temporaryRoot, "symlink-target");
+  const files = [
+    { name: "artifact.json", content: "{}\n" },
+    { name: "manifest.json", content: "{}\n" },
+  ];
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  await mkdir(symlinkTarget);
+  await publishSyntheticFeedbackFiles(outputDirectory, files);
+
+  await assert.rejects(
+    publishSyntheticFeedbackFiles(outputDirectory, files, {
+      afterExistingOutputReady: async () => {
+        await rename(outputDirectory, displacedDirectory);
+        await symlink(symlinkTarget, outputDirectory, "dir");
+      },
+    }),
+    /synthetic_feedback_output_conflict/
+  );
+
+  assert.deepEqual(await readdir(symlinkTarget), []);
+  assert.deepEqual((await readdir(displacedDirectory)).sort(), [
+    "artifact.json",
+    "manifest.json",
+  ]);
+});
