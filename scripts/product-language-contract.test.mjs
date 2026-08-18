@@ -399,24 +399,16 @@ test("active product surfaces use interview-practice language", async () => {
   assert.deepEqual(violations, []);
 });
 
-test("public examples disclose the complete synthetic content scope", async () => {
+test("public examples use a concise interview-type headline", async () => {
   const source = await readFile(
     path.join(ROOT, "components/sections/examples.tsx"),
     "utf8"
   );
 
-  for (const contentType of [
-    "questions",
-    "answers",
-    "scenarios",
-    "company references",
-    "metrics",
-  ]) {
-    assert.match(source, new RegExp(`\\b${contentType}\\b`, "i"));
-  }
-  assert.match(source, /illustrative synthetic examples/i);
-  assert.match(source, /not customer\s+data or transcripts/i);
-  assert.match(source, /company details and metrics are not\s+verified facts/i);
+  assert.match(source, /Every PM interview round\. One place to practice\./);
+  assert.doesNotMatch(source, /illustrative PM mock interview examples/i);
+  assert.doesNotMatch(source, /illustrative synthetic examples/i);
+  assert.doesNotMatch(source, /not customer\s+data or transcripts/i);
 });
 
 test("public mock playback contains interviewer and candidate dialogue only", async () => {
