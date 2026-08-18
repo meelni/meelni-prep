@@ -1,4 +1,5 @@
-import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { lstat, mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, parse, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +8,9 @@ import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures/syntheti
 import { createSyntheticFeedbackBundle } from "@/lib/workflows/synthetic-feedback-runner";
 
 const DEFAULT_OUTPUT_DIRECTORY = ".artifacts/synthetic-feedback/v1";
+const PUBLISHER_WORKER_PATH = fileURLToPath(
+  new URL("./synthetic-feedback-publisher-worker.mjs", import.meta.url)
+);
 
 export async function runSyntheticFeedbackCli(
   args: readonly string[],
@@ -79,7 +83,10 @@ export async function runSyntheticFeedbackCli(
 export async function publishSyntheticFeedbackFiles(
   outputDirectory: string,
   files: readonly { name: string; content: string }[],
-  hooks: { beforeOutputClaim?(): Promise<void> } = {}
+  hooks: {
+    beforeOutputClaim?(): Promise<void>;
+    afterPublisherReady?(): Promise<void>;
+  } = {}
 ): Promise<void> {
   try {
     if (await existingOutputMatches(outputDirectory, files)) return;
@@ -95,12 +102,14 @@ export async function publishSyntheticFeedbackFiles(
       }
       throw error;
     }
-    for (const file of files) {
-      await writeFile(join(outputDirectory, file.name), file.content, {
-        encoding: "utf8",
-        flag: "wx",
-      });
-    }
+    const claimedDirectory = await readDirectoryIdentity(outputDirectory);
+    await publishFromClaimedDirectory(
+      outputDirectory,
+      claimedDirectory,
+      files,
+      hooks.afterPublisherReady
+    );
+    await assertDirectoryIdentity(outputDirectory, claimedDirectory);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -110,6 +119,91 @@ export async function publishSyntheticFeedbackFiles(
     }
     throw new Error("synthetic_feedback_output_write_failed");
   }
+}
+
+interface DirectoryIdentity {
+  dev: bigint;
+  ino: bigint;
+}
+
+async function readDirectoryIdentity(
+  outputDirectory: string
+): Promise<DirectoryIdentity> {
+  const stats = await lstat(outputDirectory, { bigint: true });
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    throw new Error("synthetic_feedback_output_conflict");
+  }
+  return { dev: stats.dev, ino: stats.ino };
+}
+
+async function assertDirectoryIdentity(
+  outputDirectory: string,
+  expected: DirectoryIdentity
+): Promise<void> {
+  const actual = await readDirectoryIdentity(outputDirectory);
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error("synthetic_feedback_output_conflict");
+  }
+}
+
+function publishFromClaimedDirectory(
+  outputDirectory: string,
+  expected: DirectoryIdentity,
+  files: readonly { name: string; content: string }[],
+  afterPublisherReady: (() => Promise<void>) | undefined
+): Promise<void> {
+  const payload = JSON.stringify(files);
+  return new Promise((resolvePublish, rejectPublish) => {
+    const child = spawn(
+      process.execPath,
+      [PUBLISHER_WORKER_PATH, expected.dev.toString(), expected.ino.toString()],
+      {
+        cwd: outputDirectory,
+        env: { NODE_ENV: "test", TZ: "UTC" },
+        shell: false,
+        stdio: ["pipe", "pipe", "ignore"],
+      }
+    );
+    let settled = false;
+    let payloadSent = false;
+    let readyOutput = "";
+    const rejectOnce = () => {
+      if (settled) return;
+      settled = true;
+      rejectPublish(new Error("synthetic_feedback_output_write_failed"));
+    };
+
+    child.once("error", rejectOnce);
+    child.stdin.once("error", rejectOnce);
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (value: string) => {
+      if (settled) return;
+      readyOutput += value;
+      if (!"ready\n".startsWith(readyOutput)) {
+        child.kill();
+        rejectOnce();
+        return;
+      }
+      if (readyOutput !== "ready\n" || payloadSent) return;
+      payloadSent = true;
+      void (async () => {
+        await afterPublisherReady?.();
+        child.stdin.end(payload);
+      })().catch(() => {
+        child.kill();
+        rejectOnce();
+      });
+    });
+    child.once("close", (code) => {
+      if (settled) return;
+      if (code !== 0 || readyOutput !== "ready\n") {
+        rejectOnce();
+        return;
+      }
+      settled = true;
+      resolvePublish();
+    });
+  });
 }
 
 async function existingOutputMatches(
