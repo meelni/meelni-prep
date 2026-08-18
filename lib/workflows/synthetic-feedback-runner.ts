@@ -1,5 +1,8 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { toFeedbackCustomerProjection } from "@meelni/core";
 import {
@@ -14,7 +17,10 @@ import {
   type SyntheticFeedbackScenarioV1,
 } from "@meelni/test-fixtures/synthetic-feedback";
 
-import type { SyntheticFeedbackEvaluatorAdapter } from "./feedback-production-scenario";
+import type {
+  FeedbackProductionScenarioResult,
+  SyntheticFeedbackEvaluatorAdapter,
+} from "./feedback-production-scenario";
 
 type FeedbackProductionScenarioModule =
   typeof import("./feedback-production-scenario");
@@ -43,15 +49,19 @@ export async function runSyntheticFeedbackScenario(
   options: RunSyntheticFeedbackOptions = {}
 ): Promise<SyntheticFeedbackArtifactV1> {
   const scenario = findSyntheticFeedbackScenario(scenarioId);
-  const { runFeedbackProductionScenario } =
-    await loadProductionScenarioModule();
-  const result = await runFeedbackProductionScenario(scenario.fixture, {
-    evaluatorCoverage: scenario.evaluatorCoverage,
-    ...(scenario.persistedResultMutation === "unknown_schema_version"
-      ? { persistedResultMutation: scenario.persistedResultMutation }
-      : {}),
-    ...(options.evaluator ? { evaluator: options.evaluator } : {}),
-  });
+  const result = options.evaluator
+    ? await runWithExplicitEvaluator(scenario, options.evaluator)
+    : mustGetWorkerResult(
+        await runProviderFreeWorker([scenario.id]),
+        scenario.id
+      );
+  return createSyntheticFeedbackArtifact(scenario, result);
+}
+
+function createSyntheticFeedbackArtifact(
+  scenario: SyntheticFeedbackScenarioV1,
+  result: FeedbackProductionScenarioResult
+): SyntheticFeedbackArtifactV1 {
   const projection = toFeedbackCustomerProjection(result.lifecycle);
   const view = projection ?? SYNTHETIC_FEEDBACK_UNAVAILABLE_VIEW;
   const outcome = projection?.outcome ?? "unavailable";
@@ -108,8 +118,16 @@ export async function createSyntheticFeedbackBundle(
   }
 
   const artifacts: SyntheticFeedbackBundleV1["artifacts"] = [];
+  const workerResults = options.evaluator
+    ? null
+    : await runProviderFreeWorker(selected.map((scenario) => scenario.id));
   for (const scenario of selected) {
-    const artifact = await runSyntheticFeedbackScenario(scenario.id, options);
+    const artifact = workerResults
+      ? createSyntheticFeedbackArtifact(
+          scenario,
+          mustGetWorkerResult(workerResults, scenario.id)
+        )
+      : await runSyntheticFeedbackScenario(scenario.id, options);
     const artifactJson = serializeSyntheticFeedbackJson(artifact);
     artifacts.push({
       artifact,
@@ -163,47 +181,81 @@ function jsonRoundTrip<T>(value: T): T {
 }
 
 function loadProductionScenarioModule(): Promise<FeedbackProductionScenarioModule> {
-  productionScenarioModulePromise ??= importWithProductionConfigurationMasked();
+  productionScenarioModulePromise ??= import("./feedback-production-scenario");
   return productionScenarioModulePromise;
 }
 
-async function importWithProductionConfigurationMasked(): Promise<FeedbackProductionScenarioModule> {
-  const inheritedEnvironment = process.env;
-  process.env = new Proxy(inheritedEnvironment, {
-    get(target, property, receiver) {
-      if (isProductionConfigurationKey(property)) return undefined;
-      return Reflect.get(target, property, receiver);
-    },
-    getOwnPropertyDescriptor(target, property) {
-      if (isProductionConfigurationKey(property)) return undefined;
-      return Reflect.getOwnPropertyDescriptor(target, property);
-    },
-    has(target, property) {
-      if (isProductionConfigurationKey(property)) return false;
-      return Reflect.has(target, property);
-    },
-    ownKeys(target) {
-      return Reflect.ownKeys(target).filter(
-        (property) => !isProductionConfigurationKey(property)
-      );
-    },
+async function runWithExplicitEvaluator(
+  scenario: SyntheticFeedbackScenarioV1,
+  evaluator: SyntheticFeedbackEvaluatorAdapter
+): Promise<FeedbackProductionScenarioResult> {
+  const { runFeedbackProductionScenario } =
+    await loadProductionScenarioModule();
+  return runFeedbackProductionScenario(scenario.fixture, {
+    evaluatorCoverage: scenario.evaluatorCoverage,
+    ...(scenario.persistedResultMutation === "unknown_schema_version"
+      ? { persistedResultMutation: scenario.persistedResultMutation }
+      : {}),
+    evaluator,
   });
-  try {
-    return await import("./feedback-production-scenario");
-  } finally {
-    process.env = inheritedEnvironment;
-  }
 }
 
-function isProductionConfigurationKey(property: PropertyKey): boolean {
-  if (typeof property !== "string") return false;
-  return (
-    property === "DATABASE_URL" ||
-    property === "DIRECT_URL" ||
-    property === "POSTGRES_URL" ||
-    property.startsWith("INNGEST_") ||
-    property.startsWith("OPENAI_") ||
-    property.startsWith("OPIK_") ||
-    property.startsWith("SUPABASE_")
+function runProviderFreeWorker(
+  scenarioIds: readonly string[]
+): Promise<Map<string, FeedbackProductionScenarioResult>> {
+  const workerPath = fileURLToPath(
+    new URL("./synthetic-feedback-worker.ts", import.meta.url)
   );
+  const repositoryRoot = resolve(dirname(workerPath), "../..");
+  return new Promise((resolveWorker, rejectWorker) => {
+    execFile(
+      process.execPath,
+      ["--import", "tsx", workerPath, JSON.stringify(scenarioIds)],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: { NODE_ENV: "test", TZ: "UTC" },
+        maxBuffer: 5 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        if (error) {
+          rejectWorker(new Error("synthetic_feedback_worker_failed"));
+          return;
+        }
+        try {
+          const entries = JSON.parse(stdout) as Array<{
+            scenarioId: string;
+            result: FeedbackProductionScenarioResult;
+          }>;
+          if (
+            !Array.isArray(entries) ||
+            entries.length !== scenarioIds.length
+          ) {
+            throw new Error("synthetic_feedback_worker_result_invalid");
+          }
+          const byId = new Map(
+            entries.map((entry) => [entry.scenarioId, entry.result])
+          );
+          if (
+            byId.size !== scenarioIds.length ||
+            scenarioIds.some((scenarioId) => !byId.has(scenarioId))
+          ) {
+            throw new Error("synthetic_feedback_worker_result_invalid");
+          }
+          resolveWorker(byId);
+        } catch {
+          rejectWorker(new Error("synthetic_feedback_worker_result_invalid"));
+        }
+      }
+    );
+  });
+}
+
+function mustGetWorkerResult(
+  results: ReadonlyMap<string, FeedbackProductionScenarioResult>,
+  scenarioId: string
+): FeedbackProductionScenarioResult {
+  const result = results.get(scenarioId);
+  assert.ok(result, `${scenarioId}:synthetic_worker_result_missing`);
+  return result;
 }
