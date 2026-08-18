@@ -1,13 +1,4 @@
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, parse, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -85,36 +76,30 @@ export async function runSyntheticFeedbackCli(
   }
 }
 
-async function publishSyntheticFeedbackFiles(
+export async function publishSyntheticFeedbackFiles(
   outputDirectory: string,
-  files: readonly { name: string; content: string }[]
+  files: readonly { name: string; content: string }[],
+  hooks: { beforeOutputClaim?(): Promise<void> } = {}
 ): Promise<void> {
   try {
     if (await existingOutputMatches(outputDirectory, files)) return;
     const parentDirectory = dirname(outputDirectory);
     await mkdir(parentDirectory, { recursive: true });
-    const stagingDirectory = await mkdtemp(
-      join(parentDirectory, ".meelni-synthetic-feedback-")
-    );
-    let published = false;
+    await hooks.beforeOutputClaim?.();
     try {
-      for (const file of files) {
-        await writeFile(join(stagingDirectory, file.name), file.content, {
-          encoding: "utf8",
-          flag: "wx",
-        });
-      }
-      try {
-        await rename(stagingDirectory, outputDirectory);
-        published = true;
-      } catch (error) {
+      await mkdir(outputDirectory, { mode: 0o700 });
+    } catch (error) {
+      if (isNodeError(error) && error.code === "EEXIST") {
         if (await existingOutputMatches(outputDirectory, files)) return;
-        throw error;
+        throw new Error("synthetic_feedback_output_conflict");
       }
-    } finally {
-      if (!published) {
-        await rm(stagingDirectory, { recursive: true, force: true });
-      }
+      throw error;
+    }
+    for (const file of files) {
+      await writeFile(join(outputDirectory, file.name), file.content, {
+        encoding: "utf8",
+        flag: "wx",
+      });
     }
   } catch (error) {
     if (

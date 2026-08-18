@@ -619,6 +619,7 @@ function createGenerationDeps(input: {
     steps: input.steps,
     now: () => SYNTHETIC_NOW,
     reportAttempt: () => undefined,
+    runtimeMetadata: { environmentClass: "test", release: null },
     isDeletionPending: async () => false,
     getSession: async () => ({
       userId: input.fixture.userId,

@@ -14,10 +14,14 @@ import {
   type SyntheticFeedbackScenarioV1,
 } from "@meelni/test-fixtures/synthetic-feedback";
 
-import {
-  runFeedbackProductionScenario,
-  type SyntheticFeedbackEvaluatorAdapter,
-} from "./feedback-production-scenario";
+import type { SyntheticFeedbackEvaluatorAdapter } from "./feedback-production-scenario";
+
+type FeedbackProductionScenarioModule =
+  typeof import("./feedback-production-scenario");
+
+let productionScenarioModulePromise:
+  | Promise<FeedbackProductionScenarioModule>
+  | undefined;
 
 export interface RunSyntheticFeedbackOptions {
   evaluator?: SyntheticFeedbackEvaluatorAdapter;
@@ -39,6 +43,8 @@ export async function runSyntheticFeedbackScenario(
   options: RunSyntheticFeedbackOptions = {}
 ): Promise<SyntheticFeedbackArtifactV1> {
   const scenario = findSyntheticFeedbackScenario(scenarioId);
+  const { runFeedbackProductionScenario } =
+    await loadProductionScenarioModule();
   const result = await runFeedbackProductionScenario(scenario.fixture, {
     evaluatorCoverage: scenario.evaluatorCoverage,
     ...(scenario.persistedResultMutation === "unknown_schema_version"
@@ -154,4 +160,50 @@ function sha256(value: string): string {
 
 function jsonRoundTrip<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function loadProductionScenarioModule(): Promise<FeedbackProductionScenarioModule> {
+  productionScenarioModulePromise ??= importWithProductionConfigurationMasked();
+  return productionScenarioModulePromise;
+}
+
+async function importWithProductionConfigurationMasked(): Promise<FeedbackProductionScenarioModule> {
+  const inheritedEnvironment = process.env;
+  process.env = new Proxy(inheritedEnvironment, {
+    get(target, property, receiver) {
+      if (isProductionConfigurationKey(property)) return undefined;
+      return Reflect.get(target, property, receiver);
+    },
+    getOwnPropertyDescriptor(target, property) {
+      if (isProductionConfigurationKey(property)) return undefined;
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+    has(target, property) {
+      if (isProductionConfigurationKey(property)) return false;
+      return Reflect.has(target, property);
+    },
+    ownKeys(target) {
+      return Reflect.ownKeys(target).filter(
+        (property) => !isProductionConfigurationKey(property)
+      );
+    },
+  });
+  try {
+    return await import("./feedback-production-scenario");
+  } finally {
+    process.env = inheritedEnvironment;
+  }
+}
+
+function isProductionConfigurationKey(property: PropertyKey): boolean {
+  if (typeof property !== "string") return false;
+  return (
+    property === "DATABASE_URL" ||
+    property === "DIRECT_URL" ||
+    property === "POSTGRES_URL" ||
+    property.startsWith("INNGEST_") ||
+    property.startsWith("OPENAI_") ||
+    property.startsWith("OPIK_") ||
+    property.startsWith("SUPABASE_")
+  );
 }

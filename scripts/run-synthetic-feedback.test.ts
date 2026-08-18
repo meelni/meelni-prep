@@ -18,7 +18,10 @@ import {
   decodeSyntheticFeedbackManifestV1,
 } from "@meelni/test-fixtures/synthetic-feedback";
 
-import { runSyntheticFeedbackCli } from "./run-synthetic-feedback";
+import {
+  publishSyntheticFeedbackFiles,
+  runSyntheticFeedbackCli,
+} from "./run-synthetic-feedback";
 
 test("list command exposes deterministic scenario metadata without running", async () => {
   const output: string[] = [];
@@ -160,4 +163,26 @@ test("run command preserves mismatched output and rejects symlinks", async (t) =
   );
   assert.deepEqual(await readdir(symlinkTarget), []);
   assert.match(errors.at(-1) ?? "", /synthetic_feedback_output_conflict/);
+});
+
+test("publication never replaces a concurrently claimed empty directory", async (t) => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "meelni-synthetic-feedback-race-")
+  );
+  const outputDirectory = join(temporaryRoot, "output");
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+
+  await assert.rejects(
+    publishSyntheticFeedbackFiles(
+      outputDirectory,
+      [{ name: "manifest.json", content: "{}\n" }],
+      {
+        beforeOutputClaim: async () => {
+          await mkdir(outputDirectory);
+        },
+      }
+    ),
+    /synthetic_feedback_output_conflict/
+  );
+  assert.deepEqual(await readdir(outputDirectory), []);
 });

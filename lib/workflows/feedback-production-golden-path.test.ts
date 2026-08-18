@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { toFeedbackCustomerProjection } from "@meelni/core";
 import { createFeedbackGoldenPathFixtures } from "@meelni/test-fixtures";
 
 import {
@@ -10,6 +11,7 @@ import {
 
 test("provider-free production-shaped feedback lifecycle converges across all fixtures", async () => {
   const outcomes = new Map<string, string>();
+  const customerOutcomes = new Map<string, string>();
   const rubricRoutes = new Set<string>();
 
   for (const fixture of createFeedbackGoldenPathFixtures()) {
@@ -25,6 +27,9 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
       assert.equal(first.lifecycle.status, "completed", fixture.id);
       if (first.lifecycle.status === "completed") {
         assert.notEqual(first.lifecycle.feedback.kind, "invalid", fixture.id);
+        const projection = toFeedbackCustomerProjection(first.lifecycle);
+        assert.ok(projection, fixture.id);
+        customerOutcomes.set(fixture.id, projection.outcome);
       }
       assert.deepEqual(first.stages, FEEDBACK_PRODUCTION_SCENARIO_STAGES);
       assert.equal(first.replay.dispatch, "already_sent");
@@ -59,6 +64,13 @@ test("provider-free production-shaped feedback lifecycle converges across all fi
   );
   assert.equal(outcomes.get("corrupt"), "transcript_integrity_degraded");
   assert.equal(outcomes.get("spoken-evidence-limited"), "feedback_generated");
+  for (const id of [
+    "spoken-evidence-limited",
+    "harmless-marker-settled-scoreable",
+    "harmless-marker-missing-scoreable",
+  ]) {
+    assert.equal(customerOutcomes.get(id), "coaching_review", id);
+  }
   assert.deepEqual(
     rubricRoutes,
     new Set(["product_sense", "behavioral", "strategy", "execution"])
