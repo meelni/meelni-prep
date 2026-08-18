@@ -38,6 +38,10 @@ const config = {
       },
       { find: "posthog-js/react", replacement: shim("posthog-react.ts") },
       {
+        find: "@meelni/test-fixtures/synthetic-feedback",
+        replacement: `${root}/packages/test-fixtures/src/synthetic-feedback.ts`,
+      },
+      {
         find: "@meelni/test-fixtures",
         replacement: `${root}/packages/test-fixtures/src/index.ts`,
       },
