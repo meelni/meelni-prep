@@ -1,8 +1,8 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-react";
-import { useReducedMotion } from "framer-motion";
+import { useInView, useReducedMotion } from "framer-motion";
 import type { LocalAudioTrack, RemoteAudioTrack } from "livekit-client";
 
 import {
@@ -17,6 +17,16 @@ const DEFAULT_STATUS_LABELS: Record<VoiceVisualizerState, string> = {
   thinking: "Interviewer thinking",
   speaking: "Interviewer speaking",
 };
+
+const LANDING_VOICE_MARK_FRAMES = [
+  [0.35, 0.6, 0.8, 1, 0.8, 0.6, 0.35],
+  [0.55, 0.8, 0.65, 0.9, 1, 0.5, 0.4],
+  [0.75, 0.5, 0.85, 1, 0.65, 0.8, 0.45],
+  [0.45, 0.7, 1, 0.75, 0.9, 0.55, 0.7],
+  [0.65, 0.9, 0.55, 0.85, 0.7, 1, 0.5],
+  [0.5, 0.75, 0.9, 1, 0.6, 0.85, 0.65],
+] as const;
+const LANDING_VOICE_MARK_INTERVAL_MS = 240;
 
 interface AgentVoiceVisualizerProps {
   state: VoiceVisualizerState;
@@ -43,7 +53,6 @@ export function AgentVoiceVisualizer({
   className,
   gridClassName,
 }: AgentVoiceVisualizerProps) {
-  const shouldReduceMotion = useReducedMotion() ?? false;
   const intensity = Math.max(0, Math.min(1, activityLevel));
   const label = statusLabel ?? DEFAULT_STATUS_LABELS[state];
 
@@ -56,13 +65,10 @@ export function AgentVoiceVisualizer({
       aria-hidden={decorative || undefined}
     >
       <div
-        className="flex min-h-0 flex-1 items-center justify-center transition-transform duration-150 motion-reduce:transform-none motion-reduce:transition-none"
+        className="flex min-h-0 flex-1 [transform:scale(var(--voice-activity-scale))] items-center justify-center transition-transform duration-150 motion-reduce:transform-none motion-reduce:transition-none"
         style={
           {
             "--voice-activity-scale": 1 + intensity * 0.04,
-            transform: shouldReduceMotion
-              ? undefined
-              : "scale(var(--voice-activity-scale))",
           } as CSSProperties
         }
       >
@@ -122,13 +128,35 @@ export function AgentVoiceVisualizerMark({
 }: {
   className?: string;
 }) {
+  const markRef = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = useReducedMotion() ?? false;
+  const isInView = useInView(markRef, { amount: 0.25 });
+  const [frameIndex, setFrameIndex] = useState(0);
+
+  useEffect(() => {
+    if (shouldReduceMotion || !isInView) return;
+
+    const frameInterval = window.setInterval(() => {
+      setFrameIndex(
+        (currentFrame) => (currentFrame + 1) % LANDING_VOICE_MARK_FRAMES.length
+      );
+    }, LANDING_VOICE_MARK_INTERVAL_MS);
+
+    return () => window.clearInterval(frameInterval);
+  }, [isInView, shouldReduceMotion]);
+
+  const volumeBands =
+    LANDING_VOICE_MARK_FRAMES[shouldReduceMotion ? 0 : frameIndex];
+
   return (
-    <AgentVoiceVisualizer
-      state="speaking"
-      volumeBands={[0.2, 0.45, 0.72, 0.95, 0.72, 0.45, 0.2]}
-      showStatus={false}
-      decorative
-      className={className}
-    />
+    <div ref={markRef} className={className} aria-hidden="true">
+      <AgentVoiceVisualizer
+        state="speaking"
+        volumeBands={[...volumeBands]}
+        showStatus={false}
+        decorative
+        className="h-full w-full"
+      />
+    </div>
   );
 }
