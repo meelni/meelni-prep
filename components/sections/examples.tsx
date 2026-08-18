@@ -136,15 +136,9 @@ export function Examples() {
     <Section id="examples">
       <div className="px-4 pt-16 pb-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
-          <h2 className="text-foreground mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
-            Illustrative PM mock interview examples
+          <h2 className="text-foreground text-3xl font-bold tracking-tight sm:text-4xl">
+            Every PM interview round. One place to practice.
           </h2>
-          <p className="text-muted-foreground mx-auto mb-8 max-w-2xl text-lg">
-            All questions, answers, scenarios, company references, and metrics
-            below are illustrative synthetic examples. They are not customer
-            data or transcripts, and the company details and metrics are not
-            verified facts.
-          </p>
         </div>
       </div>
 
