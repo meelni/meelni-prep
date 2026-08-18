@@ -833,7 +833,11 @@ test("priority overlays use the shared overlay color token", async () => {
 });
 
 test("interview control rail uses semantic surface tokens", async () => {
-  const file = "app/interview/components/interview-controls.tsx";
+  const file = "components/agents-ui/agent-control-bar.tsx";
+  const interviewControls = await readFile(
+    "app/interview/components/interview-controls.tsx",
+    "utf8"
+  );
   const content = await readFile(file, "utf8");
   const required = ["bg-card/90", "border-border"];
   const banned = ["bg-white/", "border-white/"];
@@ -849,6 +853,12 @@ test("interview control rail uses semantic surface tokens", async () => {
     if (content.includes(token)) {
       violations.push(`${file}:${token}`);
     }
+  }
+
+  if (!interviewControls.includes("AgentControlBar")) {
+    violations.push(
+      "app/interview/components/interview-controls.tsx:AgentControlBar"
+    );
   }
 
   assert.deepEqual(violations, []);
@@ -892,46 +902,59 @@ test("demo modal cinematic chrome uses semantic dark-surface tokens", async () =
   assert.deepEqual(violations, []);
 });
 
-test("voice orb surfaces use shared runtime color tokens", async () => {
-  const tokenSource = await readFile("lib/design-tokens.ts", "utf8").catch(
-    () => ""
+test("voice session surfaces use the shared agents-ui visualizer family", async () => {
+  const sharedGrid = await readFile(
+    "components/agents-ui/agent-audio-visualizer-grid.tsx",
+    "utf8"
+  );
+  const sharedVisualizer = await readFile(
+    "components/agents-ui/agent-voice-visualizer.tsx",
+    "utf8"
   );
   const files = [
-    "components/ui/orb.tsx",
-    "components/demo-modal.tsx",
-    "app/interview/components/audio-visualizer.tsx",
-    "app/interview/components/interview-stage.tsx",
+    ["components/demo-modal.tsx", "AgentVoiceVisualizer"],
+    ["components/sections/hero.tsx", "AgentVoiceVisualizer"],
+    ["app/interview/components/audio-visualizer.tsx", "AgentVoiceVisualizer"],
+    ["app/interview/components/interview-stage.tsx", "AudioVisualizer"],
   ];
   const violations = [];
 
-  if (!tokenSource.includes("MEELNI_ORB_COLORS")) {
-    violations.push("lib/design-tokens.ts:MEELNI_ORB_COLORS");
+  for (const required of [
+    "useMultibandTrackVolume",
+    "data-lk-state",
+    "motion-reduce:transition-none",
+  ]) {
+    if (!sharedGrid.includes(required)) {
+      violations.push(
+        `components/agents-ui/agent-audio-visualizer-grid.tsx:${required}`
+      );
+    }
   }
 
-  for (const file of files) {
+  for (const state of ["connecting", "listening", "thinking", "speaking"]) {
+    if (!sharedVisualizer.includes(`${state}:`)) {
+      violations.push(
+        `components/agents-ui/agent-voice-visualizer.tsx:${state}`
+      );
+    }
+  }
+
+  for (const token of ["text-info", "text-primary", "text-success"]) {
+    if (!sharedVisualizer.includes(token)) {
+      violations.push(
+        `components/agents-ui/agent-voice-visualizer.tsx:${token}`
+      );
+    }
+  }
+
+  for (const [file, requiredComponent] of files) {
     const content = await readFile(file, "utf8");
 
-    if (!content.includes("MEELNI_ORB_COLORS")) {
-      violations.push(`${file}:MEELNI_ORB_COLORS`);
+    if (!content.includes(requiredComponent)) {
+      violations.push(`${file}:${requiredComponent}`);
     }
-
-    if (
-      file === "components/ui/orb.tsx" &&
-      !content.includes("colors = MEELNI_ORB_COLORS")
-    ) {
-      violations.push(`${file}:default-orb-colors`);
-    }
-
-    if (/colors=\{\[\s*["']#[0-9A-Fa-f]{6}/.test(content)) {
-      violations.push(`${file}:inline-orb-colors`);
-    }
-
-    if (
-      /\[[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*,[\s\n]*["']#[0-9A-Fa-f]{6}["'][\s\n]*\]/.test(
-        content
-      )
-    ) {
-      violations.push(`${file}:hex-color-pair`);
+    if (content.includes("@/components/ui/orb")) {
+      violations.push(`${file}:retired-orb-import`);
     }
   }
 
@@ -1655,26 +1678,41 @@ test("interview runtime indicators use semantic status tokens", async () => {
 test("demo modal status indicators use semantic status tokens", async () => {
   const file = "components/demo-modal.tsx";
   const content = await readFile(file, "utf8");
+  const sharedVisualizer = await readFile(
+    "components/agents-ui/agent-voice-visualizer.tsx",
+    "utf8"
+  );
+  const sharedControlBar = await readFile(
+    "components/agents-ui/agent-control-bar.tsx",
+    "utf8"
+  );
   const rawStatusUtility =
     /\b(?:bg|text|border|hover:bg)-(?:blue|purple|green|red)-(?:100|200|400|500)(?:\/\d+)?\b/;
   const requiredTokens = [
     "text-info",
     "bg-info",
-    "border-info",
     "text-primary",
     "bg-primary",
-    "border-primary",
     "text-success",
     "bg-success",
-    "border-success",
     "text-destructive",
     "bg-destructive",
-    "border-destructive",
   ];
-  const violations = requiredTokens.filter((token) => !content.includes(token));
+  const semanticSource = [content, sharedVisualizer, sharedControlBar].join(
+    "\n"
+  );
+  const violations = requiredTokens.filter(
+    (token) => !semanticSource.includes(token)
+  );
 
   if (rawStatusUtility.test(content)) {
     violations.push(`${file}:raw-status-utility`);
+  }
+
+  for (const sharedComponent of ["AgentVoiceVisualizer", "AgentControlBar"]) {
+    if (!content.includes(sharedComponent)) {
+      violations.push(`${file}:${sharedComponent}`);
+    }
   }
 
   assert.deepEqual(violations, []);

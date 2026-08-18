@@ -7,8 +7,7 @@ import {
   useVoiceAssistant,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Orb, type AgentState as OrbAgentState } from "@/components/ui/orb";
-import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import { AgentVoiceVisualizer } from "@/components/agents-ui/agent-voice-visualizer";
 import { mapTrackVolumeToVisualIntensity } from "./audio-level";
 
 type AgentState = "idle" | "listening" | "thinking" | "speaking";
@@ -115,54 +114,25 @@ export function AudioVisualizer({ agentState }: AudioVisualizerProps) {
   }, [hasUserAudio, isUserSpeakingDebounced, userAudioTrack]);
 
   const displayAgentState = debouncedAgentState;
-  const orbAgentState: OrbAgentState =
-    displayAgentState === "thinking"
-      ? "thinking"
-      : displayAgentState === "listening"
-        ? "listening"
-        : displayAgentState === "speaking"
-          ? "talking"
-          : null;
+  const visualizerState =
+    displayAgentState === "idle" ? "connecting" : displayAgentState;
 
   const statusLabel = getStatusLabel(
     displayAgentState,
     isUserSpeakingDebounced
   );
-  const isActive =
-    displayAgentState === "speaking" ||
-    displayAgentState === "thinking" ||
-    isUserSpeakingDebounced;
 
   return (
-    <div className="interview-container flex h-full w-full flex-col items-center justify-center gap-3">
-      <div className="relative aspect-square min-h-0 w-full max-w-[300px] flex-1">
-        <Orb
-          colors={MEELNI_ORB_COLORS}
-          agentState={orbAgentState}
-          volumeMode="manual"
-          getInputVolume={() => userVisualIntensity}
-          getOutputVolume={() => agentVisualIntensity}
-          className="h-full w-full"
-        />
-      </div>
-
-      <div
-        className="text-muted-foreground flex h-6 items-center justify-center gap-2 text-sm"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <span
-          className={
-            isActive
-              ? "bg-primary h-1.5 w-1.5 rounded-full"
-              : "bg-muted-foreground/40 h-1.5 w-1.5 rounded-full"
-          }
-          aria-hidden="true"
-        />
-        <span>{statusLabel}</span>
-      </div>
-    </div>
+    <AgentVoiceVisualizer
+      state={visualizerState}
+      audioTrack={agentAudioTrack}
+      activityLevel={
+        displayAgentState === "speaking"
+          ? agentVisualIntensity
+          : userVisualIntensity
+      }
+      statusLabel={statusLabel}
+    />
   );
 }
 
@@ -171,5 +141,5 @@ function getStatusLabel(agentState: AgentState, isUserSpeaking: boolean) {
   if (agentState === "thinking") return "Interviewer thinking";
   if (isUserSpeaking) return "Listening";
   if (agentState === "listening") return "Your turn";
-  return "Ready";
+  return "Connecting to interviewer";
 }
