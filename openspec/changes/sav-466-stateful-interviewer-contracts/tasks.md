@@ -25,5 +25,5 @@
 
 - [x] Run targeted package and Python tests.
 - [x] Run typecheck, build, agent verification, and OpenSpec validation.
-- [ ] Publish a ready PR, record exact evidence in SAV-466, and leave SAV-465
+- [x] Publish a ready PR, record exact evidence in SAV-466, and leave SAV-465
       open.
