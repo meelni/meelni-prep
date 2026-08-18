@@ -11,11 +11,10 @@ import {
   useTrackVolume,
   useLocalParticipant,
 } from "@livekit/components-react";
-import { Orb } from "@/components/ui/orb";
 import { Track } from "livekit-client";
 import { ConnectionState } from "livekit-client";
 import type { Participant, TranscriptionSegment } from "livekit-client";
-import { X, Mic, MicOff, Loader2, ArrowRight } from "lucide-react";
+import { X, Loader2, ArrowRight } from "lucide-react";
 import { analytics } from "@/lib/analytics/analytics-service";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +23,9 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MEELNI_ORB_COLORS } from "@/lib/design-tokens";
+import { AgentControlBar } from "@/components/agents-ui/agent-control-bar";
+import { AgentVoiceVisualizer } from "@/components/agents-ui/agent-voice-visualizer";
+import type { VoiceVisualizerState } from "@/components/agents-ui/agent-audio-visualizer-grid";
 import {
   interpretPublicDemoStartFailure,
   requestPublicDemoStart,
@@ -154,6 +155,8 @@ function DemoControls({
   const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [agentReady, setAgentReady] = useState(false);
+  const [mutePending, setMutePending] = useState(false);
+  const [microphoneError, setMicrophoneError] = useState<string | null>(null);
   const demoCompletedTracked = useRef(false);
   const sessionEndedRef = useRef(false);
   const agentSeenRef = useRef(false);
@@ -223,23 +226,12 @@ function DemoControls({
     }
   }, [localParticipant, localParticipant?.isMicrophoneEnabled]);
 
-  // Audio reactivity for Orb (same as interview page)
+  // Preserve local activity feedback while the grid uses the agent track's
+  // multiband volume for speaking animation.
   const userVolume = useTrackVolume(
-    audioTrack?.publication?.track as Parameters<typeof useTrackVolume>[0]
+    localParticipant?.getTrackPublication(Track.Source.Microphone)
+      ?.track as Parameters<typeof useTrackVolume>[0]
   );
-  const firstRemoteParticipant = room?.remoteParticipants
-    ? Array.from(room.remoteParticipants.values())[0]
-    : undefined;
-  const agentAudioTrack = firstRemoteParticipant?.getTrackPublication(
-    Track.Source.Microphone
-  )?.track;
-  const agentVolume = useTrackVolume(
-    agentAudioTrack as Parameters<typeof useTrackVolume>[0]
-  );
-
-  // Normalize volumes from 0-100
-  const normalizedUserVolume = Math.min(userVolume, 100) / 100;
-  const normalizedAgentVolume = Math.min(agentVolume, 100) / 100;
 
   // Debounce agent state changes to prevent flickering during natural pauses
   useEffect(() => {
@@ -443,21 +435,29 @@ function DemoControls({
   }, [sessionEnded]);
 
   const toggleMute = async () => {
-    if (!localParticipant) return;
+    if (!localParticipant || mutePending) return;
 
     const newMutedState = !isMuted;
+    setMutePending(true);
+    setMicrophoneError(null);
 
-    // Toggle the microphone mute state
-    await localParticipant.setMicrophoneEnabled(!newMutedState);
-    setIsMuted(newMutedState);
+    try {
+      await localParticipant.setMicrophoneEnabled(!newMutedState);
+      setIsMuted(newMutedState);
 
-    // Track mic toggle
-    if (demoStartTime.current) {
-      const timeInDemo = (Date.now() - demoStartTime.current) / 1000;
-      analytics.track("demo_mic_toggled", {
-        new_state: newMutedState ? "muted" : "unmuted",
-        time_in_demo_seconds: Math.floor(timeInDemo),
-      });
+      if (demoStartTime.current) {
+        const timeInDemo = (Date.now() - demoStartTime.current) / 1000;
+        analytics.track("demo_mic_toggled", {
+          new_state: newMutedState ? "muted" : "unmuted",
+          time_in_demo_seconds: Math.floor(timeInDemo),
+        });
+      }
+    } catch {
+      setMicrophoneError(
+        "Microphone unavailable. Check your browser permission or device, then try again."
+      );
+    } finally {
+      setMutePending(false);
     }
   };
 
@@ -486,6 +486,21 @@ function DemoControls({
   const isReady = isConnected && agentReady;
   // Use debounced state for UI display to prevent flickering
   const agentState = debouncedAgentState;
+  const visualizerState: VoiceVisualizerState = !isReady
+    ? "connecting"
+    : agentState === "thinking" ||
+        agentState === "speaking" ||
+        agentState === "listening"
+      ? agentState
+      : "listening";
+  const visualizerLabel =
+    visualizerState === "connecting"
+      ? "Connecting to Meelni..."
+      : visualizerState === "thinking"
+        ? "Thinking"
+        : visualizerState === "speaking"
+          ? "Speaking"
+          : "Listening";
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
@@ -554,7 +569,6 @@ function DemoControls({
 
         {/* Central visual area */}
         <div className="flex flex-col items-center justify-center gap-8">
-          {/* Orb Visualizer */}
           <AnimatePresence mode="wait">
             {sessionEnded ? (
               <motion.div
@@ -595,96 +609,24 @@ function DemoControls({
                   <ArrowRight className="h-5 w-5" />
                 </PublicActivationButton>
               </motion.div>
-            ) : isReady ? (
+            ) : (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.5, type: "spring" }}
-                className="h-[250px] w-[250px] sm:h-[350px] sm:w-[350px] md:h-[400px] md:w-[400px]"
+                className="h-[280px] w-[280px] sm:h-[360px] sm:w-[360px]"
               >
-                <Orb
-                  colors={MEELNI_ORB_COLORS}
-                  agentState={
-                    agentState === "thinking"
-                      ? "thinking"
-                      : agentState === "listening"
-                        ? "listening"
-                        : agentState === "speaking"
-                          ? "talking"
-                          : null
-                  }
-                  getInputVolume={() => normalizedUserVolume}
-                  getOutputVolume={() => normalizedAgentVolume}
-                  className="h-full w-full"
+                <AgentVoiceVisualizer
+                  state={visualizerState}
+                  audioTrack={audioTrack}
+                  activityLevel={userVolume}
+                  statusLabel={visualizerLabel}
+                  appearance="inverse"
                 />
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-3 text-center"
-              >
-                <h2 className="text-primary-foreground/90 text-2xl font-semibold">
-                  Connecting...
-                </h2>
-                <p className="text-primary-foreground/50 max-w-md text-sm">
-                  Establishing secure connection...
-                </p>
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Agent Status - below orb */}
-          {!sessionEnded && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              aria-live="polite"
-            >
-              {!isReady ? (
-                <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
-                  <Loader2 className="text-primary h-4 w-4 animate-spin" />
-                  <span className="text-primary-foreground/70 text-sm font-medium">
-                    Connecting to Meelni...
-                  </span>
-                </div>
-              ) : agentState === "listening" ? (
-                <div className="bg-info/10 border-info/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
-                  <div className="bg-info h-2 w-2 animate-pulse rounded-full" />
-                  <span className="text-info text-sm font-medium">
-                    Listening
-                  </span>
-                </div>
-              ) : agentState === "thinking" ? (
-                <div className="bg-primary/10 border-primary/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
-                  <div className="flex gap-1">
-                    <div className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full" />
-                    <div
-                      className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full"
-                      style={{ animationDelay: "0.1s" }}
-                    />
-                    <div
-                      className="bg-primary h-1.5 w-1.5 animate-bounce rounded-full"
-                      style={{ animationDelay: "0.2s" }}
-                    />
-                  </div>
-                  <span className="text-primary text-sm font-medium">
-                    Thinking
-                  </span>
-                </div>
-              ) : agentState === "speaking" ? (
-                <div className="bg-success/10 border-success/20 flex items-center gap-3 rounded-2xl border px-6 py-3 backdrop-blur-xl">
-                  <div className="bg-success h-2 w-2 animate-pulse rounded-full" />
-                  <span className="text-success text-sm font-medium">
-                    Speaking
-                  </span>
-                </div>
-              ) : null}
-            </motion.div>
-          )}
         </div>
 
         {/* Bottom controls */}
@@ -696,56 +638,19 @@ function DemoControls({
             transition={{ delay: 0.4 }}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 sm:bottom-8 md:bottom-12"
           >
-            <div className="bg-primary-foreground/5 border-primary-foreground/10 flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-2xl sm:gap-4 sm:px-6 sm:py-4 md:px-8">
-              {/* Mic button */}
-              <motion.button
-                type="button"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={toggleMute}
-                disabled={!isReady || !localParticipant}
-                aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
-                aria-pressed={isMuted}
-                className={`focus-visible:ring-primary relative min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none ${
-                  isMuted
-                    ? "bg-destructive/80 hover:bg-destructive"
-                    : "bg-primary-foreground/10 hover:bg-primary-foreground/20"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                {isMuted ? (
-                  <MicOff
-                    className="text-primary-foreground h-5 w-5"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Mic
-                    className="text-primary-foreground h-5 w-5"
-                    aria-hidden="true"
-                  />
-                )}
-                {!isMuted && isReady && (
-                  <div className="bg-success absolute -top-1 -right-1 h-3 w-3 animate-pulse rounded-full" />
-                )}
-              </motion.button>
-
-              {/* Divider */}
-              <div className="bg-primary-foreground/10 h-8 w-px" />
-
-              {/* Close button */}
-              <motion.button
-                type="button"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={onClose}
-                aria-label="End voice preview"
-                className="bg-primary-foreground/10 hover:bg-primary-foreground/20 focus-visible:ring-primary min-h-11 min-w-11 rounded-xl p-4 shadow-lg transition-all duration-300 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none"
-              >
-                <X
-                  className="text-primary-foreground h-5 w-5"
-                  aria-hidden="true"
-                />
-              </motion.button>
-            </div>
+            <AgentControlBar
+              isMuted={isMuted}
+              microphoneDisabled={!isReady || !localParticipant || mutePending}
+              microphonePending={mutePending}
+              microphoneError={microphoneError}
+              onMicrophoneToggle={toggleMute}
+              onDisconnect={onClose}
+              disconnectLabel="End voice preview"
+              disconnectText="End preview"
+              disconnectIcon="close"
+              appearance="inverse"
+              microphoneUnavailableLabel="Microphone controls are unavailable while the voice preview connects"
+            />
           </motion.div>
         )}
       </div>
