@@ -67,6 +67,7 @@ export interface AgentAudioVisualizerGridProps
   columnCount?: number;
   audioTrack?: LocalAudioTrack | RemoteAudioTrack | TrackReferenceOrPlaceholder;
   volumeBands?: number[];
+  cellLevels?: number[];
   children?: ReactNode;
 }
 
@@ -98,9 +99,13 @@ interface GridCellProps {
   rowCount: number;
   columnCount: number;
   volumeBands: number[];
+  cellLevels?: number[];
   highlightedCoordinate: Coordinate;
   children: ReactNode;
 }
+
+const CELL_LEVEL_OPACITY = [0.1, 0.22, 0.45, 0.72, 1] as const;
+const CELL_LEVEL_SCALE = [0.78, 0.84, 0.92, 1, 1.1] as const;
 
 const GridCell = memo(function GridCell({
   index,
@@ -109,9 +114,29 @@ const GridCell = memo(function GridCell({
   rowCount,
   columnCount,
   volumeBands,
+  cellLevels,
   highlightedCoordinate,
   children,
 }: GridCellProps) {
+  if (cellLevels) {
+    const level = Math.max(0, Math.min(4, Math.round(cellLevels[index] ?? 0)));
+
+    return cloneSingleChild(
+      children,
+      {
+        "data-lk-index": index,
+        "data-lk-level": level,
+        style: {
+          backgroundColor: "currentColor",
+          opacity: CELL_LEVEL_OPACITY[level],
+          transform: `scale(${CELL_LEVEL_SCALE[level]})`,
+          transitionDuration: "80ms",
+        },
+      },
+      index
+    );
+  }
+
   if (state === "speaking") {
     const y = Math.floor(index / columnCount);
     const rowMidPoint = Math.floor(rowCount / 2);
@@ -158,6 +183,7 @@ export function AgentAudioVisualizerGrid({
   children,
   audioTrack,
   volumeBands,
+  cellLevels,
   style,
   ...props
 }: AgentAudioVisualizerGridProps) {
@@ -220,6 +246,7 @@ export function AgentAudioVisualizerGrid({
           rowCount={rowCount}
           columnCount={columnCount}
           volumeBands={resolvedVolumeBands}
+          cellLevels={cellLevels}
           highlightedCoordinate={highlightedCoordinate}
         >
           {cell}
