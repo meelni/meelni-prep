@@ -18,15 +18,24 @@ const DEFAULT_STATUS_LABELS: Record<VoiceVisualizerState, string> = {
   speaking: "Interviewer speaking",
 };
 
-const LANDING_VOICE_MARK_FRAMES = [
-  [0.35, 0.6, 0.8, 1, 0.8, 0.6, 0.35],
-  [0.55, 0.8, 0.65, 0.9, 1, 0.5, 0.4],
-  [0.75, 0.5, 0.85, 1, 0.65, 0.8, 0.45],
-  [0.45, 0.7, 1, 0.75, 0.9, 0.55, 0.7],
-  [0.65, 0.9, 0.55, 0.85, 0.7, 1, 0.5],
-  [0.5, 0.75, 0.9, 1, 0.6, 0.85, 0.65],
-] as const;
-const LANDING_VOICE_MARK_INTERVAL_MS = 240;
+const LANDING_VOICE_MARK_BAND_COUNT = 7;
+const LANDING_VOICE_MARK_STEP_COUNT = 32;
+const LANDING_VOICE_MARK_INTERVAL_MS = 100;
+
+export function createLandingVoiceMarkBands(progress: number) {
+  const wrappedProgress = ((progress % 1) + 1) % 1;
+  const phase = wrappedProgress * Math.PI * 2;
+  const centerIndex = (LANDING_VOICE_MARK_BAND_COUNT - 1) / 2;
+
+  return Array.from({ length: LANDING_VOICE_MARK_BAND_COUNT }, (_, index) => {
+    const distanceFromCenter = Math.abs(index - centerIndex) / centerIndex;
+    const restingLevel = 0.77 - distanceFromCenter * 0.42;
+    const breath = 0.13 * Math.sin(phase - distanceFromCenter * 0.55);
+    const voiceTexture = 0.025 * Math.sin(phase * 2 + distanceFromCenter * 0.3);
+
+    return Math.max(0.2, Math.min(0.95, restingLevel + breath + voiceTexture));
+  });
+}
 
 interface AgentVoiceVisualizerProps {
   state: VoiceVisualizerState;
@@ -131,28 +140,29 @@ export function AgentVoiceVisualizerMark({
   const markRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion() ?? false;
   const isInView = useInView(markRef, { amount: 0.25 });
-  const [frameIndex, setFrameIndex] = useState(0);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     if (shouldReduceMotion || !isInView) return;
 
     const frameInterval = window.setInterval(() => {
-      setFrameIndex(
-        (currentFrame) => (currentFrame + 1) % LANDING_VOICE_MARK_FRAMES.length
+      setStep(
+        (currentStep) => (currentStep + 1) % LANDING_VOICE_MARK_STEP_COUNT
       );
     }, LANDING_VOICE_MARK_INTERVAL_MS);
 
     return () => window.clearInterval(frameInterval);
   }, [isInView, shouldReduceMotion]);
 
-  const volumeBands =
-    LANDING_VOICE_MARK_FRAMES[shouldReduceMotion ? 0 : frameIndex];
+  const volumeBands = createLandingVoiceMarkBands(
+    shouldReduceMotion ? 0 : step / LANDING_VOICE_MARK_STEP_COUNT
+  );
 
   return (
     <div ref={markRef} className={className} aria-hidden="true">
       <AgentVoiceVisualizer
         state="speaking"
-        volumeBands={[...volumeBands]}
+        volumeBands={volumeBands}
         showStatus={false}
         decorative
         className="h-full w-full"
