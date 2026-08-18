@@ -1,13 +1,17 @@
 import { spawn } from "node:child_process";
 import { lstat, mkdir } from "node:fs/promises";
 import { dirname, parse, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures/synthetic-feedback";
 
-import { createSyntheticFeedbackBundle } from "@/lib/workflows/synthetic-feedback-runner";
+import {
+  createSyntheticFeedbackBundle,
+  type SyntheticFeedbackWorkerEnvironment,
+} from "@/lib/workflows/synthetic-feedback-runner";
 
 const DEFAULT_OUTPUT_DIRECTORY = ".artifacts/synthetic-feedback/v1";
+const REPOSITORY_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUBLISHER_WORKER_PATH = fileURLToPath(
   new URL("./synthetic-feedback-publisher-worker.mjs", import.meta.url)
 );
@@ -44,7 +48,10 @@ export async function runSyntheticFeedbackCli(
       throw new Error("synthetic_feedback_output_cannot_be_filesystem_root");
     }
 
-    const bundle = await createSyntheticFeedbackBundle(parsed.scenarioIds);
+    const workerEnvironment = createSyntheticFeedbackWorkerEnvironment();
+    const bundle = await createSyntheticFeedbackBundle(parsed.scenarioIds, {
+      workerEnvironment,
+    });
     await publishSyntheticFeedbackFiles(
       outputDirectory,
       [
@@ -185,7 +192,7 @@ function runDirectoryWorker(
       ],
       {
         cwd: outputDirectory,
-        env: { NODE_ENV: "test", TZ: "UTC" },
+        env: createSyntheticFeedbackWorkerEnvironment(),
         shell: false,
         stdio: ["pipe", "pipe", "ignore"],
       }
@@ -261,6 +268,24 @@ async function existingOutputMatches(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+export function createSyntheticFeedbackWorkerEnvironment(
+  parentEnvironment: Readonly<Record<string, string | undefined>> = process.env
+): SyntheticFeedbackWorkerEnvironment {
+  const reviewedEgressGuard = `--import=${
+    pathToFileURL(
+      resolve(REPOSITORY_ROOT, "tests/browser/support/block-server-egress.mjs")
+    ).href
+  }`;
+  return parentEnvironment.NODE_OPTIONS === reviewedEgressGuard
+    ? {
+        MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD: "1",
+        NODE_ENV: "test",
+        NODE_OPTIONS: reviewedEgressGuard,
+        TZ: "UTC",
+      }
+    : { NODE_ENV: "test", TZ: "UTC" };
 }
 
 function parseRunArguments(args: readonly string[]): {

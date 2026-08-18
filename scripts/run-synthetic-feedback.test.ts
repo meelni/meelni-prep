@@ -10,19 +10,74 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import {
   decodeSyntheticFeedbackArtifactV1,
   decodeSyntheticFeedbackManifestV1,
 } from "@meelni/test-fixtures/synthetic-feedback";
 
+import { createSyntheticFeedbackBundle } from "@/lib/workflows/synthetic-feedback-runner";
+
 import {
+  createSyntheticFeedbackWorkerEnvironment,
   publishSyntheticFeedbackFiles,
   runSyntheticFeedbackCli,
 } from "./run-synthetic-feedback";
+
+test("synthetic grandchildren inherit only the reviewed egress guard", () => {
+  const reviewedEgressGuard = `--import=${
+    pathToFileURL(resolve("tests/browser/support/block-server-egress.mjs")).href
+  }`;
+  const environment = createSyntheticFeedbackWorkerEnvironment({
+    NODE_OPTIONS: reviewedEgressGuard,
+    OPENAI_API_KEY: "must-not-cross-boundary",
+  });
+
+  assert.deepEqual(environment, {
+    MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD: "1",
+    NODE_ENV: "test",
+    NODE_OPTIONS: reviewedEgressGuard,
+    TZ: "UTC",
+  });
+  assert.deepEqual(
+    createSyntheticFeedbackWorkerEnvironment({
+      NODE_OPTIONS: "--require=/tmp/unreviewed.cjs",
+    }),
+    { NODE_ENV: "test", TZ: "UTC" }
+  );
+});
+
+test("provider-free worker blocks non-loopback egress in the nested process", async (t) => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "meelni-synthetic-feedback-egress-")
+  );
+  t.after(() => rm(temporaryRoot, { force: true, recursive: true }));
+  const guardUrl = pathToFileURL(
+    resolve("tests/browser/support/block-server-egress.mjs")
+  ).href;
+  const probePath = join(temporaryRoot, "probe.mjs");
+  await writeFile(
+    probePath,
+    `import ${JSON.stringify(guardUrl)};\nawait fetch("https://example.com");\n`,
+    "utf8"
+  );
+
+  await assert.rejects(
+    createSyntheticFeedbackBundle(["normal-product-sense"], {
+      workerEnvironment: {
+        MEELNI_REQUIRE_BROWSER_QA_EGRESS_GUARD: "1",
+        NODE_ENV: "test",
+        NODE_OPTIONS: `--import=${pathToFileURL(probePath).href}`,
+        TZ: "UTC",
+      },
+    }),
+    /synthetic_feedback_worker_failed/
+  );
+});
 
 test("list command exposes deterministic scenario metadata without running", async () => {
   const output: string[] = [];
