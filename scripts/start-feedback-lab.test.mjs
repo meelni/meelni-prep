@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
   createFeedbackLabEnvironment,
   FEEDBACK_LAB_ARTIFACT_DIRECTORY,
   feedbackLabGenerationCommand,
+  resetFeedbackLabArtifactDirectory,
 } from "./start-feedback-lab.mjs";
 
 test("Feedback Lab strips provider credentials and blocks server egress", () => {
@@ -40,4 +44,21 @@ test("Feedback Lab invokes the provider-free deterministic matrix", () => {
     "--output",
     FEEDBACK_LAB_ARTIFACT_DIRECTORY,
   ]);
+});
+
+test("Feedback Lab lets the synthetic publisher claim a missing output directory", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "meelni-feedback-lab-"));
+  const artifactDirectory = join(repoRoot, FEEDBACK_LAB_ARTIFACT_DIRECTORY);
+  await mkdir(artifactDirectory, { recursive: true });
+
+  try {
+    assert.equal(
+      await resetFeedbackLabArtifactDirectory(repoRoot),
+      artifactDirectory
+    );
+    await assert.rejects(access(artifactDirectory));
+    await access(dirname(artifactDirectory));
+  } finally {
+    await rm(repoRoot, { force: true, recursive: true });
+  }
 });

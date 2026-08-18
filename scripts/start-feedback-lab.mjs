@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -86,9 +86,7 @@ export async function prepareFeedbackLabArtifacts({
   repoRoot = REPO_ROOT,
   environment = createFeedbackLabEnvironment(process.env, repoRoot),
 } = {}) {
-  const artifactDirectory = join(repoRoot, FEEDBACK_LAB_ARTIFACT_DIRECTORY);
-  await rm(artifactDirectory, { force: true, recursive: true });
-  await mkdir(artifactDirectory, { recursive: true });
+  const artifactDirectory = await resetFeedbackLabArtifactDirectory(repoRoot);
 
   const generation = feedbackLabGenerationCommand(repoRoot);
   const status = await runChild(generation.command, generation.args, {
@@ -99,6 +97,13 @@ export async function prepareFeedbackLabArtifacts({
   if (status !== 0) {
     throw new Error(`Synthetic feedback generation exited with ${status}`);
   }
+  return artifactDirectory;
+}
+
+export async function resetFeedbackLabArtifactDirectory(repoRoot = REPO_ROOT) {
+  const artifactDirectory = join(repoRoot, FEEDBACK_LAB_ARTIFACT_DIRECTORY);
+  await rm(artifactDirectory, { force: true, recursive: true });
+  await mkdir(dirname(artifactDirectory), { recursive: true });
   return artifactDirectory;
 }
 
