@@ -75,8 +75,24 @@ owned test interview and feedback result, then confirm Opik shows:
 - a `feedback-generation` trace with an `openai.chat.completions` span;
 - a `meelni-demo-agent` or `meelni-interview-agent` OpenTelemetry trace;
 - model, usage, duration, and outcome fields;
+- the root `job_entrypoint` trace and its `agent_session` span contain the
+  ordered user/interviewer conversation in Input and the last interviewer
+  message in Output;
+- preserved `agent_turn` spans whose Input contains the candidate turn and
+  whose Output contains the interviewer response;
+- `user_turn` transcript and TTS text in their Opik Input fields;
 - content only when the explicit content switch is true;
 - no identity, room, provider-request, exception-body, or secret fields.
+
+The worker logs one content-free startup line showing whether Opik tracing and
+content capture initialized. Use that line to distinguish disabled or invalid
+configuration from a provider-side display problem; it never includes an API
+key, transcript, prompt, response, room, or participant identifier.
+
+Meelni sends no observability-specific trace deletion request after successful
+ingestion. Content remains governed by the Opik workspace's configured
+retention and access policy until Opik removes it. Verify that provider policy
+before enabling content capture and after any workspace-plan change.
 
 ## Preview
 
