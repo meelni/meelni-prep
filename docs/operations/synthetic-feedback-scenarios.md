@@ -76,11 +76,12 @@ The reusable scenario workflow traverses the same transcript writer, event and
 marker ingestion, runtime settlement, frozen evidence, interview end, durable
 dispatch, generation handler, evaluation parser, immutable persistence,
 lifecycle presenter, and core customer projection used by the application.
-The runner loads that Production-shaped module only for a run and masks
-inherited database, Inngest, provider, and observability configuration during
-module initialization. Listing scenarios never loads it, default Production
-adapters are never invoked, and the reviewed calibration runtime graph remains
-unchanged.
+The deterministic runner loads that Production-shaped module in an isolated
+local worker whose environment contains only `NODE_ENV=test` and `TZ=UTC`.
+Listing scenarios never loads it, the parent process environment is never read,
+copied, or mutated, default Production adapters are never invoked, and the
+reviewed calibration runtime graph remains unchanged. A future explicitly
+authorized evaluator adapter is a separate in-process opt-in boundary.
 Each durable generation step crosses a JSON serialize/parse round trip so
 non-durable values fail during the run. That trace includes the complete initial
 generation-dispatch event and the complete post-feedback insights event, not

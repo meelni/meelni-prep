@@ -12,7 +12,7 @@ const PRODUCTION_CONFIGURATION_KEYS = [
   "SUPABASE_SERVICE_ROLE_KEY",
 ] as const;
 
-test("synthetic runner masks inherited Production/provider configuration", async () => {
+test("provider-free worker never reads inherited Production/provider configuration", async () => {
   const inheritedEnvironment = process.env;
   const reads = new Set<string>();
   process.env = new Proxy(inheritedEnvironment, {
@@ -45,4 +45,28 @@ test("synthetic runner masks inherited Production/provider configuration", async
     PRODUCTION_CONFIGURATION_KEYS.filter((key) => reads.has(key)),
     []
   );
+});
+
+test("provider-free execution never mutates the parent environment", async () => {
+  const inheritedEnvironment = process.env;
+  process.env = new Proxy(inheritedEnvironment, {
+    get(target, property, receiver) {
+      if (property === "OPENAI_API_KEY") {
+        return "concurrent-production-sentinel";
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  try {
+    const { createSyntheticFeedbackBundle } = await import(
+      "./synthetic-feedback-runner"
+    );
+    const pending = createSyntheticFeedbackBundle(["normal-product-sense"]);
+    assert.equal(process.env.OPENAI_API_KEY, "concurrent-production-sentinel");
+    const bundle = await pending;
+    assert.equal(bundle.artifacts.length, 1);
+    assert.equal(process.env.OPENAI_API_KEY, "concurrent-production-sentinel");
+  } finally {
+    process.env = inheritedEnvironment;
+  }
 });
