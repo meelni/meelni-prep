@@ -297,6 +297,12 @@ export interface CreditLedgerTransaction
   listUserReservationsForUpdate(
     userId: string
   ): Promise<LedgerCreditReservation[]>;
+  getUserReservationIntegritySnapshotForUpdate(
+    userId: string
+  ): Promise<CreditReservationIntegritySnapshot>;
+  getActiveUserReservationIntegritySnapshotForUpdate(
+    userId: string
+  ): Promise<CreditReservationIntegritySnapshot>;
   findReservationByKeyForUpdate(
     reservationKey: string
   ): Promise<LedgerCreditReservation | null>;
@@ -372,6 +378,15 @@ export interface CreditReadSnapshot {
   currentTime: Date;
   grants: LedgerCreditGrant[];
   subscriptionPolicy: SubscriptionCreditPolicy;
+}
+
+export interface CreditReservationIntegritySnapshot {
+  reservations: LedgerCreditReservation[];
+  grants: LedgerCreditGrant[];
+  allocations: LedgerReservationAllocation[];
+  transactions: LedgerCreditTransaction[];
+  rolloverLots: LedgerRolloverLot[];
+  rolloverLotAllocations: LedgerRolloverLotAllocation[];
 }
 
 export interface CreditBalance {
@@ -1745,7 +1760,8 @@ function assertReservationMatchesRequest(
 
 async function assertReservationEvidence(
   store: CreditLedgerTransaction,
-  reservation: LedgerCreditReservation
+  reservation: LedgerCreditReservation,
+  lockedGrantsById?: ReadonlyMap<string, LedgerCreditGrant>
 ): Promise<LedgerReservationAllocation[]> {
   const allocations = await store.listAllocationsForUpdate(reservation.id);
   if (
@@ -1756,8 +1772,14 @@ async function assertReservationEvidence(
     throw new Error("credit_reservation_incomplete");
   }
 
-  const grants = await store.listUserGrantsForUpdate(reservation.userId);
-  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
+  const grantsById =
+    lockedGrantsById ??
+    new Map(
+      (await store.listUserGrantsForUpdate(reservation.userId)).map((grant) => [
+        grant.id,
+        grant,
+      ])
+    );
   for (const allocation of allocations) {
     const grant = grantsById.get(allocation.grantId);
     if (!grant) throw new Error("credit_ledger_reconciliation_required");
@@ -1830,10 +1852,15 @@ async function assertUserReservationIntegrity(
 ): Promise<void> {
   const reservations = await store.listUserReservationsForUpdate(userId);
   const grants = await store.listUserGrantsForUpdate(userId);
+  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
   const expectedReservedByGrant = new Map<string, number>();
 
   for (const reservation of reservations) {
-    const allocations = await assertReservationEvidence(store, reservation);
+    const allocations = await assertReservationEvidence(
+      store,
+      reservation,
+      grantsById
+    );
     assertReservationTerminalHistory(
       reservation,
       allocations,
@@ -1850,7 +1877,64 @@ async function assertUserReservationIntegrity(
     }
   }
 
+  await assertActiveReservationGrantIntegrity(
+    store,
+    userId,
+    grants,
+    expectedReservedByGrant
+  );
+}
+
+async function assertActiveUserReservationIntegrityFromStore(
+  store: CreditLedgerTransaction,
+  userId: string
+): Promise<void> {
+  const reservations = await store.listUserReservationsForUpdate(userId);
+  const grants = await store.listUserGrantsForUpdate(userId);
+  const grantsById = new Map(grants.map((grant) => [grant.id, grant]));
+  const expectedReservedByGrant = new Map<string, number>();
+
+  for (const reservation of reservations) {
+    if (reservation.userId !== userId || reservation.status !== "active") {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
+    const allocations = await assertReservationEvidence(
+      store,
+      reservation,
+      grantsById
+    );
+    assertReservationTerminalHistory(
+      reservation,
+      allocations,
+      await store.listTerminalTransactionsByReservationForUpdate(reservation.id)
+    );
+    for (const allocation of allocations) {
+      expectedReservedByGrant.set(
+        allocation.grantId,
+        (expectedReservedByGrant.get(allocation.grantId) ?? 0) +
+          allocation.credits
+      );
+    }
+  }
+
+  await assertActiveReservationGrantIntegrity(
+    store,
+    userId,
+    grants,
+    expectedReservedByGrant
+  );
+}
+
+async function assertActiveReservationGrantIntegrity(
+  store: CreditLedgerTransaction,
+  userId: string,
+  grants: LedgerCreditGrant[],
+  expectedReservedByGrant: ReadonlyMap<string, number>
+): Promise<void> {
   for (const grant of grants) {
+    if (grant.userId !== userId) {
+      throw new Error("credit_ledger_reconciliation_required");
+    }
     if (
       grant.reservedCredits !== (expectedReservedByGrant.get(grant.id) ?? 0)
     ) {
@@ -1872,6 +1956,127 @@ async function assertUserReservationIntegrity(
       }
     }
   }
+}
+
+function createReservationIntegritySnapshotStore(
+  store: CreditLedgerTransaction,
+  userId: string,
+  snapshot: CreditReservationIntegritySnapshot
+): CreditLedgerTransaction {
+  const transactionsByIdempotencyKey = new Map(
+    snapshot.transactions.map((transaction) => [
+      transaction.idempotencyKey,
+      transaction,
+    ])
+  );
+  const allocationsByReservation = new Map<
+    string,
+    LedgerReservationAllocation[]
+  >();
+  for (const allocation of snapshot.allocations) {
+    const entries =
+      allocationsByReservation.get(allocation.reservationId) ?? [];
+    entries.push(allocation);
+    allocationsByReservation.set(allocation.reservationId, entries);
+  }
+  const terminalTransactionsByReservation = new Map<
+    string,
+    LedgerCreditTransaction[]
+  >();
+  for (const transaction of snapshot.transactions) {
+    if (
+      transaction.reservationId === null ||
+      !["consume", "release", "refund"].includes(transaction.type)
+    ) {
+      continue;
+    }
+    const entries =
+      terminalTransactionsByReservation.get(transaction.reservationId) ?? [];
+    entries.push(transaction);
+    terminalTransactionsByReservation.set(transaction.reservationId, entries);
+  }
+  const rolloverLotsByGrant = new Map<string, LedgerRolloverLot[]>();
+  for (const lot of snapshot.rolloverLots) {
+    const entries = rolloverLotsByGrant.get(lot.rolloverGrantId) ?? [];
+    entries.push(lot);
+    rolloverLotsByGrant.set(lot.rolloverGrantId, entries);
+  }
+  const rolloverLotAllocationsByReservationGrant = new Map<
+    string,
+    LedgerRolloverLotAllocation[]
+  >();
+  for (const allocation of snapshot.rolloverLotAllocations) {
+    const entries =
+      rolloverLotAllocationsByReservationGrant.get(
+        allocation.reservationGrantId
+      ) ?? [];
+    entries.push(allocation);
+    rolloverLotAllocationsByReservationGrant.set(
+      allocation.reservationGrantId,
+      entries
+    );
+  }
+
+  const snapshotStore: CreditLedgerTransaction = {
+    ...store,
+    async listUserReservationsForUpdate(candidateUserId) {
+      if (candidateUserId !== userId) {
+        throw new Error("credit_ledger_user_scope_mismatch");
+      }
+      return snapshot.reservations;
+    },
+    async listUserGrantsForUpdate(candidateUserId) {
+      if (candidateUserId !== userId) {
+        throw new Error("credit_ledger_user_scope_mismatch");
+      }
+      return snapshot.grants;
+    },
+    async listAllocationsForUpdate(reservationId) {
+      return allocationsByReservation.get(reservationId) ?? [];
+    },
+    async findTransactionByIdempotencyKeyForUpdate(idempotencyKey) {
+      return transactionsByIdempotencyKey.get(idempotencyKey) ?? null;
+    },
+    async listTerminalTransactionsByReservationForUpdate(reservationId) {
+      return terminalTransactionsByReservation.get(reservationId) ?? [];
+    },
+    async listRolloverLotsForGrantForUpdate(grantId) {
+      return rolloverLotsByGrant.get(grantId) ?? [];
+    },
+    async listRolloverLotAllocationsForReservationGrantForUpdate(
+      reservationGrantId
+    ) {
+      return (
+        rolloverLotAllocationsByReservationGrant.get(reservationGrantId) ?? []
+      );
+    },
+  };
+
+  return snapshotStore;
+}
+
+async function assertLaunchReservationIntegrity(
+  store: CreditLedgerTransaction,
+  userId: string
+): Promise<void> {
+  const snapshot =
+    await store.getUserReservationIntegritySnapshotForUpdate(userId);
+  await assertUserReservationIntegrity(
+    createReservationIntegritySnapshotStore(store, userId, snapshot),
+    userId
+  );
+}
+
+async function assertActiveUserReservationIntegrity(
+  store: CreditLedgerTransaction,
+  userId: string
+): Promise<void> {
+  const snapshot =
+    await store.getActiveUserReservationIntegritySnapshotForUpdate(userId);
+  await assertActiveUserReservationIntegrityFromStore(
+    createReservationIntegritySnapshotStore(store, userId, snapshot),
+    userId
+  );
 }
 
 function assertRolloverGrantMatchesRequest(
@@ -2052,6 +2257,52 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
     return `${prefix}-${nextId++}`;
   }
 
+  function getReservationIntegritySnapshot(
+    userId: string,
+    activeOnly: boolean
+  ): CreditReservationIntegritySnapshot {
+    const userReservations = reservations.filter(
+      (reservation) =>
+        reservation.userId === userId &&
+        (!activeOnly || reservation.status === "active")
+    );
+    const reservationIds = new Set(
+      userReservations.map((reservation) => reservation.id)
+    );
+    const userGrants = grants.filter((grant) => grant.userId === userId);
+    const grantIds = new Set(userGrants.map((grant) => grant.id));
+    const userAllocations = allocations.filter((allocation) =>
+      reservationIds.has(allocation.reservationId)
+    );
+    const allocationIds = new Set(
+      userAllocations.map((allocation) => allocation.id)
+    );
+
+    return {
+      reservations: userReservations.map(cloneReservation),
+      grants: userGrants.map(cloneGrant),
+      allocations: userAllocations.map(cloneAllocation),
+      transactions: transactions
+        .filter(
+          (transaction) =>
+            transaction.reservationId !== null &&
+            reservationIds.has(transaction.reservationId) &&
+            ["reserve", "consume", "release", "refund"].includes(
+              transaction.type
+            )
+        )
+        .map(cloneTransaction),
+      rolloverLots: rolloverLots
+        .filter((lot) => grantIds.has(lot.rolloverGrantId))
+        .map(cloneRolloverLot),
+      rolloverLotAllocations: rolloverLotAllocations
+        .filter((allocation) =>
+          allocationIds.has(allocation.reservationGrantId)
+        )
+        .map(cloneRolloverLotAllocation),
+    };
+  }
+
   const store: CreditLedgerTestStore = {
     async withUserTransaction(_userId, work) {
       const previous = transactionTail;
@@ -2210,6 +2461,14 @@ export function createMemoryCreditLedgerStore(): CreditLedgerTestStore {
         .filter((reservation) => reservation.userId === userId)
         .sort((left, right) => left.id.localeCompare(right.id))
         .map(cloneReservation);
+    },
+
+    async getUserReservationIntegritySnapshotForUpdate(userId) {
+      return getReservationIntegritySnapshot(userId, false);
+    },
+
+    async getActiveUserReservationIntegritySnapshotForUpdate(userId) {
+      return getReservationIntegritySnapshot(userId, true);
     },
 
     async updateGrantBalances(grantId, balances) {
@@ -3501,7 +3760,7 @@ export async function reserveCreditInTransaction({
     return { reservation: existing, allocations, events: [] };
   }
 
-  await assertUserReservationIntegrity(store, input.userId);
+  await assertLaunchReservationIntegrity(store, input.userId);
   const subscriptionPolicy = await store.getSubscriptionCreditPolicyForUpdate(
     input.userId
   );
@@ -3622,8 +3881,7 @@ export async function reserveCreditInTransaction({
   if (remainingToReserve !== 0) {
     throw new Error("credit_reservation_incomplete");
   }
-  await assertReservationEvidence(store, reservation);
-  await assertUserReservationIntegrity(store, input.userId);
+  await assertActiveUserReservationIntegrity(store, input.userId);
   return { reservation, allocations, events };
 }
 

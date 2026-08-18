@@ -322,6 +322,102 @@ function createDrizzleCreditLedgerTransaction(
     }
   }
 
+  async function loadUserReservationIntegritySnapshotForUpdate(
+    userId: string,
+    activeOnly: boolean
+  ) {
+    requireActiveTransaction();
+    requireLockedUser(userId);
+    const reservationRows = await database
+      .select()
+      .from(creditReservation)
+      .where(
+        activeOnly
+          ? and(
+              eq(creditReservation.userId, userId),
+              eq(creditReservation.status, "active")
+            )
+          : eq(creditReservation.userId, userId)
+      )
+      .orderBy(asc(creditReservation.id))
+      .for("update");
+    const grantRows = await database
+      .select()
+      .from(creditGrant)
+      .where(eq(creditGrant.userId, userId))
+      .orderBy(asc(creditGrant.id))
+      .for("update");
+    const reservationIds = reservationRows.map((row) => row.id);
+    const grantIds = grantRows.map((row) => row.id);
+    // Select evidence through the locked owner's reservation/grant IDs so a
+    // cross-owner linked row remains visible to the integrity validator.
+    const allocationRows =
+      reservationIds.length === 0
+        ? []
+        : await database
+            .select()
+            .from(creditReservationGrant)
+            .where(
+              inArray(creditReservationGrant.reservationId, reservationIds)
+            )
+            .orderBy(asc(creditReservationGrant.id))
+            .for("update");
+    const transactionRows =
+      reservationIds.length === 0
+        ? []
+        : await database
+            .select()
+            .from(creditTransaction)
+            .where(
+              and(
+                inArray(creditTransaction.reservationId, reservationIds),
+                inArray(creditTransaction.type, [
+                  "reserve",
+                  "consume",
+                  "release",
+                  "refund",
+                ])
+              )
+            )
+            .orderBy(asc(creditTransaction.id))
+            .for("update");
+    const rolloverLotRows =
+      grantIds.length === 0
+        ? []
+        : await database
+            .select()
+            .from(creditRolloverLot)
+            .where(inArray(creditRolloverLot.rolloverGrantId, grantIds))
+            .orderBy(asc(creditRolloverLot.id))
+            .for("update");
+    const allocationIds = allocationRows.map((row) => row.id);
+    const rolloverLotAllocationRows =
+      allocationIds.length === 0
+        ? []
+        : await database
+            .select()
+            .from(creditRolloverLotAllocation)
+            .where(
+              inArray(
+                creditRolloverLotAllocation.reservationGrantId,
+                allocationIds
+              )
+            )
+            .orderBy(asc(creditRolloverLotAllocation.id))
+            .for("update");
+
+    return {
+      reservations: reservationRows.map(mapReservation),
+      grants: grantRows.map(mapGrant),
+      allocations: allocationRows.map(mapAllocation),
+      transactions: transactionRows.map(mapTransaction),
+      rolloverLots: rolloverLotRows.map(mapRolloverLot),
+      rolloverLotAllocations: rolloverLotAllocationRows.map(
+        mapRolloverLotAllocation
+      ),
+    };
+  }
+
   const store: CreditLedgerTransaction = {
     async getCurrentTime() {
       requireLockedUser();
@@ -550,6 +646,14 @@ function createDrizzleCreditLedgerTransaction(
         .for("update");
 
       return rows.map(mapReservation);
+    },
+
+    async getUserReservationIntegritySnapshotForUpdate(userId) {
+      return loadUserReservationIntegritySnapshotForUpdate(userId, false);
+    },
+
+    async getActiveUserReservationIntegritySnapshotForUpdate(userId) {
+      return loadUserReservationIntegritySnapshotForUpdate(userId, true);
     },
 
     async updateGrantBalances(grantId, balances) {

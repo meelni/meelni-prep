@@ -12,6 +12,7 @@ export type {
   CreditLedgerTestStore,
   CreditLedgerTransaction,
   CreditReadSnapshot,
+  CreditReservationIntegritySnapshot,
   CreditReservationStatus,
   CreditTerminalSettlementEvent,
   CreditTerminalSettlementTracker,
