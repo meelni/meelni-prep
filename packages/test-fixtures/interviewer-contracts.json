@@ -1,0 +1,326 @@
+{
+  "brief": {
+    "contract_version": "interview-brief.v2",
+    "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+    "payload_digest": "sha256:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+    "session_id": "session-contract-1",
+    "session_start_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "deadline_at": "2026-08-18T23:30:00.000Z",
+    "round_type": "product_sense",
+    "difficulty": "intermediate",
+    "duration_minutes": 30,
+    "selected_question": {
+      "id": "question-contract-1",
+      "text": "Design a product that helps remote teams make decisions.",
+      "company": "Notion",
+      "type": "Product Sense"
+    },
+    "company_context": {
+      "company_name": "Notion",
+      "context_version": "company-context.v1",
+      "summary": "A collaborative workspace used by distributed teams."
+    },
+    "candidate_practice_goal": "Practice making explicit product tradeoffs.",
+    "round_pack": {
+      "contract_version": "pm-round-pack.v1",
+      "round_type": "product_sense",
+      "objectives": [
+        "identify_user_problem",
+        "prioritize_solution",
+        "define_success"
+      ],
+      "probe_families": ["assumptions", "prioritization", "tradeoffs"],
+      "transition_guidance": [
+        "Advance after the candidate makes a clear product choice."
+      ],
+      "close_guidance": ["Invite one concise final thought before ending."],
+      "forbidden_behaviors": ["coaching", "hinting", "mid_session_evaluation"]
+    },
+    "policy": {
+      "contract_version": "full-interview-policy.v1",
+      "prompt_contract_version": "full_interview_prompt_v1",
+      "interviewer_mode": "full_interview",
+      "coaching": "forbidden",
+      "hints": "forbidden",
+      "evaluation_timing": "post_interview_only",
+      "selected_question_policy": "exact_first_turn",
+      "one_substantive_question_per_turn": true
+    }
+  },
+  "room_metadata_v1": {
+    "contract_version": 1,
+    "session_id": "session-contract-1",
+    "candidate_identity": "candidate-contract-1",
+    "transcript_ingest_url": "https://meelni.test/api/internal/transcript",
+    "deadline_at": "2026-08-18T23:30:00.000Z",
+    "round_type": "product_sense",
+    "config": {
+      "difficulty": "intermediate",
+      "duration": 30
+    },
+    "question": {
+      "id": "question-contract-1",
+      "text": "Design a product that helps remote teams make decisions.",
+      "company": "Notion",
+      "type": "Product Sense"
+    }
+  },
+  "runtime_state": {
+    "contract_version": "interview-runtime-state.v1",
+    "session_id": "session-contract-1",
+    "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+    "state_revision": 7,
+    "lifecycle_snapshot": {
+      "state": "active",
+      "version": 2
+    },
+    "active_writer": {
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3
+    },
+    "controller_phase": "follow_up",
+    "round_objective_id": "prioritize_solution",
+    "current_topic": "Tradeoffs between synchronous and asynchronous decisions",
+    "active_question_id": "question-contract-1",
+    "clock": {
+      "started_at": "2026-08-18T23:00:00.000Z",
+      "deadline_at": "2026-08-18T23:30:00.000Z",
+      "observed_at": "2026-08-18T23:10:00.000Z",
+      "remaining_ms": 1200000,
+      "band": "normal"
+    },
+    "allowed_moves": ["probe", "clarify", "challenge", "transition", "close"],
+    "probe_ledger": [
+      {
+        "move_id": "move-contract-0",
+        "move_type": "clarify",
+        "delivery_state": "canonically_delivered",
+        "question_id": "question-contract-1",
+        "target_turn_ids": ["candidate-turn-0"],
+        "updated_at": "2026-08-18T23:08:00.000Z",
+        "delivery_evidence": {
+          "event_id": "interviewer-event-0",
+          "writer_id": "writer-contract-1",
+          "writer_generation": 3,
+          "sequence": 6,
+          "delivery_state": "delivered"
+        }
+      }
+    ],
+    "last_finalized_candidate_turn_id": "candidate-turn-1",
+    "interruption_state": "clear",
+    "close_state": "open",
+    "speech_fenced": false
+  },
+  "move": {
+    "contract_version": "interviewer-move.v1",
+    "move_id": "move-contract-1",
+    "session_id": "session-contract-1",
+    "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+    "writer_id": "writer-contract-1",
+    "writer_generation": 3,
+    "based_on_state_revision": 7,
+    "move_type": "challenge",
+    "target": {
+      "question_id": "question-contract-1",
+      "topic": "Tradeoff between speed and decision quality",
+      "source_turn_id": "candidate-turn-1",
+      "probe_candidate_id": "probe-contract-1"
+    },
+    "reason_code": "test_tradeoff",
+    "created_at": "2026-08-18T23:10:00.000Z",
+    "expires_at": "2026-08-18T23:10:10.000Z",
+    "idempotency_key": "move-contract-1:7"
+  },
+  "tool_requests": [
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "read_interview_state",
+      "call_id": "call-state-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "deadline_at": "2026-08-18T23:10:00.050Z"
+    },
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "read_interview_clock",
+      "call_id": "call-clock-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "deadline_at": "2026-08-18T23:10:00.050Z"
+    },
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "get_probe_candidates",
+      "call_id": "call-candidates-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "deadline_at": "2026-08-18T23:10:00.050Z",
+      "expected_state_revision": 7
+    },
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "commit_interviewer_move",
+      "call_id": "call-commit-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "deadline_at": "2026-08-18T23:10:00.050Z",
+      "expected_state_revision": 7,
+      "idempotency_key": "move-contract-1:7",
+      "move": {
+        "contract_version": "interviewer-move.v1",
+        "move_id": "move-contract-1",
+        "session_id": "session-contract-1",
+        "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+        "writer_id": "writer-contract-1",
+        "writer_generation": 3,
+        "based_on_state_revision": 7,
+        "move_type": "challenge",
+        "target": {
+          "question_id": "question-contract-1",
+          "topic": "Tradeoff between speed and decision quality",
+          "source_turn_id": "candidate-turn-1",
+          "probe_candidate_id": "probe-contract-1"
+        },
+        "reason_code": "test_tradeoff",
+        "created_at": "2026-08-18T23:10:00.000Z",
+        "expires_at": "2026-08-18T23:10:10.000Z",
+        "idempotency_key": "move-contract-1:7"
+      }
+    },
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "request_graceful_close",
+      "call_id": "call-close-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "deadline_at": "2026-08-18T23:10:00.050Z",
+      "expected_state_revision": 7,
+      "idempotency_key": "close-contract-1:7",
+      "reason": "deadline"
+    }
+  ],
+  "tool_results": [
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "read_interview_state",
+      "call_id": "call-state-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "status": "ok",
+      "observed_state_revision": 7,
+      "payload": {
+        "state": {
+          "contract_version": "interview-runtime-state.v1",
+          "session_id": "session-contract-1",
+          "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+          "state_revision": 7,
+          "lifecycle_snapshot": {
+            "state": "active",
+            "version": 2
+          },
+          "active_writer": {
+            "writer_id": "writer-contract-1",
+            "writer_generation": 3
+          },
+          "controller_phase": "follow_up",
+          "round_objective_id": "prioritize_solution",
+          "current_topic": "Tradeoffs between synchronous and asynchronous decisions",
+          "active_question_id": "question-contract-1",
+          "clock": {
+            "started_at": "2026-08-18T23:00:00.000Z",
+            "deadline_at": "2026-08-18T23:30:00.000Z",
+            "observed_at": "2026-08-18T23:10:00.000Z",
+            "remaining_ms": 1200000,
+            "band": "normal"
+          },
+          "allowed_moves": [
+            "probe",
+            "clarify",
+            "challenge",
+            "transition",
+            "close"
+          ],
+          "probe_ledger": [
+            {
+              "move_id": "move-contract-0",
+              "move_type": "clarify",
+              "delivery_state": "canonically_delivered",
+              "question_id": "question-contract-1",
+              "target_turn_ids": ["candidate-turn-0"],
+              "updated_at": "2026-08-18T23:08:00.000Z",
+              "delivery_evidence": {
+                "event_id": "interviewer-event-0",
+                "writer_id": "writer-contract-1",
+                "writer_generation": 3,
+                "sequence": 6,
+                "delivery_state": "delivered"
+              }
+            }
+          ],
+          "last_finalized_candidate_turn_id": "candidate-turn-1",
+          "interruption_state": "clear",
+          "close_state": "open",
+          "speech_fenced": false
+        }
+      },
+      "failure_code": null,
+      "latency_ms": 4
+    },
+    {
+      "contract_version": "interviewer-tools.v1",
+      "tool_name": "get_probe_candidates",
+      "call_id": "call-candidates-timeout-1",
+      "session_id": "session-contract-1",
+      "writer_id": "writer-contract-1",
+      "writer_generation": 3,
+      "status": "timeout",
+      "observed_state_revision": 7,
+      "payload": null,
+      "failure_code": "timeout",
+      "latency_ms": 25
+    }
+  ],
+  "director_recommendation": {
+    "contract_version": "director-recommendation.v1",
+    "recommendation_id": "recommendation-contract-1",
+    "session_id": "session-contract-1",
+    "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
+    "writer_id": "writer-contract-1",
+    "writer_generation": 3,
+    "based_on_state_revision": 7,
+    "source_turn_id": "candidate-turn-1",
+    "source_transcript_revision": "transcript-revision-9",
+    "source_finality": "finalized",
+    "move_type": "challenge",
+    "target": {
+      "question_id": "question-contract-1",
+      "topic": "Tradeoff between speed and decision quality",
+      "source_turn_id": "candidate-turn-1",
+      "probe_candidate_id": "probe-contract-1"
+    },
+    "reason_code": "test_tradeoff",
+    "created_at": "2026-08-18T23:10:00.000Z",
+    "expires_at": "2026-08-18T23:10:10.000Z"
+  },
+  "canonical_transcript": [
+    {
+      "eventId": "candidate-event-1",
+      "speaker": "user",
+      "text": "I would prioritize asynchronous decisions for reversible choices.",
+      "deliveryState": "delivered"
+    },
+    {
+      "eventId": "interviewer-event-1",
+      "speaker": "interviewer",
+      "text": "What tradeoff would make you choose synchronous discussion?",
+      "deliveryState": "delivered"
+    }
+  ]
+}

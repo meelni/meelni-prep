@@ -21,6 +21,18 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent))
 
 from shared.config import parse_room_metadata
+from shared.interviewer_contracts import (
+    InterviewerContractError,
+    assess_director_recommendation,
+    calculate_interview_brief_v2_payload_digest,
+    canonicalize_interview_brief_v2_payload,
+    parse_director_recommendation,
+    parse_interview_brief_v2,
+    parse_interview_runtime_state,
+    parse_interviewer_move,
+    parse_interviewer_tool_request,
+    parse_interviewer_tool_result,
+)
 from shared.dispatch import (
     BUILD_ASSET_DISPATCH_NAME,
     require_dispatch_name,
@@ -122,6 +134,193 @@ from shared.transcript_settlement import (
 
 
 class RuntimeContractTests(unittest.TestCase):
+    @staticmethod
+    def _interviewer_contract_fixtures():
+        path = (
+            Path(__file__).parent.parent
+            / "packages"
+            / "test-fixtures"
+            / "interviewer-contracts.json"
+        )
+        return json.loads(path.read_text())
+
+    def test_python_accepts_shared_stateful_interviewer_golden_fixture(self):
+        fixtures = self._interviewer_contract_fixtures()
+        brief = parse_interview_brief_v2(fixtures["brief"])
+        state = parse_interview_runtime_state(fixtures["runtime_state"])
+        move = parse_interviewer_move(fixtures["move"])
+        recommendation = parse_director_recommendation(
+            fixtures["director_recommendation"]
+        )
+
+        self.assertEqual(brief["selected_question"]["id"], "question-contract-1")
+        self.assertEqual(state["controller_phase"], "follow_up")
+        self.assertEqual(move["move_type"], "challenge")
+        self.assertEqual(recommendation["source_finality"], "finalized")
+        for request in fixtures["tool_requests"]:
+            self.assertEqual(
+                parse_interviewer_tool_request(request)["session_id"],
+                state["session_id"],
+            )
+        for result in fixtures["tool_results"]:
+            self.assertEqual(
+                parse_interviewer_tool_result(result)["session_id"],
+                state["session_id"],
+            )
+
+    def test_brief_digest_is_replay_stable_and_matches_hashlib(self):
+        fixtures = self._interviewer_contract_fixtures()
+        brief = parse_interview_brief_v2(fixtures["brief"])
+        canonical = canonicalize_interview_brief_v2_payload(brief)
+        expected = f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+        reversed_brief = dict(reversed(list(brief.items())))
+
+        self.assertEqual(
+            calculate_interview_brief_v2_payload_digest(brief),
+            expected,
+        )
+        self.assertEqual(expected, brief["payload_digest"])
+        self.assertEqual(
+            canonicalize_interview_brief_v2_payload(reversed_brief),
+            canonical,
+        )
+        self.assertNotIn("compiled_at", brief)
+
+    def test_room_metadata_v1_negotiates_nested_brief_without_v2_top_level(self):
+        fixtures = self._interviewer_contract_fixtures()
+        room = {
+            **fixtures["room_metadata_v1"],
+            "interview_brief": fixtures["brief"],
+        }
+        parsed = parse_room_metadata(json.dumps(room))
+
+        self.assertEqual(parsed["contract_version"], 1)
+        self.assertEqual(parsed["interview_brief"], fixtures["brief"])
+        self.assertEqual(parsed["interview_brief_resolution"], "brief_v2")
+        self.assertEqual(
+            parsed["question"]["text"],
+            fixtures["brief"]["selected_question"]["text"],
+        )
+
+        absent = parse_room_metadata(json.dumps(fixtures["room_metadata_v1"]))
+        self.assertIsNone(absent["interview_brief"])
+        self.assertEqual(absent["interview_brief_resolution"], "absent")
+
+        for nested in (
+            {**fixtures["brief"], "contract_version": "interview-brief.v999"},
+            {**fixtures["brief"], "selected_question": {"id": "malformed"}},
+            {**fixtures["brief"], "payload_digest": f"sha256:{'0' * 64}"},
+        ):
+            with self.subTest(nested=nested["contract_version"]):
+                fallback = parse_room_metadata(
+                    json.dumps(
+                        {
+                            **fixtures["room_metadata_v1"],
+                            "interview_brief": nested,
+                        }
+                    )
+                )
+                self.assertIsNone(fallback["interview_brief"])
+                self.assertEqual(
+                    fallback["question"]["text"],
+                    fixtures["room_metadata_v1"]["question"]["text"],
+                )
+                self.assertEqual(fallback["config"]["hintMode"], "off")
+                self.assertEqual(fallback["config"]["feedback_mode"], "end_only")
+
+        with self.assertRaisesRegex(ValueError, "Invalid interview room metadata"):
+            parse_room_metadata(
+                json.dumps({**fixtures["room_metadata_v1"], "contract_version": 2})
+            )
+
+    def test_python_contract_parsers_reject_unknown_and_malformed_versions(self):
+        fixtures = self._interviewer_contract_fixtures()
+        cases = (
+            (parse_interview_brief_v2, fixtures["brief"]),
+            (parse_interview_runtime_state, fixtures["runtime_state"]),
+            (parse_interviewer_move, fixtures["move"]),
+            (parse_interviewer_tool_request, fixtures["tool_requests"][0]),
+            (parse_interviewer_tool_result, fixtures["tool_results"][0]),
+            (
+                parse_director_recommendation,
+                fixtures["director_recommendation"],
+            ),
+        )
+        for parse, fixture in cases:
+            with self.subTest(parser=parse.__name__):
+                with self.assertRaises(InterviewerContractError) as unknown:
+                    parse({**fixture, "contract_version": "unknown.v999"})
+                self.assertEqual(unknown.exception.code, "unsupported_contract")
+                with self.assertRaises(InterviewerContractError) as malformed:
+                    parse({**fixture, "unexpected": True})
+                self.assertEqual(malformed.exception.code, "invalid_payload")
+
+    def test_director_expiry_boundary_and_reconnect_fence_are_deterministic(self):
+        fixtures = self._interviewer_contract_fixtures()
+        recommendation = parse_director_recommendation(
+            fixtures["director_recommendation"]
+        )
+        state = parse_interview_runtime_state(fixtures["runtime_state"])
+
+        self.assertEqual(
+            assess_director_recommendation(
+                recommendation,
+                state,
+                recommendation["expires_at"],
+            ),
+            "eligible",
+        )
+        self.assertEqual(
+            assess_director_recommendation(
+                recommendation,
+                state,
+                "2026-08-18T23:10:10.001Z",
+            ),
+            "expired",
+        )
+        self.assertEqual(
+            assess_director_recommendation(
+                {**recommendation, "source_finality": "speculative"},
+                state,
+                recommendation["expires_at"],
+            ),
+            "source_not_final",
+        )
+        self.assertEqual(
+            assess_director_recommendation(
+                {**recommendation, "writer_generation": 2},
+                state,
+                recommendation["expires_at"],
+            ),
+            "stale_state",
+        )
+
+    def test_stateful_contract_keeps_demo_and_no_coaching_behavior_unchanged(self):
+        fixtures = self._interviewer_contract_fixtures()
+        brief = parse_interview_brief_v2(fixtures["brief"])
+
+        self.assertEqual(brief["policy"]["coaching"], "forbidden")
+        self.assertEqual(brief["policy"]["hints"], "forbidden")
+        self.assertEqual(
+            brief["policy"]["evaluation_timing"],
+            "post_interview_only",
+        )
+        self.assertEqual(
+            brief["policy"]["prompt_contract_version"],
+            FULL_INTERVIEW_PROMPT_CONTRACT.version,
+        )
+        self.assertEqual(DEMO_PROMPT_CONTRACT.version, "public_demo_prompt_v1")
+        self.assertEqual(DEMO_PROMPT_CONTRACT.mode, "public_demo")
+        serialized = json.dumps(brief)
+        for forbidden_key in (
+            "candidate_identity",
+            "email",
+            "transcript",
+            "director",
+            "tool_result",
+        ):
+            self.assertNotIn(forbidden_key, serialized)
+
     def test_unmeasured_user_hypotheses_are_not_canonical_delivery(self):
         hypothesis = SimpleNamespace(role="user", metrics={})
         measured = SimpleNamespace(
