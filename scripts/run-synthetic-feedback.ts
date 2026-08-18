@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, readFile, readdir } from "node:fs/promises";
-import { dirname, parse, resolve, join } from "node:path";
+import { lstat, mkdir } from "node:fs/promises";
+import { dirname, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createSyntheticFeedbackScenarios } from "@meelni/test-fixtures/synthetic-feedback";
@@ -85,11 +85,20 @@ export async function publishSyntheticFeedbackFiles(
   files: readonly { name: string; content: string }[],
   hooks: {
     beforeOutputClaim?(): Promise<void>;
+    afterExistingOutputReady?(): Promise<void>;
     afterPublisherReady?(): Promise<void>;
   } = {}
 ): Promise<void> {
   try {
-    if (await existingOutputMatches(outputDirectory, files)) return;
+    if (
+      await existingOutputMatches(
+        outputDirectory,
+        files,
+        hooks.afterExistingOutputReady
+      )
+    ) {
+      return;
+    }
     const parentDirectory = dirname(outputDirectory);
     await mkdir(parentDirectory, { recursive: true });
     await hooks.beforeOutputClaim?.();
@@ -97,13 +106,22 @@ export async function publishSyntheticFeedbackFiles(
       await mkdir(outputDirectory, { mode: 0o700 });
     } catch (error) {
       if (isNodeError(error) && error.code === "EEXIST") {
-        if (await existingOutputMatches(outputDirectory, files)) return;
+        if (
+          await existingOutputMatches(
+            outputDirectory,
+            files,
+            hooks.afterExistingOutputReady
+          )
+        ) {
+          return;
+        }
         throw new Error("synthetic_feedback_output_conflict");
       }
       throw error;
     }
     const claimedDirectory = await readDirectoryIdentity(outputDirectory);
-    await publishFromClaimedDirectory(
+    await runDirectoryWorker(
+      "publish",
       outputDirectory,
       claimedDirectory,
       files,
@@ -146,17 +164,25 @@ async function assertDirectoryIdentity(
   }
 }
 
-function publishFromClaimedDirectory(
+type DirectoryWorkerMode = "publish" | "verify";
+
+function runDirectoryWorker(
+  mode: DirectoryWorkerMode,
   outputDirectory: string,
   expected: DirectoryIdentity,
   files: readonly { name: string; content: string }[],
-  afterPublisherReady: (() => Promise<void>) | undefined
+  afterReady: (() => Promise<void>) | undefined
 ): Promise<void> {
   const payload = JSON.stringify(files);
   return new Promise((resolvePublish, rejectPublish) => {
     const child = spawn(
       process.execPath,
-      [PUBLISHER_WORKER_PATH, expected.dev.toString(), expected.ino.toString()],
+      [
+        PUBLISHER_WORKER_PATH,
+        mode,
+        expected.dev.toString(),
+        expected.ino.toString(),
+      ],
       {
         cwd: outputDirectory,
         env: { NODE_ENV: "test", TZ: "UTC" },
@@ -187,7 +213,7 @@ function publishFromClaimedDirectory(
       if (readyOutput !== "ready\n" || payloadSent) return;
       payloadSent = true;
       void (async () => {
-        await afterPublisherReady?.();
+        await afterReady?.();
         child.stdin.end(payload);
       })().catch(() => {
         child.kill();
@@ -208,38 +234,28 @@ function publishFromClaimedDirectory(
 
 async function existingOutputMatches(
   outputDirectory: string,
-  files: readonly { name: string; content: string }[]
+  files: readonly { name: string; content: string }[],
+  afterVerifierReady: (() => Promise<void>) | undefined
 ): Promise<boolean> {
-  let outputStats;
+  let expected: DirectoryIdentity;
   try {
-    outputStats = await lstat(outputDirectory);
+    expected = await readDirectoryIdentity(outputDirectory);
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") return false;
     throw error;
   }
-  if (outputStats.isSymbolicLink() || !outputStats.isDirectory()) {
+  try {
+    await runDirectoryWorker(
+      "verify",
+      outputDirectory,
+      expected,
+      files,
+      afterVerifierReady
+    );
+  } catch {
     throw new Error("synthetic_feedback_output_conflict");
   }
-
-  const expectedNames = files.map((file) => file.name).sort();
-  const actualNames = (await readdir(outputDirectory)).sort();
-  if (
-    expectedNames.length !== actualNames.length ||
-    expectedNames.some((name, index) => name !== actualNames[index])
-  ) {
-    throw new Error("synthetic_feedback_output_conflict");
-  }
-
-  for (const file of files) {
-    const filePath = join(outputDirectory, file.name);
-    const fileStats = await lstat(filePath);
-    if (fileStats.isSymbolicLink() || !fileStats.isFile()) {
-      throw new Error("synthetic_feedback_output_conflict");
-    }
-    if ((await readFile(filePath, "utf8")) !== file.content) {
-      throw new Error("synthetic_feedback_output_conflict");
-    }
-  }
+  await assertDirectoryIdentity(outputDirectory, expected);
   return true;
 }
 

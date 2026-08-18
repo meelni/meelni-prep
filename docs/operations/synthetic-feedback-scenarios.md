@@ -34,9 +34,11 @@ directory exclusively before writing files. A minimal child writer pins that
 claimed directory as its working directory and verifies its device/inode before
 accepting file bytes, so replacing the output path with a symlink cannot redirect
 later files. The parent revalidates the directory identity before reporting
-success. Publication never replaces a concurrently created filesystem entry. A
-write failure after the claim may leave a partial or displaced directory, which
-is intentionally fail-closed and must be inspected or removed before retrying.
+success. Byte-identical reuse is verified through the same directory-pinned
+worker and receives the same final identity check. Publication never replaces a
+concurrently created filesystem entry. A write failure after the claim may leave
+a partial or displaced directory, which is intentionally fail-closed and must be
+inspected or removed before retrying.
 
 ## Stable artifact boundary
 
