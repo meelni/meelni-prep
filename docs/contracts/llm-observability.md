@@ -20,10 +20,27 @@ explicitly enables prompt, transcript, and response capture.
   Content mode adds the evaluation prompt and raw provider response.
 - Demo and full-interview workers export LiveKit Agents spans through OTLP.
   Content mode retains system, user, and assistant message content plus the
-  transcript/text attributes needed to inspect the conversation.
+  transcript/text attributes needed to inspect the conversation. The runtime
+  preserves LiveKit `agent_turn` spans and projects their allowed user input
+  and interviewer response into provider-neutral Opik `input` and `output`
+  fields. Transcript-only `user_turn` spans and TTS text receive the same input
+  projection. At session end, the `agent_session` span and root
+  `job_entrypoint` trace input receive an ordered user/assistant conversation;
+  their output receives the last interviewer message, so the conversation is
+  visible at both trace and span levels. Root aggregation is memory-bounded;
+  the individual turn spans remain the content source of truth. These
+  projections exist only in content mode.
 
 Calibration paid-mode requests are excluded from Opik. Their separate
 authorization, evidence, and private-capture contracts remain authoritative.
+
+## Retention
+
+After Opik accepts a trace, Meelni does not issue an observability-specific
+early deletion request. Prompt, transcript, and response content remains under
+the configured Opik workspace retention and access policy until Opik removes
+it. This provider-retention rule does not override a separate legal or
+account-deletion obligation.
 
 ## Excluded Data
 
