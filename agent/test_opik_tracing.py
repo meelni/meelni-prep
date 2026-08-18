@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -95,12 +96,95 @@ class OpikTracingTests(unittest.TestCase):
 
         exported = delegate.spans[0]
         self.assertEqual(exported.attributes["lk.user_transcript"], "private answer")
+        self.assertEqual(exported.attributes["input"], "private answer")
         self.assertNotIn("lk.participant_identity", exported.attributes)
         self.assertNotIn("lk.room_name", exported.attributes)
         self.assertEqual(len(exported.events), 1)
         self.assertEqual(exported.events[0].attributes["content"], "private answer")
         self.assertNotIn("tool_calls", exported.events[0].attributes)
         self.assertIsNone(exported.status.description)
+
+    def test_content_export_projects_agent_turn_to_opik_input_and_output(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=True)
+
+        exporter.export([private_agent_turn_span()])
+
+        exported = delegate.spans[0]
+        self.assertEqual(exported.name, "agent_turn")
+        self.assertEqual(exported.attributes["input"], "candidate answer")
+        self.assertEqual(exported.attributes["output"], "interviewer follow-up")
+        self.assertEqual(exported.attributes["lk.user_input"], "candidate answer")
+        self.assertEqual(
+            exported.attributes["lk.response.text"], "interviewer follow-up"
+        )
+        self.assertNotIn("lk.participant_identity", exported.attributes)
+
+    def test_metadata_only_export_does_not_create_opik_content_fields(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=False)
+        context = FakeSpanContext(trace_id=123)
+
+        exporter.export([private_agent_turn_span(context=context)])
+        exporter.export([private_agent_session_span(context=context)])
+
+        exported_turn, exported_root = delegate.spans
+        self.assertEqual(exported_turn.name, "agent_turn")
+        self.assertNotIn("input", exported_turn.attributes)
+        self.assertNotIn("output", exported_turn.attributes)
+        self.assertNotIn("lk.user_input", exported_turn.attributes)
+        self.assertNotIn("lk.response.text", exported_turn.attributes)
+        self.assertEqual(exported_root.name, "agent_session")
+        self.assertNotIn("input", exported_root.attributes)
+        self.assertNotIn("output", exported_root.attributes)
+
+    def test_content_export_projects_conversation_onto_root_trace(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=True)
+        context = FakeSpanContext(trace_id=123)
+
+        exporter.export(
+            [
+                private_agent_turn_span(
+                    context=context,
+                    user_input=None,
+                    response_text="opening question",
+                ),
+                private_user_turn_span(context=context),
+                private_agent_turn_span(context=context),
+            ]
+        )
+        exporter.export(
+            [
+                private_agent_session_span(
+                    context=context,
+                    parent=FakeSpanContext(trace_id=123),
+                )
+            ]
+        )
+        exporter.export([private_job_entrypoint_span(context=context)])
+
+        exported_session, exported_root = delegate.spans[-2:]
+        self.assertEqual(exported_session.name, "agent_session")
+        self.assertEqual(
+            exported_session.attributes["output"], "interviewer follow-up"
+        )
+        self.assertEqual(exported_root.name, "job_entrypoint")
+        self.assertEqual(exported_root.attributes["output"], "interviewer follow-up")
+        self.assertEqual(
+            json.loads(exported_root.attributes["input"]),
+            {
+                "conversation": [
+                    {"role": "assistant", "content": "opening question"},
+                    {"role": "user", "content": "candidate answer"},
+                    {
+                        "role": "assistant",
+                        "content": "interviewer follow-up",
+                    },
+                ]
+            },
+        )
+        self.assertNotIn("lk.participant_identity", exported_root.attributes)
 
 
 class FakeResource:
@@ -112,6 +196,11 @@ class FakeStatus:
     def __init__(self, status_code, description=None):
         self.status_code = status_code
         self.description = description
+
+
+class FakeSpanContext:
+    def __init__(self, trace_id):
+        self.trace_id = trace_id
 
 
 class FakeEvent:
@@ -181,6 +270,87 @@ def private_livekit_span() -> FakeReadableSpan:
             ),
         ),
         status=FakeStatus("error", "private provider error"),
+    )
+
+
+def private_agent_turn_span(
+    *,
+    context=None,
+    user_input="candidate answer",
+    response_text="interviewer follow-up",
+) -> FakeReadableSpan:
+    attributes = {
+        "input": "unapproved generic input",
+        "output": "unapproved generic output",
+        "lk.participant_identity": "private-user-id",
+    }
+    if user_input is not None:
+        attributes["lk.user_input"] = user_input
+    if response_text is not None:
+        attributes["lk.response.text"] = response_text
+    return FakeReadableSpan(
+        name="agent_turn",
+        context=context,
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes=attributes,
+        status=FakeStatus("unset"),
+    )
+
+
+def private_user_turn_span(*, context=None) -> FakeReadableSpan:
+    return FakeReadableSpan(
+        name="user_turn",
+        context=context,
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes={
+            "lk.user_transcript": "candidate answer",
+            "lk.participant_identity": "private-user-id",
+        },
+        status=FakeStatus("unset"),
+    )
+
+
+def private_agent_session_span(*, context=None, parent=None) -> FakeReadableSpan:
+    return FakeReadableSpan(
+        name="agent_session",
+        context=context,
+        parent=parent,
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes={"lk.room_name": "private-room"},
+        status=FakeStatus("unset"),
+    )
+
+
+def private_job_entrypoint_span(*, context=None) -> FakeReadableSpan:
+    return FakeReadableSpan(
+        name="job_entrypoint",
+        context=context,
+        resource=FakeResource(
+            {
+                "service.name": "meelni-interview-agent",
+                "deployment.environment.name": "preview",
+            }
+        ),
+        attributes={
+            "lk.job_id": "private-job",
+            "lk.room_name": "private-room",
+        },
+        status=FakeStatus("unset"),
     )
 
 
