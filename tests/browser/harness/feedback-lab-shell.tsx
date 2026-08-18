@@ -17,6 +17,8 @@ export type FeedbackLabScenarioOption = Readonly<{
 
 export type FeedbackLabDiagnostics = Readonly<{
   artifactSchema: string;
+  executionMode: string;
+  integrity: "sha256_verified" | "lab_owned";
   stageNames: readonly string[];
 }>;
 
@@ -152,6 +154,16 @@ export function FeedbackLabShell({
                 <dt className="text-muted-foreground">Artifact</dt>
                 <dd className="text-foreground font-mono wrap-anywhere">
                   {diagnostics.artifactSchema}
+                </dd>
+                <dt className="text-muted-foreground">Integrity</dt>
+                <dd className="text-foreground wrap-anywhere">
+                  {diagnostics.integrity === "sha256_verified"
+                    ? "SHA-256 verified"
+                    : "Lab-owned state"}
+                </dd>
+                <dt className="text-muted-foreground">Execution</dt>
+                <dd className="text-foreground font-mono wrap-anywhere">
+                  {diagnostics.executionMode}
                 </dd>
                 <dt className="text-muted-foreground">Stages</dt>
                 <dd className="text-foreground wrap-anywhere">

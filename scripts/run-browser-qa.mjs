@@ -13,6 +13,11 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  createFeedbackLabEnvironment,
+  prepareFeedbackLabArtifacts,
+} from "./start-feedback-lab.mjs";
+
 const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SANDBOX_ROOT = join(REPO_ROOT, ".context", "browser-qa-workspace");
 const SOURCE_FINGERPRINT_FILE = join(
@@ -177,6 +182,10 @@ function runNode(args, environment) {
 async function build() {
   const fingerprint = await sourceFingerprint();
   await prepareSandbox();
+  await prepareFeedbackLabArtifacts({
+    repoRoot: SANDBOX_ROOT,
+    environment: createFeedbackLabEnvironment(process.env, SANDBOX_ROOT),
+  });
   const environment = createBrowserQaEnvironment(process.env, SANDBOX_ROOT, {
     blockEgress: false,
     turbopackRoot: REPO_ROOT,

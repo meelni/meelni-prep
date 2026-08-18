@@ -42,13 +42,14 @@ The lab command writes its ephemeral files to
 uses `meelni.synthetic-feedback.artifact.v1`; its manifest uses
 `meelni.synthetic-feedback.manifest.v1` and binds the artifact filename to a
 deterministic content hash. The lab decodes both contracts fail-closed before
-rendering.
+rendering. The adapter imports this contract only through the public
+`@meelni/test-fixtures/synthetic-feedback` v1 entrypoint.
 
 ## Add a synthetic scenario
 
-1. Add the scenario to the canonical `@meelni/test-fixtures` synthetic feedback
-   catalog. Keep all names, questions, transcript text, citations, and IDs
-   explicitly synthetic.
+1. Add the scenario to the canonical synthetic feedback catalog exported by
+   `@meelni/test-fixtures/synthetic-feedback`. Keep all names, questions,
+   transcript text, citations, and IDs explicitly synthetic.
 2. Declare the expected closed customer outcome in that scenario. Do not add a
    lab-side score or outcome classifier.
 3. Add or update fixture/workflow coverage proving the scenario traverses the
@@ -81,16 +82,20 @@ classification. Instead:
 4. Correct the owning fixture, workflow, core policy, or renderer, then rerun
    the full matrix.
 
-Malformed, unknown-version, hash-invalid, or internally incoherent input maps
-to the existing explicit Feedback unavailable lifecycle. It is never coerced
-to Scorecard, Coaching review, or Unable to review.
+Malformed, unknown-version, hash-invalid, or internally incoherent bundle
+input fails before customer projection and maps to the lab's explicit Feedback
+unavailable state. A valid v1 artifact containing the deliberately malformed
+persisted-result scenario projects to `null` in core and uses the existing
+protective Unable to review lifecycle copy. Neither path is coerced to
+Scorecard, Coaching review, or a scored outcome.
 
 ## CI and privacy boundary
 
-The default browser QA lane regenerates or validates the deterministic matrix
-before opening the harness. The lane runs with the repository's server-egress
-guard and a sanitized environment, so provider credentials and calls cannot
-cross the harness boundary. Browser evidence covers responsive layout,
+The default browser QA lane removes the previous ephemeral directory, lets the
+synthetic publisher claim a new directory, and regenerates the deterministic
+matrix before building the harness. The lane runs with the repository's
+server-egress guard and a sanitized environment, so provider credentials and
+calls cannot cross the harness boundary. Browser evidence covers responsive layout,
 keyboard focus, accessible names, atomic status announcements, terminal
 unavailable states, customer-outcome matching, and screenshots.
 

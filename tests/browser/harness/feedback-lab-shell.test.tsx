@@ -10,6 +10,8 @@ test("generated expectation and rendered outcome divergence fails visibly", () =
     <FeedbackLabShell
       diagnostics={{
         artifactSchema: "meelni.synthetic-feedback.artifact.v1",
+        executionMode: "deterministic_provider_free",
+        integrity: "sha256_verified",
         stageNames: ["validate", "project"],
       }}
       options={[
@@ -42,4 +44,6 @@ test("generated expectation and rendered outcome divergence fails visibly", () =
   );
   assert.match(html, /aria-pressed="true"/);
   assert.match(html, /min-h-11/);
+  assert.match(html, /SHA-256 verified/);
+  assert.match(html, /deterministic_provider_free/);
 });

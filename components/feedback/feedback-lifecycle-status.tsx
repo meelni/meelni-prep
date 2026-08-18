@@ -22,8 +22,7 @@ import type { FeedbackViewState, SavedInterviewWorkspace } from "@meelni/core";
 
 type FeedbackNonCompletedState = Exclude<
   FeedbackViewState,
-  | { kind: "completed-scorecard" }
-  | { kind: "completed-coaching-review" }
+  { kind: "completed-scorecard" } | { kind: "completed-coaching-review" }
 >;
 
 export function FeedbackLifecycleStatus({
