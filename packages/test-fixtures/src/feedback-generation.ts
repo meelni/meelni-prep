@@ -4,6 +4,7 @@ import type {
   TranscriptRuntimeSettlement,
   TranscriptRuntimeWriterRegistration,
 } from "@meelni/agent";
+import type { FeedbackCustomerProjection } from "@meelni/core";
 import writerSequence6m14 from "../writer-sequence-6m14.json";
 
 export type FeedbackGoldenRoundType =
@@ -28,6 +29,15 @@ export interface FeedbackGoldenPathFixture {
     | "feedback_generated"
     | "no_reviewable_answer"
     | "transcript_integrity_degraded";
+  syntheticScenario?: {
+    title: string;
+    expectedCustomerOutcome:
+      | FeedbackCustomerProjection["outcome"]
+      | "unavailable";
+    evaluatorCoverage?: "complete" | "sparse";
+    persistedResultMutation?: "unknown_schema_version";
+    equivalenceGroup?: string;
+  };
 }
 
 const USER_ID = "00000000-0000-4000-8000-000000000397";
@@ -77,11 +87,15 @@ function createFixture(input: {
   marker?: {
     speaker: "user" | "interviewer";
     reason: "no_provider_confirmed_prefix" | "canonicalization_failed";
+    count?: number;
   };
   settlementState?: "settled" | "degraded";
   missingSettlement?: boolean;
   corrupt?: boolean;
   interviewerOnlyTurns?: number;
+  answerSegmentCount?: number;
+  closeFinalAnswerAfterMarkers?: boolean;
+  syntheticScenario?: FeedbackGoldenPathFixture["syntheticScenario"];
 }): FeedbackGoldenPathFixture {
   const sessionId = `00000000-0000-4000-8000-${input.sessionSuffix.padStart(12, "0")}`;
   const writerId = `writer:${input.id}`;
@@ -112,24 +126,38 @@ function createFixture(input: {
     });
     offset += 3_000;
     const answerStart = offset;
-    const answerEnd = offset + 6_000;
-    events.push({
-      contract_version: 2,
-      event_id: `${writerId}:answer:${index + 1}`,
-      writer_id: writerId,
-      writer_generation: 1,
-      sequence: sequence++,
-      session_id: sessionId,
-      room_name: roomName,
-      speaker: "user",
-      text: input.corrupt && index === 0 ? "[CORRUPTED]" : answer,
-      is_final: true,
-      started_at: timestamp(answerStart),
-      ended_at: timestamp(answerEnd),
-      audio_duration_ms: 6_000,
-      section: input.roundType,
-      delivery_state: "delivered",
-    });
+    const answerSegments = splitSyntheticAnswer(
+      input.corrupt && index === 0 ? "[CORRUPTED]" : answer,
+      input.answerSegmentCount ?? 1
+    );
+    for (const [segmentIndex, segment] of answerSegments.entries()) {
+      const segmentStart =
+        answerStart +
+        Math.floor((6_000 * segmentIndex) / answerSegments.length);
+      const segmentEnd =
+        answerStart +
+        Math.floor((6_000 * (segmentIndex + 1)) / answerSegments.length);
+      events.push({
+        contract_version: 2,
+        event_id:
+          answerSegments.length === 1
+            ? `${writerId}:answer:${index + 1}`
+            : `${writerId}:answer:${index + 1}:segment:${segmentIndex + 1}`,
+        writer_id: writerId,
+        writer_generation: 1,
+        sequence: sequence++,
+        session_id: sessionId,
+        room_name: roomName,
+        speaker: "user",
+        text: segment,
+        is_final: true,
+        started_at: timestamp(segmentStart),
+        ended_at: timestamp(segmentEnd),
+        audio_duration_ms: segmentEnd - segmentStart,
+        section: input.roundType,
+        delivery_state: "delivered",
+      });
+    }
     offset += 7_000;
   }
   for (let index = 0; index < (input.interviewerOnlyTurns ?? 0); index += 1) {
@@ -154,23 +182,43 @@ function createFixture(input: {
       delivery_state: "delivered",
     });
   }
+  const markerCount = input.marker?.count ?? (input.marker ? 1 : 0);
+  const markerOffset = Math.max(offset, 119_000);
   const markers: TranscriptInterruptionMarker[] = input.marker
-    ? [
-        {
-          contract_version: 1,
-          event_type: "integrity_unavailable",
-          event_id: `${writerId}:marker:1`,
-          writer_id: writerId,
-          writer_generation: 1,
-          sequence: sequence++,
-          session_id: sessionId,
-          room_name: roomName,
-          speaker: input.marker.speaker,
-          occurred_at: timestamp(119_000),
-          reason: input.marker.reason,
-        },
-      ]
+    ? Array.from({ length: markerCount }, (_, index) => ({
+        contract_version: 1 as const,
+        event_type: "integrity_unavailable" as const,
+        event_id: `${writerId}:marker:${index + 1}`,
+        writer_id: writerId,
+        writer_generation: 1,
+        sequence: sequence++,
+        session_id: sessionId,
+        room_name: roomName,
+        speaker: input.marker!.speaker,
+        occurred_at: timestamp(markerOffset + index * 1_000),
+        reason: input.marker!.reason,
+      }))
     : [];
+  if (input.closeFinalAnswerAfterMarkers && candidateAnswers.length > 0) {
+    const startedAt = markerOffset + markerCount * 1_000 + 1_000;
+    events.push({
+      contract_version: 2,
+      event_id: `${writerId}:closing-follow-up`,
+      writer_id: writerId,
+      writer_generation: 1,
+      sequence: sequence++,
+      session_id: sessionId,
+      room_name: roomName,
+      speaker: "interviewer",
+      text: "What tradeoff would you validate next?",
+      is_final: true,
+      started_at: timestamp(startedAt),
+      ended_at: timestamp(startedAt + 2_000),
+      audio_duration_ms: 2_000,
+      section: input.roundType,
+      delivery_state: "delivered",
+    });
+  }
   if (input.id === "turn-marker-6m14") {
     applySharedWriterSequenceContract(events, markers);
   }
@@ -214,7 +262,23 @@ function createFixture(input: {
         : candidateAnswers.length === 0
           ? "no_reviewable_answer"
           : "feedback_generated",
+    ...(input.syntheticScenario
+      ? { syntheticScenario: input.syntheticScenario }
+      : {}),
   };
+}
+
+function splitSyntheticAnswer(text: string, requestedCount: number): string[] {
+  const words = text.split(" ");
+  const count = Math.max(
+    1,
+    Math.min(words.length, Math.floor(requestedCount) || 1)
+  );
+  return Array.from({ length: count }, (_, index) => {
+    const start = Math.floor((words.length * index) / count);
+    const end = Math.floor((words.length * (index + 1)) / count);
+    return words.slice(start, end).join(" ");
+  });
 }
 
 function applySharedWriterSequenceContract(
@@ -246,6 +310,11 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       sessionSuffix: "397001",
       roundType: "product_sense",
       durationMs: 374_000,
+      syntheticScenario: {
+        title: "Complete product-sense scorecard",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "complete-product-sense-authority",
+      },
     }),
     createFixture({
       id: "short-rich",
@@ -268,6 +337,10 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       roundType: "behavioral",
       answers: [],
       durationMs: 20_000,
+      syntheticScenario: {
+        title: "No reviewable candidate answer",
+        expectedCustomerOutcome: "unable_to_review",
+      },
     }),
     createFixture({
       id: "turn-marker-6m14",
@@ -288,6 +361,10 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       answers: [ANSWERS.strategy[0]!],
       durationMs: 90_000,
       corrupt: true,
+      syntheticScenario: {
+        title: "Strict transcript integrity failure",
+        expectedCustomerOutcome: "unable_to_review",
+      },
     }),
     createFixture({
       id: "spoken-evidence-limited",
@@ -347,6 +424,92 @@ export function createFeedbackGoldenPathFixtures(): FeedbackGoldenPathFixture[] 
       marker: {
         speaker: "interviewer",
         reason: "canonicalization_failed",
+      },
+    }),
+    createFixture({
+      id: "repeated-safe-markers-complete-scope",
+      sessionSuffix: "397015",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      marker: {
+        speaker: "interviewer",
+        reason: "no_provider_confirmed_prefix",
+        count: 3,
+      },
+      closeFinalAnswerAfterMarkers: true,
+      syntheticScenario: {
+        title: "Repeated safe markers with complete trusted scope",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "complete-product-sense-authority",
+      },
+    }),
+    createFixture({
+      id: "excluded-unverified-tail",
+      sessionSuffix: "397016",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      missingSettlement: true,
+      syntheticScenario: {
+        title: "Excluded unverified candidate tail",
+        expectedCustomerOutcome: "coaching_review",
+      },
+    }),
+    createFixture({
+      id: "segmentation-equivalent-1",
+      sessionSuffix: "397017",
+      roundType: "product_sense",
+      answers: [ANSWERS.product_sense[0]!],
+      answerSegmentCount: 1,
+      durationMs: 90_000,
+      syntheticScenario: {
+        title: "Equivalent answer in one segment",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "answer-segmentation",
+      },
+    }),
+    createFixture({
+      id: "segmentation-equivalent-5",
+      sessionSuffix: "397018",
+      roundType: "product_sense",
+      answers: [ANSWERS.product_sense[0]!],
+      answerSegmentCount: 5,
+      durationMs: 90_000,
+      syntheticScenario: {
+        title: "Equivalent answer in five segments",
+        expectedCustomerOutcome: "scorecard",
+        equivalenceGroup: "answer-segmentation",
+      },
+    }),
+    createFixture({
+      id: "replay-idempotency",
+      sessionSuffix: "397019",
+      roundType: "execution",
+      durationMs: 300_000,
+      syntheticScenario: {
+        title: "Replay and terminal persistence idempotency",
+        expectedCustomerOutcome: "scorecard",
+      },
+    }),
+    createFixture({
+      id: "trustworthy-sparse-coverage",
+      sessionSuffix: "397020",
+      roundType: "product_sense",
+      durationMs: 300_000,
+      syntheticScenario: {
+        title: "Trustworthy evidence with sparse rubric coverage",
+        expectedCustomerOutcome: "coaching_review",
+        evaluatorCoverage: "sparse",
+      },
+    }),
+    createFixture({
+      id: "malformed-persisted-result",
+      sessionSuffix: "397021",
+      roundType: "strategy",
+      durationMs: 300_000,
+      syntheticScenario: {
+        title: "Unknown persisted result schema",
+        expectedCustomerOutcome: "unavailable",
+        persistedResultMutation: "unknown_schema_version",
       },
     }),
     ...(["behavioral", "strategy", "execution"] as const).map(

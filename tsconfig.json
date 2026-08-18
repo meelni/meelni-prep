@@ -25,7 +25,10 @@
       "@meelni/agent": ["./packages/agent/src/index.ts"],
       "@meelni/integrations": ["./packages/integrations/src/index.ts"],
       "@meelni/integrations/opik": ["./packages/integrations/src/opik.ts"],
-      "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"]
+      "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"],
+      "@meelni/test-fixtures/synthetic-feedback": [
+        "./packages/test-fixtures/src/synthetic-feedback.ts"
+      ]
     }
   },
   "include": [
