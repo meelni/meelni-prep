@@ -969,8 +969,10 @@ class InterviewDirectorShadowSession:
         text: str,
         observed_at: str,
     ) -> str:
+        if not self.enabled:
+            return "disabled"
         state = self._read_state()
-        if not self.enabled or state is None:
+        if state is None:
             return "disabled"
         observation = DirectorTurnObservation(
             session_id=self.session_id,
@@ -992,9 +994,11 @@ class InterviewDirectorShadowSession:
         *,
         source_turn_id: str | None,
     ) -> str:
+        if not self.enabled:
+            return "disabled"
         finalized_available_at = self._monotonic()
         state = self._read_state()
-        if not self.enabled or state is None:
+        if state is None:
             return "disabled"
         try:
             event_id = transcript_event.get("event_id")
