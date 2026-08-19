@@ -27,6 +27,7 @@ from livekit.agents import (
     cli,
     room_io,
     SpeechCreatedEvent,
+    StopResponse,
 )
 from livekit.agents.llm import ChatMessage
 from livekit.plugins import silero, cartesia
@@ -42,6 +43,12 @@ from shared.interviewer_observability import (
     InterviewerTurnLatencyTracker,
     create_interviewer_observability,
     drain_transcript_before_observability_close,
+)
+from shared.interview_controller_adapter import (
+    InterviewControllerAdapter,
+    create_interview_controller_adapter,
+    measured_turn_duration_ms,
+    resolve_controller_runtime_mode,
 )
 from shared.mock_interview_opening import speak_mock_interview_opening
 from shared.opik_tracing import (
@@ -155,6 +162,56 @@ class InterviewAgent(Agent):
 
     def __init__(self, instructions: str) -> None:
         super().__init__(instructions=instructions)
+
+
+class ControlledInterviewAgent(InterviewAgent):
+    """Inject one controller directive at the finalized user-turn boundary."""
+
+    def __init__(
+        self,
+        instructions: str,
+        controller_adapter: InterviewControllerAdapter,
+    ) -> None:
+        super().__init__(instructions=instructions)
+        self._controller_adapter = controller_adapter
+
+    async def on_user_turn_completed(self, turn_ctx, new_message: ChatMessage) -> None:
+        state = self._controller_adapter.state
+        message_id = new_message.id if isinstance(new_message.id, str) else ""
+        text = (
+            new_message.text_content
+            if isinstance(new_message.text_content, str)
+            else ""
+        )
+        transcript_revision = (
+            f"{state.writer_id}:{message_id}" if state is not None else ""
+        )
+        directive = self._controller_adapter.complete_user_turn(
+            message_id=message_id,
+            transcript_revision=transcript_revision,
+            text=text,
+            duration_ms=measured_turn_duration_ms(new_message.metrics),
+        )
+        if directive is None:
+            return
+        if directive.suppress_reply:
+            raise StopResponse()
+        if directive.instruction is not None:
+            turn_ctx.add_message(
+                role="system",
+                content=directive.instruction,
+                id=f"controller:{directive.move_id}",
+            )
+
+
+def create_interview_agent(
+    *,
+    instructions: str,
+    controller_adapter: InterviewControllerAdapter,
+) -> InterviewAgent:
+    if resolve_controller_runtime_mode(controller_adapter) == "controlled_interviewer":
+        return ControlledInterviewAgent(instructions, controller_adapter)
+    return InterviewAgent(instructions)
 
 
 def prewarm(proc: JobProcess):
@@ -393,8 +450,35 @@ async def entrypoint(ctx: JobContext):
     server_settlement_tasks: set[asyncio.Task[object]] = set()
     transcript_events_by_id: dict[str, dict[str, object]] = {}
     interruption_markers_by_id: dict[str, dict[str, object]] = {}
+    transcript_message_ids_by_event_id: dict[str, str] = {}
+
+    controller_adapter = create_interview_controller_adapter(
+        env=os.environ,
+        session_id=session_id,
+        deadline_at=metadata["deadline_at"],
+        writer_id=transcript_writer_id,
+        writer_generation=transcript_writer_generation,
+        interview_brief=interview_brief,
+    )
+    logger.info(
+        "Deterministic interview controller resolved",
+        extra={
+            "controller_enabled": controller_adapter.enabled,
+            "controller_status": controller_adapter.status.failure_reason or "enabled",
+        },
+    )
 
     async def publish_persisted_transcript(transcript_data: dict[str, object]):
+        event_id = transcript_data.get("event_id")
+        controller_adapter.persisted_transcript(
+            transcript_data,
+            source_message_id=(
+                transcript_message_ids_by_event_id.get(event_id)
+                if isinstance(event_id, str)
+                else None
+            ),
+        )
+
         async def project_to_room() -> None:
             try:
                 await asyncio.wait_for(
@@ -416,11 +500,17 @@ async def entrypoint(ctx: JobContext):
         background_transcript_projection_tasks.add(task)
         task.add_done_callback(background_transcript_projection_tasks.discard)
 
+    async def observe_persisted_interruption(
+        marker: dict[str, object],
+    ) -> None:
+        controller_adapter.persisted_interruption_marker(marker)
+
     transcript_queue = TranscriptIngestQueue(
         ingest_url=transcript_ingest_url,
         livekit_api_secret=transcript_ingest_secret,
         transport=post_ingest_request,
         publisher=publish_persisted_transcript,
+        persisted_interruption_observer=observe_persisted_interruption,
         hard_evidence_cutoff=(
             deadline_at.timestamp() if deadline_at is not None else None
         ),
@@ -1242,6 +1332,7 @@ async def entrypoint(ctx: JobContext):
                     event_id=transcript_event_id, kind="transcript"
                 )
                 transcript_events_by_id[transcript_event_id] = transcript_data
+                transcript_message_ids_by_event_id[transcript_event_id] = message_id
             transcript_queue.enqueue_transcript(
                 transcript_data,
                 measured_ended_at=measured_ended_at,
@@ -1312,6 +1403,7 @@ async def entrypoint(ctx: JobContext):
         """Persist a textless marker when interrupted output had no heard prefix."""
         handle = event.speech_handle
         runtime_settlement_evidence_gate.track_speech(handle.id)
+        controller_adapter.speech_created(handle_id=handle.id)
 
         def on_speech_done(done_handle) -> None:
             interruption_observed_at = time.time()
@@ -1332,6 +1424,20 @@ async def entrypoint(ctx: JobContext):
                 interrupted=done_handle.interrupted,
                 has_confirmed_prefix=has_confirmed_prefix,
             )
+            assistant_message_ids = tuple(
+                item.id
+                for item in done_handle.chat_items
+                if isinstance(item, ChatMessage)
+                and item.role == "assistant"
+                and isinstance(item.id, str)
+            )
+            controller_adapter.speech_finished(
+                handle_id=done_handle.id,
+                scheduled=done_handle.scheduled,
+                interrupted=done_handle.interrupted,
+                has_confirmed_prefix=has_confirmed_prefix,
+                assistant_message_ids=assistant_message_ids,
+            )
             if should_record_marker and marker_allowed:
                 queue_integrity_marker(
                     event_id=(
@@ -1344,13 +1450,7 @@ async def entrypoint(ctx: JobContext):
             if done_handle.scheduled and done_handle.interrupted:
                 turn_observability.observe_interruption(
                     occurred_at=interruption_observed_at,
-                    confirmed_message_ids=tuple(
-                        item.id
-                        for item in done_handle.chat_items
-                        if isinstance(item, ChatMessage)
-                        and item.role == "assistant"
-                        and isinstance(item.id, str)
-                    ),
+                    confirmed_message_ids=assistant_message_ids,
                     has_confirmed_prefix=has_confirmed_prefix,
                 )
 
@@ -1391,7 +1491,10 @@ async def entrypoint(ctx: JobContext):
     # Calling say() on an uninitialized session breaks the TTS pipeline
     try:
         await session.start(
-            agent=InterviewAgent(instructions=instructions),
+            agent=create_interview_agent(
+                instructions=instructions,
+                controller_adapter=controller_adapter,
+            ),
             room=ctx.room,
             room_options=room_io.RoomOptions(close_on_disconnect=False),
             record=False,

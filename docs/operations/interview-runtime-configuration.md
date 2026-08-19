@@ -36,3 +36,16 @@ a second dispatch.
 Before rollout, run the TypeScript and Python contract tests and compare the
 configured values across the two deployments. Keep the relaunch feature flag
 off until the broader launch review is complete.
+
+## Deterministic controller
+
+`MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED` is a server-only, disabled-by-default
+runtime flag. Only the exact value `true` constructs the SAV-471 controller;
+absence, blanks, mixed case, and every other value retain the existing
+`InterviewAgent` path. Construction also requires an exact durable lifecycle
+snapshot. The current entrypoint has no such trusted input and therefore fails
+safely to `InterviewAgent` even if the flag is set. Do not add a `NEXT_PUBLIC_*`
+equivalent, configure the flag in Preview or Production, or infer launch
+permission from its presence in the repository. See
+[Deterministic Interview Controller](./interview-controller.md) for evidence
+boundaries and provider-free verification.

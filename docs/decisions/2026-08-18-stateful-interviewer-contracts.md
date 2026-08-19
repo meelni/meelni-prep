@@ -5,6 +5,12 @@ Status: accepted
 Issue: SAV-466
 Decision owners: engineering contract; Production/default-on remains human-owned
 
+Implementation note (SAV-471): the first provider-free reducer and narrow
+LiveKit adapter implement rules 3 and 5 behind the exact server flag
+`MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED=true`. The absent/default state remains
+off. This implementation does not authorize Preview, Production, rollout, or
+default-on use.
+
 ## Context
 
 The current full-interview runtime receives version-1 room metadata and relies
