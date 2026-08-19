@@ -51,11 +51,24 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 
 #### Scenario: A speech handle lacks exact generation authority
 
-- **WHEN** a created handle is denied, evicted, duplicated, or replayed instead
-  of receiving exact finalized-turn and move authorization
+- **WHEN** a created handle lacks exact finalized-turn, move, and one-time turn
+  nonce authorization, or its identity was evicted, duplicated, or replayed
 - **THEN** its scheduled, aborted, or interrupted completion does not mutate
   controller state
 - **AND** it cannot correlate transcript or interruption evidence to the move
+- **AND** predictable turn/move IDs plus ambient handle lineage cannot consume
+  the nonce held by the intended temporary context
+- **AND** the nonce is synchronously consumed before controller-state mutation
+  and redacted before provider conversion
+
+#### Scenario: A retired speech identity is reused or capacity is exhausted
+
+- **WHEN** a speech-handle identity reappears after any in-flight eviction
+- **THEN** its generation and completion are exact controller-state and
+  evidence-correlation no-ops
+- **AND** the bounded session-lifetime seen ledger never evicts identities
+- **AND** reaching its explicit capacity disables controller authority before
+  accepting another identity, preserving base-interviewer generation
 
 #### Scenario: Deadline has elapsed
 

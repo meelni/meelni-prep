@@ -228,9 +228,27 @@ finalized context can authorize the admitted move, and it can do so once.
 Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
 before creating that handle's pipeline task. A bounded per-adapter Python task
 context carries the candidate handle identity across that ordering boundary.
-Creation is not move authority: only exact finalized-turn and move
-authorization binds a handle to lifecycle changes or delivery correlation.
-Denied, evicted, duplicate, and replayed handles are operational no-ops.
+Creation and ambient task context are not move authority. The adapter also
+mints an opaque cryptographically random, single-use nonce for the admitted
+turn. Exact candidate-handle lineage, finalized-turn identity, move identity,
+and nonce must match; the nonce and candidate entry are consumed atomically
+before clock or reducer mutation. Denied or replayed authorization is
+state-stable, and denied, evicted, duplicate, and replayed handles remain
+operational no-ops.
+
+The nonce exists only in the temporary controller system-message ID. Pinned
+LiveKit serializes that temporary context to the pre-node `ATTR_CHAT_CTX` SDK
+trace before invoking `llm_node`; the nonce may therefore appear in that trace.
+The synchronous node consumes it without awaiting and redacts the ID before
+provider conversion. It is not snapshot or message content, is never added to
+the durable/customer transcript, and is not emitted by Meelni application
+logs. A trace observation after consumption carries no replay authority.
+
+The adapter retains every observed speech-handle identity for the session in a
+non-evicting replay ledger with an explicit 1,000-identity cap. In-flight
+correlations remain smaller and may evict, but an evicted identity cannot be
+accepted again. Capacity exhaustion disables the controller before accepting a
+new identity and restores the existing prompt-led interviewer path.
 
 A completed-user-turn snapshot is admitted only from the runtime-final LiveKit
 candidate message ID plus the canonical transcript event identity assigned to

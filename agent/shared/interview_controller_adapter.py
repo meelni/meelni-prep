@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import secrets
 import time
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -30,6 +32,11 @@ MAX_PENDING_CORRELATIONS = 8
 MAX_GENERATION_CONTEXT_ITEMS = 16
 MAX_EXIT_INTENT_WORDS = 12
 MAX_RUNTIME_TRANSCRIPT_CORRELATIONS = 1_000
+MAX_SESSION_SPEECH_IDENTITIES = 1_000
+MAX_SESSION_GENERATION_CAPABILITIES = 1_000
+
+_GENERATION_CAPABILITY_SEPARATOR = ":capability:"
+_GENERATION_CAPABILITY_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 
 _EXIT_ACTION = r"(?:stop|end|finish)"
 _EXIT_TARGET = r"(?:(?:the|this|our) )?(?:mock interview|interview|session)"
@@ -71,6 +78,13 @@ class TurnDirective:
     instruction: str | None
     suppress_reply: bool
     move_id: str | None
+    generation_context_id: str | None
+
+
+@dataclass(frozen=True)
+class GenerationCapabilityRecord:
+    finalized_turn_id: str
+    move_id: str
 
 
 @dataclass(frozen=True)
@@ -97,7 +111,7 @@ class ReplySuppressionGate:
         )
 
     def consume_for_items(self, items: object) -> bool:
-        message_id, _ = _generation_context_identity(items)
+        message_id, _, _ = _generation_context_identity(items)
         return self.consume(message_id)
 
     def consume(self, message_id: str | None) -> bool:
@@ -115,12 +129,16 @@ def allow_controller_generation(
     monotonic_ms: int | None = None,
 ) -> bool:
     """Resolve the provider-free decision used by the public LiveKit LLM node."""
-    finalized_turn_id, move_id = _generation_context_identity(chat_items)
+    finalized_turn_id, move_id, generation_capability = (
+        _generation_context_identity(chat_items)
+    )
     if suppression_gate.consume(finalized_turn_id):
         return False
+    _redact_generation_capability(chat_items)
     return adapter.authorize_generation(
         finalized_turn_id=finalized_turn_id,
         move_id=move_id,
+        generation_capability=generation_capability,
         monotonic_ms=monotonic_ms,
     )
 
@@ -133,13 +151,22 @@ class InterviewControllerAdapter:
         *,
         state: ControllerState | None,
         failure_reason: str | None = None,
+        generation_token_factory: Callable[[], str] | None = None,
     ) -> None:
         self._state = state
         self._failure_reason = failure_reason
+        self._generation_token_factory = (
+            generation_token_factory or _new_generation_capability
+        )
         self._current_generation_handle: ContextVar[str | None] = ContextVar(
             f"interview_controller_generation_handle_{id(self)}",
             default=None,
         )
+        self._seen_speech_handles: dict[str, None] = {}
+        self._generation_capabilities: dict[
+            str, GenerationCapabilityRecord
+        ] = {}
+        self._seen_generation_capabilities: dict[str, None] = {}
         self._created_speech_handles: dict[str, None] = {}
         self._speech_move_ids: dict[str, str] = {}
         self._retired_speech_handles: dict[str, None] = {}
@@ -205,13 +232,21 @@ class InterviewControllerAdapter:
                     instruction=None,
                     suppress_reply=transition.state.terminal,
                     move_id=None,
+                    generation_context_id=None,
                 )
             move_id = transition.state.pending_move_id
+            if move_id is None:
+                raise ControllerError("invalid_state")
+            generation_context_id = self._mint_generation_context_id(
+                finalized_turn_id=message_id,
+                move_id=move_id,
+            )
             return TurnDirective(
                 contract_version=CONTROLLER_ADAPTER_CONTRACT_VERSION,
                 instruction=transition.snapshot.to_prompt_instruction(),
                 suppress_reply=False,
                 move_id=move_id,
+                generation_context_id=generation_context_id,
             )
         except Exception as error:
             self._disable(error)
@@ -230,14 +265,14 @@ class InterviewControllerAdapter:
             _required_identifier(handle_id)
             if source not in ("say", "generate_reply"):
                 raise ControllerError("invalid_adapter_input")
-            if source != "generate_reply":
+            if handle_id in self._seen_speech_handles:
                 self._current_generation_handle.set(None)
                 return
-            if (
-                handle_id in self._created_speech_handles
-                or handle_id in self._speech_move_ids
-                or handle_id in self._retired_speech_handles
-            ):
+            if len(self._seen_speech_handles) >= MAX_SESSION_SPEECH_IDENTITIES:
+                self._current_generation_handle.set(None)
+                raise ControllerError("speech_handle_identity_capacity_exceeded")
+            self._seen_speech_handles[handle_id] = None
+            if source != "generate_reply":
                 self._current_generation_handle.set(None)
                 return
             evicted = put_bounded_correlation(
@@ -260,6 +295,7 @@ class InterviewControllerAdapter:
         *,
         finalized_turn_id: str | None,
         move_id: str | None,
+        generation_capability: str | None,
         monotonic_ms: int | None = None,
     ) -> bool:
         """Observe the canonical clock before allowing provider generation."""
@@ -273,15 +309,25 @@ class InterviewControllerAdapter:
             or handle_id not in self._created_speech_handles
         ):
             return False
-        self._created_speech_handles.pop(handle_id, None)
         if (
             not isinstance(finalized_turn_id, str)
             or not finalized_turn_id
             or not isinstance(move_id, str)
             or not move_id
+            or not isinstance(generation_capability, str)
+            or not generation_capability
         ):
-            self._retire_speech_handle(handle_id)
             return False
+        capability_record = self._generation_capabilities.get(
+            generation_capability
+        )
+        if capability_record != GenerationCapabilityRecord(
+            finalized_turn_id=finalized_turn_id,
+            move_id=move_id,
+        ):
+            return False
+        self._created_speech_handles.pop(handle_id, None)
+        self._generation_capabilities.pop(generation_capability, None)
         try:
             if state.terminal or state.pending_move_id != move_id:
                 self._retire_speech_handle(handle_id)
@@ -568,12 +614,47 @@ class InterviewControllerAdapter:
             limit=MAX_PENDING_CORRELATIONS,
         )
 
+    def _mint_generation_context_id(
+        self,
+        *,
+        finalized_turn_id: str,
+        move_id: str,
+    ) -> str:
+        capability = self._generation_token_factory()
+        if (
+            not isinstance(capability, str)
+            or _GENERATION_CAPABILITY_PATTERN.fullmatch(capability) is None
+            or capability in self._seen_generation_capabilities
+        ):
+            raise ControllerError("invalid_generation_capability")
+        if (
+            len(self._seen_generation_capabilities)
+            >= MAX_SESSION_GENERATION_CAPABILITIES
+        ):
+            raise ControllerError("generation_capability_capacity_exceeded")
+        self._seen_generation_capabilities[capability] = None
+        put_bounded_correlation(
+            self._generation_capabilities,
+            capability,
+            GenerationCapabilityRecord(
+                finalized_turn_id=finalized_turn_id,
+                move_id=move_id,
+            ),
+            limit=MAX_PENDING_CORRELATIONS,
+        )
+        return (
+            f"controller:{move_id}"
+            f"{_GENERATION_CAPABILITY_SEPARATOR}{capability}"
+        )
+
     def _disable(self, error: Exception) -> None:
         self._state = None
         self._current_generation_handle.set(None)
         self._created_speech_handles.clear()
         self._speech_move_ids.clear()
         self._retired_speech_handles.clear()
+        self._generation_capabilities.clear()
+        self._seen_generation_capabilities.clear()
         self._transcript_move_ids.clear()
         self._interruption_move_ids.clear()
         self._persisted_interviewer_events.clear()
@@ -622,6 +703,7 @@ def create_interview_controller_adapter(
     lifecycle_version: int | None = None,
     observed_at: datetime | None = None,
     monotonic_ms: int | None = None,
+    generation_token_factory: Callable[[], str] | None = None,
 ) -> InterviewControllerAdapter:
     if not controller_feature_enabled(env):
         return InterviewControllerAdapter(state=None, failure_reason="flag_disabled")
@@ -676,7 +758,10 @@ def create_interview_controller_adapter(
             topic_catalog=topics,
             active_question_id=_required_string(selected_question, "id"),
         )
-        return InterviewControllerAdapter(state=state)
+        return InterviewControllerAdapter(
+            state=state,
+            generation_token_factory=generation_token_factory,
+        )
     except Exception as error:
         reason = error.code if isinstance(error, ControllerError) else "initialization_failure"
         return InterviewControllerAdapter(state=None, failure_reason=reason)
@@ -717,11 +802,12 @@ def _normalize_intent_text(text: str) -> str:
 
 def _generation_context_identity(
     items: object,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     if not isinstance(items, (list, tuple)):
-        return None, None
+        return None, None, None
     finalized_turn_id: str | None = None
     move_id: str | None = None
+    generation_capability: str | None = None
     for item in reversed(items[-MAX_GENERATION_CONTEXT_ITEMS:]):
         item_id = getattr(item, "id", None)
         if not isinstance(item_id, str) or not item_id:
@@ -729,11 +815,52 @@ def _generation_context_identity(
         role = getattr(item, "role", None)
         if finalized_turn_id is None and role == "user":
             finalized_turn_id = item_id
-        if move_id is None and role == "system" and item_id.startswith("controller:move:"):
-            move_id = item_id.removeprefix("controller:")
-        if finalized_turn_id is not None and move_id is not None:
+        if move_id is None and role == "system":
+            parsed_move_id, parsed_capability = _parse_generation_context_id(
+                item_id
+            )
+            if parsed_move_id is not None:
+                move_id = parsed_move_id
+                generation_capability = parsed_capability
+        if (
+            finalized_turn_id is not None
+            and move_id is not None
+            and generation_capability is not None
+        ):
             break
-    return finalized_turn_id, move_id
+    return finalized_turn_id, move_id, generation_capability
+
+
+def _redact_generation_capability(items: object) -> None:
+    if not isinstance(items, (list, tuple)):
+        return
+    for item in items[-MAX_GENERATION_CONTEXT_ITEMS:]:
+        if getattr(item, "role", None) != "system":
+            continue
+        item_id = getattr(item, "id", None)
+        if not isinstance(item_id, str):
+            continue
+        move_id, capability = _parse_generation_context_id(item_id)
+        if move_id is not None and capability is not None:
+            setattr(item, "id", f"controller:{move_id}")
+
+
+def _parse_generation_context_id(
+    item_id: str,
+) -> tuple[str | None, str | None]:
+    if not item_id.startswith("controller:move:"):
+        return None, None
+    body = item_id.removeprefix("controller:")
+    if _GENERATION_CAPABILITY_SEPARATOR not in body:
+        return None, None
+    move_id, capability = body.rsplit(_GENERATION_CAPABILITY_SEPARATOR, 1)
+    if not move_id or not capability:
+        return None, None
+    return move_id, capability
+
+
+def _new_generation_capability() -> str:
+    return secrets.token_urlsafe(32)
 
 
 def _monotonic_ms(value: int | None) -> int:

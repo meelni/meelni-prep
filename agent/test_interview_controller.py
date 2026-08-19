@@ -34,6 +34,8 @@ from shared.interview_controller_adapter import (  # noqa: E402
     CONTROLLER_FEATURE_ENV,
     MAX_PENDING_CORRELATIONS,
     MAX_RUNTIME_TRANSCRIPT_CORRELATIONS,
+    MAX_SESSION_GENERATION_CAPABILITIES,
+    MAX_SESSION_SPEECH_IDENTITIES,
     ReplySuppressionGate,
     allow_controller_generation,
     create_interview_controller_adapter,
@@ -124,9 +126,11 @@ class InterviewControllerTests(unittest.TestCase):
         turn_id: str = "turn-1",
         monotonic_ms: int,
     ):
+        capability = next(iter(adapter._generation_capabilities), None)
         return adapter.authorize_generation(
             finalized_turn_id=turn_id,
             move_id=adapter.state.pending_move_id,
+            generation_capability=capability,
             monotonic_ms=monotonic_ms,
         )
 
@@ -987,7 +991,10 @@ class InterviewControllerTests(unittest.TestCase):
 
         intended_items = [
             SimpleNamespace(role="user", id="turn-finalized"),
-            SimpleNamespace(role="system", id=f"controller:{directive.move_id}"),
+            SimpleNamespace(
+                role="system",
+                id=directive.generation_context_id,
+            ),
         ]
         adapter.speech_created(handle_id="speech-intended", monotonic_ms=1_003)
         self.assertTrue(
@@ -1063,7 +1070,7 @@ class InterviewControllerTests(unittest.TestCase):
                         SimpleNamespace(role="user", id="turn-finalized"),
                         SimpleNamespace(
                             role="system",
-                            id=f"controller:{directive.move_id}",
+                            id=directive.generation_context_id,
                         ),
                     ],
                     1_004,
@@ -1078,6 +1085,138 @@ class InterviewControllerTests(unittest.TestCase):
             self.assertEqual(adapter.state.move_ledger[-1].stage, "generated")
 
         asyncio.run(exercise())
+
+    def test_generation_requires_handle_lineage_and_one_time_capability(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        admitted = adapter.state
+        context_id = directive.generation_context_id
+        capability = context_id.rsplit(":capability:", 1)[1]
+        self.assertNotIn(capability, directive.instruction)
+        self.assertEqual(len(adapter._generation_capabilities), 1)
+        self.assertLessEqual(
+            len(adapter._seen_generation_capabilities),
+            MAX_SESSION_GENERATION_CAPABILITIES,
+        )
+
+        adapter.speech_created(
+            handle_id="speech-intended",
+            source="generate_reply",
+            monotonic_ms=1_002,
+        )
+        sibling_context = copy_context()
+        self.assertFalse(
+            sibling_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    [
+                        SimpleNamespace(role="user", id="turn-finalized"),
+                        SimpleNamespace(
+                            role="system",
+                            id=f"controller:{directive.move_id}",
+                        ),
+                    ],
+                    monotonic_ms=1_003,
+                )
+            )
+        )
+        self.assertIs(adapter.state, admitted)
+        self.assertIn("speech-intended", adapter._created_speech_handles)
+        self.assertEqual(len(adapter._generation_capabilities), 1)
+
+        intended_items = [
+            SimpleNamespace(role="user", id="turn-finalized"),
+            SimpleNamespace(role="system", id=context_id),
+        ]
+        intended_context = copy_context()
+        self.assertTrue(
+            intended_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    intended_items,
+                    monotonic_ms=1_004,
+                )
+            )
+        )
+        generated = adapter.state
+        self.assertEqual(generated.move_ledger[-1].stage, "generated")
+        self.assertEqual(
+            intended_items[1].id,
+            f"controller:{directive.move_id}",
+        )
+        self.assertEqual(len(adapter._generation_capabilities), 0)
+
+        adapter.speech_created(
+            handle_id="speech-stolen-capability",
+            source="generate_reply",
+            monotonic_ms=1_005,
+        )
+        stolen_context = copy_context()
+        replay_items = [
+            SimpleNamespace(role="user", id="turn-finalized"),
+            SimpleNamespace(role="system", id=context_id),
+        ]
+        self.assertFalse(
+            stolen_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    replay_items,
+                    monotonic_ms=1_006,
+                )
+            )
+        )
+        self.assertIs(adapter.state, generated)
+        adapter.speech_finished(
+            handle_id="speech-stolen-capability",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-stolen",),
+            monotonic_ms=1_007,
+        )
+        self.assertIs(adapter.state, generated)
+        self.assertNotIn(
+            "writer-1:assistant-stolen",
+            adapter._transcript_move_ids,
+        )
+
+        adapter.speech_finished(
+            handle_id="speech-intended",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-intended",),
+            monotonic_ms=1_008,
+        )
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-intended",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 2,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_009,
+        )
+        self.assertEqual(
+            adapter.state.move_ledger[-1].stage,
+            "canonically_delivered",
+        )
+
+        adapter.speech_created(handle_id="", monotonic_ms=1_010)
+        self.assertFalse(adapter.enabled)
+        self.assertEqual(len(adapter._generation_capabilities), 0)
+        self.assertEqual(len(adapter._seen_generation_capabilities), 0)
 
     def test_denied_generation_handles_cannot_mutate_or_correlate_move(self):
         completion_cases = (
@@ -1197,7 +1336,10 @@ class InterviewControllerTests(unittest.TestCase):
         )
         exact_items = [
             SimpleNamespace(role="user", id="turn-finalized"),
-            SimpleNamespace(role="system", id=f"controller:{directive.move_id}"),
+            SimpleNamespace(
+                role="system",
+                id=directive.generation_context_id,
+            ),
         ]
 
         adapter.speech_created(
@@ -1343,6 +1485,164 @@ class InterviewControllerTests(unittest.TestCase):
             ),
         )
 
+    def test_evicted_speech_identity_cannot_replay_through_delivery(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        admitted = adapter.state
+        context_id = directive.generation_context_id
+
+        for index in range(MAX_PENDING_CORRELATIONS + 1):
+            adapter.speech_created(
+                handle_id=f"speech-{index}",
+                source="generate_reply",
+                monotonic_ms=1_002 + index,
+            )
+        self.assertNotIn("speech-0", adapter._created_speech_handles)
+        self.assertIn("speech-0", adapter._seen_speech_handles)
+
+        adapter.speech_created(
+            handle_id="speech-0",
+            source="generate_reply",
+            monotonic_ms=1_020,
+        )
+        replay_context = copy_context()
+        self.assertFalse(
+            replay_context.run(
+                lambda: allow_controller_generation(
+                    adapter,
+                    ReplySuppressionGate(),
+                    [
+                        SimpleNamespace(role="user", id="turn-finalized"),
+                        SimpleNamespace(role="system", id=context_id),
+                    ],
+                    monotonic_ms=1_021,
+                )
+            )
+        )
+        adapter.speech_finished(
+            handle_id="speech-0",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-replay",),
+            monotonic_ms=1_022,
+        )
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-replay",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 2,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_023,
+        )
+        self.assertIs(adapter.state, admitted)
+        self.assertNotIn("writer-1:assistant-replay", adapter._transcript_move_ids)
+
+        adapter.speech_created(
+            handle_id="speech-intended",
+            source="generate_reply",
+            monotonic_ms=1_024,
+        )
+        self.assertTrue(
+            allow_controller_generation(
+                adapter,
+                ReplySuppressionGate(),
+                [
+                    SimpleNamespace(role="user", id="turn-finalized"),
+                    SimpleNamespace(role="system", id=context_id),
+                ],
+                monotonic_ms=1_025,
+            )
+        )
+        adapter.speech_finished(
+            handle_id="speech-intended",
+            scheduled=True,
+            interrupted=False,
+            has_confirmed_prefix=True,
+            assistant_message_ids=("assistant-intended",),
+            monotonic_ms=1_026,
+        )
+        adapter.persisted_transcript(
+            {
+                "speaker": "interviewer",
+                "event_id": "writer-1:assistant-intended",
+                "writer_id": "writer-1",
+                "writer_generation": 1,
+                "sequence": 3,
+                "delivery_state": "delivered",
+            },
+            monotonic_ms=1_027,
+        )
+        self.assertEqual(
+            adapter.state.move_ledger[-1].stage,
+            "canonically_delivered",
+        )
+
+    def test_speech_identity_capacity_degrades_to_existing_interviewer(self):
+        adapter = self.make_adapter()
+        directive = adapter.complete_user_turn(
+            message_id="turn-finalized",
+            transcript_revision="writer-1:turn-finalized",
+            text="I would prioritize the highest-impact user need.",
+            duration_ms=8_000,
+            monotonic_ms=1_001,
+        )
+        admitted = adapter.state
+        for index in range(MAX_SESSION_SPEECH_IDENTITIES):
+            adapter.speech_created(
+                handle_id=f"speech-{index}",
+                source="generate_reply",
+                monotonic_ms=1_002 + index,
+            )
+        self.assertEqual(
+            len(adapter._seen_speech_handles),
+            MAX_SESSION_SPEECH_IDENTITIES,
+        )
+        self.assertLessEqual(
+            len(adapter._created_speech_handles),
+            MAX_PENDING_CORRELATIONS,
+        )
+
+        adapter.speech_created(
+            handle_id="speech-over-capacity",
+            source="generate_reply",
+            monotonic_ms=2_100,
+        )
+        self.assertFalse(adapter.enabled)
+        self.assertEqual(
+            adapter.status.failure_reason,
+            "speech_handle_identity_capacity_exceeded",
+        )
+        self.assertEqual(
+            len(adapter._seen_speech_handles),
+            MAX_SESSION_SPEECH_IDENTITIES,
+        )
+        self.assertNotIn("speech-over-capacity", adapter._seen_speech_handles)
+        self.assertTrue(
+            allow_controller_generation(
+                adapter,
+                ReplySuppressionGate(),
+                [
+                    SimpleNamespace(role="user", id="turn-finalized"),
+                    SimpleNamespace(
+                        role="system",
+                        id=directive.generation_context_id,
+                    ),
+                ],
+                monotonic_ms=2_101,
+            )
+        )
+        self.assertEqual(admitted.move_ledger[-1].stage, "admitted")
+
     def test_adapter_exit_intent_policy_is_bounded_and_graceful(self):
         positive_phrases = (
             "I would like to stop now.",
@@ -1412,7 +1712,7 @@ class InterviewControllerTests(unittest.TestCase):
                 [
                     SimpleNamespace(
                         role="system",
-                        id=f"controller:{directive.move_id}",
+                        id=directive.generation_context_id,
                     ),
                     SimpleNamespace(role="user", id="turn-exit"),
                 ],

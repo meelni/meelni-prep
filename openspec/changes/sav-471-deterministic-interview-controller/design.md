@@ -21,10 +21,23 @@
    creates that handle's pipeline task. A bounded per-adapter Python task
    context carries only that candidate identity into the public LLM generation
    boundary. The adapter then requires the finalized candidate message ID and
-   exact `controller:{move_id}` snapshot identity before promoting the handle
-   or projecting monotonic time. A stale, evicted, duplicate, or replayed
-   handle is denied without state or evidence-correlation mutation; the
-   matching context may authorize once.
+   exact admitted move identity plus a cryptographically random one-time turn
+   nonce before promoting the handle or projecting monotonic time. Handle
+   lineage or predictable turn/move IDs alone do not grant authority. The
+   nonce and candidate entry are synchronously consumed together before any
+   reducer mutation; stale, evicted, duplicate, or replayed attempts are denied
+   state-stably.
+   The nonce is carried only by the temporary system-message ID. Pinned LiveKit
+   serializes that context into its pre-node SDK trace before `llm_node`, so the
+   opaque value may appear there. The node redacts it before provider
+   conversion; it never enters snapshot/content, durable/customer transcripts,
+   or Meelni application logs, and trace access after consumption cannot replay
+   it.
+   A separate non-evicting session-lifetime ledger remembers up to 1,000
+   observed speech-handle identities, so bounded in-flight eviction cannot make
+   an old identity admissible again. At capacity, the adapter disables itself
+   before accepting another identity and returns generation to the existing
+   interviewer path.
    Speech events then advance only lifecycle evidence. The move joins committed
    probe history only after a successful canonical transcript write positively
    correlated through the move, speech handle, assistant item, and event ID.
