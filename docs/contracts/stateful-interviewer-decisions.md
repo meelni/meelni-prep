@@ -66,6 +66,10 @@ property. A same-named object below `question` or another nested value is not a
 brief and cannot hide or invalidate the top-level payload. More than one
 decoded top-level `interview_brief` key is ambiguous and discards the brief as
 `invalid_payload`; the reader does not rely on first-key or last-key behavior.
+The top-level metadata `contract_version` is likewise an authority-bearing
+integer wire token: `1` is canonical, while `1.0` and `1e0` are unsupported in
+both readers rather than normalized by JavaScript. Duplicate top-level version
+keys are unsupported instead of relying on decoder precedence.
 
 ## Deterministic `InterviewBriefV2`
 

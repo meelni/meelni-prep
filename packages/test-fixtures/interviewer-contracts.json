@@ -387,6 +387,20 @@
       "accepted": false
     }
   ],
+  "room_metadata_contract_version_wire_cases": [
+    {
+      "name": "fractional_contract_version",
+      "version_lexeme": "1.0"
+    },
+    {
+      "name": "exponent_contract_version",
+      "version_lexeme": "1e0"
+    },
+    {
+      "name": "duplicate_contract_version",
+      "version_lexeme": "1,\"contract_version\":1"
+    }
+  ],
   "integer_wire_cases": [
     {
       "name": "runtime_state_exponent_remaining_ms",

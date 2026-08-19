@@ -35,6 +35,9 @@ The raw-wire reader locates only the exact decoded top-level `interview_brief`
 property when enforcing numeric lexemes. Same-named nested decoys are ignored,
 while duplicate top-level brief keys make the optional brief invalid rather
 than relying on decoder key precedence.
+Top-level room-metadata `contract_version` also requires its canonical integer
+token; float and exponent spellings are rejected before JavaScript can
+normalize them to version 1, and duplicate top-level version keys are rejected.
 
 The payload uses snake_case because it crosses TypeScript/Python boundaries.
 All schemas reject unknown keys, unbounded collections, non-canonical
