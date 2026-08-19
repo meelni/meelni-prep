@@ -3,9 +3,9 @@
 Meelni uses one forward-only Drizzle chain. The relaunch reconciliation supports
 both an empty database after 0000/0001 and the manually evolved Supabase state.
 See [migration history](./migration-history.md) for the retired orphan SQL files.
-The current committed journal contains forty-two entries, from
+The current committed journal contains forty-three entries, from
 `0000_many_nocturne` through
-`0041_sav_453_total_required_scorecards`. The migration-history inventory
+`0042_sav_470_question_ranking_indexes`. The migration-history inventory
 is checked against `_journal.json` in the local operations suite so
 documentation cannot silently drift from the executable chain.
 
@@ -92,7 +92,7 @@ zero unsupported tiers, zero historical `premium_trial_used=true` rows, and
 zero duplicate uniqueness groups. Historical premium-trial rows intentionally
 block migration until they are archived or backfilled. Expected intermediate
 status after the relaunch reconciliation is `ready_for_session_lifecycle` with
-six ledger entries. Expected post-migration status is `reconciled` with forty-two
+six ledger entries. Expected post-migration status is `reconciled` with forty-three
 ledger entries, 42 RLS-enabled tables, three unique contracts, zero unsafe
 entitlement/feedback/transcript policies, and the exact committed schema, RLS,
 ACL, limiter-function, interview-lifecycle, atomic-completion, reconnect,
@@ -106,7 +106,12 @@ feedback-outcome, dimension-coverage, scoreless-focused-practice,
 feedback-quality, public-demo-preview-allowance,
 durable-runtime-settlement-command, feedback-stage-attempt, and
 verified-prefix-partial-scorecards, shadow-feedback-artifact, managed
-service-role grant, and total-required-scorecard schema contract fingerprints.
+service-role grant, total-required-scorecard, and question-ranking-index schema
+contract fingerprints.
+The question-ranking-index contract adds only two partial indexes: the active,
+published question type/difficulty/recency bucket index and the
+user/activation history index. It changes no rows, selection receipts, or
+runtime permissions.
 The total-required-scorecard contract is exported from
 `scripts/database-schema-contract.ts`; it admits complete verified-prefix
 scorecards only with zero excluded answer blocks and the full canonical score
@@ -214,9 +219,9 @@ deadline.
    ```
 
 7. Run strict preflight again; it must report `reconciled`,
-   `migrationCount: 42`, and the exact total-required-scorecard schema
+   `migrationCount: 43`, and the exact question-ranking-index schema
    fingerprint
-   `2275da50d525599642694689c989f787c6751de9f995a70abc03629a79844683`
+   `c8cc178009d344b489eafef781a099c2411f9a173646784be7f02187b68d6dfa`
    exported by `scripts/database-schema-contract.ts`.
 8. Deploy application code that uses the lifecycle and completion fields only
    after that exact strict preflight passes. A diagnostic rolling-state

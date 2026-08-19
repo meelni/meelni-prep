@@ -2517,7 +2517,7 @@ function isAttributedAssessmentBeforeCommand(prefix, pack) {
     pack.language
   );
   return [...candidates].some(
-    (candidate2) => matchesWholeSegment(pack.attributedAssessmentBeforeCommand, candidate2) || (formattingPrefix ? matchesWholeSegment(formattingPrefix, candidate2) : false)
+    (candidate3) => matchesWholeSegment(pack.attributedAssessmentBeforeCommand, candidate3) || (formattingPrefix ? matchesWholeSegment(formattingPrefix, candidate3) : false)
   );
 }
 function isAttributedAssessmentAfterCommand(suffix, pack) {
@@ -2718,8 +2718,8 @@ function getEnglishControlClauses(text2) {
   const isolatedRoles = text2.replace(ROLE_ENVELOPE, (match) => `;${match}`);
   const clauses = [];
   let pendingRoleEnvelope = false;
-  for (const candidate2 of isolatedRoles.split(/[.!?;。！？؛]+/iu)) {
-    const trimmed = candidate2.trim();
+  for (const candidate3 of isolatedRoles.split(/[.!?;。！？؛]+/iu)) {
+    const trimmed = candidate3.trim();
     if (!trimmed) continue;
     const startsWithRoleEnvelope = LEADING_ROLE_ENVELOPE.test(trimmed);
     const clause = trimmed.replace(LEADING_ROLE_ENVELOPE, "").replace(TRAILING_ROLE_ENVELOPE, "").replace(/^[,:"']+/u, "").trim();
@@ -2961,8 +2961,8 @@ function isPromptInjectionShaped(text2) {
     (clause) => INJECTION_CLAUSE_PATTERNS.some((pattern) => pattern.test(clause))
   ) || EMBEDDED_INSTRUCTION_DISCLOSURE.test(directiveScanText) || isFeedbackManipulationShaped(directiveScanText);
 }
-function isExactFeedbackTranscriptReplayText(candidate2, acceptedAnchor) {
-  return normalizeSemanticText(candidate2) === normalizeSemanticText(acceptedAnchor);
+function isExactFeedbackTranscriptReplayText(candidate3, acceptedAnchor) {
+  return normalizeSemanticText(candidate3) === normalizeSemanticText(acceptedAnchor);
 }
 function createCandidateSecurityTurn(text2) {
   return {
@@ -3144,11 +3144,11 @@ function getInjectionScanClauses(text2) {
   ];
 }
 function normalizeEvidenceQuoteToSource(source, proposedQuote) {
-  const candidate2 = proposedQuote.trim();
-  if (!candidate2) return null;
-  if (source.includes(candidate2)) return candidate2;
+  const candidate3 = proposedQuote.trim();
+  if (!candidate3) return null;
+  if (source.includes(candidate3)) return candidate3;
   const sourceProjection = projectComparableText(source);
-  const quoteProjection = projectComparableText(candidate2, true);
+  const quoteProjection = projectComparableText(candidate3, true);
   if (!quoteProjection.text) return null;
   const offset = sourceProjection.text.indexOf(quoteProjection.text);
   if (offset < 0) return null;
@@ -3263,12 +3263,12 @@ function getIndexedSemanticReplayMatch(index2, tokens, terminalCandidates, inter
       contributions
     );
   }
-  for (const candidate2 of terminalCandidates) {
-    if (!isSemanticReplay(candidate2.tokens, tokens)) continue;
+  for (const candidate3 of terminalCandidates) {
+    if (!isSemanticReplay(candidate3.tokens, tokens)) continue;
     replay = true;
     acceptedFamilyContributions = Math.max(
       acceptedFamilyContributions,
-      candidate2.acceptedFamilyContributions
+      candidate3.acceptedFamilyContributions
     );
   }
   return { replay, acceptedFamilyContributions };
@@ -3474,8 +3474,8 @@ function getReplayPrefixMatch(root, tokens) {
         node.maxAcceptedContributions
       );
       if (tokens.length - prefixLength <= MAX_TERMINAL_REPLAY_DELTA_TOKENS) {
-        for (const candidate2 of node.terminalCandidates) {
-          terminalCandidates.add(candidate2);
+        for (const candidate3 of node.terminalCandidates) {
+          terminalCandidates.add(candidate3);
         }
       }
     }
@@ -7052,6 +7052,9 @@ function classifyCandidateResponseEvidence(input) {
   return hasEvidenceLimitedCandidateResponseSignal(input.text) ? "evidence_limited" : "insufficient";
 }
 
+// packages/core/src/question-ranking.ts
+var DAY_MS = 24 * 60 * 60 * 1e3;
+
 // packages/core/src/session-lifecycle.ts
 var INTERVIEW_TERMINAL_STATES = [
   "completed",
@@ -9658,6 +9661,88 @@ function calibrationCase3(id, family, authorityCaseId, coverageCaseId, expectedO
     expectedOutcome
   };
 }
+
+// packages/test-fixtures/src/question-ranking.ts
+var requested = {
+  roundType: "product_sense",
+  difficulty: "intermediate",
+  company: null
+};
+function candidate2(id, overrides = {}) {
+  return {
+    id,
+    text: `Synthetic question ${id}`,
+    company: null,
+    roundType: "product_sense",
+    difficulty: "intermediate",
+    sourceKind: "google_sheets",
+    qualityStatus: "published",
+    askedAt: "2026-07-01T00:00:00.000Z",
+    isActive: true,
+    ...overrides
+  };
+}
+var SYNTHETIC_QUESTION_RANKING_MATRIX = [
+  {
+    name: "new user uses stable ID tie break",
+    request: requested,
+    candidates: [candidate2("question-b"), candidate2("question-a")],
+    history: [],
+    feedbackSignals: [],
+    expectedQuestionId: "question-a"
+  },
+  {
+    name: "unseen beats immediate repeat",
+    request: requested,
+    candidates: [candidate2("recent"), candidate2("unseen")],
+    history: [
+      {
+        questionId: "recent",
+        roundType: "product_sense",
+        practicedAt: "2026-08-17T20:00:00.000Z"
+      }
+    ],
+    feedbackSignals: [],
+    expectedQuestionId: "unseen"
+  },
+  {
+    name: "requested round remains primary over weak-round evidence",
+    request: requested,
+    candidates: [
+      candidate2("requested"),
+      candidate2("weak-strategy", { roundType: "strategy" })
+    ],
+    history: [],
+    feedbackSignals: [
+      {
+        evidenceKind: "validated_scorecard",
+        roundType: "strategy",
+        overallScore: 4.5,
+        observedAt: "2026-08-10T00:00:00.000Z"
+      }
+    ],
+    expectedQuestionId: "requested"
+  },
+  {
+    name: "requested company wins equivalent catalog candidates",
+    request: { ...requested, company: "Acme" },
+    candidates: [
+      candidate2("other", { company: "Other" }),
+      candidate2("acme", { company: "Acme" })
+    ],
+    history: [],
+    feedbackSignals: [],
+    expectedQuestionId: "acme"
+  },
+  {
+    name: "empty corpus uses stable embedded round fallback",
+    request: { ...requested, roundType: "execution" },
+    candidates: [],
+    history: [],
+    feedbackSignals: [],
+    expectedQuestionId: "fallback:question:v1:execution"
+  }
+];
 
 // packages/test-fixtures/src/index.ts
 var FIXTURE_CLOCK = {
@@ -19385,6 +19470,9 @@ var interviewSession = pgTable(
       table.userId,
       table.status
     ),
+    questionRankingHistoryIdx: index(
+      "interview_session_question_ranking_history_idx"
+    ).on(table.userId, table.activatedAt.desc().nullsLast(), table.id.asc()).where(sql`${table.activatedAt} IS NOT NULL`),
     endedAtIdx: index("interview_session_ended_at_idx").on(table.endedAt),
     lifecycleStateTransitionIdx: index(
       "interview_session_lifecycle_state_transition_idx"
@@ -21516,6 +21604,14 @@ var interviewQuestion = pgTable(
     askedAtIdx: index("interview_question_asked_at_idx").on(table.askedAt),
     qualityStatusIdx: index("interview_question_quality_status_idx").on(
       table.qualityStatus
+    ),
+    rankingBucketIdx: index("interview_question_ranking_bucket_idx").on(
+      table.questionType.asc(),
+      table.difficulty.asc(),
+      table.askedAt.desc().nullsLast(),
+      table.id.asc()
+    ).where(
+      sql`${table.isActive} = true AND ${table.qualityStatus} = 'published'`
     )
   })
 );
@@ -29273,9 +29369,9 @@ function containsFitnessFraming(value) {
 }
 function normalizePracticeRecommendations(value) {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((candidate2) => {
-    if (typeof candidate2 !== "string") return [];
-    let normalized = candidate2.trim();
+  return value.flatMap((candidate3) => {
+    if (typeof candidate3 !== "string") return [];
+    let normalized = candidate3.trim();
     if (!normalized) return [];
     for (const [pattern, replacement] of FOCUS_PRACTICE_REPLACEMENTS) {
       normalized = normalized.replace(pattern, replacement);
@@ -30595,9 +30691,9 @@ function replaceCalibrationEvidenceSlots(items, kind, hints, used) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return item;
     const dimension = item.dimension;
     const hint = hints.find(
-      (candidate2) => !used.has(`${candidate2.turnRef}\0${candidate2.quote}`) && candidate2.kind === kind && candidate2.dimension === dimension
+      (candidate3) => !used.has(`${candidate3.turnRef}\0${candidate3.quote}`) && candidate3.kind === kind && candidate3.dimension === dimension
     ) ?? hints.find(
-      (candidate2) => !used.has(`${candidate2.turnRef}\0${candidate2.quote}`) && candidate2.kind === "fallback"
+      (candidate3) => !used.has(`${candidate3.turnRef}\0${candidate3.quote}`) && candidate3.kind === "fallback"
     );
     if (!hint) return item;
     used.add(`${hint.turnRef}\0${hint.quote}`);
@@ -30733,8 +30829,8 @@ function getProviderRetryAfterMs(error, nowMs = Date.now()) {
     value = headers.get("retry-after");
   } else if (headers && typeof headers === "object") {
     const record = headers;
-    const candidate2 = record["retry-after"] ?? record["Retry-After"];
-    value = typeof candidate2 === "string" ? candidate2 : void 0;
+    const candidate3 = record["retry-after"] ?? record["Retry-After"];
+    value = typeof candidate3 === "string" ? candidate3 : void 0;
   }
   if (!value) return void 0;
   const seconds = Number(value);
@@ -31540,9 +31636,9 @@ var isString = (x) => "[object String]" == type_utils_toString.call(x);
 var isEmptyString = (x) => isString(x) && 0 === x.trim().length;
 var isNumber = (x) => "[object Number]" == type_utils_toString.call(x);
 var isPlainError = (x) => x instanceof Error;
-function isInstanceOf(candidate2, base) {
+function isInstanceOf(candidate3, base) {
   try {
-    return candidate2 instanceof base;
+    return candidate3 instanceof base;
   } catch {
     return false;
   }
@@ -31550,14 +31646,14 @@ function isInstanceOf(candidate2, base) {
 function isPrimitive(value) {
   return null === value || "object" != typeof value;
 }
-function isBuiltin(candidate2, className) {
-  return Object.prototype.toString.call(candidate2) === `[object ${className}]`;
+function isBuiltin(candidate3, className) {
+  return Object.prototype.toString.call(candidate3) === `[object ${className}]`;
 }
 function isErrorEvent(event) {
   return isBuiltin(event, "ErrorEvent");
 }
-function isEvent(candidate2) {
-  return !isUndefined(Event) && isInstanceOf(candidate2, Event);
+function isEvent(candidate3) {
+  return !isUndefined(Event) && isInstanceOf(candidate3, Event);
 }
 
 // node_modules/@posthog/core/dist/utils/number-utils.mjs
@@ -32004,8 +32100,8 @@ var DOMExceptionCoercer = class {
       synthetic: false
     };
   }
-  getType(candidate2) {
-    return this.isDOMError(candidate2) ? "DOMError" : "DOMException";
+  getType(candidate3) {
+    return this.isDOMError(candidate3) ? "DOMError" : "DOMException";
   }
   getValue(err) {
     const name = err.name || (this.isDOMError(err) ? "DOMError" : "DOMException");
@@ -32081,10 +32177,10 @@ var StringCoercer = class {
       synthetic: true
     };
   }
-  getInfos(candidate2) {
+  getInfos(candidate3) {
     let type = "Error";
-    let value = candidate2;
-    const groups = candidate2.match(ERROR_TYPES_PATTERN);
+    let value = candidate3;
+    const groups = candidate3.match(ERROR_TYPES_PATTERN);
     if (groups) {
       type = groups[1];
       value = groups[2];
@@ -32123,17 +32219,17 @@ function extractExceptionKeysForMessage(err, maxLength = 40) {
 
 // node_modules/@posthog/core/dist/error-tracking/coercers/object-coercer.mjs
 var ObjectCoercer = class {
-  match(candidate2) {
-    return "object" == typeof candidate2 && null !== candidate2;
+  match(candidate3) {
+    return "object" == typeof candidate3 && null !== candidate3;
   }
-  coerce(candidate2, ctx) {
-    const errorProperty = this.getErrorPropertyFromObject(candidate2);
+  coerce(candidate3, ctx) {
+    const errorProperty = this.getErrorPropertyFromObject(candidate3);
     if (errorProperty) return ctx.apply(errorProperty);
     return {
-      type: this.getType(candidate2),
-      value: this.getValue(candidate2),
+      type: this.getType(candidate3),
+      value: this.getValue(candidate3),
       stack: ctx.syntheticException?.stack,
-      level: this.isSeverityLevel(candidate2.level) ? candidate2.level : "error",
+      level: this.isSeverityLevel(candidate3.level) ? candidate3.level : "error",
       synthetic: true
     };
   }
@@ -32188,8 +32284,8 @@ var EventCoercer = class {
 
 // node_modules/@posthog/core/dist/error-tracking/coercers/primitive-coercer.mjs
 var PrimitiveCoercer = class {
-  match(candidate2) {
-    return isPrimitive(candidate2);
+  match(candidate3) {
+    return isPrimitive(candidate3);
   }
   coerce(value, ctx) {
     return {
@@ -37110,13 +37206,13 @@ function capturePrivateSyntheticOutput(handle, input) {
   const caseRefSha256 = sha2565(requireText3(input.caseRef, "caseRef"));
   requireRunIndex2(input.runIndex);
   const entry = manifest.caseRuns.find(
-    (candidate2) => candidate2.caseRefSha256 === caseRefSha256 && candidate2.runIndex === input.runIndex
+    (candidate3) => candidate3.caseRefSha256 === caseRefSha256 && candidate3.runIndex === input.runIndex
   );
   if (!entry) throw new Error("Semantic capture case/run is not authorized");
   if (entry.output)
     throw new Error("Semantic capture case/run already has output");
   const issuedEntry = issued.caseRuns.find(
-    (candidate2) => candidate2.caseRefSha256 === caseRefSha256 && candidate2.runIndex === input.runIndex
+    (candidate3) => candidate3.caseRefSha256 === caseRefSha256 && candidate3.runIndex === input.runIndex
   );
   if (!issuedEntry || issuedEntry.output) {
     throw new Error("Semantic capture trusted case/run state mismatch");
@@ -37592,29 +37688,29 @@ function parsePrivateManifest(input) {
       if (!caseRun.output || typeof caseRun.output !== "object" || Array.isArray(caseRun.output)) {
         throw new Error(`Invalid semantic capture caseRun:${index2}.output`);
       }
-      const candidate2 = caseRun.output;
+      const candidate3 = caseRun.output;
       assertExactKeys4(
-        candidate2,
+        candidate3,
         ["sanitizedOutputId", "fileName", "responseSha256"],
         `caseRun:${index2}.output`
       );
-      if (typeof candidate2.sanitizedOutputId !== "string" || !/^out_[a-f0-9]{32}$/.test(candidate2.sanitizedOutputId)) {
+      if (typeof candidate3.sanitizedOutputId !== "string" || !/^out_[a-f0-9]{32}$/.test(candidate3.sanitizedOutputId)) {
         throw new Error(
           `Invalid semantic capture caseRun:${index2}.sanitizedOutputId`
         );
       }
-      if (candidate2.fileName !== `${candidate2.sanitizedOutputId}.response`) {
+      if (candidate3.fileName !== `${candidate3.sanitizedOutputId}.response`) {
         throw new Error("Semantic capture output filename is not canonical");
       }
-      if (seenOutputs.has(candidate2.sanitizedOutputId)) {
+      if (seenOutputs.has(candidate3.sanitizedOutputId)) {
         throw new Error("Semantic capture output IDs must be unique");
       }
-      seenOutputs.add(candidate2.sanitizedOutputId);
+      seenOutputs.add(candidate3.sanitizedOutputId);
       output = {
-        sanitizedOutputId: candidate2.sanitizedOutputId,
-        fileName: candidate2.fileName,
+        sanitizedOutputId: candidate3.sanitizedOutputId,
+        fileName: candidate3.fileName,
         responseSha256: requireSha2563(
-          candidate2.responseSha256,
+          candidate3.responseSha256,
           `caseRun:${index2}.responseSha256`
         )
       };
@@ -38063,14 +38159,14 @@ async function readPrivateJsonFile(path2) {
   }
 }
 async function canonicalFutureFile(cwd, path2) {
-  const requested = isAbsolute3(path2) ? path2 : resolve3(cwd, path2);
-  const requestedParent = dirname4(requested);
+  const requested2 = isAbsolute3(path2) ? path2 : resolve3(cwd, path2);
+  const requestedParent = dirname4(requested2);
   const existingAncestor = await nearestExistingAncestor(requestedParent);
   assertSemanticPathOutsideGitWorktree(await realpath2(existingAncestor));
   await mkdir(requestedParent, { recursive: true, mode: 448 });
   const canonicalParent = await realpath2(requestedParent);
   assertSemanticPathOutsideGitWorktree(canonicalParent);
-  return join3(canonicalParent, basename2(requested));
+  return join3(canonicalParent, basename2(requested2));
 }
 async function nearestExistingAncestor(path2) {
   let current = path2;
@@ -38113,8 +38209,8 @@ function assertDistinctAndOutsideCapture(captureDirectory, filePaths) {
     );
   }
 }
-function isContainedBy(parent, candidate2) {
-  const child = relative2(parent, candidate2);
+function isContainedBy(parent, candidate3) {
+  const child = relative2(parent, candidate3);
   return child === "" || !child.startsWith("..") && !isAbsolute3(child);
 }
 function isMissingPathError(error) {

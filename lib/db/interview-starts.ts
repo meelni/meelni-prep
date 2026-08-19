@@ -14,7 +14,9 @@ import {
 } from "@/lib/billing/credit-ledger-store";
 import {
   deriveInterviewDeadlineAt,
+  isEmbeddedQuestionSelection,
   normalizeInterviewDurationMinutes,
+  readQuestionSelectionFromStartConfig,
 } from "@meelni/core";
 
 export const INTERVIEW_START_CONTRACT_VERSION = 1 as const;
@@ -463,7 +465,7 @@ async function createOrLoadInTransaction(
   transaction: StartDatabase,
   input: StableInterviewStartInput
 ): Promise<PersistedStableInterviewStart> {
-  await transaction
+  const inserted = await transaction
     .insert(interviewSession)
     .values({
       id: input.startAttemptId,
@@ -480,7 +482,8 @@ async function createOrLoadInTransaction(
       startRequestFingerprint: input.requestFingerprint,
       provisioningState: "pending",
     })
-    .onConflictDoNothing({ target: interviewSession.id });
+    .onConflictDoNothing({ target: interviewSession.id })
+    .returning({ id: interviewSession.id });
 
   const rows = await transaction
     .select()
@@ -490,15 +493,25 @@ async function createOrLoadInTransaction(
     .for("update");
   assertMatchingStart(rows[0], input);
 
-  await transaction
-    .insert(sessionQuestion)
-    .values({
-      sessionId: input.startAttemptId,
-      questionId: input.question.id,
-      startContractVersion: INTERVIEW_START_CONTRACT_VERSION,
-      startAttemptId: input.startAttemptId,
-    })
-    .onConflictDoNothing({ target: sessionQuestion.sessionId });
+  const persistedAuthority = resolvePersistedStartQuestionAuthority(
+    rows[0]!.config
+  );
+  const relationQuestionId = persistedAuthority
+    ? persistedAuthority.relationQuestionId
+    : inserted.length === 1
+      ? input.question.id
+      : null;
+  if (relationQuestionId) {
+    await transaction
+      .insert(sessionQuestion)
+      .values({
+        sessionId: input.startAttemptId,
+        questionId: relationQuestionId,
+        startContractVersion: INTERVIEW_START_CONTRACT_VERSION,
+        startAttemptId: input.startAttemptId,
+      })
+      .onConflictDoNothing({ target: sessionQuestion.sessionId });
+  }
 
   return loadStart(transaction, input.startAttemptId);
 }
@@ -513,11 +526,11 @@ async function loadStart(
       question: interviewQuestion,
     })
     .from(interviewSession)
-    .innerJoin(
+    .leftJoin(
       sessionQuestion,
       eq(sessionQuestion.sessionId, interviewSession.id)
     )
-    .innerJoin(
+    .leftJoin(
       interviewQuestion,
       eq(interviewQuestion.id, sessionQuestion.questionId)
     )
@@ -537,6 +550,23 @@ async function loadStart(
   if (!isProvisioningState(row.session.provisioningState)) {
     throw new InterviewStartConflictError();
   }
+  const persistedAuthority = resolvePersistedStartQuestionAuthority(
+    row.session.config
+  );
+  const question = persistedAuthority
+    ? persistedAuthority.question
+    : row.question
+      ? {
+          id: row.question.id,
+          company: row.question.company,
+          questionText: row.question.questionText,
+          questionType: row.question.questionType,
+          askedAt: row.question.askedAt,
+          isActive: row.question.isActive,
+          createdAt: row.question.createdAt,
+        }
+      : null;
+  if (!question) throw new Error("interview_start_question_missing");
 
   return {
     sessionId: row.session.id,
@@ -552,14 +582,32 @@ async function loadStart(
     lifecycleState: row.session.lifecycleState,
     lifecycleVersion: row.session.lifecycleVersion,
     endedAt: row.session.endedAt,
+    question,
+  };
+}
+
+export function resolvePersistedStartQuestionAuthority(config: unknown): {
+  relationQuestionId: string | null;
+  question: QuestionBankRecord;
+} | null {
+  const selection = readQuestionSelectionFromStartConfig(config);
+  if (!selection) return null;
+  return {
+    relationQuestionId: isEmbeddedQuestionSelection(selection)
+      ? null
+      : selection.questionId,
     question: {
-      id: row.question.id,
-      company: row.question.company,
-      questionText: row.question.questionText,
-      questionType: row.question.questionType,
-      askedAt: row.question.askedAt,
-      isActive: row.question.isActive,
-      createdAt: row.question.createdAt,
+      id: selection.question.id,
+      company: selection.question.company,
+      questionText: selection.question.text,
+      questionType: selection.question.type,
+      askedAt: selection.question.askedAt
+        ? new Date(selection.question.askedAt)
+        : null,
+      isActive: selection.question.isActive,
+      createdAt: selection.question.createdAt
+        ? new Date(selection.question.createdAt)
+        : null,
     },
   };
 }
