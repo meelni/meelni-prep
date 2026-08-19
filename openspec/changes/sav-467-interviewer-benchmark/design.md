@@ -32,6 +32,9 @@ fixture/suite/judge/rubric versions, and ordered scenario/label/seed decisions.
 The runner accepts the semantic labels only after strict parsing; missing
 approval remains pending and malformed, stale, reordered, duplicated, partial,
 contradictory, or authority-broadening approval fails before judge execution.
+The repository-file boundary also requires exact canonical serialized bytes so
+duplicate keys, negative zero, or alternate raw JSON cannot collapse into an
+apparently valid object before strict semantic verification.
 The artifact records direct-message supervisor-task and mirrored Linear
 adjudication provenance without a named human identity or signature. It
 explicitly denies runtime, provider,

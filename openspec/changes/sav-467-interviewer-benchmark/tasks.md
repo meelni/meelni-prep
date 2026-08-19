@@ -15,3 +15,5 @@
       semantic-only approval artifact.
 - [x] Keep missing/invalid approval pending or failed closed without broadening
       provider, runtime, rollout, or Production authority.
+- [x] Reject noncanonical raw approval JSON before parse-collapsing ambiguity can
+      reach the benchmark runner.

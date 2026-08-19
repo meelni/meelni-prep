@@ -7,7 +7,9 @@ import {
   INTERVIEWER_BENCHMARK_REVIEWED_MANIFEST_SHA256,
   getInterviewerBenchmarkAdjudicationCandidateManifestSha256,
   getInterviewerBenchmarkRequiredAdjudicationDecisions,
+  parseInterviewerBenchmarkAdjudicationApprovalJson,
   parseInterviewerBenchmarkAdjudicationApprovalV1,
+  serializeInterviewerBenchmarkAdjudicationApproval,
 } from "./adjudication-approval";
 
 const APPROVAL_PATH = resolve(
@@ -16,9 +18,8 @@ const APPROVAL_PATH = resolve(
 );
 
 test("committed approval binds the exact eight labels and manifest without claiming an identity or signature", async () => {
-  const approval = parseInterviewerBenchmarkAdjudicationApprovalV1(
-    await committedApproval()
-  );
+  const contents = await committedApprovalJson();
+  const approval = parseInterviewerBenchmarkAdjudicationApprovalJson(contents);
 
   assert.equal(
     getInterviewerBenchmarkAdjudicationCandidateManifestSha256(),
@@ -39,6 +40,38 @@ test("committed approval binds the exact eight labels and manifest without claim
   });
   assert.equal("signature" in approval.authorityProvenance, false);
   assert.equal("humanIdentity" in approval.authorityProvenance, false);
+  assert.equal(
+    serializeInterviewerBenchmarkAdjudicationApproval(approval),
+    contents
+  );
+});
+
+test("raw approval JSON rejects parse-collapsing or noncanonical representations", async () => {
+  const contents = await committedApprovalJson();
+  const parsed = JSON.parse(contents) as ApprovalRecord;
+  const reordered = {
+    candidateManifest: parsed.candidateManifest,
+    contractVersion: parsed.contractVersion,
+    authorityProvenance: parsed.authorityProvenance,
+    authorityScope: parsed.authorityScope,
+    decisions: parsed.decisions,
+  };
+  const candidates = [
+    contents.replace(
+      '    "providerCallAuthority": false,',
+      '    "providerCallAuthority": true,\n    "providerCallAuthority": false,'
+    ),
+    contents.replace('      "seed": 0,', '      "seed": -0,'),
+    JSON.stringify(parsed),
+    `${JSON.stringify(reordered, null, 2)}\n`,
+  ];
+
+  for (const candidate of candidates) {
+    assert.throws(
+      () => parseInterviewerBenchmarkAdjudicationApprovalJson(candidate),
+      /interviewer_benchmark_adjudication_approval_invalid/
+    );
+  }
 });
 
 test("approval fails closed when decisions are missing, reordered, duplicated, altered, stale, or contradictory", async () => {
@@ -157,10 +190,15 @@ test("approval cannot broaden semantic adjudication into runtime or operational 
 });
 
 async function committedApproval(): Promise<ApprovalRecord> {
-  return JSON.parse(await readFile(APPROVAL_PATH, "utf8")) as ApprovalRecord;
+  return JSON.parse(await committedApprovalJson()) as ApprovalRecord;
+}
+
+async function committedApprovalJson(): Promise<string> {
+  return readFile(APPROVAL_PATH, "utf8");
 }
 
 interface ApprovalRecord {
+  contractVersion: string;
   candidateManifest: { sha256: string };
   authorityProvenance: {
     signature?: string;

@@ -10,6 +10,7 @@ import {
   type InterviewerQualityJudgeAdapterV1,
 } from "@meelni/agent";
 
+import { parseInterviewerBenchmarkAdjudicationApprovalJson } from "./adjudication-approval";
 import {
   createProviderFreeInterviewerJudgeAdapter,
   runInterviewerBenchmark,
@@ -149,6 +150,42 @@ test("runner rejects a stale approval before any judge invocation", async () => 
     ),
     /interviewer_benchmark_adjudication_approval_invalid/
   );
+  assert.equal(judgeCalls, 0);
+});
+
+test("raw duplicate contradictory authority keys fail before judge invocation", async () => {
+  const replay = createProviderFreeInterviewerJudgeAdapter();
+  let judgeCalls = 0;
+  const adapter: InterviewerQualityJudgeAdapterV1 = {
+    ...replay,
+    async judge(request) {
+      judgeCalls += 1;
+      return replay.judge(request);
+    },
+  };
+  const contents = await readFile(
+    resolve(
+      process.cwd(),
+      "docs/evidence/sav-467-interviewer-adjudication-approval.json"
+    ),
+    "utf8"
+  );
+  const contradictory = contents.replace(
+    '    "providerCallAuthority": false,',
+    '    "providerCallAuthority": true,\n    "providerCallAuthority": false,'
+  );
+
+  await assert.rejects(async () => {
+    const approval =
+      parseInterviewerBenchmarkAdjudicationApprovalJson(contradictory);
+    await runInterviewerBenchmark(
+      adapter,
+      SOURCE_HASH,
+      BENCHMARK_SOURCE_HASH,
+      undefined,
+      approval
+    );
+  }, /interviewer_benchmark_adjudication_approval_invalid/);
   assert.equal(judgeCalls, 0);
 });
 

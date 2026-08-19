@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseInterviewerBenchmarkAdjudicationApprovalJson } from "@/lib/interviewer-benchmark/adjudication-approval";
 import {
   readInterviewerBenchmarkAdjudicationApproval,
   readInterviewerBenchmarkEvidence,
@@ -87,11 +88,7 @@ async function readApproval(path: string): Promise<unknown> {
     REPO_ROOT,
     path
   );
-  try {
-    return JSON.parse(contents);
-  } catch {
-    throw new Error("interviewer_benchmark_adjudication_approval_invalid");
-  }
+  return parseInterviewerBenchmarkAdjudicationApprovalJson(contents);
 }
 
 function parseArgs(args: string[]): {

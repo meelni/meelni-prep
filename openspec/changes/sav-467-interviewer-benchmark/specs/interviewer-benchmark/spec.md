@@ -87,3 +87,10 @@ report status.
 - **THEN** missing approval remains pending and invalid approval fails before
   any judge invocation without authorizing provider calls, canary, launch,
   default-on, Production, or SAV-476 GO/NO-GO action.
+
+#### Scenario: ambiguous raw JSON approval
+
+- **WHEN** approval JSON uses duplicate keys, negative zero, reordered keys,
+  alternate whitespace, or any noncanonical serialization
+- **THEN** the file-boundary parser rejects it before any judge invocation even
+  if ordinary JSON parsing would collapse it into the accepted object.
