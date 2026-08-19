@@ -31,6 +31,23 @@ writer, lifecycle, deadline, and feature-gate authority are current.
 - **AND** one controller-bound tool-free fallback may run
 - **AND** later same-handle tool calls and fallback re-entry are denied
 
+#### Scenario: Provider returns mixed text and tool calls
+
+- **WHEN** a required-tool provider response contains both model text and one or
+  more function calls
+- **THEN** the runtime SHALL preserve eligible function calls but discard the
+  pre-commit text before LiveKit transcript or TTS forwarding
+- **AND** only a later controller-authorized continuation may produce speech
+
+#### Scenario: Sibling failure races a mutation
+
+- **WHEN** concurrent calls on one handle race a typed failure against commit or
+  close
+- **THEN** one serialized terminal path SHALL win
+- **AND** a failure winner prevents queued mutation while a mutation winner
+  prevents fallback residue
+- **AND** no admitted silent move remains
+
 ### Requirement: Lifecycle Authority Is Reader-First And Current-Writer-Bound
 
 The system SHALL construct tool authority only from an authenticated lifecycle

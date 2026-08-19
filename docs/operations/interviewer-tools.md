@@ -63,6 +63,17 @@ terminal, or locally deadline-fenced state.
   public speech handle. Only a tool-turn record may continue. Three bounded
   continuations are allowed; overflow gets one final tool-free speech fallback,
   then later re-entry is denied.
+- Pinned LiveKit 1.6.5 also forwards mixed response text toward TTS before it
+  awaits sibling tool execution. Required-tool generations therefore strip all
+  pre-commit text while preserving real tool-call chunks. Only the later
+  controller-authorized, tool-result continuation may provide speech text.
+- Same-handle admission is reserved synchronously before work can queue, so an
+  overlapping sibling is rejected instead of becoming a later sequential call.
+  Execution and failure-fence publication share one serialized section, and
+  reservation cleanup is synchronous on exit. A failure that wins first fences
+  a queued mutation; a mutation that wins first prevents a sibling failure from
+  leaving fallback state. The handle can never retain both a fallback fence and
+  an admitted silent move.
 - Prompt-led SAV-471 handles remain single-use. Continuation never mints another
   generation nonce, another handle identity, or another move capability.
 
@@ -86,6 +97,8 @@ an implementation-local fallback envelope instead of fabricated state.
 | Refresh unavailable/stale                     | Authority invalidated for this runtime                 | Existing interviewer fallback continues                                          |
 | Stale revision/writer/lifecycle               | Typed failure, no mutation                             | Same-handle tool-free fallback remains available                                 |
 | Timeout or malformed call                     | Typed failure/fallback, no partial state               | Candidate/interviewer persistence is not awaited                                 |
+| Concurrent sibling failure/mutation            | Exactly one fallback or committed-move path wins       | No post-failure mutation or admitted silent move                                 |
+| Provider emits mixed text and tool calls        | Pre-commit text is discarded; tool call is preserved   | No pre-tool text reaches LiveKit transcript/TTS channels                         |
 | Near/at deadline or terminal                  | Move denied/fenced                                     | Explicit exit, deadline close, room termination, and settlement retain ownership |
 | Interruption/abort                            | No delivered-history commit without canonical evidence | Existing interruption marker and transcript behavior continue                    |
 

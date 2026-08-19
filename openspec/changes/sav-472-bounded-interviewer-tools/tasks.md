@@ -17,6 +17,10 @@
 - [x] Wire five public pinned `function_tool` descriptors and `max_tool_steps=3`.
 - [x] Scope bounded same-handle continuation to tool mode only.
 - [x] Preserve opaque completion identity and canonical delivery commit.
+- [x] Fence mixed provider text before pinned LiveKit pre-tool transcript/TTS
+      forwarding while preserving eligible tool calls.
+- [x] Serialize same-handle failure and mutation in both race orderings.
+- [x] Reject overlapping distinct tool calls before they can queue.
 - [x] Keep both exact server flags disabled in every environment.
 
 ## 4. Tests and evidence

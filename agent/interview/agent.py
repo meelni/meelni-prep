@@ -4,11 +4,13 @@ Handles real-time voice interviews with LiveKit inference platform
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 import sys
 import time
+from collections.abc import AsyncIterable, AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -32,7 +34,7 @@ from livekit.agents import (
     room_io,
     SpeechCreatedEvent,
 )
-from livekit.agents.llm import ChatMessage
+from livekit.agents.llm import ChatChunk, ChatMessage
 from livekit.plugins import silero, cartesia
 from livekit.plugins.turn_detector.english import EnglishModel
 
@@ -311,12 +313,13 @@ class ToolControlledInterviewAgent(ControlledInterviewAgent):
                 [],
                 ModelSettings(tool_choice="none"),
             )
-        return InterviewAgent.llm_node(
+        provider_output = InterviewAgent.llm_node(
             self,
             provider_chat_ctx,
             tools,
             ModelSettings(tool_choice="required"),
         )
+        return fence_precommit_interviewer_text(provider_output)
 
     @function_tool(
         name="read_interview_state",
@@ -438,6 +441,42 @@ class ToolControlledInterviewAgent(ControlledInterviewAgent):
             reason=reason,
         )
         return outcome.to_model_json()
+
+
+async def fence_precommit_interviewer_text(
+    provider_output: object,
+) -> AsyncIterator[object]:
+    """Keep required-tool model text out of LiveKit's pre-tool TTS path."""
+    resolved = (
+        await provider_output
+        if inspect.isawaitable(provider_output)
+        else provider_output
+    )
+    if isinstance(resolved, str):
+        return
+    if isinstance(resolved, ChatChunk):
+        resolved = (resolved,)
+    if not isinstance(resolved, AsyncIterable) and not isinstance(resolved, tuple):
+        return
+
+    async def chunks():
+        if isinstance(resolved, tuple):
+            for chunk in resolved:
+                yield chunk
+            return
+        async for chunk in resolved:
+            yield chunk
+
+    async for chunk in chunks():
+        if isinstance(chunk, str):
+            continue
+        if isinstance(chunk, ChatChunk) and chunk.delta is not None:
+            chunk = chunk.model_copy(
+                update={
+                    "delta": chunk.delta.model_copy(update={"content": None})
+                }
+            )
+        yield chunk
 
 
 def create_interview_agent(
