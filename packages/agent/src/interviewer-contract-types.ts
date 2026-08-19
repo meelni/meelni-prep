@@ -434,7 +434,9 @@ export type InterviewerToolRequestAdmission =
   | "stale_lifecycle"
   | "question_mismatch"
   | "request_expired"
+  | "deadline_elapsed"
   | "move_expired"
+  | "move_not_allowed"
   | "lifecycle_not_active"
   | "speech_fenced";
 

@@ -312,49 +312,67 @@ export function parseInterviewRoomMetadata(
 }
 
 function hasNonCanonicalBriefNumber(rawMetadata: string): boolean {
-  const rawBrief = extractRawJsonProperty(rawMetadata, "interview_brief");
-  return rawBrief !== null && hasNonIntegerJsonNumberToken(rawBrief);
+  const rawBrief = extractRawTopLevelJsonProperty(
+    rawMetadata,
+    "interview_brief"
+  );
+  return (
+    rawBrief.status === "duplicate" ||
+    (rawBrief.status === "unique" &&
+      hasNonIntegerJsonNumberToken(rawBrief.value))
+  );
 }
 
-function extractRawJsonProperty(
+function extractRawTopLevelJsonProperty(
   raw: string,
   propertyName: string
-): string | null {
-  let inString = false;
-  let escaped = false;
-  for (let index = 0; index < raw.length; index += 1) {
-    const character = raw[index]!;
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === '"') inString = false;
-      continue;
-    }
-    if (character !== '"') continue;
-    const keyEnd = findJsonStringEnd(raw, index);
-    if (keyEnd === null) return null;
+):
+  | { status: "absent" }
+  | { status: "duplicate" }
+  | { status: "unique"; value: string } {
+  let cursor = 0;
+  while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+  if (raw[cursor] !== "{") return { status: "absent" };
+  cursor += 1;
+  let value: string | null = null;
+  let matches = 0;
+
+  while (cursor < raw.length) {
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] === "}") break;
+    if (raw[cursor] !== '"') return { status: "absent" };
+    const keyEnd = findJsonStringEnd(raw, cursor);
+    if (keyEnd === null) return { status: "absent" };
     let key: unknown;
     try {
-      key = JSON.parse(raw.slice(index, keyEnd + 1));
+      key = JSON.parse(raw.slice(cursor, keyEnd + 1));
     } catch {
-      return null;
+      return { status: "absent" };
     }
-    let cursor = keyEnd + 1;
+    cursor = keyEnd + 1;
     while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
-    if (raw[cursor] !== ":") {
-      index = keyEnd;
-      continue;
-    }
+    if (raw[cursor] !== ":") return { status: "absent" };
     cursor += 1;
     while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
-    if (key !== propertyName) {
-      index = keyEnd;
+    const valueEnd = findJsonValueEnd(raw, cursor);
+    if (valueEnd === null) return { status: "absent" };
+    if (key === propertyName) {
+      matches += 1;
+      value = raw.slice(cursor, valueEnd);
+    }
+    cursor = valueEnd;
+    while (/\s/u.test(raw[cursor] ?? "")) cursor += 1;
+    if (raw[cursor] === ",") {
+      cursor += 1;
       continue;
     }
-    const valueEnd = findJsonValueEnd(raw, cursor);
-    return valueEnd === null ? null : raw.slice(cursor, valueEnd);
+    if (raw[cursor] === "}") break;
+    return { status: "absent" };
   }
-  return null;
+
+  if (matches === 0) return { status: "absent" };
+  if (matches > 1 || value === null) return { status: "duplicate" };
+  return { status: "unique", value };
 }
 
 function findJsonStringEnd(raw: string, start: number): number | null {

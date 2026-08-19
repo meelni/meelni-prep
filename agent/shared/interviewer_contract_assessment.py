@@ -125,6 +125,13 @@ def assess_interviewer_tool_request_against_state(
         return "request_expired"
     if request["tool_name"] in ("read_interview_state", "read_interview_clock"):
         return "eligible"
+    state_deadline_ms = _timestamp_ms(state["clock"]["deadline_at"])
+    if (
+        state["clock"]["remaining_ms"] == 0
+        or state_deadline_ms is None
+        or now_ms >= state_deadline_ms
+    ):
+        return "deadline_elapsed"
     if request["expected_state_revision"] != state["state_revision"]:
         return "stale_state"
     if (
@@ -133,10 +140,12 @@ def assess_interviewer_tool_request_against_state(
     ):
         return "stale_lifecycle"
     if request["tool_name"] == "get_probe_candidates":
+        if request["active_question_id"] != state["active_question_id"]:
+            return "question_mismatch"
         return (
             "eligible"
-            if request["active_question_id"] == state["active_question_id"]
-            else "question_mismatch"
+            if "probe" in state["allowed_moves"]
+            else "move_not_allowed"
         )
     if state["lifecycle_snapshot"]["state"] != "active":
         return "lifecycle_not_active"
@@ -148,6 +157,13 @@ def assess_interviewer_tool_request_against_state(
         != state["active_question_id"]
     ):
         return "question_mismatch"
+    requested_move = (
+        request["move"]["move_type"]
+        if request["tool_name"] == "commit_interviewer_move"
+        else "close"
+    )
+    if requested_move not in state["allowed_moves"]:
+        return "move_not_allowed"
     if (
         request["tool_name"] == "commit_interviewer_move"
         and now_ms > _timestamp_ms(request["move"]["expires_at"])

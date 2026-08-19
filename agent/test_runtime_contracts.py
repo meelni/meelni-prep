@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from test_interviewer_contracts import InterviewerContractTests
 from shared.config import parse_room_metadata
 from shared.dispatch import (
     BUILD_ASSET_DISPATCH_NAME,

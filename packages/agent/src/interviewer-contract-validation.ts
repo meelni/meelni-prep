@@ -6,6 +6,7 @@ import {
 } from "./interview-brief-canonicalization";
 import {
   hasExactKeys,
+  hasNonCanonicalIntegerWireToken,
   hasNonIntegerJsonNumberToken,
   includes,
   isBoundedArray,
@@ -545,15 +546,16 @@ function parseContract<T>(
 ): T {
   let value = raw;
   if (typeof raw === "string") {
-    if (
-      contract === "interview_brief_v2" &&
-      hasNonIntegerJsonNumberToken(raw)
-    ) {
-      throw new InterviewerContractError(contract, "invalid_payload");
-    }
     try {
+      if (
+        hasNonCanonicalIntegerWireToken(raw) ||
+        (contract === "interview_brief_v2" && hasNonIntegerJsonNumberToken(raw))
+      ) {
+        throw new InterviewerContractError(contract, "invalid_payload");
+      }
       value = JSON.parse(raw);
-    } catch {
+    } catch (error) {
+      if (error instanceof InterviewerContractError) throw error;
       throw new InterviewerContractError(contract, "invalid_json");
     }
   }

@@ -61,6 +61,12 @@ An explicit selected question remains authoritative. A nested brief must match
 its ID, text, company, and type exactly; a mismatch discards the brief rather
 than substituting either question.
 
+Raw-number validation locates only the decoded top-level `interview_brief`
+property. A same-named object below `question` or another nested value is not a
+brief and cannot hide or invalidate the top-level payload. More than one
+decoded top-level `interview_brief` key is ambiguous and discards the brief as
+`invalid_payload`; the reader does not rely on first-key or last-key behavior.
+
 ## Deterministic `InterviewBriefV2`
 
 The compiler consumes already-resolved, stable session-start state. It must not
@@ -109,10 +115,14 @@ their standard UTF-8 bytes and produce the same canonical payload and SHA-256
 digest in TypeScript and Python. Any Unicode or canonicalization failure is an
 `invalid_payload` and optional room-metadata negotiation falls back to v1.
 The only canonical brief number is `duration_minutes`; its JSON wire token must
-be one of the integer lexemes `15`, `30`, or `45`. Float and exponent forms such
-as `30.0` and `3e1` are invalid even when a JavaScript decoder would produce the
-same numeric value. Timestamps remain canonical UTC strings, never numbers or
-runtime date objects.
+be one of the integer lexemes `15`, `30`, or `45`. Every other integer-bearing
+cross-runtime field—revisions, lifecycle versions, writer generations,
+sequences, and remaining milliseconds—also requires an integer JSON token.
+Float and exponent forms such as `30.0`, `3e1`, or `writer_generation: 3.0` are
+invalid even when a JavaScript decoder would produce the same numeric value.
+`latency_ms` is the one finite non-negative measurement field and is not an
+authority-bearing integer. Timestamps remain canonical UTC strings, never
+numbers or runtime date objects.
 
 ## Authority matrix
 
@@ -225,15 +235,22 @@ applies checks in this order:
 2. Match session, active writer ID, and writer generation. A fenced generation
    returns `stale_writer`.
 3. Treat the tool request deadline as exclusive: at or after that timestamp the
-   request is expired. While the request remains live, accept a move's own
-   expiry through its exact timestamp; one millisecond after it is expired.
-4. Compare `expected_state_revision` to the current revision. A mismatch
+   request is expired.
+4. For every state-sensitive or mutating tool, independently require current
+   time to be strictly before the canonical runtime deadline. At or after the
+   session deadline, return `deadline_elapsed` even when the call deadline and
+   move expiry remain live. Read-only state/clock access does not admit a move.
+   While both deadlines remain live, accept a move's own expiry through its
+   exact timestamp; one millisecond after it is expired.
+5. Compare `expected_state_revision` to the current revision. A mismatch
    returns `stale_state` and changes nothing.
-5. Compare positive `expected_lifecycle_version` to the fresh durable
+6. Compare positive `expected_lifecycle_version` to the fresh durable
    lifecycle version. A mismatch changes nothing.
-6. Validate lifecycle/deadline snapshot, allowed move, one-question policy,
-   probe eligibility, close/speech fence, and no-coaching policy.
-7. Admit exactly once and advance the controller state revision once. Commit
+7. Validate lifecycle/deadline snapshot, allowed move, one-question policy,
+   probe eligibility, close/speech fence, and no-coaching policy. Probe lookup
+   requires `probe`, move commit requires the move's exact type, and graceful
+   close requires `close` in the fresh state's `allowed_moves`.
+8. Admit exactly once and advance the controller state revision once. Commit
    and close requests do not themselves advance the independent lifecycle
    version.
 
@@ -295,6 +312,11 @@ require an idempotency key and canonical semantic request digest.
 `get_probe_candidates` also binds the active selected-question ID. The pending
 request correlation rejects any successful candidate list containing another
 question, and fresh-state admission applies the same check to committed moves.
+The state-sensitive/mutating adapter also requires the implied or explicit move
+to remain in `allowed_moves` and rejects admission with `deadline_elapsed` at
+the exact canonical session deadline, independently of the per-call deadline.
+The deterministic controller may still choose its separate deadline-close
+fallback; a late tool call cannot authorize that transition.
 
 The tools are served from session-local/in-memory controller state wherever
 possible. They cannot access the database, question-bank search, raw transcript

@@ -64,6 +64,52 @@ test("the shared fixture crosses the package entrypoint without deep imports", (
   );
 });
 
+test("every integer-bearing wire contract rejects float and exponent lexemes", () => {
+  const contracts: Record<
+    string,
+    { fixture: unknown; parse: (raw: unknown) => unknown }
+  > = {
+    interview_runtime_state: {
+      fixture: fixtures.runtime_state,
+      parse: parseInterviewRuntimeState,
+    },
+    interviewer_move: {
+      fixture: fixtures.move,
+      parse: parseInterviewerMove,
+    },
+    interviewer_tool_request: {
+      fixture: fixtures.tool_requests[3],
+      parse: parseInterviewerToolRequest,
+    },
+    interviewer_tool_result: {
+      fixture: fixtures.tool_results[0],
+      parse: parseInterviewerToolResult,
+    },
+    director_recommendation: {
+      fixture: fixtures.director_recommendation,
+      parse: parseDirectorRecommendation,
+    },
+  };
+
+  for (const wireCase of fixtures.integer_wire_cases) {
+    const target = contracts[wireCase.contract];
+    assert.ok(target, `missing fixture for ${wireCase.contract}`);
+    const canonical = JSON.stringify(target.fixture);
+    const adversarial = canonical.replace(
+      wireCase.canonical_token,
+      wireCase.noncanonical_token
+    );
+    assert.notEqual(adversarial, canonical, wireCase.name);
+    assert.throws(
+      () => target.parse(adversarial),
+      (error) =>
+        error instanceof InterviewerContractError &&
+        error.code === "invalid_payload",
+      wireCase.name
+    );
+  }
+});
+
 test("unknown versions and extra fields fail closed with stable codes", () => {
   const cases = [
     [parseInterviewBriefV2, fixtures.brief],
@@ -417,6 +463,103 @@ test("fresh-state admission independently enforces lifecycle, question, and expi
       "2026-08-18T23:10:10.001Z"
     ),
     "move_expired"
+  );
+});
+
+test("state-sensitive tool admission hard-fences the session deadline and allowed moves", () => {
+  const fixtureState = parseInterviewRuntimeState(fixtures.runtime_state);
+  const state = parseInterviewRuntimeState({
+    ...fixtureState,
+    clock: {
+      ...fixtureState.clock,
+      deadline_at: "2026-08-18T23:10:05.000Z",
+      remaining_ms: 5_000,
+    },
+  });
+  const requestDeadline = "2026-08-18T23:10:20.000Z";
+  const beforeDeadline = "2026-08-18T23:10:04.999Z";
+  const atDeadline = state.clock.deadline_at;
+  const afterDeadline = "2026-08-18T23:10:05.001Z";
+  const probe = parseInterviewerToolRequest({
+    ...fixtures.tool_requests[2],
+    deadline_at: requestDeadline,
+  });
+  const commitBase = parseInterviewerToolRequest(fixtures.tool_requests[3]);
+  if (commitBase.tool_name !== "commit_interviewer_move") {
+    assert.fail("commit fixture required");
+  }
+  const commitInput = { ...commitBase, deadline_at: requestDeadline };
+  const commit = parseInterviewerToolRequest({
+    ...commitInput,
+    request_digest: calculateInterviewerMutationRequestDigest(commitInput),
+  });
+  const closeBase = parseInterviewerToolRequest(fixtures.tool_requests[4]);
+  if (closeBase.tool_name !== "request_graceful_close") {
+    assert.fail("close fixture required");
+  }
+  const closeInput = { ...closeBase, deadline_at: requestDeadline };
+  const close = parseInterviewerToolRequest({
+    ...closeInput,
+    request_digest: calculateInterviewerMutationRequestDigest(closeInput),
+  });
+
+  for (const request of [probe, commit, close]) {
+    assert.equal(
+      assessInterviewerToolRequestAgainstState(request, state, beforeDeadline),
+      "eligible"
+    );
+    assert.equal(
+      assessInterviewerToolRequestAgainstState(request, state, atDeadline),
+      "deadline_elapsed"
+    );
+    assert.equal(
+      assessInterviewerToolRequestAgainstState(request, state, afterDeadline),
+      "deadline_elapsed"
+    );
+  }
+
+  const readOnly = parseInterviewerToolRequest({
+    ...fixtures.tool_requests[0],
+    deadline_at: requestDeadline,
+  });
+  assert.equal(
+    assessInterviewerToolRequestAgainstState(readOnly, state, atDeadline),
+    "eligible"
+  );
+  assert.equal(
+    assessInterviewerToolRequestAgainstState(
+      probe,
+      {
+        ...state,
+        allowed_moves: state.allowed_moves.filter((move) => move !== "probe"),
+      },
+      beforeDeadline
+    ),
+    "move_not_allowed"
+  );
+  assert.equal(
+    assessInterviewerToolRequestAgainstState(
+      commit,
+      {
+        ...state,
+        allowed_moves: state.allowed_moves.filter(
+          (move) => move !== "challenge"
+        ),
+      },
+      beforeDeadline
+    ),
+    "move_not_allowed"
+  );
+  assert.equal(
+    assessInterviewerToolRequestAgainstState(
+      close,
+      {
+        ...state,
+        allowed_moves: state.allowed_moves.filter((move) => move !== "close"),
+      },
+      beforeDeadline
+    ),
+    "move_not_allowed"
   );
 });
 
