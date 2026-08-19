@@ -1,4 +1,5 @@
 import {
+  DIRECTOR_POLICY_CONTRACT_VERSION,
   DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
   INTERVIEWER_MOVE_CONTRACT_VERSION,
   INTERVIEWER_MOVE_TYPES,
@@ -66,6 +67,17 @@ export const DIRECTOR_RECOMMENDATION_FRESHNESS = [
 ] as const;
 export type DirectorRecommendationFreshness =
   (typeof DIRECTOR_RECOMMENDATION_FRESHNESS)[number];
+
+export const DIRECTOR_RECOMMENDATION_COMPARISONS = [
+  "exact_match",
+  "move_match_target_mismatch",
+  "move_mismatch",
+  "recommendation_missing",
+  "recommendation_expired",
+  "arrived_after_delivery",
+] as const;
+export type DirectorRecommendationComparison =
+  (typeof DIRECTOR_RECOMMENDATION_COMPARISONS)[number];
 
 export const INTERVIEWER_LATENCY_KINDS = [
   "user_speech_to_first_audio",
@@ -156,10 +168,14 @@ export type InterviewerObservabilityEvent =
   | (InterviewerObservabilityEventBase & {
       event_kind: "director";
       recommendation_contract_version: typeof DIRECTOR_RECOMMENDATION_CONTRACT_VERSION;
+      director_policy_version: typeof DIRECTOR_POLICY_CONTRACT_VERSION;
+      director_adapter_version: string;
       recommendation_outcome: DirectorObservabilityOutcome;
       recommendation_freshness: DirectorRecommendationFreshness;
+      recommendation_comparison: DirectorRecommendationComparison | null;
       ready_latency_ms: number | null;
       recommendation_age_ms: number | null;
+      estimated_cost_microusd: number | null;
     })
   | (InterviewerObservabilityEventBase & {
       event_kind: "latency";
@@ -249,6 +265,8 @@ export function isInterviewerObservabilityEvent(
       return (
         value.recommendation_contract_version ===
           DIRECTOR_RECOMMENDATION_CONTRACT_VERSION &&
+        value.director_policy_version === DIRECTOR_POLICY_CONTRACT_VERSION &&
+        isContractToken(value.director_adapter_version) &&
         includes(
           DIRECTOR_OBSERVABILITY_OUTCOMES,
           value.recommendation_outcome
@@ -257,8 +275,14 @@ export function isInterviewerObservabilityEvent(
           DIRECTOR_RECOMMENDATION_FRESHNESS,
           value.recommendation_freshness
         ) &&
+        (value.recommendation_comparison === null ||
+          includes(
+            DIRECTOR_RECOMMENDATION_COMPARISONS,
+            value.recommendation_comparison
+          )) &&
         isNullableLatency(value.ready_latency_ms) &&
-        isNullableLatency(value.recommendation_age_ms)
+        isNullableLatency(value.recommendation_age_ms) &&
+        isNullableEstimatedCost(value.estimated_cost_microusd)
       );
     case "latency":
       return (
@@ -327,10 +351,14 @@ function eventKeys(eventKind: string): readonly string[] | null {
       return [
         ...COMMON_KEYS,
         "recommendation_contract_version",
+        "director_policy_version",
+        "director_adapter_version",
         "recommendation_outcome",
         "recommendation_freshness",
+        "recommendation_comparison",
         "ready_latency_ms",
         "recommendation_age_ms",
+        "estimated_cost_microusd",
       ];
     case "latency":
       return [...COMMON_KEYS, "latency_kind", "latency_ms"];
@@ -567,15 +595,21 @@ export function aggregateInterviewerObservabilityEvents(
         }
         break;
       case "director":
-        directorResultCount += 1;
-        if (
-          event.recommendation_freshness === "stale" ||
-          event.recommendation_outcome === "stale"
+        if (event.recommendation_comparison === null) {
+          directorResultCount += 1;
+          if (
+            event.recommendation_freshness === "stale" ||
+            event.recommendation_outcome === "stale"
+          ) {
+            staleRecommendationCount += 1;
+          }
+          if (event.ready_latency_ms !== null) {
+            latencies.director.push(event.ready_latency_ms);
+          }
+        } else if (
+          event.recommendation_comparison === "recommendation_expired"
         ) {
           staleRecommendationCount += 1;
-        }
-        if (event.ready_latency_ms !== null) {
-          latencies.director.push(event.ready_latency_ms);
         }
         break;
       case "tool":
@@ -637,6 +671,10 @@ export function aggregateInterviewerObservabilityEvents(
       latencies.recovery.push(state.recoveryLatencyMs);
     }
   }
+  const boundedStaleRecommendationCount = Math.min(
+    staleRecommendationCount,
+    directorResultCount
+  );
 
   return {
     rollout_cohort,
@@ -652,9 +690,9 @@ export function aggregateInterviewerObservabilityEvents(
     tool_failure_count: toolFailureCount,
     tool_failure_rate: rate(toolFailureCount, toolCallCount),
     director_result_count: directorResultCount,
-    stale_recommendation_count: staleRecommendationCount,
+    stale_recommendation_count: boundedStaleRecommendationCount,
     stale_recommendation_rate: rate(
-      staleRecommendationCount,
+      boundedStaleRecommendationCount,
       directorResultCount
     ),
     interruption_count: interruptionCount,
@@ -906,6 +944,24 @@ function isLatency(value: unknown): value is number {
 
 function isNullableLatency(value: unknown): value is number | null {
   return value === null || isLatency(value);
+}
+
+function isContractToken(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 96 &&
+    /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u.test(value)
+  );
+}
+
+function isNullableEstimatedCost(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (Number.isInteger(value) &&
+      typeof value === "number" &&
+      value >= 0 &&
+      value <= 100_000)
+  );
 }
 
 function isRate(value: unknown): value is number {

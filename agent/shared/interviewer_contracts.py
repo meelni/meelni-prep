@@ -31,6 +31,8 @@ INTERVIEW_RUNTIME_STATE_CONTRACT_VERSION = "interview-runtime-state.v1"
 INTERVIEWER_MOVE_CONTRACT_VERSION = "interviewer-move.v1"
 INTERVIEWER_TOOL_CONTRACT_VERSION = "interviewer-tools.v1"
 DIRECTOR_RECOMMENDATION_CONTRACT_VERSION = "director-recommendation.v1"
+DIRECTOR_POLICY_CONTRACT_VERSION = "interview-director-policy.v1"
+DIRECTOR_FAKE_ADAPTER_VERSION = "interview-director-adapter.fake.v1"
 
 INTERVIEWER_MOVE_TYPES = (
     "probe",
@@ -507,6 +509,8 @@ def is_director_recommendation(value: Any) -> bool:
             value,
             (
                 "contract_version",
+                "policy_version",
+                "model_adapter_version",
                 "recommendation_id",
                 "session_id",
                 "brief_id",
@@ -526,6 +530,8 @@ def is_director_recommendation(value: Any) -> bool:
         )
         and value["contract_version"]
         == DIRECTOR_RECOMMENDATION_CONTRACT_VERSION
+        and value["policy_version"] == DIRECTOR_POLICY_CONTRACT_VERSION
+        and _contract_token(value["model_adapter_version"])
         and _identifier(value["recommendation_id"])
         and _identifier(value["session_id"])
         and _identifier(value["brief_id"])

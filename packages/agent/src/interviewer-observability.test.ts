@@ -14,6 +14,8 @@ import {
   type InterviewerRolloutCohort,
 } from "./interviewer-observability";
 import {
+  DIRECTOR_FAKE_ADAPTER_VERSION,
+  DIRECTOR_POLICY_CONTRACT_VERSION,
   DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
   INTERVIEWER_MOVE_CONTRACT_VERSION,
   INTERVIEWER_TOOL_CONTRACT_VERSION,
@@ -115,16 +117,43 @@ test("tool timeout and stale Director recommendation are closed queryable outcom
     ...common("run:timeout", "shadow", "director-shadow.v1"),
     event_kind: "director",
     recommendation_contract_version: DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
+    director_policy_version: DIRECTOR_POLICY_CONTRACT_VERSION,
+    director_adapter_version: DIRECTOR_FAKE_ADAPTER_VERSION,
     recommendation_outcome: "stale",
     recommendation_freshness: "stale",
+    recommendation_comparison: "recommendation_expired",
     ready_latency_ms: 80,
     recommendation_age_ms: 500,
+    estimated_cost_microusd: 25,
   });
 
   assert.equal(timeout.event_kind, "tool");
   assert.equal(timeout.tool_outcome, "timeout");
   assert.equal(stale.event_kind, "director");
   assert.equal(stale.recommendation_freshness, "stale");
+  assert.equal(stale.recommendation_comparison, "recommendation_expired");
+  assert.equal(stale.estimated_cost_microusd, 25);
+  assert.equal(
+    isInterviewerObservabilityEvent({
+      ...stale,
+      director_adapter_version: "x".repeat(97),
+    }),
+    false
+  );
+  assert.equal(
+    isInterviewerObservabilityEvent({
+      ...stale,
+      recommendation_comparison: "candidate_quality_score",
+    }),
+    false
+  );
+  assert.equal(
+    isInterviewerObservabilityEvent({
+      ...stale,
+      estimated_cost_microusd: 100_001,
+    }),
+    false
+  );
 });
 
 test("interruption recovery, fallback, and normal close stay content-free", () => {
@@ -239,13 +268,20 @@ test("current/shadow/canary report emits explicit rollback signals", () => {
       latency_ms: 200,
     }),
     parseInterviewerObservabilityEvent({
+      ...director("run:canary-1", "canary", "adaptive-canary.v1", "fresh"),
+    }),
+    parseInterviewerObservabilityEvent({
       ...common("run:canary-1", "canary", "adaptive-canary.v1"),
       event_kind: "director",
       recommendation_contract_version: DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
+      director_policy_version: DIRECTOR_POLICY_CONTRACT_VERSION,
+      director_adapter_version: DIRECTOR_FAKE_ADAPTER_VERSION,
       recommendation_outcome: "stale",
-      recommendation_freshness: "stale",
-      ready_latency_ms: 200,
-      recommendation_age_ms: 1_000,
+      recommendation_freshness: "missing",
+      recommendation_comparison: "recommendation_expired",
+      ready_latency_ms: null,
+      recommendation_age_ms: null,
+      estimated_cost_microusd: null,
     }),
     parseInterviewerObservabilityEvent({
       ...common("run:canary-1", "canary", "adaptive-canary.v1"),
@@ -296,6 +332,30 @@ test("current/shadow/canary report emits explicit rollback signals", () => {
       "interruption_recovery_rate_low",
     ])
   );
+});
+
+test("Director comparisons do not double-count results or dilute stale rate", () => {
+  const ready = director(
+    "run:director-counting",
+    "shadow",
+    "director-shadow.v1",
+    "fresh"
+  );
+  const expired = parseInterviewerObservabilityEvent({
+    ...ready,
+    recommendation_outcome: "stale",
+    recommendation_freshness: "missing",
+    recommendation_comparison: "recommendation_expired",
+    ready_latency_ms: null,
+    recommendation_age_ms: null,
+    estimated_cost_microusd: null,
+  });
+
+  const aggregate = aggregateInterviewerObservabilityEvents([ready, expired]);
+  assert.equal(aggregate.director_result_count, 1);
+  assert.equal(aggregate.stale_recommendation_count, 1);
+  assert.equal(aggregate.stale_recommendation_rate, 1);
+  assert.equal(aggregate.director_ready_ms.count, 1);
 });
 
 test("phase-only and partial cohorts hold for insufficient metric evidence", () => {
@@ -541,10 +601,14 @@ function director(
     ...common(run, cohort, version),
     event_kind: "director",
     recommendation_contract_version: DIRECTOR_RECOMMENDATION_CONTRACT_VERSION,
+    director_policy_version: DIRECTOR_POLICY_CONTRACT_VERSION,
+    director_adapter_version: DIRECTOR_FAKE_ADAPTER_VERSION,
     recommendation_outcome: freshness === "fresh" ? "ready" : "stale",
     recommendation_freshness: freshness,
+    recommendation_comparison: null,
     ready_latency_ms: 100,
     recommendation_age_ms: freshness === "fresh" ? 0 : 1_000,
+    estimated_cost_microusd: 20,
   });
 }
 

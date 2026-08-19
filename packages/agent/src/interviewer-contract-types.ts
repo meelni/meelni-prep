@@ -19,6 +19,10 @@ export const INTERVIEWER_TOOL_CONTRACT_VERSION =
   "interviewer-tools.v1" as const;
 export const DIRECTOR_RECOMMENDATION_CONTRACT_VERSION =
   "director-recommendation.v1" as const;
+export const DIRECTOR_POLICY_CONTRACT_VERSION =
+  "interview-director-policy.v1" as const;
+export const DIRECTOR_FAKE_ADAPTER_VERSION =
+  "interview-director-adapter.fake.v1" as const;
 
 export const STATEFUL_INTERVIEWER_ROLLOUT_FLAGS = {
   brief_v2: "MEELNI_INTERVIEW_BRIEF_V2_ENABLED",
@@ -371,6 +375,8 @@ export interface InterviewerToolResult {
 
 export interface DirectorRecommendation {
   contract_version: typeof DIRECTOR_RECOMMENDATION_CONTRACT_VERSION;
+  policy_version: typeof DIRECTOR_POLICY_CONTRACT_VERSION;
+  model_adapter_version: string;
   recommendation_id: string;
   session_id: string;
   brief_id: string;
