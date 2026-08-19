@@ -232,6 +232,26 @@ class InterviewerContractTests(unittest.TestCase):
                 else:
                     self.assertIsNone(room["interview_brief"])
 
+    def test_room_metadata_requires_canonical_contract_version_integer_token(
+        self,
+    ):
+        fixtures = self._interviewer_contract_fixtures()
+        canonical_wire = json.dumps(
+            fixtures["room_metadata_v1"], separators=(",", ":")
+        )
+        for wire_case in fixtures[
+            "room_metadata_contract_version_wire_cases"
+        ]:
+            with self.subTest(case=wire_case["name"]):
+                adversarial = canonical_wire.replace(
+                    '"contract_version":1',
+                    f'"contract_version":{wire_case["version_lexeme"]}',
+                    1,
+                )
+                self.assertNotEqual(adversarial, canonical_wire)
+                with self.assertRaises(ValueError):
+                    parse_room_metadata(adversarial)
+
     def test_room_metadata_v1_negotiates_nested_brief_without_v2_top_level(self):
         fixtures = self._interviewer_contract_fixtures()
         room = {

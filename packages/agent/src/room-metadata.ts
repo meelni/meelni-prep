@@ -252,7 +252,10 @@ export function parseInterviewRoomMetadata(
   if (!isRecord(parsed)) {
     throw new InterviewRoomMetadataError("invalid_json");
   }
-  if (parsed.contract_version !== INTERVIEW_ROOM_METADATA_CONTRACT_VERSION) {
+  if (
+    hasNonCanonicalTopLevelInteger(rawMetadata, "contract_version") ||
+    parsed.contract_version !== INTERVIEW_ROOM_METADATA_CONTRACT_VERSION
+  ) {
     throw new InterviewRoomMetadataError("unsupported_contract");
   }
   if (!isNonEmptyString(parsed.session_id)) {
@@ -320,6 +323,17 @@ function hasNonCanonicalBriefNumber(rawMetadata: string): boolean {
     rawBrief.status === "duplicate" ||
     (rawBrief.status === "unique" &&
       hasNonIntegerJsonNumberToken(rawBrief.value))
+  );
+}
+
+function hasNonCanonicalTopLevelInteger(
+  rawMetadata: string,
+  propertyName: string
+): boolean {
+  const rawValue = extractRawTopLevelJsonProperty(rawMetadata, propertyName);
+  return (
+    rawValue.status === "duplicate" ||
+    (rawValue.status === "unique" && !/^-?(?:0|[1-9]\d*)$/.test(rawValue.value))
   );
 }
 

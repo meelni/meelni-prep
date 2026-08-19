@@ -40,6 +40,14 @@ versioned nested field of top-level room-metadata version 1.
 - **WHEN** current readers receive top-level room-metadata version 2
 - **THEN** runtime start fails as an unsupported contract
 
+#### Scenario: Top-level version 1 uses a non-canonical numeric token
+
+- **WHEN** top-level room-metadata `contract_version` is spelled as `1.0` or
+  `1e0`
+- **THEN** TypeScript and Python both reject the unsupported wire contract
+- **AND** JavaScript does not normalize the value to integer version 1
+- **AND** duplicate top-level version keys are likewise unsupported
+
 ### Requirement: Brief Compilation Is Deterministic And Replay-Stable
 
 The system SHALL derive brief identity from a canonical payload bound to stable

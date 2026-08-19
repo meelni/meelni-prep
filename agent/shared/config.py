@@ -69,7 +69,8 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         if not isinstance(data, dict):
             raise ValueError("Interview room metadata must be an object")
         if (
-            type(data.get("contract_version")) is not int
+            "contract_version" in data.duplicate_keys
+            or type(data.get("contract_version")) is not int
             or data.get("contract_version")
             != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION
         ):

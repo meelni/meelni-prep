@@ -5,6 +5,7 @@ import test from "node:test";
 import fixtures from "../../test-fixtures/interviewer-contracts.json";
 import { sha256Utf8Hex } from "./interview-brief-canonicalization";
 import {
+  InterviewRoomMetadataError,
   InterviewerContractError,
   calculateInterviewBriefV2PayloadDigest,
   canonicalizeInterviewBriefV2Payload,
@@ -146,6 +147,24 @@ test("room metadata validates only the unambiguous top-level brief numeric wire"
     } else {
       assert.equal(parsed.interview_brief, undefined);
     }
+  }
+});
+
+test("room metadata requires a canonical top-level contract-version integer token", () => {
+  const canonicalWire = JSON.stringify(fixtures.room_metadata_v1);
+  for (const wireCase of fixtures.room_metadata_contract_version_wire_cases) {
+    const adversarial = canonicalWire.replace(
+      '"contract_version":1',
+      `"contract_version":${wireCase.version_lexeme}`
+    );
+    assert.notEqual(adversarial, canonicalWire, wireCase.name);
+    assert.throws(
+      () => parseInterviewRoomMetadata(adversarial),
+      (error) =>
+        error instanceof InterviewRoomMetadataError &&
+        error.code === "unsupported_contract",
+      wireCase.name
+    );
   }
 });
 

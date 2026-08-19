@@ -25,9 +25,10 @@
 - [x] Cover evidence isolation, privacy, no coaching, and unchanged demo
       contract.
 - [x] Cover cross-runtime Unicode/numeric canonicalization, lifecycle/clock/close
-      edges, depth-aware/duplicate metadata keys, every integer-bearing wire
-      contract, duplicate ledger IDs, probe reasons, result mismatch matrices,
-      and production trusted-answer-block/evaluator projection isolation.
+      edges, depth-aware/duplicate metadata keys, canonical top-level metadata
+      version tokens, every integer-bearing wire contract, duplicate ledger
+      IDs, probe reasons, result mismatch matrices, and production trusted-
+      answer-block/evaluator projection isolation.
 
 ## 4. Validation and handoff
 
