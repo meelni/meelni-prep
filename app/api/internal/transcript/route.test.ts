@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/db/transcripts", () => ({
   createDrizzleTranscriptIngestStore: vi.fn(() => ({ persist: vi.fn() })),
+  createDrizzleInterviewRuntimeLifecycleStore: vi.fn(() => ({
+    read: vi.fn(),
+  })),
   createDrizzleTranscriptInterruptionMarkerStore: vi.fn(() => ({
     persist: vi.fn(),
   })),
@@ -40,6 +43,11 @@ vi.mock("@/lib/workflows/ingest-interview-runtime-event", () => ({
 vi.mock("@/lib/workflows/ingest-transcript-runtime-writer", () => ({
   ingestTranscriptRuntimeWriter: vi.fn(),
 }));
+vi.mock("@/lib/workflows/read-interview-runtime-lifecycle", () => ({
+  TRUSTED_LIFECYCLE_SNAPSHOT_CONTRACT_VERSION:
+    "trusted-interview-lifecycle-snapshot.v1",
+  readInterviewRuntimeLifecycle: vi.fn(),
+}));
 
 import { signRuntimeTranscriptBody } from "@/lib/security/transcript-ingest-authorization";
 import { ingestTranscriptEvent } from "@/lib/workflows/ingest-transcript-event";
@@ -47,6 +55,7 @@ import { ingestTranscriptInterruptionMarker } from "@/lib/workflows/ingest-trans
 import { ingestTranscriptRuntimeSettlement } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { ingestInterviewRuntimeEvent } from "@/lib/workflows/ingest-interview-runtime-event";
 import { ingestTranscriptRuntimeWriter } from "@/lib/workflows/ingest-transcript-runtime-writer";
+import { readInterviewRuntimeLifecycle } from "@/lib/workflows/read-interview-runtime-lifecycle";
 import {
   acknowledgeRuntimeSettlementCommand,
   pullRuntimeSettlementCommand,
@@ -423,8 +432,10 @@ describe("POST /api/internal/transcript", () => {
     vi.mocked(ingestTranscriptRuntimeWriter).mockResolvedValue({
       ok: true,
       disposition: "created",
-      writer: { writerId: "writer-1" },
+      writer: { writerId: "writer-1", roomName: "interview-room" },
       writerGeneration: 2,
+      lifecycleState: "active",
+      lifecycleVersion: 5,
     });
     const response = await POST(
       request({
@@ -442,8 +453,55 @@ describe("POST /api/internal/transcript", () => {
       disposition: "created",
       kind: "writer_registration",
       writer_generation: 2,
+      lifecycle_snapshot: {
+        contract_version: "trusted-interview-lifecycle-snapshot.v1",
+        session_id: SESSION_ID,
+        room_name: "interview-room",
+        writer_id: "writer-1",
+        writer_generation: 2,
+        state: "active",
+        version: 5,
+      },
     });
     expect(ingestTranscriptRuntimeWriter).toHaveBeenCalledOnce();
+  });
+
+  it("returns a reader-only lifecycle snapshot for the exact current writer", async () => {
+    const lifecycleSnapshot = {
+      contract_version: "trusted-interview-lifecycle-snapshot.v1" as const,
+      session_id: SESSION_ID,
+      room_name: "interview-room",
+      writer_id: "writer-1",
+      writer_generation: 2,
+      state: "active" as const,
+      version: 5,
+    };
+    vi.mocked(readInterviewRuntimeLifecycle).mockResolvedValue({
+      ok: true,
+      snapshot: lifecycleSnapshot,
+    });
+
+    const response = await POST(
+      request({
+        sessionId: SESSION_ID,
+        runtimeLifecycleRead: {
+          contract_version: 1,
+          event_type: "runtime_lifecycle_read",
+          session_id: SESSION_ID,
+          room_name: "interview-room",
+          writer_id: "writer-1",
+          writer_generation: 2,
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      kind: "runtime_lifecycle_snapshot",
+      lifecycle_snapshot: lifecycleSnapshot,
+    });
+    expect(readInterviewRuntimeLifecycle).toHaveBeenCalledOnce();
   });
 
   it("rejects ambiguous envelopes and maps integrity failures", async () => {

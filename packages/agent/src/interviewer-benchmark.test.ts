@@ -16,6 +16,54 @@ import {
   type InterviewerInvariantCode,
   type InterviewerQualityScoresV1,
 } from "./interviewer-benchmark";
+import {
+  INTERVIEWER_TOOL_SELECTION_BENCHMARK_VERSION,
+  evaluateInterviewerToolSelection,
+  type InterviewerToolSelectionCase,
+} from "./interviewer-tool-selection";
+
+test("bounded tool selection uses only necessary calls without loops", () => {
+  const cases: InterviewerToolSelectionCase[] = [
+    toolCase("known-move", ["commit_interviewer_move"]),
+    toolCase("select-probe", [
+      "get_probe_candidates",
+      "commit_interviewer_move",
+    ]),
+    toolCase("clock-check", [
+      "read_interview_clock",
+      "commit_interviewer_move",
+    ]),
+    toolCase("controller-close", ["request_graceful_close"]),
+    toolCase("prompt-sufficient", ["commit_interviewer_move"]),
+    toolCase("candidate-exit", [], true),
+  ];
+
+  for (const scenario of cases) {
+    assert.deepEqual(evaluateInterviewerToolSelection(scenario), []);
+  }
+});
+
+test("tool selection benchmark rejects unnecessary, recursive, and post-failure calls", () => {
+  const unnecessary: InterviewerToolSelectionCase = {
+    ...toolCase("unnecessary-state-read", []),
+    observed_calls: [{ name: "read_interview_state", outcome: "ok" }],
+  };
+  assert.ok(
+    evaluateInterviewerToolSelection(unnecessary).includes("unexpected_call")
+  );
+
+  const loop: InterviewerToolSelectionCase = {
+    ...toolCase("failed-loop", ["read_interview_clock"]),
+    observed_calls: [
+      { name: "read_interview_clock", outcome: "fallback" },
+      { name: "get_probe_candidates", outcome: "ok" },
+    ],
+    recursive_attempt: true,
+  };
+  const failures = evaluateInterviewerToolSelection(loop);
+  assert.ok(failures.includes("post_failure_loop"));
+  assert.ok(failures.includes("recursive_attempt"));
+});
 
 test("interviewer benchmark scenario and judge output fail closed", () => {
   const scenario = createScenario([]);
@@ -367,4 +415,19 @@ function uniformScores(score: 0 | 1 | 2 | 3 | 4): InterviewerQualityScoresV1 {
   return Object.fromEntries(
     INTERVIEWER_QUALITY_DIMENSIONS.map((dimension) => [dimension, score])
   ) as InterviewerQualityScoresV1;
+}
+
+function toolCase(
+  caseId: string,
+  expectedCalls: InterviewerToolSelectionCase["expected_calls"],
+  terminal = false
+): InterviewerToolSelectionCase {
+  return {
+    contract_version: INTERVIEWER_TOOL_SELECTION_BENCHMARK_VERSION,
+    case_id: caseId,
+    expected_calls: expectedCalls,
+    observed_calls: expectedCalls.map((name) => ({ name, outcome: "ok" })),
+    terminal,
+    recursive_attempt: false,
+  };
 }

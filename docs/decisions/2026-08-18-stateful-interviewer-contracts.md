@@ -11,6 +11,12 @@ LiveKit adapter implement rules 3 and 5 behind the exact server flag
 off. This implementation does not authorize Preview, Production, rollout, or
 default-on use.
 
+Implementation note (SAV-472): the five accepted local tools now use a
+current-writer-bound lifecycle reader and a process-local freshness lease behind
+the separate exact `MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true` gate. Same-handle
+continuation is tool-mode-only; SAV-471 prompt-led generation remains
+single-use. Both gates remain disabled in checked-in environments.
+
 The pinned LiveKit adapter preserves finalized candidate transcript emission by
 returning an empty public-LLM-node result, rather than raising `StopResponse`,
 when a turn projects elapsed or arrives after terminal. Pre-deadline explicit
