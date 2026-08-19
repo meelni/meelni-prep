@@ -26,6 +26,9 @@
       "@meelni/integrations": ["./packages/integrations/src/index.ts"],
       "@meelni/integrations/opik": ["./packages/integrations/src/opik.ts"],
       "@meelni/test-fixtures": ["./packages/test-fixtures/src/index.ts"],
+      "@meelni/test-fixtures/adaptive-feedback": [
+        "./packages/test-fixtures/src/adaptive-feedback.ts"
+      ],
       "@meelni/test-fixtures/synthetic-feedback": [
         "./packages/test-fixtures/src/synthetic-feedback.ts"
       ],
