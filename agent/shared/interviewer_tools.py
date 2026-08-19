@@ -320,39 +320,26 @@ class SessionScopedInterviewerTools:
         if tool_name not in INTERVIEWER_TOOL_NAMES:
             tool_name = None
 
-        def finish(**kwargs: Any) -> ToolExecutionOutcome:
-            outcome = self._finish(**kwargs)
-            try:
-                if (
-                    enforce_handle_authority
-                    and outcome.fallback_required
-                    and isinstance(handle_id, str)
-                    and handle_id
-                    and self.enabled
-                ):
-                    self._controller.request_tool_fallback(
-                        handle_id=handle_id,
-                        monotonic_ms=self._resolve_monotonic_ms(None),
-                    )
-            except Exception:
-                pass
-            return outcome
-
         try:
             parsed = parse_interviewer_tool_request(request)
         except (InterviewerContractError, TypeError, ValueError, UnicodeError):
-            return finish(
+            outcome = self._finish(
                 identity=identity,
                 tool_name=tool_name,
                 status="invalid_request",
                 payload=None,
                 started=started,
             )
+            await self._fence_handle_after_failure(
+                handle_id=handle_id,
+                enforce_handle_authority=enforce_handle_authority,
+            )
+            return outcome
 
         began_handle_call = False
         if enforce_handle_authority:
             if not isinstance(handle_id, str) or not handle_id:
-                return finish(
+                return self._finish(
                     identity=identity,
                     tool_name=parsed["tool_name"],
                     status="unavailable",
@@ -364,7 +351,7 @@ class SessionScopedInterviewerTools:
                 tool_name=parsed["tool_name"],
             )
             if admission != "eligible":
-                return finish(
+                outcome = self._finish(
                     identity=identity,
                     tool_name=parsed["tool_name"],
                     status=(
@@ -375,14 +362,22 @@ class SessionScopedInterviewerTools:
                     payload=None,
                     started=started,
                 )
+                await self._fence_handle_after_failure(
+                    handle_id=handle_id,
+                    enforce_handle_authority=True,
+                )
+                return outcome
             began_handle_call = True
 
         try:
             result = await asyncio.wait_for(
-                self._execute_serialized(parsed, handle_id=handle_id),
+                self._execute_serialized(
+                    parsed,
+                    handle_id=handle_id,
+                ),
                 timeout=self._call_timeout_ms / 1_000,
             )
-            return finish(
+            return self._finish(
                 identity=identity,
                 tool_name=parsed["tool_name"],
                 status=result["status"],
@@ -394,21 +389,31 @@ class SessionScopedInterviewerTools:
                 ],
             )
         except asyncio.TimeoutError:
-            return finish(
+            outcome = self._finish(
                 identity=identity,
                 tool_name=parsed["tool_name"],
                 status="timeout",
                 payload=None,
                 started=started,
             )
+            await self._fence_handle_after_failure(
+                handle_id=handle_id,
+                enforce_handle_authority=enforce_handle_authority,
+            )
+            return outcome
         except Exception:
-            return finish(
+            outcome = self._finish(
                 identity=identity,
                 tool_name=parsed["tool_name"],
                 status="unavailable",
                 payload=None,
                 started=started,
             )
+            await self._fence_handle_after_failure(
+                handle_id=handle_id,
+                enforce_handle_authority=enforce_handle_authority,
+            )
+            return outcome
         finally:
             if began_handle_call and isinstance(handle_id, str):
                 self._controller.end_tool_call(handle_id=handle_id)
@@ -646,159 +651,137 @@ class SessionScopedInterviewerTools:
         handle_id: str | None,
     ) -> dict[str, Any]:
         async with self._lock:
-            await self._operation_barrier(request["tool_name"])
-            state = self._controller.state
-            current_ms = self._monotonic_clock_ms()
-            availability = self._availability_failure(monotonic_ms=current_ms)
-            if availability is not None or state is None:
-                return self._execution_result(
-                    status="unavailable",
-                    payload=None,
-                    state=state,
-                )
-            lifecycle = self._current_lifecycle(monotonic_ms=current_ms)
-            if lifecycle is None:
-                return self._execution_result(
-                    status="unavailable",
-                    payload=None,
-                    state=state,
-                )
-
-            if request["tool_name"] in (
-                "commit_interviewer_move",
-                "request_graceful_close",
-            ):
-                existing = self._mutation_ledger.get(request["idempotency_key"])
-                if existing is not None:
-                    original_request, original_result = existing
-                    replay = assess_interviewer_mutation_replay(
-                        original_request,
-                        request,
-                    )
-                    if replay == "duplicate":
-                        return {
-                            "status": "duplicate",
-                            "payload": deepcopy(original_result["payload"]),
-                            "observed_state_revision": original_result[
-                                "observed_state_revision"
-                            ],
-                            "observed_lifecycle_version": original_result[
-                                "observed_lifecycle_version"
-                            ],
-                        }
-                    return self._execution_result(
-                        status="idempotency_conflict",
-                        payload=None,
-                        state=state,
-                    )
-                if len(self._mutation_ledger) >= MAX_MUTATION_IDEMPOTENCY_ENTRIES:
-                    return self._execution_result(
-                        status="unavailable",
-                        payload=None,
-                        state=state,
-                    )
-
-            now = self._wall_now()
-            admission = assess_interviewer_tool_request_against_state(
-                request,
-                state.to_runtime_state(),
-                now,
-            )
-            if admission != "eligible":
-                return self._execution_result(
-                    status=_admission_status(admission),
-                    payload=None,
-                    state=state,
-                )
-
-            name = request["tool_name"]
-            if name in ("read_interview_state", "read_interview_clock"):
-                projected = project_controller_state(
-                    state,
-                    monotonic_ms=current_ms,
-                )
-                payload = (
-                    {"state": projected.to_runtime_state()}
-                    if name == "read_interview_state"
-                    else {
-                        "clock": projected.to_runtime_state()["clock"]
-                    }
-                )
-                return self._execution_result(
-                    status="ok",
-                    payload=payload,
-                    state=state,
-                    lifecycle_version=lifecycle.version,
-                )
-            if name == "get_probe_candidates":
-                projected = project_controller_state(
-                    state,
-                    monotonic_ms=current_ms,
-                )
-                return self._execution_result(
-                    status="ok",
-                    payload={
-                        "probe_candidates": [
-                            dict(candidate)
-                            for candidate in list_probe_candidates(projected)
-                        ]
-                    },
-                    state=state,
-                    lifecycle_version=lifecycle.version,
-                )
-            if name == "commit_interviewer_move":
-                move = request["move"]
-                target = move["target"]
-                try:
-                    committed = self._controller.apply_tool_move(
-                        move_id=move["move_id"],
-                        move_type=move["move_type"],
-                        reason_code=move["reason_code"],
-                        question_id=target["question_id"],
-                        topic=target["topic"],
-                        source_turn_id=target["source_turn_id"],
-                        probe_candidate_id=target["probe_candidate_id"],
-                        expected_state_revision=request["expected_state_revision"],
-                        monotonic_ms=current_ms,
-                        handle_id=handle_id,
-                    )
-                except ControllerError as error:
-                    return self._execution_result(
-                        status=_controller_error_status(error.code),
-                        payload=None,
-                        state=self._controller.state,
-                    )
-                result = self._execution_result(
-                    status="ok",
-                    payload={"committed_move": deepcopy(move)},
-                    state=committed,
-                    lifecycle_version=lifecycle.version,
-                )
-                self._remember_mutation(request, result)
-                return result
-
-            close_reason = {
-                "deadline": "deadline_close",
-                "candidate_request": "candidate_requested_close",
-                "controller_policy": "controller_fallback",
-            }[request["reason"]]
-            source_turn_id = state.last_finalized_candidate_turn_id
-            if source_turn_id is None:
-                return self._execution_result(
-                    status="invalid_request",
-                    payload=None,
-                    state=state,
-                )
-            move_id = f"move:{state.session_id}:{state.move_ordinal + 1}"
             try:
-                closed = self._controller.apply_tool_move(
-                    move_id=move_id,
-                    move_type="close",
-                    reason_code=close_reason,
-                    question_id=state.active_question_id,
-                    topic=state.current_topic,
-                    source_turn_id=source_turn_id,
-                    probe_candidate_id=None,
+                result = await self._execute_locked(
+                    request,
+                    handle_id=handle_id,
+                )
+                if result["status"] not in ("ok", "duplicate"):
+                    self._request_tool_fallback_locked(handle_id=handle_id)
+                return result
+            except asyncio.CancelledError:
+                self._request_tool_fallback_locked(handle_id=handle_id)
+                raise
+            except Exception:
+                self._request_tool_fallback_locked(handle_id=handle_id)
+                raise
+
+    async def _execute_locked(
+        self,
+        request: dict[str, Any],
+        *,
+        handle_id: str | None,
+    ) -> dict[str, Any]:
+        await self._operation_barrier(request["tool_name"])
+        state = self._controller.state
+        current_ms = self._monotonic_clock_ms()
+        availability = self._availability_failure(monotonic_ms=current_ms)
+        if availability is not None or state is None:
+            return self._execution_result(
+                status="unavailable",
+                payload=None,
+                state=state,
+            )
+        lifecycle = self._current_lifecycle(monotonic_ms=current_ms)
+        if lifecycle is None:
+            return self._execution_result(
+                status="unavailable",
+                payload=None,
+                state=state,
+            )
+
+        if request["tool_name"] in (
+            "commit_interviewer_move",
+            "request_graceful_close",
+        ):
+            existing = self._mutation_ledger.get(request["idempotency_key"])
+            if existing is not None:
+                original_request, original_result = existing
+                replay = assess_interviewer_mutation_replay(
+                    original_request,
+                    request,
+                )
+                if replay == "duplicate":
+                    return {
+                        "status": "duplicate",
+                        "payload": deepcopy(original_result["payload"]),
+                        "observed_state_revision": original_result[
+                            "observed_state_revision"
+                        ],
+                        "observed_lifecycle_version": original_result[
+                            "observed_lifecycle_version"
+                        ],
+                    }
+                return self._execution_result(
+                    status="idempotency_conflict",
+                    payload=None,
+                    state=state,
+                )
+            if len(self._mutation_ledger) >= MAX_MUTATION_IDEMPOTENCY_ENTRIES:
+                return self._execution_result(
+                    status="unavailable",
+                    payload=None,
+                    state=state,
+                )
+
+        now = self._wall_now()
+        admission = assess_interviewer_tool_request_against_state(
+            request,
+            state.to_runtime_state(),
+            now,
+        )
+        if admission != "eligible":
+            return self._execution_result(
+                status=_admission_status(admission),
+                payload=None,
+                state=state,
+            )
+
+        name = request["tool_name"]
+        if name in ("read_interview_state", "read_interview_clock"):
+            projected = project_controller_state(
+                state,
+                monotonic_ms=current_ms,
+            )
+            payload = (
+                {"state": projected.to_runtime_state()}
+                if name == "read_interview_state"
+                else {"clock": projected.to_runtime_state()["clock"]}
+            )
+            return self._execution_result(
+                status="ok",
+                payload=payload,
+                state=state,
+                lifecycle_version=lifecycle.version,
+            )
+        if name == "get_probe_candidates":
+            projected = project_controller_state(
+                state,
+                monotonic_ms=current_ms,
+            )
+            return self._execution_result(
+                status="ok",
+                payload={
+                    "probe_candidates": [
+                        dict(candidate)
+                        for candidate in list_probe_candidates(projected)
+                    ]
+                },
+                state=state,
+                lifecycle_version=lifecycle.version,
+            )
+        if name == "commit_interviewer_move":
+            move = request["move"]
+            target = move["target"]
+            try:
+                committed = self._controller.apply_tool_move(
+                    move_id=move["move_id"],
+                    move_type=move["move_type"],
+                    reason_code=move["reason_code"],
+                    question_id=target["question_id"],
+                    topic=target["topic"],
+                    source_turn_id=target["source_turn_id"],
+                    probe_candidate_id=target["probe_candidate_id"],
                     expected_state_revision=request["expected_state_revision"],
                     monotonic_ms=current_ms,
                     handle_id=handle_id,
@@ -811,12 +794,79 @@ class SessionScopedInterviewerTools:
                 )
             result = self._execution_result(
                 status="ok",
-                payload={"close_state": closed.close_state},
-                state=closed,
+                payload={"committed_move": deepcopy(move)},
+                state=committed,
                 lifecycle_version=lifecycle.version,
             )
             self._remember_mutation(request, result)
             return result
+
+        close_reason = {
+            "deadline": "deadline_close",
+            "candidate_request": "candidate_requested_close",
+            "controller_policy": "controller_fallback",
+        }[request["reason"]]
+        source_turn_id = state.last_finalized_candidate_turn_id
+        if source_turn_id is None:
+            return self._execution_result(
+                status="invalid_request",
+                payload=None,
+                state=state,
+            )
+        move_id = f"move:{state.session_id}:{state.move_ordinal + 1}"
+        try:
+            closed = self._controller.apply_tool_move(
+                move_id=move_id,
+                move_type="close",
+                reason_code=close_reason,
+                question_id=state.active_question_id,
+                topic=state.current_topic,
+                source_turn_id=source_turn_id,
+                probe_candidate_id=None,
+                expected_state_revision=request["expected_state_revision"],
+                monotonic_ms=current_ms,
+                handle_id=handle_id,
+            )
+        except ControllerError as error:
+            return self._execution_result(
+                status=_controller_error_status(error.code),
+                payload=None,
+                state=self._controller.state,
+            )
+        result = self._execution_result(
+            status="ok",
+            payload={"close_state": closed.close_state},
+            state=closed,
+            lifecycle_version=lifecycle.version,
+        )
+        self._remember_mutation(request, result)
+        return result
+
+    async def _fence_handle_after_failure(
+        self,
+        *,
+        handle_id: str | None,
+        enforce_handle_authority: bool,
+    ) -> None:
+        if (
+            not enforce_handle_authority
+            or not isinstance(handle_id, str)
+            or not handle_id
+        ):
+            return
+        async with self._lock:
+            self._request_tool_fallback_locked(handle_id=handle_id)
+
+    def _request_tool_fallback_locked(self, *, handle_id: str | None) -> None:
+        if not isinstance(handle_id, str) or not handle_id or not self.enabled:
+            return
+        try:
+            self._controller.request_tool_fallback(
+                handle_id=handle_id,
+                monotonic_ms=self._resolve_monotonic_ms(None),
+            )
+        except Exception:
+            return
 
     def _remember_mutation(
         self,

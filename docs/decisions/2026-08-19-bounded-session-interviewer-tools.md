@@ -10,10 +10,12 @@ Decision owners: engineering contract; Production/default-on remains human-owned
 SAV-466 defined five narrow local interviewer tools and SAV-471 introduced a
 deterministic controller, but the runtime deliberately lacked a trusted initial
 lifecycle snapshot. Pinned LiveKit Agents 1.6.5 also re-enters the public LLM
-node after tool execution on the same speech handle, while SAV-471 generation
-authority was intentionally single-use. Enabling tools without resolving both
-boundaries would either fabricate lifecycle authority or reject legitimate tool
-continuation.
+node after tool execution on the same speech handle and can forward mixed model
+text toward TTS before it awaits the accompanying tools, while SAV-471
+generation authority was intentionally single-use. Enabling tools without
+resolving these boundaries would either fabricate lifecycle authority, reject
+legitimate tool continuation, or make provider compliance the only barrier to
+unauthorized pre-tool speech.
 
 ## Decision
 
@@ -43,7 +45,11 @@ continuation.
    recursive/concurrent/repeated calls, and bounded idempotency. The first tool
    failure or continuation overflow admits one deterministic controller fallback
    move, fences later tools, permits one tool-free reply, and then denies later
-   re-entry.
+   re-entry. Strip text from every required-tool provider response before the
+   pinned LiveKit text/TTS channels while preserving real tool calls. Reserve
+   same-handle admission before queueing so overlapping siblings fail closed,
+   then serialize execution and failure-fence publication so either the
+   failure/fallback path or committed-move path wins atomically.
 8. Record only privacy-safe tool name, outcome, contract version, and latency.
    Do not export arguments, results, transcript/model content, or chain of
    thought.
@@ -61,6 +67,9 @@ continuation.
   request and use one move-bound controller fallback while transcript
   persistence, explicit exit, deadline watchdogs, and settlement remain
   independent.
+- Mixed provider text cannot become audible before a successful tool-bound
+  continuation, and concurrent sibling failures cannot strand an admitted move
+  behind a fallback fence.
 - Lifecycle reads add bounded background traffic only when the exact controller
   flag and all prerequisite contracts are already valid. The tool surface still
   additionally requires its separate exact flag.

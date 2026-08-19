@@ -15,8 +15,11 @@
    capability for the first public speech handle.
 4. The LiveKit model may call only the five public tools, and enabled-path model
    generation structurally requires a tool until one move binds the handle.
-   Reads project local
-   immutable state. Probe lookup returns deterministic IDs. Commit/close rebuild
+   Because pinned LiveKit forwards mixed response text before awaiting tools,
+   the runtime removes all text from required-tool response chunks while
+   preserving actual function calls; speech text may enter the pipeline only on
+   the later controller-authorized continuation. Reads project local immutable
+   state. Probe lookup returns deterministic IDs. Commit/close rebuild
    the complete move from trusted controller state, serialize mutations under a
    local lock, validate exact revisions/writer/deadline/idempotency, and admit at
    most one pending move.
@@ -27,6 +30,10 @@
    failure or overflow admits one deterministic `controller_fallback` move,
    supplies its reduced move instruction, immediately fences later tools,
    grants one tool-free speech fallback, and then denies later re-entry.
+   Admission is reserved before work queues so overlapping calls fail closed.
+   Execution and failure-fence publication then share one serialized order: a
+   failure winner rejects queued mutation, while a mutation winner prevents
+   later failure from creating fallback residue.
 6. Public speech completion still requires the exact opaque per-instance
    acceptance returned at `speech_created`. Tool/model activity cannot stage
    evidence. Only acknowledged canonical interviewer transcript evidence may

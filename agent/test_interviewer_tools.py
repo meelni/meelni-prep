@@ -596,6 +596,252 @@ class InterviewerToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("speech-1", controller._authorized_speech_handles)
         self.assertEqual(controller.state.move_ledger[-1].stage, "aborted")
 
+    async def test_concurrent_sibling_failure_cannot_strand_an_admitted_move(self):
+        commit_entered = asyncio.Event()
+        release_commit = asyncio.Event()
+
+        async def barrier(tool_name):
+            if tool_name == "commit_interviewer_move":
+                commit_entered.set()
+                await release_commit.wait()
+
+        controller, tools, _, _, _, directive = self.make_runtime(
+            operation_barrier=barrier,
+        )
+        items, _ = self.authorize_tool_handle(controller, directive)
+        state = controller.state
+        probes = await tools.invoke_probe_candidates(
+            raw_call_id="race-probes",
+            handle_id="speech-1",
+            contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            expected_state_revision=state.state_revision,
+            expected_lifecycle_version=state.lifecycle_version,
+            active_question_id=state.active_question_id,
+        )
+        candidate = probes.result["payload"]["probe_candidates"][0]
+        self.assertTrue(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_003,
+            )
+        )
+
+        commit_task = asyncio.create_task(
+            tools.invoke_commit(
+                raw_call_id="race-commit",
+                handle_id="speech-1",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+                expected_state_revision=state.state_revision,
+                expected_lifecycle_version=state.lifecycle_version,
+                move_type="probe",
+                probe_candidate_id=candidate["probe_candidate_id"],
+                idempotency_key="race-commit-key",
+            )
+        )
+        await commit_entered.wait()
+        sibling_task = asyncio.create_task(
+            tools.invoke_read(
+                tool_name="read_interview_state",
+                raw_call_id="race-sibling",
+                handle_id="speech-1",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            )
+        )
+        await asyncio.sleep(0)
+        self.assertFalse(sibling_task.done())
+
+        release_commit.set()
+        commit, sibling = await asyncio.gather(commit_task, sibling_task)
+
+        self.assertEqual(commit.status, "ok")
+        self.assertEqual(sibling.status, "invalid_request")
+        self.assertEqual(controller.state.move_ledger[-1].stage, "admitted")
+        self.assertFalse(controller._tool_fallback_pending_handles)
+        self.assertTrue(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_004,
+            )
+        )
+        self.assertEqual(controller.state.move_ledger[-1].stage, "generated")
+
+    async def test_overlapping_distinct_reads_reject_the_queued_sibling(self):
+        first_read_entered = asyncio.Event()
+        release_first_read = asyncio.Event()
+        barrier_calls = []
+
+        async def barrier(tool_name):
+            barrier_calls.append(tool_name)
+            if tool_name == "read_interview_state":
+                first_read_entered.set()
+                await release_first_read.wait()
+
+        controller, tools, _, _, _, directive = self.make_runtime(
+            operation_barrier=barrier,
+        )
+        items, _ = self.authorize_tool_handle(controller, directive)
+        self.assertTrue(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_003,
+            )
+        )
+
+        first_task = asyncio.create_task(
+            tools.invoke_read(
+                tool_name="read_interview_state",
+                raw_call_id="overlap-state",
+                handle_id="speech-1",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            )
+        )
+        await first_read_entered.wait()
+        sibling_task = asyncio.create_task(
+            tools.invoke_read(
+                tool_name="read_interview_clock",
+                raw_call_id="overlap-clock",
+                handle_id="speech-1",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+            )
+        )
+        await asyncio.sleep(0)
+        self.assertFalse(sibling_task.done())
+
+        release_first_read.set()
+        first, sibling = await asyncio.gather(first_task, sibling_task)
+
+        self.assertEqual(first.status, "ok")
+        self.assertIn(sibling.status, ("invalid_request", "unavailable"))
+        self.assertEqual(barrier_calls, ["read_interview_state"])
+        self.assertEqual(controller.state.move_ledger, ())
+        self.assertEqual(
+            controller._tool_fallback_pending_handles,
+            {"speech-1"},
+        )
+        self.assertTrue(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_004,
+            )
+        )
+        self.assertEqual(len(controller.state.move_ledger), 1)
+        self.assertEqual(
+            controller.state.move_ledger[-1].reason_code,
+            "controller_fallback",
+        )
+        self.assertEqual(controller.state.move_ledger[-1].stage, "generated")
+        self.assertFalse(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_005,
+            )
+        )
+
+    async def test_concurrent_failure_wins_before_queued_mutation(self):
+        failure_entered = asyncio.Event()
+        release_failure = asyncio.Event()
+
+        async def barrier(tool_name):
+            if tool_name == "read_interview_state":
+                failure_entered.set()
+                await release_failure.wait()
+
+        controller, tools, _, _, _, directive = self.make_runtime(
+            operation_barrier=barrier,
+        )
+        state = controller.state
+        probes = await tools.execute(
+            tools.build_probe_candidates_request(
+                raw_call_id="failure-wins-probes",
+                expected_state_revision=state.state_revision,
+                expected_lifecycle_version=state.lifecycle_version,
+                active_question_id=state.active_question_id,
+            )
+        )
+        candidate = probes.result["payload"]["probe_candidates"][0]
+        items, _ = self.authorize_tool_handle(controller, directive)
+        initial_revision = controller.state.state_revision
+        initial_authorized_handle = controller._authorized_speech_handles[
+            "speech-1"
+        ]
+
+        stale_request = tools.build_read_request(
+            tool_name="read_interview_state",
+            raw_call_id="failure-wins-sibling",
+        )
+        stale_request["writer_generation"] += 1
+        failure_task = asyncio.create_task(
+            tools.execute(
+                stale_request,
+                handle_id="speech-1",
+                enforce_handle_authority=True,
+            )
+        )
+        await failure_entered.wait()
+        commit_task = asyncio.create_task(
+            tools.invoke_commit(
+                raw_call_id="failure-wins-commit",
+                handle_id="speech-1",
+                contract_version=INTERVIEWER_TOOL_CONTRACT_VERSION,
+                expected_state_revision=state.state_revision,
+                expected_lifecycle_version=state.lifecycle_version,
+                move_type="probe",
+                probe_candidate_id=candidate["probe_candidate_id"],
+                idempotency_key="failure-wins-commit-key",
+            )
+        )
+        await asyncio.sleep(0)
+        self.assertFalse(commit_task.done())
+
+        release_failure.set()
+        failure, commit = await asyncio.gather(failure_task, commit_task)
+
+        self.assertEqual(failure.status, "stale_writer")
+        self.assertEqual(commit.status, "invalid_request")
+        self.assertEqual(controller.state.state_revision, initial_revision)
+        self.assertEqual(controller.state.move_ledger, ())
+        self.assertEqual(tools._mutation_ledger, {})
+        self.assertEqual(
+            controller._authorized_speech_handles["speech-1"],
+            initial_authorized_handle,
+        )
+        self.assertEqual(
+            controller._tool_fallback_pending_handles,
+            {"speech-1"},
+        )
+        self.assertTrue(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_004,
+            )
+        )
+        self.assertEqual(len(controller.state.move_ledger), 1)
+        self.assertEqual(
+            controller.state.move_ledger[-1].reason_code,
+            "controller_fallback",
+        )
+        self.assertEqual(controller.state.move_ledger[-1].stage, "generated")
+        self.assertFalse(
+            allow_controller_generation(
+                controller,
+                ReplySuppressionGate(),
+                items,
+                monotonic_ms=1_005,
+            )
+        )
+
     async def test_lifecycle_refresh_is_monotonic_and_never_reopens_speech(self):
         controller, tools, store, clock, _, _ = self.make_runtime()
         renewed = TrustedLifecycleSnapshot(
