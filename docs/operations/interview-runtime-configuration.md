@@ -83,3 +83,14 @@ SAV-475 adds no provider adapter and does not authorize configuring this flag
 in Preview or Production. The existing five tools remain the only trigger, and
 the controller remains the sole admission authority. See
 [Interview Director Influence](./interview-director-influence.md).
+
+## Adaptive interviewer rollout
+
+The staged rollout remains at `synthetic`, with all flags off and
+`adapter=None`. Director influence is the only flag read live for every active-
+session admission. Brief, controller, tools, and shadow enablement are resolved
+when session components are constructed; removing those values protects new
+sessions but does not itself prove an in-flight shadow task has stopped. Follow
+[Adaptive Interviewer Rollout](./adaptive-interviewer-rollout.md) for exact
+owner gates, evidence pins, stage-specific rollback, and the required reviewed
+settle/shutdown rehearsal.
