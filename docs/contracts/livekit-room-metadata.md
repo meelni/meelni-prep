@@ -3,6 +3,20 @@
 This contract describes the provider-normalized payload shared by the Next.js
 app and Python LiveKit agents.
 
+## Optional stateful-interviewer brief
+
+Top-level room metadata remains contract version `1`. A future reader-first
+rollout may include an optional `interview_brief` whose independent version is
+`interview-brief.v2`; it does not create room-metadata version 2. New readers
+accept that nested brief only after its digest and its session, deadline,
+round, difficulty, duration, and exact selected-question correlation all pass.
+Absent, unknown, malformed, or mismatched nested briefs use the validated v1
+prompt-led path. Current readers continue to reject any top-level metadata
+version other than `1`.
+
+The full negotiation, authority, and rollback rules are in
+[`stateful-interviewer-decisions.md`](./stateful-interviewer-decisions.md).
+
 ## Room Metadata
 
 Full interview rooms receive JSON metadata with this shape:

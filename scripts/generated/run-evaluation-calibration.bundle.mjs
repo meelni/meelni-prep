@@ -34800,7 +34800,7 @@ function canonicalCalibrationOwnerAuthorizationJson(value) {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonicalCalibrationOwnerAuthorizationJson(entry)).join(",")}]`;
   }
-  if (isRecord(value)) {
+  if (isRecord2(value)) {
     return `{${Object.keys(value).sort().map(
       (key) => `${JSON.stringify(key)}:${canonicalCalibrationOwnerAuthorizationJson(
         value[key]
@@ -35095,7 +35095,7 @@ function parseTimestamp(value, code) {
   return parsed;
 }
 function assertPlainObject(value, code) {
-  if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+  if (!isRecord2(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new Error(code);
   }
 }
@@ -35106,7 +35106,7 @@ function assertExactKeys(value, expected, code) {
     throw new Error(code);
   }
 }
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -35525,7 +35525,7 @@ function calibrationAuthorizationCommitMessage(plan, authorization) {
   });
 }
 function parseCalibrationSpendAuthorization(value) {
-  if (!isRecord2(value)) {
+  if (!isRecord3(value)) {
     throw new Error("calibration_spend_authorization_invalid");
   }
   if (value.authorizationStatus === "pending_explicit_product_owner_approval") {
@@ -35704,7 +35704,7 @@ function parseCalibrationAuthorizationLedgerMessage(commit) {
 function parseLedgerMessage(message, code) {
   try {
     const parsed = JSON.parse(message);
-    if (!isRecord2(parsed)) throw new Error(code);
+    if (!isRecord3(parsed)) throw new Error(code);
     return parsed;
   } catch {
     throw new Error(code);
@@ -36062,7 +36062,7 @@ function cloneSpendState(state) {
 }
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (isRecord2(value)) {
+  if (isRecord3(value)) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
@@ -36078,7 +36078,7 @@ function assertExactKeys2(value, expected) {
   }
 }
 function requireRecord4(value, field) {
-  if (!isRecord2(value)) {
+  if (!isRecord3(value)) {
     throw new Error(`calibration_github_${field}_invalid`);
   }
   return value;
@@ -36115,7 +36115,7 @@ function normalizeTimestamp(value) {
   }
   return parsed.toISOString();
 }
-function isRecord2(value) {
+function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -38054,7 +38054,7 @@ async function readPrivateJsonFile(path2) {
     } catch {
       throw new Error("calibration_semantic_review_json_invalid");
     }
-    if (!isRecord3(parsed)) {
+    if (!isRecord4(parsed)) {
       throw new Error("calibration_semantic_review_shape_invalid");
     }
     return parsed;
@@ -38128,7 +38128,7 @@ async function readIfPresent(read) {
     throw error;
   }
 }
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

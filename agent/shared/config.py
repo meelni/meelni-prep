@@ -8,6 +8,7 @@ from shared.runtime_config import (
     get_tts_config,
     normalize_runtime_config,
 )
+from shared.interviewer_contracts import resolve_optional_interview_brief_v2
 from shared.session_deadline import normalize_deadline_at
 from shared.safe_logging import log_exception_class
 from shared.transcript_ingest import validate_internal_ingest_url
@@ -15,6 +16,16 @@ from shared.transcript_ingest import validate_internal_ingest_url
 logger = logging.getLogger("agent-config")
 
 INTERVIEW_ROOM_METADATA_CONTRACT_VERSION = 1
+
+
+class _ParsedJsonObject(dict[str, Any]):
+    def __init__(self, pairs: list[tuple[str, Any]]):
+        super().__init__()
+        self.duplicate_keys: set[str] = set()
+        for key, value in pairs:
+            if key in self:
+                self.duplicate_keys.add(key)
+            self[key] = value
 
 
 def parse_room_metadata(metadata: str) -> Dict[str, Any]:
@@ -54,10 +65,15 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
         Dict with round_type, question, and config keys
     """
     try:
-        data = json.loads(metadata)
+        data = json.loads(metadata, object_pairs_hook=_ParsedJsonObject)
         if not isinstance(data, dict):
             raise ValueError("Interview room metadata must be an object")
-        if data.get("contract_version") != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION:
+        if (
+            "contract_version" in data.duplicate_keys
+            or type(data.get("contract_version")) is not int
+            or data.get("contract_version")
+            != INTERVIEW_ROOM_METADATA_CONTRACT_VERSION
+        ):
             raise ValueError("Unsupported interview room metadata contract")
         session_id = data.get("session_id")
         if not isinstance(session_id, str) or not session_id.strip():
@@ -86,6 +102,27 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             raw_config if isinstance(raw_config, dict) else {}
         )
         question = normalize_question(data.get("question"))
+        deadline_at = normalize_deadline_at(data.get("deadline_at"))
+        brief_resolution = (
+            {"mode": "room_metadata_v1", "reason": "invalid_payload"}
+            if "interview_brief" in data.duplicate_keys
+            else resolve_optional_interview_brief_v2(
+                data.get("interview_brief")
+            )
+        )
+        interview_brief = (
+            brief_resolution["brief"]
+            if brief_resolution["mode"] == "brief_v2"
+            and _is_brief_compatible_with_room(
+                brief_resolution["brief"],
+                session_id=session_id,
+                deadline_at=deadline_at,
+                round_type=round_type,
+                config=config_with_defaults,
+                question=question,
+            )
+            else None
+        )
 
         logger.info(
             "Parsed interview room metadata",
@@ -101,11 +138,17 @@ def parse_room_metadata(metadata: str) -> Dict[str, Any]:
             "session_id": session_id,
             "candidate_identity": candidate_identity,
             "transcript_ingest_url": transcript_ingest_url,
-            "deadline_at": normalize_deadline_at(data.get("deadline_at")),
+            "deadline_at": deadline_at,
             "round_type": round_type,
             "mode": data.get("mode") if data.get("mode") in {"text", "voice_video"} else None,
             "question": question,
             "config": config_with_defaults,
+            "interview_brief": interview_brief,
+            "interview_brief_resolution": (
+                "brief_v2"
+                if interview_brief is not None
+                else brief_resolution.get("reason", "invalid_payload")
+            ),
         }
 
     except (json.JSONDecodeError, ValueError, TypeError) as error:
@@ -147,6 +190,31 @@ def normalize_question(question: Dict[str, Any] | None) -> Dict[str, Any] | None
 
 def _string_or_default(value: Any) -> str:
     return value if isinstance(value, str) and value.strip() else ""
+
+
+def _is_brief_compatible_with_room(
+    brief: Dict[str, Any],
+    *,
+    session_id: str,
+    deadline_at: str | None,
+    round_type: str,
+    config: Dict[str, Any],
+    question: Dict[str, Any] | None,
+) -> bool:
+    if deadline_at is None or question is None:
+        return False
+    selected = brief["selected_question"]
+    return (
+        brief["session_id"] == session_id
+        and brief["deadline_at"] == deadline_at
+        and brief["round_type"] == round_type
+        and brief["difficulty"] == config["difficulty"]
+        and brief["duration_minutes"] == config["duration"]
+        and selected["id"] == question["id"]
+        and selected["text"] == question["text"]
+        and selected["company"] == question["company"]
+        and selected["type"] == question["type"]
+    )
 
 
 def extract_tts_config(config: Dict[str, Any]) -> Dict[str, Any]:
