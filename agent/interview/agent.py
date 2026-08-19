@@ -220,13 +220,14 @@ class ControlledInterviewAgent(InterviewAgent):
     def llm_node(self, chat_ctx, tools, model_settings):
         # Returning an empty generation keeps the public scheduled pipeline alive
         # long enough to commit and emit its finalized user item exactly once.
+        provider_chat_ctx = chat_ctx.copy()
         if not allow_controller_generation(
             self._controller_adapter,
             self._reply_suppression_gate,
-            chat_ctx.items,
+            provider_chat_ctx.items,
         ):
             return None
-        return super().llm_node(chat_ctx, tools, model_settings)
+        return super().llm_node(provider_chat_ctx, tools, model_settings)
 
 
 def create_interview_agent(

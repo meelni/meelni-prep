@@ -58,8 +58,14 @@ deadline and a monotonic anchor rather than asking the model to estimate time.
 - **AND** it cannot correlate transcript or interruption evidence to the move
 - **AND** predictable turn/move IDs plus ambient handle lineage cannot consume
   the nonce held by the intended temporary context
+- **AND** a handle created before the current admitted generation epoch cannot
+  consume that nonce even when handed the exact current temporary context
+- **AND** a later same-epoch handle cannot replace the first public
+  `generate_reply` handle bound to that nonce
 - **AND** the nonce is synchronously consumed before controller-state mutation
-  and redacted before provider conversion
+  and redacted only in an isolated provider-bound copy after authorization
+- **AND** a denied shallow context copy cannot mutate or strip the intended
+  pipeline's shared controller item
 
 #### Scenario: A retired speech identity is reused or capacity is exhausted
 

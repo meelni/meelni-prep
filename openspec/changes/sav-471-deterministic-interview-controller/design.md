@@ -20,19 +20,24 @@
 5. Pinned LiveKit 1.6.5 emits public `speech_created` synchronously before it
    creates that handle's pipeline task. A bounded per-adapter Python task
    context carries only that candidate identity into the public LLM generation
-   boundary. The adapter then requires the finalized candidate message ID and
-   exact admitted move identity plus a cryptographically random one-time turn
-   nonce before promoting the handle or projecting monotonic time. Handle
-   lineage or predictable turn/move IDs alone do not grant authority. The
-   nonce and candidate entry are synchronously consumed together before any
-   reducer mutation; stale, evicted, duplicate, or replayed attempts are denied
-   state-stably.
+   boundary, while the adapter records the current internal generation epoch on
+   every created handle. Admission advances that epoch. The adapter then
+   binds the nonce to the first public `generate_reply` handle in the current
+   epoch and requires that exact handle, finalized candidate message ID,
+   admitted move identity, and cryptographically random one-time turn nonce
+   before projecting monotonic time. Neither a pre-admission handle nor a later
+   same-epoch handle can authorize the new nonce even if handed its temporary
+   context. The nonce and candidate entry are synchronously consumed together
+   before reducer mutation; stale, evicted, duplicate, or replayed attempts are
+   denied state-stably.
    The nonce is carried only by the temporary system-message ID. Pinned LiveKit
    serializes that context into its pre-node SDK trace before `llm_node`, so the
-   opaque value may appear there. The node redacts it before provider
-   conversion; it never enters snapshot/content, durable/customer transcripts,
-   or Meelni application logs, and trace access after consumption cannot replay
-   it.
+   opaque value may appear there. Because pinned `ChatContext.copy()` is
+   shallow, denied paths never redact in place. Successful authorization alone
+   replaces the nonce-bearing item with an isolated clone in the provider-bound
+   copy. The nonce never enters provider input, snapshot/content,
+   durable/customer transcripts, or Meelni application logs, and trace access
+   after consumption cannot replay it.
    A separate non-evicting session-lifetime ledger remembers up to 1,000
    observed speech-handle identities, so bounded in-flight eviction cannot make
    an old identity admissible again. At capacity, the adapter disables itself

@@ -6,6 +6,7 @@ import re
 import secrets
 import time
 from collections.abc import Callable
+from copy import copy
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -85,6 +86,13 @@ class TurnDirective:
 class GenerationCapabilityRecord:
     finalized_turn_id: str
     move_id: str
+    generation_epoch: int
+    handle_id: str | None
+
+
+@dataclass(frozen=True)
+class CreatedSpeechHandleRecord:
+    generation_epoch: int
 
 
 @dataclass(frozen=True)
@@ -134,13 +142,15 @@ def allow_controller_generation(
     )
     if suppression_gate.consume(finalized_turn_id):
         return False
-    _redact_generation_capability(chat_items)
-    return adapter.authorize_generation(
+    allowed = adapter.authorize_generation(
         finalized_turn_id=finalized_turn_id,
         move_id=move_id,
         generation_capability=generation_capability,
         monotonic_ms=monotonic_ms,
     )
+    if allowed:
+        _redact_generation_capability(chat_items)
+    return allowed
 
 
 class InterviewControllerAdapter:
@@ -162,12 +172,15 @@ class InterviewControllerAdapter:
             f"interview_controller_generation_handle_{id(self)}",
             default=None,
         )
+        self._generation_epoch = 0
         self._seen_speech_handles: dict[str, None] = {}
         self._generation_capabilities: dict[
             str, GenerationCapabilityRecord
         ] = {}
         self._seen_generation_capabilities: dict[str, None] = {}
-        self._created_speech_handles: dict[str, None] = {}
+        self._created_speech_handles: dict[
+            str, CreatedSpeechHandleRecord
+        ] = {}
         self._speech_move_ids: dict[str, str] = {}
         self._retired_speech_handles: dict[str, None] = {}
         self._transcript_move_ids: dict[str, str] = {}
@@ -278,11 +291,30 @@ class InterviewControllerAdapter:
             evicted = put_bounded_correlation(
                 self._created_speech_handles,
                 handle_id,
-                None,
+                CreatedSpeechHandleRecord(
+                    generation_epoch=self._generation_epoch,
+                ),
                 limit=MAX_PENDING_CORRELATIONS,
             )
             for evicted_handle_id in evicted:
                 self._retire_speech_handle(evicted_handle_id)
+            for capability, record in reversed(
+                tuple(self._generation_capabilities.items())
+            ):
+                if (
+                    record.generation_epoch != self._generation_epoch
+                    or record.handle_id is not None
+                ):
+                    continue
+                self._generation_capabilities[capability] = (
+                    GenerationCapabilityRecord(
+                        finalized_turn_id=record.finalized_turn_id,
+                        move_id=record.move_id,
+                        generation_epoch=record.generation_epoch,
+                        handle_id=handle_id,
+                    )
+                )
+                break
             # LiveKit 1.6.5 emits this public event synchronously before it
             # creates the handle's pipeline task. The task therefore inherits
             # this exact handle identity through Python's public task context.
@@ -303,10 +335,11 @@ class InterviewControllerAdapter:
         if not self.enabled or state is None:
             return True
         handle_id = self._current_generation_handle.get()
+        created_handle = self._created_speech_handles.get(handle_id)
         if (
             not isinstance(handle_id, str)
             or handle_id in self._speech_move_ids
-            or handle_id not in self._created_speech_handles
+            or created_handle is None
         ):
             return False
         if (
@@ -324,6 +357,8 @@ class InterviewControllerAdapter:
         if capability_record != GenerationCapabilityRecord(
             finalized_turn_id=finalized_turn_id,
             move_id=move_id,
+            generation_epoch=created_handle.generation_epoch,
+            handle_id=handle_id,
         ):
             return False
         self._created_speech_handles.pop(handle_id, None)
@@ -633,12 +668,15 @@ class InterviewControllerAdapter:
         ):
             raise ControllerError("generation_capability_capacity_exceeded")
         self._seen_generation_capabilities[capability] = None
+        self._generation_epoch += 1
         put_bounded_correlation(
             self._generation_capabilities,
             capability,
             GenerationCapabilityRecord(
                 finalized_turn_id=finalized_turn_id,
                 move_id=move_id,
+                generation_epoch=self._generation_epoch,
+                handle_id=None,
             ),
             limit=MAX_PENDING_CORRELATIONS,
         )
@@ -650,6 +688,7 @@ class InterviewControllerAdapter:
     def _disable(self, error: Exception) -> None:
         self._state = None
         self._current_generation_handle.set(None)
+        self._generation_epoch = 0
         self._created_speech_handles.clear()
         self._speech_move_ids.clear()
         self._retired_speech_handles.clear()
@@ -832,9 +871,11 @@ def _generation_context_identity(
 
 
 def _redact_generation_capability(items: object) -> None:
-    if not isinstance(items, (list, tuple)):
+    if not isinstance(items, list):
         return
-    for item in items[-MAX_GENERATION_CONTEXT_ITEMS:]:
+    start = max(0, len(items) - MAX_GENERATION_CONTEXT_ITEMS)
+    for index in range(start, len(items)):
+        item = items[index]
         if getattr(item, "role", None) != "system":
             continue
         item_id = getattr(item, "id", None)
@@ -842,7 +883,13 @@ def _redact_generation_capability(items: object) -> None:
             continue
         move_id, capability = _parse_generation_context_id(item_id)
         if move_id is not None and capability is not None:
-            setattr(item, "id", f"controller:{move_id}")
+            model_copy = getattr(item, "model_copy", None)
+            if callable(model_copy):
+                redacted = model_copy(deep=True)
+            else:
+                redacted = copy(item)
+            setattr(redacted, "id", f"controller:{move_id}")
+            items[index] = redacted
 
 
 def _parse_generation_context_id(

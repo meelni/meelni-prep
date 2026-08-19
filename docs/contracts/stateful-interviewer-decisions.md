@@ -227,22 +227,29 @@ finalized context can authorize the admitted move, and it can do so once.
 
 Pinned LiveKit 1.6.5 emits the public `speech_created` event synchronously
 before creating that handle's pipeline task. A bounded per-adapter Python task
-context carries the candidate handle identity across that ordering boundary.
-Creation and ambient task context are not move authority. The adapter also
-mints an opaque cryptographically random, single-use nonce for the admitted
-turn. Exact candidate-handle lineage, finalized-turn identity, move identity,
-and nonce must match; the nonce and candidate entry are consumed atomically
-before clock or reducer mutation. Denied or replayed authorization is
+context carries the candidate handle identity across that ordering boundary,
+and the adapter records its internal generation epoch at handle creation. The
+epoch advances only when a new directive nonce is admitted. Creation and
+ambient task context are not move authority. The adapter also mints an opaque
+cryptographically random, single-use nonce for the admitted turn. Exact current
+epoch, the first public `generate_reply` handle bound in that epoch,
+finalized-turn identity, move identity, and nonce must match; the nonce and
+candidate entry are consumed atomically before clock or reducer mutation. A
+handle created before the current epoch or later in the same epoch is denied
+even if handed the exact new chat context. Denied or replayed authorization is
 state-stable, and denied, evicted, duplicate, and replayed handles remain
 operational no-ops.
 
 The nonce exists only in the temporary controller system-message ID. Pinned
 LiveKit serializes that temporary context to the pre-node `ATTR_CHAT_CTX` SDK
 trace before invoking `llm_node`; the nonce may therefore appear in that trace.
-The synchronous node consumes it without awaiting and redacts the ID before
-provider conversion. It is not snapshot or message content, is never added to
-the durable/customer transcript, and is not emitted by Meelni application
-logs. A trace observation after consumption carries no replay authority.
+The synchronous node consumes it without awaiting. Only after successful
+authorization does the runtime replace the nonce-bearing item in an isolated
+provider-bound `ChatContext` copy; denied paths do not mutate the shallow-shared
+source item. The nonce is absent from provider input, is not snapshot or
+message content, is never added to the durable/customer transcript, and is not
+emitted by Meelni application logs. A trace observation after consumption
+carries no replay authority.
 
 The adapter retains every observed speech-handle identity for the session in a
 non-evicting replay ledger with an explicit 1,000-identity cap. In-flight
