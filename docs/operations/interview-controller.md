@@ -78,22 +78,40 @@ for rejected events.
 The flag is `MEELNI_INTERVIEW_CONTROLLER_V1_ENABLED`. Only the exact string
 `true` permits adapter construction. Construction additionally requires the
 exact durable lifecycle state and positive version from a trusted boundary.
-The current writer-registration response supplies only writer generation, so
-the entrypoint deliberately passes no lifecycle snapshot and resolves
-`lifecycle_snapshot_unavailable`. Consequently, setting the flag alone still
-constructs the existing base `InterviewAgent` and creates no controller
-snapshot.
+The authenticated writer-registration receipt now includes exact lifecycle
+state/version observed under the same session-row lock. Before controller
+construction, the runtime performs a separate authenticated, read-only
+`runtime_lifecycle_read` against the exact room, writer ID, and current writer
+generation. This reader result—not room metadata, provider presence, or a tool
+argument—creates the local lease. The runtime refreshes it every second with a
+one-second request deadline and a four-second local lease.
 
-This fence is intentional. The reducer never invents `active` or lifecycle
-version 1, and the runtime cannot claim or use lifecycle CAS without a trusted
-initial snapshot and reconnect/refresh path. SAV-472 owns supplying that
-authority before any enabled runtime use; this slice does not change the writer
-registration contract to obtain it.
+The reducer never invents `active` or lifecycle version 1. Initial read failure
+constructs the existing interviewer path. Refresh failure invalidates local
+controller/tool authority for the session. A reconnecting, ending, or terminal
+snapshot fences speech and cannot later be refreshed back to active. These
+failures do not stop base interviewer speech, transcript persistence, explicit
+exit, the hard deadline, watchdogs, or settlement.
 
 Invalid inputs, stale state, illegal transitions, or any adapter exception
 disable controller participation for that session. The base interviewer,
 transcript ingest, deadline, reconnect, user-end, and settlement paths continue.
 Disabling the flag is the complete rollback.
+
+`MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true` is a second exact, server-only gate.
+It has no effect unless the controller gate, valid `InterviewBriefV2`, accepted
+deadline, active reader snapshot, and fresh local lease all succeed. Both gates
+remain absent/default-off in every checked-in environment.
+
+Pinned LiveKit Agents 1.6.5 re-enters `llm_node` on the same public speech
+handle after a tool result. Only an explicit tool-turn handle may continue: at
+most three continuations are accepted. Enabled tool-mode generation requires a
+tool until a move is bound. The first tool failure or overflow admits one
+deterministic controller fallback move, immediately rejects later same-handle
+tools, permits one final tool-free reply, and denies every later re-entry.
+Prompt-led SAV-471 handles remain single-use. The original opaque
+completion-acceptance object remains the only identity that can complete the
+handle.
 
 ## Persistence and correlation
 
@@ -147,6 +165,8 @@ Run:
 
 ```bash
 python3 -m unittest agent.test_interview_controller
+python3 -m unittest agent.test_interviewer_tools
+agent/venv/bin/python -m unittest agent.test_livekit_interviewer_tools
 fnm exec --using=22.22.0 npm run test:python-agent
 fnm exec --using=22.22.0 npm run test:agent
 fnm exec --using=22.22.0 npm run test:interviewer-benchmark

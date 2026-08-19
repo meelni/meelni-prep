@@ -40,6 +40,10 @@ import type { TranscriptInterruptionMarkerStore } from "@/lib/workflows/ingest-t
 import type { TranscriptRuntimeSettlementStore } from "@/lib/workflows/ingest-transcript-runtime-settlement";
 import { convergeDrizzleInterviewCreditSettlement } from "./interview-credit-settlement";
 import type { TranscriptRuntimeWriterStore } from "@/lib/workflows/ingest-transcript-runtime-writer";
+import {
+  createTrustedRuntimeLifecycleSnapshot,
+  type InterviewRuntimeLifecycleStore,
+} from "@/lib/workflows/read-interview-runtime-lifecycle";
 
 export type PersistedTranscriptTurn = typeof transcriptTurn.$inferSelect;
 export type TranscriptPersistenceDatabase = Pick<typeof db, "transaction">;
@@ -151,6 +155,7 @@ export function createDrizzleTranscriptRuntimeWriterStore(
           .select({
             roomName: interviewSession.livekitRoomName,
             lifecycleState: interviewSession.lifecycleState,
+            lifecycleVersion: interviewSession.lifecycleVersion,
             terminalReason: interviewSession.terminalReason,
             endingAt: interviewSession.endingAt,
             reconnectDeadlineAt: interviewSession.reconnectDeadlineAt,
@@ -201,6 +206,8 @@ export function createDrizzleTranscriptRuntimeWriterStore(
             disposition: "existing",
             writer: existing,
             writerGeneration: existing.generation,
+            lifecycleState: session.lifecycleState,
+            lifecycleVersion: session.lifecycleVersion,
           } as const;
         }
 
@@ -241,7 +248,63 @@ export function createDrizzleTranscriptRuntimeWriterStore(
           disposition: "created",
           writer: inserted[0],
           writerGeneration: generation,
+          lifecycleState: session.lifecycleState,
+          lifecycleVersion: session.lifecycleVersion,
         } as const;
+      });
+    },
+  };
+}
+
+export function createDrizzleInterviewRuntimeLifecycleStore(
+  database: TranscriptPersistenceDatabase = db
+): InterviewRuntimeLifecycleStore {
+  return {
+    async read(request) {
+      return database.transaction(async (tx) => {
+        await configureTranscriptPersistenceTimeouts(tx);
+        const sessions = await tx
+          .select({
+            roomName: interviewSession.livekitRoomName,
+            lifecycleState: interviewSession.lifecycleState,
+            lifecycleVersion: interviewSession.lifecycleVersion,
+          })
+          .from(interviewSession)
+          .where(eq(interviewSession.id, request.session_id))
+          .limit(1)
+          .for("share");
+        const session = sessions[0];
+        if (!session) return { ok: false, reason: "not_found" } as const;
+        if (session.roomName !== request.room_name) {
+          return { ok: false, reason: "room_mismatch" } as const;
+        }
+
+        const currentRows = await tx
+          .select({
+            writerId: transcriptRuntimeWriter.writerId,
+            generation: transcriptRuntimeWriter.generation,
+          })
+          .from(transcriptRuntimeWriter)
+          .where(eq(transcriptRuntimeWriter.sessionId, request.session_id))
+          .orderBy(desc(transcriptRuntimeWriter.generation))
+          .limit(1);
+        const current = currentRows[0];
+        if (
+          !current ||
+          current.writerId !== request.writer_id ||
+          current.generation !== request.writer_generation
+        ) {
+          return { ok: false, reason: "writer_fenced" } as const;
+        }
+        const snapshot = createTrustedRuntimeLifecycleSnapshot({
+          request,
+          state: session.lifecycleState,
+          version: session.lifecycleVersion,
+        });
+        if (!snapshot) {
+          throw new Error("Stored interview lifecycle snapshot is invalid");
+        }
+        return { ok: true, snapshot } as const;
       });
     },
   };

@@ -80,6 +80,7 @@ from shared.transcript_ingest import (
     acknowledge_runtime_settlement_command,
     canonical_json_bytes,
     create_interruption_marker,
+    create_runtime_lifecycle_read,
     create_runtime_settlement,
     create_runtime_writer_registration,
     finish_tasks_before_shutdown,
@@ -93,6 +94,7 @@ from shared.transcript_ingest import (
     parse_runtime_settlement_request,
     persist_runtime_failure_event,
     pull_runtime_settlement_command,
+    read_runtime_lifecycle_snapshot,
     register_runtime_writer,
     resolve_transcript_ingest_secret,
     should_record_unconfirmed_interruption,
@@ -2340,6 +2342,15 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
                     "disposition": "existing",
                     "kind": "writer_registration",
                     "writer_generation": 7,
+                    "lifecycle_snapshot": {
+                        "contract_version": "trusted-interview-lifecycle-snapshot.v1",
+                        "session_id": "session-1",
+                        "room_name": "room-1",
+                        "writer_id": "writer-1",
+                        "writer_generation": 7,
+                        "state": "active",
+                        "version": 4,
+                    },
                 }).encode("utf-8"),
             ),
         ]
@@ -2351,7 +2362,7 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
         async def sleep(_delay):
             return None
 
-        generation = await register_runtime_writer(
+        receipt = await register_runtime_writer(
             ingest_url="https://meelni.com/api/internal/transcript",
             livekit_api_secret="livekit-secret",
             registration=registration,
@@ -2360,7 +2371,9 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
             now=lambda: 1783650000,
         )
 
-        self.assertEqual(generation, 7)
+        self.assertEqual(receipt.writer_generation, 7)
+        self.assertEqual(receipt.lifecycle_snapshot.state, "active")
+        self.assertEqual(receipt.lifecycle_snapshot.version, 4)
         self.assertEqual(bodies, [bodies[0], bodies[0]])
         self.assertEqual(
             json.loads(bodies[0]),
@@ -2384,6 +2397,77 @@ class TranscriptIngestQueueTests(unittest.IsolatedAsyncioTestCase):
                 livekit_api_secret="livekit-secret",
                 registration=registration,
                 transport=invalid_disposition,
+                now=lambda: 1783650000,
+            )
+
+    async def test_runtime_lifecycle_read_is_signed_and_writer_bound(self):
+        request = create_runtime_lifecycle_read(
+            session_id="session-1",
+            room_name="room-1",
+            writer_id="writer-1",
+            writer_generation=7,
+        )
+        requests = []
+
+        async def transport(_url, body, headers):
+            requests.append((json.loads(body), headers))
+            return IngestResponse(
+                200,
+                body=json.dumps(
+                    {
+                        "success": True,
+                        "kind": "runtime_lifecycle_snapshot",
+                        "lifecycle_snapshot": {
+                            "contract_version": "trusted-interview-lifecycle-snapshot.v1",
+                            "session_id": "session-1",
+                            "room_name": "room-1",
+                            "writer_id": "writer-1",
+                            "writer_generation": 7,
+                            "state": "ending",
+                            "version": 5,
+                        },
+                    }
+                ).encode("utf-8"),
+            )
+
+        snapshot = await read_runtime_lifecycle_snapshot(
+            ingest_url="https://meelni.com/api/internal/transcript",
+            livekit_api_secret="livekit-secret",
+            request=request,
+            transport=transport,
+            now=lambda: 1783650000,
+        )
+
+        self.assertEqual(snapshot.state, "ending")
+        self.assertEqual(snapshot.version, 5)
+        self.assertEqual(
+            requests[0][0],
+            {"sessionId": "session-1", "runtimeLifecycleRead": request},
+        )
+        self.assertIn(SIGNATURE_HEADER, requests[0][1])
+
+        async def crossed_writer(_url, _body, _headers):
+            value = {
+                "success": True,
+                "kind": "runtime_lifecycle_snapshot",
+                "lifecycle_snapshot": {
+                    "contract_version": "trusted-interview-lifecycle-snapshot.v1",
+                    "session_id": "session-1",
+                    "room_name": "room-1",
+                    "writer_id": "writer-2",
+                    "writer_generation": 7,
+                    "state": "active",
+                    "version": 5,
+                },
+            }
+            return IngestResponse(200, body=json.dumps(value).encode("utf-8"))
+
+        with self.assertRaises(TranscriptIngestError):
+            await read_runtime_lifecycle_snapshot(
+                ingest_url="https://meelni.com/api/internal/transcript",
+                livekit_api_secret="livekit-secret",
+                request=request,
+                transport=crossed_writer,
                 now=lambda: 1783650000,
             )
 

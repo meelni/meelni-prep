@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import test from "node:test";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
 const scripts = packageJson.scripts ?? {};
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const playwrightConfig = readFileSync("playwright.config.ts", "utf8");
@@ -148,16 +149,34 @@ test("browser QA exposes one pinned Chromium entrypoint", () => {
   );
 });
 
-test("CI runs browser QA once in the production validation lane", () => {
+test("CI runs browser QA in a lockfile-matched pinned container", () => {
+  const productionJob = ciWorkflow.match(
+    /\n {2}production:\n[\s\S]*?\n {2}validate:\n/
+  )?.[0];
+  const playwrightVersion =
+    packageLock.packages?.["node_modules/@playwright/test"]?.version;
+  const expectedContainer = `mcr.microsoft.com/playwright:v${playwrightVersion}-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48`;
+
+  assert.ok(productionJob, "CI should define the production validation job");
+  assert.equal(typeof playwrightVersion, "string");
+  assert.match(
+    expectedContainer,
+    /mcr\.microsoft\.com\/playwright:v\d+\.\d+\.\d+-noble@sha256:[a-f0-9]{64}$/
+  );
+  assert.equal(
+    productionJob.match(/\n\s+image: (\S+)/)?.[1],
+    expectedContainer
+  );
+  assert.match(productionJob, /options: --user 1001/);
+  assert.doesNotMatch(
+    productionJob,
+    /Resolve pinned Playwright version|Restore pinned Chromium|Install Chromium runtime|npm run test:browser:install|playwright install|actions\/cache@/
+  );
   assert.equal(ciWorkflow.match(/run:\s+npm run test:browser:qa/g)?.length, 1);
   assert.doesNotMatch(ciWorkflow, /strategy:\s*\n\s*matrix:/);
   assert.match(
     ciWorkflow,
     /production:[\s\S]*?id: browser_qa[\s\S]*?run: npm run test:browser:qa[\s\S]*?validate:/
-  );
-  assert.match(
-    ciWorkflow,
-    /actions\/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\.1\.0/
   );
   assert.match(
     ciWorkflow,

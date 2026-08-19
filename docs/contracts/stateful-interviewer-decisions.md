@@ -49,12 +49,14 @@ accepted `interview-runtime-state.v1` contract and do not widen its shared
 TypeScript/Python wire shape.
 
 The projection requires an exact durable lifecycle state and positive version
-from a trusted boundary. The current runtime writer-registration response does
-not contain that snapshot, so the SAV-471 entrypoint supplies neither and the
-adapter remains fenced to the existing interviewer even if its controller flag
-is set. Tests may provide an explicit fixture snapshot to exercise the boundary.
-SAV-472 must add an authoritative initial and refresh path before any live
-controller can claim lifecycle CAS.
+from a trusted boundary. SAV-472 extends the authenticated runtime-writer
+registration receipt with the lifecycle state/version read under the same
+session-row lock, then requires a separate signed, reader-only lifecycle read
+bound to the exact room and current writer generation before controller
+construction. A local four-second lease is renewed through that reader. Tools
+never perform the read themselves. Missing, stale, conflicting, non-active, or
+unavailable authority disables tool/controller participation without inventing
+`active` or lifecycle version 1.
 
 ## Room-metadata compatibility
 
@@ -388,7 +390,13 @@ applies checks in this order:
    and close requests do not themselves advance the independent lifecycle
    version.
 
-Failures never partially mutate state.
+Failures never partially apply the rejected request. On the live tool handle, a
+failure separately invokes deterministic controller fallback policy: the
+controller may admit exactly one `controller_fallback` move at the next
+generation boundary to authorize one tool-free reply. A reduced system
+instruction carries only its move type, question ID, and topic. That policy
+transition is not a partial success, cannot use model-supplied move fields, and
+still requires canonical transcript evidence to commit delivered history.
 `assessInterviewerToolRequestAgainstState` and its Python mirror implement the
 fresh-state comparison; a lifecycle-version mismatch returns
 `stale_lifecycle` independently of controller-revision freshness.
@@ -464,6 +472,24 @@ or failure returns control to the current deterministic/prompt-led fallback;
 speech, transcript persistence, explicit exit, and settlement never wait for a
 tool loop.
 
+The LiveKit surface uses exactly these five public `function_tool` descriptors
+and pins `max_tool_steps=3`. While the controller is healthy, model generation
+requires a tool until commit/close binds the handle. The first tool failure,
+repeated name, recursive/concurrent attempt, or continuation overflow invokes
+one deterministic controller fallback move, immediately fences later tool
+calls, permits one tool-free reply, and then denies later re-entry. The adapter
+separately permits at most three same-public-handle continuations for a tool
+turn. A fourth tool call and any tool call after commit/close are fenced.
+SAV-471 prompt-led handles remain single-use; continuation requires the explicit
+tool-turn authority bit and cannot mint a second generation nonce or move
+capability.
+
+Each accepted public speech event still owns one opaque, non-serializable
+completion acceptance object. Only object-identity agreement with that exact
+handle instance may remove its record or correlate delivery. Tool calls and
+model output do not stage delivery evidence. A move becomes delivered history
+only through the existing acknowledged canonical interviewer transcript path.
+
 Every `ok` or `duplicate` result validates its payload against the result
 envelope, not only against the payload schema. A returned runtime state must
 match the envelope session, active writer ID/generation, and exact
@@ -482,8 +508,9 @@ even when its standalone schema is valid. Consumers therefore never accept a
 cross-call, cross-tool, cross-session, fenced-writer, or revision-detached
 result.
 
-Telemetry records tool name, contract version, outcome, state/writer version,
-and latency. Tool arguments/results and transcript content are off by default.
+Telemetry records only tool name, contract version, closed outcome, and latency.
+Tool arguments/results, prompt/model content, transcript content, free-form
+rationale, and chain of thought are off by default.
 
 ## `DirectorRecommendation`
 

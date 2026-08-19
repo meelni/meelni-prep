@@ -82,10 +82,18 @@ preserving the existing global event-ID idempotency boundary.
 Before producing any audible output, each runtime durably registers a
 metadata-only `runtime_writer_registration`. Registration is idempotent for the
 same `(session_id, room_name, writer_id)` and returns a positive
-`writer_generation`. A replacement runtime receives a later generation, which
+`writer_generation` plus the exact lifecycle state/version read under the same
+session-row lock. A replacement runtime receives a later generation, which
 fences the prior generation from distinct new writes without erasing that
 prior writer's settlement obligation. Every turn, marker, settlement, and
 targeted reconnect-settlement request carries the registered generation.
+
+After registration, the signed internal endpoint accepts a strict metadata-only
+`runtime_lifecycle_read` for the same session, room, writer ID, and generation.
+It is read-only and succeeds only for the current writer generation. Its
+`trusted-interview-lifecycle-snapshot.v1` response contains only those
+identities plus canonical lifecycle state/version; no transcript, lifecycle
+mutation, account, billing, feedback, or provider control crosses this reader.
 
 At an explicit end or semantic cutoff `D`, the runtime first disables audio
 input and output at `D`, installs the immutable evidence cutoff synchronously,

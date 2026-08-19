@@ -43,9 +43,17 @@ off until the broader launch review is complete.
 runtime flag. Only the exact value `true` constructs the SAV-471 controller;
 absence, blanks, mixed case, and every other value retain the existing
 `InterviewAgent` path. Construction also requires an exact durable lifecycle
-snapshot. The current entrypoint has no such trusted input and therefore fails
-safely to `InterviewAgent` even if the flag is set. Do not add a `NEXT_PUBLIC_*`
-equivalent, configure the flag in Preview or Production, or infer launch
-permission from its presence in the repository. See
+snapshot from the authenticated current-writer-bound lifecycle reader. Missing,
+non-active, stale, or unavailable authority fails safely to `InterviewAgent`.
+Do not add a `NEXT_PUBLIC_*` equivalent, configure the flag in Preview or
+Production, or infer launch permission from its presence in the repository. See
 [Deterministic Interview Controller](./interview-controller.md) for evidence
 boundaries and provider-free verification.
+
+`MEELNI_INTERVIEW_TOOLS_V1_ENABLED` is the separate SAV-472 server-only gate.
+The exact value `true` exposes the five local tools only when the controller is
+enabled and a current-writer-bound lifecycle reader has produced a fresh active
+lease. Missing/invalid values, a non-active state, writer replacement, reader
+failure, or lease expiry preserve the prompt-led fallback. Do not add a
+`NEXT_PUBLIC_*` equivalent or configure either gate in any environment as part
+of this repository slice.

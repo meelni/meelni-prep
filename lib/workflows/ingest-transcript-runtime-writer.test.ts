@@ -19,6 +19,8 @@ test("runtime writer registration returns the durable generation idempotently", 
           disposition: "existing",
           writer: stored,
           writerGeneration: stored.generation,
+          lifecycleState: "active",
+          lifecycleVersion: 4,
         };
       }
       stored = { ...value, generation: 1 };
@@ -27,6 +29,8 @@ test("runtime writer registration returns the durable generation idempotently", 
         disposition: "created",
         writer: stored,
         writerGeneration: 1,
+        lifecycleState: "active",
+        lifecycleVersion: 4,
       };
     },
   };
@@ -56,6 +60,8 @@ test("registration rejects invented fields and cross-session claims before stora
         disposition: "created",
         writer: {},
         writerGeneration: 1,
+        lifecycleState: "active",
+        lifecycleVersion: 4,
       };
     },
   };
