@@ -17,6 +17,13 @@ the separate exact `MEELNI_INTERVIEW_TOOLS_V1_ENABLED=true` gate. Same-handle
 continuation is tool-mode-only; SAV-471 prompt-led generation remains
 single-use. Both gates remain disabled in checked-in environments.
 
+Implementation note (SAV-474): the asynchronous Director is available only as
+a read-only, bounded shadow behind
+`MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED=true`. The full-interview
+entrypoint deliberately injects no adapter, so the flag cannot execute work.
+The deterministic fake is synthetic-test-only, and no recommendation reaches
+the live prompt, controller, transcript, feedback, or customer output.
+
 The pinned LiveKit adapter preserves finalized candidate transcript emission by
 returning an empty public-LLM-node result, rather than raising `StopResponse`,
 when a turn projects elapsed or arrives after terminal. Pre-deadline explicit

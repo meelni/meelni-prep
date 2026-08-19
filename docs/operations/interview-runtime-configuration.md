@@ -57,3 +57,13 @@ lease. Missing/invalid values, a non-active state, writer replacement, reader
 failure, or lease expiry preserve the prompt-led fallback. Do not add a
 `NEXT_PUBLIC_*` equivalent or configure either gate in any environment as part
 of this repository slice.
+
+## Read-only Interview Director shadow
+
+`MEELNI_INTERVIEW_DIRECTOR_SHADOW_V1_ENABLED` is a separate server-only exact
+flag and defaults off. SAV-474 deliberately injects no application adapter, so
+even the exact value `true` resolves `adapter_unavailable` and starts no
+Director task. Do not configure the flag in Preview or Production, add a
+`NEXT_PUBLIC_*` equivalent, or reuse the live interview model configuration as
+a Director selection. See
+[Interview Director Shadow](./interview-director-shadow.md).
