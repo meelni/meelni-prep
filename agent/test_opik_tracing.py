@@ -239,6 +239,54 @@ class OpikTracingTests(unittest.TestCase):
         self.assertNotIn("gen_ai.request.model", exported.attributes)
         self.assertNotIn("hidden_reasoning", exported.attributes)
 
+    def test_metadata_only_director_span_reconstructs_nullable_fields(self):
+        delegate = CapturingExporter()
+        exporter = ContentControlledSpanExporter(delegate, capture_content=False)
+        span = private_interviewer_semantic_span()
+        for field in (
+            "meelni.interviewer.tool_contract_version",
+            "meelni.interviewer.tool_name",
+            "meelni.interviewer.tool_outcome",
+            "meelni.interviewer.latency_ms",
+        ):
+            span.attributes.pop(field)
+        span.attributes.update(
+            {
+                "meelni.interviewer.event_kind": "director",
+                "meelni.interviewer.recommendation_contract_version": (
+                    "director-recommendation.v1"
+                ),
+                "meelni.interviewer.director_policy_version": (
+                    "interview-director-policy.v1"
+                ),
+                "meelni.interviewer.director_adapter_version": (
+                    "interview-director-adapter.fake.v1"
+                ),
+                "meelni.interviewer.recommendation_outcome": "unavailable",
+                "meelni.interviewer.recommendation_freshness": "missing",
+            }
+        )
+
+        exporter.export([span])
+
+        self.assertEqual(len(delegate.spans), 1)
+        exported = delegate.spans[0]
+        self.assertEqual(
+            exported.attributes["meelni.interviewer.event_kind"], "director"
+        )
+        self.assertEqual(
+            exported.attributes["meelni.interviewer.recommendation_outcome"],
+            "unavailable",
+        )
+        self.assertNotIn(
+            "meelni.interviewer.recommendation_comparison", exported.attributes
+        )
+        self.assertNotIn(
+            "meelni.interviewer.estimated_cost_microusd", exported.attributes
+        )
+        self.assertNotIn("transcript", exported.attributes)
+        self.assertNotIn("hidden_reasoning", exported.attributes)
+
     def test_content_mode_never_adds_content_to_semantic_spans(self):
         delegate = CapturingExporter()
         exporter = ContentControlledSpanExporter(delegate, capture_content=True)
