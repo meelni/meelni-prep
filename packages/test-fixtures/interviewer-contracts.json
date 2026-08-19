@@ -303,6 +303,8 @@
   ],
   "director_recommendation": {
     "contract_version": "director-recommendation.v1",
+    "policy_version": "interview-director-policy.v1",
+    "model_adapter_version": "interview-director-adapter.fake.v1",
     "recommendation_id": "recommendation-contract-1",
     "session_id": "session-contract-1",
     "brief_id": "brief:02c5c0cdbe5e7f10d1775f070447318f3ba512ae51c547cd31b82aba0398557e",
